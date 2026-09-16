@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
@@ -126,7 +126,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
       then_ "and the asking agent is not waiting on work that will not conclude",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListOpenQuestions.execute(%{}, frame)
+        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
 
         assert response_text(listing) =~ ~r/waiting on the user/i,
                """

@@ -20,6 +20,7 @@ defmodule CodeMySpec.MainAgent.OpenQuestion do
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
+          kind: :question | :permission,
           title: String.t() | nil,
           questions: [map()],
           holder: String.t(),
@@ -45,7 +46,8 @@ defmodule CodeMySpec.MainAgent.OpenQuestion do
     :agent_status,
     :working_copy_id,
     :working_copy_root,
-    :working_copy_label
+    :working_copy_label,
+    kind: :question
   ]
 
   @doc """
@@ -72,6 +74,59 @@ defmodule CodeMySpec.MainAgent.OpenQuestion do
       working_copy_root: field(working_copy, :root),
       working_copy_label: field(working_copy, :label)
     }
+  end
+
+  @doc """
+  The same struct, built from a permission request.
+
+  A `tap_out` or an `ask_user_question` is an agent waiting on a person exactly
+  as a question is, and `StopDecision.wake/2` treats them identically —
+  `Notifications.awaiting_answer?/1` is `pending_question? or
+  pending_permission?`, so either one takes the agent off the graph until
+  somebody decides.
+
+  They were missing from the listing that calls itself "everything the agents on
+  this project are waiting on, in one place", which made the commonest way for
+  an agent to go silent the one way the listing could not show. Agent
+  `880c7713` sat unreachable for seven hours on an un-actioned `tap_out` while
+  every surface reported it running, continuous and idle with 17 actionable
+  requirements (`8cb3f626`).
+
+  `holder` is the user: a permission request has no main-agent half to answer
+  first, which is the honest rendering rather than one that invites an answer
+  that cannot be given.
+  """
+  @spec from_permission(map(), map() | nil, map() | nil) :: t()
+  def from_permission(request, agent, working_copy) do
+    %OpenQuestion{
+      id: request.id,
+      kind: :permission,
+      title: permission_title(request.tool_name),
+      questions: [%{"question" => permission_text(request)}],
+      holder: "user",
+      escalation_reason: nil,
+      asked_at: request.inserted_at,
+      agent_id: request.agent_id,
+      agent_role: field(agent, :role),
+      agent_status: field(agent, :status),
+      working_copy_id: field(agent, :working_copy_id),
+      working_copy_root: field(working_copy, :root),
+      working_copy_label: field(working_copy, :label)
+    }
+  end
+
+  defp permission_title("tap_out"), do: "Asked to leave the loop (tap_out)"
+  defp permission_title(tool_name), do: "Permission requested: #{tool_name}"
+
+  defp permission_text(%{tool_name: "tap_out"}) do
+    "This agent asked to leave the autonomous loop and is waiting on a decision. " <>
+      "Until one is recorded it cannot be woken — a pending permission request " <>
+      "refuses the wake the same way an unanswered question does."
+  end
+
+  defp permission_text(%{tool_name: tool_name, tool_input: input}) do
+    "This agent asked permission to call `#{tool_name}` and is waiting on a " <>
+      "decision. Until one is recorded it cannot be woken. Input: #{inspect(input)}"
   end
 
   @doc "The question text, for a listing that shows one line per question."

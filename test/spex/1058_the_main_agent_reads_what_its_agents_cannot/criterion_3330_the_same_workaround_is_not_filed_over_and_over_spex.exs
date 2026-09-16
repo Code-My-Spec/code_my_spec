@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -168,9 +168,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     {:reply, _answered, _frame} =
-      AnswerQuestion.execute(
+      AnswerNotification.execute(
         %{
-          question_id: Fixtures.question_id_from(response_text(asked)),
+          id: Fixtures.question_id_from(response_text(asked)),
           answer: "Dunning emails go out",
           basis: "record",
           worked_around: @gap

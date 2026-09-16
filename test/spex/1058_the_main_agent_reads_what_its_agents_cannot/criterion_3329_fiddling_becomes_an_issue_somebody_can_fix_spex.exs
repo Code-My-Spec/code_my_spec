@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -104,9 +104,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          AnswerQuestion.execute(
+          AnswerNotification.execute(
             %{
-              question_id: context.question_id,
+              id: context.question_id,
               answer: "Dunning emails go out",
               basis: "record",
               worked_around: "no tool exposes story-to-epic membership"

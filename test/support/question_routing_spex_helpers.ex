@@ -22,9 +22,9 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerQuestion
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   @doc "What the main agent sees waiting for it."
   @spec open_questions(map()) :: String.t()
   def open_questions(context),
-    do: ListOpenQuestions |> call(%{}, context) |> response_text()
+    do: ListNotifications |> call(%{}, context) |> response_text()
 
   @doc """
   Only the part of the listing that is the main agent's to act on.
@@ -144,7 +144,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   @doc "The main agent answers from what the project records."
   @spec main_answers(map(), String.t(), String.t()) :: struct()
   def main_answers(context, question_id, answer) do
-    call(AnswerQuestion, %{question_id: question_id, answer: answer, basis: "record"}, context)
+    call(AnswerNotification, %{id: question_id, answer: answer, basis: "record"}, context)
   end
 
   @doc "The main agent hands one up, saying why it is the user's call."

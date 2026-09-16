@@ -31,6 +31,49 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
   end
 
   @spec error(term()) :: Response.t()
+  @doc """
+  A permission settled, in the terms the decision actually has.
+
+  Deliberately not worded as an answer. Allowing a `tap_out` stops an agent and
+  denying it sends it back to work — neither is "it has gone back to the agent",
+  and saying so would hide which of the two just happened.
+  """
+  @spec decided(String.t(), String.t()) :: Response.t()
+  def decided(id, "allow") do
+    Response.tool()
+    |> Response.text("""
+    Allowed.
+
+    Permission: #{id}
+
+    The agent has its answer and is no longer waiting on one, so it is off your
+    list and off the gate — a pending permission refuses a wake the same way an
+    unanswered question does.
+    """)
+  end
+
+  def decided(id, "deny") do
+    Response.tool()
+    |> Response.text("""
+    Denied.
+
+    Permission: #{id}
+
+    The agent has its answer and is no longer waiting on one, so it is off your
+    list and off the gate. It stays in the loop and can be woken again.
+    """)
+  end
+
+  def error({:unknown_decision, decision}) do
+    Response.tool()
+    |> Response.error("""
+    `#{decision}` is not a decision. A permission takes `allow` or `deny`.
+
+    If you meant to answer a question rather than settle a permission, leave
+    `decision` out and pass `answer` and `basis` instead.
+    """)
+  end
+
   def error({:not_that_role_s, role, tool}) do
     refuse("""
     Not done: `#{tool}` is deliberately not a #{role} tool, and using it on that \
@@ -61,7 +104,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
   def error(:not_found) do
     refuse("""
     No open question on this project has that id. It may already be answered — \
-    `list_open_questions` has what is still waiting.\
+    `list_notifications` has what is still waiting.\
     """)
   end
 

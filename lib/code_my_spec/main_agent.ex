@@ -556,6 +556,40 @@ defmodule CodeMySpec.MainAgent do
     end
   end
 
+  @doc """
+  Settle one entry from the queue, whichever kind it is.
+
+  The queue unions two things that stop an agent identically —
+  `Notifications.awaiting_answer?/1` is `pending_question? or
+  pending_permission?` — but they are settled by different verbs. A question
+  takes an answer and a basis; a permission takes `allow` or `deny`. Dispatching
+  here rather than in the tool keeps one definition of "settle this", so the
+  agent-facing surface and anything else that grows one cannot drift.
+
+  A permission is scoped the same way a question is: it must belong to an agent
+  of this project, so one project cannot decide another's. `:not_found`
+  otherwise, which is the same answer an unknown id gets and deliberately does
+  not distinguish the two.
+
+  This existed only in the UI before. `Notifications.resolve_permission_request/2`
+  is what the notifications dropdown calls, and nothing reached it from the
+  agent surface — so a `tap_out` could be raised by an agent and answered by
+  nobody but a person at a browser. Agent `880c7713` sat unreachable for seven
+  hours on exactly that (`8cb3f626`).
+  """
+  @spec decide_permission(Scope.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def decide_permission(%Scope{} = scope, permission_id, decision)
+      when decision in ~w(allow deny) do
+    case QuestionsRepository.fetch_open_permission(scope, permission_id) do
+      {:ok, _entry} -> Notifications.resolve_permission_request(permission_id, decision)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def decide_permission(%Scope{}, _permission_id, decision),
+    do: {:error, {:unknown_decision, decision}}
+
   # An answer that does not stand up sends the question on rather than stopping
   # here.
   #
@@ -691,12 +725,28 @@ defmodule CodeMySpec.MainAgent do
   end
 
   defp windowed(turns, opts, limit) do
-    turns = Enum.filter(turns, &within?(&1, opts))
-    {kept, over_count?} = drop_oldest_beyond(turns, limit)
+    within = Enum.filter(turns, &within?(&1, opts))
+    {kept, over_count?} = drop_oldest_beyond(within, limit)
     {shown, over_budget?} = within_budget(kept)
 
-    {:ok, %{turns: shown, truncated?: over_count? or over_budget?}}
+    {:ok, no_match(%{turns: shown, truncated?: over_count? or over_budget?}, turns, :window)}
   end
+
+  # Why the answer is empty, when it is empty for a reason other than the agent
+  # having said nothing.
+  #
+  # A narrowing read that matches nothing returns the same `turns: []` as an
+  # agent that has never taken a turn, and the caller cannot tell them apart —
+  # so it was told "this agent has said nothing yet" about agents with long
+  # histories that simply had not called the tool asked about (issue
+  # `2a809b93`). The distinction is only available here, where both the filter
+  # and the unfiltered turns are in hand.
+  #
+  # Added as a key rather than a different shape, so every existing caller that
+  # matches `%{turns: _, truncated?: _}` is unaffected.
+  defp no_match(result, [], _reason), do: result
+  defp no_match(%{turns: []} = result, _unfiltered, reason), do: Map.put(result, :no_match, reason)
+  defp no_match(result, _unfiltered, _reason), do: result
 
   defp within?(turn, opts) do
     after?(turn, Keyword.get(opts, :since)) and before?(turn, Keyword.get(opts, :until))
@@ -718,7 +768,7 @@ defmodule CodeMySpec.MainAgent do
   defp last_call_of(turns, tool) do
     case Enum.filter(turns, &calls?(&1, tool)) do
       [] ->
-        %{turns: [], truncated?: false}
+        no_match(%{turns: [], truncated?: false}, turns, {:last_call_of, tool})
 
       calls ->
         call = List.last(calls)

@@ -71,7 +71,7 @@ defmodule CodeMySpec.SpexGivensTest do
   # agent whose tools do not resolve must fail loudly — has no legal way to be
   # written at all.
   #
-  # Story 1052's two. `main_answers` calls `AnswerQuestion.execute/2`, the main
+  # Story 1052's two. `main_answers` calls `AnswerNotification.execute/2`, the main
   # agent's own tool, and `user_answers` goes through
   # `Notifications.answer_question_request/2` via the `Fixtures` bridge — what
   # the inbox form calls, and the only thing that marks a request answered and

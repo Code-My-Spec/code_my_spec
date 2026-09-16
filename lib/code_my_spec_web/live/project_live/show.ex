@@ -42,23 +42,43 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
     """
   end
 
+  # A project outside the active account is a wrong turn, not a crash.
+  #
+  # `get_project!/2` scopes by `account_id` and raises `Ecto.NoResultsError`
+  # when the id belongs to another account — so a real project the viewer simply
+  # has not switched to produced a 500 debug page rather than being sent
+  # somewhere useful. Issue `d5ed2469`, found by QA against a user who belongs to
+  # nine accounts and was landed in the wrong one on login.
+  #
+  # The redirect says *account* rather than "not found", because the id usually
+  # is real and the account is the thing to change. Saying "does not exist"
+  # sends someone hunting for a deleted project.
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     if connected?(socket) do
       Projects.subscribe_projects(socket.assigns.current_scope)
     end
 
-    project =
-      socket.assigns.current_scope
-      |> Projects.get_project!(id)
-      |> Projects.preload_oauth_application()
+    case Projects.get_project(socket.assigns.current_scope, id) do
+      {:error, :not_found} ->
+        {:ok,
+         socket
+         |> put_flash(
+           :error,
+           "That project is not in the account you are in. Switch accounts to open it."
+         )
+         |> push_navigate(to: ~p"/app/projects")}
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Show Project")
-     |> assign(:project, project)
-     |> assign(:oauth_app, project.oauth_application)
-     |> assign(:plaintext_secret, nil)}
+      {:ok, project} ->
+        project = Projects.preload_oauth_application(project)
+
+        {:ok,
+         socket
+         |> assign(:page_title, "Show Project")
+         |> assign(:project, project)
+         |> assign(:oauth_app, project.oauth_application)
+         |> assign(:plaintext_secret, nil)}
+    end
   end
 
   @impl true
