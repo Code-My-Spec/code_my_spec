@@ -86,29 +86,38 @@ defmodule CodeMySpec.Requirements.Shadow do
   def enabled?, do: Application.get_env(:code_my_spec, :graph_shadow_projection, false)
 
   @doc """
-  Replace one entity's shadow rows for this vantage.
+  Replace the shadow rows for everything this computation covered.
 
   Delete-then-insert rather than the live path's upsert-then-reap. The live
   writer has to handle a whole graph at once and reap what it did not produce;
-  this only ever holds one entity, so "these are the rows" is the whole
-  statement and the narrower operation is the honest one.
+  this holds a known, small set of entities, so "these are their rows" is the
+  whole statement and the narrower operation is the honest one.
 
-  An entity that computes to no nodes still deletes — that is a real answer
-  (a component whose template is empty under this config) and leaving the old
-  rows would make the shadow permanently over-count.
+  `covered` and the nodes' own owners are deliberately separate inputs.
+  `RequirementGraph.compute_entity/4` answers for a component's whole family —
+  a context's template produces its children's rows, so they cannot be computed
+  apart from it — and within that family a member can legitimately produce
+  nothing. Deleting by `covered` and inserting by each node's own owner is what
+  makes "this component now has no requirements" expressible; keying both sides
+  off the nodes would leave that component's old rows standing forever.
   """
-  @spec write(Scope.t(), entity(), [map()]) :: :ok
-  def write(%Scope{} = scope, {entity_type, entity_id}, nodes) do
+  @spec write(Scope.t(), Enumerable.t(), [map()]) :: :ok
+  def write(%Scope{} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    Repo.transaction(fn ->
-      @source
-      |> where(^owner_filter(entity_type, entity_id))
-      |> where(^copy_filter(working_copy_id))
-      |> Repo.delete_all()
+    rows =
+      Enum.map(nodes, &row(&1, &1.entity_type, &1.entity_id, working_copy_id, now))
 
-      case Enum.map(nodes, &row(&1, entity_type, entity_id, working_copy_id, now)) do
+    Repo.transaction(fn ->
+      Enum.each(covered, fn {entity_type, entity_id} ->
+        @source
+        |> where(^owner_filter(entity_type, entity_id))
+        |> where(^copy_filter(working_copy_id))
+        |> Repo.delete_all()
+      end)
+
+      case rows do
         [] -> :ok
         rows -> Repo.insert_all(@source, rows)
       end

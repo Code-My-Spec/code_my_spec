@@ -691,21 +691,44 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Project nodes take the whole context deliberately: their checkers read counts
   across the project, so there is nothing to narrow, and `recompute_stale/4`
   rebuilds them unconditionally for the same reason.
+
+  ## A component's unit is its family, not itself
+
+  Returns `{covered, nodes}` rather than just nodes, because for a component the
+  two differ. `component_families/1` decides top-level from nested by asking
+  whether each component's parent is *in the set it was given* — so a child
+  narrowed to itself has no parent there, is classified top-level, and runs its
+  own template. Measured on this project: 549 of 1138 components are nested, and
+  every one of them computed alone invents an `implementation_file` node that
+  the whole-project pass never produces.
+
+  `expand_component_families/2` is what keeps the stale path safe from exactly
+  this, and it is why the stale set is always family-closed. The narrow path
+  needs the same closure for the same reason, so it calls the same function.
+
+  This is not the debounce coming back. A family is the domain's own atomic
+  unit — a context's template owns its children's rows, so those rows cannot be
+  produced apart from it — where a debounce window is an arbitrary interval
+  chosen to make a whole-project pass affordable. Two unrelated marks still
+  compute separately.
   """
-  @spec compute_entity(Scope.t(), map(), map(), {String.t(), term()}) :: [Requirement.t()]
+  @spec compute_entity(Scope.t(), map(), map(), {String.t(), term()}) ::
+          {MapSet.t({String.t(), term()}), [Requirement.t()]}
   def compute_entity(scope, ctx, config, {"component", _id} = entity) do
-    {nodes, _} = instantiate_component_graphs(scope, reduce_to(ctx, MapSet.new([entity])), config)
-    nodes
+    covered = expand_component_families(MapSet.new([entity]), ctx)
+    {nodes, _} = instantiate_component_graphs(scope, reduce_to(ctx, covered), config)
+    {covered, nodes}
   end
 
   def compute_entity(scope, ctx, config, {"story", _id} = entity) do
-    {nodes, _} = compute_story_nodes(scope, reduce_to(ctx, MapSet.new([entity])), config)
-    nodes
+    covered = MapSet.new([entity])
+    {nodes, _} = compute_story_nodes(scope, reduce_to(ctx, covered), config)
+    {covered, nodes}
   end
 
-  def compute_entity(scope, ctx, config, {"project", _id}) do
+  def compute_entity(scope, ctx, config, {"project", _id} = entity) do
     {nodes, _} = compute_project_nodes(scope, ctx, config)
-    nodes
+    {MapSet.new([entity]), nodes}
   end
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do

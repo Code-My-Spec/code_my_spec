@@ -269,7 +269,8 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       {:ok, ctx} = Preloader.load(scope)
       config = CodeMySpec.Configurations.get_or_create(scope)
 
-      alone = RequirementGraph.compute_entity(scope, ctx, config, {"component", component.id})
+      {_, alone} =
+        RequirementGraph.compute_entity(scope, ctx, config, {"component", component.id})
 
       # The claim `reduce_to/2` rests on: an entity hashes and answers
       # identically whether the pass that computed it was narrowed or whole. If
@@ -277,10 +278,54 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       # `compute_entity/4` rather than on the staleness decision.
       assert Enum.all?(alone, &(&1.entity_id == component.id))
 
-      again = RequirementGraph.compute_entity(scope, ctx, config, {"component", component.id})
+      {_, again} =
+        RequirementGraph.compute_entity(scope, ctx, config, {"component", component.id})
 
       assert Enum.map(alone, &{&1.name, &1.satisfied}) ==
                Enum.map(again, &{&1.name, &1.satisfied})
     end
+
+    test "a nested component answers the same alone as inside its family", ctx do
+      scope = ctx.scope
+      parent = ComponentsFixtures.component_fixture(scope, %{type: "context"})
+
+      {:ok, child} =
+        CodeMySpec.Components.create_component(scope, %{
+          name: "NestedChild",
+          type: "genserver",
+          module_name: "NestedChild",
+          description: "a child of a context",
+          parent_component_id: parent.id
+        })
+
+      {:ok, loaded} = Preloader.load(scope)
+      config = CodeMySpec.Configurations.get_or_create(scope)
+
+      {covered, from_child} =
+        RequirementGraph.compute_entity(scope, loaded, config, {"component", child.id})
+
+      {_, from_parent} =
+        RequirementGraph.compute_entity(scope, loaded, config, {"component", parent.id})
+
+      # `component_families/1` classifies top-level from nested by asking whether
+      # each component's parent is in the set it was handed. Narrowed to the
+      # child alone, the parent is absent, the child reads as top-level and runs
+      # its own template — inventing rows the whole-project pass never produces.
+      # Measured on the live project before this was fixed: 549 of 1138
+      # components nested, every one of them gaining a spurious
+      # `implementation_file`.
+      #
+      # So a component's unit of computation is its family, and asking about
+      # either member must answer identically.
+      assert MapSet.member?(covered, {"component", parent.id}),
+             "computing a child must cover its parent, or the child is misclassified as top-level"
+
+      assert names_for(from_child, child.id) == names_for(from_parent, child.id)
+      assert names_for(from_child, parent.id) == names_for(from_parent, parent.id)
+    end
+  end
+
+  defp names_for(nodes, entity_id) do
+    nodes |> Enum.filter(&(&1.entity_id == entity_id)) |> Enum.map(& &1.name) |> Enum.sort()
   end
 end

@@ -218,17 +218,18 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # it is exactly when a mark matters — so the write is skipped and the mark is
   # still consumed. `Shadow.write/3` with no nodes would delete the rows anyway;
   # this only avoids computing against a context that does not hold it.
-  defp compute_and_write(scope, ctx, config, {"project", _} = entity) do
-    nodes = RequirementGraph.compute_entity(scope, ctx, config, entity)
-    Shadow.write(scope, {"project", scope.active_project_id}, nodes)
+  defp compute_and_write(scope, ctx, config, {"project", _}) do
+    entity = {"project", scope.active_project_id}
+    {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
+    Shadow.write(scope, covered, nodes)
   end
 
   defp compute_and_write(scope, ctx, config, entity) do
     if present?(ctx, entity) do
-      nodes = RequirementGraph.compute_entity(scope, ctx, config, entity)
-      Shadow.write(scope, entity, nodes)
+      {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
+      Shadow.write(scope, covered, nodes)
     else
-      Shadow.write(scope, entity, [])
+      Shadow.write(scope, [entity], [])
     end
   end
 
