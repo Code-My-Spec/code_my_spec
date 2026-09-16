@@ -28,6 +28,7 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -42,6 +43,11 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   """
   @spec list_open_questions(Scope.t()) :: [OpenQuestion.t()]
   def list_open_questions(%Scope{active_project_id: project_id}) when not is_nil(project_id) do
+    (pending_questions(project_id) ++ pending_permissions(project_id))
+    |> Enum.sort_by(& &1.asked_at, DateTime)
+  end
+
+  defp pending_questions(project_id) do
     from(q in QuestionRequest,
       join: a in Agent,
       on: a.id == q.agent_id,
@@ -54,6 +60,41 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
     |> Repo.all()
     |> Enum.map(fn {request, agent, working_copy} ->
       OpenQuestion.new(request, agent, working_copy)
+    end)
+  end
+
+  # The other half of what stops an agent, and it was missing.
+  #
+  # `Notifications.awaiting_answer?/1` — the predicate `StopDecision.wake/2`
+  # consults before it will wake anything — is `pending_question? or
+  # pending_permission?`. A listing that unions only the first half cannot
+  # explain the gate, so an agent held off the graph by a `tap_out` shows up
+  # here as nothing at all.
+  #
+  # That is not hypothetical. Agent `880c7713` asked to leave the loop at 12:38,
+  # nobody recorded a decision, and it spent seven hours unreachable while
+  # `list_agent_work` reported it running, continuous and idle with 17
+  # actionable requirements. This listing — which calls itself "everything the
+  # agents on this project are waiting on, in one place" — showed nothing.
+  # Issue `8cb3f626`.
+  #
+  # Merged rather than returned separately, and sorted with the questions, for
+  # the reason the queue exists: the reader is asking "which of my agents are
+  # stopped, and why", and that question has one answer. `kind` on the struct
+  # is how a caller tells an answer from a decision.
+  defp pending_permissions(project_id) do
+    from(p in PermissionRequest,
+      join: a in Agent,
+      on: a.id == p.agent_id,
+      left_join: w in WorkingCopy,
+      on: w.id == a.working_copy_id,
+      where: a.project_id == ^project_id and p.status == "pending",
+      order_by: [asc: p.inserted_at],
+      select: {p, a, w}
+    )
+    |> Repo.all()
+    |> Enum.map(fn {request, agent, working_copy} ->
+      OpenQuestion.from_permission(request, agent, working_copy)
     end)
   end
 
