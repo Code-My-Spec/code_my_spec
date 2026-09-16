@@ -297,7 +297,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     stamp_project(scope)
     {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
 
-    topology = Freshness.topology(ctx, config)
+    {topology_ms, topology} = timed(fn -> Freshness.topology(ctx, config) end)
 
     with {_, true} <- {:no_stored_rows, stored_nodes != []},
          {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
@@ -307,7 +307,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
       {story_nodes, _} = compute_story_nodes(scope, reduced, config)
-      {project_nodes, _} = compute_project_nodes(scope, ctx, config)
+      # `ctx`, not `reduced`, and that is the measurement this exists to take.
+      # Project nodes are rebuilt on every pass whatever the stale set says —
+      # ten delegate checkers, several of which query the whole project — while
+      # the component and story computations above are narrowed to what actually
+      # moved. On a pass that found nothing stale those two do nothing and this
+      # does everything.
+      {project_ms, {project_nodes, _}} =
+        timed(fn -> compute_project_nodes(scope, ctx, config) end)
 
       fresh = project_nodes ++ story_nodes ++ component_nodes
 
@@ -361,7 +368,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
 
-      log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms)
+      log_pass_cost(started, %{
+        preload: preload_ms,
+        projection: projection_ms,
+        topology: topology_ms,
+        project: project_ms,
+        fingerprint: fingerprint_ms,
+        serve: serve_ms
+      })
 
       {served, stored_edges}
     else
@@ -2127,14 +2141,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # per-entity hash of every component and story — and naming the others is how
   # that gets isolated without restructuring the `with` guards, which would
   # change which work the short-circuits skip.
-  defp log_pass_cost(started, preload_ms, projection_ms, fingerprint_ms, serve_ms) do
+  defp log_pass_cost(started, parts) do
     total = elapsed_ms(started)
-    accounted = (preload_ms || 0) + projection_ms + fingerprint_ms + serve_ms
+    accounted = parts |> Map.values() |> Enum.map(&(&1 || 0)) |> Enum.sum()
+
+    named =
+      ~w(preload projection topology project fingerprint serve)a
+      |> Enum.map_join(", ", fn key -> "#{key} #{ms_or_na(parts[key])}" end)
 
     Logger.info(
-      "[Requirements] pass cost #{total}ms — preload #{ms_or_na(preload_ms)}, " <>
-        "projection #{projection_ms}ms, fingerprint #{fingerprint_ms}ms, " <>
-        "serve #{serve_ms}ms, elsewhere #{max(total - accounted, 0)}ms"
+      "[Requirements] pass cost #{total}ms — #{named}, " <>
+        "elsewhere #{max(total - accounted, 0)}ms"
     )
   end
 
