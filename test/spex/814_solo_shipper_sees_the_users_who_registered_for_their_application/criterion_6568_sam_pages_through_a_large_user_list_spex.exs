@@ -21,11 +21,6 @@ defmodule CodeMySpecSpex.Story814.Criterion6568Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  # Shared mode so the LiveView process (separate from the test) sees the stub.
-  setup do
-    Req.Test.set_req_test_to_shared(%{})
-  end
-
   spex "Sam pages through his registered users" do
     scenario "Sam pages through a large user list" do
       given_ "the project points at a target app with more users than one page",
