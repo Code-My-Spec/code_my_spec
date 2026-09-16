@@ -192,13 +192,20 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       :ok
     end
 
-    test "Stories names the story it changed", ctx do
+    test "Stories names the story it changed, and claims project scope", ctx do
       story = create_story(ctx.scope, title: "Named", description: "not project-wide")
 
-      {named, project_wide?} = marks(ctx.scope)
+      {named, flags} = marks(ctx.scope)
 
-      refute project_wide?, "Stories recorded a project-wide mark instead of naming the story"
+      refute flags[:unknown?], "Stories could not say what it moved"
       assert MapSet.member?(named, {"story", story.id})
+
+      # Three project requirements read stories — `stories_exist`,
+      # `work_dispatched` and the unlinked-story half of `architecture_designed`
+      # — so this writer has to say so. Naming only the story would be asserting
+      # a blast radius it does not have, and the project node would go stale
+      # with nothing to say so.
+      assert flags[:project?], "a story moving must invalidate the project requirements"
     end
 
     test "Components names the component and its parent", ctx do
@@ -214,10 +221,13 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           parent_component_id: parent.id
         })
 
-      {named, project_wide?} = marks(ctx.scope)
+      {named, flags} = marks(ctx.scope)
 
-      refute project_wide?, "Components recorded a project-wide mark"
+      refute flags[:unknown?], "Components could not say what it moved"
       assert MapSet.member?(named, {"component", child.id})
+
+      # `architecture_designed` reads the component set.
+      assert flags[:project?], "a component moving must invalidate the project requirements"
 
       # `Freshness.component/2` hashes `children_by_parent`, so a child
       # appearing moves the parent's requirements too. A writer that named only
@@ -237,15 +247,34 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           %{description: "a criterion that moves one story"}
         )
 
-      {named, project_wide?} = marks(ctx.scope)
+      # Filtered to this writer's own marks, because `create_criterion/3` is not
+      # only a criterion write: it calls `restart_specs_chain/3`, which resets
+      # the story's specs-ready latch through `Stories`, which correctly claims
+      # project scope. That `:project` mark is real and belongs to `Stories`.
+      #
+      # The claim under test is about this writer: no project requirement reads
+      # acceptance criteria, so `AcceptanceCriteria` must not itself drag the
+      # project nodes through a recompute — 60-95ms on the live project, for a
+      # verdict that cannot have moved.
+      {named, flags} = marks_from(ctx.scope, "AcceptanceCriteria")
 
-      refute project_wide?, "AcceptanceCriteria recorded a project-wide mark"
+      refute flags[:unknown?], "AcceptanceCriteria could not say what it moved"
       assert MapSet.member?(named, {"story", story.id})
+
+      refute flags[:project?],
+             "no project requirement reads criteria, so this must not claim project scope"
     end
   end
 
   defp marks(scope) do
     scope.active_project_id |> Invalidations.pending() |> Invalidations.entities()
+  end
+
+  defp marks_from(scope, source) do
+    scope.active_project_id
+    |> Invalidations.pending()
+    |> Enum.filter(&(&1.source == source))
+    |> Invalidations.entities()
   end
 
   defp assert_shadow_agrees(scope, writer) do

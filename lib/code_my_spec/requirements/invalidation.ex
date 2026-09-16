@@ -21,7 +21,7 @@ defmodule CodeMySpec.Requirements.Invalidation do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Stories.Story
 
-  @type entity :: {String.t(), term()} | :project
+  @type entity :: {String.t(), term()} | :project | :unknown
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -35,6 +35,7 @@ defmodule CodeMySpec.Requirements.Invalidation do
   schema "graph_invalidations" do
     field :source, :string
     field :observation_id, :string
+    field :entity_scope, :string
 
     belongs_to :project, Project, type: :binary_id
     belongs_to :component, Component, type: :binary_id
@@ -44,15 +45,17 @@ defmodule CodeMySpec.Requirements.Invalidation do
   end
 
   @doc """
-  The entity this mark names, in the same `{type, id}` shape
+  What this mark names, in the same `{type, id}` shape
   `RequirementGraph.stale_entities/3` compares against.
 
-  `:project` for a mark that names nothing, so the two cases stay distinguishable
-  downstream — a consumer that treated it as "no entities" would silently drop
-  every un-narrowed writer, which is the direction that must never be silent.
+  `:project` when the writer said the project requirements moved, and `:unknown`
+  when it could not say what moved at all. Those are different claims and the
+  consumer spends very differently on them, so they must not collapse into one
+  value — see the migration for why `:unknown` is the default.
   """
   @spec entity(t()) :: entity()
   def entity(%__MODULE__{component_id: id}) when not is_nil(id), do: {"component", id}
   def entity(%__MODULE__{story_id: id}) when not is_nil(id), do: {"story", id}
-  def entity(%__MODULE__{}), do: :project
+  def entity(%__MODULE__{entity_scope: "project"}), do: :project
+  def entity(%__MODULE__{}), do: :unknown
 end

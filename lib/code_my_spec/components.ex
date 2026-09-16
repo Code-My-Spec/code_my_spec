@@ -58,10 +58,14 @@ defmodule CodeMySpec.Components do
   # has, though not on what changed inside them. A writer that named only the
   # component would leave the parent stale with nothing to say so, which is the
   # silent direction.
+  # `:project` as well, because `architecture_designed` reads the component set
+  # — its orphan rule asks which contexts are story-linked, descended from one,
+  # or depended on by one. A component appearing, moving parent or changing type
+  # can move that verdict.
   defp graph_entities({_verb, %{id: id} = component}) do
     case Map.get(component, :parent_component_id) do
-      nil -> [{"component", id}]
-      parent_id -> [{"component", id}, {"component", parent_id}]
+      nil -> [{"component", id}, :project]
+      parent_id -> [{"component", id}, {"component", parent_id}, :project]
     end
   end
 

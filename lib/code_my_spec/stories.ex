@@ -71,12 +71,20 @@ defmodule CodeMySpec.Stories do
     GraphInputs.announce(scope, "Stories", graph_entities(message))
   end
 
-  # Only the story. A story's `component_id` is an edge input — it is in
-  # `Freshness.topology_parts/2` and not in `Freshness.component/2` — so
-  # attaching a story to a component moves the graph's shape and not that
-  # component's own requirements. Topology is fingerprinted separately and is
-  # not what these marks replace.
-  defp graph_entities({_verb, %{id: id}}) when not is_nil(id), do: [{"story", id}]
+  # The story, and the project.
+  #
+  # Only the story, as far as story requirements go: a story's `component_id` is
+  # an edge input — it is in `Freshness.topology_parts/2`, not in
+  # `Freshness.component/2` — so attaching a story to a component moves the
+  # graph's shape and not that component's own requirements. Topology is
+  # fingerprinted separately and is not what these marks replace.
+  #
+  # `:project` because three project requirements read stories: `stories_exist`,
+  # `work_dispatched` through `EpicDispatch.dispatch_state/1`, and
+  # `architecture_designed`, which reports stories that are ready and unlinked.
+  # A writer that names entities is asserting it moved nothing the project
+  # requirements read, and this one would be asserting something false.
+  defp graph_entities({_verb, %{id: id}}) when not is_nil(id), do: [{"story", id}, :project]
   defp graph_entities(_message), do: []
 
   @doc """

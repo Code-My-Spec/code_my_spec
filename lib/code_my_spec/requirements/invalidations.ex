@@ -45,10 +45,15 @@ defmodule CodeMySpec.Requirements.Invalidations do
   @doc """
   Mark what a writer moved.
 
-  `entities` is what the writer names. An empty list is recorded as one
-  project-wide mark rather than as nothing: a writer announced, so something
-  moved, and dropping it because it could not say what would make an
-  un-narrowed writer indistinguishable from a silent one.
+  `entities` is what the writer names. An empty list records one `:unknown`
+  mark rather than nothing: a writer announced, so something moved, and dropping
+  it because it could not say what would make an un-narrowed writer
+  indistinguishable from a silent one.
+
+  A writer that names entities is asserting a blast radius — including that it
+  moved nothing the *project* requirements read. If it did, it says so by
+  including `:project` alongside its entities. See the migration for why
+  `:unknown` rather than `:project` is what an unnarrowed writer gets.
   """
   @spec record(Ecto.UUID.t() | nil, String.t(), [entity()], String.t() | nil) :: :ok
   def record(project_id, source, entities, observation_id \\ nil)
@@ -116,18 +121,28 @@ defmodule CodeMySpec.Requirements.Invalidations do
   end
 
   @doc """
-  The entities these marks name, and whether any of them named nothing.
+  What these marks ask for: the entities they name, whether the project
+  requirements are among them, and whether any writer declined to say.
 
-  Separated because the two answers are consumed differently: a set of entities
-  is work to do, and a project-wide mark means the set is not trustworthy as a
-  complete account of what moved.
+  Three answers rather than two, because a consumer spends very differently on
+  each. Entities are bounded work. `project?` adds one more computation — a real
+  cost, 60-95ms on this project, but a fixed one. `unknown?` means the entity
+  set is not a complete account of what moved and the only safe reading is
+  everything.
+
+  Collapsing `project?` into `unknown?` is what made every mark cost a
+  whole-project recompute, and collapsing it the other way would let an
+  unnarrowed writer skip the project requirements it may well have moved.
   """
-  @spec entities([Invalidation.t()]) :: {MapSet.t(entity()), boolean()}
+  @spec entities([Invalidation.t()]) ::
+          {MapSet.t(entity()), project?: boolean(), unknown?: boolean()}
   def entities(marks) do
-    Enum.reduce(marks, {MapSet.new(), false}, fn mark, {named, wide?} ->
+    Enum.reduce(marks, {MapSet.new(), [project?: false, unknown?: false]}, fn mark,
+                                                                              {named, flags} ->
       case Invalidation.entity(mark) do
-        :project -> {named, true}
-        entity -> {MapSet.put(named, entity), wide?}
+        :project -> {named, Keyword.put(flags, :project?, true)}
+        :unknown -> {named, Keyword.put(flags, :unknown?, true)}
+        entity -> {MapSet.put(named, entity), flags}
       end
     end)
   end
@@ -135,11 +150,14 @@ defmodule CodeMySpec.Requirements.Invalidations do
   defp mark_id(%Invalidation{id: id}), do: id
   defp mark_id(id) when is_integer(id), do: id
 
-  # A writer that named nothing still moved something.
-  defp normalize([]), do: [:project]
+  # A writer that named nothing still moved something, and cannot say what.
+  defp normalize([]), do: [:unknown]
   defp normalize(entities), do: Enum.uniq(entities)
 
-  defp columns({"component", id}), do: %{component_id: id, story_id: nil}
-  defp columns({"story", id}), do: %{component_id: nil, story_id: id}
-  defp columns(:project), do: %{component_id: nil, story_id: nil}
+  defp columns({"component", id}),
+    do: %{component_id: id, story_id: nil, entity_scope: "entity"}
+
+  defp columns({"story", id}), do: %{component_id: nil, story_id: id, entity_scope: "entity"}
+  defp columns(:project), do: %{component_id: nil, story_id: nil, entity_scope: "project"}
+  defp columns(:unknown), do: %{component_id: nil, story_id: nil, entity_scope: "unknown"}
 end

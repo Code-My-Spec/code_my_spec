@@ -188,22 +188,36 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
   end
 
-  # A project-wide mark means the writer could not say what moved, so the only
-  # safe reading is "any of it" — every entity, which is precisely the
-  # whole-project pass this replaces. That is the cost of leaving a writer
-  # un-narrowed, and it is paid here so the diff can price it.
-  #
   # An unseeded projector reads every mark the same way, whatever it names: it
   # has no prior state for a delta to be relative to.
   defp entities_to_compute(%{seeded: false}, _marks, ctx),
     do: ctx |> all_entities() |> MapSet.put({"project", nil}) |> Enum.to_list()
 
+  # Three claims, three costs.
+  #
+  # `unknown?` — some writer could not say what it moved, so the entity set is
+  # not a complete account and the only safe reading is everything. That is the
+  # whole-project pass this exists to replace, and it is what an un-narrowed
+  # writer costs.
+  #
+  # `project?` — a writer said the project requirements moved. One more
+  # computation, 60-95ms here, and a fixed one.
+  #
+  # Neither — every mark named entities and none claimed project scope, so the
+  # project requirements are untouched and are not recomputed. This is the case
+  # that makes a mark cost what the entity it names costs. Before the third
+  # state existed, every drain took the `project?` branch: 7ms of story against
+  # 75ms of project nodes nothing had asked for.
   defp entities_to_compute(%{seeded: true}, marks, ctx) do
-    {named, project_wide?} = Invalidations.entities(marks)
+    {named, flags} = Invalidations.entities(marks)
 
     named
-    |> then(fn named -> if project_wide?, do: all_entities(ctx), else: named end)
-    |> MapSet.put({"project", nil})
+    |> then(fn named -> if flags[:unknown?], do: all_entities(ctx), else: named end)
+    |> then(fn named ->
+      if flags[:unknown?] or flags[:project?],
+        do: MapSet.put(named, {"project", nil}),
+        else: named
+    end)
     |> Enum.to_list()
   end
 
