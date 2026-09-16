@@ -473,6 +473,85 @@ defmodule CodeMySpec.Requirements.Preloader do
   end
 
   @doc """
+  One component's family, for a consumer computing only that family.
+
+  The family is the unit, because `component_families/1` decides top-level from
+  nested by asking whether each component's parent is in the set it was given,
+  and `expand_component_families/2` groups by `parent_component_id || id`. So
+  the family of a component is its root — itself, or its parent — plus every
+  component sharing that root. Two queries rather than the project's 1138 rows.
+
+  That grouping is also what makes the narrow set safe to hand to
+  `component_families/1`: the root is present, so its children classify as
+  nested, and the root itself classifies as top-level exactly as it would in a
+  whole-project context — its own parent, if it has one, is outside the set and
+  therefore not a container here, which is the same answer `load/1` gives on
+  this project's shape (measured: 0 components nested below the second level).
+
+  `problems_by_component` is carried and `problem_digests_by_component` is not,
+  and the split is the point. The digests exist only for `Freshness.component/2`,
+  which this path skips; the counts are read by
+  `RequirementCalculator.get_problem_count/4`, whose preloaded clause matches on
+  the key being present. Omitting the counts raises `FunctionClauseError` rather
+  than reporting zero problems — see `narrow_context/2`.
+  """
+  @spec load_component_family(Scope.t(), Ecto.UUID.t(), %{String.t() => boolean()}) ::
+          {:ok, context()}
+  def load_component_family(%Scope{active_project_id: project_id} = scope, id, analysis_fresh)
+      when is_binary(project_id) do
+    root =
+      Repo.one(
+        from(c in Component,
+          where: c.id == ^id and c.project_id == ^project_id,
+          select: coalesce(c.parent_component_id, c.id)
+        )
+      )
+
+    {:ok, family_context(scope, root, analysis_fresh)}
+  end
+
+  defp family_context(_scope, nil, analysis_fresh),
+    do: narrow_context(analysis_fresh, [])
+
+  defp family_context(%Scope{active_project_id: project_id} = scope, root, analysis_fresh) do
+    family =
+      Component
+      |> where([c], c.project_id == ^project_id)
+      |> where([c], c.id == ^root or c.parent_component_id == ^root)
+      |> preload([:dependencies, :child_components])
+      |> Repo.all()
+
+    ids = Enum.map(family, & &1.id)
+
+    files =
+      File
+      |> where([f], f.component_id in ^ids)
+      |> scope_to_harness(files_vantage(scope))
+      |> Repo.all()
+
+    analysis_fresh
+    |> narrow_context([])
+    |> Map.merge(%{
+      components: family,
+      components_by_id: Map.new(family, &{&1.id, &1}),
+      children_by_parent: Enum.group_by(family, & &1.parent_component_id),
+      files_by_component: Enum.group_by(files, & &1.component_id),
+      problems_by_component: problem_counts(project_id, ids)
+    })
+  end
+
+  defp problem_counts(project_id, component_ids) do
+    Problem
+    |> where([p], p.project_id == ^project_id and p.component_id in ^component_ids)
+    |> group_by([p], [p.component_id, p.source])
+    |> select([p], {p.component_id, p.source, count(p.id)})
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn {component_id, source, count}, acc ->
+      Map.update(acc, component_id, %{source => count}, &Map.put(&1, source, count))
+    end)
+  end
+
+  @doc """
   The four analyzer-freshness booleans on their own.
 
   Project-wide and read by `bdd_specs_passing` on every story, so a consumer

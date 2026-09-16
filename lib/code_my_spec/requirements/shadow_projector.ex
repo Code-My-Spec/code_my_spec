@@ -29,13 +29,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     * `:everything` — a writer could not say what it moved, or this projector
       has not seeded. Whole context, every entity. This is the pass the event
       path exists to replace, and it is what an un-narrowed writer costs.
-    * `{:full_context, entities}` — the project requirements moved, or a
-      component did. Both need the project's components: project requirements
-      read counts across it, and a component's unit is its family, which
-      `component_families/1` can only work out from the whole set.
-    * `{:stories, ids}` — every mark named a story and none claimed project
-      scope. `Preloader.load_story/3` per story, and `Preloader.load/1` is never
-      called.
+    * `{:full_context, entities}` — the project requirements moved. They read
+      counts across the project, so there is nothing to narrow.
+    * `{:narrow, entities}` — every mark named an entity and none claimed
+      project scope. `Preloader.load_story/3` or
+      `Preloader.load_component_family/3` per entity, and `Preloader.load/1` is
+      never called.
 
   That last shape is the point of the whole exercise, and it inverts the
   premise `load/1` was built on. The story delegates take a scope and a story
@@ -218,21 +217,16 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # requirements read counts across the project, so this needs a whole context
   # whatever else the marks named.
   #
-  # Stories alone — every mark named a story and none claimed project scope.
-  # This is the case a narrow load exists for, and the only one that never
-  # touches `Preloader.load/1`.
-  #
-  # A component falls to `:full_context` because its unit is its family, and
-  # `component_families/1` needs the project's components to work out which
-  # family that is.
+  # Entities alone — every mark named one and none claimed project scope. This
+  # is the case the narrow loads exist for, and the only plan that never touches
+  # `Preloader.load/1`.
   defp plan(%{seeded: true}, marks) do
     {named, flags} = Invalidations.entities(marks)
 
     cond do
       flags[:unknown?] -> :everything
       flags[:project?] -> {:full_context, MapSet.put(named, {"project", nil})}
-      Enum.all?(named, &match?({"story", _}, &1)) -> {:stories, named}
-      true -> {:full_context, named}
+      true -> {:narrow, named}
     end
   end
 
@@ -256,25 +250,44 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     %{state | analysis_fresh: ctx.analysis_fresh}
   end
 
-  # The narrow path: one story at a time, no project-wide read.
+  # The narrow path: one entity at a time, each loading only what it needs, and
+  # no project-wide read at all.
   #
-  # `analysis_fresh` is the one project-wide value a story requirement needs —
-  # `bdd_specs_passing` reads it — and it is computed from the whole checkout's
-  # files, so it is cached rather than recomputed per drain. Sound because it
-  # can only move when files or an analyzer run move, and every writer that does
-  # either records `:unknown`, which takes the `:everything` branch above and
-  # refreshes it.
-  defp run({:stories, stories}, state, config) do
+  # `analysis_fresh` is the one project-wide value a narrow computation still
+  # needs — `bdd_specs_passing` reads it — and it is computed from the whole
+  # checkout's files, so it is cached rather than recomputed per drain. Sound
+  # because it can only move when files or an analyzer run move, and every
+  # writer that does either records `:unknown`, which takes the `:everything`
+  # branch above and refreshes it.
+  #
+  # Deduped by what each computation covered, for the reason `write_each/4`
+  # gives: a component's unit is its family, so two marks naming siblings are
+  # one piece of work.
+  defp run({:narrow, entities}, state, config) do
     analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
-
-    Enum.each(stories, fn {"story", story_id} = entity ->
-      {:ok, ctx} = Preloader.load_story(state.scope, story_id, analysis_fresh)
-      {covered, nodes} = RequirementGraph.compute_entity(state.scope, ctx, config, entity)
-      Shadow.write(state.scope, covered, nodes)
-    end)
-
+    narrow_each(entities, state.scope, config, analysis_fresh)
     %{state | analysis_fresh: analysis_fresh}
   end
+
+  @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
+  defp narrow_each(entities, scope, config, analysis_fresh) do
+    Enum.reduce(entities, MapSet.new(), fn entity, done ->
+      if MapSet.member?(done, entity) do
+        done
+      else
+        {:ok, ctx} = narrow_load(scope, entity, analysis_fresh)
+        {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
+        Shadow.write(scope, covered, nodes)
+        MapSet.union(done, covered)
+      end
+    end)
+  end
+
+  defp narrow_load(scope, {"story", story_id}, analysis_fresh),
+    do: Preloader.load_story(scope, story_id, analysis_fresh)
+
+  defp narrow_load(scope, {"component", component_id}, analysis_fresh),
+    do: Preloader.load_component_family(scope, component_id, analysis_fresh)
 
   defp all_entities(ctx) do
     MapSet.union(
