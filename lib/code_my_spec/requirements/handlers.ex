@@ -260,6 +260,55 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
+  # Three outcomes, and the default is the one most stories are in.
+  #
+  # `SpecsPassingChecker.passing?/3` takes them in order: not `specs_ready` is
+  # an outright failure; `specs_ready` with no fresh spex run passes, because
+  # there is nothing to re-check against; `specs_ready` with a fresh run passes
+  # only if none of this story's own spec files are failing.
+  #
+  # So the sweep defaults to the first — a story nobody has marked ready — and
+  # names the ready ones, which are the few. The alternative, emitting every
+  # story as an exception, is one write per story for a population that is
+  # mostly in one state.
+  defp settle("bdd_specs_passing", %{specs: profile}) do
+    ready = for {story_id, true} <- profile.specs_ready, do: story_id
+
+    %{
+      entity_type: "story",
+      name: "bdd_specs_passing",
+      default: false,
+      default_details: details(%{reason: "Specs have not gone green on a fresh spex run yet"}),
+      except: Enum.map(ready, &ready_story_verdict(&1, profile))
+    }
+  end
+
+  # The six project `path_exists` requirements.
+  #
+  # One entity each, so the sweep is one row and `except` is always empty — the
+  # shape is kept anyway so every requirement settles through one path.
+  defp settle(name, %{files: profile}) when is_map_key(@path_requirements, name) do
+    {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
+    project_sweep(name, satisfied?, detail, detail)
+  end
+
+  # `tests_passing`, the one requirement reading two profiles: whether the
+  # component has a test file at all, and how many exunit problems it carries.
+  #
+  # `analysis_source` rides in the details deliberately — `RequirementGraph.serve/2`
+  # reads it to mark the node stale when the exunit run predates the code, which
+  # is applied at read time and is why this verdict does not need to know about
+  # freshness itself.
+  defp settle("tests_passing", %{files: files, problems: problems}) do
+    %{
+      entity_type: "component",
+      name: "tests_passing",
+      default: true,
+      default_details: details(%{status: "No test failures", analysis_source: "exunit"}),
+      except: tests_failures(files, problems)
+    }
+  end
+
   defp satisfied_detail(:exists, role), do: %{status: "#{role} file exists"}
   defp satisfied_detail(:valid, role), do: %{status: "#{role} file valid"}
 
@@ -318,29 +367,6 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # Three outcomes, and the default is the one most stories are in.
-  #
-  # `SpecsPassingChecker.passing?/3` takes them in order: not `specs_ready` is
-  # an outright failure; `specs_ready` with no fresh spex run passes, because
-  # there is nothing to re-check against; `specs_ready` with a fresh run passes
-  # only if none of this story's own spec files are failing.
-  #
-  # So the sweep defaults to the first — a story nobody has marked ready — and
-  # names the ready ones, which are the few. The alternative, emitting every
-  # story as an exception, is one write per story for a population that is
-  # mostly in one state.
-  defp settle("bdd_specs_passing", %{specs: profile}) do
-    ready = for {story_id, true} <- profile.specs_ready, do: story_id
-
-    %{
-      entity_type: "story",
-      name: "bdd_specs_passing",
-      default: false,
-      default_details: details(%{reason: "Specs have not gone green on a fresh spex run yet"}),
-      except: Enum.map(ready, &ready_story_verdict(&1, profile))
-    }
-  end
-
   defp ready_story_verdict(story_id, %{spex_fresh?: false}),
     do:
       change(
@@ -376,15 +402,6 @@ defmodule CodeMySpec.Requirements.Handlers do
       details: details(detail_map)
     }
 
-  # The six project `path_exists` requirements.
-  #
-  # One entity each, so the sweep is one row and `except` is always empty — the
-  # shape is kept anyway so every requirement settles through one path.
-  defp settle(name, %{files: profile}) when is_map_key(@path_requirements, name) do
-    {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
-    project_sweep(name, satisfied?, detail, detail)
-  end
-
   # `check_path_exists/3`: a tracked row, and a row whose `valid` is explicitly
   # false is a failure while `nil` — scanned, not yet parsed — is not.
   defp path_verdict({:path, path}, profile) do
@@ -408,23 +425,6 @@ defmodule CodeMySpec.Requirements.Handlers do
       0 -> {false, %{reason: "No files at #{prefix}"}}
       n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
     end
-  end
-
-  # `tests_passing`, the one requirement reading two profiles: whether the
-  # component has a test file at all, and how many exunit problems it carries.
-  #
-  # `analysis_source` rides in the details deliberately — `RequirementGraph.serve/2`
-  # reads it to mark the node stale when the exunit run predates the code, which
-  # is applied at read time and is why this verdict does not need to know about
-  # freshness itself.
-  defp settle("tests_passing", %{files: files, problems: problems}) do
-    %{
-      entity_type: "component",
-      name: "tests_passing",
-      default: true,
-      default_details: details(%{status: "No test failures", analysis_source: "exunit"}),
-      except: tests_failures(files, problems)
-    }
   end
 
   defp tests_failures(files, problems) do

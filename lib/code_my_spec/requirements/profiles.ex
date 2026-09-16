@@ -138,22 +138,6 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
-  # `{owner_id, role} => file`, keeping the first of any duplicates — the same
-  # `Enum.find/2` semantics `has_role?/3` and `has_valid_role?/2` use when a
-  # checkout somehow holds two rows for one role.
-  defp index_by(files, owner_key) do
-    files
-    |> Enum.filter(&Map.get(&1, owner_key))
-    |> Enum.reduce(%{}, fn file, acc ->
-      Map.put_new(acc, {Map.get(file, owner_key), file.role}, file)
-    end)
-  end
-
-  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy}) when is_binary(copy),
-    do: from(f in query, where: f.working_copy_id == type(^copy, Ecto.UUID))
-
-  defp scope_files_to_copy(query, %Scope{}), do: query
-
   # Everything `bdd_specs_passing` reads, for every story, in three reads.
   #
   # The requirement has three outcomes and `SpecsPassingChecker.passing?/3`
@@ -173,6 +157,22 @@ defmodule CodeMySpec.Requirements.Profiles do
       failing_by_story: failing_specs_by_story(scope, project_id)
     }
   end
+
+  # `{owner_id, role} => file`, keeping the first of any duplicates — the same
+  # `Enum.find/2` semantics `has_role?/3` and `has_valid_role?/2` use when a
+  # checkout somehow holds two rows for one role.
+  defp index_by(files, owner_key) do
+    files
+    |> Enum.filter(&Map.get(&1, owner_key))
+    |> Enum.reduce(%{}, fn file, acc ->
+      Map.put_new(acc, {Map.get(file, owner_key), file.role}, file)
+    end)
+  end
+
+  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy}) when is_binary(copy),
+    do: from(f in query, where: f.working_copy_id == type(^copy, Ecto.UUID))
+
+  defp scope_files_to_copy(query, %Scope{}), do: query
 
   defp spex_fresh?(%Scope{active_working_copy_id: copy} = scope) do
     case Analysis.Freshness.known(copy, "spex") do
