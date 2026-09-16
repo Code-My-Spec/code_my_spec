@@ -43,27 +43,49 @@ defmodule CodeMySpecSpex.Case do
   # 839-adjacent. Fixing both layers doesn't make anything async by
   # itself; it makes async *possible*, one file at a time.
   #
-  # A 4-file pilot the same night found two real, reproducible failure
-  # shapes that only showed up under the FULL suite's concurrency, not
-  # in an isolated few-file run (3 clean runs there, then 3 of 4 broke
-  # once run alongside ~1390 other spex):
+  # A 4-file pilot the same night found two failure shapes that only
+  # showed up under the FULL suite's concurrency, not in an isolated
+  # few-file run (3 clean runs there, then 3 of 4 broke once run
+  # alongside ~1390 other spex): `DBConnection.ConnectionError ...
+  # client exited`, and cross-test state pollution ("Requirement
+  # architecture_designed not found for project ..."). Both looked at
+  # first like separate, file-local bugs. They are not -- they are the
+  # SAME root cause, confirmed the next day by two independent traces
+  # that converged on the same line:
   #
-  #   - `DBConnection.ConnectionError ... client exited` -- something
-  #     the spex spawned (a Task, an MCP tool's own dispatch) was still
-  #     using the test's private sandbox connection when the test
-  #     process finished and the connection got reclaimed out from
-  #     under it. `Sandbox.allow/3` is the usual fix, but it means
-  #     finding every such spawn first, not assuming there are none.
-  #   - Cross-test state pollution ("Requirement architecture_designed
-  #     not found for project ...") -- some concurrently-running test
-  #     mutated shared/global state (a cache, an ETS table, a
-  #     process-global registry) the flipped spex also depended on.
+  # `Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async],
+  # ...)` two dozen lines below puts every currently non-async spex
+  # (still ~all of them) into Ecto's `{:shared, self()}` mode at setup.
+  # That mode is REPO-GLOBAL, not scoped to the caller -- Ecto's own
+  # docs on `Sandbox` say it plainly: "tests can no longer run
+  # concurrently in shared mode." Whichever non-async spex last called
+  # it becomes, for that stretch, the one shared connection for the
+  # entire BEAM VM. Nothing ever resets it back to `:manual` (the
+  # `on_exit` at `Sandbox.stop_owner/1` releases that test's own
+  # connection, not the global mode it set). 272 spex files add a
+  # second, redundant copy of the same call inline (some through the
+  # `visitor_message_from/2` macro below, most pasted directly) for a
+  # spawned channel/GenServer to see the connection -- harmless under
+  # today's fully serial suite, where "global mode" and "my own pid"
+  # are always the same thing, but the identical mechanism regardless.
   #
-  # Neither showed up checking a file in isolation for the obvious
-  # culprits (`Application.put_env`, a named singleton GenServer,
-  # `Sandbox.mode({:shared, self()})`). Before flipping a file's own
-  # `use CodeMySpecSpex.Case, async: true`, verify it clean by running
-  # it alongside the full suite (or a large slice of it), not alone.
+  # ExUnit does not run the non-async group in exclusion from the
+  # async one -- confirmed empirically by the pilot itself, not just
+  # by reading Ecto's docs. So any `async: true` file is at the mercy
+  # of whichever non-async file most recently reset global mode:
+  # DBConnection.ConnectionError when that owner's connection gets
+  # reclaimed mid-use by someone else, cross-test pollution when two
+  # unrelated tests turn out to be looking at the same transaction.
+  #
+  # The real fix is a suite-wide migration away from `{:shared, pid}`
+  # toward scoped `Sandbox.allow(Repo, self(), target_pid)` everywhere
+  # a background process currently gets DB access for free through
+  # global mode -- not a per-file toggle. That is large and it touches
+  # code proven to be green today, so it is not something to do blind
+  # in one pass; it is its own tracked initiative. A file is safe to
+  # flip today only if verifying it clean under the full suite (not
+  # alone) tells you so, same as before -- that bar has not gotten any
+  # lower, it is just no longer a mystery why it exists.
   using(case_opts) do
     async = Keyword.get(case_opts, :async, false)
 

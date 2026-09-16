@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story605.Criterion2387Spex do
   projects are, and where the wizard still lives for an account with none.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   @endpoint CodeMySpecWeb.Endpoint
 
