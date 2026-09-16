@@ -30,10 +30,21 @@ defmodule CodeMySpec.Analysis.Freshness do
   never been projected. Readers fall back to the fingerprint comparison rather
   than guessing, which is what makes this safe without a backfill.
 
-  It is also why `rebuild/1` stays. A git checkout or a branch switch changes
-  files without emitting anything, and a stale *clean* row is a false pass —
-  the direction that costs correctness rather than time. The comparison this
-  replaces on the read path remains the way to re-establish truth on demand.
+  ## What observes the tree
+
+  Not git, and an earlier version of this comment said otherwise. A checkout or
+  a branch switch is a lot of files changing at once, and `FileSync` sees it the
+  same way it sees one: `changed_entries/2` compares each scanned file against
+  its stored row on the replaceable fields, fingerprint included, so every file
+  the checkout touched comes back changed and stales what reads it. If the
+  harness was down while it happened, the boot scan reports them — the stored
+  rows still hold the pre-checkout fingerprints.
+
+  So `rebuild/1` is not covering an unobserved mutation, because there is not
+  one. It is the escape hatch for this projection being wrong some other way — a
+  bug, a bad backfill, a row written by something that never went through the
+  sync — and it is worth having precisely because a stale *clean* row is a false
+  pass, the direction that costs correctness rather than time.
   """
 
   use Ecto.Schema
@@ -155,11 +166,12 @@ defmodule CodeMySpec.Analysis.Freshness do
   @doc """
   Re-establish truth from the files themselves, and record it.
 
-  The escape hatch, and the reason the fingerprint comparison is not deleted. A
-  git checkout or a branch switch moves files without emitting anything, so a
-  projection built only from events can be confidently wrong in the expensive
-  direction. This is the same comparison the read path used to run, moved to
-  where it is asked for deliberately rather than on every read.
+  The escape hatch, and the reason the fingerprint comparison is not deleted.
+  Not because the tree can change unobserved — `FileSync` reports a checkout's
+  files the same as any other change, and the boot scan covers the window where
+  nothing was watching — but because a projection can be wrong for reasons its
+  own events cannot describe. This is the comparison the read path used to run
+  on every call, available where it is asked for deliberately.
   """
   @spec rebuild(Scope.t()) :: %{String.t() => boolean()}
   def rebuild(%Scope{active_working_copy_id: working_copy_id} = scope)

@@ -602,10 +602,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   forcing it to do so.
 
   `analysis_freshness/2`, which already holds the files, does **not** consult
-  the projection. The comparison costs ~4ms there and cannot be wrong, where a
-  row can be: files move without emitting anything on a git checkout, so a
-  projection can claim fresh over code its run never saw. That direction is a
-  false pass, so the path that can afford to check, checks.
+  the projection. The comparison costs ~4ms there and is derived from the files
+  themselves, so it cannot be wrong about them; a row can be, for any reason its
+  own events do not describe. That direction is a false pass, so the path that
+  can afford to check, checks.
   """
   @spec analysis_freshness(Scope.t()) :: %{String.t() => boolean()}
   def analysis_freshness(%Scope{} = scope) do
@@ -891,11 +891,11 @@ defmodule CodeMySpec.Requirements.Preloader do
   #
   # The files are already in hand here, so the comparison costs ~4ms — there is
   # nothing for the projection to save on this path, and letting it win would
-  # trade a free correct answer for a cheaper one that can be wrong. It can be
-  # wrong in one specific way: files move without emitting anything on a git
-  # checkout or a branch switch, so a row can say fresh over code its run never
-  # saw. `StaleAnalysisTest` constructs exactly that — a run stamped before a
-  # file changed — and it caught this when the merge was here.
+  # trade a free correct answer for a cheaper one that can be wrong.
+  # `StaleAnalysisTest` constructs exactly how: a run stamped before a file
+  # changed, the file moved without the sync that would have staled the row, and
+  # the row then claims fresh over code its run never saw. It caught this when
+  # the merge was here.
   #
   # A stale *clean* result is a false pass, which is the direction that costs
   # correctness rather than time. So the authoritative path computes, and the
