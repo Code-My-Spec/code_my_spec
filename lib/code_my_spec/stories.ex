@@ -68,8 +68,25 @@ defmodule CodeMySpec.Stories do
       message
     )
 
-    GraphInputs.announce(scope, "Stories", graph_entities(message))
+    GraphInputs.event(scope, "Stories", story_event_kind(message), %{}, graph_entities(message))
   end
+
+  # An entity appearing or going falls back to a recompute, deliberately.
+  #
+  # Handlers *settle* rows; they do not create them. `Shadow.sweep/2` and
+  # `put_verdict/2` are both `UPDATE`s, and a story that has never been
+  # projected has no rows for them to touch — so an event the projector handles
+  # discards its fallback marks and the new story is never computed at all.
+  # Caught by the shadow diff: three rows `missing` for a story created after
+  # the seed.
+  #
+  # So creation and deletion emit a kind nothing handles, which leaves the marks
+  # standing and sends the entity through `compute_entity/4` — the only path
+  # that writes rows that did not exist, and the only one that reaps the rows of
+  # an entity that is gone.
+  defp story_event_kind({:created, _}), do: "story_created"
+  defp story_event_kind({:deleted, _}), do: "story_deleted"
+  defp story_event_kind(_message), do: "story_changed"
 
   # The story, and the project.
   #

@@ -47,7 +47,13 @@ defmodule CodeMySpec.Components do
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    GraphInputs.announce(scope, "Components", graph_entities(message))
+    GraphInputs.event(
+      scope,
+      "Components",
+      component_event_kind(message),
+      %{},
+      graph_entities(message)
+    )
   end
 
   # The component, and its parent.
@@ -58,6 +64,23 @@ defmodule CodeMySpec.Components do
   # has, though not on what changed inside them. A writer that named only the
   # component would leave the parent stale with nothing to say so, which is the
   # silent direction.
+  # An entity appearing or going falls back to a recompute, deliberately.
+  #
+  # Handlers *settle* rows; they do not create them. `Shadow.sweep/2` and
+  # `put_verdict/2` are both `UPDATE`s, and a story that has never been
+  # projected has no rows for them to touch — so an event the projector handles
+  # discards its fallback marks and the new story is never computed at all.
+  # Caught by the shadow diff: three rows `missing` for a story created after
+  # the seed.
+  #
+  # So creation and deletion emit a kind nothing handles, which leaves the marks
+  # standing and sends the entity through `compute_entity/4` — the only path
+  # that writes rows that did not exist, and the only one that reaps the rows of
+  # an entity that is gone.
+  defp component_event_kind({:created, _}), do: "component_created"
+  defp component_event_kind({:deleted, _}), do: "component_deleted"
+  defp component_event_kind(_message), do: "component_changed"
+
   # `:project` as well, because `architecture_designed` reads the component set
   # — its orphan rule asks which contexts are story-linked, descended from one,
   # or depended on by one. A component appearing, moving parent or changing type

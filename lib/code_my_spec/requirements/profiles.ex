@@ -39,6 +39,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
   alias CodeMySpec.Problems
@@ -47,7 +48,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type name :: :issues | :specs | :files | :problems
+  @type name :: :issues | :specs | :files | :problems | :links
   @type t :: map()
 
   @doc """
@@ -155,6 +156,39 @@ defmodule CodeMySpec.Requirements.Profiles do
       spex_fresh?: spex_fresh?(scope),
       specs_ready: specs_ready_by_story(project_id),
       failing_by_story: failing_specs_by_story(scope, project_id)
+    }
+  end
+
+  # What each story points at: the component it names, and its UAT deploy.
+  #
+  # Two requirements, one read each, and both are about a reference rather than
+  # about the story — `component_linked` asks whether the named component
+  # actually exists, `deploy` whether the recorded deploy passed its health
+  # check. Neither is answerable from the story row alone, which is why they are
+  # a profile rather than a field lookup.
+  def load(%Scope{active_project_id: project_id}, :links) do
+    %{
+      component_id_by_story:
+        Repo.all(
+          from(s in Story,
+            where: s.project_id == ^project_id,
+            select: {s.id, s.component_id}
+          )
+        )
+        |> Map.new(),
+      component_ids:
+        Repo.all(from(c in Component, where: c.project_id == ^project_id, select: c.id))
+        |> MapSet.new(),
+      # Pinned to UAT because the `deploy` requirement's config is, and
+      # `Preloader.uat_deploy_by_story/1` reads it the same way: prod promotion
+      # is the release process's business, not this node's.
+      uat_deploy_by_story:
+        Repo.all(
+          from(d in Deploy,
+            where: d.project_id == ^project_id and d.environment == "uat"
+          )
+        )
+        |> Map.new(&{&1.story_id, &1})
     }
   end
 

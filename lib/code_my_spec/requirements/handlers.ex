@@ -47,6 +47,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   skip work it owed.
   """
 
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Users.Scope
@@ -87,7 +88,13 @@ defmodule CodeMySpec.Requirements.Handlers do
     # A sync moves the files themselves, and with them spex freshness and every
     # story's own spec files.
     "files_synced" => [:files, :specs],
-    "problems_changed" => [:problems]
+    "problems_changed" => [:problems],
+    # A story's own row moves `specs_ready` and the component it names.
+    "story_changed" => [:specs, :links],
+    # A component appearing or going decides whether a story naming it has
+    # something real to point at.
+    "component_changed" => [:links],
+    "deploy_changed" => [:links]
   }
 
   # What each requirement reads. Declared per requirement rather than per
@@ -113,7 +120,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_journey_plan" => [:files],
     "qa_journey_execute" => [:files],
     "qa_journey_wallaby" => [:files],
-    "tests_passing" => [:files, :problems]
+    "tests_passing" => [:files, :problems],
+    "component_linked" => [:links],
+    "deploy" => [:links]
   }
 
   # Every `file_exists` and `file_valid` requirement, as a table. Each of the
@@ -309,6 +318,34 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
+  # A story's component link is satisfied when the named component *exists*,
+  # not when the field is merely set — `component_exists_details/2` draws that
+  # line, and it matters because a component id is a pure function of project
+  # and module name, so a story can name one that has never synced.
+  defp settle("component_linked", %{links: profile}) do
+    %{
+      entity_type: "story",
+      name: "component_linked",
+      default: false,
+      default_details: details(%{reason: "component_id is not set"}),
+      except: component_link_verdicts(profile)
+    }
+  end
+
+  # `deployed_verdict/3`'s wording, which is not `Deploys.uat_check/2`'s: the
+  # `:deployed` check type interpolates the environment and lowercases, and a
+  # row this settles has to read like one a recompute settled.
+  defp settle("deploy", %{links: profile}) do
+    %{
+      entity_type: "story",
+      name: "deploy",
+      default: false,
+      default_details:
+        details(%{status: "not deployed to uat, or deployed without a passing health check"}),
+      except: deploy_verdicts(profile)
+    }
+  end
+
   defp satisfied_detail(:exists, role), do: %{status: "#{role} file exists"}
   defp satisfied_detail(:valid, role), do: %{status: "#{role} file valid"}
 
@@ -481,4 +518,37 @@ defmodule CodeMySpec.Requirements.Handlers do
   # read like one a recompute settled — a verdict that agreed while explaining
   # itself differently is a difference somebody investigates later for nothing.
   defp details(map), do: Requirement.normalize_details(map)
+
+  # Both non-default outcomes: a link that resolves, and one that names a
+  # component nothing has synced. The unset case is the sweep's default.
+  defp component_link_verdicts(profile) do
+    for {story_id, component_id} <- profile.component_id_by_story,
+        not is_nil(component_id) do
+      if MapSet.member?(profile.component_ids, component_id) do
+        change("story", story_id, "component_linked", true, %{
+          status: "component_id is set",
+          component_id: component_id
+        })
+      else
+        change("story", story_id, "component_linked", false, %{
+          reason:
+            "component #{component_id} does not exist yet — it is named correctly and " <>
+              "appears when the working copy syncs the module it projects from",
+          component_id: component_id
+        })
+      end
+    end
+  end
+
+  # `Deploys.healthy?/1` decides, rather than a second reading of the row here,
+  # so the handler and the checker cannot disagree about what counts as
+  # deployed — the distinction the node exists to make.
+  defp deploy_verdicts(profile) do
+    for {story_id, deploy} <- profile.uat_deploy_by_story,
+        Deploys.healthy?(deploy),
+        do:
+          change("story", story_id, "deploy", true, %{
+            status: "deployed to uat and health-verified"
+          })
+  end
 end
