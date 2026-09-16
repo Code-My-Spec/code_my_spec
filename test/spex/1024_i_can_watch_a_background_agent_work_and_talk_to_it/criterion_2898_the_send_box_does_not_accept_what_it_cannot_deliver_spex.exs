@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
-  @endpoint CodeMySpecWeb.Endpoint
+  cloud_endpoint()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
