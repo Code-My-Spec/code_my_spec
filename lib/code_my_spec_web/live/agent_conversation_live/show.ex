@@ -220,6 +220,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
     |> assign(:permissions, permissions_for(conversation))
+    |> assign(:analysis_running_since, analysis_running_since(scope, conversation))
     |> assign(:analysis_running, running_analysis(scope, conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
@@ -1052,10 +1053,61 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   #
   # The conversation is about one agent, and that agent has one checkout. That
   # is the vantage the indicator is claiming, so that is the one it asks about.
+  defp analysis_running_since(scope, conversation) do
+    scope |> at_agents_copy(conversation) |> RunsRepository.running_since()
+  end
+
   defp running_analysis(scope, conversation) do
     scope
     |> at_agents_copy(conversation)
     |> RunsRepository.running_since()
+    |> sources_in_order()
+  end
+
+  # Accumulated from the events, not re-read on each one.
+  #
+  # Every transition broadcasts — `:running` when a run starts, its final status
+  # when it ends — and each event now carries the run's own `started_at` and
+  # `working_copy_id`. So "which analyzers are running here, and since when" is
+  # a map this process keeps, seeded once at mount and moved by the events that
+  # change it.
+  #
+  # It used to re-query on every event: one `running_since/1` per analysis
+  # event, per open conversation, to rediscover a column the writer had already
+  # recorded. The earlier comment argued for re-reading over "subtracting the
+  # completed source", because a sweep enqueues several and the arithmetic could
+  # disagree with the rows. That holds when the event says only that *something*
+  # finished — it does not when each event names one source and its new status,
+  # which is a transition rather than a subtraction.
+  #
+  # An event about another checkout is dropped without touching anything: the
+  # indicator claims this agent's copy, and that is the vantage it accumulates.
+  defp apply_analysis_event(socket, %{working_copy_id: copy} = payload) do
+    agents_copy =
+      socket.assigns.current_scope
+      |> at_agents_copy(socket.assigns.conversation)
+      |> Map.get(:active_working_copy_id)
+
+    if copy == agents_copy do
+      since = move(socket.assigns[:analysis_running_since] || %{}, payload)
+
+      socket
+      |> assign(:analysis_running_since, since)
+      |> assign(:analysis_running, sources_in_order(since))
+    else
+      socket
+    end
+  end
+
+  defp apply_analysis_event(socket, _payload), do: socket
+
+  defp move(since, %{status: :running, source: source, started_at: started_at}),
+    do: Map.put(since, source, started_at)
+
+  defp move(since, %{source: source}), do: Map.delete(since, source)
+
+  defp sources_in_order(since) do
+    since
     |> Enum.sort_by(fn {_source, started_at} -> started_at end, DateTime)
     |> Enum.map(fn {source, _started_at} -> to_string(source) end)
   end
@@ -1209,13 +1261,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # A run finished, so what is in flight has changed. Re-read rather than
   # subtracting the completed source: a sweep enqueues several, and the
   # arithmetic would be a second answer that can disagree with the rows.
-  def handle_info({:analysis, _payload}, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :analysis_running,
-       running_analysis(socket.assigns.current_scope, socket.assigns.conversation)
-     )}
+  def handle_info({:analysis, payload}, socket) do
+    {:noreply, apply_analysis_event(socket, payload)}
   end
 
   def handle_info({:new_message, message}, socket) do

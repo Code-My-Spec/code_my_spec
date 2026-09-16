@@ -382,7 +382,14 @@ defmodule CodeMySpec.Analysis do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "analysis:#{scope.active_project_id}",
-      {:analysis, %{source: run.source, status: status, run_id: run.id}}
+      {:analysis,
+       %{
+         source: run.source,
+         status: status,
+         run_id: run.id,
+         started_at: run.started_at,
+         working_copy_id: run.working_copy_id
+       }}
     )
 
     # And to the graph, because a run finishing changes what the graph says.
