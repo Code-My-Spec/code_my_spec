@@ -91,14 +91,17 @@ defmodule CodeMySpec.Requirements.Profiles do
       Repo.all(
         from(f in FileRecord,
           where: f.project_id == ^project_id,
-          select: %{
-            component_id: f.component_id,
-            story_id: f.story_id,
-            role: f.role,
-            path: f.path,
-            valid: f.valid,
-            validation_errors: f.validation_errors
-          }
+          # Whole rows, not a chosen subset.
+          #
+          # Selecting fields looked tidy and silently changed a verdict:
+          # `QaIntegrationPlan.check_index/1` reads `size` to decide whether the
+          # integrations index is empty, which this did not carry, so every
+          # index read as empty and `qa_integration_plan` came back invalid
+          # against a project where it is fine. Caught by the diff.
+          #
+          # A profile feeds checkers written against `Files.File`, and which
+          # fields each of them reads is not this module's to know.
+          select: f
         )
         |> scope_files_to_copy(scope)
       )

@@ -280,13 +280,24 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       else: [scope, entity]
   end
 
-  defp normalize_delegate_result({true, details}), do: {true, details}
-  defp normalize_delegate_result({false, details}), do: {false, details}
-  defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
-  defp normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
-  defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
+  @doc """
+  A delegate's answer in the `{satisfied?, details}` shape the graph stores.
 
-  defp normalize_delegate_result(_),
+  Public because `Requirements.Handlers` settles some delegate-backed
+  requirements from events and has to land on the same shape a recompute would.
+  Reimplementing this mapping there would be a second copy of the contract, and
+  the copy that drifts is the one that decides what an agent is asked to do.
+  """
+  @spec normalize_delegate_result(term()) :: {boolean(), map()}
+  def normalize_delegate_result(result)
+
+  def normalize_delegate_result({true, details}), do: {true, details}
+  def normalize_delegate_result({false, details}), do: {false, details}
+  def normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
+  def normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
+  def normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
+
+  def normalize_delegate_result(_),
     do: {false, %{reason: "delegate check returned unexpected result"}}
 
   # -- Config helpers --

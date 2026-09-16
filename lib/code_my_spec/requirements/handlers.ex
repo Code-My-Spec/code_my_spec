@@ -47,9 +47,14 @@ defmodule CodeMySpec.Requirements.Handlers do
   skip work it owed.
   """
 
+  alias CodeMySpec.AgentTasks.QaIntegrationPlan
   alias CodeMySpec.Deploys
+  alias CodeMySpec.Requirements.ArchitectureChecker
+  alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Requirements.RequirementCalculator
+  alias CodeMySpec.Requirements.SpexBoundaryChecker
   alias CodeMySpec.Users.Scope
 
   @type change :: %{
@@ -85,6 +90,11 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_updated" => [:issues],
     # A run landing moves spex freshness, and writes problems.
     "analysis_completed" => [:specs, :problems],
+    # Safe again: the four project delegates a sync moves —
+    # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
+    # `architecture_designed` — now have `settle/3` clauses, so nothing this
+    # event moves is left to the marks it discards.
+    "files_synced" => [:files, :specs],
     # Problems feed `tests_passing` *and* `bdd_specs_passing` — a story's own
     # failing spex specs are problem rows — so both profiles, or the story
     # verdict is left behind by a run that changed it.
@@ -101,15 +111,17 @@ defmodule CodeMySpec.Requirements.Handlers do
   #
   # The shadow diff caught this on `story_changed`: sealing a story moves
   # `three_amigos_complete`, no handler settles it, and the diff came back
-  # `disagree story:9058/three_amigos_complete`. `component_changed` has the
-  # same gap through a component's type deciding which template applies, and
-  # `files_synced` through the four project delegates that read files —
-  # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
-  # `architecture_designed`.
+  # `disagree story:9058/three_amigos_complete`.
   #
-  # All three fall back to invalidation until those requirements have handlers,
-  # which costs a narrow recompute and is correct. The unit of conversion is an
-  # event and its whole requirement set, never a requirement on its own.
+  #   * `story_changed` — a story row moves `three_amigos_complete` and
+  #     `code_on_running_copy`, and `ready_for_dev` moves the population itself,
+  #     which only a recompute can write rows for.
+  #   * `component_changed` — a component's type decides which template applies,
+  #     so it too can change which requirements exist.
+  #
+  # Both fall back to invalidation until those requirements have handlers, which
+  # costs a narrow recompute and is correct. The unit of conversion is an event
+  # and its whole requirement set, never a requirement on its own.
 
   # What each requirement reads. Declared per requirement rather than per
   # profile, because `tests_passing` reads two — whether the component has a
@@ -136,7 +148,39 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_journey_wallaby" => [:files],
     "tests_passing" => [:files, :problems],
     "component_linked" => [:links],
-    "deploy" => [:links]
+    "deploy" => [:links],
+    # The four project delegates a file sync moves. They read files, so `:files`
+    # is what dirties them — see `@delegate_requirements` for why they are
+    # settled by calling their own checker rather than by a lookup.
+    "spex_boundary_ready" => [:files],
+    "qa_integration_plan" => [:files],
+    "personas_complete" => [:files],
+    "architecture_designed" => [:files]
+  }
+
+  # Requirements whose verdict is a rollup no event determines.
+  #
+  # `architecture_designed` expands a dependency graph to find orphan contexts;
+  # `personas_complete` checks two artifacts per persona; `spex_boundary_ready`
+  # asks five questions about four directories; `qa_integration_plan` validates
+  # an index against the specs it names. None of those is a value an event
+  # carries — a file landing does not *say* whether the architecture is clean.
+  #
+  # So these are settled by calling the requirement's own checker once, which is
+  # honestly a narrowed recompute rather than event application. The win is the
+  # narrowing: one requirement instead of all fourteen project requirements plus
+  # every entity, and correct by construction because it is the same function
+  # the recompute calls.
+  #
+  # `:verdict` returns `{satisfied?, details}` directly. `:delegate` returns the
+  # looser shape `RequirementCalculator.normalize_delegate_result/1` maps, which
+  # is public for exactly this reason — a second copy of that mapping is the
+  # copy that drifts.
+  @delegate_requirements %{
+    "spex_boundary_ready" => {SpexBoundaryChecker, :verdict},
+    "personas_complete" => {PersonasChecker, :verdict},
+    "architecture_designed" => {ArchitectureChecker, :verdict},
+    "qa_integration_plan" => {QaIntegrationPlan, :delegate}
   }
 
   # Every `file_exists` and `file_valid` requirement, as a table. Each of the
@@ -191,7 +235,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         names = requirements_reading(dirty)
         profiles = load_profiles(scope, names)
 
-        {:ok, [], Enum.map(names, &settle(&1, profiles))}
+        {:ok, [], Enum.map(names, &settle(&1, profiles, scope))}
     end
   end
 
@@ -214,7 +258,7 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # -- One clause per requirement. Each reads its profile and nothing else. --
 
-  defp settle("issues_triaged", %{issues: profile}),
+  defp settle("issues_triaged", %{issues: profile}, _scope),
     do:
       project_sweep(
         "issues_triaged",
@@ -223,7 +267,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
       )
 
-  defp settle("issues_resolved", %{issues: profile}),
+  defp settle("issues_resolved", %{issues: profile}, _scope),
     do:
       project_sweep(
         "issues_resolved",
@@ -232,7 +276,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         %{reason: "#{length(profile.accepted)} unresolved #{profile.threshold}+ issues"}
       )
 
-  defp settle("story_issues_resolved", %{issues: profile}) do
+  defp settle("story_issues_resolved", %{issues: profile}, _scope) do
     %{
       entity_type: "story",
       name: "story_issues_resolved",
@@ -271,7 +315,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # — so a `:schema` component with no review requirement is never touched by
   # `review_file`, without this needing to know the templates or the config
   # filter at all.
-  defp settle(name, %{files: profile}) when is_map_key(@file_requirements, name) do
+  defp settle(name, %{files: profile}, _scope) when is_map_key(@file_requirements, name) do
     {kind, role, entity_type} = Map.fetch!(@file_requirements, name)
 
     %{
@@ -294,7 +338,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # names the ready ones, which are the few. The alternative, emitting every
   # story as an exception, is one write per story for a population that is
   # mostly in one state.
-  defp settle("bdd_specs_passing", %{specs: profile}) do
+  defp settle("bdd_specs_passing", %{specs: profile}, _scope) do
     ready = for {story_id, true} <- profile.specs_ready, do: story_id
 
     %{
@@ -310,7 +354,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   #
   # One entity each, so the sweep is one row and `except` is always empty — the
   # shape is kept anyway so every requirement settles through one path.
-  defp settle(name, %{files: profile}) when is_map_key(@path_requirements, name) do
+  defp settle(name, %{files: profile}, _scope) when is_map_key(@path_requirements, name) do
     {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
     project_sweep(name, satisfied?, detail, detail)
   end
@@ -322,7 +366,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # reads it to mark the node stale when the exunit run predates the code, which
   # is applied at read time and is why this verdict does not need to know about
   # freshness itself.
-  defp settle("tests_passing", %{files: files, problems: problems}) do
+  defp settle("tests_passing", %{files: files, problems: problems}, _scope) do
     %{
       entity_type: "component",
       name: "tests_passing",
@@ -336,7 +380,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # not when the field is merely set — `component_exists_details/2` draws that
   # line, and it matters because a component id is a pure function of project
   # and module name, so a story can name one that has never synced.
-  defp settle("component_linked", %{links: profile}) do
+  defp settle("component_linked", %{links: profile}, _scope) do
     %{
       entity_type: "story",
       name: "component_linked",
@@ -349,7 +393,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # `deployed_verdict/3`'s wording, which is not `Deploys.uat_check/2`'s: the
   # `:deployed` check type interpolates the environment and lowercases, and a
   # row this settles has to read like one a recompute settled.
-  defp settle("deploy", %{links: profile}) do
+  defp settle("deploy", %{links: profile}, _scope) do
     %{
       entity_type: "story",
       name: "deploy",
@@ -358,6 +402,15 @@ defmodule CodeMySpec.Requirements.Handlers do
         details(%{status: "not deployed to uat, or deployed without a passing health check"}),
       except: deploy_verdicts(profile)
     }
+  end
+
+  # The four rollups. One call to the requirement's own checker, which is a
+  # narrowed recompute rather than event application — see
+  # `@delegate_requirements` for why that is the honest description and why it
+  # is still worth doing.
+  defp settle(name, profiles, scope) when is_map_key(@delegate_requirements, name) do
+    {satisfied?, detail} = delegate_verdict(name, profiles, scope)
+    project_sweep(name, satisfied?, detail, detail)
   end
 
   defp satisfied_detail(:exists, role), do: %{status: "#{role} file exists"}
@@ -564,5 +617,19 @@ defmodule CodeMySpec.Requirements.Handlers do
           change("story", story_id, "deploy", true, %{
             status: "deployed to uat and health-verified"
           })
+  end
+
+  defp delegate_verdict(name, profiles, scope) do
+    case Map.fetch!(@delegate_requirements, name) do
+      {QaIntegrationPlan, :delegate} ->
+        # Handed the profile's files so it does not re-read them;
+        # `integration_files/2` takes a context in exactly this shape.
+        scope
+        |> QaIntegrationPlan.evaluate(nil, %{files_by_project: profiles.files.all})
+        |> RequirementCalculator.normalize_delegate_result()
+
+      {module, :verdict} ->
+        module.complete?(scope, scope.active_project)
+    end
   end
 end
