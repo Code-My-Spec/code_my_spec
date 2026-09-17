@@ -61,7 +61,15 @@ defmodule CmsHarness.WorkingCopies.Create do
     # Adjacent to the checkout, not under `.claude/worktrees`. A working copy is
     # a peer of the checkout it came from, and putting real work inside a folder
     # people reasonably treat as disposable editor state invites losing it.
-    target = request["root"] || Path.join(Path.dirname(root), name)
+    #
+    # Prefixed with the checkout's own name, because "adjacent" alone collides.
+    # A parent directory holds many repositories — `~/Documents/github` here —
+    # so a copy called `refactor` from one project takes the name for every
+    # other, and for any unrelated directory that already has it. Caught by
+    # story 1013's spex the first time this ran: six criteria each asked for
+    # "the war epic's copy" beside their own temp root, the second one got
+    # `{:already_exists, …}`, and `refuse_existing/1` was right to refuse.
+    target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
     with :ok <- refuse_existing(target),
          :ok <- add_worktree(root, target, name),
