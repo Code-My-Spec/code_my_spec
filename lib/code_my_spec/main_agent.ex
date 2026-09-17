@@ -745,7 +745,10 @@ defmodule CodeMySpec.MainAgent do
   # Added as a key rather than a different shape, so every existing caller that
   # matches `%{turns: _, truncated?: _}` is unaffected.
   defp no_match(result, [], _reason), do: result
-  defp no_match(%{turns: []} = result, _unfiltered, reason), do: Map.put(result, :no_match, reason)
+
+  defp no_match(%{turns: []} = result, _unfiltered, reason),
+    do: Map.put(result, :no_match, reason)
+
   defp no_match(result, _unfiltered, _reason), do: result
 
   defp within?(turn, opts) do
@@ -772,7 +775,7 @@ defmodule CodeMySpec.MainAgent do
 
       calls ->
         call = List.last(calls)
-        %{turns: [call | results_for(turns, call)], truncated?: false}
+        %{turns: [call | results_for(turns, call, tool)], truncated?: false}
     end
   end
 
@@ -782,8 +785,27 @@ defmodule CodeMySpec.MainAgent do
 
   defp calls?(_turn, _tool), do: false
 
-  defp results_for(turns, call) do
-    ids = Enum.map(call.tool_calls, &MapAccess.get(&1, :id))
+  # The results of *this* tool's calls, not of everything the turn happened to do.
+  #
+  # This mapped over every id in `call.tool_calls`, so a turn that batched
+  # several different calls returned all of their results. Asking agent
+  # `880c7713` for `list_problems` came back with `list_tasks`, `list_issues`, a
+  # Lua error and a timeout mixed in — found by QA on criterion 3282, which is
+  # precisely "a targeted question deserves a targeted answer".
+  #
+  # It looked right because the common case hides it: a turn with one tool call
+  # has one id, and filtering by name is a no-op there. Every test and every
+  # manual check had been on single-call turns.
+  #
+  # The assistant turn itself is still returned whole. It is a record of what the
+  # agent did and narrowing its `tool_calls` would be editing history; the leak
+  # was in the results attached to it.
+  defp results_for(turns, call, tool) do
+    ids =
+      call.tool_calls
+      |> Enum.filter(&(MapAccess.get(&1, :name) == tool))
+      |> Enum.map(&MapAccess.get(&1, :id))
+
     Enum.filter(turns, &(&1.tool_call_id in ids))
   end
 

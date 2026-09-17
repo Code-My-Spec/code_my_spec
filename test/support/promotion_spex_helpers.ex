@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
+  alias CodeMySpec.McpServers.Promotion.Tools.Promote
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -113,16 +113,24 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   end
 
   @doc """
-  Promote, through `promote_sync`.
+  Promote, through `promote` — the door an agent actually uses.
 
-  Both doors run the same `Promotion.promote/1` and differ only in delivery.
-  `promote` is the agent's — it answers at once and messages the outcome back,
-  which leaves a spec nothing in the reply to assert on. `promote_sync` is the
-  door for a caller with nowhere to be messaged, and it answers.
+  This drove `promote_sync` instead, and the reason it gave was the defect:
+  "`promote` answers at once and messages the outcome back, which leaves a spec
+  nothing in the reply to assert on". True, and it meant every criterion on this
+  story asserted against the *other* tool. `Promotion.promote/1` always returned
+  its refusals correctly, so all nineteen passed while the tool agents call
+  answered "Promotion started." to a promotion it had already refused — and for
+  any caller without an Alloy conversation, that false success was the only
+  thing they ever got.
+
+  A spec that cannot assert on a surface is a reason to fix the surface. `promote`
+  is synchronous now — nothing in it is long-running, the restart was already
+  detached — so it answers, and these criteria cover the door that is used.
   """
   def promote(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = Promote.execute(%{}, frame)
     response
   end
 

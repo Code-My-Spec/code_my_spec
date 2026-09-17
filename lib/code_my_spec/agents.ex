@@ -1218,6 +1218,26 @@ defmodule CodeMySpec.Agents do
         # agents reporting `woken=yes, running=no`, because it gained its
         # continuous agent after boot and nothing started its cadence.
         MainAgent.ensure_cadence(scope)
+
+        # And the graph has to be worth ringing a bell about.
+        #
+        # `wake_roles/3` renders each role's menu from what the graph holds at
+        # that instant, and on a copy nothing has scanned there is nothing in
+        # it: `personas_complete` reads a verdict `Files.Scanner` decides at
+        # sync time, and it gates `stories_exist`, which gates everything after
+        # it. The project chain is one line, so an unscanned copy has an empty
+        # actionable set for every role no matter what is on disk — and the
+        # first switch-on is exactly when somebody expects their agents to
+        # start. Issue `a0780389`, story 1004.
+        #
+        # Asked of the harness rather than done here, because this side does
+        # not have the files — on the light harness the server holds no working
+        # copy at all. The manifest that comes back announces graph inputs, the
+        # watcher recomputes, and `wake_project_roles/2` rings the bell against
+        # a real graph. So the wake below is for what is already computed, and
+        # the rescan is what covers the copy that has none.
+        request_rescan(scope, copy_id)
+
         wake_roles(scope, copy_id)
       end
 
@@ -1401,6 +1421,25 @@ defmodule CodeMySpec.Agents do
 
   defp at_agents_vantage(%Scope{} = scope, %Agent{working_copy_id: copy_id}),
     do: %Scope{scope | active_working_copy_id: copy_id}
+
+  # A copy whose machine is not connected cannot be asked, and that is not a
+  # reason to refuse the switch — the flag is still set, the agents are still
+  # woken for whatever is computed, and the copy scans when its harness comes
+  # back. Logged rather than swallowed so a copy that never scans is findable.
+  defp request_rescan(%Scope{} = scope, copy_id) do
+    case Analysis.request_rescan(%Scope{scope | active_working_copy_id: copy_id}) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info(
+          "[Agents] switched on #{copy_id} without a rescan (#{inspect(reason)}); " <>
+            "roles wake against whatever the graph already holds"
+        )
+
+        :ok
+    end
+  end
 
   defp project_wakeable?(agent, except_agent_id) do
     agent.continuous == true and

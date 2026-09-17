@@ -58,7 +58,12 @@ defmodule CodeMySpec.McpServers.CodeModeCarriesTheCallerTest do
       #{answer}
       """
 
-      assert answer =~ "No tasks on this session."
+      # "No tasks." rather than "No tasks on this session.": `list_tasks` now
+      # takes an `agent_id`, so the empty answer is no longer always a
+      # session's. What this test is about is unchanged — the session id
+      # reached the tool, so it resolved an owner and answered emptily instead
+      # of refusing for want of one.
+      assert answer =~ "No tasks."
     end
 
     test "and is refused, still, when nothing said who is asking", %{frame: frame} do
