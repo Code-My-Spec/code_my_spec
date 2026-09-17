@@ -36,8 +36,8 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.StoriesFixtures
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
