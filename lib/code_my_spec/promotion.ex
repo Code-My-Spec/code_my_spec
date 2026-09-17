@@ -413,8 +413,15 @@ defmodule CodeMySpec.Promotion do
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
     else
       {:error, reason} = error ->
+        # `9afcbbdf`: this used to name `running.root` unconditionally — the
+        # merge target, never the copy a `gate/1` refusal is actually about.
+        # `gate/1`'s own reasons now carry `:working_copy`; fall back to the
+        # merge target only for refusals that happen before the gate runs
+        # (no working copy on the scope, an unreported checkout).
+        named = Map.get(reason, :working_copy, running.root)
+
         Logger.warning(
-          "[Promotion] refused for #{running.root}: #{Map.get(reason, :reason, inspect(reason))}"
+          "[Promotion] refused for #{named}: #{Map.get(reason, :reason, inspect(reason))}"
         )
 
         error
@@ -757,7 +764,25 @@ defmodule CodeMySpec.Promotion do
 
     scope
     |> blocking_problems(nil)
-    |> gate_known(scope)
+    |> gate_known(scope, named_copy(working_copy_id))
+  end
+
+  # `9afcbbdf` ask 1: every refusal named the merge target's root
+  # (`promote_into/3` logs `running.root` unconditionally), never the copy the
+  # findings actually belong to — which the caller has no way to learn short of
+  # a psql join, and which `02796b61` showed can silently be a *different*
+  # checkout than the one that called. Carried into both error reasons below
+  # so a refusal is self-contained: a caller comparing this against its own
+  # root can tell in one read whether the gate resolved to a copy other than
+  # its own, rather than needing the server log line this module already
+  # wrote for the same reason.
+  defp named_copy(nil), do: "no working copy on this scope"
+
+  defp named_copy(working_copy_id) do
+    case WorkingCopies.fetch(working_copy_id) do
+      {:ok, %WorkingCopy{root: root}} when is_binary(root) -> "#{working_copy_id} (#{root})"
+      _ -> working_copy_id
+    end
   end
 
   # A problem already recorded answers immediately, staleness or not — a real
@@ -767,11 +792,11 @@ defmodule CodeMySpec.Promotion do
   # recorded" and "no problems" are different claims, and closing that gap
   # used to mean waiting for a fresh run — it now means reading whether one
   # already exists.
-  defp gate_known([], scope), do: gate_freshness(scope, stale_sources(scope))
-  defp gate_known(problems, _scope), do: gate_result(problems)
+  defp gate_known([], scope, named), do: gate_freshness(scope, stale_sources(scope), named)
+  defp gate_known(problems, _scope, named), do: gate_result(problems, named)
 
-  defp gate_freshness(scope, []), do: {:ok, certified_by(scope)}
-  defp gate_freshness(_scope, stale), do: {:error, not_certified(stale)}
+  defp gate_freshness(scope, [], _named), do: {:ok, certified_by(scope)}
+  defp gate_freshness(_scope, stale, named), do: {:error, not_certified(stale, named)}
 
   # What this promote actually leaned on to call the copy clean. `gate/1`
   # never runs a check of its own — see the moduledoc above it — it reads
@@ -833,17 +858,17 @@ defmodule CodeMySpec.Promotion do
   # editing after your last clean run now refuses immediately where it used
   # to just wait, sometimes forever. Said outright, because the alternative is
   # an agent discovering the difference by hitting it.
-  defp not_certified(stale) do
-    named = Enum.join(stale, ", ")
+  defp not_certified(stale, named) do
+    sources = Enum.join(stale, ", ")
 
     %{
       reason:
-        "this copy has not been swept clean at its current commit: #{named} " <>
+        "#{named} has not been swept clean at its current commit: #{sources} " <>
           "need a fresh run before this can promote. Nothing was started for " <>
-          "you — three ways to get one, and promote again once #{named} lands:\n\n" <>
+          "you — three ways to get one, and promote again once #{sources} lands:\n\n" <>
           "  - do nothing: the next stop hook enqueues it automatically\n" <>
           "  - `start_analysis` with the specific source (one call per name in " <>
-          "#{named}) runs it directly, without waiting for a stop\n" <>
+          "#{sources}) runs it directly, without waiting for a stop\n" <>
           "  - run `mix test` / `mix spex` / `mix credo` / `mix compile` yourself, " <>
           "same as you would to check your own work — the PreToolUse hook routes " <>
           "it through this project's own run ledger, so an ordinary invocation " <>
@@ -854,19 +879,25 @@ defmodule CodeMySpec.Promotion do
           "refusing every other promotion, for as long as each edit re-staled " <>
           "the sweep the gate was waiting on. A stale source is reported at " <>
           "once instead.",
-      stale: stale
+      stale: stale,
+      working_copy: named
     }
   end
 
-  defp gate_result([]), do: {:ok, []}
+  defp gate_result([], _named), do: {:ok, []}
 
-  defp gate_result(problems) do
+  defp gate_result(problems, named) do
     {:error,
      %{
        reason:
-         "this copy is carrying #{length(problems)} problem(s), so it promotes " <>
-           "nothing:\n" <> describe(problems),
-       problems: Enum.map(problems, &problem_key/1)
+         "#{named} is carrying #{length(problems)} problem(s), so it promotes " <>
+           "nothing:\n" <> describe(problems) <>
+           "\n\nIf #{named} is not this session's own working copy, the gate " <>
+           "resolved to a different checkout than the one calling it — fix on " <>
+           "that copy, or say so if this looks wrong; a sweep run from here " <>
+           "will not touch problems recorded against a different working copy.",
+       problems: Enum.map(problems, &problem_key/1),
+       working_copy: named
      }}
   end
 
