@@ -361,6 +361,28 @@ defmodule CodeMySpec.Requirements.Preloader do
   and "this project has no requirements" would be a worse answer.
   """
   @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
+  @doc """
+  Whose files a computation reads: the scope's own checkout, or the project's
+  default when it names none.
+
+  `files_vantage/1` below answers the default checkout for *any* scope — it
+  matches on `active_project_id` and never looks at the working copy. `load/1`
+  has always known that and chosen between them in two clauses; the narrow
+  loaders called `files_vantage/1` unconditionally and so computed every
+  checkout's verdicts from main's files.
+
+  Measured on dev, 2026-09-17: at the `devops-q` vantage the projection matched
+  main's file state on six of six components, in both directions — four
+  over-satisfied, which is an agent told the implementation exists because it
+  exists in another worktree.
+
+  Same rule `Profiles.scope_files_to_copy/2` follows, and now the only place it
+  is written down.
+  """
+  @spec files_copy(Scope.t()) :: Ecto.UUID.t() | nil
+  def files_copy(%Scope{active_working_copy_id: copy}) when is_binary(copy), do: copy
+  def files_copy(%Scope{} = scope), do: files_vantage(scope)
+
   def files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.one(
       from p in CodeMySpec.Projects.Project,
@@ -445,7 +467,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.story_id == ^story.id)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     analysis_fresh
@@ -506,7 +528,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.project_id == ^project_id)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     ctx =
@@ -574,7 +596,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.component_id in ^ids)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     analysis_fresh
