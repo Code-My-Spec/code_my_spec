@@ -446,6 +446,8 @@ defmodule CodeMySpec.Requirements.ShadowTest do
   end
 
   defp assert_shadow_agrees(scope, writer) do
+    await_input_event(scope, writer)
+
     project_live(scope)
     :ok = ShadowProjector.settle(scope.active_project_id)
 
@@ -456,6 +458,44 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
     assert report.disagree == 0,
            "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+  end
+
+  # Wait for the writer's own broadcast before draining the projector.
+  #
+  # `settle/1` is a `GenServer.call`, so it drains what is already in the
+  # projector's mailbox — and `GraphInputs.announce/2` reaches that mailbox
+  # through PubSub, which is asynchronous. The writer returning says the row is
+  # committed and says nothing about delivery, so a drain issued immediately
+  # after can run against a shadow the event has not reached and the diff then
+  # reports a disagreement that resolves microseconds later.
+  #
+  # Measured 2026-09-17: green in isolation every time, red on two consecutive
+  # full analyzer sweeps, naming a different story each run — the signature of
+  # a race that widens under load rather than of a projection that is wrong.
+  #
+  # The subscription is what closes it, and no sleep is involved. PubSub
+  # delivers to subscribers in order, so once this process has the message the
+  # projector has it in its own mailbox too; a `call` issued afterwards is
+  # served behind it. Subscribing before the setup body would be simpler and is
+  # wrong — several tests in this file write during `setup`, so the event this
+  # is waiting for may already have been sent by then.
+  defp await_input_event(scope, writer) do
+    project_id = scope.active_project_id
+    :ok = GraphInputs.subscribe(project_id)
+
+    receive do
+      {:graph_inputs_changed, ^project_id, _obs} -> :ok
+    after
+      2_000 ->
+        flunk("""
+        #{writer} never announced on the graph's input topic.
+
+        Every writer whose table the fingerprint hashes publishes there, so a
+        silent one means the shadow will never hear about this change either —
+        which is a coverage failure in the writer rather than a timing one, and
+        the diff below would report it as a disagreement with no cause.
+        """)
+    end
   end
 
   describe "computing one entity" do
