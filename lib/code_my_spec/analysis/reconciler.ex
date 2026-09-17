@@ -275,11 +275,15 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   defp patch_file_path(problem), do: problem
 
-  # Test failures land on the test file's path; join to Files to stamp the
-  # owning component. Without this, per-component `tests_passing` counts zero
-  # failures (Preloader filters `not is_nil(component_id)`) and reports
-  # satisfied while tests fail.
-  defp stamp_component_ids(problems, scope, source) when source in ["exunit", "spex"] do
+  # Every problem lands on a file path; join to Files to stamp the owning
+  # component. Without this, per-component rollups (e.g. `tests_passing`
+  # counting zero failures because Preloader filters `not is_nil(component_id)`)
+  # report satisfied while the underlying analyzer found something. Originally
+  # scoped to exunit/spex only, which meant credo and compiler problems never
+  # carried a component_id regardless of whether their file belonged to a
+  # tracked component (2fc35efb).
+  defp stamp_component_ids(problems, scope, source)
+       when source in ["exunit", "spex", "credo", "compiler"] do
     paths = problems |> Enum.map(& &1.file_path) |> Enum.uniq()
 
     component_map =
