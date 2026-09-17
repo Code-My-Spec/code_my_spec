@@ -44,6 +44,19 @@ defmodule CodeMySpec.Intake.Conversation do
   # outlives it either way.
   @idle_timeout to_timeout(minute: 30)
 
+  # A watchdog for the case `resume/1` cannot reach: the process and its task
+  # stay alive, but the model call never returns and never crashes — no `:DOWN`
+  # fires, so nothing marks the row failed, and a visitor on the same open
+  # connection watches a composer that already cleared for an answer that never
+  # comes (`7df5485e`). `resume/1` only helps a *new* mount; this covers the one
+  # already open. 120s default is 8x the slowest normal call measured (~15s)
+  # for real margin against a "solo app" idea's longer reasoning, while still
+  # bounding the stuck window to something a waiting visitor eventually sees
+  # resolve. Configurable so a test can prove the stall path fires without
+  # actually waiting two minutes.
+  defp shape_timeout,
+    do: Application.get_env(:code_my_spec, :intake_shape_timeout_ms, to_timeout(second: 120))
+
   @doc """
   Tells this plan's conversation what the visitor said.
 
@@ -182,6 +195,27 @@ defmodule CodeMySpec.Intake.Conversation do
     {:noreply, %{state | working: nil}, @idle_timeout}
   end
 
+  # The call neither finished nor crashed — no `:DOWN` for `resume/1`'s next
+  # mount to react to, and this process is still the one a stuck visitor's
+  # open connection is subscribed through. Demonitoring first: the task may
+  # still complete after this fires (a slow answer, not a dead one), and its
+  # late `{ref, result}` / `:DOWN` must not land on a `working` ref this has
+  # already cleared and reused.
+  def handle_info({:shape_stalled, ref}, %{working: ref} = state) do
+    Logger.warning(
+      "[Intake.Conversation] shaping stalled past #{shape_timeout()}ms on #{state.plan_id}"
+    )
+
+    Process.demonitor(ref, [:flush])
+    state.plan_id |> Intake.get_plan_by_id() |> Intake.mark_shaping_failed()
+
+    {:noreply, %{state | working: nil}, @idle_timeout}
+  end
+
+  # Already finished, crashed, or superseded by a later call — this timer is
+  # for a `working` ref that moved on.
+  def handle_info({:shape_stalled, _ref}, state), do: {:noreply, state, @idle_timeout}
+
   def handle_info(:timeout, %{working: nil} = state), do: {:stop, :normal, state}
   def handle_info(_message, state), do: {:noreply, state, @idle_timeout}
 
@@ -193,6 +227,8 @@ defmodule CodeMySpec.Intake.Conversation do
       Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
         Intake.shape(plan)
       end)
+
+    Process.send_after(self(), {:shape_stalled, task.ref}, shape_timeout())
 
     task.ref
   end
