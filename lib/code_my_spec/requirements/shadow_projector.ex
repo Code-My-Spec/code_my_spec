@@ -450,8 +450,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state = reproject_topology(state, ctx, config)
 
     # The whole context was just read, so the cached freshness is current by
-    # construction.
-    %{state | analysis_fresh: ctx.analysis_fresh}
+    # construction — for *this* checkout. Keyed by vantage because it is
+    # computed from one checkout's own files.
+    cache_analysis(state, ctx.analysis_fresh)
   end
 
   # The narrow path: one entity at a time, each loading only what it needs, and
@@ -468,10 +469,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # gives: a component's unit is its family, so two marks naming siblings are
   # one piece of work.
   defp run({:narrow, entities}, state, config) do
-    analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
+    analysis_fresh =
+      Map.get(state.analysis_fresh, vantage(state)) ||
+        Preloader.analysis_freshness(state.scope)
     narrow_each(entities, state.scope, config, analysis_fresh)
     state = reproject_topology(state, nil, config)
-    %{state | analysis_fresh: analysis_fresh}
+    cache_analysis(state, analysis_fresh)
   end
 
   @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
@@ -516,7 +519,15 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     #
     # A fallback drain is usually one entity being recomputed for a reason that
     # has nothing to do with shape, so the common answer is no.
-    last = state.last_topology
+    # Keyed by vantage, and that is not tidiness. Read as a single slot, each
+    # checkout compared its topology against whichever checkout was settled
+    # before it, never matched, and replaced the whole edge set — measured on
+    # this project at 123,236 edges deleted and reinserted, 246,472 row writes
+    # and ~16s, repeating for every observation that fell back. The comment
+    # above `apply_marks/2` has said these are per-vantage facts since the
+    # vantage loop was written; the reads and writes never followed.
+    vantage = vantage(state)
+    last = Map.get(state.last_topology, vantage)
 
     case Freshness.topology(ctx, config) do
       ^last ->
@@ -525,9 +536,17 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       topology ->
         {_nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
         {:ok, _count} = Shadow.write_edges(state.scope, edges)
-        %{state | last_topology: topology}
+        %{state | last_topology: Map.put(state.last_topology, vantage, topology)}
     end
   end
+
+  # Which checkout this drain is currently settling. `Projection.vantage/1`
+  # rather than the raw field, so the unscoped reader keys the same way it
+  # reads.
+  defp vantage(state), do: Projection.vantage(state.scope)
+
+  defp cache_analysis(state, freshness),
+    do: %{state | analysis_fresh: Map.put(state.analysis_fresh, vantage(state), freshness)}
 
   defp narrow_load(scope, {"story", story_id}, analysis_fresh),
     do: Preloader.load_story(scope, story_id, analysis_fresh)
