@@ -225,13 +225,38 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def list_for_team_status(%Scope{}), do: []
 
+  @doc """
+  One agent on this project, or `{:error, :not_found}`.
+
+  An id that is not a uuid answers rather than raising, and that is the whole of
+  `a4e338ae`. This used to hand the value straight to the query, where Ecto threw
+  `value "61c87cd5" cannot be dumped to type :binary_id` — a stack trace naming
+  the schema, the column and the SQL, returned to a caller who had asked a
+  question about an agent.
+
+  The eight-character prefix is what makes it common rather than exotic. Every
+  surface prints ids truncated — `list_agent_work`, the fleet page, log lines,
+  issue ids in prose — so reading one and passing it back is the obvious mistake,
+  and an agent handed a database error concludes its tooling is broken and stops.
+  That is precisely what happened twice on 2026-09-16.
+
+  It is also what lets `agent_id` carry sub-agent labels (`aqa-1013-…`) through
+  callers that try an agent lookup first and fall back: a label is simply not
+  found, rather than an exception from three layers down.
+  """
   @spec fetch_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, :not_found}
   def fetch_agent(%Scope{active_project_id: project_id}, id)
       when is_binary(project_id) and is_binary(id) do
-    Agent
-    |> where([a], a.project_id == ^project_id and a.id == ^id)
-    |> Repo.one()
-    |> wrap_agent()
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} ->
+        Agent
+        |> where([a], a.project_id == ^project_id and a.id == ^uuid)
+        |> Repo.one()
+        |> wrap_agent()
+
+      :error ->
+        {:error, :not_found}
+    end
   end
 
   def fetch_agent(%Scope{}, _id), do: {:error, :not_found}

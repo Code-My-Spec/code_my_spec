@@ -70,7 +70,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, requirement} <- resolve_requirement(scope, params),
-         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id) do
+         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id, agent_id) do
       start_or_resume(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} ->
@@ -121,6 +121,39 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # Ahead of the session clause deliberately. A call that carries both is an
   # agent of ours whose caller also named a session, and the agent is the one
   # that will be asked for its active task at the end of the turn.
+  # The subject owns the task when the subject is an agent we can find.
+  #
+  # `agent_id` has always meant "who this task is for" — the comment in
+  # `execute/2` says so — but the owner was resolved from the *caller*, so a task
+  # the main agent started for another agent landed on the main agent's own
+  # session carrying that agent's id, and the agent it was for never saw it.
+  # Measured: a task assigned to a QA agent came back from it as "no longer
+  # appears in this session's task list, so I used the live one". It was right.
+  # `e15d1ff1`.
+  #
+  # So a subject that names a real agent on this project takes the task. That is
+  # assignment, and it is what makes a fleet directable rather than only
+  # startable.
+  #
+  # Two things keep it honest. `Agents.fetch_agent/2` is scope-guarded, so the
+  # reach stops at this project. And the *caller* is still taken from the
+  # connection and never from the arguments — naming a subject is not claiming to
+  # be one, which is the distinction `execute/2`'s comment is protecting.
+  defp resolve_owner(scope, session_id, caller_agent_id, subject_agent_id)
+
+  defp resolve_owner(scope, session_id, caller_agent_id, subject) when is_binary(subject) do
+    case Agents.fetch_agent(scope, subject) do
+      {:ok, agent} -> {:ok, agent}
+      # Not an agent row. `agent_id` also carries sub-agent labels — `aqa-1013-…`
+      # rather than a uuid — which own tasks on the caller's session and have no
+      # row to land on. Those keep the behaviour they had.
+      _ -> resolve_owner(scope, session_id, caller_agent_id)
+    end
+  end
+
+  defp resolve_owner(scope, session_id, caller_agent_id, _subject),
+    do: resolve_owner(scope, session_id, caller_agent_id)
+
   defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
     Agents.fetch_agent(scope, agent_id)
   end
