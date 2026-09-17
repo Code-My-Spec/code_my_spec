@@ -140,16 +140,8 @@ defmodule CodeMySpec.Agents.StopDecision do
   What stops this becoming the spam the old check was added for is that a wake
   is already narrow: it fires only when an observation actually landed, only
   when the role's own menu is non-empty, and `stuck?/3` suppresses an identical
-  message — immediately within `@wake_debounce_ms`, and thereafter once it has
-  been sent more than `@stuck_threshold` times. Those bound the noise on the
-  axis that matters — repetition — rather than by silencing the agent entirely.
-
-  The debounce is the newer half and was missing. `@stuck_threshold` alone
-  bounds the *tail*, not the *burst*: it tolerates five identical sends, so one
-  graph change draining as three observations put three byte-identical menus in
-  front of an idle agent 128ms apart, and it spent four turns re-confirming
-  nothing had moved (`6f1bd3af`, criterion 3180 — the story this module's own
-  wake path exists to satisfy).
+  message after `@stuck_threshold`. Those bound the noise on the axis that
+  matters — repetition — rather than by silencing the agent entirely.
 
   ## A working agent is never woken
 
@@ -251,32 +243,6 @@ defmodule CodeMySpec.Agents.StopDecision do
   # per turn.
   @stuck_threshold 5
 
-  # The threshold above bounds the tail and not the burst, and `:wake` is the
-  # one tag that gets bursts.
-  #
-  # `GraphWatcher` gates waking on "a real observation landed" rather than on
-  # the actionable set changing, deliberately: problems are coding work the
-  # graph never carries as a requirement, so a wake gated on the actionable
-  # diff never fires for one (3193). That widening is right, and its stated
-  # cost was "a rendered menu on a pass that changed requirements not at all;
-  # the message count for that case is unchanged, because `Menu.render/4` was
-  # always going to answer `""`". True of an *empty* menu. An agent that
-  # already has work renders the same non-empty text on every drain, so each
-  # one is a send — three of them 128ms apart, byte-identical, naming the same
-  # task, on 2026-09-17 (`6f1bd3af`, criterion 3180). Three turns bought with
-  # one piece of information, against the story that exists to stop exactly
-  # that.
-  #
-  # So the caller stays as it is and the sender dedupes. Only a byte-identical
-  # message is suppressed — a menu that changed is a different key and never
-  # reaches this — which means what is dropped is by construction a repeat of
-  # something the agent has already been handed and cannot act on twice.
-  #
-  # Long enough to cover a drain burst by two orders of magnitude, short enough
-  # that a wake genuinely lost with a restarting agent's queue is re-sent
-  # promptly rather than waiting on the next menu change.
-  @wake_debounce_ms 15_000
-
   # An agent that asked a person something is allowed to stop.
   #
   # Refusing it is the shape of loop that looks like diligence and is waste: the
@@ -360,49 +326,27 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   defp stuck?(%Agent{} = agent, key, tag) do
     slot = {__MODULE__, tag, agent.id}
-    now = System.monotonic_time(:millisecond)
+    seen = :persistent_term.get(slot, nil)
 
-    # A stored 2-tuple is an entry written before the timestamp existed. It
-    # falls through to the reset clause, which costs one un-deduped message
-    # after a deploy — the same trade `@stuck_threshold` already takes for
-    # living in `:persistent_term` rather than a column.
-    {count, sent_at} =
-      case :persistent_term.get(slot, nil) do
-        {^key, n, at} -> {n + 1, at}
-        _ -> {1, nil}
+    count =
+      case seen do
+        {^key, n} -> n + 1
+        _ -> 1
       end
 
-    cond do
-      burst?(tag, sent_at, now) ->
-        # Deliberately without bumping the count or the timestamp. This is one
-        # event arriving twice, not the agent ignoring us twice, and counting it
-        # would walk an agent toward the "told it five times" ceiling on
-        # messages it was never sent.
-        true
+    :persistent_term.put(slot, {key, count})
 
-      count > @stuck_threshold ->
-        :persistent_term.put(slot, {key, count, sent_at})
+    if count > @stuck_threshold do
+      Logger.info(
+        "[StopDecision] agent #{agent.id} has been told the same thing #{count} times and " <>
+          "has not acted on it — leaving it alone until something else lands"
+      )
 
-        Logger.info(
-          "[StopDecision] agent #{agent.id} has been told the same thing #{count} times and " <>
-            "has not acted on it — leaving it alone until something else lands"
-        )
-
-        true
-
-      true ->
-        :persistent_term.put(slot, {key, count, now})
-        false
+      true
+    else
+      false
     end
   end
-
-  # Only `:wake` is pushed at an agent several times for one underlying event.
-  # `:decision` and `:continuing` are answers to the agent's own stop hook —
-  # one request, one reply — so a repeat there is a real repeat.
-  defp burst?(:wake, sent_at, now) when is_integer(sent_at),
-    do: now - sent_at < @wake_debounce_ms
-
-  defp burst?(_tag, _sent_at, _now), do: false
 
   # Through the transport every other message to an agent goes through, so an
   # agent mid-turn is queued rather than interrupted — the engine decides
