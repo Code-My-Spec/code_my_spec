@@ -78,6 +78,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
       end
 
       given_ "neither checkout says the story is linked", context do
+        # given: already true — `create_story/2` above makes a story with no
+        # component, and nothing between here and there links one. This block
+        # establishes nothing on purpose: it exists to prove the baseline before
+        # the when_ moves it, because "both checkouts say linked" would pass the
+        # assertions below for a story that was linked all along.
         first = linked?(read_settled_graph(context, context.first_id), context.story_id)
         second = linked?(read_settled_graph(context, context.second_id), context.story_id)
 
