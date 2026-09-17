@@ -79,6 +79,19 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
         engine: :alloy,
         role: "product",
         continuous: true,
+        # Explicit, because the column defaults to `:starting` and this fixture
+        # never performs a start handshake — `record_started/3` is what moves a
+        # real agent to `:running`, off the machine's own report that it came
+        # up (`agents.ex:625`).
+        #
+        # `project_wakeable?/2` requires `:running`, narrowed from accepting
+        # `:starting` when `0c912986` found rows claiming life with no process
+        # behind them and work being routed to them for six hours. An idle
+        # agent that has ended a turn and is waiting to be woken is `:running`
+        # — "the turn ends, the process does not" — so `:starting` was never
+        # the state this test meant to describe, and leaving it defaulted made
+        # the fixture un-wakeable.
+        status: :running,
         working_copy: ctx.scope.cwd,
         working_copy_id: ctx.scope.active_working_copy_id
       })
