@@ -47,17 +47,33 @@ defmodule CodeMySpec.Components do
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    GraphInputs.event(
-      scope,
-      "Components",
-      component_event_kind(message),
-      %{},
-      graph_entities(message),
-      # A component is a projection of the files in one checkout, so what moved
-      # is that checkout's answers about it and not another worktree's.
-      :this_checkout
-    )
+    kind = component_event_kind(message)
+
+    GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
   end
+
+  # Which checkouts a component event moves, and the two halves are not the
+  # same.
+  #
+  # A component *changing* moves what one checkout answers about it — its files
+  # are read per checkout, so `spec_file` and the rest are that worktree's
+  # answers and nobody else's.
+  #
+  # A component *appearing or going* changes the entity set, and the
+  # `components` table has no `working_copy_id`: every checkout projects
+  # requirements for every component. Narrowing creation to the checkout that
+  # made it leaves every other vantage without rows for it at all — handlers
+  # settle rows and never create them, so only the fallback creates them, and
+  # the fallback only runs where the mark points.
+  #
+  # Measured on dev, 2026-09-17: ten components created in five minutes, and
+  # every vantage but the creator sat at `missing 4-6` rows and did not
+  # converge. `extra 0` throughout, which is what says the shadow was behind on
+  # creation rather than wrong about what it held.
+  defp vantage_of(kind) when kind in ["component_created", "component_deleted"],
+    do: :project_wide
+
+  defp vantage_of(_changed), do: :this_checkout
 
   # The component, and its parent.
   #
