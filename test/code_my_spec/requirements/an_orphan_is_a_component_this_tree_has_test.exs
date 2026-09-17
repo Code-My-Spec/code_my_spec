@@ -106,9 +106,11 @@ defmodule CodeMySpec.Requirements.AnOrphanIsAComponentThisTreeHasTest do
   defp main_copy_id(%Scope{} = other) do
     CodeMySpec.WorkingCopies.list_harnesses(other)
     |> Enum.reject(&(&1.id == other.active_working_copy_id))
-    |> case do
-      [copy | _] -> copy.id
-      [] -> flunk("the project has only one checkout, so nothing can be elsewhere")
-    end
+    |> first_copy_id()
   end
+
+  defp first_copy_id([copy | _]), do: copy.id
+
+  defp first_copy_id([]),
+    do: flunk("the project has only one checkout, so nothing can be elsewhere")
 end
