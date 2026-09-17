@@ -46,6 +46,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
@@ -282,7 +283,16 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   cannot distinguish a call from a claim about a call.
   """
   @spec tools_called(map(), String.t()) :: [String.t()]
-  def tools_called(context, agent_id) do
+  def tools_called(context, agent_id), do: context |> conversation(agent_id) |> tool_names()
+
+  @doc """
+  The agent's conversation, rendered as the main agent reads it.
+
+  The raw form, for the criteria whose claim is about something inside a call
+  rather than about which call it was — a script's text, most often.
+  """
+  @spec conversation(map(), String.t()) :: String.t()
+  def conversation(context, agent_id) do
     {:reply, response, _} =
       ReadAgentConversation.execute(%{agent_id: agent_id, limit: 100}, frame(context))
 
@@ -296,7 +306,21 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
     said = text(response)
     dump(agent_id, said)
-    tool_names(said)
+    said
+  end
+
+  @doc """
+  Whether the agent reached `tool` at all — directly or through a script.
+
+  A scriptable tool is not on any agent's direct surface, so `run_script` is
+  what shows up in the call list and the tool's own name is inside the script's
+  text. A criterion asking "did it write a file" means either way, and one that
+  only looked at call names would answer no while the file was being written.
+  """
+  @spec reached?(map(), String.t(), String.t()) :: boolean()
+  def reached?(context, agent_id, tool) do
+    said = conversation(context, agent_id)
+    tool in tool_names(said) or String.contains?(said, tool)
   end
 
   # The whole transcript, when somebody is diagnosing rather than measuring.
@@ -319,6 +343,42 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   def called?(context, agent_id, tool), do: tool in tools_called(context, agent_id)
 
   @doc """
+  How many times the agent called `tool`.
+
+  For the criteria whose claim is about *repetition* — an agent that hits a
+  refusal twice and calls a third time is doing something different from one
+  that reports after the second, and both called the tool.
+  """
+  @spec called_count(map(), String.t(), String.t()) :: non_neg_integer()
+  def called_count(context, agent_id, tool),
+    do: context |> tools_called(agent_id) |> Enum.count(&(&1 == tool))
+
+  @doc """
+  The issues on this project, as `list_issues` renders them.
+
+  The observation surface for every criterion about filing: an issue that is
+  not in the listing was not filed, whatever the agent said it did. `opts`
+  reach the tool's own filters — `scope: "framework"` is the usual one.
+  """
+  @spec issues_filed(map(), map()) :: String.t()
+  def issues_filed(context, opts \\ %{}) do
+    {:reply, response, _} = ListIssues.execute(opts, frame(context))
+    text(response)
+  end
+
+  @doc """
+  Whether anything at all was filed at `scope`.
+
+  Deliberately coarse. Which scope an agent chose is the whole question in
+  criteria 3534 and 3535, and it is answered by the listing filtering to
+  something rather than by matching the title it happened to write.
+  """
+  @spec filed_at?(map(), String.t()) :: boolean()
+  def filed_at?(context, scope) do
+    not String.contains?(issues_filed(context, %{scope: scope}), "No issues found")
+  end
+
+  @doc """
   Whether `first` was called and `second` came after it.
 
   Ordering matters in several criteria — claiming work before doing it is
@@ -334,6 +394,36 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       {_, nil} -> false
       {a, b} -> a < b
     end
+  end
+
+  @doc """
+  Whether the agent closed what it took before taking anything else.
+
+  An ordering rather than a count, because an agent that works two requirements
+  in one turn is doing the right thing — it is *holding* two at once that is
+  not. So the question is whether the first `evaluate_task` came before the
+  second `start_task`, not how many of each there were.
+
+  False when it never closed anything, which is the failure the criterion is
+  mostly about.
+  """
+  @spec closed_before_taking_more?(map(), String.t()) :: boolean()
+  def closed_before_taking_more?(context, agent_id) do
+    calls = tools_called(context, agent_id)
+
+    ordering(Enum.find_index(calls, &(&1 == "evaluate_task")), starts(calls))
+  end
+
+  defp ordering(nil, _starts), do: false
+  defp ordering(_closed, []), do: false
+  defp ordering(_closed, [_only]), do: true
+  defp ordering(closed, [_first, second | _rest]), do: closed < second
+
+  defp starts(calls) do
+    calls
+    |> Enum.with_index()
+    |> Enum.filter(fn {name, _i} -> name == "start_task" end)
+    |> Enum.map(fn {_name, i} -> i end)
   end
 
   @doc """
