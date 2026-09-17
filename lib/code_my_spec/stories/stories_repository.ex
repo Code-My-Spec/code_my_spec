@@ -43,6 +43,25 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
+  `%{story_id => %{at: DateTime.t() | nil, commit: String.t() | nil}}` for the
+  given story ids.
+
+  Display data for a stop-hook refusal (`51e319db`): when and where a
+  `specs_ready` latch was earned, so a reader on a different checkout can tell
+  an old, earned-elsewhere latch from a fresh regression. Narrowed to the
+  requested ids and two columns, the same reasoning as
+  `list_specs_ready_story_ids/1` — this is called from the same blocking-check
+  path, and the caller already knows which ids it needs.
+  """
+  def specs_ready_stamps(%Scope{active_project_id: project_id}, story_ids) when is_list(story_ids) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.id in ^story_ids)
+    |> select([s], {s.id, s.specs_ready_at, s.specs_ready_commit})
+    |> Repo.all()
+    |> Map.new(fn {id, at, commit} -> {id, %{at: at, commit: commit}} end)
+  end
+
+  @doc """
   `%{story_id => number}` for every story in the project.
 
   What a page needs to label a story the way the story's own page labels it. A

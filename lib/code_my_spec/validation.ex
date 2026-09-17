@@ -1097,6 +1097,13 @@ defmodule CodeMySpec.Validation do
       # agent whether the red spex it is holding is its own work, the shared
       # backlog's, or another checkout's.
       story_assignment: story_assignments(scope, blocking ++ advisory, scope_context),
+      # When and on what commit each blocking spex finding's specs_ready latch
+      # was earned (`51e319db`) — orientation, the same as story_assignment
+      # above, never a blocking decision. A red spex on a latched story is
+      # still a real regression by design (story 895's rule 4); this only
+      # gives a reader on a checkout that never made the fix a fact to check
+      # ("does my HEAD have this commit yet?") before assuming they broke it.
+      specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context),
       # Which harness to wait on, so "a rerun is in flight" can name a way to
       # wait for it rather than only telling the agent to stop again.
       #
@@ -1514,6 +1521,39 @@ defmodule CodeMySpec.Validation do
         mine = scope.active_working_copy_id
         labels = copy_labels(assigned)
         story_assignments_for(paths, assigned, mine, labels, by_path, by_number)
+    end
+  end
+
+  # `%{file_path => %{at:, commit:}}` for blocking spex findings whose story
+  # is enforced via the specs_ready latch. Only queries `Stories` when there
+  # is at least one such path, and only for the specific story ids involved —
+  # the same narrowing `story_assignments/3` uses.
+  defp specs_ready_stamps_by_path(scope, blocking, ctx) do
+    %{
+      criterion_story_ids: by_path,
+      spec_file_story_ids: by_spec_file,
+      story_ids_by_number: by_number,
+      specs_ready_story_ids: ready_ids
+    } = ctx
+
+    pairs =
+      for %{source: "spex", file_path: path} <- blocking,
+          is_binary(path),
+          story_id = story_id_for(path, by_path, by_spec_file, by_number),
+          not is_nil(story_id),
+          MapSet.member?(ready_ids, story_id),
+          uniq: true do
+        {story_id, path}
+      end
+
+    case pairs do
+      [] ->
+        %{}
+
+      pairs ->
+        story_ids = pairs |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+        stamps = Stories.specs_ready_stamps(scope, story_ids)
+        Map.new(pairs, fn {story_id, path} -> {path, Map.get(stamps, story_id)} end)
     end
   end
 

@@ -14,6 +14,8 @@ defmodule CodeMySpec.Stories.Story do
           notes: String.t() | nil,
           ready_for_dev: boolean(),
           specs_ready: boolean(),
+          specs_ready_at: DateTime.t() | nil,
+          specs_ready_commit: String.t() | nil,
           three_amigos_sealed: boolean(),
           promoted_version: String.t() | nil,
           epic_id: Ecto.UUID.t() | nil,
@@ -49,6 +51,15 @@ defmodule CodeMySpec.Stories.Story do
           "specs-passing gate on a fresh green spex run, cleared when the " <>
           "chain restarts. Spex failures only block the agent on stories " <>
           "where this is true. New stories start false",
+      specs_ready_at:
+        "When specs_ready was last set true. Display only — a stop-hook " <>
+          "refusal citing this story's spex names it so a different " <>
+          "checkout can tell an old, earned-elsewhere latch from its own " <>
+          "fresh regression. nil when specs_ready is false",
+      specs_ready_commit:
+        "The commit sha of the checkout that earned specs_ready, or nil. " <>
+          "Same display-only purpose as specs_ready_at — never checked for " <>
+          "ancestry, only shown",
       three_amigos_sealed:
         "Whether the story's Three Amigos session has been sealed. Set by the " <>
           "gate when persona, rules, scenarios and zero open questions all " <>
@@ -79,6 +90,17 @@ defmodule CodeMySpec.Stories.Story do
     # leaves it alone. That is the whole reason the node could come back
     # after bab2f792 removed it for clamping downstream work.
     field :specs_ready, :boolean, default: false
+
+    # When and where the latch above was earned — never read to gate
+    # anything, only to tell a reader on a *different* checkout "I broke
+    # this" from "this was already earned somewhere else" (`51e319db`). Set
+    # once, alongside `specs_ready: true`, by whichever checkout ran the
+    # green spex; a live ancestry check against this would need shelling git
+    # on every stop hook everywhere, which is exactly what the stop hook's
+    # own redesign and `20260915220000`'s removal of cached git state both
+    # argue against. This is display data, not enforcement data.
+    field :specs_ready_at, :utc_datetime_usec
+    field :specs_ready_commit, :string
 
     # Latch behind `three_amigos_complete`, in the same shape as `specs_ready`
     # above. Recomputed, the requirement meant a red card added to a shipped
@@ -187,6 +209,8 @@ defmodule CodeMySpec.Stories.Story do
       :notes,
       :ready_for_dev,
       :specs_ready,
+      :specs_ready_at,
+      :specs_ready_commit,
       :three_amigos_sealed,
       :promoted_version,
       :priority,
@@ -291,7 +315,11 @@ defmodule CodeMySpec.Stories.Story do
     cond do
       is_nil(get_change(changeset, :ready_for_dev)) -> changeset
       not is_nil(get_change(changeset, :specs_ready)) -> changeset
-      true -> put_change(changeset, :specs_ready, false)
+      true ->
+        changeset
+        |> put_change(:specs_ready, false)
+        |> put_change(:specs_ready_at, nil)
+        |> put_change(:specs_ready_commit, nil)
     end
   end
 

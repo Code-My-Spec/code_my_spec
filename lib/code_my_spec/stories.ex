@@ -143,6 +143,14 @@ defmodule CodeMySpec.Stories do
   def list_specs_ready_story_ids(scope), do: impl().list_specs_ready_story_ids(scope)
 
   @doc """
+  `%{story_id => %{at: DateTime.t() | nil, commit: String.t() | nil}}` for the
+  given story ids — when and where each one's `specs_ready` latch was earned.
+  Display data only, for a stop-hook refusal on a different checkout
+  (`51e319db`); never checked back for ancestry.
+  """
+  def specs_ready_stamps(scope, story_ids), do: impl().specs_ready_stamps(scope, story_ids)
+
+  @doc """
   `%{story_id => number}` for the project — what a page needs to label a story
   by the number that names its spex directory rather than by its id (1ab62ffd).
   """
@@ -288,10 +296,36 @@ defmodule CodeMySpec.Stories do
   Deliberately narrower than `update_story/3` — the latch carries
   enforcement consequences, so the write path is named rather than
   buried in a generic attrs map.
+
+  `opts` is display data only (`51e319db`) — `:at` and `:commit` are stamped
+  alongside a `true` write so a stop hook on a *different* checkout can say
+  when and where this was earned, never checked back for ancestry. Ignored
+  when `ready?` is `false`: `specs_ready_at`/`specs_ready_commit` are cleared
+  to `nil` by `Story.changeset/2`'s own readiness-change handling instead, so
+  a caller clearing the latch cannot accidentally leave a stale stamp behind
+  by omitting opts.
   """
-  def set_specs_ready(%Scope{} = scope, %Story{} = story, ready?) when is_boolean(ready?) do
-    update_story(scope, story, %{specs_ready: ready?})
+  def set_specs_ready(scope, story, ready?, opts \\ [])
+
+  def set_specs_ready(%Scope{} = scope, %Story{} = story, true, opts) do
+    attrs =
+      %{specs_ready: true}
+      |> maybe_put(:specs_ready_at, Keyword.get(opts, :at))
+      |> maybe_put(:specs_ready_commit, Keyword.get(opts, :commit))
+
+    update_story(scope, story, attrs)
   end
+
+  def set_specs_ready(%Scope{} = scope, %Story{} = story, false, _opts) do
+    update_story(scope, story, %{
+      specs_ready: false,
+      specs_ready_at: nil,
+      specs_ready_commit: nil
+    })
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   Deletes a story.
