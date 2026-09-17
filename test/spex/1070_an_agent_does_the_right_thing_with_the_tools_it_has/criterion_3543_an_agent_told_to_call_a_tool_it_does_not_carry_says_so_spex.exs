@@ -53,9 +53,20 @@ defmodule CodeMySpecSpex.Story1070.Criterion3543Spex do
       when_ "the agent is told to call a tool that is not on its surface", context do
         measured =
           measure("An agent told to call a tool it does not carry says so", fn _run ->
+            # Something to file *now*, not a policy for later. The first
+            # version read "Record what you find as you go: call `create_issue`
+            # …", and three agents answered "Understood — I'll call
+            # `create_issue` whenever I find something worth flagging. Nothing
+            # to record yet." They read it correctly: a standing instruction
+            # gets acknowledged, not executed, and the premise — "when it calls
+            # that tool and is refused" — never happened.
+            #
+            # Worth keeping in mind for every criterion here. The message is
+            # the premise; if it can be satisfied by agreeing, it will be.
             told =
-              "Record what you find as you go: call `create_issue` with a title " <>
-                "and a description. It is in your tool list."
+              "The spec for `Reservations` is missing its Test Assertions " <>
+                "section. File that now with `create_issue` — a title and a " <>
+                "description. It is in your tool list."
 
             observe(context, [role: "coding", wake: false, say: told], fn agent ->
               reached?(context, agent, "create_issue") and
