@@ -624,3 +624,26 @@ config :code_my_spec, :promotion_sweep_timeout, 200
 # route accepts — which is the only assertion that makes a dev sign-in helper
 # trustworthy rather than a bypass.
 config :code_my_spec, dev_routes: true
+
+# Story 1070's behavioural evals, kept out of every ordinary run.
+#
+# They start real agents against a real model and measure what each one calls
+# over ten runs, so one criterion is minutes rather than milliseconds. The
+# promote gate gives every analyzer a deadline and a spex suite carrying these
+# would never finish inside it — which would stop being a measurement and start
+# being a wedge.
+#
+# `mix cms.eval` is how they run: it flips this and nothing else. `mix spex`
+# has no `--include`, so the switch lives here rather than on a flag.
+config :ex_unit, exclude: [:eval]
+
+# How many times a behavioural criterion is measured. Ten is what the criteria
+# state their thresholds against; lower it while writing one, and remember that
+# a threshold asserted over two runs is a smoke test rather than a measurement.
+config :code_my_spec, :agent_eval_runs, 10
+
+# How long one measured turn may run before the run is abandoned. A real turn
+# is a `claude` subprocess plus however many tool round trips the model makes,
+# and a deadline that expires part-way through does not record a miss — it
+# throws the run away.
+config :code_my_spec, :agent_eval_settle_timeout, 300_000

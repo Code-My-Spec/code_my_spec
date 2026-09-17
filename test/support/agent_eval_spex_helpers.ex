@@ -1,0 +1,497 @@
+defmodule CodeMySpecSpex.AgentEvalHelpers do
+  @moduledoc """
+  Story 1070's shared premise: a fresh agent, a real model, and a record of
+  what it called.
+
+  Every other spex in this suite drives a surface and asserts on the answer.
+  These drive an *agent* and assert on its conduct, so three things differ and
+  all three are here rather than in each criterion.
+
+  ## The agent is the user
+
+  There is no stand-in. The agent is started through `start_agent`, the tool an
+  operator starts one with, so its system prompt is `RoleBrief.for/1`'s, its
+  tool list is `ToolIndex`'s, and its turn runs Alloy's real loop against the
+  real tools. A scripted provider would assert on the script.
+
+  `claude-code` is the provider because it is the one that costs nothing per
+  run and really emits tool calls. `CmsHarnessTest.HeldProvider` cannot: it
+  returns one canned answer and no `tool_use` blocks, which is what left
+  criterion 2886 unwritten.
+
+  ## What it called, not what it said
+
+  Assertions read `read_agent_conversation`, the main agent's own tool. A model
+  will happily narrate a call it never made, so "it says it called
+  `start_task`" and "it called `start_task`" are different claims and only the
+  second one is worth anything. The transcript reaches the server over a real
+  channel — see `CodeMySpecTest.TurnEventRelay` for the hop that makes that
+  true in a spex.
+
+  ## A rate, not a pass
+
+  The model is non-deterministic, so one run says almost nothing. `measure/3`
+  runs a scenario repeatedly with a fresh agent each time and `assert_rate/2`
+  judges the proportion against the criterion's own threshold.
+
+  A rate in between is the finding, not a nuisance: an agent that does the
+  right thing six times in ten has an ambiguous prompt, and that is information
+  no single-run test can produce. `assert_rate/2` says so in those words rather
+  than suggesting a retry.
+  """
+
+  import ExUnit.Assertions
+  import Phoenix.ChannelTest, only: [subscribe_and_join: 4]
+
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
+  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.HarnessProjectChannel
+  alias CodeMySpecWeb.UserSocket
+
+  @endpoint CodeMySpecWeb.Endpoint
+
+  @doc """
+  How many times a behavioural criterion is measured.
+
+  Ten by default, which is what the criteria state their thresholds against.
+  Lower it while writing one — `config :code_my_spec, :agent_eval_runs, 2` — and
+  note that a threshold asserted over two runs is a smoke test rather than a
+  measurement.
+  """
+  @spec runs() :: pos_integer()
+  def runs, do: Application.get_env(:code_my_spec, :agent_eval_runs, 10)
+
+  @doc """
+  Bring a checkout onto the harness and send its agents' turns to the server.
+
+  Answers the context with `:copy` and `:harness_socket`. Both are needed for a
+  transcript to exist at all: the agent runs against the checkout, and the
+  socket is where its turn events land.
+  """
+  @spec given_a_harnessed_checkout(map(), String.t()) :: map()
+  def given_a_harnessed_checkout(context, label) do
+    copy = CodeMySpec.TempFile.dir(label)
+    File.mkdir_p!(copy)
+
+    # `harness_id` is nil because this checkout has never described itself
+    # before — the join is what mints it. Naming one would name a copy that
+    # reported a different tree, and the graph these agents work from would
+    # then be somebody else's.
+    {:ok, reply, socket} =
+      UserSocket
+      |> Phoenix.ChannelTest.socket("eval-#{label}", %{scope: context.scope})
+      |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+        "contract_version" => HarnessProjectChannel.contract_version(),
+        "harness_id" => nil,
+        "root" => copy,
+        "label" => "the machine these agents run on",
+        # A checkout is {project, device, root}, so a join that names no machine
+        # is refused — two boxes share a path constantly.
+        "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
+      })
+
+    Fixtures.relay_turn_events(socket)
+
+    # Whose authority these agents' tool calls run with. In production the
+    # transport carries `x-harness-id` and the server resolves the scope from
+    # it; in this VM the local transport reads it from application env, the way
+    # `AgentToolsHelpers` does.
+    #
+    # At this checkout's vantage rather than the test's, because an agent's
+    # graph is computed from its own copy's files — the blended vantage reads a
+    # file present in any checkout as present, which `Preloader.load/1` calls a
+    # bug on an agent path in as many words.
+    scope_agents_at(%{context.scope | active_working_copy_id: reply.working_copy_id})
+
+    context
+    |> Map.put(:copy, copy)
+    |> Map.put(:copy_id, reply.working_copy_id)
+    |> Map.put(:harness_socket, socket)
+  end
+
+  defp scope_agents_at(scope) do
+    prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
+    Application.put_env(:code_my_spec, :harness_mcp_scope, scope)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case prior do
+        nil -> Application.delete_env(:code_my_spec, :harness_mcp_scope)
+        scope -> Application.put_env(:code_my_spec, :harness_mcp_scope, scope)
+      end
+    end)
+  end
+
+  @doc """
+  A new agent of `role`, started the way an operator starts one.
+
+  Fresh every call, and that is the point: a long-lived agent's conduct tells
+  you about its own accumulated history — a day of stale questions, a
+  stand-down later reversed — rather than about the prompt and tools, which is
+  what these criteria are about.
+
+  Answers the agent id. Stopping it is the caller's business; `stop/1` does it
+  and every measured run should, or ten runs leave ten agents on the machine.
+  """
+  @spec fresh_agent(map(), String.t()) :: String.t()
+  def fresh_agent(context, role \\ "coding") do
+    {:reply, response, _} =
+      StartAgent.execute(
+        %{
+          role: role,
+          provider: "claude-code",
+          working_copy: context.copy,
+          working_copy_id: context.copy_id
+        },
+        frame(context)
+      )
+
+    refute response.isError,
+           """
+           No agent was started, so this run measures nothing.
+
+           #{text(response)}
+           """
+
+    agent_id_in(text(response)) ||
+      flunk("""
+      An agent was started and the answer does not name it, so there is nothing
+      to ask what it did.
+
+      #{text(response)}
+      """)
+  end
+
+  @doc "Stop one, whatever state it reached."
+  @spec stop(String.t()) :: :ok
+  def stop(agent_id) do
+    Fixtures.halt_agent(agent_id)
+    :ok
+  end
+
+  @doc """
+  One measured run: a fresh agent, a turn, and a verdict on what it called.
+
+  `fun` takes the agent's id and answers whether it did the named thing.
+  Answers `{held?, evidence}` for `measure/2`, with the evidence being every
+  tool it called in order — which is what makes a rate of zero actionable
+  instead of merely disappointing.
+
+  The agent is stopped whichever way the run goes, because ten runs that each
+  leave a `claude` subprocess behind is a machine nobody can work on. The
+  `try` lives here rather than in the criterion for the reason the framework
+  check states: a spex body with imperative `try` in it is pinning setup it
+  should be asserting on.
+
+  ## Options
+
+    * `:role` — which role's brief and tool set. `"coding"` by default.
+    * `:say` — a message to send after waking, for a criterion whose premise is
+      being told something rather than finding work on the graph. It goes
+      through `message_agent`, which is what an operator's message goes
+      through.
+    * `:wake` — `false` for a criterion whose premise is an agent that was
+      never put in the loop.
+  """
+  @spec observe(map(), keyword(), (String.t() -> boolean())) :: {boolean(), String.t()}
+  def observe(context, opts \\ [], fun) do
+    agent_id = fresh_agent(context, Keyword.get(opts, :role, "coding"))
+
+    try do
+      if Keyword.get(opts, :wake, true), do: wake(context, agent_id)
+      if said = Keyword.get(opts, :say), do: say(agent_id, said)
+      settle(agent_id)
+
+      {fun.(agent_id), transcript_of(context, agent_id)}
+    after
+      stop(agent_id)
+    end
+  end
+
+  @doc """
+  Tell a running agent something, the way an operator's message reaches it.
+
+  Without waiting: what is being measured is what the agent *does* with it, and
+  `settle/1` is what says the turn is over.
+  """
+  @spec say(String.t(), String.t()) :: :ok
+  def say(agent_id, text) do
+    Fixtures.send_agent_message(agent_id, text)
+    :ok
+  end
+
+  @doc """
+  Put the agent in the loop, which is what makes it take a turn.
+
+  The production trigger, and the whole of it: an agent is a supervised process
+  that acts when messaged and nothing polls, so `set_agent_continuous` sets the
+  flag and rings the bell. The menu it wakes with is `StopDecision.wake/2`'s —
+  rendered from the graph, addressed to this role — which is the same first
+  turn a real agent gets.
+  """
+  @spec wake(map(), String.t()) :: String.t()
+  def wake(context, agent_id) do
+    {:reply, response, _} =
+      SetAgentContinuous.execute(%{agent_id: agent_id, continuous: true}, frame(context))
+
+    said = text(response)
+
+    refute response.isError,
+           """
+           The agent could not be put in the loop, so it never took a turn and
+           this run measures nothing about its conduct.
+
+           #{said}
+           """
+
+    said
+  end
+
+  @doc """
+  Wait until the agent has nothing in flight and nothing queued.
+
+  What makes a claim about a turn settleable. A turn still running and a turn
+  that went nowhere look identical from outside, so an assertion made a moment
+  early is true of both.
+
+  Minutes rather than `await_idle/1`'s five seconds. A real turn is a `claude`
+  subprocess and however many tool round trips the model decides to make, and a
+  deadline that expires part-way through does not record a miss — it throws
+  away the run.
+  """
+  @spec settle(String.t()) :: :ok
+  def settle(agent_id), do: CmsHarnessTest.Machine.await_idle(agent_id, settle_timeout())
+
+  @doc """
+  How long one measured turn may take before the run is abandoned.
+
+  `config :code_my_spec, :agent_eval_settle_timeout`. Five minutes by default,
+  which is a multi-turn tool loop against `claude -p` with room to spare.
+  """
+  @spec settle_timeout() :: timeout()
+  def settle_timeout, do: Application.get_env(:code_my_spec, :agent_eval_settle_timeout, 300_000)
+
+  @doc """
+  Every tool this agent called, oldest first, by name.
+
+  Through `read_agent_conversation` rather than Alloy's own history: the
+  question is what the agent did, and asking the agent is the one source that
+  cannot distinguish a call from a claim about a call.
+  """
+  @spec tools_called(map(), String.t()) :: [String.t()]
+  def tools_called(context, agent_id) do
+    {:reply, response, _} =
+      ReadAgentConversation.execute(%{agent_id: agent_id, limit: 100}, frame(context))
+
+    refute response.isError,
+           """
+           The agent's conversation could not be read, so nothing here is
+           evidence about what it called.
+
+           #{text(response)}
+           """
+
+    said = text(response)
+    dump(agent_id, said)
+    tool_names(said)
+  end
+
+  # The whole transcript, when somebody is diagnosing rather than measuring.
+  #
+  # `CMS_EVAL_TRANSCRIPT=1 mix cms.eval --runs 1 --pattern criterion_3539`.
+  # Off by default because ten runs of a multi-turn agent is thousands of lines
+  # and a failure message that long is one nobody reads — but the first thing
+  # anyone asks of a rate of zero is "what did it do instead", and answering
+  # that by hand-editing a helper is how a diagnosis gets skipped.
+  defp dump(agent_id, said) do
+    if System.get_env("CMS_EVAL_TRANSCRIPT") in ~w(1 true) do
+      IO.puts("\n===== #{agent_id} =====\n#{said}\n===== end #{agent_id} =====\n")
+    end
+
+    :ok
+  end
+
+  @doc "Whether `tool` appears anywhere in what the agent called."
+  @spec called?(map(), String.t(), String.t()) :: boolean()
+  def called?(context, agent_id, tool), do: tool in tools_called(context, agent_id)
+
+  @doc """
+  Whether `first` was called and `second` came after it.
+
+  Ordering matters in several criteria — claiming work before doing it is
+  exactly a claim about order — and "both appear" is true of an agent that did
+  them backwards.
+  """
+  @spec called_in_order?(map(), String.t(), String.t(), String.t()) :: boolean()
+  def called_in_order?(context, agent_id, first, second) do
+    calls = tools_called(context, agent_id)
+
+    case {Enum.find_index(calls, &(&1 == first)), Enum.find_index(calls, &(&1 == second))} do
+      {nil, _} -> false
+      {_, nil} -> false
+      {a, b} -> a < b
+    end
+  end
+
+  @doc """
+  Run one behaviour `runs/0` times and count how often it held.
+
+  `fun` takes the run number and answers `{held?, evidence}` — did the agent do
+  the named thing this time, and what it called instead when it did not.
+
+  The evidence is not decoration. A rate on its own says a behaviour is missing
+  and gives nobody a next step; "0 of 10, and every one of them called
+  `list_tasks` first" says which. Anything `fun` raises fails the whole
+  measurement rather than counting as a miss — a broken premise is not evidence
+  about the agent.
+  """
+  @spec measure(String.t(), (pos_integer() -> {boolean(), term()})) :: map()
+  def measure(behaviour, fun) do
+    total = runs()
+
+    outcomes =
+      Enum.map(1..total, fn n ->
+        case fun.(n) do
+          {held?, evidence} when is_boolean(held?) ->
+            {n, held?, evidence}
+
+          other ->
+            flunk("""
+            A measured run must answer `{held?, evidence}` — whether the agent
+            did the thing, and what it did instead. Got: #{inspect(other)}
+            """)
+        end
+      end)
+
+    hits = Enum.count(outcomes, fn {_n, held?, _e} -> held? end)
+
+    %{
+      behaviour: behaviour,
+      runs: total,
+      hits: hits,
+      rate: hits / total,
+      misses: Enum.filter(outcomes, fn {_n, held?, _e} -> not held? end)
+    }
+  end
+
+  @doc """
+  What an agent called, as one line for a failure message.
+
+  Every call in order, because the order is usually the finding — an agent that
+  called the right tools in the wrong sequence and one that never called them
+  at all are different problems with the same rate.
+  """
+  @spec transcript_of(map(), String.t()) :: String.t()
+  def transcript_of(context, agent_id) do
+    case tools_called(context, agent_id) do
+      [] -> "called nothing at all"
+      calls -> "called " <> Enum.join(calls, " → ")
+    end
+  end
+
+  @doc """
+  Judge a measured rate against the threshold the criterion states.
+
+  Three outcomes, not two, because the middle one is the finding this story
+  exists to be able to make.
+  """
+  @spec assert_rate(map(), number()) :: map()
+  def assert_rate(%{rate: rate} = result, threshold) when rate >= threshold, do: result
+
+  def assert_rate(%{rate: rate} = result, threshold) do
+    flunk(verdict(result, threshold, band(rate)))
+  end
+
+  defp band(rate) when rate <= 0.1, do: :never
+  defp band(rate) when rate >= 0.9, do: :nearly
+  defp band(_rate), do: :sometimes
+
+  defp verdict(result, threshold, :never) do
+    """
+    #{headline(result, threshold)}
+
+    It essentially never does this. That is a straightforward behaviour
+    failure: the prompt does not ask for it, the tool it needs is not on this
+    role's surface, or the menu it wakes with does not mention it. Check the
+    surface before the prompt — a tool named in prose and absent from the role
+    that reads it has cost two agents a day each.
+    """
+  end
+
+  defp verdict(result, threshold, :sometimes) do
+    """
+    #{headline(result, threshold)}
+
+    This is the finding, not a flake. A rate in the middle means the agent
+    sometimes reads the instruction one way and sometimes another, which is a
+    statement about the prompt being ambiguous — and it is the one thing a
+    single-run test can never tell you.
+
+    Do not re-run this until it passes and do not mark it flaky. Fix the
+    ambiguity and measure again; the rate moving is the evidence that the fix
+    worked.
+    """
+  end
+
+  defp verdict(result, threshold, :nearly) do
+    """
+    #{headline(result, threshold)}
+
+    It nearly always does this, and the threshold is deliberately above
+    "nearly". The misses are where the prompt runs out, so they are worth
+    reading individually rather than averaging away.
+    """
+  end
+
+  defp headline(%{behaviour: behaviour, hits: hits, runs: runs, rate: rate} = result, threshold) do
+    """
+    #{behaviour}: #{hits} of #{runs} runs (#{percent(rate)}), against a threshold of #{percent(threshold)}.
+
+    #{misses(result)}\
+    """
+  end
+
+  # Up to five, because a sixth identical line is not more evidence and a
+  # failure message nobody reads to the end is a failure message that taught
+  # nothing.
+  defp misses(%{misses: misses}) do
+    misses
+    |> Enum.take(5)
+    |> Enum.map_join("\n", fn {n, _held?, evidence} -> "  run #{n}: #{evidence}" end)
+  end
+
+  defp misses(_result), do: ""
+
+  defp percent(rate), do: "#{round(rate * 100)}%"
+
+  @doc "A frame carrying this scope, as a connected agent's call arrives with."
+  @spec frame(map()) :: Frame.t()
+  def frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
+
+  defp text(response) do
+    response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
+  end
+
+  # The id out of what `start_agent` answered. Read rather than looked up,
+  # because "the agent that was started" is what the operator was told, and a
+  # query could find a different one.
+  defp agent_id_in(said) do
+    case Regex.run(~r/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/, said) do
+      [_, id] -> id
+      nil -> nil
+    end
+  end
+
+  # Tool names out of a rendered conversation. `MainAgent.turn_line/1` prints a
+  # call as `[<agent>] called <name>(<args>) id=<id>`, and matching that shape
+  # rather than a bare name keeps a tool *mentioned* in prose from counting as
+  # a tool *called* — which is the distinction this whole module turns on.
+  defp tool_names(rendered) do
+    ~r/^\s*\[[^\]]+\]\s+called\s+([a-z][a-z0-9_]*)\(/m
+    |> Regex.scan(rendered)
+    |> Enum.map(fn [_, name] -> name end)
+  end
+end

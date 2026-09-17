@@ -13,6 +13,8 @@ defmodule CodeMySpec.MixProject do
       compilers: compilers(Mix.env()),
       # sexy_spex's own docs require this: without it, a bare `mix spex`
       # compiles under :dev instead of :test, missing test/support paths.
+      # `cms.eval` is `mix spex` with one tag included, so it needs the same
+      # environment for the same reason.
       preferred_cli_env: [spex: :test],
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       # _spex.exs files are a separate suite run by `mix spex` (which loads
@@ -291,7 +293,9 @@ defmodule CodeMySpec.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   def cli do
     [
-      preferred_envs: [spex: :test, agent_test: :test]
+      # `cms.eval` is `mix spex` with one tag included, so it needs the same
+      # environment for the same reason.
+      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test]
     ]
   end
 
