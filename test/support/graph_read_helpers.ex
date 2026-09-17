@@ -84,6 +84,20 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   end
 
   @doc """
+  The same settled read, for one checkout.
+
+  A vantage no pass has computed is not in `Projection.vantages/1` yet, so the
+  first read of it is what puts it there and the second is the one that answers
+  from rows. That is the same double-read the no-argument clause does, and it
+  matters more here: a criterion comparing two checkouts reads one it has never
+  read before.
+  """
+  def read_settled_graph(context, working_copy_id) do
+    _first = read_graph(context, working_copy_id)
+    read_graph(context, working_copy_id)
+  end
+
+  @doc """
   One requirement out of a graph read, by name, or `nil`.
 
   `nil` is a real answer and a common one: a requirement exists only while its
