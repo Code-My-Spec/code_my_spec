@@ -4,6 +4,19 @@ defmodule CodeMySpec.Analysis.Run do
 
   Each row answers "what ran, when, over which inputs, and how it went" for
   one analyzer source (`compiler`, `credo`, `exunit`, `spex`) in one project.
+
+  `sobelow` is a real, working analyzer (`StaticAnalysis.Analyzers.Sobelow`,
+  `Analysis.Runners.run/4`, `CmsHarness.Analysis`) deliberately NOT in this
+  ledger yet. `stale_sources/1` in `Promotion` requires every member of
+  `Run.sources()` to be fresh before any promotion, unconditionally, by
+  design — the codebase's own comment there rejects config-based exemptions
+  from that list on the grounds that narrowing it "would let a project
+  promote a commit [a source] had never once run against." Adding `sobelow`
+  here makes that same unconditional demand of a security scan, silently
+  answering a question `9a78afa1` explicitly left open: whether a security
+  scan should gate every promotion the same way a test suite does, given the
+  two have different costs and cadences. Wire it in once that's decided, not
+  as a side effect of registering it.
   The `input_fingerprint` is a hash over the File rows relevant to that source,
   computed at enqueue time (never at completion — mid-run edits must read as
   stale on the next check). A completed run whose fingerprint matches the

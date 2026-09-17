@@ -22,6 +22,8 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Problems
 
+  # "sobelow" deliberately excluded — see the comment on CodeMySpec.Analysis.Run's
+  # @sources for why it isn't in the ledger yet (`9a78afa1`).
   @valid_sources ~w(compiler credo exunit spex)
 
   # Long enough that reaching it means something is broken rather than slow.

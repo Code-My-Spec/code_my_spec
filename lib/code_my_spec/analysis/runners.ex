@@ -83,11 +83,12 @@ defmodule CodeMySpec.Analysis.Runners do
   #
   # Goes straight to `Analyzers.Credo`, not through `StaticRunner.run/3`,
   # because that generic interface answers `{:ok, [Problem.t()]}` for every
-  # analyzer it wraps — no raw output channel, since Sobelow and
-  # SpecAlignment share the same contract and neither needed one before this.
-  # `run_with_output/2` is the one place that contract was loosened, for
-  # exactly this caller. `available?/1` is checked here explicitly since
-  # skipping `StaticRunner` also skips its availability check.
+  # analyzer it wraps — no raw output channel. `run_with_output/2` is the one
+  # place that contract was loosened, for exactly this caller — Sobelow now
+  # has the same, below; SpecAlignment still shares the generic contract
+  # because nothing has needed its raw output yet. `available?/1` is checked
+  # here explicitly since skipping `StaticRunner` also skips its availability
+  # check.
   def run("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
     runner_opts = [files: files] |> maybe_output_file(opts)
@@ -108,6 +109,31 @@ defmodule CodeMySpec.Analysis.Runners do
       end
     else
       {:error, "Analyzer credo is not available"}
+    end
+  end
+
+  # Always a full project sweep — `Analyzers.Sobelow.build_sobelow_args/1`
+  # takes no `--files`/scoped-path option, unlike credo, so there is no
+  # partial-run shape to preserve here.
+  def run("sobelow", %Scope{} = scope, _args, opts) do
+    runner_opts = maybe_output_file([], opts)
+
+    if Analyzers.Sobelow.available?(scope) do
+      case Analyzers.Sobelow.run_with_output(scope, runner_opts) do
+        {:ok, problems, output} ->
+          {:ok,
+           summarize(
+             problems,
+             if(problems == [], do: 0, else: 1),
+             %{"issues" => length(problems)},
+             output
+           )}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, "Analyzer sobelow is not available"}
     end
   end
 

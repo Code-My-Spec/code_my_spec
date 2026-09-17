@@ -47,10 +47,11 @@ defmodule CmsHarness.Analysis do
   alias CodeMySpec.Compile
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.CredoRun
+  alias CodeMySpec.StaticAnalysis.SobelowRun
 
   @output_cap 100_000
 
-  @sources ~w(compiler credo exunit spex)
+  @sources ~w(compiler credo exunit spex sobelow)
 
   @doc "The analyzer sources this harness knows how to run."
   @spec sources() :: [String.t()]
@@ -250,6 +251,27 @@ defmodule CmsHarness.Analysis do
     end
   rescue
     exception -> crashed("spex", exception)
+  end
+
+  defp execute("sobelow", env, _args) do
+    case SobelowRun.run(env, extra_env: AnalyzerEnv.extra_env(env, "sobelow")) do
+      {:ok, findings, output} ->
+        {:ok,
+         %{
+           "source" => "sobelow",
+           # Sobelow's own exit code is not carried: the server derives one
+           # from the finding count exactly as `Runners.run/4` does locally,
+           # matching credo's shape above.
+           "exit_status" => if(findings == [], do: 0, else: 1),
+           "diagnostics" => findings,
+           "output" => output
+         }}
+
+      {:error, reason} ->
+        {:error, to_string(reason)}
+    end
+  rescue
+    exception -> crashed("sobelow", exception)
   end
 
   defp execute(source, _env, _args), do: {:error, "unknown analyzer source: #{source}"}

@@ -23,6 +23,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
@@ -140,13 +141,34 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       true ->
         case story_spex_problems(scope, story) do
           [] ->
-            {:ok, _story} = Stories.set_specs_ready(scope, story, true)
+            {:ok, _story} =
+              Stories.set_specs_ready(scope, story, true,
+                at: DateTime.utc_now(),
+                commit: current_commit(scope)
+              )
+
             {:ok, :valid}
 
           problems ->
             {:ok, :invalid, build_feedback(Enum.map(problems, &{&1, story}))}
         end
     end
+  end
+
+  # Display data only (`51e319db`) — never read back for ancestry, only shown
+  # in a *different* checkout's stop-hook refusal so its reader can tell an
+  # old, earned-elsewhere latch from a fresh regression. `nil` on any
+  # failure, the same as `Promotion.Steps`' own `head/2`: this is a courtesy
+  # for a later message, never a correctness check, so a checkout with no
+  # commits yet or a transient git failure must not take the gate down over
+  # it.
+  defp current_commit(scope) do
+    case Environments.cmd(scope.environment, "git", ["rev-parse", "HEAD"], cd: scope.cwd) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   # The same question `bdd_specs_passing` asks, asked the same way, because an

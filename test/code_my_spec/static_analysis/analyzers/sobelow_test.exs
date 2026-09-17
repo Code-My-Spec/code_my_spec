@@ -310,9 +310,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       assert message =~ "never ran"
     end
 
-    test "valid JSON of the wrong shape is an error" do
+    # A bare array has no `{` at all, so the brace-scanning extraction (shared
+    # with CredoRun/SobelowRun, `9a78afa1`) reports it the same way as no JSON
+    # document at all -- there is no candidate object to try, which is a more
+    # accurate reason than "wrong shape" for input with no shape to find.
+    # `SobelowRun.extract_json/1` only ever succeeds on a decoded map that
+    # already has a `findings` key, so "found valid JSON with a findings key
+    # of the wrong shape" is no longer a reachable case through this path.
+    test "output with no JSON object in it at all is an error" do
       assert {:error, message} = Sobelow.parse_output_for_test(~s([1, 2, 3]))
-      assert message =~ "unexpected JSON structure"
+      assert message =~ "not JSON"
     end
 
     # The genuine clean sweep still reads as one: the document parsed and said

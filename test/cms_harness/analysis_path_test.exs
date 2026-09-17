@@ -150,8 +150,10 @@ defmodule CmsHarness.AnalysisPathTest do
     {:ok, _} = Projects.ensure_started(ctx.project.root)
     assert await_connected(ctx.project.root)
 
-    # There is no mix project in this directory at all, so credo cannot run.
-    FakeServer.request_analysis([%{"run_id" => 11, "source" => "sobelow", "args" => []}])
+    # A source name this harness genuinely has no clause for at all — distinct
+    # from "sobelow", which is now a real, wired-up source (`9a78afa1`) and
+    # would answer "not installed" here instead of "unknown analyzer source".
+    FakeServer.request_analysis([%{"run_id" => 11, "source" => "made_up_analyzer", "args" => []}])
 
     payload = await_result(11)
 
@@ -238,10 +240,11 @@ defmodule CmsHarness.AnalysisPathTest do
     # Two `mix test` processes in one `_build` corrupt it, which is the reason
     # the queue exists at all, and a second *pending* run for one source would
     # only ever deliver the same answer twice — so it is tied to the one
-    # execution that will, rather than superseded with nothing.
+    # execution that will, rather than superseded with nothing. A made-up
+    # source name, since "sobelow" is now a real, wired-up source (`9a78afa1`).
     FakeServer.request_analysis([
-      %{"run_id" => 21, "source" => "sobelow", "args" => []},
-      %{"run_id" => 22, "source" => "sobelow", "args" => []}
+      %{"run_id" => 21, "source" => "made_up_analyzer", "args" => []},
+      %{"run_id" => 22, "source" => "made_up_analyzer", "args" => []}
     ])
 
     result_21 = await_result(21)
@@ -251,7 +254,7 @@ defmodule CmsHarness.AnalysisPathTest do
     assert error =~ "unknown analyzer source"
 
     assert %{"status" => "error", "error" => ^error} = result_22,
-           "the tied request should get sobelow's real answer, not a synthetic " <>
+           "the tied request should get the real answer, not a synthetic " <>
              "'superseded' status carrying no data. Got: #{inspect(result_22)}"
 
     assert AnalysisServer.idle?(ctx.project.root)
