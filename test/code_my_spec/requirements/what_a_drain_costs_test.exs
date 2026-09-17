@@ -12,6 +12,19 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   That gap is the one that matters for this feature. Applying an observation is
   only worth the machinery if it is cheaper than recomputing, and "cheaper" is
   a number, not an argument.
+
+  ## Queries, not milliseconds
+
+  `DrainCost` measures duration too and this asserts on none of it, deliberately.
+  Watched on a loaded dev box: the same seventeen-query drain ran at 4ms and at
+  18ms per query within the same minute, so identical work read as a 4x
+  regression depending on what else the machine was doing. Query and row counts
+  did not move at all — seventeen for one checkout, thirty-two for two, fifty-one
+  when three profiles load, whatever the load average.
+
+  So duration measures the box and counts measure the work. An assertion on
+  duration is a flake that fires hardest exactly when the machine is busiest,
+  which is when a real regression is least likely to be what changed.
   """
   use CodeMySpecSpex.Case
 
