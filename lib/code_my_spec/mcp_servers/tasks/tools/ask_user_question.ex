@@ -67,6 +67,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
   use Anubis.Server.Component, type: :tool
 
+  require Logger
+
   alias Anubis.Server.Response
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Notifications
@@ -103,12 +105,53 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
         {:reply,
          Response.tool() |> Response.error("Could not reach the user: #{inspect(reason)}"), frame}
     end
+  rescue
+    exception ->
+      {:reply, Response.tool() |> Response.error(crashed(exception, __STACKTRACE__)), frame}
   end
 
   def execute(_params, frame) do
     {:reply,
      Response.tool()
      |> Response.error("questions is required and must be a non-empty list"), frame}
+  end
+
+  # A crash here costs more than a crash in most tools, which is why this is
+  # the one place that rescues rather than letting it propagate.
+  #
+  # `9f4eeb8f`: mid-QA on story 1005 this raised `internal_error: Tool
+  # execution crashed`, which killed the agent process immediately after the
+  # call. The rest of the turn went with it, the row was left claiming
+  # `running` with `turn_started_at` still set, and the question the agent had
+  # asked reached nobody until somebody restarted it by hand. A session lost
+  # its only channel to the operator, in the act of using it.
+  #
+  # Two things follow from that and both are here. An agent asking for a
+  # decision must end up either with the question delivered or with an answer
+  # it can act on — the issue's own words are "succeeds or fails without
+  # killing the process/losing the turn" — and this returns a refusal, which
+  # `Alloy` hands back as an ordinary tool result rather than a dead loop.
+  #
+  # And the exception has to survive somewhere. A later investigation read this
+  # whole call chain statically, found no candidate, and could not correlate
+  # anything because the incident predated log retention and nothing had
+  # recorded the real error. So the reason goes to the log with its stacktrace
+  # and into the agent's own transcript: the next occurrence is diagnosable
+  # rather than another unreproducible report.
+  defp crashed(exception, stacktrace) do
+    Logger.error(
+      "[AskUserQuestion] crashed: #{Exception.message(exception)}\n" <>
+        Exception.format_stacktrace(stacktrace)
+    )
+
+    """
+    The question was not delivered: #{Exception.message(exception)}
+
+    This is a fault in the tool rather than in what you asked, and it has been
+    logged with its stacktrace. Report it with `create_issue` (scope
+    `framework`) and carry on with anything the answer does not block — your
+    turn is intact, which is the part that used to be lost here.
+    """
   end
 
   # Four is Claude Code's own limit and the number a person will actually read
