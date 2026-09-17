@@ -43,6 +43,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # precondition true in the only way available — the provider is the thing
   # that decides, and the seam is how a criterion about *display* avoids
   # buying a machine to say so.
+  # `given_a_harnessed_checkout` is listed by the same precedent as
+  # `given_a_main_checkout`: its whole body is the drive. It makes a directory,
+  # joins `harness_project` for it — which is what mints the working copy — and
+  # points the agents' tool calls at that checkout's vantage. A criterion whose
+  # premise is "a checkout on the harness" has no other way to say it.
+  #
   # A channel is a public surface too. The widget half of a support conversation
   # has no other one — there is no page to mount, so joining the socket and
   # pushing to it IS driving the app. `join_widget` is listed by the same
@@ -211,6 +217,7 @@ defmodule CodeMySpec.SpexGivensTest do
     put_env! delete_env!
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
+    given_a_harnessed_checkout
     machine_out_of_reach
     main_answers user_answers
     Req.Test.stub

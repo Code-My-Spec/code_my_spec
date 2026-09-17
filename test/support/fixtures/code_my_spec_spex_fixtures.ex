@@ -2602,6 +2602,24 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
   defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
 
+  @doc """
+  Send every agent's turn events to the server over `socket`.
+
+  The one hop an in-process agent has always been missing. `CmsHarness.Agents`
+  defaults `on_event` to a lookup in the harness registry, which in a spex
+  finds nothing and answers `:ok` — so every agent the suite has ever started
+  ran with its transcript going nowhere, and a criterion asking what an agent
+  *did* had only the agent's own account of itself to read.
+
+  Through the bridge for the same reason `install_workspace_runner/2` is: a
+  criterion cannot name `CodeMySpecTest`, and should not.
+
+  `socket` must be a joined `harness_project` channel. Uninstalls itself when
+  the test ends; the key is global, so this is `async: false` territory.
+  """
+  @spec relay_turn_events(Phoenix.Socket.t()) :: :ok
+  defdelegate relay_turn_events(socket), to: CodeMySpecTest.TurnEventRelay, as: :install
+
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(id)

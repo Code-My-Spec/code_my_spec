@@ -333,11 +333,23 @@ defmodule CodeMySpec.Files do
   context — including the checkouts where the file was correctly gone, which
   could not resolve it because all four resolutions act on a file they do not
   have.
+
+  Excludes working copies whose `path_missing_since` is set (`e974ade5`). A
+  copy that no longer exists cannot send a final manifest saying so, so its
+  last claim would otherwise stand forever — one deleted checkout's file rows
+  from ten days ago outvoting every live checkout that has already dropped the
+  file. Scoped to one working copy this is a no-op: a caller reading its own
+  checkout's presence is never asking about a copy that is gone.
   """
   @spec component_ids_present(Scope.t()) :: MapSet.t(Ecto.UUID.t())
   def component_ids_present(%Scope{active_project_id: project_id} = scope) do
     File
-    |> where([f], f.project_id == ^project_id and not is_nil(f.component_id))
+    |> join(:inner, [f], wc in WorkingCopies.WorkingCopy, on: wc.id == f.working_copy_id)
+    |> where(
+      [f, wc],
+      f.project_id == ^project_id and not is_nil(f.component_id) and
+        is_nil(wc.path_missing_since)
+    )
     |> scope_to_harness(scope)
     |> select([f], f.component_id)
     |> Repo.all()

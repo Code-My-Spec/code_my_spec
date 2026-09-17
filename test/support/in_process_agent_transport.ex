@@ -31,10 +31,16 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     # A key is put on top for providers that need one: nothing here chats to
     # the agent, so none is ever spent, and a provider that needs a key and
     # does not get one is a different failure with its own criterion.
+    # `on_event` is where an agent's turn goes. The production default looks the
+    # copy's channel up in the harness registry and answers `:ok` when there is
+    # none — which in a spex is always — so a criterion that asks what an agent
+    # did had nothing to read. `TurnEventRelay` is that socket when a scenario
+    # installed one, and `nil` otherwise, which leaves the default alone.
     request =
       agent
       |> LaunchRequest.for()
       |> Map.put_new("api_key", "unused-in-process")
+      |> Map.put("on_event", CodeMySpecTest.TurnEventRelay.reporter())
 
     Agents.launch(request)
   end

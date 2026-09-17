@@ -36,33 +36,48 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   alias CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
+  alias CodeMySpec.McpServers.LocalServer
 
   # Nothing to close: this transport dispatches in-process and holds no client.
   @impl true
   def disconnect(_client), do: :ok
 
+  # `agent_id` is kept because it is what the connection carries in production:
+  # `CmsHarness.Mcp.connect/3` passes it so the server knows which agent is
+  # calling without the model being told its own id. Dropping it here meant
+  # every task tool an in-process agent called answered "no session_id and no
+  # agent id on this call, so there is no owner to find the task on" — the
+  # refusal written for a *misconfigured* connection, on a correct one.
   @impl true
   def connect(_name, opts) do
     case Keyword.get(opts, :command) do
       # A subprocess this VM is not going to start. What a browser on this
       # machine offers is set by the test the way the scope is, so a criterion
       # about reaching one does not need Chrome.
-      nil -> {:ok, {__MODULE__, Keyword.get(opts, :headers, %{})}}
+      nil -> {:ok, {__MODULE__, session(opts)}}
       _command -> {:ok, {__MODULE__, :browser}}
     end
   end
 
+  defp session(opts) do
+    %{
+      agent_id: Keyword.get(opts, :agent_id),
+      working_copy_id: Keyword.get(opts, :working_copy_id),
+      headers: Keyword.get(opts, :headers, %{})
+    }
+  end
+
   @impl true
-  def call({__MODULE__, _headers}, "run_script", %{"script" => script} = arguments) do
-    dispatch(RunScript, script_params(script, arguments))
+  def call({__MODULE__, session}, "run_script", %{"script" => script} = arguments) do
+    dispatch(RunScript, script_params(script, arguments), session)
   end
 
-  def call({__MODULE__, _headers}, "run_browser_script", %{"script" => script} = arguments) do
-    dispatch(RunBrowserScript, browser_params(script, arguments))
+  def call({__MODULE__, session}, "run_browser_script", %{"script" => script} = arguments) do
+    dispatch(RunBrowserScript, browser_params(script, arguments), session)
   end
 
-  def call({__MODULE__, _headers}, "tool_docs", arguments) do
-    dispatch(ToolDocs, docs_params(arguments))
+  def call({__MODULE__, session}, "tool_docs", arguments) do
+    dispatch(ToolDocs, docs_params(arguments), session)
   end
 
   def call({__MODULE__, :browser}, tool, arguments) do
@@ -71,8 +86,31 @@ defmodule CodeMySpecTest.InVmMcpTransport do
       else: {:error, "This machine's browser has no tool called #{inspect(tool)}."}
   end
 
-  def call({__MODULE__, _headers}, tool, _arguments) do
-    {:error, "This server has no tool called #{inspect(tool)}."}
+  # Everything else the agent's surface carries, dispatched the way the wire
+  # would have dispatched it.
+  #
+  # Until 2026-09-17 this clause was the refusal below and nothing else, so an
+  # in-process agent could reach exactly three tools: `run_script`,
+  # `run_browser_script` and `tool_docs`. Every direct one —
+  # `get_next_requirement`, `start_task`, `evaluate_task`, `tap_out` — answered
+  # "This server has no tool called …", which is the same sentence a genuinely
+  # missing tool answers with.
+  #
+  # Nothing noticed because nothing in the suite had ever let an agent take a
+  # real turn and then looked at what it called. The first thing that did
+  # (story 1070's criterion 3539) hit it on its first run, and the agent's own
+  # conduct was correct: it reported the refusal and would not improvise around
+  # it.
+  #
+  # `validate_input` then `handler.execute/2` is exactly what
+  # `Anubis.Server.Handlers.Tools.handle_call/3` does, so the coercion a tool
+  # relies on happens here too — a params map with string keys reaching a tool
+  # that reads atoms is a failure the real path does not have.
+  def call({__MODULE__, session}, tool, arguments) do
+    case Enum.find(LocalServer.__components__(), &(&1.name == tool)) do
+      nil -> {:error, "This server has no tool called #{inspect(tool)}."}
+      component -> dispatch_component(component, arguments || %{}, session)
+    end
   end
 
   # The deadline is carried, not honoured. Nothing here waits, and a stand-in
@@ -137,7 +175,17 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   defp docs_params(%{"names" => names}) when is_list(names), do: %{names: names}
   defp docs_params(_arguments), do: %{}
 
-  defp dispatch(tool, params) do
+  defp dispatch_component(%{validate_input: nil} = component, _arguments, session),
+    do: dispatch(component.handler, %{}, session)
+
+  defp dispatch_component(component, arguments, session) do
+    case component.validate_input.(arguments) do
+      {:ok, params} -> dispatch(component.handler, params, session)
+      {:error, errors} -> {:error, "#{component.name} was called wrong: #{inspect(errors)}"}
+    end
+  end
+
+  defp dispatch(tool, params, session) do
     case scope() do
       nil ->
         {:error,
@@ -145,12 +193,20 @@ defmodule CodeMySpecTest.InVmMcpTransport do
            "`:harness_mcp_scope` to the scope this agent runs as."}
 
       scope ->
-        {:reply, response, _frame} =
-          tool.execute(params, %Frame{assigns: %{current_scope: scope}})
+        {:reply, response, _frame} = tool.execute(params, frame(scope, session))
 
         answer(response)
     end
   end
+
+  # The frame the server builds for this connection. `agent_id` is an assign
+  # rather than an argument for the reason `CmsHarness.Mcp.connect/3` states:
+  # naming a subject is not claiming to be one, so who is calling comes off the
+  # connection and never out of the model's own words.
+  defp frame(scope, %{agent_id: agent_id}) when is_binary(agent_id),
+    do: %Frame{assigns: %{current_scope: scope, agent_id: agent_id}}
+
+  defp frame(scope, _session), do: %Frame{assigns: %{current_scope: scope}}
 
   # An `isError` response is the tool refusing, and a refusal has to arrive as
   # one — `run_script` reports a refused call by returning an error, and a

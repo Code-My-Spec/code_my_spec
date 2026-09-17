@@ -229,6 +229,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         blocking_section <>
         advisory_section <>
         assignment_note(blocking, advisory, Keyword.get(opts, :story_assignment, %{})) <>
+        specs_ready_note(blocking, Keyword.get(opts, :specs_ready_stamp, %{})) <>
         stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) <>
         attribution_note(session_paths, internal?)
 
@@ -349,6 +350,58 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp join_labels([one]), do: one
   defp join_labels([a, b]), do: "#{a} and #{b}"
   defp join_labels(many), do: Enum.join(many, ", ")
+
+  # When and where a blocking spex finding's specs_ready latch was earned
+  # (`51e319db`). The latch is project-wide and a checkout without the fix
+  # yet gets held to it same as everywhere else, by design — this is
+  # orientation, not an escape hatch, the same rule `assignment_note/3`
+  # follows: nothing here changes what blocks, it only gives a reader on a
+  # checkout that never made the fix something concrete to check (its own
+  # HEAD against the commit named here) before assuming they broke it.
+  defp specs_ready_note(_blocking, stamps) when map_size(stamps) == 0, do: ""
+
+  defp specs_ready_note(blocking, stamps) do
+    blocking
+    |> Enum.filter(&(&1.source == "spex" and is_binary(&1.file_path)))
+    |> Enum.map(& &1.file_path)
+    |> Enum.uniq()
+    |> Enum.flat_map(fn path ->
+      case Map.get(stamps, path) do
+        %{at: at, commit: commit} when not is_nil(at) or not is_nil(commit) ->
+          ["  - #{path} — #{stamp_text(at, commit)}"]
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.take(@per_source_list_cap)
+    |> case do
+      [] ->
+        ""
+
+      lines ->
+        "\n\nspecs_ready was earned at:\n" <>
+          Enum.join(lines, "\n") <>
+          "\n\nIf you don't recognize this as your own change, check whether your " <>
+          "checkout already has the commit named above before assuming you " <>
+          "introduced it — specs_ready is set once, project-wide, and every " <>
+          "checkout is held to it whether or not it has the fix yet."
+    end
+  end
+
+  defp stamp_text(nil, nil), do: "no record of when or on what commit"
+
+  defp stamp_text(at, commit) do
+    [time_phrase(at), commit_phrase(commit)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+  end
+
+  defp time_phrase(nil), do: nil
+  defp time_phrase(at), do: "#{DateTime.to_iso8601(at)}"
+
+  defp commit_phrase(nil), do: nil
+  defp commit_phrase(commit), do: "commit #{String.slice(commit, 0, 8)}"
 
   # `runs` carries what the ledger says about each source — age, duration,
   # whether an edit landed inside the window, and why it never completed. One

@@ -33,6 +33,19 @@ defmodule CodeMySpec.Intake.ConversationTest do
     def conclude(_plan, _turns), do: {:ok, %{needs_sign_in: false, separate_copies: false}}
   end
 
+  defmodule HangingShaper do
+    @moduledoc "Never returns, never crashes — the shape the stall watchdog covers."
+    @behaviour CodeMySpec.Intake.Shaper
+
+    @impl true
+    def shape(_plan, _turns) do
+      Process.sleep(:infinity)
+    end
+
+    @impl true
+    def conclude(_plan, _turns), do: {:ok, %{needs_sign_in: false, separate_copies: false}}
+  end
+
   setup do
     # Shared mode, so the conversation and the task it owns can both see the
     # connection. Allowing them one at a time raced: the task is spawned by the
@@ -87,6 +100,30 @@ defmodule CodeMySpec.Intake.ConversationTest do
              "process is that a socket going away must not take the call with it."
 
     assert Process.alive?(conversation), "the conversation died with its caller"
+  end
+
+  test "a call that neither finishes nor crashes is marked failed once it stalls (7df5485e)", %{
+    plan: plan
+  } do
+    :ok = Intake.subscribe(plan)
+
+    previous = Application.get_env(:code_my_spec, Intake, [])
+    Application.put_env(:code_my_spec, Intake, Keyword.put(previous, :shaper, HangingShaper))
+    Application.put_env(:code_my_spec, :intake_shape_timeout_ms, 50)
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, Intake, previous)
+      Application.delete_env(:code_my_spec, :intake_shape_timeout_ms)
+    end)
+
+    conversation = Conversation.ensure_started(plan)
+    {:ok, _plan} = Conversation.said(plan, "a mahjong game with an ai coach")
+
+    assert_receive {:shaped, shaped}, 5_000
+    assert shaped.shaping_status == :failed
+
+    assert Process.alive?(conversation),
+           "the watchdog should recover the conversation, not crash it"
   end
 
   test "two submissions do not race", %{plan: plan} do

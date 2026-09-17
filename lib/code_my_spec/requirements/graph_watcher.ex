@@ -209,8 +209,22 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   @spec settle(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
   def settle(project_id, vantage) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
-      [{pid, _}] -> GenServer.call(pid, {:settle, vantage}, 30_000)
-      [] -> :ok
+      # `ensure_watching/1` grants this watcher an allowance from whichever
+      # caller started or found it -- but a watcher outlives any single
+      # caller's own test, and this is the read path, hit far more often
+      # than `ensure_watching/1` ever is. Under exunit's harness-routed
+      # run this surfaced as `cannot find ownership process for #PID<...>
+      # using mode :manual`: the allowance this watcher was given by an
+      # earlier, now-finished test pointed at a connection that no longer
+      # exists. Re-granted here, from whoever is calling `settle/1` right
+      # now, so the watcher's connection is never older than its most
+      # recent reader.
+      [{pid, _}] ->
+        allow_sandbox(pid)
+        GenServer.call(pid, {:settle, vantage}, 30_000)
+
+      [] ->
+        :ok
     end
   catch
     :exit, _ -> :ok
