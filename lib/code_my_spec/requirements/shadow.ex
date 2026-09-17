@@ -64,8 +64,54 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @source {"shadow_requirements", Node}
-  @edge_source "shadow_requirement_edges"
+  @shadow_table {"shadow_requirements", Node}
+  @real_table {"requirements", Node}
+  @shadow_edges "shadow_requirement_edges"
+  @real_edges "requirement_edges"
+
+  @doc """
+  Whether the event path has taken over the tables readers actually read.
+
+  The two projections are the same shape in two tables, and which one is
+  authoritative is the whole question this module exists to answer. While it is
+  being answered, the pass writes `requirements` — what every reader loads — and
+  the event path writes `shadow_requirements`, where being wrong costs nothing.
+
+  Flipping this swaps them. The event path takes `requirements`, the pass is
+  demoted to `shadow_requirements`, and `diff/1` goes on comparing the same two
+  things in the same direction, because it asks for its two sides by role rather
+  than by name.
+
+  Runtime rather than a deploy, for the reason the projection was built behind a
+  flag at all: this is the change that cannot be half-made. If the event path is
+  wrong about one requirement, every reader is wrong about it, and the way back
+  has to be a config change rather than a release.
+
+  ## Not yet safe to turn on
+
+  This moves the node tables and nothing else, and the halves are not
+  symmetrical. `requirements` and `shadow_requirements` carry the same three
+  owner+name unique indexes, so either writer can own either table. The edge
+  tables do not match: `requirement_edges` joins two row ids, while
+  `shadow_requirement_edges` stores the entity/name key on both ends, because
+  the event path writes edges before it knows what row ids the nodes got.
+
+  So flipping this today would hand the event path `requirements` while leaving
+  `requirement_edges` to a pass that no longer writes the rows those ids point
+  at. The way through is the machinery already here — `NodeRepository`'s
+  `ids_by_key/3` resolves exactly that mapping and `replace_edges/3` already
+  takes it — so the event path resolves its keys after writing nodes and writes
+  real edges, rather than a second edge table existing at all. Until that lands,
+  leave this alone.
+  """
+  @spec inverted?() :: boolean()
+  def inverted?, do: Application.get_env(:code_my_spec, :graph_event_is_source, false)
+
+  # Where the event path writes, and where the pass does. Asked by role, so the
+  # call sites do not each have to know which way round the flag currently is.
+  defp event_target, do: if(inverted?(), do: @real_table, else: @shadow_table)
+  defp pass_target, do: if(inverted?(), do: @shadow_table, else: @real_table)
+  defp event_edges, do: if(inverted?(), do: @real_edges, else: @shadow_edges)
 
   @type entity :: {String.t(), term()}
 
@@ -118,7 +164,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
     Repo.transaction(fn ->
       Enum.each(covered, fn {entity_type, entity_id} ->
-        @source
+        event_target()
         |> where(^owner_filter(entity_type, entity_id))
         |> where(^copy_filter(working_copy_id))
         |> Repo.delete_all()
@@ -126,7 +172,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
       case rows do
         [] -> :ok
-        rows -> Repo.insert_all(@source, rows)
+        rows -> Repo.insert_all(event_target(), rows)
       end
     end)
 
@@ -150,7 +196,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def put_verdict(%Scope{} = scope, change) do
     {count, _} =
-      @source
+      event_target()
       |> where(^owner_filter(change.entity_type, change.entity_id))
       |> where(^copy_filter(Projection.vantage(scope)))
       |> where([n], n.name == ^change.name)
@@ -248,7 +294,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   # `put_verdicts/5` uses `unnest`. An empty array excludes nothing, because
   # `x = ANY('{}')` is false.
   defp settle_default(scope, entity_type, name, spec, ids, now) do
-    {table, _schema} = @source
+    {table, _schema} = event_target()
     owner = owner_column(entity_type)
 
     # `$2::text::jsonb`, never `$2::jsonb`. Postgres infers a parameter's type
@@ -304,7 +350,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   def put_verdicts(%Scope{} = scope, entity_type, name, changes, now) do
     now = now || NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-    {table, _schema} = @source
+    {table, _schema} = event_target()
 
     # `IS NOT DISTINCT FROM` rather than `=`, because the vantage is nullable and
     # the null means something: the unscoped row is the project-wide answer, and
@@ -393,7 +439,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
     {:ok, count} =
       Repo.transaction(fn ->
-        @edge_source
+        event_edges()
         |> where([e], e.project_id == type(^project_id, Ecto.UUID))
         |> where(^edge_copy_filter(working_copy_id))
         |> Repo.delete_all()
@@ -432,8 +478,8 @@ defmodule CodeMySpec.Requirements.Shadow do
     component_ids = Enum.map(ctx.components, & &1.id)
     story_ids = Enum.map(ctx.stories, & &1.id)
 
-    live = verdicts(Node, project_id, component_ids, story_ids, working_copy_id)
-    shadow = verdicts(@source, project_id, component_ids, story_ids, working_copy_id)
+    live = verdicts(pass_target(), project_id, component_ids, story_ids, working_copy_id)
+    shadow = verdicts(event_target(), project_id, component_ids, story_ids, working_copy_id)
 
     live_keys = MapSet.new(Map.keys(live))
     shadow_keys = MapSet.new(Map.keys(shadow))
@@ -490,7 +536,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   def clear(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     {component_ids, story_ids} = entity_ids(project_id)
 
-    @source
+    event_target()
     |> scoped(project_id, component_ids, story_ids)
     |> where(^copy_filter(Projection.vantage(scope)))
     |> Repo.delete_all()
@@ -666,22 +712,25 @@ defmodule CodeMySpec.Requirements.Shadow do
     rows
     |> Enum.chunk_every(@edge_chunk)
     |> Enum.reduce(0, fn chunk, total ->
-      total + elem(Repo.insert_all(@edge_source, chunk), 0)
+      total + elem(Repo.insert_all(event_edges(), chunk), 0)
     end)
   end
 
   defp shadow_edge_keys(project_id, working_copy_id) do
-    from(e in @edge_source,
-      where: e.project_id == type(^project_id, Ecto.UUID),
-      select: {
-        e.from_entity_type,
-        e.from_entity_id,
-        e.from_name,
-        e.to_entity_type,
-        e.to_entity_id,
-        e.to_name
-      }
-    )
+    # A pipeline rather than `from(e in ^...)`: the table is decided at runtime
+    # now, and the pin operator is not allowed in that position. A bare string
+    # is an `Ecto.Queryable` for a schemaless query, so piping it does the same
+    # thing the literal used to.
+    event_edges()
+    |> where([e], e.project_id == type(^project_id, Ecto.UUID))
+    |> select([e], {
+      e.from_entity_type,
+      e.from_entity_id,
+      e.from_name,
+      e.to_entity_type,
+      e.to_entity_id,
+      e.to_name
+    })
     |> where(^edge_copy_filter(working_copy_id))
     |> Repo.all()
     |> MapSet.new(fn {ft, fi, fname, tt, ti, tname} ->
