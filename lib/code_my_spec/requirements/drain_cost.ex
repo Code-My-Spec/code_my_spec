@@ -49,10 +49,58 @@ defmodule CodeMySpec.Requirements.DrainCost do
       record was the last drain.
   """
 
+  use GenServer
+
   require Logger
 
   @event [:code_my_spec, :requirements, :drain]
   @query_event [:code_my_spec, :repo, :query]
+  @table :requirements_drain_cost
+
+  @doc """
+  Owns the table the last drain per project is kept in, and nothing else.
+
+  The same shape `Faults` uses: a process whose only job is to hold a named
+  public table, so a reader can ask what the last drain cost without a
+  `GenServer.call` into whichever process happened to run it — the pass and the
+  event path are different processes, and a reader should not have to know
+  which one answered.
+  """
+  def start_link(opts), do: GenServer.start_link(__MODULE__, :ok, name: opts[:name] || __MODULE__)
+
+  @impl GenServer
+  def init(:ok) do
+    :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
+    {:ok, %{}}
+  end
+
+  @doc """
+  What the last drain on this project cost, or `nil` if none has run here.
+
+  Published so the cost rule is checkable by a reader rather than only by a
+  query, for the same reason `inputs_fingerprint` is on every node: "an
+  observation costs work in proportion to what it changed" is a claim about
+  numbers, and a claim whose evidence lives only in a log line is one nothing
+  can assert against.
+
+  Queries and rows rather than milliseconds. Watched on a loaded box, the same
+  seventeen-query drain ran at 4ms and 18ms per query inside one minute, so
+  duration measures the machine while the counts measure the work. Duration is
+  carried anyway, because a human reading it wants it; nothing should assert on
+  it.
+  """
+  @spec last(Ecto.UUID.t() | nil) :: map() | nil
+  def last(project_id) when is_binary(project_id) do
+    case :ets.whereis(@table) do
+      :undefined -> nil
+      _ -> project_id |> then(&:ets.lookup(@table, &1)) |> unwrap()
+    end
+  end
+
+  def last(_no_project), do: nil
+
+  defp unwrap([{_project_id, report}]), do: report
+  defp unwrap([]), do: nil
 
   # "INSERT", "UPDATE", "DELETE" are all six characters, which is the whole
   # reason the classification is a prefix rather than a parse. A `SELECT` that
@@ -135,7 +183,37 @@ defmodule CodeMySpec.Requirements.DrainCost do
     }
 
     :telemetry.execute(@event, measurements, meta)
+    record(meta, measurements)
     log(measurements, meta)
+  end
+
+  # Last drain wins, deliberately. A reader asking what an observation cost
+  # means the one it just caused, and keeping a history here would be a second,
+  # worse copy of the telemetry the log and LiveDashboard already carry.
+  defp record(%{project_id: project_id} = meta, measurements) when is_binary(project_id) do
+    case :ets.whereis(@table) do
+      :undefined ->
+        :ok
+
+      _ ->
+        :ets.insert(@table, {project_id, report(meta, measurements)})
+        :ok
+    end
+  end
+
+  defp record(_meta, _measurements), do: :ok
+
+  defp report(meta, measurements) do
+    %{
+      kind: meta.kind,
+      duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
+      queries: measurements.queries,
+      rows_written: measurements.rows_written,
+      observations: Map.get(meta, :observations),
+      handled: Map.get(meta, :handled),
+      recomputed: Map.get(meta, :recomputed),
+      vantages: Map.get(meta, :vantages)
+    }
   end
 
   # The numbers inline in the message, because this is read by grepping a log

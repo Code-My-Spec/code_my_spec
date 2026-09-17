@@ -8,6 +8,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecLocalWeb.RequirementsMarkdown
@@ -49,6 +50,13 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       computed_at: computed_at,
       served_from: served_from,
       watcher: watcher_report(GraphWatcher.status(scope.active_project_id)),
+      # What the last drain on this project cost. Here for the same reason
+      # `inputs_fingerprint` is on every node: "an observation costs work in
+      # proportion to what it changed" is a claim about numbers, and one whose
+      # evidence lives only in a log line cannot be asserted against from
+      # outside. Queries, rows and checkouts settled — not milliseconds, which
+      # measure the machine rather than the work.
+      last_drain: DrainCost.last(scope.active_project_id),
       nodes: Enum.map(nodes, &node_report/1)
     })
   end
