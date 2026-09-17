@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3537Spex do
 
       when_ "the scenario is run repeatedly against the same seeded project", context do
         measured =
-          measure("a behaviour under measurement", fn run ->
+          measure("a behaviour under measurement", 10, fn run ->
             {Enum.at(context.held, run - 1), "run #{run}"}
           end)
 

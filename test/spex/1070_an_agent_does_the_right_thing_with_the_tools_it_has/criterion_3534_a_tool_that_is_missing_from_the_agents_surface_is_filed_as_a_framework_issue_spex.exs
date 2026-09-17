@@ -33,6 +33,9 @@ defmodule CodeMySpecSpex.Story1070.Criterion3534Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
+  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
+  # drives a surface and far too short for one that drives ten agents.
+  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -58,7 +61,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3534Spex do
                 "Before you start, call `list_my_open_tasks` to see what you are " <>
                   "already holding. It is on your surface."
 
-              observe(context, [role: "coding", say: told], fn _agent ->
+              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
                 filed_at?(context, "framework")
               end)
             end)

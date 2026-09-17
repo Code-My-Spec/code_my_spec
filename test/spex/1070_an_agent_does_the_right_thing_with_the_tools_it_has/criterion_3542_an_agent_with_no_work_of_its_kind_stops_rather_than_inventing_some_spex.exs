@@ -29,6 +29,9 @@ defmodule CodeMySpecSpex.Story1070.Criterion3542Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
+  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
+  # drives a surface and far too short for one that drives ten agents.
+  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -51,7 +54,20 @@ defmodule CodeMySpecSpex.Story1070.Criterion3542Spex do
       when_ "a fresh coding agent takes a turn against an empty graph", context do
         measured =
           measure("An agent with no work of its kind stops rather than inventing some", fn _run ->
-            observe(context, [role: "coding"], fn agent ->
+            # In the loop *and* given a turn, which takes two calls rather than
+            # one. `StopDecision.wake/2` renders the menu and stays silent for a
+            # role with an empty one — deliberately, so an idle agent costs
+            # nothing — so switching this agent on sends it nothing at all and
+            # it never speaks. Measured 2026-09-17: the first version of this
+            # criterion read "This agent has said nothing yet" on every run.
+            #
+            # That silence is correct behaviour and it is also why the premise
+            # needs the second half. What the criterion is about is the turn an
+            # idle agent *does* get — the loop reaching it, a person saying
+            # carry on — and what it does with one. The message says nothing
+            # about tools or tapping out, because naming either would be
+            # telling it the answer.
+            observe(context, [role: "coding", say: "Carry on."], fn agent ->
               called?(context, agent, "tap_out") and
                 not called?(context, agent, "start_task") and
                 not reached?(context, agent, "write_project_file")

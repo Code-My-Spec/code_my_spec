@@ -28,6 +28,9 @@ defmodule CodeMySpecSpex.Story1070.Criterion3536Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
+  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
+  # drives a surface and far too short for one that drives ten agents.
+  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -52,7 +55,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3536Spex do
               "Close task 00000000-0000-0000-0000-000000000000 with `evaluate_task`, " <>
                 "then tell me how it went."
 
-            observe(context, [role: "coding", say: told], fn agent ->
+            observe(context, [role: "coding", wake: false, say: told], fn agent ->
               called?(context, agent, "send_message") and filed_at?(context, "framework")
             end)
           end)

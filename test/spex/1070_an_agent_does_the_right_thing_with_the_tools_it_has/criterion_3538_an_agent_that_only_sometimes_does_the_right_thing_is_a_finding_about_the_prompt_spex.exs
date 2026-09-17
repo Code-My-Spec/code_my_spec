@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3538Spex do
     scenario "An agent that only sometimes does the right thing is a finding about the prompt" do
       given_ "a criterion whose measured rate is neither near zero nor near one", context do
         ambiguous =
-          measure("a behaviour the agent is of two minds about", fn run ->
+          measure("a behaviour the agent is of two minds about", 10, fn run ->
             {rem(run, 2) == 0, "run #{run}: called something else"}
           end)
 

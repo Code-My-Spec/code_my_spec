@@ -276,6 +276,21 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   def settle_timeout, do: Application.get_env(:code_my_spec, :agent_eval_settle_timeout, 300_000)
 
   @doc """
+  How long a whole measured criterion may take, as a `@moduletag timeout:`.
+
+  `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
+  drives a surface and far too short for one that drives ten agents — measured
+  2026-09-17, where every behavioural criterion died at exactly 180000ms with
+  its `claude` subprocess orphaned and every completed run in that measurement
+  thrown away.
+
+  Derived from the run count rather than picked, so lowering `--runs` lowers
+  this too and a wedged run still fails rather than hanging forever.
+  """
+  @spec eval_timeout() :: timeout()
+  def eval_timeout, do: runs() * settle_timeout() + 120_000
+
+  @doc """
   Every tool this agent called, oldest first, by name.
 
   Through `read_agent_conversation` rather than Alloy's own history: the
@@ -439,9 +454,19 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   about the agent.
   """
   @spec measure(String.t(), (pos_integer() -> {boolean(), term()})) :: map()
-  def measure(behaviour, fun) do
-    total = runs()
+  def measure(behaviour, fun), do: measure(behaviour, runs(), fun)
 
+  @doc """
+  The same, over a count the caller states rather than the configured one.
+
+  For the two criteria whose subject is the judging rather than the agent:
+  `mix cms.eval --runs 1` is how you smoke-test a behavioural criterion, and it
+  would otherwise silently change what a rule about proportions is asserting
+  over — which is how 3537 came to fail with "the measurement did not run ten
+  times" against a measurement that was never meant to be configurable.
+  """
+  @spec measure(String.t(), pos_integer(), (pos_integer() -> {boolean(), term()})) :: map()
+  def measure(behaviour, total, fun) do
     outcomes =
       Enum.map(1..total, fn n ->
         case fun.(n) do

@@ -71,7 +71,37 @@ while absent from that surface — `ask_user`, `send_message`,
 agent hit `Unknown tool`. `list_tasks` is the seventh. Derivation ends the class;
 an assertion only holds the line.
 
-### 3. Agent-behaviour story with evals  ← next piece of work
+### 3. Agent-behaviour story with evals  ← **built, 2026-09-17**
+
+Story 1039 ("An agent does the right thing with the tools it has", spex directory
+`1070`). Three Amigos sealed; all twelve criteria have spec files;
+`bdd_specs_exist` satisfied. The measurements themselves are the remaining work
+— see "What the evals cost and where they run" below.
+
+What the first run found, before any criterion could be measured: **nothing in
+this suite had ever let an agent take a real turn and then looked at what it
+called**, and two things were quietly broken because of it.
+
+- `InVmMcpTransport` implemented three tools and answered every direct one —
+  `get_next_requirement`, `start_task`, `evaluate_task`, `tap_out` — with "This
+  server has no tool called …", which is the sentence a genuinely missing tool
+  answers with. It also dropped the `agent_id` the connection carries, so every
+  task tool refused with "no session_id and no agent id on this call": the
+  refusal written for a misconfigured connection, delivered on a correct one.
+- An in-process agent's turn events went nowhere, because `on_event` defaults to
+  a harness-registry lookup that finds nothing in a spex. So the transcript did
+  not exist and the only thing to ask was the agent itself, which cannot
+  distinguish a call from a claim about a call.
+
+Both fixed in `59c4b3ae5`. Worth noticing rather than passing over: every
+criterion in the fleet that "passes" today passed with an agent that could reach
+three tools.
+
+The agent's own conduct on both failures was correct — it reported the refusal
+and declined to improvise around it, twice, unprompted. That is criteria 3543
+and 3544's behaviour, observed before either was written.
+
+#### Original plan, kept for the record
 
 The agent is the user, the chat is the surface, tool calls are what you assert
 on. Expressed as a story with criteria so it lands in the same requirement graph
@@ -102,7 +132,43 @@ Two decisions already made:
   is a finding, not a nuisance: if the agent does the right thing only sometimes,
   the prompt is ambiguous, which is information we currently cannot get at all.
 
+### 3a. What the evals cost, and where they run
+
+One criterion is ten fresh agents each taking real turns against `claude -p`.
+Roughly a minute a run, so a criterion is ten to fifteen minutes and the story
+is two to three hours. That cannot live in the promote gate: the spex analyzer
+runs under a deadline, and a measurement that has to finish inside somebody
+else's deadline stops being one.
+
+So they carry `@moduletag :eval`, `config :ex_unit, exclude: [:eval]` keeps them
+out of every ordinary run, and `mix cms.eval` is the switch — `--runs N` to
+lower the count while writing one, `--pattern criterion_NNNN` for one,
+`CMS_EVAL_TRANSCRIPT=1` to print what the agent actually did. Run them when a
+role brief, a system prompt or a tool list changes; that is when the answer can
+have moved and the only time anything else would notice.
+
+Two of the twelve (3537, 3538) are about the judging rather than the agent, are
+deterministic, and run in the ordinary suite.
+
+**Open, and it matters.** `bdd_specs_passing` on this story is a latch set by a
+green spex run. Ten of the twelve files are excluded from that run, so the latch
+would claim green over ten criteria that never executed — which is the exact
+shape of the defect `SpecsPassingChecker`'s moduledoc was written about. The
+requirement's own wording ("and evaluated to record it") points at the answer:
+the eval run should be what records it. Not built.
+
 ### 4. Seed account, project and users as the eval substrate
+
+**Superseded in part by how 3 landed.** The behavioural criteria build their own
+seed inside the test database — `:synced_context_in_satisfied_project` for a
+project with work, a bare project for the idle case — because a spex cannot
+reach the dev database and a fixture-built project is the same on every run,
+which is what "the same seeded project" has to mean for a rate to be
+comparable.
+
+What is still wanted is the browser-QA half: a seeded account and project in dev
+that a QA agent can log into and watch. That was the original point and it is
+unaffected.
 
 Approved approach: a new account/project/users in the existing dev database,
 rather than a per-worktree dev database. (`config/dev.exs` hardcodes

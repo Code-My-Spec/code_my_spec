@@ -29,6 +29,9 @@ defmodule CodeMySpecSpex.Story1070.Criterion3535Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
+  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
+  # drives a surface and far too short for one that drives ten agents.
+  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -54,7 +57,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3535Spex do
                 "While reading the code you found that `Reservations.book/2` crashes " <>
                   "on an empty list instead of returning an error. Record it."
 
-              observe(context, [role: "coding", say: told], fn _agent ->
+              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
                 filed_at?(context, "app") and not filed_at?(context, "framework")
               end)
             end)
