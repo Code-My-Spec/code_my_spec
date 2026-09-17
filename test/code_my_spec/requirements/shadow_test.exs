@@ -56,6 +56,17 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert report.live > 0, "the live projection wrote nothing, so there is nothing to compare"
       assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
       assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
+
+      assert report.live_edges > 0,
+             "the live projection wrote no edges, so the topology comparison proves nothing"
+
+      assert report.edges_missing == 0,
+             "a seeded shadow is missing #{report.edges_missing} of #{report.live_edges} " <>
+               "edge(s): #{inspect(report.edge_sample)}"
+
+      assert report.edges_extra == 0,
+             "a seeded shadow holds #{report.edges_extra} edge(s) the pass does not: " <>
+               "#{inspect(report.edge_sample)}"
     end
   end
 
@@ -446,7 +457,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
   end
 
   defp assert_shadow_agrees(scope, writer) do
-    await_input_event(scope, writer)
+    assert_mark_recorded(scope, writer)
 
     project_live(scope)
     :ok = ShadowProjector.settle(scope.active_project_id)
@@ -458,44 +469,50 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
     assert report.disagree == 0,
            "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+
+    # Edges too, for the reason `Shadow.log/1` now gates on them: an edge is a
+    # prerequisite, so a missing one lets work start before the thing it waits
+    # on and an extra one blocks work that is ready. Both change the answer to
+    # "what should I do next", and this asserted neither — a writer that got
+    # every verdict right and the whole topology wrong passed here.
+    assert report.edges_missing == 0,
+           "#{writer} left the shadow missing #{report.edges_missing} edge(s) " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
+
+    assert report.edges_extra == 0,
+           "#{writer} left the shadow holding #{report.edges_extra} edge(s) the pass does not " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
   end
 
-  # Wait for the writer's own broadcast before draining the projector.
+  # The durable mark, not the broadcast.
   #
-  # `settle/1` is a `GenServer.call`, so it drains what is already in the
-  # projector's mailbox — and `GraphInputs.announce/2` reaches that mailbox
-  # through PubSub, which is asynchronous. The writer returning says the row is
-  # committed and says nothing about delivery, so a drain issued immediately
-  # after can run against a shadow the event has not reached and the diff then
-  # reports a disagreement that resolves microseconds later.
+  # This waited on `{:graph_inputs_changed, ...}` and reasoned that PubSub
+  # delivers in order, so a `call` issued after this process had the message
+  # would be served behind the projector's copy. Sound for one event and not for
+  # a writer that announces two — `accept_issue/2` moves issues *and* the story
+  # those issues gate — where the subscription lands between them, the receive
+  # returns on the first, and the drain runs before the second arrives.
   #
-  # Measured 2026-09-17: green in isolation every time, red on two consecutive
-  # full analyzer sweeps, naming a different story each run — the signature of
-  # a race that widens under load rather than of a projection that is wrong.
+  # Measured: green in isolation every time, red on four full analyzer sweeps
+  # across 2026-09-17, naming a different story each run. A wait that is right
+  # most of the time is the shape of that.
   #
-  # The subscription is what closes it, and no sleep is involved. PubSub
-  # delivers to subscribers in order, so once this process has the message the
-  # projector has it in its own mailbox too; a `call` issued afterwards is
-  # served behind it. Subscribing before the setup body would be simpler and is
-  # wrong — several tests in this file write during `setup`, so the event this
-  # is waiting for may already have been sent by then.
-  defp await_input_event(scope, writer) do
-    project_id = scope.active_project_id
-    :ok = GraphInputs.subscribe(project_id)
+  # A mark is a row the writer commits in its own transaction, so by the time
+  # the writer has returned it is there to be read. Asking the table is a state
+  # check with no hop to race, and it keeps what the old wait was also for: a
+  # writer that recorded nothing is a coverage failure, and it says so here
+  # rather than showing up below as a disagreement with no cause.
+  defp assert_mark_recorded(scope, writer) do
+    assert Invalidations.pending(scope.active_project_id) != [],
+           """
+           #{writer} recorded no invalidation.
 
-    receive do
-      {:graph_inputs_changed, ^project_id, _obs} -> :ok
-    after
-      2_000 ->
-        flunk("""
-        #{writer} never announced on the graph's input topic.
-
-        Every writer whose table the fingerprint hashes publishes there, so a
-        silent one means the shadow will never hear about this change either —
-        which is a coverage failure in the writer rather than a timing one, and
-        the diff below would report it as a disagreement with no cause.
-        """)
-    end
+           Every writer whose table the fingerprint hashes records one, so a
+           silent writer means the shadow will never hear about this change —
+           a coverage failure in the writer rather than a timing one.
+           """
   end
 
   describe "computing one entity" do

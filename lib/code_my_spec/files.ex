@@ -350,10 +350,32 @@ defmodule CodeMySpec.Files do
       f.project_id == ^project_id and not is_nil(f.component_id) and
         is_nil(wc.path_missing_since)
     )
-    |> scope_to_harness(scope)
+    |> scope_to_reading_copy(scope)
     |> select([f], f.component_id)
     |> Repo.all()
     |> MapSet.new()
+  end
+
+  # A reader that named no checkout is answered from the project's main one,
+  # not from every checkout at once. `WorkingCopies.reading_copy_id/1` is the
+  # rule and says why; this used to blend, and the paragraph above is what that
+  # costs — the failure it describes, with the checkouts swapped.
+  #
+  # Measured on dev, 2026-09-17: `CodeMySpecWeb.WorkingCopiesLive` has one file
+  # in the whole project, a spec in one worktree and in no other tree including
+  # main. Blended, it read as present, uncovered, and therefore an orphan the
+  # project had to resolve — reported to every agent at every checkout, none of
+  # which has the file. `Requirements.Profiles` reads main here and called the
+  # architecture clean; that was the correct answer and the two disagreed on it
+  # for as long as both existed.
+  #
+  # A project with no main copy still blends, because there is nothing to blend
+  # down to.
+  defp scope_to_reading_copy(query, %Scope{active_working_copy_id: copy} = scope) do
+    case copy || WorkingCopies.reading_copy_id(scope) do
+      nil -> query
+      reading -> where(query, [f], f.working_copy_id == ^reading)
+    end
   end
 
   # A `component_id` naming a component that no longer exists fails the whole

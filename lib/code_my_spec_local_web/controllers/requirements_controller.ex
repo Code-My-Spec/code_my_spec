@@ -57,6 +57,12 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       # outside. Queries, rows and checkouts settled — not milliseconds, which
       # measure the machine rather than the work.
       last_drain: DrainCost.last(scope.active_project_id),
+      # Which row-space answered, and whose tree those rows are about. Two
+      # facts, and a reader naming no checkout is where they differ: it is
+      # answered from the rows kept under no working copy, computed from the
+      # project's main checkout's files. Without this the graph carried the
+      # answers and nothing saying what they were an answer *about*.
+      vantage: Requirements.vantage_of(scope),
       nodes: Enum.map(nodes, &node_report/1)
     })
   end
@@ -80,12 +86,15 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     end
   end
 
-  # A requirement graph is a statement about a checkout. Without one the
-  # preloader reads every checkout's files together, so a file present in one
-  # and absent in another reads as present — which it warns about in as many
-  # words, calling an agent path here a bug. Fine for a project-wide view and
-  # wrong for any question about a particular copy, so `?working_copy=<id>`
-  # asks the question that copy's agents would ask.
+  # A requirement graph is a statement about a checkout, so a question about a
+  # particular copy has to name one: `?working_copy=<id>` asks what that copy's
+  # agents would ask.
+  #
+  # Naming none is not a blend. It used to be — a file present in one checkout
+  # and absent in another read as present — and since 2026-09-17 it resolves to
+  # the project's main copy, `WorkingCopies.reading_copy_id/1`. The `vantage`
+  # key on the response says which rows answered and whose tree they are about,
+  # because those are two facts and this is the request where they differ.
   defp scope_for(scope, %{"working_copy" => id}) when is_binary(id) and id != "",
     do: %{scope | active_working_copy_id: id}
 

@@ -326,6 +326,43 @@ defmodule CodeMySpec.WorkingCopies do
   def main(%Scope{}), do: nil
 
   @doc """
+  Which checkout a reader that named none is answered from.
+
+  Most readers name none — a browser has no checkout, and neither does anything
+  asking about the project rather than about a tree. Their answers still have to
+  come from *some* tree, because "this component has an implementation" is only
+  ever true from somewhere, and blending every checkout is the over-satisfaction
+  direction: a file present in one worktree and absent in another reads as
+  present. Measured 2026-09-12: twenty components read as having an
+  implementation that exists only in another worktree.
+
+  Two fields mean "main" and the application writes only one.
+  `designate_main/2` — the button on the working-copies page — sets
+  `working_copy.main`. `Requirements.Projection.vantage/1` reads
+  `project.default_working_copy_id`, which nothing in `lib/` writes at all.
+  Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had the
+  other field set. So the explicit setting wins where somebody made one, and
+  designating a main copy means something here where nobody did.
+
+  `nil` — a project with no checkout at all — still blends, because there is
+  nothing to blend down to and "this project has nothing" would be a worse
+  answer.
+
+  Here rather than in `Requirements`, because `Files` has to follow the same
+  rule and cannot depend on `Requirements`. It had its own, and the two
+  disagreed: see `Files.component_ids_present/1`.
+  """
+  @spec reading_copy_id(Scope.t()) :: Ecto.UUID.t() | nil
+  def reading_copy_id(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.one(
+      from p in Project, where: p.id == ^project_id, select: p.default_working_copy_id
+    ) ||
+      Repo.one(from w in WorkingCopy, where: w.project_id == ^project_id and w.main, select: w.id)
+  end
+
+  def reading_copy_id(%Scope{}), do: nil
+
+  @doc """
   Make this checkout the project's main working copy.
 
   Clears whichever copy held it first, because "at most one" is a database

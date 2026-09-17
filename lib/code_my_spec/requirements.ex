@@ -49,6 +49,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -181,6 +182,23 @@ defmodule CodeMySpec.Requirements do
   """
   @spec backlog_report(Scope.t()) :: map()
   def backlog_report(%Scope{} = scope), do: BacklogReport.build(scope)
+
+  @doc """
+  Which row-space answered this scope, and whose tree those rows are about.
+
+  Two different facts, and a reader that names no checkout is the case where
+  they differ: it is answered from the rows kept under no working copy, and
+  those rows were computed from the project's **main** checkout's files.
+  Collapsing them is how a checkout's own answers get served as though they
+  were the project's.
+
+  Unobservable from outside until now, which made the distinction unassertable:
+  the graph carried the answers and nothing saying what they were an answer
+  *about*.
+  """
+  @spec vantage_of(Scope.t()) :: %{rows: Ecto.UUID.t() | nil, files: Ecto.UUID.t() | nil}
+  def vantage_of(%Scope{} = scope),
+    do: %{rows: Projection.vantage(scope), files: Preloader.files_copy(scope)}
 
   @doc """
   Bring this project's rows up to date, and answer from the work just done.
