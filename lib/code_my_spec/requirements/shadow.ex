@@ -420,6 +420,13 @@ defmodule CodeMySpec.Requirements.Shadow do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
+    # Row ids as well as keys, so this table can eventually be the shape the real
+    # one is. An edge references rows in its own node table, and the two
+    # projections number their rows differently, so the ids are only meaningful
+    # beside the nodes this same sweep just wrote — which is why they are
+    # resolved here rather than carried in by the caller.
+    ids = ids_by_owner_key(project_id, working_copy_id)
+
     rows =
       edges
       |> Enum.uniq()
@@ -430,9 +437,11 @@ defmodule CodeMySpec.Requirements.Shadow do
           from_entity_type: ft,
           from_entity_id: to_string(fi),
           from_name: fname,
+          from_requirement_id: Map.get(ids, {ft, to_string(fi), fname}),
           to_entity_type: tt,
           to_entity_id: to_string(ti),
           to_name: tname,
+          to_requirement_id: Map.get(ids, {tt, to_string(ti), tname}),
           inserted_at: now
         }
       end)
@@ -713,6 +722,22 @@ defmodule CodeMySpec.Requirements.Shadow do
     |> Enum.chunk_every(@edge_chunk)
     |> Enum.reduce(0, fn chunk, total ->
       total + elem(Repo.insert_all(event_edges(), chunk), 0)
+    end)
+  end
+
+  # Every node this projection holds at this vantage, by the same key the edges
+  # name their ends with. `owner_key/4` already renders every owner as
+  # `{type, id-as-text, name}`, which is exactly the shape an edge end carries.
+  defp ids_by_owner_key(project_id, working_copy_id) do
+    {component_ids, story_ids} = entity_ids(project_id)
+
+    event_target()
+    |> scoped(project_id, component_ids, story_ids)
+    |> where(^copy_filter(working_copy_id))
+    |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.name})
+    |> Repo.all()
+    |> Map.new(fn {id, component_id, story_id, proj_id, name} ->
+      {owner_key(component_id, story_id, proj_id, name), id}
     end)
   end
 
