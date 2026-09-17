@@ -105,7 +105,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
 
         {:ok,
          context
-         |> Map.put(:first_after, linked?(read_settled_graph(context, context.first_id), context.story_id))
+         |> Map.put(
+           :first_after,
+           linked?(read_settled_graph(context, context.first_id), context.story_id)
+         )
          |> Map.put(
            :second_after,
            linked?(read_settled_graph(context, context.second_id), context.story_id)
@@ -145,9 +148,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
       &(&1["entity_type"] == "story" and to_string(&1["entity_id"]) == to_string(story_id) and
           &1["name"] == "component_linked")
     )
-    |> case do
-      nil -> nil
-      node -> node["satisfied"]
-    end
+    |> verdict_of()
   end
+
+  defp verdict_of(nil), do: nil
+  defp verdict_of(node), do: node["satisfied"]
 end
