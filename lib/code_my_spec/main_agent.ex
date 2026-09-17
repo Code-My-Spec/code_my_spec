@@ -548,13 +548,31 @@ defmodule CodeMySpec.MainAgent do
   @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def answer_question(%Scope{} = scope, question_id, answer, opts \\ []) do
-    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id) do
+    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
+         :ok <- answerable(question) do
       case within_scope(question, opts) do
         :ok -> weigh(scope, question, answer, opts)
         refusal -> refusal
       end
     end
   end
+
+  # A permission is not answerable with prose, and the queue holds both kinds.
+  #
+  # `list_open_questions/1` unions questions and permissions deliberately —
+  # both stop an agent identically — so `fetch_open_question/2` finds a
+  # `tap_out` and hands it over as if it were a question. Everything after that
+  # treats it as one, and the first thing to actually need a question row is
+  # `escalate_question/3` inside `weigh/4`: it looks the id up among
+  # `QuestionRequest`s, finds nothing, and raises `expected a map, got: nil` —
+  # a `BadMapError` three layers below a caller who asked a perfectly ordinary
+  # thing.
+  #
+  # Measured 2026-09-17 while granting two QA agents' tap-outs: an *unknown* id
+  # refused cleanly and a permission id crashed, which is the wrong way round —
+  # the one the caller can act on is the one that told them nothing.
+  defp answerable(%{kind: :permission}), do: {:error, :is_permission}
+  defp answerable(_question), do: :ok
 
   @doc """
   Settle one entry from the queue, whichever kind it is.
