@@ -737,16 +737,24 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   # Postgres binds one parameter per column per row and counts them in a 16-bit
-  # field — 65,535 for the whole statement, whatever its size. Nine columns
-  # times this project's topology is 106,569, so the write has to be chunked
-  # exactly as `NodeRepository.insert_every/3` chunks the node insert.
-  @edge_chunk div(60_000, 9)
+  # field — 65,535 for the whole statement, whatever its size — so the write has
+  # to be chunked exactly as `NodeRepository.insert_every/3` chunks the node
+  # insert.
+  #
+  # Measured from the row rather than written down. This was `div(60_000, 9)`
+  # until the rows learned their row ids and became eleven columns wide, and
+  # nothing recomputed the constant: 6,666 rows times eleven is 73,326, which is
+  # exactly what Postgres refused. Every edge write raised, the marks were left
+  # pending, and the projector retried the same failing write every three
+  # seconds. A budget that has to be edited in step with a map literal three
+  # hundred lines away is a budget that will be wrong again.
+  @bind_budget 60_000
 
   defp insert_edges([]), do: 0
 
-  defp insert_edges(rows) do
+  defp insert_edges([row | _] = rows) do
     rows
-    |> Enum.chunk_every(@edge_chunk)
+    |> Enum.chunk_every(div(@bind_budget, map_size(row)))
     |> Enum.reduce(0, fn chunk, total ->
       total + elem(Repo.insert_all(event_edges(), chunk), 0)
     end)
