@@ -60,9 +60,14 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
       # separate question — this one asks whether the mechanism works at all.
       Application.put_env(:code_my_spec, :graph_event_is_source, true)
 
-      CodeMySpec.Requirements.recompute(scope)
+      # The event path first. Inverted, it owns the tables `Projection.load/2`
+      # reads, and the pass's `verify_round_trip/4` reads them the moment it
+      # publishes — so recomputing first compares a fresh graph against tables
+      # the event path has not filled yet and warns, correctly, about a
+      # transition rather than about the mechanism.
       {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
       :ok = ShadowProjector.settle(scope.active_project_id)
+      CodeMySpec.Requirements.recompute(scope)
 
       report = Shadow.diff(scope)
 
