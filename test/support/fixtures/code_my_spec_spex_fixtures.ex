@@ -4537,6 +4537,53 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Start a full analyzer run, the way a real sweep enqueues one.
+
+  Split from `complete_analysis_run/2` so a scenario can put an edit between
+  the two: a file written after this call and read by `complete_analysis_run/2`
+  is what "in flight" means to `Coverage.seen_entries/3` — the analyzer never
+  saw it, and recording it anyway would be a false fact rather than a stale one.
+  """
+  @spec start_analysis_run(Scope.t(), String.t()) :: CodeMySpec.Analysis.Run.t()
+  def start_analysis_run(%Scope{} = scope, source) do
+    {:ok, run} =
+      CodeMySpec.Analysis.RunsRepository.start_run(scope, %{source: source, kind: :full})
+
+    run
+  end
+
+  @doc """
+  Finish a run through `Reconciler.reconcile/4` — the only path that ever
+  calls `Coverage.record/4`.
+
+  `fresh_analysis_runs/2` stamps the ledger directly and reaches `Coverage`
+  not at all, which is right for a fixture whose job is "this source is
+  current" and wrong for a criterion about what a run actually read: proving
+  that requires going through the producer it names.
+  """
+  @spec complete_analysis_run(Scope.t(), CodeMySpec.Analysis.Run.t()) :: :ok
+  def complete_analysis_run(%Scope{} = scope, run) do
+    {:ok, _finished} =
+      CodeMySpec.Analysis.Reconciler.reconcile(scope, run, %{
+        problems: [],
+        output: "",
+        exit_status: 0,
+        stats: %{}
+      })
+
+    :ok
+  end
+
+  @doc "Files a source's roles feed that it has never read — as the dev freshness page counts them."
+  defdelegate unread_files(scope, source), to: CodeMySpec.Analysis.Coverage, as: :unanalyzed_files
+
+  @doc "Files a source read whose content has since moved, with what it saw and what changed."
+  defdelegate stale_coverage(scope, source), to: CodeMySpec.Analysis.Coverage, as: :stale_report
+
+  @doc "Whether a source has read everything it should and none of it has moved since."
+  defdelegate coverage_fresh?(scope, source), to: CodeMySpec.Analysis.Coverage, as: :fresh?
+
+  @doc """
   Stamp completed analysis runs at the CURRENT input fingerprints.
 
   `tests_passing` / `spex_passing` require a fresh completed run in the
