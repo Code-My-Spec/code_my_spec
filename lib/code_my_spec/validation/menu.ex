@@ -377,9 +377,29 @@ defmodule CodeMySpec.Validation.Menu do
   defp backlog_note(1), do: ""
 
   defp backlog_note(_n) do
-    " The others are still open too; `list_tasks` shows them, and each one needs " <>
+    " The others are still open too; #{list_tasks()} shows them, and each one needs " <>
       "its own `evaluate_task`."
   end
+
+  # How to reach `list_tasks`, said the way the reader can actually act on it.
+  #
+  # This named the tool bare, as though it were one to call. It is not: story
+  # 1038's criterion 3015 keeps the in-BEAM surface to code mode's two plus
+  # `tool_docs`, deliberately, and `list_tasks` is reachable through a script
+  # like the other ninety-odd. So an agent following the instruction called it
+  # directly and got `no tool called "list_tasks"` — the sentence a genuinely
+  # missing tool answers with. Two of them read that as their bindings being
+  # broken and stood down; one lost a day (`23f5544e`).
+  #
+  # The menu names this on every landing where an agent holds more than one
+  # task, so it is not an occasional mistake — it is an instruction, given
+  # repeatedly, pointing at a door that is not there.
+  #
+  # Carrying the tool instead was tried and is wrong: 3015 asserts that nothing
+  # an agent carries is also reachable from a script, and adding this broke it
+  # immediately. The small surface is the decision; the prose was what
+  # disagreed with it.
+  defp list_tasks, do: "`run_script` with `list_tasks({})`"
 
   # What the task is about, when the row says. Both fields are nullable and a
   # task with neither is still worth naming as open.
@@ -403,7 +423,7 @@ defmodule CodeMySpec.Validation.Menu do
   # problems learns it is holding a task and never how to act on it.
   defp task_tally_note(rest) do
     if List.keymember?(rest, :task, 0) do
-      " `list_tasks` shows them, and each one needs its own `evaluate_task`."
+      " #{list_tasks()} shows them, and each one needs its own `evaluate_task`."
     else
       ""
     end

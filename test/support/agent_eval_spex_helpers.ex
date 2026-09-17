@@ -46,6 +46,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
@@ -106,12 +107,37 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
     # graph is computed from its own copy's files — the blended vantage reads a
     # file present in any checkout as present, which `Preloader.load/1` calls a
     # bug on an agent path in as many words.
-    scope_agents_at(%{context.scope | active_working_copy_id: reply.working_copy_id})
+    at_this_copy = %{context.scope | active_working_copy_id: reply.working_copy_id}
+    scope_agents_at(at_this_copy)
+    warm_the_graph(at_this_copy)
 
     context
     |> Map.put(:copy, copy)
     |> Map.put(:copy_id, reply.working_copy_id)
     |> Map.put(:harness_socket, socket)
+  end
+
+  # Compute this checkout's graph before anything is woken against it.
+  #
+  # A wake renders the role's menu from the requirements read model and stays
+  # silent for a role whose menu is empty — deliberately, so an idle agent costs
+  # nothing. A checkout that has just joined has no rows yet, so the first wake
+  # after a join can be sent into a graph that has not been computed and the
+  # agent is never given a turn at all.
+  #
+  # `Agents.wake_roles/3` names the same window: "a role whose work became
+  # actionable in the same breath as this completion may therefore not show
+  # until something recomputes. That is a nudge arriving late rather than a wake
+  # being lost." Late is fine for an agent that will be woken again; it is not
+  # fine for a measured run, which gets exactly one.
+  #
+  # Measured 2026-09-17: over three runs of criterion 3539, run 1 read "called
+  # nothing at all" and runs 2 and 3 were clean — the first paying for the cold
+  # graph and the rest inheriting a warm one.
+  defp warm_the_graph(scope) do
+    Fixtures.watch_graph(scope)
+    Fixtures.settle_graph(scope)
+    :ok
   end
 
   defp scope_agents_at(scope) do
@@ -134,8 +160,9 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   stand-down later reversed — rather than about the prompt and tools, which is
   what these criteria are about.
 
-  Answers the agent id. Stopping it is the caller's business; `stop/1` does it
-  and every measured run should, or ten runs leave ten agents on the machine.
+  Answers the agent id. Stopping it is the caller's business; `stop/2` does it
+  and every measured run should, or ten runs leave ten agents on the machine —
+  and the second run is already refused for it.
   """
   @spec fresh_agent(map(), String.t()) :: String.t()
   def fresh_agent(context, role \\ "coding") do
@@ -166,10 +193,26 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       """)
   end
 
-  @doc "Stop one, whatever state it reached."
-  @spec stop(String.t()) :: :ok
-  def stop(agent_id) do
-    Fixtures.halt_agent(agent_id)
+  @doc """
+  Stop one, whatever state it reached, through the tool an operator stops with.
+
+  `CmsHarness.Agents.halt/1` was the obvious call and is only half of it: it
+  ends the process and leaves the server's row saying `running`. Ten runs then
+  leave ten agents the project believes are alive — which the second run
+  already trips over, because `Agents.start_agent/2` refuses a second agent on
+  the project's main checkout and `main_agent/1` counts *any* running row
+  there.
+
+  Measured 2026-09-17: `--runs 1` green, `--runs 10` refused on run 2 with
+  "Something is already running in this project's main checkout". The refusal
+  was correct and the leak was mine.
+
+  `StopAgent` is what a person stops with, so what the next run starts against
+  is the state a real stop leaves behind.
+  """
+  @spec stop(map(), String.t()) :: :ok
+  def stop(context, agent_id) do
+    {:reply, _response, _} = StopAgent.execute(%{agent_id: agent_id}, frame(context))
     :ok
   end
 
@@ -208,7 +251,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
       {fun.(agent_id), transcript_of(context, agent_id)}
     after
-      stop(agent_id)
+      stop(context, agent_id)
     end
   end
 
