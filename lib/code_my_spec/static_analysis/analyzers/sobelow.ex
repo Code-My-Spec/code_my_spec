@@ -12,6 +12,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.StaticAnalysis.SobelowRun
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -38,20 +39,58 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   @impl true
   @spec run(Scope.t(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
   def run(%Scope{} = scope, opts \\ []) do
+    case run_with_output(scope, opts) do
+      {:ok, problems, _raw} -> {:ok, problems}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Same as `run/2`, plus the raw JSON `mix sobelow` printed.
+
+  Threads real output end to end the same way `Analyzers.Credo.run_with_output/2`
+  does, for the same reason: `Analysis.Runners` bypasses `StaticRunner`'s
+  generic `{:ok, [Problem.t()]}` contract to get a raw-output channel, since
+  `AnalyzerBehaviour` never had one (`9a78afa1`).
+  """
+  @spec run_with_output(Scope.t(), keyword()) ::
+          {:ok, [Problem.t()], String.t()} | {:error, String.t()}
+  def run_with_output(%Scope{} = scope, opts \\ []) do
     cwd = opts[:cwd] || scope.cwd
 
-    if is_nil(cwd) or cwd == "" do
-      {:error, "No working directory available"}
-    else
-      temp_file = CodeMySpec.TempFile.path("sobelow_output", ".json")
-      result = execute_and_parse(cwd, temp_file, scope, opts)
-      CodeMySpec.TempFile.cleanup(temp_file)
-      result
+    cond do
+      is_nil(cwd) or cwd == "" ->
+        {:error, "No working directory available"}
+
+      opts[:output_file] ->
+        read_from_output_file(opts[:output_file], scope)
+
+      true ->
+        temp_file = CodeMySpec.TempFile.path("sobelow_output", ".json")
+        result = execute_and_parse(cwd, temp_file, scope, opts)
+        CodeMySpec.TempFile.cleanup(temp_file)
+        result
     end
   rescue
     exception ->
       Logger.error("Sobelow analyzer crashed: #{inspect(exception)}")
       {:error, "Sobelow analyzer crashed: #{Exception.message(exception)}"}
+  end
+
+  defp read_from_output_file(path, scope) do
+    with {:ok, raw} <- File.read(path),
+         {:ok, findings} <- parse_json_output(raw) do
+      {:ok, convert_to_problems(findings, scope), raw}
+    else
+      {:error, %File.Error{} = err} ->
+        {:error, "Failed to read sobelow output file #{path}: #{Exception.message(err)}"}
+
+      {:error, reason} when is_atom(reason) ->
+        {:error, "Failed to read sobelow output file #{path}: #{reason}"}
+
+      {:error, reason} ->
+        {:error, "Failed to parse sobelow output file #{path}: #{inspect(reason)}"}
+    end
   end
 
   # Private functions
@@ -60,7 +99,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
     with {:ok, json_output} <- execute_sobelow(cwd, temp_file, opts, scope),
          {:ok, findings} <- parse_json_output(json_output),
          problems <- convert_to_problems(findings, scope) do
-      {:ok, problems}
+      {:ok, problems, json_output}
     else
       {:error, _reason} = error ->
         error
@@ -139,16 +178,18 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   # clean sweep.
   def parse_output_for_test(output), do: parse_json_output(output)
 
+  # Extraction lives in `SobelowRun` — one implementation, mirroring the
+  # reasoning `Analyzers.Credo`/`CredoRun` already established: slicing from
+  # the first or last `{` breaks the moment compilation chatter (which is full
+  # of braces) precedes the real document, so this tries each `{` in order and
+  # keeps the first that decodes with a `findings` key.
   defp parse_json_output(output) do
     output = String.trim(output)
 
     if output == "" do
       {:error, "sobelow produced no output; it likely never ran"}
     else
-      # Extract JSON from output (may have compilation messages before it)
-      json_output = extract_json(output)
-
-      case Jason.decode(json_output) do
+      case SobelowRun.extract_json(output) do
         {:ok, %{"findings" => findings}} when is_map(findings) ->
           # Sobelow returns findings grouped by confidence level
           all_findings =
@@ -163,65 +204,22 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
         {:ok, %{}} ->
           # A JSON object with no `findings` key really is a clean sweep — the
-          # document parsed and said nothing was found. Distinct from the two
-          # below, which are "this is not sobelow's output at all".
+          # document parsed and said nothing was found. Distinct from `:error`,
+          # which is "this is not sobelow's output at all".
           {:ok, []}
 
         {:ok, _other} ->
           {:error, "unexpected JSON structure from sobelow"}
 
-        {:error, %Jason.DecodeError{} = error} ->
+        :error ->
           # The excerpt travels with the error because the reason is almost
           # always in it — a mix refusal, a compile error, a stray log line.
           Logger.warning(
-            "[Sobelow] output is not JSON: " <>
-              (output |> String.trim() |> String.slice(0, 200))
+            "[Sobelow] no JSON document in sobelow's output: " <> String.slice(output, 0, 200)
           )
 
-          {:error,
-           "sobelow produced output that is not JSON (#{Exception.message(error)}): " <>
-             (output |> String.trim() |> String.slice(0, 300))}
+          {:error, "sobelow produced output that is not JSON: " <> String.slice(output, 0, 300)}
       end
-    end
-  end
-
-  defp extract_json(output) do
-    # Find the JSON object by looking for the sobelow-specific pattern.
-    # Sobelow's JSON output starts with `{"findings":` (or `{\n  "findings"` if
-    # pretty-printed). Compilation output may contain `{` characters, so we
-    # anchor to one of those two start markers.
-    case extract_at_marker(output, "{\"findings\"") do
-      :nomatch -> extract_at_marker(output, "{\n") |> json_or_default(output)
-      potential_json -> trim_to_last_brace(potential_json)
-    end
-  end
-
-  defp extract_at_marker(output, marker) do
-    case :binary.match(output, marker) do
-      {start, _} -> binary_part(output, start, byte_size(output) - start)
-      :nomatch -> :nomatch
-    end
-  end
-
-  defp json_or_default(:nomatch, output), do: output
-  defp json_or_default(potential_json, _output), do: trim_to_last_brace(potential_json)
-
-  defp trim_to_last_brace(potential_json) do
-    case find_last_brace(potential_json) do
-      nil -> potential_json
-      end_pos -> binary_part(potential_json, 0, end_pos + 1)
-    end
-  end
-
-  defp find_last_brace(str) do
-    str
-    |> String.graphemes()
-    |> Enum.with_index()
-    |> Enum.filter(fn {char, _} -> char == "}" end)
-    |> List.last()
-    |> case do
-      nil -> nil
-      {_, idx} -> idx
     end
   end
 
