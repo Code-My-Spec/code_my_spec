@@ -114,6 +114,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analysis.Reconciler
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
@@ -4547,7 +4549,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec start_analysis_run(Scope.t(), String.t()) :: CodeMySpec.Analysis.Run.t()
   def start_analysis_run(%Scope{} = scope, source) do
     {:ok, run} =
-      CodeMySpec.Analysis.RunsRepository.start_run(scope, %{source: source, kind: :full})
+      RunsRepository.start_run(scope, %{source: source, kind: :full})
 
     run
   end
@@ -4564,7 +4566,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec complete_analysis_run(Scope.t(), CodeMySpec.Analysis.Run.t()) :: :ok
   def complete_analysis_run(%Scope{} = scope, run) do
     {:ok, _finished} =
-      CodeMySpec.Analysis.Reconciler.reconcile(scope, run, %{
+      Reconciler.reconcile(scope, run, %{
         problems: [],
         output: "",
         exit_status: 0,
