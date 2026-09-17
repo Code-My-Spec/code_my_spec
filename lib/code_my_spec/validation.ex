@@ -248,8 +248,8 @@ defmodule CodeMySpec.Validation do
   # specs can drive the pipeline without depending on `System.cmd` side effects;
   # shipping host-local paths to another machine is not a smaller version of
   # that, it is a different feature. Issue `5151df37`, story 895 -- where the
-  # report's own guess was a `Mix.env()` gate, which is not what this is: the
-  # param is extracted in every environment and honoured on the local path.
+  # report's own guess was a build-environment gate, which is not what this is:
+  # the param is extracted in every environment and honoured on the local path.
   defp remote_validate_stop(scope, task, opts) do
     case Keyword.take(opts, @test_output_file_opts) do
       [] -> do_remote_validate_stop(scope, task, opts)
