@@ -274,6 +274,20 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # worktree does not. `live_vantages/2` prepends `nil` unconditionally, which
   # is right for a reader asking what to compute and wrong here: it would drag
   # the browser's view through a settle for every worktree on the project.
+  # The seed asks a different question, and it is the question `init/1` says it
+  # asks: not "which checkouts did these marks move" but "what is true". With no
+  # marks there is nothing to read a checkout off, so this answered the empty
+  # list and the whole-project computation ran against no vantage at all.
+  #
+  # The cost of that is exactly what `init/1` warns about: a projector that only
+  # ever applies deltas is permanently missing every entity nothing has touched
+  # since it started, and reports the gap as a coverage failure it cannot fix.
+  # Measured on dev, 2026-09-17 — nine verdicts wrong at three vantages, last
+  # settled before two fixes that would have corrected them, surviving four
+  # restarts of the process whose arrival was supposed to correct them.
+  defp vantages(%{seeded: false} = state, _marks),
+    do: Projection.live_vantages(state.scope, Projection.vantages(state.scope))
+
   defp vantages(state, marks) do
     named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
 
@@ -385,10 +399,21 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # A handler that wrote nothing matched no row, which means the event named an
   # entity this vantage has never projected. Worth a line, because a handler
   # silently writing nothing is precisely the failure that looks like success.
+  # `unhandled == []` is "nothing left to re-derive", which is true of a drain
+  # whose handlers covered everything — and of the seed, which has no marks at
+  # all. Those are not the same, and collapsing them is what stopped the seed
+  # seeding: `plan/2` still answers `:everything` for an unseeded projector, and
+  # nothing ever asked it. So the guard is "no work to do", and a projector that
+  # has not established what is true has work to do whatever its marks say.
   defp settle_vantage(vantage, {state, handled, recomputed}, marks, base_scope, config) do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
     {applied, unhandled} = apply_handlers(state, marks)
-    state = if unhandled == [], do: state, else: run(plan(state, unhandled), state, config)
+
+    state =
+      if unhandled == [] and state.seeded,
+        do: state,
+        else: run(plan(state, unhandled), state, config)
+
     log_handled(state, applied)
 
     {state, handled + length(applied), recomputed + length(unhandled)}
