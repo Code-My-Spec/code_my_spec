@@ -31,6 +31,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
@@ -962,7 +963,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     }
   end
 
+  # Nothing to verify once the pass is not what readers read.
+  #
+  # This writes through `NodeRepository`, which asks for its table by role, and
+  # reads back through `Projection.load/2`, which goes via `Node` and `Edge` —
+  # schemas bound to `requirements` and `requirement_edges` by name. While the
+  # pass owns those, the two are the same table and the check means what it
+  # says. Inverted, the pass writes the shadow tables and this reads the real
+  # ones, so it reports every row as missing on every publish: a check that
+  # always fires, which is a check nobody reads.
+  #
+  # The subject is genuinely gone rather than merely inconvenient — a demoted
+  # pass writing somewhere no reader looks is the arrangement, not a fault. What
+  # is *not* covered either way is the event path's own round trip, which
+  # nothing verifies today and which matters more after the swap than this ever
+  # did.
   defp verify_round_trip(scope, ctx, nodes, edges) do
+    if Shadow.inverted?() do
+      :ok
+    else
+      do_verify_round_trip(scope, ctx, nodes, edges)
+    end
+  end
+
+  defp do_verify_round_trip(scope, ctx, nodes, edges) do
     {read_nodes, read_edges} = Projection.load(scope, ctx)
 
     case Difference.describe(read_nodes, read_edges, nodes, edges) do

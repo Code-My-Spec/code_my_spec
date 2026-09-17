@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,8 +33,24 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
 
   defp edge(from, to), do: %{from: from, to: to}
 
+  # The nodes these edges join, projected the way anything else projects them.
+  #
+  # `write_edges/2` drops an edge whose endpoints do not resolve to a row —
+  # an endpoint with no row is not an edge, and the column is `null: false`
+  # now — so a test that writes edges into an empty projection writes nothing
+  # and proves nothing. It used to "pass" because the row carried the entity
+  # key beside a null id, which is exactly the shape that filled the table with
+  # edges pointing at nothing.
+  defp project_nodes(scope) do
+    CodeMySpec.Requirements.recompute(scope)
+    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
+    :ok = ShadowProjector.settle(scope.active_project_id)
+  end
+
   describe "writing a topology that has not moved" do
     test "writes nothing the second time", %{scope: scope} do
+      project_nodes(scope)
+
       edges = [
         edge(
           {"project", scope.active_project_id, "personas_complete"},
@@ -61,6 +78,8 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
     end
 
     test "writes only the difference when topology moves", %{scope: scope} do
+      project_nodes(scope)
+
       a =
         edge(
           {"project", scope.active_project_id, "personas_complete"},

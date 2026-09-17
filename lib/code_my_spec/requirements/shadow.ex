@@ -553,30 +553,28 @@ defmodule CodeMySpec.Requirements.Shadow do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    # Row ids as well as keys, so this table can eventually be the shape the real
-    # one is. An edge references rows in its own node table, and the two
-    # projections number their rows differently, so the ids are only meaningful
-    # beside the nodes this same sweep just wrote — which is why they are
-    # resolved here rather than carried in by the caller.
+    # An edge references rows in its own node table, and the two projections
+    # number their rows differently, so the ids are only meaningful beside the
+    # nodes this same drain just wrote — which is why they are resolved here
+    # rather than carried in by the caller.
     ids = ids_by_owner_key(project_id, working_copy_id)
 
+    # An endpoint with no row is not an edge.
+    #
+    # These used to be written with a null id beside the entity key, which is
+    # how a table full of edges pointing at nothing looked like a table full of
+    # edges. `edge_keys/6` has always dropped them on the read side; dropping
+    # them on the write side is the same rule applied where it can be enforced,
+    # and the column is `null: false` now.
     rows =
       edges
       |> Enum.uniq()
-      |> Enum.map(fn %{from: {ft, fi, fname}, to: {tt, ti, tname}} ->
-        %{
-          project_id: Ecto.UUID.dump!(project_id),
-          working_copy_id: working_copy_id && Ecto.UUID.dump!(working_copy_id),
-          from_entity_type: ft,
-          from_entity_id: to_string(fi),
-          from_name: fname,
-          from_requirement_id: Map.get(ids, {ft, to_string(fi), fname}),
-          to_entity_type: tt,
-          to_entity_id: to_string(ti),
-          to_name: tname,
-          to_requirement_id: Map.get(ids, {tt, to_string(ti), tname}),
-          inserted_at: now
-        }
+      |> Enum.flat_map(fn %{from: {ft, fi, fname}, to: {tt, ti, tname}} ->
+        case {Map.get(ids, {ft, to_string(fi), fname}), Map.get(ids, {tt, to_string(ti), tname})} do
+          {nil, _} -> []
+          {_, nil} -> []
+          {from_id, to_id} -> [%{from_requirement_id: from_id, to_requirement_id: to_id, inserted_at: now}]
+        end
       end)
 
     # The difference, not the whole set.
@@ -594,7 +592,7 @@ defmodule CodeMySpec.Requirements.Shadow do
     # fixed itself by flipping the flag.
     {:ok, count} =
       Repo.transaction(fn ->
-        held = held_edges(project_id, working_copy_id)
+        held = held_edges(Map.values(ids))
         wanted = MapSet.new(rows, &edge_identity/1)
 
         stale = for {identity, id} <- held, not MapSet.member?(wanted, identity), do: id
@@ -610,22 +608,20 @@ defmodule CodeMySpec.Requirements.Shadow do
   # as a `NOT IN`, because the set runs to tens of thousands and the bind limit
   # that broke the insert would break that the same way.
   #
-  # Identity rather than `on_conflict: :nothing`: this table carries no unique
-  # index on the pair of ends, so the database cannot tell a duplicate from a
-  # new row and every reprojection would append the whole set again.
-  defp held_edges(project_id, working_copy_id) do
+  # Scoped through the vantage's node ids rather than through a `working_copy_id`
+  # column, which this table no longer has and the real one never did. The ids
+  # are the ones `write_edges/2` has already resolved, so the narrowing costs
+  # nothing: no join, no second query. Checking the `from` end is enough —
+  # `compute_topology/3` builds edges within one vantage, and a node id belongs
+  # to exactly one.
+  defp held_edges([]), do: %{}
+
+  defp held_edges(node_ids) do
     event_edges()
-    |> where([e], e.project_id == type(^project_id, Ecto.UUID))
-    |> where(^edge_copy_filter(working_copy_id))
-    |> select(
-      [e],
-      {e.id, e.from_entity_type, e.from_entity_id, e.from_name, e.from_requirement_id,
-       e.to_entity_type, e.to_entity_id, e.to_name, e.to_requirement_id}
-    )
+    |> where([e], e.from_requirement_id in ^node_ids)
+    |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
     |> Repo.all()
-    |> Map.new(fn {id, ft, fi, fname, frid, tt, ti, tname, trid} ->
-      {{ft, fi, fname, frid, tt, ti, tname, trid}, id}
-    end)
+    |> Map.new(fn {id, from_id, to_id} -> {{from_id, to_id}, id} end)
   end
 
   defp delete_edges([]), do: 0
@@ -639,29 +635,23 @@ defmodule CodeMySpec.Requirements.Shadow do
     end)
   end
 
-  # What makes two edges the same edge, independent of which row is holding it.
-  # The row ids are part of an edge's identity, and leaving them out made the
-  # difference unable to repair the one thing that actually went wrong.
+  # What makes two edges the same edge: the rows it joins.
   #
-  # An edge references rows in its own node table by id. Keyed on the entity/name
-  # pair alone, an edge whose endpoints had been deleted and reinserted — which
-  # `write/3` did to every covered row until it learned to upsert — matched by
-  # identity, was neither deleted nor reinserted, and kept pointing at rows that
-  # no longer existed. `edge_keys/6` resolves an edge through its own nodes, so
-  # it dropped out of every comparison: the edge was in the table and gone from
-  # the graph, permanently, because the only writer that could have fixed it
-  # believed it was already correct.
+  # This was the entity/name pair on both ends, and the ids were not in it. An
+  # edge whose endpoints had been deleted and reinserted — which `write/3` did
+  # to every covered row until it learned to upsert — matched by identity, was
+  # neither deleted nor reinserted, and kept pointing at rows that no longer
+  # existed. `edge_keys/6` resolves an edge through its own nodes, so it dropped
+  # out of every comparison: in the table and gone from the graph, permanently,
+  # because the only writer that could have fixed it believed it was correct.
   #
-  # Measured on dev, 2026-09-17, once `log/1` started printing the numbers:
-  # every project reported its whole topology missing — 659, 569, 148, 136
-  # edges live and zero resolvable in the shadow.
+  # Measured 2026-09-17, once `log/1` started printing the numbers: every
+  # project reported its whole topology missing — 27,045 edges live and zero
+  # resolvable at this project's unscoped vantage alone.
   #
-  # Ids are stable now, so in a steady state this changes nothing. It is what
-  # lets the backlog heal on the next topology write rather than never.
-  defp edge_identity(row) do
-    {row.from_entity_type, row.from_entity_id, row.from_name, row.from_requirement_id,
-     row.to_entity_type, row.to_entity_id, row.to_name, row.to_requirement_id}
-  end
+  # The keys are gone now and the ids are the whole identity, which is the same
+  # thing `requirement_edges` has always meant by an edge.
+  defp edge_identity(row), do: {row.from_requirement_id, row.to_requirement_id}
 
   @doc """
   How far the shadow is from the live projection, for this reader's vantage.
@@ -828,13 +818,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
-  # The same rule for the edge table, which has no `Node` schema behind it — a
-  # bare source, so the id has to be dumped rather than cast by Ecto.
-  defp edge_copy_filter(nil), do: dynamic([e], is_nil(e.working_copy_id))
-
-  defp edge_copy_filter(id),
-    do: dynamic([e], e.working_copy_id == type(^id, Ecto.UUID))
-
   defp row(node, entity_type, entity_id, working_copy_id, now) do
     %{
       name: node.name,
@@ -986,11 +969,24 @@ defmodule CodeMySpec.Requirements.Shadow do
   # hundred lines away is a budget that will be wrong again.
   defp insert_edges([]), do: 0
 
+  # `on_conflict: :nothing` on the pair of ends, which this table has a unique
+  # index for now and did not before — the reason the difference above had to
+  # decide what was new rather than letting the database tell it. It still does,
+  # because it also has to know what is *stale*; this is what makes a concurrent
+  # drain harmless rather than a duplicate. Same options
+  # `NodeRepository.replace_edges/3` passes for the real table, which is the
+  # writer this one becomes at the swap.
   defp insert_edges([row | _] = rows) do
     rows
     |> Enum.chunk_every(div(@bind_budget, map_size(row)))
     |> Enum.reduce(0, fn chunk, total ->
-      total + elem(Repo.insert_all(event_edges(), chunk), 0)
+      inserted =
+        Repo.insert_all(event_edges(), chunk,
+          on_conflict: :nothing,
+          conflict_target: [:from_requirement_id, :to_requirement_id]
+        )
+
+      total + elem(inserted, 0)
     end)
   end
 
