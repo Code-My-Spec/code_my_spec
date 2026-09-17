@@ -69,6 +69,21 @@ defmodule CodeMySpec.Requirements.Shadow do
   # it was `nil` in `delete_edges_outside/3` and `chunk_every/2` raised.
   @bind_budget 60_000
 
+  # What an upsert overwrites on conflict. Named columns rather than
+  # `:replace_all`, which would overwrite `id` and `inserted_at` — and the id is
+  # the whole point of upserting here.
+  @replace {:replace,
+            [
+              :satisfied,
+              :details,
+              :description,
+              :checked_at,
+              :inputs_fingerprint,
+              :owner_component_type,
+              :node_scope,
+              :updated_at
+            ]}
+
   @shadow_table {"shadow_requirements", Node}
   @real_table {"requirements", Node}
   @shadow_edges "shadow_requirement_edges"
@@ -144,7 +159,8 @@ defmodule CodeMySpec.Requirements.Shadow do
           edges_extra: non_neg_integer(),
           live_edges: non_neg_integer(),
           shadow_edges: non_neg_integer(),
-          sample: [String.t()]
+          sample: [String.t()],
+          edge_sample: [String.t()]
         }
 
   @doc """
@@ -160,43 +176,107 @@ defmodule CodeMySpec.Requirements.Shadow do
   @doc """
   Replace the shadow rows for everything this computation covered.
 
-  Delete-then-insert rather than the live path's upsert-then-reap. The live
-  writer has to handle a whole graph at once and reap what it did not produce;
-  this holds a known, small set of entities, so "these are their rows" is the
-  whole statement and the narrower operation is the honest one.
-
   `covered` and the nodes' own owners are deliberately separate inputs.
   `RequirementGraph.compute_entity/4` answers for a component's whole family —
   a context's template produces its children's rows, so they cannot be computed
   apart from it — and within that family a member can legitimately produce
-  nothing. Deleting by `covered` and inserting by each node's own owner is what
+  nothing. Reaping by `covered` and writing by each node's own owner is what
   makes "this component now has no requirements" expressible; keying both sides
   off the nodes would leave that component's old rows standing forever.
+
+  ## Upsert then reap, because a row id is referenced
+
+  This deleted every covered row and inserted fresh ones, which reads as the
+  narrower operation and is not: an inserted row gets a **new id**, and
+  `write_edges/2` stores `from_requirement_id` and `to_requirement_id`. So every
+  edge touching a rewritten node pointed at a row that no longer existed, and
+  `edge_keys/6` — which resolves an edge through its own node table — could not
+  resolve it. The edge was still in the table and gone from the graph.
+
+  Measured 2026-09-17, on a project with 27 edges: creating a component through
+  the real surface dropped the shadow's resolvable topology to 12 while the pass
+  went to 33. It was invisible for as long as it existed because `log/1`
+  reported node counts only, and only reprojecting topology in the same drain
+  put the ids back — so a verdict-only drain orphaned edges permanently.
+
+  `NodeRepository.upsert_all/3` has always done this properly for the real
+  table, on the same three partial unique indexes this table carries. After the
+  swap the event path inherits that writer, so the delete-then-insert version
+  would not have fixed itself by flipping the flag.
   """
   @spec write(Scope.t(), Enumerable.t(), [map()]) :: :ok
   def write(%Scope{} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    rows =
-      Enum.map(nodes, &row(&1, &1.entity_type, &1.entity_id, working_copy_id, now))
+    # `event_target()` whole, not just its table name. The tuple carries the
+    # `Node` schema, and that is what casts a `:binary_id` from its string form
+    # — without it Postgrex is handed a 36-character UUID where it wants 16
+    # bytes, and every write raises inside the projector's rescue.
+    target = event_target()
 
     Repo.transaction(fn ->
-      Enum.each(covered, fn {entity_type, entity_id} ->
-        event_target()
-        |> where(^owner_filter(entity_type, entity_id))
-        |> where(^copy_filter(working_copy_id))
-        |> Repo.delete_all()
-      end)
+      kept =
+        nodes
+        |> Enum.group_by(& &1.entity_type)
+        |> Enum.flat_map(fn {entity_type, group} ->
+          upsert_group(target, entity_type, group, working_copy_id, now)
+        end)
+        |> MapSet.new()
 
-      case rows do
-        [] -> :ok
-        rows -> Repo.insert_all(event_target(), rows)
-      end
+      reap(target, covered, kept, working_copy_id)
     end)
 
     :ok
   end
+
+  # One upsert per entity type, because each has its own conflict target.
+  # Answers the `{owner_id, name}` pairs it wrote, which is what the reap needs
+  # to know to leave them alone.
+  defp upsert_group(target, entity_type, nodes, working_copy_id, now) do
+    rows = Enum.map(nodes, &row(&1, entity_type, &1.entity_id, working_copy_id, now))
+
+    rows
+    |> Enum.chunk_every(div(@bind_budget, map_size(hd(rows))))
+    |> Enum.each(fn chunk ->
+      Repo.insert_all(target, chunk,
+        on_conflict: @replace,
+        conflict_target: conflict_target(entity_type)
+      )
+    end)
+
+    Enum.map(nodes, &{entity_type, to_string(&1.entity_id), &1.name})
+  end
+
+  # Everything the covered entities own that this write did not produce.
+  #
+  # One statement per entity rather than one for all of them, for the reason
+  # `owner_filter/2` is shaped the way it is: the three owner columns are
+  # different columns, and a covered set mixes types freely.
+  defp reap(target, covered, kept, working_copy_id) do
+    Enum.each(covered, fn {entity_type, entity_id} ->
+      names =
+        for {^entity_type, id, name} <- kept, id == to_string(entity_id), do: name
+
+      target
+      |> where(^owner_filter(entity_type, entity_id))
+      |> where(^copy_filter(working_copy_id))
+      |> where([n], n.name not in ^names)
+      |> Repo.delete_all()
+    end)
+  end
+
+  # The three partial unique indexes, matching `NodeRepository.owner/1`. An
+  # `unsafe_fragment` because the index is partial and Ecto cannot name one any
+  # other way; the predicates are literals here, not interpolation.
+  defp conflict_target("component"),
+    do: {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}
+
+  defp conflict_target("story"),
+    do: {:unsafe_fragment, "(story_id, name, working_copy_id) WHERE story_id IS NOT NULL"}
+
+  defp conflict_target("project"),
+    do: {:unsafe_fragment, "(project_id, name, working_copy_id) WHERE project_id IS NOT NULL"}
 
   @doc """
   Set one requirement's verdict, without recomputing anything around it.
@@ -623,7 +703,8 @@ defmodule CodeMySpec.Requirements.Shadow do
       edges_extra: MapSet.size(MapSet.difference(shadow_edges, live_edges)),
       live_edges: MapSet.size(live_edges),
       shadow_edges: MapSet.size(shadow_edges),
-      sample: sample(missing, extra, disagree)
+      sample: sample(missing, extra, disagree),
+      edge_sample: edge_sample(live_edges, shadow_edges)
     }
   end
 
@@ -639,13 +720,31 @@ defmodule CodeMySpec.Requirements.Shadow do
   @spec log(report()) :: :ok
   def log(%{live: 0, shadow: 0}), do: :ok
 
+  # Edges count, and they did not.
+  #
+  # `diff/1` has computed `edges_missing` and `edges_extra` since the edge
+  # tables were added, and this line printed neither and gated on neither. A
+  # projection with every verdict right and its whole topology wrong logged
+  # "agrees", and a run of passes at zero — the thing that earns the swap — was
+  # a statement about nodes that read like one about the graph.
+  #
+  # Both directions fail the verdict here, where node `extra` does not. An edge
+  # is a prerequisite: a missing one lets work start before the thing it waits
+  # on, an extra one blocks work that is ready, and both change the answer to
+  # "what should I do next" — which is the only question the graph is asked. A
+  # spare node costs a recompute and nothing else.
   def log(report) do
-    verdict = if report.missing == 0 and report.disagree == 0, do: "agrees", else: "differs"
+    clean? =
+      report.missing == 0 and report.disagree == 0 and
+        report.edges_missing == 0 and report.edges_extra == 0
 
     Logger.info(
-      "[Requirements] shadow #{verdict} — missing #{report.missing}, " <>
-        "extra #{report.extra}, disagree #{report.disagree} " <>
-        "(live #{report.live}, shadow #{report.shadow})" <> sample_suffix(report.sample)
+      "[Requirements] shadow #{if clean?, do: "agrees", else: "differs"} — " <>
+        "missing #{report.missing}, extra #{report.extra}, " <>
+        "disagree #{report.disagree} (live #{report.live}, shadow #{report.shadow}); " <>
+        "edges missing #{report.edges_missing}, extra #{report.edges_extra} " <>
+        "(live #{report.live_edges}, shadow #{report.shadow_edges})" <>
+        sample_suffix(report.sample ++ report.edge_sample)
     )
   end
 
@@ -766,6 +865,31 @@ defmodule CodeMySpec.Requirements.Shadow do
     "#{owner}/#{name}"
   end
 
+  # Which edges, not how many.
+  #
+  # A count says the topologies differ and leaves the reader to go and find out
+  # where, which for an edge means resolving four ids by hand. Three of each
+  # direction, named the way the node sample names a node.
+  defp edge_sample(live_edges, shadow_edges) do
+    Enum.concat([
+      MapSet.difference(live_edges, shadow_edges)
+      |> Enum.take(3)
+      |> Enum.map(&"edge missing #{edge_label(&1)}"),
+      MapSet.difference(shadow_edges, live_edges)
+      |> Enum.take(3)
+      |> Enum.map(&"edge extra #{edge_label(&1)}")
+    ])
+  end
+
+  defp edge_label({from, to}), do: "#{endpoint_label(from)} -> #{endpoint_label(to)}"
+
+  # `owner_key/4`'s shape, which is not `key_label/1`'s: an edge endpoint is
+  # already resolved to `{entity_type, id, name}` while a node key is still the
+  # four owner columns.
+  defp endpoint_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
+  defp endpoint_label({"story", id, name}), do: "story:#{id}/#{name}"
+  defp endpoint_label({"project", _id, name}), do: "project/#{name}"
+
   defp sample_suffix([]), do: ""
   defp sample_suffix(sample), do: "; " <> Enum.join(sample, ", ")
 
@@ -780,7 +904,8 @@ defmodule CodeMySpec.Requirements.Shadow do
       edges_extra: 0,
       live_edges: 0,
       shadow_edges: 0,
-      sample: []
+      sample: [],
+      edge_sample: []
     }
 
   # The live topology, as node-key pairs.

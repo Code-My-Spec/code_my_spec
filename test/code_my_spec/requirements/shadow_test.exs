@@ -56,6 +56,17 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert report.live > 0, "the live projection wrote nothing, so there is nothing to compare"
       assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
       assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
+
+      assert report.live_edges > 0,
+             "the live projection wrote no edges, so the topology comparison proves nothing"
+
+      assert report.edges_missing == 0,
+             "a seeded shadow is missing #{report.edges_missing} of #{report.live_edges} " <>
+               "edge(s): #{inspect(report.edge_sample)}"
+
+      assert report.edges_extra == 0,
+             "a seeded shadow holds #{report.edges_extra} edge(s) the pass does not: " <>
+               "#{inspect(report.edge_sample)}"
     end
   end
 
@@ -458,6 +469,21 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
     assert report.disagree == 0,
            "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+
+    # Edges too, for the reason `Shadow.log/1` now gates on them: an edge is a
+    # prerequisite, so a missing one lets work start before the thing it waits
+    # on and an extra one blocks work that is ready. Both change the answer to
+    # "what should I do next", and this asserted neither — a writer that got
+    # every verdict right and the whole topology wrong passed here.
+    assert report.edges_missing == 0,
+           "#{writer} left the shadow missing #{report.edges_missing} edge(s) " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
+
+    assert report.edges_extra == 0,
+           "#{writer} left the shadow holding #{report.edges_extra} edge(s) the pass does not " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
   end
 
   # Wait for the writer's own broadcast before draining the projector.
