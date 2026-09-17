@@ -44,6 +44,7 @@ defmodule CodeMySpec.Requirements do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
@@ -52,6 +53,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -160,6 +162,25 @@ defmodule CodeMySpec.Requirements do
   @spec incremental_report(Scope.t(), keyword()) :: map()
   def incremental_report(%Scope{} = scope, opts \\ []),
     do: IncrementalReport.build(scope, opts)
+
+  @doc """
+  What each checkout's graph looks like right now, side by side.
+
+  A verdict is a statement about one checkout, so the graph is ten parallel
+  answers rather than one — and both routing bugs found on 2026-09-17 were
+  invisible from any single vantage. See `Requirements.VantageReport`.
+  """
+  @spec vantage_report(Scope.t()) :: [map()]
+  def vantage_report(%Scope{} = scope), do: VantageReport.build(scope)
+
+  @doc """
+  Marks written and not yet applied, grouped by who wrote them.
+
+  A growing total means drains are failing or falling behind; a flat non-zero
+  one means the same thing more quietly. See `Requirements.BacklogReport`.
+  """
+  @spec backlog_report(Scope.t()) :: map()
+  def backlog_report(%Scope{} = scope), do: BacklogReport.build(scope)
 
   @doc """
   Bring this project's rows up to date, and answer from the work just done.
