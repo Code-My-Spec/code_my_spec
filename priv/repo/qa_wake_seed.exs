@@ -340,35 +340,52 @@ scope = %{scope | active_working_copy_id: copy.id}
 # Two roles, because 3249 and 3250 are a pair: one agent's kind of work appears
 # and the other's does not, and a single agent cannot show that the deciding is
 # per-listener.
-for {role, tools} <- [{"product", ["create_issue"]}, {"coding", ["create_issue"]}] do
+#
+# A count per role, not one each, because story 1004 needs shapes a single agent
+# per role cannot make:
+#
+#   * two coding agents — "only the assigned one is woken" is a claim about
+#     which listener hears, and one listener cannot fail to show it
+#   * a main agent — "a story interview reaches the main agent" has no subject
+#     otherwise, and the only main-role agent that existed was the real one on
+#     the top-level checkout, which no QA session may safely drive
+#
+# Deliberately no qa-role agent: "QA work waiting does not wake the coding
+# agent" needs the *work* outstanding, and an agent of that role would claim it
+# and take the premise away.
+for {role, tools, wanted} <- [
+      {"product", ["create_issue"], 1},
+      {"coding", ["create_issue"], 2},
+      {"main", ["create_issue"], 1}
+    ] do
   existing =
-    Repo.one(
+    Repo.all(
       from a in CodeMySpec.Agents.Agent,
         where:
           a.project_id == type(^project.id, :binary_id) and a.role == ^role and
             a.continuous == true
     )
 
-  case existing do
-    nil ->
-      {:ok, agent} =
-        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-          engine: :alloy,
-          provider: "claude-code",
-          role: role,
-          working_copy: local_path,
-          working_copy_id: copy.id,
-          project_id: project.id,
-          account_id: account.id,
-          tools: tools,
-          continuous: true,
-          status: :running
-        })
+  for agent <- existing, do: IO.puts("  agent: exists #{role} (#{agent.id})")
 
-      IO.puts("  agent: created #{role} (#{agent.id})")
+  # Idempotent on the count rather than on presence, so re-running tops the set
+  # up instead of stopping at the first one it finds.
+  for _ <- 1..max(wanted - length(existing), 0)//1 do
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "claude-code",
+        role: role,
+        working_copy: local_path,
+        working_copy_id: copy.id,
+        project_id: project.id,
+        account_id: account.id,
+        tools: tools,
+        continuous: true,
+        status: :running
+      })
 
-    agent ->
-      IO.puts("  agent: exists #{role} (#{agent.id})")
+    IO.puts("  agent: created #{role} (#{agent.id})")
   end
 end
 
@@ -382,12 +399,23 @@ Seeded.
   starts one on demand. `/dev/state?project_id=#{project.id}` shows whether it
   is running.
 
-  Reachable here (through the requirements graph page): 3244, 3351, 3303.
+  All of 1062's wake criteria are reachable here, conversation-watching ones
+  included. That was not true when this seed was written: `dispatch_message/3`
+  calls the transport before it records anything, so with no harness holding
+  this copy a message was undeliverable and never reached the conversation.
+  `1c5540ae` fixed onboarding (`2da6b0e7e`) and this copy is onboarded — check
+  it rather than trust this line:
 
-  NOT reachable here: 3242, 3243, 3249, 3250. They watch an agent's
-  conversation, and `dispatch_message/3` calls the transport before it records
-  anything — so with no harness holding this copy the message is undeliverable
-  and never reaches the conversation. Blocked on 1c5540ae, not on this seed.
+      curl -s localhost:4004/health | grep math_test_project
+
+  It should say `connected: true, onboarded: true, watching: true`. If it does
+  not, the criteria that read a conversation will fail for that reason and not
+  for the story's.
+
+  Story 1004's seven live-unreachable scenarios are the same class and the same
+  remedy: two coding agents for "only the assigned one is woken", a main agent
+  for "a story interview reaches the main agent", and no qa-role agent so that
+  "QA work waiting does not wake the coding agent" keeps its premise.
 
   The agents are rows, not processes. Nothing is running or spending tokens.
 
