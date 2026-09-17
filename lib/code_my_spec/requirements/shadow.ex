@@ -312,6 +312,23 @@ defmodule CodeMySpec.Requirements.Shadow do
   # as one array parameter instead of one bind per entity — the same reason
   # `put_verdicts/5` uses `unnest`. An empty array excludes nothing, because
   # `x = ANY('{}')` is false.
+  #
+  # Scoped to the project, which it was not, and `put_verdicts/5` beside it does
+  # not have to be: that one names each entity id, and an id belongs to one
+  # project. A default names none of them — it is "every row of this requirement
+  # the exceptions left over" — so without a project predicate the leftovers are
+  # every project's.
+  #
+  # The vantage column hid it for eight of nine vantages. A `working_copy_id` is
+  # a checkout of one project, so `IS NOT DISTINCT FROM $5` scopes the sweep by
+  # accident wherever the vantage is a real copy. `nil` is the vantage every
+  # project shares — it is what every reader that is not an agent resolves to —
+  # and there the predicate stopped scoping anything.
+  #
+  # Measured on dev, 2026-09-17: the unscoped project row for this project read
+  # `qa_journey_wallaby` satisfied, "4 file(s) at test/journeys/", against a tree
+  # that has no such directory. The four files are in another project's checkout,
+  # and its drain wrote this project's answer.
   defp settle_default(scope, entity_type, name, spec, ids, now) do
     {table, _schema} = event_target()
     owner = owner_column(entity_type)
@@ -332,6 +349,7 @@ defmodule CodeMySpec.Requirements.Shadow do
      WHERE n.name = $4
        AND n.working_copy_id IS NOT DISTINCT FROM $5
        AND n.#{owner} IS NOT NULL
+       AND #{project_predicate(entity_type)}
        AND NOT (n.#{owner} = ANY($6::#{id_type(entity_type)}[]))
        AND (n.satisfied IS DISTINCT FROM $1 OR n.details IS DISTINCT FROM $2::text::jsonb)
     """
@@ -343,11 +361,27 @@ defmodule CodeMySpec.Requirements.Shadow do
         now,
         name,
         cast_vantage(Projection.vantage(scope)),
-        ids
+        ids,
+        Ecto.UUID.dump!(scope.active_project_id)
       ])
 
     {:ok, rows}
   end
+
+  # Which of these rows are this project's.
+  #
+  # Three shapes because the column that answers it differs. A project row
+  # carries `project_id` and says so directly; a component or story row carries
+  # only its owner's id — `project_id` is null on all 14,975 of them — so the
+  # owner table is what knows. `EXISTS` against a primary key, once per swept
+  # requirement.
+  defp project_predicate("project"), do: "n.project_id = $7"
+
+  defp project_predicate("component"),
+    do: "EXISTS (SELECT 1 FROM components c WHERE c.id = n.component_id AND c.project_id = $7)"
+
+  defp project_predicate("story"),
+    do: "EXISTS (SELECT 1 FROM stories s WHERE s.id = n.story_id AND s.project_id = $7)"
 
   @doc """
   Correct many entities' verdicts for one requirement, in one statement.
