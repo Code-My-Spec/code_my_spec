@@ -51,6 +51,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3492Spex do
       given_ :synced_context_component
 
       given_ "a graph that has already been computed", context do
+        # given: already true — `:synced_context_component` above syncs the
+        # tree, which is what computes it. This block only reads, so that a
+        # story appearing later can be told apart from a first computation.
         graph = read_settled_graph(context)
 
         assert graph["nodes"] != [],
