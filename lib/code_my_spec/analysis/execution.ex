@@ -37,16 +37,66 @@ defmodule CodeMySpec.Analysis.Execution do
     args = run_args(run)
 
     case Runners.run(run.source, scope, args, runner_opts(run, opts)) do
-      {:ok, result} ->
+      {:ok, %{problems: problems} = result} ->
         ms = System.monotonic_time(:millisecond) - start
         Logger.info("[Analysis] run #{run.id} (#{run.source} #{inspect(args)}) finished in #{ms}ms")
-        Reconciler.reconcile(scope, run, result, opts)
+
+        if starved?(problems) do
+          Logger.warning(
+            "[Analysis] run #{run.id} (#{run.source}) skipped: every finding is an identical " <>
+              "exit against #{starved_pid(problems)} — one shared process starving, not a " <>
+              "verdict about the code (`5d798e1a`)"
+          )
+
+          Reconciler.fail(run, :resource_starved)
+        else
+          Reconciler.reconcile(scope, run, result, opts)
+        end
 
       {:error, reason} ->
         Reconciler.fail(run, reason)
         {:error, reason}
     end
   end
+
+  @doc """
+  Every finding in this run is an identical exit against one shared pid.
+
+  Public and separately tested, because it is a narrow, load-bearing claim
+  rather than an implementation detail of `execute/3`. A run this true of has
+  not produced a verdict about the code — it caught one process starving
+  (Briefly's, or whatever else serializes through a single GenServer) and
+  reported it once per test that happened to touch it. Deliberately narrow:
+  `5d798e1a` tried and explicitly rejected wall-clock ratios and "an
+  exception was raised" text as signals, because both can also match a run
+  with genuine failures mixed in. This cannot — it requires every single
+  finding to name the exact same pid, which a run with even one real
+  assertion failure will not do.
+  """
+  @spec starved?([%{message: String.t() | nil}]) :: boolean()
+  def starved?([]), do: false
+
+  def starved?(problems) do
+    problems
+    |> Enum.map(&exited_pid/1)
+    |> case do
+      [pid | _] = pids -> pid != nil and Enum.all?(pids, &(&1 == pid))
+      [] -> false
+    end
+  end
+
+  defp starved_pid(problems), do: problems |> Enum.map(&exited_pid/1) |> hd()
+
+  @exit_pid_pattern ~r/\*\* \(exit\) exited in: GenServer\.call\((#PID<[\d.]+>)/
+
+  defp exited_pid(%{message: message}) when is_binary(message) do
+    case Regex.run(@exit_pid_pattern, message) do
+      [_, pid] -> pid
+      _ -> nil
+    end
+  end
+
+  defp exited_pid(_problem), do: nil
 
   @doc """
   Should this run be skipped because the project does not compile?

@@ -63,6 +63,12 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
+  # Postgres binds one parameter per column per row and counts them in a 16-bit
+  # field. Declared here rather than beside its first user, because a module
+  # attribute is read at the point of use during compilation: defined lower down,
+  # it was `nil` in `delete_edges_outside/3` and `chunk_every/2` raised.
+  @bind_budget 60_000
+
   @shadow_table {"shadow_requirements", Node}
   @real_table {"requirements", Node}
   @shadow_edges "shadow_requirement_edges"
@@ -459,17 +465,70 @@ defmodule CodeMySpec.Requirements.Shadow do
         }
       end)
 
+    # The difference, not the whole set.
+    #
+    # This deleted every edge at this vantage and inserted them all back, on any
+    # observation that moved topology at all. Measured on this project: 124,760
+    # edges, so ~249,500 row writes to express one component appearing — and
+    # components move about fifty times an hour while agents work, which made
+    # this 79% of all write volume.
+    #
+    # `NodeRepository.replace_edges/3` has always done it properly for the real
+    # table: delete only what is no longer wanted, insert with
+    # `on_conflict: :nothing` so an unchanged edge costs nothing. After the swap
+    # the event path inherits this writer, so the naive version would not have
+    # fixed itself by flipping the flag.
     {:ok, count} =
       Repo.transaction(fn ->
-        event_edges()
-        |> where([e], e.project_id == type(^project_id, Ecto.UUID))
-        |> where(^edge_copy_filter(working_copy_id))
-        |> Repo.delete_all()
+        held = held_edges(project_id, working_copy_id)
+        wanted = MapSet.new(rows, &edge_identity/1)
 
-        insert_edges(rows)
+        stale = for {identity, id} <- held, not MapSet.member?(wanted, identity), do: id
+        fresh = Enum.reject(rows, &Map.has_key?(held, edge_identity(&1)))
+
+        delete_edges(stale) + insert_edges(fresh)
       end)
 
     {:ok, count}
+  end
+
+  # What this vantage already holds, by identity. Compared in memory rather than
+  # as a `NOT IN`, because the set runs to tens of thousands and the bind limit
+  # that broke the insert would break that the same way.
+  #
+  # Identity rather than `on_conflict: :nothing`: this table carries no unique
+  # index on the pair of ends, so the database cannot tell a duplicate from a
+  # new row and every reprojection would append the whole set again.
+  defp held_edges(project_id, working_copy_id) do
+    event_edges()
+    |> where([e], e.project_id == type(^project_id, Ecto.UUID))
+    |> where(^edge_copy_filter(working_copy_id))
+    |> select(
+      [e],
+      {e.id, e.from_entity_type, e.from_entity_id, e.from_name, e.to_entity_type, e.to_entity_id,
+       e.to_name}
+    )
+    |> Repo.all()
+    |> Map.new(fn {id, ft, fi, fname, tt, ti, tname} ->
+      {{ft, fi, fname, tt, ti, tname}, id}
+    end)
+  end
+
+  defp delete_edges([]), do: 0
+
+  defp delete_edges(ids) do
+    ids
+    |> Enum.chunk_every(@bind_budget)
+    |> Enum.reduce(0, fn chunk, total ->
+      {n, _} = event_edges() |> where([e], e.id in ^chunk) |> Repo.delete_all()
+      total + n
+    end)
+  end
+
+  # What makes two edges the same edge, independent of which row is holding it.
+  defp edge_identity(row) do
+    {row.from_entity_type, row.from_entity_id, row.from_name, row.to_entity_type,
+     row.to_entity_id, row.to_name}
   end
 
   @doc """
@@ -748,8 +807,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   # pending, and the projector retried the same failing write every three
   # seconds. A budget that has to be edited in step with a map literal three
   # hundred lines away is a budget that will be wrong again.
-  @bind_budget 60_000
-
   defp insert_edges([]), do: 0
 
   defp insert_edges([row | _] = rows) do

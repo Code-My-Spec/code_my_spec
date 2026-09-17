@@ -41,6 +41,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
     field :entity_type, :string,
       doc: "Filter to one entity type — `project`, `story`, or `component`."
 
+    field :entity_id, :string,
+      doc:
+        "Filter to one entity by id (a story id or a component id, as printed elsewhere — " <>
+          "accepts either a number or a string). Combine with `entity_type` to disambiguate " <>
+          "when ids collide across types. Previously accepted and silently ignored (`69b418e0`); " <>
+          "now actually narrows the result."
+
     field :requirement_name, :string,
       doc:
         "Exact match on the requirement name (e.g., `tests_passing`, `test_file`, `spec_valid`)."
@@ -103,6 +110,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
     # strictly opt-in.
     status = get_param(params, :status)
     entity_type = get_param(params, :entity_type)
+    entity_id = get_param(params, :entity_id)
     requirement_name = get_param(params, :requirement_name)
     module_filter = get_param(params, :module_filter)
     limit = get_param(params, :limit) || 100
@@ -112,6 +120,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
     %{
       status: status,
       entity_type: entity_type,
+      entity_id: entity_id,
       requirement_name: requirement_name,
       module_filter: module_filter,
       summary: summary,
@@ -124,6 +133,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
     nodes
     |> filter_by_status(opts.status)
     |> filter_by_entity_type(opts.entity_type)
+    |> filter_by_entity_id(opts.entity_id)
     |> filter_by_requirement_name(opts.requirement_name)
     |> filter_by_module(opts.module_filter)
   end
@@ -136,6 +146,16 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   defp filter_by_entity_type(nodes, type) when is_binary(type),
     do: Enum.filter(nodes, &(&1.entity_type == type))
+
+  # Compared as strings on both sides: a story's entity_id is an integer and a
+  # component's is a UUID string, and a caller may pass either shape (`69b418e0`
+  # reproduced with both `965` and `"965"` to rule out a type-coercion cause).
+  defp filter_by_entity_id(nodes, nil), do: nodes
+
+  defp filter_by_entity_id(nodes, id) do
+    id = to_string(id)
+    Enum.filter(nodes, &(to_string(&1.entity_id) == id))
+  end
 
   defp filter_by_requirement_name(nodes, nil), do: nodes
 
