@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias CodeMySpecSpex.Fixtures
@@ -50,6 +51,20 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
       given_ "a coding agent, working, with an enforceable problem recorded against it",
              context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
+
+        # A problem whose file was never synced is indistinguishable from one
+        # whose file has since been deleted, and gets cleared the same way —
+        # see Reconciler's own note on `patch_file_path/1`. Every working
+        # sibling that seeds a problem (8197, 8201, 8202, 3478) writes the
+        # file first for exactly this reason; this scenario was missing it.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "lib/my_app/accounts.ex",
+            "defmodule MyApp.Accounts do\nend\n"
+          )
+
+        Fixtures.deliver_manifest(context.scope)
 
         Fixtures.record_problem(context.scope, "credo", %{
           severity: :error,
