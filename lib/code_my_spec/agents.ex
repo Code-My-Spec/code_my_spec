@@ -1451,16 +1451,29 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # `:running` only, and that is the change `0c912986` asked for.
+  #
+  # `:starting` used to count, on the reasoning that an agent we have asked for
+  # is about to exist and a wake arriving a moment early costs nothing. It costs
+  # the wake: `StopDecision.wake/2` renders the menu, sends it to a process that
+  # is not there, and the work it named is then held by a row that will sit at
+  # `:starting` until somebody looks. Measured 2026-09-17 on `f8fbe49e` and
+  # `93bdde5a` — six hours each.
+  #
+  # Safe to narrow now and it was not before: `record_running_on_copy/3` settles
+  # a genuinely-started agent to `:running` from the harness's own process table
+  # within a beat of it coming up, so the window this exclusion opens is that
+  # beat rather than forever.
   defp project_wakeable?(agent, except_agent_id) do
     agent.continuous == true and
-      agent.status in [:starting, :running] and
+      agent.status == :running and
       agent.id != except_agent_id
   end
 
   defp wakeable?(agent, copy_id, except_agent_id) do
     agent.working_copy_id == copy_id and
       agent.continuous == true and
-      agent.status in [:starting, :running] and
+      agent.status == :running and
       agent.id != except_agent_id
   end
 
@@ -2069,6 +2082,66 @@ defmodule CodeMySpec.Agents do
     broadcast(scope, {:agents_reported, running})
 
     {:ok, running}
+  end
+
+  @doc """
+  Reconcile one checkout's agents against the process table on its machine.
+
+  The in-BEAM half of `record_reported/2`, and it exists because that function
+  could never see these agents. `LaneReporter` composes its set from Presence on
+  *lane* topics — a Claude Code lane joins one and an Alloy agent does not — so
+  an agent running inside the harness was invisible to the only mechanism that
+  could contradict its row. `agents.status` was therefore a claim written at a
+  clean start and a clean stop, with nothing between.
+
+  Measured 2026-09-17: `f8fbe49e` and `93bdde5a` read `starting` for six hours
+  with nothing behind them, while `wakeable?/3` still accepted `:starting` and
+  kept routing work to processes that had never started. That is `0c912986`, and
+  the reason the fix is here rather than in `wakeable?/3` is that the predicate
+  was reading the column honestly — the column was wrong.
+
+  `ids` come from `Engine.running/0`, a registry select filtered by
+  `Process.alive?`. Machine-wide, reconciled per copy: this harness serves this
+  checkout, so one of its agents absent from the machine's set is genuinely
+  gone, and an agent on another box is never in the candidate set to begin with.
+
+  Two directions, and both matter. Absent means stopped — the reap this whole
+  mechanism is for. Present means running, which is what lets `:starting` stop
+  being wakeable: an agent that really did come up says so within a beat rather
+  than keeping a status nobody will ever revise.
+
+  A copy that reports nothing is not the same as a copy reporting an empty set,
+  and only the second reaches here — nothing calls this without a report.
+  """
+  @spec record_running_on_copy(Scope.t(), Ecto.UUID.t() | nil, [String.t()]) :: :ok
+  def record_running_on_copy(%Scope{}, nil, _ids), do: :ok
+
+  def record_running_on_copy(%Scope{} = scope, copy_id, ids) when is_list(ids) do
+    alive = MapSet.new(ids)
+
+    scope
+    |> AgentsRepository.list_running()
+    |> Enum.filter(&(&1.working_copy_id == copy_id))
+    |> Enum.each(&settle_against(scope, &1, MapSet.member?(alive, &1.id)))
+
+    :ok
+  end
+
+  defp settle_against(_scope, %Agent{status: :running}, true), do: :ok
+
+  defp settle_against(scope, %Agent{} = agent, true) do
+    {:ok, _running} = AgentsRepository.update_agent(scope, agent, %{status: :running})
+    :ok
+  end
+
+  defp settle_against(scope, %Agent{} = agent, false) do
+    Logger.info(
+      "[Agents] #{agent.role} agent #{agent.id} is not running on #{agent.working_copy}; " <>
+        "its row said #{agent.status}"
+    )
+
+    {:ok, _stopped} = record_stopped(scope, agent)
+    :ok
   end
 
   # A reported agent the server has no row for is adopted rather than refused.
