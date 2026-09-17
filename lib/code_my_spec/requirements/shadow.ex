@@ -619,12 +619,12 @@ defmodule CodeMySpec.Requirements.Shadow do
     |> where(^edge_copy_filter(working_copy_id))
     |> select(
       [e],
-      {e.id, e.from_entity_type, e.from_entity_id, e.from_name, e.to_entity_type, e.to_entity_id,
-       e.to_name}
+      {e.id, e.from_entity_type, e.from_entity_id, e.from_name, e.from_requirement_id,
+       e.to_entity_type, e.to_entity_id, e.to_name, e.to_requirement_id}
     )
     |> Repo.all()
-    |> Map.new(fn {id, ft, fi, fname, tt, ti, tname} ->
-      {{ft, fi, fname, tt, ti, tname}, id}
+    |> Map.new(fn {id, ft, fi, fname, frid, tt, ti, tname, trid} ->
+      {{ft, fi, fname, frid, tt, ti, tname, trid}, id}
     end)
   end
 
@@ -640,9 +640,27 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   # What makes two edges the same edge, independent of which row is holding it.
+  # The row ids are part of an edge's identity, and leaving them out made the
+  # difference unable to repair the one thing that actually went wrong.
+  #
+  # An edge references rows in its own node table by id. Keyed on the entity/name
+  # pair alone, an edge whose endpoints had been deleted and reinserted — which
+  # `write/3` did to every covered row until it learned to upsert — matched by
+  # identity, was neither deleted nor reinserted, and kept pointing at rows that
+  # no longer existed. `edge_keys/6` resolves an edge through its own nodes, so
+  # it dropped out of every comparison: the edge was in the table and gone from
+  # the graph, permanently, because the only writer that could have fixed it
+  # believed it was already correct.
+  #
+  # Measured on dev, 2026-09-17, once `log/1` started printing the numbers:
+  # every project reported its whole topology missing — 659, 569, 148, 136
+  # edges live and zero resolvable in the shadow.
+  #
+  # Ids are stable now, so in a steady state this changes nothing. It is what
+  # lets the backlog heal on the next topology write rather than never.
   defp edge_identity(row) do
-    {row.from_entity_type, row.from_entity_id, row.from_name, row.to_entity_type,
-     row.to_entity_id, row.to_name}
+    {row.from_entity_type, row.from_entity_id, row.from_name, row.from_requirement_id,
+     row.to_entity_type, row.to_entity_id, row.to_name, row.to_requirement_id}
   end
 
   @doc """
