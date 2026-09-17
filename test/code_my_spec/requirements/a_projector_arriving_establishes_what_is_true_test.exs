@@ -110,13 +110,19 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
     end
   end
 
+  # Through the supervisor, not `Process.exit(pid, :kill)`. The child is
+  # `restart: :transient`, so an abnormal exit is one the supervisor puts back
+  # itself — and then `ensure_projecting/1` is racing that restart for the same
+  # registered name, which is a start_child call that can block rather than a
+  # projector arriving. Terminating is how a projector goes away for good.
   defp restart_projector(%Scope{} = scope) do
     pid = GenServer.whereis(ShadowProjector.via(scope.active_project_id))
     ref = Process.monitor(pid)
-    Process.exit(pid, :kill)
+    :ok = DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
 
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
+    {:ok, fresh} = ShadowProjector.ensure_projecting(scope)
+    refute fresh == pid, "the projector did not go away, so nothing arrived"
     :ok = ShadowProjector.settle(scope.active_project_id)
   end
 
