@@ -101,7 +101,7 @@ defmodule CodeMySpec.Deploys do
   # recomputes everything. Conservative and correct: this cannot say what such a
   # row moved.
   defp announce({:ok, deploy} = result, scope) do
-    GraphInputs.event(scope, "Deploys", "deploy_changed", %{}, deploy_entities(deploy))
+    GraphInputs.event(scope, "Deploys", "deploy_changed", %{}, deploy_entities(deploy), :project_wide)
     result
   end
 

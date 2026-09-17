@@ -52,7 +52,10 @@ defmodule CodeMySpec.Components do
       "Components",
       component_event_kind(message),
       %{},
-      graph_entities(message)
+      graph_entities(message),
+      # A component is a projection of the files in one checkout, so what moved
+      # is that checkout's answers about it and not another worktree's.
+      :this_checkout
     )
   end
 

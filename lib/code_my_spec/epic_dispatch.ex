@@ -416,7 +416,20 @@ defmodule CodeMySpec.EpicDispatch do
   # Anything dispatched and not finished. A failed epic is not in progress —
   # that is the distinction `record_failure/3` exists to make, and counting it
   # as busy would leave a project that fell over reporting itself as working.
-  defp in_progress?(project_id) do
+  @doc """
+  Whether anything dispatched is still being built.
+
+  Public because `Requirements.Profiles` needs the same fact and must not reach
+  into `Epics` to get it — the boundary is right about that, and this module is
+  where "is work underway" is already decided.
+  """
+  @spec in_progress?(Scope.t()) :: boolean()
+  def in_progress?(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: in_progress?(project_id)
+
+  def in_progress?(%Scope{}), do: false
+
+  def in_progress?(project_id) when is_binary(project_id) do
     Repo.exists?(from e in Epic, where: e.project_id == ^project_id and e.status == :dispatched)
   end
 

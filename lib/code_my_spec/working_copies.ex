@@ -358,7 +358,7 @@ defmodule CodeMySpec.WorkingCopies do
         #
         # Not caught by `announce_graph_change/2` either: the clearing half is
         # an `update_all` and never passes through `save/2`.
-        GraphInputs.announce(project_id, "WorkingCopies")
+        GraphInputs.announce(project_id, "WorkingCopies", [], :project_wide)
 
         {:ok, copy}
 
@@ -804,7 +804,7 @@ defmodule CodeMySpec.WorkingCopies do
   # change.
   defp announce_graph_change({:ok, updated} = result, %WorkingCopy{} = before) do
     if graph_inputs_moved?(before, updated),
-      do: GraphInputs.announce(updated.project_id, "WorkingCopies")
+      do: GraphInputs.announce(updated.project_id, "WorkingCopies", [], :project_wide)
 
     result
   end

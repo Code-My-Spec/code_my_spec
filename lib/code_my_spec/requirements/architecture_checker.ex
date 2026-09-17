@@ -32,6 +32,8 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   @proposal_path Paths.proposal_path()
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
+  @clean_status "Architecture clean — every component is covered and every story is linked."
+
   def complete?(%Scope{active_project_id: project_id} = scope, _entity)
       when not is_nil(project_id) do
     cond do
@@ -50,12 +52,62 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
       true ->
         {true,
-         %{status: "Architecture clean — every component is covered and every story is linked."}}
+         %{status: @clean_status}}
     end
   end
 
   def complete?(_scope, _entity) do
     {false, %{reason: "No active project in scope — cannot verify architecture state."}}
+  end
+
+  @doc """
+  The same verdict, from profiles already in hand instead of four fresh queries.
+
+  `complete?/2` asks the database itself: the proposal file, every story, every
+  component with two preloads, and the component ids this checkout has files
+  for. Correct for a whole-project pass, which pays it once — and wrong for an
+  event-settled projection, which was paying it on every drain that touched a
+  file or a story. `list_components_for_coverage/1` is the expensive one: every
+  component plus its dependencies and its stories.
+
+  Same three gates in the same order, decided by the same functions. What
+  changes is where the rows come from.
+  """
+  @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
+  def complete?(scope, entity, ctx)
+
+  def complete?(_scope, _entity, %{files: files, stories: stories, components: components}) do
+    cond do
+      not Map.has_key?(files.by_path, @proposal_path) ->
+        {false,
+         %{
+           reason:
+             "`#{@proposal_path}` is missing — run an architecture session and write the proposal."
+         }}
+
+      (unlinked = unlinked_from(stories)) != [] ->
+        {false, %{reason: format_unlinked_stories(unlinked)}}
+
+      (orphan_components = orphans_from(components, present_from(files))) != [] ->
+        {false, %{reason: format_orphans(orphan_components)}}
+
+      true ->
+        {true, %{status: @clean_status}}
+    end
+  end
+
+  def complete?(scope, entity, _ctx), do: complete?(scope, entity)
+
+  # The filters `unlinked_stories/1` and `Files.component_ids_present/1` apply,
+  # over rows the profile already read.
+  defp unlinked_from(stories) do
+    stories
+    |> Enum.filter(&(Map.get(&1, :ready_for_dev) == true and Map.get(&1, :component_id) == nil))
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp present_from(files) do
+    files.all |> Enum.map(& &1.component_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
   end
 
   # Asked of the synced files, not of a disk.
@@ -96,7 +148,20 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     # `ComponentRepository.list_components_for_coverage/1` — the wider query this
     # replaces loaded four more, on every graph pass, and nothing here or in
     # `AgentTasks.ArchitectureDesign` ever looked at them.
-    components = Components.list_components_for_coverage(scope)
+    orphans_from(
+      Components.list_components_for_coverage(scope),
+      Files.component_ids_present(scope)
+    )
+  end
+
+  @doc """
+  The orphan rule over rows already read.
+
+  Same filters, same order; only the source of the rows changes. `orphans/1`
+  issues the two queries, `complete?/3` hands over what a profile already holds.
+  """
+  @spec orphans_from([map()], MapSet.t()) :: [map()]
+  def orphans_from(components, present) do
     covered = covered_set(components)
 
     # Only components this working copy actually has files for.
@@ -115,8 +180,6 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     #
     # An unscoped read (the web UI, which names no harness) is unchanged: it
     # sees every checkout's files, which is what it should.
-    present = Files.component_ids_present(scope)
-
     components
     |> Enum.filter(&context_shaped?/1)
     |> Enum.reject(fn c ->
