@@ -34,12 +34,12 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.StoriesFixtures
+  alias CodeMySpec.Users.Scope
 
   setup :register_log_in_setup_account
   setup :setup_active_project
