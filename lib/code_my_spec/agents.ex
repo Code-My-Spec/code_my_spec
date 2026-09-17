@@ -1106,13 +1106,20 @@ defmodule CodeMySpec.Agents do
   Whoever's model settings decide the provider has to be the owner rather than
   the caller, since the caller here is an operator route with no session. Read
   from the account, so a copy is staffed the way its owner configured it.
+
+  Takes an explicit role list for the case the default set cannot express: one
+  role on each of several copies. A QA fixture for the wake criteria needs two
+  *coding* agents to show that only the assigned one is woken, and a checkout
+  holds one agent, so the shape is one role per copy rather than three on one.
+  Staffing every copy with `@copy_roles` would put twelve agents on four
+  checkouts to get the four that were wanted.
   """
-  @spec staff_any_copy(Ecto.UUID.t()) ::
+  @spec staff_any_copy(Ecto.UUID.t(), [atom()] | nil) ::
           {:ok, map()} | {:error, :no_such_copy | :no_owner}
-  def staff_any_copy(copy_id) when is_binary(copy_id) do
+  def staff_any_copy(copy_id, roles \\ nil) when is_binary(copy_id) do
     with {:ok, copy} <- WorkingCopies.fetch(copy_id),
          {:ok, scope} <- owner_scope(copy) do
-      result = ensure_copy_agents(scope, copy)
+      result = ensure_copy_agents(scope, copy, roles || @copy_roles)
       {:ok, continuous} = set_copy_continuous(scope, copy_id, true)
       {:ok, Map.put(result, :continuous, continuous)}
     end

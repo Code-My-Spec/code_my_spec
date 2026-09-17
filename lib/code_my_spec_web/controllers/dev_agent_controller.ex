@@ -105,8 +105,8 @@ defmodule CodeMySpecWeb.DevAgentController do
     conn |> put_status(422) |> json(%{error: "message is required and must not be empty"})
   end
 
-  def staff(conn, %{"working_copy_id" => copy_id}) do
-    case Agents.staff_any_copy(copy_id) do
+  def staff(conn, %{"working_copy_id" => copy_id} = params) do
+    case Agents.staff_any_copy(copy_id, roles(params["roles"])) do
       {:ok, result} ->
         json(conn, %{
           status: "staffed",
@@ -127,6 +127,26 @@ defmodule CodeMySpecWeb.DevAgentController do
         conn |> put_status(404) |> json(%{error: inspect(reason), working_copy_id: copy_id})
     end
   end
+
+  # `{"roles": ["coding"]}` staffs one role instead of the default three. A
+  # checkout holds one agent, so a fixture wanting two coding agents wants one
+  # role on each of two copies — the default set would put twelve on four.
+  #
+  # Matched by name against `Agent.roles/0` rather than converted: an atom built
+  # from a request body is a leak, and an unknown role would fail later and
+  # further away. The full set rather than `copy_roles/0`, because `:main` is
+  # not one a copy is staffed with by default and a fixture still needs one —
+  # `refuse_if_occupied/2` already stops a second main agent existing.
+  defp roles(nil), do: nil
+
+  defp roles(names) when is_list(names) do
+    case Enum.filter(CodeMySpec.Agents.Agent.roles(), &(to_string(&1) in names)) do
+      [] -> nil
+      picked -> picked
+    end
+  end
+
+  defp roles(_), do: nil
 
   # On and off without restarting anything. Staffing turns it on as a side
   # effect, which is the wrong grain when the question is "pause this copy" —
