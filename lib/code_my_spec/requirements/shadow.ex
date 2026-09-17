@@ -57,7 +57,6 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -515,8 +514,11 @@ defmodule CodeMySpec.Requirements.Shadow do
       |> MapSet.intersection(shadow_keys)
       |> Enum.filter(&(Map.fetch!(live, &1) != Map.fetch!(shadow, &1)))
 
-    live_edges = live_edge_keys(project_id, component_ids, story_ids, working_copy_id)
-    shadow_edges = shadow_edge_keys(project_id, working_copy_id)
+    live_edges =
+      edge_keys(pass_target(), pass_edges(), project_id, component_ids, story_ids, working_copy_id)
+
+    shadow_edges =
+      edge_keys(event_target(), event_edges(), project_id, component_ids, story_ids, working_copy_id)
 
     %{
       missing: MapSet.size(missing),
@@ -694,9 +696,20 @@ defmodule CodeMySpec.Requirements.Shadow do
   # tables' ids are independent sequences — see `write_edges/2`. Only edges with
   # both endpoints inside this vantage's population count, which is the same
   # filter `compute_edges/3` applies when it builds them.
-  defp live_edge_keys(project_id, component_ids, story_ids, working_copy_id) do
+  # One projection's edges, as key pairs, whichever tables that projection owns.
+  #
+  # Both sides go through this, which is the point: an edge references rows in
+  # its own node table and the two projections number their rows differently, so
+  # comparing ids across them is meaningless. Translating each side back to
+  # `{entity_type, id, name}` against its *own* nodes is the only comparison
+  # that means anything — and it is what this function did for the live side
+  # before either side could move.
+  #
+  # Scoped by node id rather than by a project column, because only one of the
+  # two edge tables has one. Doing it this way lets the same query serve both.
+  defp edge_keys(nodes_src, edges_src, project_id, component_ids, story_ids, working_copy_id) do
     rows =
-      Node
+      nodes_src
       |> scoped(project_id, component_ids, story_ids)
       |> where(^copy_filter(working_copy_id))
       |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.name})
@@ -709,7 +722,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
     ids = Map.keys(key_by_id)
 
-    Edge
+    edges_src
     |> where([e], e.from_requirement_id in ^ids and e.to_requirement_id in ^ids)
     |> select([e], {e.from_requirement_id, e.to_requirement_id})
     |> Repo.all()
@@ -752,28 +765,6 @@ defmodule CodeMySpec.Requirements.Shadow do
     |> Repo.all()
     |> Map.new(fn {id, component_id, story_id, proj_id, name} ->
       {owner_key(component_id, story_id, proj_id, name), id}
-    end)
-  end
-
-  defp shadow_edge_keys(project_id, working_copy_id) do
-    # A pipeline rather than `from(e in ^...)`: the table is decided at runtime
-    # now, and the pin operator is not allowed in that position. A bare string
-    # is an `Ecto.Queryable` for a schemaless query, so piping it does the same
-    # thing the literal used to.
-    event_edges()
-    |> where([e], e.project_id == type(^project_id, Ecto.UUID))
-    |> select([e], {
-      e.from_entity_type,
-      e.from_entity_id,
-      e.from_name,
-      e.to_entity_type,
-      e.to_entity_id,
-      e.to_name
-    })
-    |> where(^edge_copy_filter(working_copy_id))
-    |> Repo.all()
-    |> MapSet.new(fn {ft, fi, fname, tt, ti, tname} ->
-      {{ft, fi, fname}, {tt, ti, tname}}
     end)
   end
 
