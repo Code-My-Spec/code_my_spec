@@ -107,11 +107,25 @@ defmodule CodeMySpec.Requirements.Shadow do
   @spec inverted?() :: boolean()
   def inverted?, do: Application.get_env(:code_my_spec, :graph_event_is_source, false)
 
-  # Where the event path writes, and where the pass does. Asked by role, so the
-  # call sites do not each have to know which way round the flag currently is.
-  defp event_target, do: if(inverted?(), do: @real_table, else: @shadow_table)
-  defp pass_target, do: if(inverted?(), do: @shadow_table, else: @real_table)
-  defp event_edges, do: if(inverted?(), do: @real_edges, else: @shadow_edges)
+  @doc """
+  Where the event path writes, and where the pass does.
+
+  Asked by role, so no call site has to know which way round the flag currently
+  is — which is the point: the ones in `NodeRepository` belong to the pass and
+  the ones here belong to the event path, and neither should change when they
+  trade tables.
+  """
+  @spec event_target() :: {String.t(), module()}
+  def event_target, do: if(inverted?(), do: @real_table, else: @shadow_table)
+
+  @spec pass_target() :: {String.t(), module()}
+  def pass_target, do: if(inverted?(), do: @shadow_table, else: @real_table)
+
+  @spec event_edges() :: String.t()
+  def event_edges, do: if(inverted?(), do: @real_edges, else: @shadow_edges)
+
+  @spec pass_edges() :: String.t()
+  def pass_edges, do: if(inverted?(), do: @shadow_edges, else: @real_edges)
 
   @type entity :: {String.t(), term()}
 
