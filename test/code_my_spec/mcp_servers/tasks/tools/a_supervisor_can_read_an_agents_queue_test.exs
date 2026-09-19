@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
   end
 
   defp a_project_with_an_agent_holding_a_task do
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
 
     {:ok, copy} =
@@ -114,7 +114,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     {_scope, _agent, _frame} = a_project_with_an_agent_holding_a_task()
 
     # A second project, whose scope has no business seeing the first one's agent.
-    other = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    other = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     other_frame = %Frame{assigns: %{current_scope: other}}
 
     {:reply, response, _} = ListTasks.execute(%{agent_id: Ecto.UUID.generate()}, other_frame)

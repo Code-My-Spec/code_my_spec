@@ -18,28 +18,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
   end
 
   describe "compute_component/2 — file existence" do
-    test "spec_file satisfied when spec exists" do
-      {scope, tmp_dir, component} = setup_component("schema")
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", spec_content())
-      sync!(scope, tmp_dir)
-
-      results = RequirementCalculator.compute_component(scope, component)
-      spec_req = find_req(results, "spec_file")
-
-      assert spec_req.satisfied
-    end
-
-    test "spec_file unsatisfied when no spec" do
-      {scope, _tmp_dir, component} = setup_component("schema")
-
-      # No files written — no sync needed, but run anyway to ensure clean state
-      results = RequirementCalculator.compute_component(scope, component)
-      spec_req = find_req(results, "spec_file")
-
-      refute spec_req.satisfied
-    end
-
     test "implementation_file satisfied when impl exists" do
       {scope, tmp_dir, component} = setup_component("schema")
 
@@ -66,70 +44,14 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     end
   end
 
-  describe "compute_component/2 — file validity" do
-    test "spec_valid satisfied when file is marked valid" do
-      {scope, tmp_dir, component} = setup_component("schema")
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", spec_content())
-      sync!(scope, tmp_dir)
-
-      # Mark the spec as valid
-      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/widget.spec.md")
-      {:ok, _} = Files.mark_validated(file, true)
-
-      results = RequirementCalculator.compute_component(scope, reload(scope, component))
-      valid_req = find_req(results, "spec_valid")
-
-      assert valid_req.satisfied
-    end
-
-    test "spec_valid reflects inline validation result from sync" do
-      {scope, tmp_dir, component} = setup_component("schema")
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", spec_content())
-      sync!(scope, tmp_dir)
-
-      # FileSync validates inline — check what it produced
-      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/widget.spec.md")
-      assert not is_nil(file.valid), "sync should validate spec files inline"
-
-      results = RequirementCalculator.compute_component(scope, reload(scope, component))
-      valid_req = find_req(results, "spec_valid")
-
-      # Satisfaction depends on whether the minimal spec passes document validation
-      assert valid_req.satisfied == file.valid
-    end
-
-    test "spec_valid unsatisfied when file marked invalid" do
-      {scope, tmp_dir, component} = setup_component("schema")
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", spec_content())
-      sync!(scope, tmp_dir)
-
-      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/widget.spec.md")
-      {:ok, _} = Files.mark_validated(file, false, %{error: "Missing ## Type section"})
-
-      results = RequirementCalculator.compute_component(scope, reload(scope, component))
-      valid_req = find_req(results, "spec_valid")
-
-      refute valid_req.satisfied
-      assert valid_req.details.reason =~ "invalid"
-    end
-  end
-
   describe "compute_component/2 — default requirements (module type)" do
-    test "returns all 6 default requirements for module type" do
+    test "returns only implementation work for module type" do
       {scope, _tmp_dir, component} = setup_component("module")
 
       results = RequirementCalculator.compute_component(scope, component)
       names = Enum.map(results, & &1.name)
 
-      assert "spec_file" in names
-      assert "spec_valid" in names
-      assert "implementation_file" in names
-      assert "test_file" in names
-      assert "test_spec_alignment" in names
-      assert "tests_passing" in names
+      assert names == ["implementation_file"]
     end
   end
 
@@ -142,9 +64,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
       names = Enum.map(results, & &1.name)
 
       refute "context_specs" in names, "context_specs should not exist — replaced by graph edges"
-      refute "context_implementation" in names, "context_implementation should not exist — replaced by graph edges"
-      assert "spec_file" in names
-      assert "review_file" in names
+
+      refute "context_implementation" in names,
+             "context_implementation should not exist — replaced by graph edges"
+
       assert "implementation_file" in names
     end
   end

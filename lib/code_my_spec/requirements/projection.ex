@@ -357,13 +357,9 @@ defmodule CodeMySpec.Requirements.Projection do
 
   # The row says which definition produced it, because the name alone does not.
   #
-  # Six names — `spec_file`, `spec_valid`, `test_file`, `test_spec_alignment`,
-  # `implementation_file`, `tests_passing` — exist as a `:child` def on a parent
-  # template *and* as a `:self` def on the child type's own. They differ in
-  # `orchestrated_by`, which is what groups an orchestrated wave under its
-  # context header, so picking the wrong one renders the wave with no header at
-  # all. Computing instantiates the parent's template; reading used to look up
-  # the child's own and quietly get the other definition.
+  # `implementation_file` exists as a child definition on a parent template
+  # and as a self definition on a leaf. The parent's definition carries the
+  # orchestration group, which must survive persistence and rehydration.
   #
   # `nil` columns mean a row written before they existed. Inferring from the
   # entity's own type is what that row was already getting, and the next pass

@@ -1,34 +1,43 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+  page_title={@page_title}
+>
   <%!-- ───────────── HERO — the money passage ─────────────
         First two sentences are the liftable "what is CodeMySpec" answer. A
         retrieval system pulls this passage, so it has to stand alone. --%>
   <section class="bg-base-200 border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-14 items-center">
       <div>
-      <div class="badge badge-primary badge-outline gap-2 mb-6">
-        <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
-        Free to build · your model, your keys · no lock-in
-      </div>
-      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
-        AI can build you an app in an hour.<br />
-        <span class="text-primary">Then you change one thing, and it falls down.</span>
-      </h1>
-      <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
-        <strong class="text-base-content">
-          CodeMySpec is for the morning after. Build software that stays reliable without writing code
-          and without prompting the model.
-        </strong>
-        You work through a process instead: say what you want, agree what it should do, and let the
-        harness hold the machine to it.
-      </p>
-      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        <span class="font-semibold text-base-content">You don't supervise it. The harness supervises it.</span>
-        You bring your own AI account, nothing traps your work, and building is free.
-      </p>
-      <div class="mt-8 flex flex-wrap items-center gap-4">
-        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
-        <a href="#specs" class="btn btn-ghost btn-lg">How the specs work</a>
-      </div>
+        <div class="badge badge-primary badge-outline gap-2 mb-6">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+          Free to build · your model, your keys · no lock-in
+        </div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
+          AI can build you an app in an hour.<br />
+          <span class="text-primary">Then you change one thing, and it falls down.</span>
+        </h1>
+        <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
+          <strong class="text-base-content">
+            CodeMySpec is for the morning after. Build software that stays reliable without writing code
+            and without prompting the model.
+          </strong>
+          You work through a process instead: say what you want, agree what it should do, and let the
+          harness hold the machine to it.
+        </p>
+        <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+          <span class="font-semibold text-base-content">
+            You don't supervise it. The harness supervises it.
+          </span>
+          You bring your own AI account, nothing traps your work, and building is free.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">
+            Install the plugin — free
+          </.link>
+          <a href="#specs" class="btn btn-ghost btn-lg">How the specs work</a>
+        </div>
       </div>
 
       <%!-- No code samples on a product page. The scenario is the readable half of
@@ -97,18 +106,21 @@
       </p>
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
-        <div :for={
-          {when_, what, who} <- [
-            {"Morning", "Take in five stories and answer the design questions.", "you"},
-            {"All day", "It builds. You are not in the room for this part.", "it"},
-            {"Evening", "You click around like a real person and say what's wrong.", "you"},
-            {"Overnight", "It fixes what you found. Come back to a working app.", "it"}
-          ]
-        } class={[
-          "card border shadow-sm",
-          who == "you" && "bg-base-100 border-base-300 border-t-4 border-t-primary",
-          who == "it" && "bg-base-200 border-base-300 border-t-4 border-t-base-300"
-        ]}>
+        <div
+          :for={
+            {when_, what, who} <- [
+              {"Morning", "Take in five stories and answer the design questions.", "you"},
+              {"All day", "It builds. You are not in the room for this part.", "it"},
+              {"Evening", "You click around like a real person and say what's wrong.", "you"},
+              {"Overnight", "It fixes what you found. Come back to a working app.", "it"}
+            ]
+          }
+          class={[
+            "card border shadow-sm",
+            who == "you" && "bg-base-100 border-base-300 border-t-4 border-t-primary",
+            who == "it" && "bg-base-200 border-base-300 border-t-4 border-t-base-300"
+          ]}
+        >
           <div class="card-body">
             <div class="flex items-baseline justify-between gap-2">
               <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
@@ -136,13 +148,14 @@
 
   <%!-- ───────────── THE KEYSTONE — executable specs ─────────────
         This is the load-bearing section. Written specs are the optional layer
-        (require_specs is a config knob); the executable specification is the
+        for describing architecture; the executable specification is the
         mandatory one, and it is what makes the harness work. --%>
   <section id="specs" class="border-b border-base-300 bg-base-200">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
       <.eyebrow name="the core innovation" />
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
-        If your application is the castle, <span class="text-primary">the BDD specs are the walls.</span>
+        If your application is the castle,
+        <span class="text-primary">the BDD specs are the walls.</span>
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
@@ -160,10 +173,16 @@
       </p>
 
       <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-        <.link navigate={~p"/blog/bdd-specs-for-ai-generated-code"} class="link link-primary font-medium">
+        <.link
+          navigate={~p"/blog/bdd-specs-for-ai-generated-code"}
+          class="link link-primary font-medium"
+        >
           How BDD specs catch what unit tests confirm →
         </.link>
-        <.link navigate={~p"/blog/bdd-attention-three-amigos"} class="link link-primary font-medium">
+        <.link
+          navigate={~p"/blog/bdd-attention-three-amigos"}
+          class="link link-primary font-medium"
+        >
           Where the scenarios come from →
         </.link>
       </div>
@@ -205,7 +224,12 @@
               application. Anything QA finds goes back to the code step before you ever see it.
             </desc>
 
-            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.5">
+            <g
+              class="text-base-content"
+              stroke="currentColor"
+              stroke-opacity="0.3"
+              stroke-width="1.5"
+            >
               <line x1="212" y1="112" x2="228" y2="112" />
               <line x1="404" y1="112" x2="420" y2="112" />
               <line x1="596" y1="112" x2="612" y2="112" />
@@ -246,7 +270,14 @@
                 >
                   {String.upcase(who)}
                 </text>
-                <text x={x + 88} y="108" text-anchor="middle" font-size="21" font-weight="700" fill="currentColor">
+                <text
+                  x={x + 88}
+                  y="108"
+                  text-anchor="middle"
+                  font-size="21"
+                  font-weight="700"
+                  fill="currentColor"
+                >
                   {label}
                 </text>
               </g>
@@ -264,12 +295,32 @@
             </g>
 
             <%!-- what QA finds never reaches you: it goes back to Code --%>
-            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.45" fill="none" stroke-width="1.5" stroke-dasharray="5 4">
+            <g
+              class="text-base-content"
+              stroke="currentColor"
+              stroke-opacity="0.45"
+              fill="none"
+              stroke-width="1.5"
+              stroke-dasharray="5 4"
+            >
               <path d="M 704 150 L 704 196 L 512 196 L 512 150" />
             </g>
             <g class="text-base-content">
-              <path d="M 512 150 l -4 8 l 8 0 z" fill="currentColor" fill-opacity="0.45" stroke="none" />
-              <text x="608" y="216" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor" fill-opacity="0.6">
+              <path
+                d="M 512 150 l -4 8 l 8 0 z"
+                fill="currentColor"
+                fill-opacity="0.45"
+                stroke="none"
+              />
+              <text
+                x="608"
+                y="216"
+                text-anchor="middle"
+                font-size="12"
+                font-weight="600"
+                fill="currentColor"
+                fill-opacity="0.6"
+              >
                 anything QA finds goes back before you see it
               </text>
             </g>
@@ -328,10 +379,24 @@
                 stroke="currentColor"
                 stroke-opacity="0.25"
               />
-              <text x="140" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+              <text
+                x="140"
+                y="66"
+                text-anchor="middle"
+                font-size="14"
+                font-weight="700"
+                fill="currentColor"
+              >
                 Your coding agent
               </text>
-              <text x="140" y="86" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+              <text
+                x="140"
+                y="86"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.55"
+              >
                 Claude Code · Codex · Antigravity
               </text>
 
@@ -346,10 +411,24 @@
                 stroke="currentColor"
                 stroke-opacity="0.25"
               />
-              <text x="900" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+              <text
+                x="900"
+                y="66"
+                text-anchor="middle"
+                font-size="14"
+                font-weight="700"
+                fill="currentColor"
+              >
                 Your model provider
               </text>
-              <text x="900" y="86" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+              <text
+                x="900"
+                y="86"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.55"
+              >
                 your keys · your bill
               </text>
 
@@ -363,7 +442,15 @@
                 stroke-width="1.5"
               />
               <path d="M 800 72 l -8 -4 l 0 8 z" fill="currentColor" fill-opacity="0.35" />
-              <text x="520" y="60" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor" fill-opacity="0.6">
+              <text
+                x="520"
+                y="60"
+                text-anchor="middle"
+                font-size="11"
+                font-weight="600"
+                fill="currentColor"
+                fill-opacity="0.6"
+              >
                 direct — we are not in this path
               </text>
             </g>
@@ -394,13 +481,34 @@
                 stroke="currentColor"
                 stroke-width="1.5"
               />
-              <text x="140" y="204" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+              <text
+                x="140"
+                y="204"
+                text-anchor="middle"
+                font-size="14"
+                font-weight="700"
+                fill="currentColor"
+              >
                 cms — local server
               </text>
-              <text x="140" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
+              <text
+                x="140"
+                y="222"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.8"
+              >
                 requirement graph · specs
               </text>
-              <text x="140" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
+              <text
+                x="140"
+                y="238"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.8"
+              >
                 verification · QA
               </text>
             </g>
@@ -428,13 +536,34 @@
                 stroke="currentColor"
                 stroke-opacity="0.25"
               />
-              <text x="560" y="204" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+              <text
+                x="560"
+                y="204"
+                text-anchor="middle"
+                font-size="14"
+                font-weight="700"
+                fill="currentColor"
+              >
                 Your repository
               </text>
-              <text x="560" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+              <text
+                x="560"
+                y="222"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.55"
+              >
                 your specs · your tests
               </text>
-              <text x="560" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+              <text
+                x="560"
+                y="238"
+                text-anchor="middle"
+                font-size="10.5"
+                fill="currentColor"
+                fill-opacity="0.55"
+              >
                 your code, on your disk
               </text>
             </g>
@@ -499,7 +628,9 @@
         working application is the entire business.
       </p>
       <div class="mt-6">
-        <.link navigate={~p"/pricing"} class="link link-primary font-medium">See full pricing →</.link>
+        <.link navigate={~p"/pricing"} class="link link-primary font-medium">
+          See full pricing →
+        </.link>
       </div>
     </div>
   </section>
@@ -568,8 +699,12 @@
         then <code class="text-base-content">/next</code> to start the next requirement.
       </p>
       <div class="mt-8 flex flex-wrap gap-4 justify-center">
-        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
-        <.link navigate={~p"/methodology"} class="btn btn-ghost btn-lg">Read the methodology →</.link>
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">
+          Install the plugin — free
+        </.link>
+        <.link navigate={~p"/methodology"} class="btn btn-ghost btn-lg">
+          Read the methodology →
+        </.link>
       </div>
     </div>
   </section>

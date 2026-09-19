@@ -510,12 +510,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end
   end
 
-  # `require_specs == false` only loosens spec-file validation, not QA
-  # artifact validation. QA briefs/results have their own analyzer field
-  # (`qa_validation`) and stay strict whenever they run.
-  defp strict_for_source?(scope, "spec_validation"),
-    do: CodeMySpec.Configurations.require_specs?(scope)
-
+  # Architecture specs may be partial; QA documents still require their sections.
+  defp strict_for_source?(_scope, "spec_validation"), do: false
   defp strict_for_source?(_scope, _source), do: true
 
   defp spec_document_type(%{role: :review}, _content), do: "design_review"
@@ -573,14 +569,13 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   defp split_analyzers(analyzers) do
     Enum.split_with(analyzers, fn atom ->
-      atom in [:credo, :sobelow, :spec_alignment]
+      atom in [:credo, :sobelow]
     end)
   end
 
   @analyzer_source_map %{
     credo: "credo",
     sobelow: "sobelow",
-    spec_alignment: "spec_alignment",
     validate_spec: "spec_validation",
     validate_bdd: "spec_validation",
     validate_qa: "qa_validation"

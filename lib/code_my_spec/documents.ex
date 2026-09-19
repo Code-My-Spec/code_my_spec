@@ -167,7 +167,7 @@ defmodule CodeMySpec.Documents do
     end
   end
 
-  # In lenient mode (project config `require_specs: false`), required
+  # In lenient mode (`strict: false`), required
   # sections are treated as optional so a spec file can be edited
   # piecewise without being forced to fill in every section. Structural
   # checks that don't depend on completeness (H1, parse, disallowed

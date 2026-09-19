@@ -9,7 +9,6 @@ defmodule CodeMySpec.Files do
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
-      CodeMySpec.Configurations,
       CodeMySpec.Documents,
       CodeMySpec.Embeddings,
       CodeMySpec.Environments,
@@ -32,7 +31,6 @@ defmodule CodeMySpec.Files do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ConventionalPaths
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Repo
@@ -60,7 +58,7 @@ defmodule CodeMySpec.Files do
       story_ids: project_story_ids(scope),
       story_ids_by_number: project_story_ids_by_number(scope),
       story_by_spec_path: story_by_spec_path(scope),
-      strict?: Configurations.require_specs?(scope)
+      strict?: false
     }
   end
 

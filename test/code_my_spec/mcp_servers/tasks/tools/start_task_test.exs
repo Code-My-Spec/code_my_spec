@@ -154,7 +154,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
   describe "execute/2 — entity scoping" do
     test "two components with the same requirement_name get separate tasks" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component_a = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
       component_b = component_fixture(scope, %{name: "Item", module_name: "MyApp.Item"})
       session = session_fixture(scope)
@@ -257,7 +257,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_name: "spec_file", entity_type: "component", entity_id: "x", session_id: "x"},
+                 %{
+                   requirement_name: "spec_file",
+                   entity_type: "component",
+                   entity_id: "x",
+                   session_id: "x"
+                 },
                  frame
                )
 
@@ -272,7 +277,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   defp setup_requirement do
     # Every case here starts a `spec_file` task, and that node only exists when
     # specs are required — a fresh project defaults to spex and code only.
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope)
     session = session_fixture(scope)
 

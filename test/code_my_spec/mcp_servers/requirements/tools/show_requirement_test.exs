@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
 
   describe "execute/2" do
     test "surfaces the checker's reason when the requirement is not satisfied" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component = component_fixture(scope)
 
       requirement_fixture(scope, component, %{name: "spec_file", satisfied: false})
@@ -38,7 +38,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
     end
 
     test "omits the reason line when the requirement is satisfied" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component = component_fixture(scope)
 
       requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})

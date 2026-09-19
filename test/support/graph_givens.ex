@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     beside a `Plumbing` infrastructure component. Produces
     `context.ordinary` and `context.infrastructure`.
 
-  - `:live_context_under_a_config_that_empties_it` — a live context
+  - `:live_context_with_implementation_children` — a live context
     and one LiveView beneath it, on a project with `require_specs`
     and `require_reviews` off, which leaves the container nothing of
     its own and the child its implementation. Produces
@@ -172,13 +172,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # is the only shape in the system where those two sit side by side. Seven of
   # these on this project.
 
-  register_given :live_context_under_a_config_that_empties_it, context do
-    {:ok, _config} =
-      Fixtures.update_project_configuration(context.scope, %{
-        require_specs: false,
-        require_reviews: false
-      })
-
+  register_given :live_context_with_implementation_children, context do
     write_specs(context.environment, [
       {"Reservations", :context, []},
       {"MyAppWeb.BookingLive", :live_context, []},

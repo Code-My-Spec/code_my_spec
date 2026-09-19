@@ -254,12 +254,12 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   # The config decides which requirement definitions exist, and an edge can
-  # only connect definitions that do. Taken by the four keys the filters
+  # only connect definitions that do. Taken by the keys the filters
   # actually read rather than by hashing the whole struct, which carries
   # timestamps and would make every config save look like a new shape.
   defp config_shape(config) do
     Enum.map(
-      [:require_specs, :require_reviews, :require_unit_tests, :devops],
+      [:devops],
       &{&1, Map.get(config, &1)}
     )
   end

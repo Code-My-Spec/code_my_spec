@@ -36,8 +36,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
 
   @impl true
   def handle_event("save", %{"configuration" => attrs}, socket) do
-    attrs = normalize_checkbox_attrs(attrs)
-
     case Configurations.update(socket.assigns.scope, attrs) do
       {:ok, configuration} ->
         {:noreply,
@@ -66,31 +64,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
       </div>
 
       <form id="configuration-form" data-test="configuration-form" phx-submit="save" class="space-y-6">
-        <section class="card bg-base-200 border border-base-300">
-          <div class="card-body">
-            <h2 class="card-title text-lg">Requirement Toggles</h2>
-            <p class="text-sm opacity-70">What's required for a component to be considered done.</p>
-
-            <div class="divider my-1"></div>
-
-            <.toggle_field
-              name="require_specs"
-              label="Require Specs"
-              checked={@configuration.require_specs}
-            />
-            <.toggle_field
-              name="require_reviews"
-              label="Require Reviews"
-              checked={@configuration.require_reviews}
-            />
-            <.toggle_field
-              name="require_unit_tests"
-              label="Require Unit Tests"
-              checked={@configuration.require_unit_tests}
-            />
-          </div>
-        </section>
-
         <section class="card bg-base-200 border border-base-300">
           <div class="card-body">
             <h2 class="card-title text-lg">Analyzer Settings</h2>
@@ -169,29 +142,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
 
   attr :name, :string, required: true
   attr :label, :string, required: true
-  attr :checked, :boolean, required: true
-
-  defp toggle_field(assigns) do
-    ~H"""
-    <label class="label cursor-pointer justify-between py-2">
-      <span class="label-text">{@label}</span>
-      <span>
-        <input type="hidden" name={"configuration[#{@name}]"} value="false" />
-        <input
-          type="checkbox"
-          name={"configuration[#{@name}]"}
-          value="true"
-          checked={@checked}
-          class="toggle toggle-primary"
-          data-test={String.replace(@name, "_", "-")}
-        />
-      </span>
-    </label>
-    """
-  end
-
-  attr :name, :string, required: true
-  attr :label, :string, required: true
   attr :value, :atom, required: true
   attr :modes, :list, required: true
 
@@ -211,18 +161,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
     </label>
     """
   end
-
-  defp normalize_checkbox_attrs(attrs) do
-    attrs
-    |> Map.update("require_specs", false, &parse_bool/1)
-    |> Map.update("require_reviews", false, &parse_bool/1)
-    |> Map.update("require_unit_tests", false, &parse_bool/1)
-  end
-
-  defp parse_bool("true"), do: true
-  defp parse_bool("false"), do: false
-  defp parse_bool(true), do: true
-  defp parse_bool(_), do: false
 
   defp format_mode(:off), do: "Off"
   defp format_mode(:uat), do: "UAT Only"

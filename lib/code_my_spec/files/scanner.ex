@@ -25,7 +25,6 @@ defmodule CodeMySpec.Files.Scanner do
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.ComponentExtract
   alias CodeMySpec.Paths
-  alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
 
   # The subtrees a sync walks. Everything outside them is invisible to the
   # domain, which is what keeps a project's own deps/ and _build/ out of it.
@@ -68,10 +67,8 @@ defmodule CodeMySpec.Files.Scanner do
     @moduledoc """
     The slice of the domain that scanning needs.
 
-    `component_by_module` resolves a file path to its owning component;
-    `component_by_id` gives `validate_test_alignment/3` the module name it
-    needs to find the matching spec; `strict?` is the project's
-    require-specs setting.
+    `component_by_module` resolves a file path to its owning component.
+    `strict?` selects whether document validation requires complete sections.
 
     The two path families name a story with two different identifiers, so
     they get two lookups. `.code_my_spec/qa/<id>/` is the primary key —
@@ -255,7 +252,7 @@ defmodule CodeMySpec.Files.Scanner do
   Validate a file entry based on its role.
 
   Specs and reviews are validated via `Documents.create_dynamic_document`.
-  Tests with a component are checked for spec alignment.
+  Test files are tracked without matching them against markdown assertions.
   Other tracked roles are valid by existence.
   """
   def validate_entry(entry, env, component_by_id, strict? \\ true)
@@ -315,22 +312,6 @@ defmodule CodeMySpec.Files.Scanner do
           valid: false,
           validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
         })
-    end
-  end
-
-  def validate_entry(
-        %{role: :test, component_id: component_id} = entry,
-        env,
-        component_by_id,
-        _strict?
-      )
-      when not is_nil(component_id) do
-    component = Map.get(component_by_id, component_id)
-
-    if component do
-      validate_test_alignment(entry, env, component)
-    else
-      Map.merge(entry, %{valid: true, validation_errors: nil})
     end
   end
 
@@ -465,26 +446,6 @@ defmodule CodeMySpec.Files.Scanner do
 
   def validate_entry(entry, _env, _component_by_id, _strict?) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
-  end
-
-  defp validate_test_alignment(entry, env, component) do
-    module_path = Macro.underscore(component.module_name) |> String.replace(".", "/")
-    spec_path = Paths.spec_file(module_path)
-
-    with {:ok, spec_content} <- Environments.read_file(env, spec_path),
-         {:ok, test_content} <- Environments.read_file(env, entry.path) do
-      case SpecAlignment.check_test_alignment(spec_content, test_content) do
-        {:ok, :aligned} ->
-          Map.merge(entry, %{valid: true, validation_errors: nil})
-
-        {:ok, :misaligned, errors} ->
-          Map.merge(entry, %{valid: false, validation_errors: errors})
-      end
-    else
-      {:error, _} ->
-        # No spec file or can't read test — valid by default
-        Map.merge(entry, %{valid: true, validation_errors: nil})
-    end
   end
 
   # -- Setup-artifact validators --
@@ -958,8 +919,9 @@ defmodule CodeMySpec.Files.Scanner do
   @deploy_artifact_files ~w(Dockerfile .sops.yaml .env .env.local .env.production .env.schema)
 
   defp classify_deploy_artifact(path) do
-    if path in @deploy_artifact_files or Enum.any?(@deploy_artifact_dirs, &String.starts_with?(path, &1)),
-      do: {path, :deploy_artifact}
+    if path in @deploy_artifact_files or
+         Enum.any?(@deploy_artifact_dirs, &String.starts_with?(path, &1)),
+       do: {path, :deploy_artifact}
   end
 
   # The one deploy artifact whose content a check needs, not just its

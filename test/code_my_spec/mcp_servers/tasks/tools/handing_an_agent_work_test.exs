@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
   end
 
   defp a_project_with_an_agent do
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
 
     {:ok, copy} =

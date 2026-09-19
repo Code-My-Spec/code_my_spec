@@ -5,7 +5,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   The graph is entity-agnostic: edges represent real dependencies regardless of
   whether they cross entity boundaries. There are three kinds of edges:
 
-  1. **Same-entity prerequisites**: spec_file → spec_valid (within a component)
+  1. **Same-entity prerequisites**: ordered story and project requirements
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
   2. **Story → component tree**: bdd_specs_exist → component's first req;
@@ -31,7 +31,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
@@ -979,14 +978,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # nothing verifies today and which matters more after the swap than this ever
   # did.
   defp verify_round_trip(scope, ctx, nodes, edges) do
-    if Shadow.inverted?() do
-      :ok
-    else
-      do_verify_round_trip(scope, ctx, nodes, edges)
-    end
-  end
-
-  defp do_verify_round_trip(scope, ctx, nodes, edges) do
     {read_nodes, read_edges} = Projection.load(scope, ctx)
 
     case Difference.describe(read_nodes, read_edges, nodes, edges) do
@@ -1691,20 +1682,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # deepest dep(s) — the story's outgoing edge ends up at whatever
   # has to be done first in the dep chain.
   #
-  # Kickoff target dispatch follows the node_scope of the first
-  # surviving def for the kickoff component's type:
-  # - `:parent` / `:self` → land on the kickoff component's own node
-  #   (the natural starting point — e.g. parent.spec_file under the
-  #   default config for a context surface)
-  # - `:child` → fan out to every direct child whose own type
-  #   template includes that def's name (the symmetric counterpart
-  #   of `container_exit_edges`; required when the parent's chain
-  #   has been filtered down to nothing but child-scoped work, as
-  #   happens when require_specs/reviews/tests are all disabled)
-  #
-  # The exit edge stays at the surface's terminal — the story's done
-  # when the surface is done; deps reach the exit transitively. For
-  # container surfaces it fans in from each child's terminal.
+  # Kickoff targets child implementations for contexts, or the component's
+  # own implementation when there are no implementable children. Live contexts
+  # are containers only. A context's own implementation is its exit; a live
+  # context exits through its children's implementations.
   # `children_by_parent` is built once here rather than per story.
   #
   # `expand_with_parent_chain_descendants/2` needs it and used to group all of
@@ -1832,7 +1813,25 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp kickoff_edge(comp, story, config, ctx, kickoff_ids) do
-    case first_def_for(comp.type, config, ctx) do
+    first = first_def_for(comp.type, config, ctx)
+
+    # A context without implementable children starts at its own implementation.
+    first =
+      case first do
+        %{node_scope: :child, name: name} ->
+          if Enum.any?(direct_children(comp, ctx), &child_supports_def_name?(&1, name)) do
+            first
+          else
+            comp.type
+            |> RequirementDefinitionData.graph_for_type()
+            |> Enum.find(&(&1.node_scope in [:parent, :self]))
+          end
+
+        _ ->
+          first
+      end
+
+    case first do
       nil ->
         []
 
@@ -1903,10 +1902,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # have gone green. bab2f792 pointed these terminals straight at
   # qa_complete when the gate was removed; this puts the seam back.
   defp surface_exit_edge(surface, story, ctx, config) do
-    if RequirementsRegistry.has_children?(surface.type) do
-      container_exit_edges(surface, story, ctx, config)
-    else
+    own_terminal =
+      surface.type
+      |> RequirementDefinitionData.graph_for_type()
+      |> Enum.any?(&(&1.node_scope in [:parent, :self]))
+
+    if own_terminal do
       leaf_exit_edge(surface, story, config)
+    else
+      container_exit_edges(surface, story, ctx, config)
     end
   end
 
@@ -2259,21 +2263,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Components that cannot produce a requirement row *of their own*, whatever
   # their inputs say.
   #
-  # Of their own is the whole of it, and the first version of this asked the
-  # wrong question — whether the filtered template was empty. It is empty for
-  # exactly one type. Measured across all eighteen with `require_specs`,
-  # `require_reviews` and `require_unit_tests` all off, every other type keeps
-  # `implementation_file`; what differs is the scope it keeps it at.
-  #
-  # So there are two ways to hold no rows, and neither is a fault:
-  #
-  #   * `infrastructure`, whose template is `[]`. The graph is deliberately
-  #     silent about the project's plumbing and story 562 says so as a rule.
-  #   * a container left with only `:child` definitions. `live_context_graph/0`
-  #     is spec and review nodes plus a `:child`-scoped implementation, so with
-  #     specs and reviews off the live context itself has nothing while every
-  #     LiveView under it still has its implementation. The namespace holds no
-  #     work; the LiveViews hold it. Seven of these on this project.
+  # Infrastructure has no template. Live contexts have only child-scoped
+  # implementation requirements, so the namespace itself has no row.
+  # Neither should be treated as an entity whose computation was missed.
   #
   # Both matter here for the same reason. `appeared` is derived from the rows,
   # so a component that cannot write one is never recorded and is counted as
@@ -2609,7 +2601,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp compute_story_nodes(scope, ctx, config) do
     # Only the devops filter applies to story templates — the
     # specs/reviews/tests filters are component-scoped by design
-    # (require_specs must not strip three_amigos/bdd requirements).
+    # Component and story requirements have distinct templates.
     # devops: :off drops the deploy requirement from every story.
     template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
     project = scope.active_project
@@ -2949,19 +2941,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Configuration-based filtering --
 
-  # Filters component requirement definitions based on ProjectConfiguration.
-  # require_specs: false → removes :specification artifact types
-  # require_reviews: false → removes :review artifact types
-  # require_unit_tests: false → removes :tests artifact type + tests_passing
-  #
-  # The graph is now silent about infrastructure for every project, not just
-  # `devops: :off` ones — see `maybe_filter_devops/2`.
+  # Only deployment configuration changes which graph definitions exist.
   defp filter_definitions_by_config(definitions, config) do
-    definitions
-    |> maybe_filter_specs(config)
-    |> maybe_filter_reviews(config)
-    |> maybe_filter_tests(config)
-    |> maybe_filter_devops(config)
+    maybe_filter_devops(definitions, config)
   end
 
   # `deploy` is back, reading `CodeMySpec.Deploys` rather than a markdown file
@@ -2979,24 +2961,4 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp maybe_filter_devops(definitions, _config), do: definitions
-
-  defp maybe_filter_specs(definitions, %{require_specs: false}) do
-    Enum.reject(definitions, &(&1.artifact_type == :specification))
-  end
-
-  defp maybe_filter_specs(definitions, _config), do: definitions
-
-  defp maybe_filter_reviews(definitions, %{require_reviews: false}) do
-    Enum.reject(definitions, &(&1.artifact_type == :review))
-  end
-
-  defp maybe_filter_reviews(definitions, _config), do: definitions
-
-  defp maybe_filter_tests(definitions, %{require_unit_tests: false}) do
-    Enum.reject(definitions, fn def ->
-      def.artifact_type == :tests or def.name == "tests_passing"
-    end)
-  end
-
-  defp maybe_filter_tests(definitions, _config), do: definitions
 end
