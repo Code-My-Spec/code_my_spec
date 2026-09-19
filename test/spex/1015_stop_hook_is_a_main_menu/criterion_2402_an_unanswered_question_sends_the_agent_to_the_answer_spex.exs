@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
   spex "The reply the agent has not read is offered on every refusal" do
     scenario "problems are the live class and no question exists at all" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

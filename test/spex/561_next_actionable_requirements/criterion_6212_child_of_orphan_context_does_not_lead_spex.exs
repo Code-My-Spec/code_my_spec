@@ -32,6 +32,10 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Child of an orphan bounded context is kept out of the wave" do
     scenario "priority-1 linked context leads; orphan's child schema is not surfaced" do
       given_ "a priority-1 linked context and an orphan context with a child schema", context do
@@ -47,13 +51,6 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
         :ok =
           Environments.write_file(
             env,
-            Content.impl_path("LinkedContext"),
-            Content.impl_file("LinkedContext")
-          )
-
-        :ok =
-          Environments.write_file(
-            env,
             Content.spec_path("OrphanContext"),
             Content.context_spec("OrphanContext", type: "context", dependencies: [])
           )
@@ -61,22 +58,8 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
         :ok =
           Environments.write_file(
             env,
-            Content.impl_path("OrphanContext"),
-            Content.impl_file("OrphanContext")
-          )
-
-        :ok =
-          Environments.write_file(
-            env,
             Content.spec_path("OrphanContext.Schema"),
             Content.child_spec("OrphanContext.Schema", type: "schema", dependencies: [])
-          )
-
-        :ok =
-          Environments.write_file(
-            env,
-            Content.impl_path("OrphanContext.Schema"),
-            Content.impl_file("OrphanContext.Schema")
           )
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -88,7 +71,7 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
         orphan_child =
           Fixtures.get_component_by_module_name(context.scope, "OrphanContext.Schema")
 
-        StoryHelpers.create_and_link(context.scope, "LinkedContext",
+        StoryHelpers.create_ready_and_link(context, "LinkedContext",
           title: "Linked story",
           description: "As a user, I want the linked component to lead.",
           acceptance_criteria: ["Linked ships"],
@@ -109,12 +92,12 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end
 
-      then_ "the priority-1 linked context leads", context do
+      then_ "the orphan context requires architecture work first", context do
         # The first half of this scenario's own title, which nothing asserted.
         # Both refutes below hold for a reply that offered nothing at all, so
         # "the orphan is not in the wave" was true of an empty wave.
-        assert context.response_text =~ "entity_id=`#{context.linked.id}`",
-               "expected the linked context to lead the wave, got:\n#{context.response_text}"
+        assert context.response_text =~ "requirement_name=`architecture_designed`",
+               "expected architecture work to block the incomplete topology, got:\n#{context.response_text}"
 
         {:ok, context}
       end

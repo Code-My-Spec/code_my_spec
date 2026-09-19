@@ -55,8 +55,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
       {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
 
       task_attrs = %{
-        session_type: CodeMySpec.AgentTasks.ComponentSpec,
-        requirement_name: "spec_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        requirement_name: "implementation_file",
         project_id: scope.active_project_id,
         component_id: component.id
       }
@@ -130,14 +130,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ComponentSpec) do
+  defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ComponentCode) do
     scope = full_scope_fixture()
     component = component_fixture(scope)
     session = session_fixture(scope)
 
     task_attrs = %{
       session_type: task_module,
-      requirement_name: "spec_file",
+      requirement_name: "implementation_file",
       project_id: scope.active_project_id,
       component_id: component.id,
       component_module_name: component.module_name
@@ -147,7 +147,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
 
     task =
       session_with_task.tasks
-      |> Enum.find(&(&1.requirement_name == "spec_file" and &1.status == :prepared))
+      |> Enum.find(&(&1.requirement_name == "implementation_file" and &1.status == :prepared))
 
     {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
 

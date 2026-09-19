@@ -26,6 +26,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Multiple actionable items are returned in priority order" do
     scenario "the head is the highest-priority story's context" do
       given_ "four contexts synced via /sync, each linked to a story with explicit priority",
@@ -40,9 +44,6 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
               Content.spec_path(module),
               Content.context_spec(module, type: "context", dependencies: [])
             )
-
-          :ok =
-            Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
         end)
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -56,7 +57,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
         # Assign priorities 1..4 — Alpha (1) is highest, Delta (4) is lowest.
         Enum.zip(modules, [1, 2, 3, 4])
         |> Enum.each(fn {module, priority} ->
-          StoryHelpers.create_and_link(context.scope, module,
+          StoryHelpers.create_ready_and_link(context, module,
             title: "Story for #{module}",
             description: "As an engineer, I want the #{module} chain to sort by priority.",
             acceptance_criteria: ["#{module} chain sorted correctly"],

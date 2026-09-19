@@ -6,8 +6,8 @@ defmodule CodeMySpecSpex.Story561.Criterion5814Spex do
   single wave together.
 
   Surface: get_next_requirement MCP tool. Three children of one
-  Reservations context have their spec files removed; the response
-  advertises start_task signatures for each child's spec_file —
+  Reservations context have their implementation files removed; the response
+  advertises start_task signatures for each child's implementation_file —
   proving they fan out as one parent_entity_id-bounded wave.
   """
 
@@ -26,14 +26,14 @@ defmodule CodeMySpecSpex.Story561.Criterion5814Spex do
   setup :setup_active_project
 
   spex "Children sharing parent_entity_id fan out as one wave" do
-    scenario "all three children's spec_file tasks appear together when their files are missing" do
+    scenario "all three children's implementation_file tasks appear together when their files are missing" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "every child's spec file is removed and re-synced", context do
+      and_ "every child's implementation file is removed and re-synced", context do
         env = context.environment
 
         for child <- [context.child_schema, context.child_repository, context.child_service] do
-          :ok = Environments.delete_file(env, Content.spec_path(child.module_name))
+          :ok = Environments.delete_file(env, Content.impl_path(child.module_name))
         end
 
         {:ok, sync_live, _html} =
@@ -60,13 +60,13 @@ defmodule CodeMySpecSpex.Story561.Criterion5814Spex do
         {:ok, context}
       end
 
-      and_ "the wave stays inside one parent_entity_id — the parent's review_file is not in the wave",
+      and_ "the wave stays inside one parent_entity_id — the parent's implementation_file is not in the wave",
            context do
         text = context.response_text
 
         refute text =~
-                 "requirement_name=`review_file`, entity_type=`component`, entity_id=`#{context.parent_context.id}`",
-               "parent's review_file should be gated behind children, response: #{text}"
+                 "requirement_name=`implementation_file`, entity_type=`component`, entity_id=`#{context.parent_context.id}`",
+               "parent's implementation_file should be gated behind children, response: #{text}"
 
         {:ok, context}
       end

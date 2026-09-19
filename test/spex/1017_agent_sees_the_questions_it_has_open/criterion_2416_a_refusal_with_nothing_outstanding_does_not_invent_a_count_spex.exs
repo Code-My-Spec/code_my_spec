@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
   spex "A refusal claims no questions when none are open" do
     scenario "nothing was ever asked and a problem refuses the stop" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding, so the stop will be refused", context do
         # No question is asked anywhere in this scenario, and that absence is

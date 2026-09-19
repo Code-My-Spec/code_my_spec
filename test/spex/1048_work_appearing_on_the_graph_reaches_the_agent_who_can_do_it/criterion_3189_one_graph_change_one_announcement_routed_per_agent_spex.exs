@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
       end
 
       given_ "a coding agent and a QA agent on different working copies", context do
-        coding_copy = join_working_copy(context, "/tmp/spex-3189-code", "the coding checkout")
+        coding_copy = %{working_copy_id: context.scope.active_working_copy_id}
         qa_copy = join_working_copy(context, "/tmp/spex-3189-qa", "the QA checkout")
 
         coding_scope = %{context.scope | active_working_copy_id: coding_copy.working_copy_id}
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3189Spex do
         coding =
           Fixtures.running_agent(coding_scope,
             role: "coding",
-            working_copy: "/tmp/spex-3189-code"
+            working_copy: context.scope.cwd
           )
 
         qa_scope = %{context.scope | active_working_copy_id: qa_copy.working_copy_id}

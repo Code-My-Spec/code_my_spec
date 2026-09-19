@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6072Spex do
 
   defp broken_spec do
     """
-    # Todo.Broken
+    No module heading
 
     A stub spec that hasn't been filled in yet.
     """

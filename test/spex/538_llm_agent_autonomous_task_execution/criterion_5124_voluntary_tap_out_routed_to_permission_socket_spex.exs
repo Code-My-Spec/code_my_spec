@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5124Spex do
   spex "Voluntary tap-out routes to human approval; loop terminates on approve" do
     scenario "agent taps out from the loop; human approves; next stop allows (loop ended)" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the autonomous loop is running (continuous mode on)", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)

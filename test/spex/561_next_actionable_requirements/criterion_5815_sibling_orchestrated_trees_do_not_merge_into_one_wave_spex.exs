@@ -26,6 +26,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5815Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Sibling orchestrated trees do not merge into one wave" do
     scenario "only one of two sibling contexts surfaces in the response" do
       given_ "two top-level contexts synced and linked to priority-1 stories", context do
@@ -38,9 +42,6 @@ defmodule CodeMySpecSpex.Story561.Criterion5815Spex do
               Content.spec_path(module),
               Content.context_spec(module, type: "context", dependencies: [])
             )
-
-          :ok =
-            Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
         end
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -49,14 +50,14 @@ defmodule CodeMySpecSpex.Story561.Criterion5815Spex do
         alpha = Fixtures.get_component_by_module_name(context.scope, "AlphaContext")
         beta = Fixtures.get_component_by_module_name(context.scope, "BetaContext")
 
-        StoryHelpers.create_and_link(context.scope, "AlphaContext",
+        StoryHelpers.create_ready_and_link(context, "AlphaContext",
           title: "Alpha story",
           description: "As a user, I want Alpha shipped first.",
           acceptance_criteria: ["Alpha works"],
           priority: 1
         )
 
-        StoryHelpers.create_and_link(context.scope, "BetaContext",
+        StoryHelpers.create_ready_and_link(context, "BetaContext",
           title: "Beta story",
           description: "As a user, I want Beta shipped after.",
           acceptance_criteria: ["Beta works"],

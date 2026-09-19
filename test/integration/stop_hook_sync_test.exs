@@ -80,12 +80,12 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       assert accounts
 
-      # Compute requirements — spec_file satisfied, implementation_file not
+      # The spec defines topology; only implementation is required.
       reqs = RequirementCalculator.compute_component(scope, accounts)
       spec_req = Enum.find(reqs, &(&1.name == "spec_file"))
       impl_req = Enum.find(reqs, &(&1.name == "implementation_file"))
 
-      assert spec_req.satisfied, "spec_file should be satisfied"
+      assert is_nil(spec_req), "specification is not a component work requirement"
       refute impl_req.satisfied, "implementation_file should NOT be satisfied yet"
 
       # Write the impl file and re-sync

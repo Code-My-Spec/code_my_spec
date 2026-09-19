@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5649Spex do
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         dep_first_key =
-          GraphAssertions.node_key("component", context.dep_context.id, "spec_file")
+          GraphAssertions.node_key("component", context.dep_context.id, "implementation_file")
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_first_key),
                "expected bdd_specs_exist to kickoff at the dep's first requirement (#{dep_first_key})"
@@ -56,7 +56,11 @@ defmodule CodeMySpecSpex.Story562.Criterion5649Spex do
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         surface_first_key =
-          GraphAssertions.node_key("component", context.surface_liveview.id, "spec_file")
+          GraphAssertions.node_key(
+            "component",
+            context.surface_liveview.id,
+            "implementation_file"
+          )
 
         refute GraphAssertions.edge?(context.graph, bdd_exist_key, surface_first_key),
                "expected the direct bdd_specs_exist → surface edge to be subsumed by the dep chain and removed by transitive reduction"

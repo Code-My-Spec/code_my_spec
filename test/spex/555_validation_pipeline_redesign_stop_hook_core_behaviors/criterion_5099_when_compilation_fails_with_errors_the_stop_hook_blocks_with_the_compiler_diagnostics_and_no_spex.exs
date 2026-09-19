@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
   spex "Compiler errors block the stop and short-circuit the pipeline" do
     scenario "mix compile returns errors → block with compiler reason, no analyzers" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent writes an implementation that does not compile",
              context do

@@ -33,6 +33,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Surface dependency inherits its dependent story's priority" do
     scenario "Users (dep of Stories) sorts ahead of low-priority Reports" do
       given_ "Stories depends on Users (story priority 1), and unrelated Reports has priority 9",
@@ -50,9 +54,6 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
               Content.spec_path(module),
               Content.context_spec(module, type: "context", dependencies: deps)
             )
-
-          :ok =
-            Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
         end
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -62,14 +63,14 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
         stories = Fixtures.get_component_by_module_name(context.scope, "Stories")
         reports = Fixtures.get_component_by_module_name(context.scope, "Reports")
 
-        StoryHelpers.create_and_link(context.scope, "Stories",
+        StoryHelpers.create_ready_and_link(context, "Stories",
           title: "Stories surface",
           description: "As a user, I want Stories shipped, which requires Users.",
           acceptance_criteria: ["Stories renders"],
           priority: 1
         )
 
-        StoryHelpers.create_and_link(context.scope, "Reports",
+        StoryHelpers.create_ready_and_link(context, "Reports",
           title: "Reports later",
           description: "As a user, I want Reports much later.",
           acceptance_criteria: ["Reports renders"],

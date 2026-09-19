@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6087Spex do
         {:reply, response, _frame} =
           StartTask.execute(
             %{
-              requirement_name: "spec_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: context.session_id,
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6087Spex do
         {:ok, context}
       end
 
-      then_ "list_tasks shows a Task carrying that agent_id for spec_file",
+      then_ "list_tasks shows a Task carrying that agent_id for implementation_file",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -83,15 +83,15 @@ defmodule CodeMySpecSpex.Story704.Criterion6087Spex do
         text = TaskResponseHelpers.response_text(response)
 
         # Each row reports `agent=<agent_id>` and the requirement_name.
-        # Search for a row that has BOTH the spec_file requirement AND
+        # Search for a row that has BOTH the implementation_file requirement AND
         # the sub-agent's agent_id.
         line =
           text
           |> String.split("\n")
-          |> Enum.find(&(&1 =~ "spec_file" and &1 =~ "agent=#{context.agent_id}"))
+          |> Enum.find(&(&1 =~ "implementation_file" and &1 =~ "agent=#{context.agent_id}"))
 
         assert line,
-               "expected a list_tasks row pairing spec_file with agent_id=#{context.agent_id}, got:\n#{text}"
+               "expected a list_tasks row pairing implementation_file with agent_id=#{context.agent_id}, got:\n#{text}"
 
         {:ok, context}
       end

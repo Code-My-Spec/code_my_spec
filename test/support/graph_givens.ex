@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     an orphan from nothing). Produces `context.orphan`.
 
   - `:story_with_liveview_surface` — a story linked to a LiveView
-    surface (`Marketing.HomeLive`) that depends on a context
+    surface (`MarketingWeb.HomeLive`) that depends on a context
     (`Marketing`). Produces `context.surface_liveview`,
     `context.dep_context`, `context.story`.
 
@@ -409,16 +409,16 @@ defmodule CodeMySpecSpex.GraphGivens do
   register_given :story_with_liveview_surface, context do
     write_specs(context.environment, [
       {"Marketing", :context, []},
-      {"Marketing.HomeLive", :liveview, ["Marketing"]}
+      {"MarketingWeb.HomeLive", :liveview, ["Marketing"]}
     ])
 
     sync_project(context)
 
-    surface = Fixtures.get_component_by_module_name(context.scope, "Marketing.HomeLive")
+    surface = Fixtures.get_component_by_module_name(context.scope, "MarketingWeb.HomeLive")
     dep_context = Fixtures.get_component_by_module_name(context.scope, "Marketing")
 
     story =
-      StoryHelpers.create_and_link(context.scope, "Marketing.HomeLive",
+      StoryHelpers.create_and_link(context.scope, "MarketingWeb.HomeLive",
         title: "User visits the home page",
         description: "The home page renders the marketing landing.",
         acceptance_criteria: ["Home page renders"]

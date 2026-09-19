@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3182Spex do
 
         context =
           start_agent_task(context, coding.id, %{
-            requirement_name: "spec_file",
+            requirement_name: "implementation_file",
             entity_type: "component",
             entity_id: to_string(context.component.id)
           })

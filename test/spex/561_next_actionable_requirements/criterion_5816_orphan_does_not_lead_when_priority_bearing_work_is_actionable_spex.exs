@@ -27,6 +27,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5816Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Orphan does not lead when priority-bearing work is actionable" do
     scenario "the linked priority-1 context wins; the orphan is not the head" do
       given_ "a priority-1 linked context and an orphan with no priority", context do
@@ -39,19 +43,12 @@ defmodule CodeMySpecSpex.Story561.Criterion5816Spex do
             Content.context_spec("LinkedContext", type: "context", dependencies: [])
           )
 
-        :ok =
-          Environments.write_file(
-            env,
-            Content.impl_path("LinkedContext"),
-            Content.impl_file("LinkedContext")
-          )
-
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")
 
-        StoryHelpers.create_and_link(context.scope, "LinkedContext",
+        StoryHelpers.create_ready_and_link(context, "LinkedContext",
           title: "Linked story",
           description: "As a user, I want the linked component to lead.",
           acceptance_criteria: ["Linked ships"],
@@ -60,7 +57,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5816Spex do
 
         orphan =
           ComponentHelpers.create(context.scope,
-            type: "context",
+            type: "service",
             module_name: "OrphanContext",
             name: "Orphan Context",
             description: "An orphan with no story linkage."

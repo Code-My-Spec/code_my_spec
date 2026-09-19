@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story555.Criterion1539Spex do
   spex "Persisted unresolved problems block the stop even when no files changed this turn" do
     scenario "a previously-recorded test failure blocks a stop with no new writes" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the session recorded its edit to the component's file via PostToolUse", context do
         Phoenix.ConnTest.build_conn()

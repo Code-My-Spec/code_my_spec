@@ -5,8 +5,8 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
   it back in the actionable list.
 
   Surface: get_next_requirement. After syncing a context (parent
-  spec_file satisfied), the engineer deletes the parent's spec file
-  and re-syncs. The response now advertises spec_file for that
+  implementation_file satisfied), the engineer deletes the parent's implementation file
+  and re-syncs. The response now advertises implementation_file for that
   parent component as actionable again — proving the actionable
   computation is fresh against current state, not cached.
   """
@@ -25,15 +25,15 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
   setup :setup_active_project
 
   spex "Deleting a completed artifact re-surfaces its requirement" do
-    scenario "the parent spec_file renders as actionable after deletion" do
+    scenario "the parent implementation_file renders as actionable after deletion" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "the engineer deletes the parent context's spec file from disk",
+      and_ "the engineer deletes the parent context's implementation file from disk",
            context do
         :ok =
           Environments.delete_file(
             context.environment,
-            Content.spec_path(context.parent_context.module_name)
+            Content.impl_path(context.parent_context.module_name)
           )
 
         {:ok, sync_live, _html} =
@@ -54,21 +54,21 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "the parent context's spec_file renders in the actionable color",
+      then_ "the parent context's implementation_file renders in the actionable color",
             context do
         parent_id = context.parent_context.id
 
         node =
           Enum.find(context.graph["nodes"], fn n ->
             n["attributes"]["entity_id"] == parent_id and
-              n["attributes"]["name"] == "spec_file"
+              n["attributes"]["name"] == "implementation_file"
           end)
 
         assert node,
-               "expected parent's spec_file node to be present in the graph"
+               "expected parent's implementation_file node to be present in the graph"
 
         assert node["attributes"]["color"] == @actionable_color,
-               "expected parent's spec_file to render as actionable (#{@actionable_color}), got color #{node["attributes"]["color"]}"
+               "expected parent's implementation_file to render as actionable (#{@actionable_color}), got color #{node["attributes"]["color"]}"
 
         {:ok, context}
       end

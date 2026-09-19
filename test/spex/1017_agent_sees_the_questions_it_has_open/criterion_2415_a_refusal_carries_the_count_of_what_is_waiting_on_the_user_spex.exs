@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   spex "A refusal tells the agent how much is waiting on the user" do
     scenario "two questions are open and a problem refuses the stop" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent asked the user two questions", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}

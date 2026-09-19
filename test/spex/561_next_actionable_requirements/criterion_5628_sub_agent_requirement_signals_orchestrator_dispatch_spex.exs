@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5628Spex do
     scenario "the response carries a parent-scoped orchestration header for sub_agent work" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "all child spec files are removed and the project re-synced",
+      and_ "all child implementation files are removed and the project re-synced",
            context do
         Enum.each(
           [
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5628Spex do
           ],
           fn module_name ->
             :ok =
-              Environments.delete_file(context.environment, Content.spec_path(module_name))
+              Environments.delete_file(context.environment, Content.impl_path(module_name))
           end
         )
 

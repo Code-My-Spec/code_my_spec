@@ -70,7 +70,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     {:reply, started, _} =
       StartTask.execute(
         %{
-          requirement_name: "spec_file",
+          requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: component.id
         },
@@ -93,7 +93,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     refute response.isError, response_text(response)
     text = response_text(response)
 
-    assert text =~ "spec_file",
+    assert text =~ "implementation_file",
            """
            Asking about a named agent did not return that agent's work.
 
@@ -148,7 +148,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
            Got: #{response_text(response)}
            """
 
-    assert response_text(response) =~ "spec_file",
+    assert response_text(response) =~ "implementation_file",
            "the agent's own call has to return its own work, not an empty list"
   end
 end

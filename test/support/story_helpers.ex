@@ -20,6 +20,21 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  @doc "Create a linked story with its interview and BDD artifacts ready for implementation."
+  def create_ready_and_link(context, module_name, attrs) do
+    story = create_and_link(context.scope, module_name, attrs)
+
+    :ok =
+      CodeMySpecSpex.ProjectStateFixtures.apply_three_amigos_for_story(
+        context.scope,
+        story,
+        persona_id: context.persona_id
+      )
+
+    :ok = CodeMySpecSpex.ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+    story
+  end
+
   @doc """
   Drives the `CreateStory` MCP tool, then `AddCriterion` for each
   acceptance criterion, then `GetStory` to read the persisted story

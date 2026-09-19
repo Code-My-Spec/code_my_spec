@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2412Spex do
   spex "An agent in the loop is shown the door" do
     scenario "continuous mode is on and the stop is refused on problems" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the autonomous loop is running", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)

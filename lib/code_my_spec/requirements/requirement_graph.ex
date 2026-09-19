@@ -2033,10 +2033,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp find_def(definitions, name) do
-    Enum.find(definitions, &(&1.name == name))
-  end
-
   # Cross-entity: story.qa_complete → project.qa_journey_plan.
   # The project-level fan-in: every story's QA completion gates the
   # project's QA journey chain. This edge is the structural seam the
@@ -2084,37 +2080,47 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp cross_context_edge_for_dep(dep, comp, ctx, config) do
     with %_{} = dep_comp <- Map.get(ctx.components_by_id, dep.id),
-         dep_terminal when not is_nil(dep_terminal) <- dep_terminal_def(dep_comp, config),
-         target when not is_nil(target) <- cross_context_target(comp, dep_comp, config),
          false <- skip_cross_context?(comp, dep_comp) do
-      [
-        %{
-          from: {"component", dep_comp.id, dep_terminal.name},
-          to: {"component", comp.id, target.name}
-        }
-      ]
+      sources = component_boundary(dep_comp, :exit, ctx, config)
+      targets = component_boundary(comp, :entry, ctx, config)
+
+      for source <- sources, target <- targets, source != target do
+        %{from: source, to: target}
+      end
     else
       _ -> []
     end
   end
 
-  defp dep_terminal_def(dep_comp, config) do
-    dep_comp.type
-    |> RequirementsRegistry.get_requirements_for_type()
-    |> filter_definitions_by_config(config)
-    |> List.last()
-  end
-
-  defp cross_context_target(comp, dep_comp, config) do
-    comp_defs =
+  # Container templates can begin or end at child work. Resolve those scopes
+  # before making an edge; a live context has no node of its own to point at.
+  defp component_boundary(comp, direction, ctx, config) do
+    definitions =
       comp.type
       |> RequirementsRegistry.get_requirements_for_type()
       |> filter_definitions_by_config(config)
 
-    if siblings?(comp, dep_comp),
-      do: find_def(comp_defs, "implementation_file"),
-      else: List.first(comp_defs)
+    definition = if direction == :entry, do: List.first(definitions), else: List.last(definitions)
+    boundary_nodes(comp, definition, definitions, ctx)
   end
+
+  defp boundary_nodes(_comp, nil, _definitions, _ctx), do: []
+
+  defp boundary_nodes(comp, %{node_scope: :child, name: name}, definitions, ctx) do
+    children = Enum.filter(direct_children(comp, ctx), &child_supports_def_name?(&1, name))
+
+    case children do
+      [] ->
+        own = Enum.find(definitions, &(&1.node_scope in [:parent, :self]))
+        boundary_nodes(comp, own, definitions, ctx)
+
+      children ->
+        Enum.map(children, &{"component", &1.id, name})
+    end
+  end
+
+  defp boundary_nodes(comp, %{name: name}, _definitions, _ctx),
+    do: [{"component", comp.id, name}]
 
   defp siblings?(comp, dep_comp) do
     comp.parent_component_id != nil and

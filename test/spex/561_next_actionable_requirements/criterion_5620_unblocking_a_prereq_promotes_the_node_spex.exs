@@ -25,14 +25,14 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
   setup :setup_active_project
 
   spex "Unblocking a prereq flips its dependent from actionable to satisfied" do
-    scenario "parent spec_file renders actionable when missing, satisfied after re-write" do
+    scenario "parent implementation_file renders actionable when missing, satisfied after re-write" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "the parent context's spec file is removed and re-synced", context do
+      and_ "the parent context's implementation file is removed and re-synced", context do
         :ok =
           Environments.delete_file(
             context.environment,
-            Content.spec_path(context.parent_context.module_name)
+            Content.impl_path(context.parent_context.module_name)
           )
 
         {:ok, sync_live, _html} =
@@ -56,8 +56,8 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         :ok =
           Environments.write_file(
             context.environment,
-            Content.spec_path(context.parent_context.module_name),
-            Content.context_spec(context.parent_context.module_name)
+            Content.impl_path(context.parent_context.module_name),
+            Content.impl_file(context.parent_context.module_name)
           )
 
         {:ok, sync_live, _html} =
@@ -77,27 +77,27 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         {:ok, Map.put(context, :unblocked_graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "the parent spec_file flips from actionable color to satisfied color",
+      then_ "the parent implementation_file flips from actionable color to satisfied color",
             context do
         parent_id = context.parent_context.id
 
         blocked_node =
           Enum.find(context.blocked_graph["nodes"], fn n ->
             n["attributes"]["entity_id"] == parent_id and
-              n["attributes"]["name"] == "spec_file"
+              n["attributes"]["name"] == "implementation_file"
           end)
 
         unblocked_node =
           Enum.find(context.unblocked_graph["nodes"], fn n ->
             n["attributes"]["entity_id"] == parent_id and
-              n["attributes"]["name"] == "spec_file"
+              n["attributes"]["name"] == "implementation_file"
           end)
 
         assert blocked_node && blocked_node["attributes"]["color"] == @actionable_color,
-               "expected parent spec_file to render as actionable (#{@actionable_color}) in the blocked state, got #{inspect(blocked_node && blocked_node["attributes"]["color"])}"
+               "expected parent implementation_file to render as actionable (#{@actionable_color}) in the blocked state, got #{inspect(blocked_node && blocked_node["attributes"]["color"])}"
 
         assert unblocked_node && unblocked_node["attributes"]["color"] == @satisfied_color,
-               "expected parent spec_file to render as satisfied (#{@satisfied_color}) in the unblocked state, got #{inspect(unblocked_node && unblocked_node["attributes"]["color"])}"
+               "expected parent implementation_file to render as satisfied (#{@satisfied_color}) in the unblocked state, got #{inspect(unblocked_node && unblocked_node["attributes"]["color"])}"
 
         {:ok, context}
       end

@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6076Spex do
         {:ok, context}
       end
 
-      given_ "the agent writes a spec file missing required sections", context do
+      given_ "the agent writes a spec file missing its module heading", context do
         :ok =
           Environments.write_file(
             context.environment,
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6076Spex do
 
   defp broken_spec do
     """
-    # Todo.Broken
+    No module heading
 
     A stub spec that hasn't been filled in yet.
     """

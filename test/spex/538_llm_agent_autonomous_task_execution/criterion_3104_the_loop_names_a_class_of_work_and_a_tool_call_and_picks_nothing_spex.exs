@@ -48,6 +48,15 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
       given_ :synced_context_component
       given_ :story_linked_to_component
 
+      given_ "the story interview is complete and BDD work is available", context do
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, context.story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, context}
+      end
+
       given_ "a coding agent, working, with nothing blocking it", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")
 

@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6099Spex do
   spex "tap_out returns awaiting and publishes a permission request" do
     scenario "MCP call returns awaiting response; PubSub message observed; continuous still on" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "continuous mode is enabled on this session", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)

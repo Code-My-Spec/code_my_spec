@@ -1,13 +1,13 @@
 defmodule CodeMySpecSpex.Story561.Criterion5621Spex do
   @moduledoc """
   Story 561 — Next Actionable Requirements
-  Criterion 5621 — A regular component's spec_file with
+  Criterion 5621 — A regular component's implementation_file with
   satisfied_by present appears in actionable when its prereqs are
   met (or it has none).
 
   Surface: get_next_requirement. With three children synced under
-  a parent context, after deleting one child's spec file, the
-  child's spec_file becomes actionable — proving that satisfied_by
+  a parent context, after deleting one child's implementation file, the
+  child's implementation_file becomes actionable — proving that satisfied_by
   values inherited from the template surface real start_task calls.
   """
 
@@ -25,14 +25,14 @@ defmodule CodeMySpecSpex.Story561.Criterion5621Spex do
   setup :setup_active_project
 
   spex "Component requirement with satisfied_by appears when actionable" do
-    scenario "the schema child's spec_file becomes actionable after its file is removed" do
+    scenario "the schema child's implementation_file becomes actionable after its file is removed" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "the schema child's spec file is removed and re-synced", context do
+      and_ "the schema child's implementation file is removed and re-synced", context do
         :ok =
           Environments.delete_file(
             context.environment,
-            Content.spec_path(context.child_schema.module_name)
+            Content.impl_path(context.child_schema.module_name)
           )
 
         {:ok, sync_live, _html} =
@@ -48,15 +48,15 @@ defmodule CodeMySpecSpex.Story561.Criterion5621Spex do
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end
 
-      then_ "the schema child's spec_file is advertised as actionable",
+      then_ "the schema child's implementation_file is advertised as actionable",
             context do
         child_id = context.child_schema.id
 
         signature =
-          ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*entity_id=`#{child_id}`/
+          ~r/requirement_name=`implementation_file`,\s*entity_type=`component`,\s*entity_id=`#{child_id}`/
 
         assert Regex.match?(signature, context.response_text),
-               "expected the schema child's spec_file to be in actionable, response: #{context.response_text}"
+               "expected the schema child's implementation_file to be in actionable, response: #{context.response_text}"
 
         {:ok, context}
       end

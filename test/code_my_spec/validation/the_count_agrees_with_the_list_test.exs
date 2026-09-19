@@ -34,7 +34,7 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
 
   defp agent(role), do: %Agent{role: role, continuous: true, tasks: []}
 
-  # A row the computed graph does not contain: `spec_file` for a component with
+  # A row the computed graph does not contain: `implementation_file` for a component with
   # no story behind it. This is what a stale read model looks like — a row left
   # by an older compute, describing work that is no longer anybody's.
   #
@@ -45,7 +45,7 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
 
     Repo.insert!(
       Node.changeset(%Node{}, %{
-        name: "spec_file",
+        name: "implementation_file",
         description: "left behind by an older compute",
         satisfied: false,
         component_id: component.id,

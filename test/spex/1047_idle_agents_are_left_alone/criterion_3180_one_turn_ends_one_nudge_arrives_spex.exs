@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3180Spex do
 
       given_ :synced_context_component
       given_ :story_linked_to_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a coding agent with coding work remaining", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")

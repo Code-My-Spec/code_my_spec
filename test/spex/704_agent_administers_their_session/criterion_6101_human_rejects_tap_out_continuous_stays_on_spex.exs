@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6101Spex do
   spex "Human rejects the tap-out and continuous mode stays on" do
     scenario "after rejection, continuous remains true and next stop hook still blocks" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "continuous mode is enabled and tap_out has been called", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)

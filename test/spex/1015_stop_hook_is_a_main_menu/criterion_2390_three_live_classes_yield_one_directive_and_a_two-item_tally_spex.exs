@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
   spex "One class is named as next and the rest are tallied" do
     scenario "problems, issues and requirements are all live" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

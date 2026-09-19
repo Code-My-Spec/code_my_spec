@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
   spex "The offer to ask survives a directive about something else" do
     scenario "problems are the live class and no question is pending" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

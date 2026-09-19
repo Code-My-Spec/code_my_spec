@@ -1,50 +1,31 @@
 defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
-  @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5619 — A node whose own check would pass but with one
-  unsatisfied prereq does not appear in actionable.
-
-  Surface: get_next_requirement. We exercise this by deleting the
-  parent context's spec file (so spec_valid is unsatisfied), then
-  asserting that downstream child-scoped requirements (which depend
-  on parent.spec_valid through the template) are not advertised —
-  the chain is correctly gated.
-  """
-
+  @moduledoc "A missing child implementation blocks its parent's implementation."
   use CodeMySpecSpex.Case
-
   import CodeMySpecSpex.GraphGivens
-
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-
-  @actionable_color "#f5f5f7"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Blocked nodes do not render as actionable until their prereqs are satisfied" do
-    scenario "child review work does not render actionable while parent spec is missing" do
+  spex "Only unblocked implementation work is actionable" do
+    scenario "child is actionable while its parent waits" do
       given_ :context_with_three_children_in_satisfied_project
 
-      and_ "the parent context's spec file is removed", context do
-        :ok =
-          Environments.delete_file(
-            context.environment,
-            Content.spec_path(context.parent_context.module_name)
-          )
+      given_ "parent and child code are missing", context do
+        for component <- [context.parent_context, context.child_schema] do
+          :ok =
+            Environments.delete_file(
+              context.environment,
+              Content.impl_path(component.module_name)
+            )
+        end
 
-        {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        sync_live |> element("button[phx-click='sync']") |> render_click()
-
-        {:ok, context}
+        {:ok, sync(context)}
       end
 
-      when_ "the engineer opens the requirements graph", context do
-        {:ok, _live, html} =
+      when_ "the engineer opens the graph", context do
+        {:ok, _view, html} =
           live(
             context.conn,
             "/app/projects/#{context.project.id}/requirements/graph?preload=true"
@@ -53,37 +34,26 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "no review_file or review_valid node renders in actionable color",
-            context do
-        blocked_names = ["review_file", "review_valid"]
+      then_ "the child can be built and the parent is blocked", context do
+        nodes = context.graph["nodes"]
 
-        actionable_reviews =
-          Enum.filter(context.graph["nodes"], fn n ->
-            n["attributes"]["name"] in blocked_names and
-              n["attributes"]["color"] == @actionable_color
-          end)
+        child =
+          Enum.find(
+            nodes,
+            &(&1["attributes"]["entity_id"] == context.child_schema.id and
+                &1["attributes"]["name"] == "implementation_file")
+          )
 
-        assert actionable_reviews == [],
-               "expected review_file/review_valid to NOT render actionable while parent spec is missing, found: #{inspect(Enum.map(actionable_reviews, &{&1["attributes"]["entity_id"], &1["attributes"]["name"]}))}"
+        parent =
+          Enum.find(
+            nodes,
+            &(&1["attributes"]["entity_id"] == context.parent_context.id and
+                &1["attributes"]["name"] == "implementation_file")
+          )
 
-        {:ok, context}
-      end
-
-      and_ "the parent's spec_file renders in actionable color", context do
-        parent_id = context.parent_context.id
-
-        node =
-          Enum.find(context.graph["nodes"], fn n ->
-            n["attributes"]["entity_id"] == parent_id and
-              n["attributes"]["name"] == "spec_file"
-          end)
-
-        assert node,
-               "expected parent's spec_file node in the graph"
-
-        assert node["attributes"]["color"] == @actionable_color,
-               "expected parent's spec_file to render as actionable (#{@actionable_color}), got #{node["attributes"]["color"]}"
-
+        assert child && parent
+        assert child["attributes"]["color"] == "#f5f5f7"
+        refute parent["attributes"]["color"] == "#f5f5f7"
         {:ok, context}
       end
     end

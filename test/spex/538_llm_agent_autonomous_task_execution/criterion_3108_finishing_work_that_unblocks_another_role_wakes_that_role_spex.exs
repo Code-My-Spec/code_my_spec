@@ -62,11 +62,21 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
 
       given_ :synced_context_component
       given_ :story_linked_to_component
+
+      given_ "the story interview is complete and BDD work is available", context do
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(context.scope, context.story,
+            persona_id: context.persona_id
+          )
+
+        {:ok, context}
+      end
+
       # Its evaluation passes trivially, which is what this scenario needs: the
       # wake fires on a task *completing*, and a task that fails evaluation
       # leaves the same work outstanding for the same role — correctly sending
       # nobody anything.
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a coding agent on the copy, working and idle", context do
         coding = Fixtures.running_agent(context.scope, role: "coding")

@@ -26,24 +26,27 @@ defmodule CodeMySpecSpex.Story715.Criterion6306Spex do
     scenario "show_requirement returns details for a known requirement name" do
       given_ :synced_context_component
 
-      when_ ~s|the agent calls show_requirement with name "spec_file"|, context do
+      when_ ~s|the agent calls show_requirement with name "implementation_file"|, context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ShowRequirement.execute(%{name: "spec_file"}, frame)
+
+        {:reply, response, _frame} =
+          ShowRequirement.execute(%{name: "implementation_file"}, frame)
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 
       then_ "the response reports the requirement name", context do
-        assert context.body =~ ~r/^#\s+spec_file/m,
-               "expected `# spec_file` header in response, got:\n#{context.body}"
+        assert context.body =~ ~r/^#\s+implementation_file/m,
+               "expected `# implementation_file` header in response, got:\n#{context.body}"
 
         {:ok, context}
       end
 
       and_ "the response includes the requirement's description", context do
-        # The `spec_file` requirement's description in the registry is
-        # "Context specification file exists" — assert the body carries
+        # The `implementation_file` requirement's description in the registry is
+        # "Component implementation file exists" — assert the body carries
         # it between the header and the **Status:** field.
-        assert context.body =~ "Context specification file exists",
+        assert context.body =~ "Component implementation file exists",
                "expected requirement description in response, got:\n#{context.body}"
 
         {:ok, context}

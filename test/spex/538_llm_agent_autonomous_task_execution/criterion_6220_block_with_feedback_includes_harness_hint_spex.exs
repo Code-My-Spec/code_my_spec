@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story538.Criterion6220Spex do
   spex "Block-with-feedback responses include an R9 harness-reporting hint" do
     scenario "compile-error block reason carries the create_issue(scope: framework) affordance" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent writes an implementation that does not compile", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

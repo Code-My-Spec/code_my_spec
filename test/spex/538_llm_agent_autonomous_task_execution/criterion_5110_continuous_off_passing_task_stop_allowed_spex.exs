@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5110Spex do
   spex "Continuous mode off, passing task, stop allowed" do
     scenario "the stop hook allows the stop without consulting the graph for continuation" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       when_ "the stop hook fires with no additional file writes", context do
         response =
