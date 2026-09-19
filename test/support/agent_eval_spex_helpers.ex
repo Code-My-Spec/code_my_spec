@@ -263,8 +263,29 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec say(String.t(), String.t()) :: :ok
   def say(agent_id, text) do
-    Fixtures.send_agent_message(agent_id, text)
-    :ok
+    # Asserted rather than discarded. `send_message/4` answers `:started`,
+    # `:queued` or an error, and this threw the answer away — so a delivery
+    # that never happened produced a run where the agent said nothing, counted
+    # as a miss, and read as the agent declining to act.
+    #
+    # Measured 2026-09-17: criterion 3543 reported 0 of 3 with "called nothing
+    # at all" three times, in 28 seconds — three agents that were never spoken
+    # to at all. A rate built out of undelivered messages is a statement about
+    # the helper wearing the costume of a statement about the agent, which is
+    # the one thing these criteria must not produce.
+    case Fixtures.message_agent_and_wait(agent_id, text, settle_timeout()) do
+      {:ok, said} ->
+        dump(agent_id <> " replied", said)
+        :ok
+
+      other ->
+        flunk("""
+        The agent was never told anything, so this run measures nothing about
+        what it does when told.
+
+        Sending to #{agent_id} answered: #{inspect(other)}
+        """)
+    end
   end
 
   @doc """

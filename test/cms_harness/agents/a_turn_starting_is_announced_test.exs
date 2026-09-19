@@ -130,8 +130,8 @@ defmodule CmsHarness.Agents.ATurnStartingIsAnnouncedTest do
              ChannelClient.encode_turn_event(%{event: :turn_started, turn: 1})
   end
 
-  test "the engine is the producer, not a test fixture" do
-    source = File.read!("lib/cms_harness/agents/engine.ex")
+  test "the engine implementation is the producer, not a test fixture" do
+    source = File.read!("lib/cms_harness/agents/engine/impl.ex")
 
     assert source =~ "announce_turn_start",
            "the only producer was a spex fixture calling the channel directly, which is " <>

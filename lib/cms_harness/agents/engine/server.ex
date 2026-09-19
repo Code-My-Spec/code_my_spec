@@ -1,0 +1,103 @@
+defmodule CmsHarness.Agents.Engine.Server do
+  @moduledoc false
+
+  use GenServer, restart: :temporary
+
+  alias CmsHarness.Agents.Engine.Impl
+  alias CmsHarness.Agents.Engine.State
+
+  def start_link(opts) do
+    agent_id = Keyword.fetch!(opts, :agent_id)
+
+    GenServer.start_link(__MODULE__, opts,
+      name: {:via, Registry, {CmsHarness.Registry, {:agent, agent_id}}}
+    )
+  end
+
+  @impl true
+  def init(opts), do: Impl.init(opts)
+
+  # Idle, so the turn starts now and this caller waits it out.
+  @impl true
+  def handle_call({:chat, message, timeout}, from, %{turn: nil} = state) do
+    entry = %{ref: Impl.new_ref(), message: message, timeout: timeout}
+
+    case State.offer(state, entry) do
+      {:start, entry, state} ->
+        {:noreply,
+         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, from)}}
+    end
+  end
+
+  # Busy. Waiting is the answer rather than blocking: holding the caller would
+  # make them wait two turns for one, and the ref is what lets them change
+  # their mind in the meantime.
+  def handle_call({:chat, message, timeout}, _from, state) do
+    ref = Impl.new_ref()
+
+    case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
+      {:queued, state} -> {:reply, {:ok, {:queued, ref}}, state}
+    end
+  end
+
+  def handle_call({:send, ref, message, timeout}, _from, %{turn: nil} = state) do
+    entry = %{ref: ref, message: message, timeout: timeout}
+
+    case State.offer(state, entry) do
+      {:start, entry, state} ->
+        {:reply, {:ok, :started},
+         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, nil)}}
+    end
+  end
+
+  def handle_call({:send, ref, message, timeout}, _from, state) do
+    case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
+      {:queued, state} -> {:reply, {:ok, :queued}, state}
+    end
+  end
+
+  # Only what is still waiting can be taken back. Anything else the agent
+  # already has, and there is no unsaying it — so this says so instead of
+  # clearing a queue entry that is not there and reporting success.
+  def handle_call(:alloy, _from, state) do
+    {:reply, {:ok, state.alloy}, state}
+  end
+
+  def handle_call(:status, _from, state) do
+    {:reply, {:ok, State.status(state)}, state}
+  end
+
+  def handle_call(:tools, _from, state) do
+    {:reply, state.tools, state}
+  end
+
+  def handle_call(:mcp_client, _from, state) do
+    {:reply, state.mcp_client, state}
+  end
+
+  def handle_call({:withdraw, ref}, _from, state) do
+    case State.withdraw(state, ref) do
+      :already_delivered -> {:reply, {:error, :already_delivered}, state}
+      {:ok, state} -> {:reply, :ok, state}
+    end
+  end
+
+  @impl true
+  def handle_info({task_ref, result}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
+    Process.demonitor(task_ref, [:flush])
+    Impl.settle(state, result)
+  end
+
+  def handle_info(
+        {:DOWN, task_ref, :process, _pid, reason},
+        %{turn: %{task: %Task{ref: task_ref}}} = state
+      ) do
+    Impl.settle(state, {:error, reason})
+  end
+
+  def handle_info({:EXIT, alloy, reason}, %{alloy: alloy} = state), do: {:stop, reason, state}
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(reason, state), do: Impl.terminate(reason, state)
+end

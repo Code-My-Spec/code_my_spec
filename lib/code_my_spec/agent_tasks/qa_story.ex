@@ -183,14 +183,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
     Call `submit_qa_result` to land a DB attempt for story #{story_id} — the
     requirement graph reads completion from the qa_attempts table, not the
-    filesystem. Use the fully-qualified MCP tool name:
+    filesystem. It is a code-mode tool, so it is called through `run_script`:
 
-        mcp__plugin_codemyspec_local__submit_qa_result(
-          task_id: <task_id from start_task>,
-          status: "pass" | "fail" | "partial",
-          scenarios: [%{name: "...", status: "...", observation: "..."}, ...],
-          issue_ids: [...]   # ids returned from any create_issue calls
-        )
+        run_script({ script = [[
+          return submit_qa_result({
+            task_id = "<task_id from start_task>",
+            status = "pass",   -- or "fail" / "partial"
+            scenarios = { { name = "...", status = "...", observation = "..." } },
+            issue_ids = { ... }   -- ids returned from any create_issue calls
+          })
+        ]] })
 
     The scenarios payload is a structured list — one entry per scenario you
     exercised, each carrying its own name, status, and observation. Only
@@ -518,21 +520,26 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
     ## Findings and done signal
 
-    Every finding you uncover during execution gets filed via
-    `mcp__plugin_codemyspec_local__create_issue` **as you find it** — not
-    written into a markdown file. Capture the title, severity, scope, and a
-    short description; the call returns an issue id. Hold those ids.
+    Every finding you uncover during execution gets filed with `create_issue`
+    **as you find it** — not written into a markdown file. Capture the title,
+    severity, scope, and a short description; the call returns an issue id.
+    Hold those ids.
 
-    When you finish the session, call
-    `mcp__plugin_codemyspec_local__submit_qa_result` with the structured
-    scenarios payload **and** every issue id you filed:
+    Both tools are code mode, so both go through `run_script`:
 
-        mcp__plugin_codemyspec_local__submit_qa_result(
-          task_id: <task_id>,
-          status: "pass" | "partial" | "fail",
-          scenarios: [%{name: "...", status: "pass|partial|fail", observation: "..."}, ...],
-          issue_ids: [<every id returned from create_issue>]
-        )
+        run_script({ script = 'return create_issue({ title = "...", severity = "high", scope = "app", description = "..." })' })
+
+    When you finish the session, close the pass the same way, with the
+    structured scenarios payload **and** every issue id you filed:
+
+        run_script({ script = [[
+          return submit_qa_result({
+            task_id = "<task_id>",
+            status = "pass",   -- or "partial" / "fail"
+            scenarios = { { name = "...", status = "pass", observation = "..." } },
+            issue_ids = { "<every id returned from create_issue>" }
+          })
+        ]] })
 
     Discipline:
 
@@ -541,8 +548,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       by the tool**. A failure with no filed issue is a finding that just
       disappeared when your session ended — there's nowhere else for it to
       live. File the issues first, then submit.
-    - The bare `submit_qa_result` (without the `mcp__plugin_codemyspec_local__`
-      prefix) does NOT resolve — use the fully-qualified name.
+    - **`mcp__plugin_codemyspec_local__submit_qa_result` does NOT resolve, and
+      neither does `create_issue` spelled that way.** Story 971 moved them to
+      code mode (`scriptable_tools.ex`), where they are reached by their bare
+      names inside `run_script` and are deliberately not advertised as MCP
+      tools. Searching your tool list for them finds nothing, which looks
+      exactly like a missing binding and is not one — this cost story 1009 a
+      whole QA pass (`4633ba45`). `tool_docs({ names = {"submit_qa_result",
+      "create_issue"} })` gives the arguments.
     - Attribution follows automatically: on submit, every `scope: app` issue
       you listed is attached to this story, and `story_issues_resolved` holds
       the story's release until they're fixed. `framework`, `qa` and `docs`

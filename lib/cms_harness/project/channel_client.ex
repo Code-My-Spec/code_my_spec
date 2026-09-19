@@ -52,6 +52,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
+  alias CmsHarness.Agents.Engine
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
@@ -632,6 +633,8 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_read_model_refresh()
     schedule_preview_check()
     schedule_machine_load_check()
+    schedule_agents_running()
+    socket = report_agents_running(socket)
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -741,6 +744,35 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_machine_load_check,
     do: Process.send_after(self(), :measure_machine_load, @machine_load_check_ms)
+
+  # How often this harness tells the server which of its agents are alive.
+  #
+  # On a timer as well as on join, and the timer is the half that matters. An
+  # agent is a `restart: :temporary` GenServer: when one dies, nothing sends
+  # anything, so an event-driven report would cover the two cases the server
+  # already knows about — a start we asked for and a stop we asked for — and
+  # miss the one it does not, which is the case `0c912986` is about.
+  #
+  # A minute, matching the other two self-observations on this channel. The
+  # cost is a list of ids; the alternative is a row claiming life indefinitely.
+  @agents_running_ms 60_000
+
+  @doc "Public so a test can assert against the real interval rather than a copy."
+  def agents_running_ms, do: @agents_running_ms
+
+  defp schedule_agents_running,
+    do: Process.send_after(self(), :report_agents_running, @agents_running_ms)
+
+  # What is actually alive here, read from the registry rather than from
+  # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
+  # this cannot disagree with the process table the way a maintained record can.
+  defp report_agents_running(socket) do
+    push(socket, socket.assigns.topic, "agents_running", %{
+      "agent_ids" => Engine.running()
+    })
+
+    socket
+  end
 
   # A join the server refused. The only one we know how to explain is a project
   # another harness holds; anything else is reported as it arrived.
@@ -1869,6 +1901,17 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_info(:measure_machine_load, socket) do
     schedule_machine_load_check()
+    {:noreply, socket}
+  end
+
+  @impl Slipstream
+  def handle_info(:report_agents_running, %{assigns: %{joined: true}} = socket) do
+    schedule_agents_running()
+    {:noreply, report_agents_running(socket)}
+  end
+
+  def handle_info(:report_agents_running, socket) do
+    schedule_agents_running()
     {:noreply, socket}
   end
 

@@ -2588,6 +2588,24 @@ defmodule CodeMySpecSpex.Fixtures do
     CmsHarness.Agents.send_message(agent_id, "spec-" <> Ecto.UUID.generate(), text)
   end
 
+  @doc """
+  Tell an agent something and wait for the turn it takes about it.
+
+  The waiting half of the pair above, and the one a *measured* run needs.
+  `send_message/4` answers `:queued` the moment the message is accepted, and an
+  agent that has not dequeued it yet reads as idle — so a helper that sent and
+  then waited for idle could return before the turn began, with an empty
+  transcript, and count that as the agent having done nothing.
+
+  Measured 2026-09-17 on story 1070's criterion 3543: three runs, three
+  agents told something, three "called nothing at all", the whole measurement
+  in 28 seconds. The messages were delivered; nothing waited for what they
+  caused.
+  """
+  def message_agent_and_wait(agent_id, text, timeout) do
+    CmsHarness.Agents.message(agent_id, text, timeout)
+  end
+
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
   defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
 

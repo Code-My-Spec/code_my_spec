@@ -43,6 +43,7 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
 
   import Plug.Conn
 
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.WorkingCopies
   alias CmsHarness.WorkingCopyWalk
 
@@ -80,7 +81,7 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
   @spec resolve(Plug.Conn.t()) :: resolution()
   def resolve(conn) do
     case named_id(conn) do
-      id when is_binary(id) and id != "" -> from_id(id)
+      id when is_binary(id) and id != "" -> from_id_or_directory(id, working_dir(conn))
       _ -> from_directory(working_dir(conn))
     end
   end
@@ -118,6 +119,25 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
       {:ok, root} -> {:ok, root}
       :unknown -> {:unknown_harness, id}
       {:unreachable, reason} -> {:server_unreachable, id, reason}
+    end
+  end
+
+  # An addressed hook normally resolves through the server, because that is how
+  # one harness learns about a copy it has never seen. Immediately after a
+  # harness restart, though, it has no served copy from which `Credentials.any/0`
+  # can obtain a per-copy deploy key. The first hook already carries the local
+  # directory and the addressed id; if that directory's own config names the
+  # same id, it is stronger evidence than a server lookup and breaks that
+  # credential-discovery loop without guessing at a nearby checkout.
+  #
+  # A mismatch still follows the addressed id. A path is evidence only when the
+  # file at that path explicitly agrees with the id the caller named.
+  defp from_id_or_directory(id, dir) do
+    with {:ok, root} <- WorkingCopyWalk.root_for(dir),
+         {:ok, %{working_copy_id: ^id}} <- HarnessConfig.read_file(root) do
+      {:ok, root}
+    else
+      _ -> from_id(id)
     end
   end
 
