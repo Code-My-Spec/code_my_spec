@@ -35,13 +35,13 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
       given_ "two contexts synced via the real /sync pipeline", context do
         env = context.environment
 
-        Enum.each(["LinkedContext", "OrphanContext"], fn module ->
+        Enum.each([{"LinkedContext", "context"}, {"OrphanContext", "service"}], fn {module, type} ->
           :ok =
             Environments.write_file(
               env,
               Content.spec_path(module),
               Content.context_spec(module,
-                type: if(module == "OrphanContext", do: "service", else: "context"),
+                type: type,
                 dependencies: []
               )
             )
