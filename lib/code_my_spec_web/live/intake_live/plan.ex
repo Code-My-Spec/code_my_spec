@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   use CodeMySpecWeb, :live_view
 
   import CodeMySpecWeb.ConversationPanels, only: [single_panel: 1]
-  import CodeMySpecWeb.IntakeComponents
+  import CodeMySpecWeb.IntakeComponents, only: [conversation: 1, composer: 1, signup_card: 1]
 
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.{Conversation, Funnel, Plan}
@@ -208,65 +208,6 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         />
 
         <.button class="btn-primary">Looks right — build it</.button>
-      </.form>
-    </div>
-    """
-  end
-
-  # The gate is a card in the same conversation, not a page the visitor is
-  # sent to. GitHub, Google and email are offered together — never one at a
-  # time — and the names already confirmed are shown, not asked for again:
-  # what gets created is exactly what was just typed into the plan card.
-  #
-  # Email is a plain HTML form rather than `phx-submit`, on purpose: creating
-  # the session cookie is a job for a controller, not a LiveView process,
-  # which cannot write the session itself. GitHub and Google are plain links
-  # for the same reason — both already go through `IntegrationsController`,
-  # which this only has to point back at `/build/workspace` afterward.
-  attr :plan, :map, required: true
-
-  defp signup_card(assigns) do
-    ~H"""
-    <div data-test="signup-card" class="border border-base-300 rounded p-4">
-      <p class="font-medium">One more thing, and we can start building.</p>
-
-      <div class="mt-3 space-y-2">
-        <input
-          type="text"
-          value={@plan.account_name}
-          readonly
-          aria-label="Account name"
-          class="w-full input"
-        />
-        <input
-          type="text"
-          value={@plan.project_name}
-          readonly
-          aria-label="Project name"
-          class="w-full input"
-        />
-      </div>
-
-      <div class="mt-4 flex flex-col gap-2">
-        <a href={~p"/auth/github/login?return_to=/build/workspace"} class="btn btn-primary w-full">
-          Continue with GitHub
-        </a>
-        <a href={~p"/auth/google/login?return_to=/build/workspace"} class="btn btn-outline w-full">
-          Continue with Google
-        </a>
-      </div>
-
-      <div class="divider text-xs text-base-content/50">or email</div>
-
-      <.form for={nil} action={~p"/build/sign-up"} method="post" class="flex gap-2">
-        <input
-          type="email"
-          name="user[email]"
-          required
-          placeholder="you@domain.dev"
-          class="input input-bordered flex-1"
-        />
-        <.button class="btn-secondary">Continue</.button>
       </.form>
     </div>
     """

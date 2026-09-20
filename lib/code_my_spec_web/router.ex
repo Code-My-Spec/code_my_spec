@@ -52,11 +52,16 @@ defmodule CodeMySpecWeb.Router do
     live_session :intake,
       on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
       live "/build", IntakeLive.Plan, :plan
+      live "/build/procedural", IntakeLive.Procedural, :procedural
     end
 
     # Email from the sign-up card — a plain form post, not `phx-submit`,
     # since establishing the session cookie is a controller's job.
     post "/build/sign-up", IntakeSignupController, :create
+
+    # Wipes a test run back to the root — a plain form post, since clearing
+    # the session is a controller's job same as signing up is.
+    post "/build/reset", IntakeResetController, :create
 
     live_session :intake_workspace,
       on_mount: [
