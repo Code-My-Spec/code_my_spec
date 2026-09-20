@@ -59,6 +59,7 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.MainAgent.CheckInReport
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.MainAgent.GapRepository
   alias CodeMySpec.MainAgent.Machinery
@@ -434,7 +435,7 @@ defmodule CodeMySpec.MainAgent do
   Silent when the main agent has stood down (3334) and when there is no main
   agent to wake, which is ordinary rather than an error.
   """
-  @spec check_in(Scope.t()) :: :ok
+  @spec check_in(Scope.t()) :: {:ok, String.t()} | {:error, String.t()}
   def check_in(%Scope{} = scope), do: deliver_check_in(scope, Cadence.digest(scope))
 
   @doc "How often this project's main agent is woken, in seconds."
@@ -493,11 +494,12 @@ defmodule CodeMySpec.MainAgent do
     )
 
     _ = digest
-    :ok
+    {:error, reason}
   end
 
-  defp deliver_check_in(scope, %Digest{}) do
-    Work.consider_project(scope, :recovery_check)
+  defp deliver_check_in(scope, %Digest{} = digest) do
+    :ok = Work.consider_project(scope, :recovery_check)
+    {:ok, CheckInReport.render(digest)}
   end
 
   @doc """

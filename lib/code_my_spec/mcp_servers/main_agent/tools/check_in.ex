@@ -36,29 +36,40 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
     end
   end
 
-  # `check_in/1` answers `:ok` whatever happens, and that is deliberate rather
-  # than thin: the digest is delivered into the main agent's conversation, and a
-  # digest that could not be assembled raises a fault there instead. So this
-  # reports that a check-in ran and says where to read it, rather than inventing
-  # a return value the context does not have.
+  # `check_in/1` answers the rendered digest now, so this hands it straight
+  # back rather than describing it.
   #
-  # The first cut of this had `{:ok, text}` and `{:error, reason}` clauses
-  # written against a contract that does not exist. The compiler called them
-  # unreachable, which was right — they were speculative error handling for a
-  # function that cannot fail that way.
-  defp deliver(:ok) do
+  # It used to return one static sentence whatever the fleet was doing, and
+  # `CheckInReport.render/1` — fully written, documented, and citing this very
+  # criterion — was called by nothing at all. So a caller got "recovery
+  # inspected the fleet" and had to go and run `list_agent_work` to learn any
+  # of what it inspected, which is the opposite of the module's own promise
+  # that "the wake-up is an answer instead of a turn spent getting to one".
+  # Found by QA on story 1012 (`375be60f`).
+  #
+  # The digest is still not *pushed* anywhere: this is a reply to whoever
+  # asked, and no unconditional message goes to any agent.
+  defp deliver({:ok, report}) do
     Response.text(
       Response.tool(),
-      """
-      Checked in.
+      report <>
+        """
 
-      Recovery inspected the fleet and reconsidered eligible work for existing
-      agents. Only runnable agents may receive a new turn; no process was
-      started or restarted, and no unconditional digest message was sent.
+        Recovery reconsidered eligible work for existing agents. Only runnable
+        agents may receive a new turn; no process was started or restarted, and
+        no unconditional digest message was sent to anyone.
+        """
+    )
+  end
 
-      If the digest could not be assembled, a fault was recorded rather than
-      treating unavailable evidence as an empty, healthy fleet.
-      """
+  # A digest that could not be assembled has already raised a fault, and is
+  # reported as the failure it is rather than as an empty, healthy fleet —
+  # criterion 3333's whole point is that those are opposite answers and the
+  # empty one is the reassuring half.
+  defp deliver({:error, reason}) do
+    Response.error(
+      Response.tool(),
+      "The check-in could not be assembled: #{reason}. A fault has been recorded."
     )
   end
 
