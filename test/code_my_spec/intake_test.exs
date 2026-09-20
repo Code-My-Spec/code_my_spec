@@ -113,7 +113,6 @@ defmodule CodeMySpec.IntakeTest do
         %{
           account_name: "Acme",
           project_name: "Widget Tracker",
-          who_uses: "warehouse staff",
           needs_sign_in: true,
           separate_copies: false,
           location: "cloud"
@@ -131,11 +130,21 @@ defmodule CodeMySpec.IntakeTest do
       assert filled.procedural == true
       assert filled.account_name == "Acme"
       assert filled.project_name == "Widget Tracker"
-      assert filled.who_uses == "warehouse staff"
       assert filled.needs_sign_in == true
       assert filled.separate_copies == false
       assert filled.location == :cloud
       assert filled.shaping_turns == [], "no chat happened, so nothing shaped this plan"
+    end
+
+    test "does not collect who_uses — no persona is worth the extra field here" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:ok, filled} =
+               Intake.plan_procedurally(plan, procedural_attrs(%{who_uses: "warehouse staff"}))
+
+      assert filled.who_uses == nil,
+             "who_uses isn't in procedural_changeset/2's cast list, so a stray value in " <>
+               "the submitted params must be silently ignored, not accepted"
     end
 
     test "a plan filled in this way is not marked procedural until it is" do
