@@ -148,17 +148,29 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   defp stale?(path, _present) when is_nil(path) or path == "", do: true
 
   # Evidence is additive: the record, then the disk. A path is gone only when
-  # neither can find it.
+  # neither can find it — and the disk is only allowed to answer where it can
+  # answer for the right checkout.
   #
-  # The disk clause stays deliberately. It is wrong as the *only* answer, for
-  # the reason above, but it is the only thing that can speak for a path outside
-  # the scanned tree — a spex somebody moved somewhere deliberate, which
-  # `claim_spec_paths_test.exs` asserts must not be undone by the next scan.
-  # Consulting it second can only ever find a file present, never absent, so it
-  # cannot reintroduce the loop.
+  # Consulting it for a *project-relative* path reintroduces the whole bug
+  # above from the other side. Such a path resolves against this process's cwd,
+  # which is the server's own checkout, and that checkout still holds whatever
+  # every other working copy has renamed or deleted on its own branch.
+  # Measured 2026-09-20: story 1017's nine spex were renamed on
+  # `phx-new-generator`, the manifest carried the nine new names, and every
+  # repair was refused because the nine old names were sitting in the main
+  # checkout — `bdd_specs_exist` reported "9 of 9 criteria missing" against a
+  # directory holding nine matching files, and no amount of rescanning could
+  # change it.
+  #
+  # An absolute path is a different case and keeps the disk clause. It is
+  # outside every scanned tree, so the record cannot speak for it at all — a
+  # spex somebody moved somewhere deliberate, which `claim_spec_paths_test.exs`
+  # asserts must not be undone by the next scan.
   defp stale?(path, present) do
-    not MapSet.member?(present, path) and not File.exists?(path)
+    not MapSet.member?(present, path) and not outside_every_checkout?(path)
   end
+
+  defp outside_every_checkout?(path), do: Path.type(path) == :absolute and File.exists?(path)
 
   # Two sources, because neither alone is the whole picture at this moment.
   #

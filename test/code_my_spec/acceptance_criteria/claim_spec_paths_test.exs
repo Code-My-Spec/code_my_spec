@@ -106,6 +106,36 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == found
   end
 
+  test "a rename is repaired even while the old name survives in another checkout" do
+    scope = full_scope_fixture()
+    story = story_fixture(scope)
+
+    # The old name, present on the disk this process happens to be sitting on.
+    #
+    # That is the server's own checkout, and it holds whatever every other
+    # working copy has renamed on its own branch. Judging a project-relative
+    # path by `File.exists?` therefore answers about a checkout the manifest
+    # has nothing to do with: measured 2026-09-20, story 1017's nine renamed
+    # spex were refused their repair nine times over because the nine old names
+    # were still sitting in the main checkout, and `bdd_specs_exist` read "9 of
+    # 9 criteria missing" against a directory holding nine matching files.
+    stale = "test/spex/1_x/criterion_999998_under_its_old_name_spex.exs"
+    File.mkdir_p!(Path.dirname(stale))
+    File.write!(stale, "# still here in this checkout\n")
+    on_exit(fn -> File.rm(stale) end)
+
+    c = criterion(scope, story, %{spec_path: stale})
+    found = "test/spex/1_x/criterion_#{c.id}_under_its_new_name_spex.exs"
+
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}),
+           "the repair was refused because another checkout still has the old " <>
+             "name, so a worktree that renames a spex can never satisfy " <>
+             "`bdd_specs_exist` — and rescanning cannot fix it, because the " <>
+             "record was never what was wrong"
+
+    assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == found
+  end
+
   test "a renumbered criterion is repaired through the id its old path remembers" do
     scope = full_scope_fixture()
     story = story_fixture(scope)
