@@ -287,17 +287,39 @@ defmodule CodeMySpec.TaskOwner do
       "agent-task-claims:#{owner.project_id}:#{owner.working_copy_id}"
     ])
 
-    others =
-      Repo.all(
-        from agent in Agent,
-          where:
-            agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
-              agent.working_copy_id == ^owner.working_copy_id and agent.id != ^owner.id
-      )
+    others = Repo.all(agents_sharing_this_copy(owner))
 
     claimed? = others |> Enum.flat_map(&tasks/1) |> Enum.any?(&holds_requirement?(&1, attrs))
 
     if claimed?, do: {:error, :task_owned_by_another_agent}, else: :ok
+  end
+
+  # An agent with no working copy is not on every checkout — it is on none.
+  #
+  # `agent.working_copy_id == ^nil` is not a comparison Ecto will build: it
+  # raises `ArgumentError` ("comparing with nil is forbidden, use is_nil/1"),
+  # which escaped `start_task` as `Tool execution crashed` rather than as an
+  # ordinary refusal. Every product-role agent on the QA fixture project has a
+  # null copy, so claiming the one requirement actionable there crashed all of
+  # them, and story 896's whole task-claim family was unreachable behind it.
+  # Found live by QA on 2026-09-20.
+  #
+  # Nil matches nil, which is the right scoping rather than a way round the
+  # error: the claim check asks who else could be working the same tree, and
+  # two agents that name no tree are as much each other's neighbours as two
+  # that name the same one.
+  defp agents_sharing_this_copy(%{working_copy_id: nil} = owner) do
+    from agent in Agent,
+      where:
+        agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
+          is_nil(agent.working_copy_id) and agent.id != ^owner.id
+  end
+
+  defp agents_sharing_this_copy(owner) do
+    from agent in Agent,
+      where:
+        agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
+          agent.working_copy_id == ^owner.working_copy_id and agent.id != ^owner.id
   end
 
   defp holds_requirement?(task, attrs) do
