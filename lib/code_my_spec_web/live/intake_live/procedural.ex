@@ -22,7 +22,7 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
 
   use CodeMySpecWeb, :live_view
 
-  import CodeMySpecWeb.IntakeComponents, only: [signup_card: 1]
+  import CodeMySpecWeb.IntakeComponents, only: [signup_card: 1, reset_link: 1]
 
   alias CodeMySpec.Intake
   alias CodeMySpec.Users.Scope
@@ -87,6 +87,8 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
 
           <.button class="btn-primary w-full">Next</.button>
         </.form>
+
+        <.reset_link />
       </div>
     </div>
     """

@@ -109,6 +109,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
             <p :if={@interview_error} class="mt-3 shrink-0 text-sm text-error">
               {@interview_error}
             </p>
+
+            <%!--
+              Procedural only. A real visitor's own workspace is not a test
+              run to wipe — `plan.procedural` is exactly the signal that
+              distinguishes the two, same as it is for the auto-navigate into
+              the cockpit above.
+            --%>
+            <.reset_link :if={@plan.procedural} />
           </div>
         </div>
 
