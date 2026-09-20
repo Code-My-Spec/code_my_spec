@@ -1316,12 +1316,22 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Record whether a checkout's application is answering, the way its harness
-  would.
+  Record what a checkout's application is doing, the way its harness would.
 
   `CmsHarness.Sync` measures this against the checkout's `preview_url` on the
   machine that can reach it; a spec has no harness, so it records through the
   same surface the channel handler calls.
+
+  Replaces `record_git_state/2`, which recorded the checkout's `ahead`/`behind`/
+  `dirty` counts. Those columns are gone — they were a mirror of git that
+  nothing decided on, and hashing them into every story's fingerprint made one
+  keystroke reconsider every story in the project.
+
+  `preview_status` is the surviving input of that shape and the one the graph
+  genuinely reads: `Promotion.serving/2` turns on it, and `preview_checked_at`
+  beside it is a heartbeat the fingerprint must ignore. So the criteria on story
+  1063 that used git state to tell "a value that matters" from "a timestamp that
+  does not" ask the same question here, of an input that still exists.
   """
   @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
   def record_preview_status(working_copy_id, status) do
@@ -1368,12 +1378,6 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc """
-  Designate a checkout as the one the application runs from.
-
-  Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
-  spex dependency.
-  """
   @doc """
   Start watching this project's graph, and subscribe to its announcements.
 
@@ -1562,21 +1566,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Wait for the background work this project started to finish.
-
-  Public because teardown needs it as much as a scenario does, and for a
-  sharper reason. A wake runs in a task off `CodeMySpec.TaskSupervisor`; if it
-  is still running when the test's sandbox owner stops, it dies on a connection
-  that is no longer there and the supervisor logs the crash at `:error` — and
-  `SexySpex.ErrorCapture` fails whichever spex happens to be running when that
-  lands. So the straggler does not fail its own test, it fails somebody else's,
-  intermittently, and the failure text is a `Task.Supervisor` report with
-  nothing in it about either scenario.
-
-  Bounded, so a spex with some other long-running task under the same
-  supervisor fails its own assertion rather than hanging here.
-  """
-  @doc """
   Stop every graph watcher, so nothing new starts during teardown.
 
   Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
@@ -1661,27 +1650,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def stop_watching(%Scope{}), do: :ok
-
-  @doc """
-  Record what a checkout's application is doing, the way its harness would.
-
-  Replaces `record_git_state/2`, which recorded the checkout's `ahead`/`behind`/
-  `dirty` counts. Those columns are gone — they were a mirror of git that
-  nothing decided on, and hashing them into every story's fingerprint made one
-  keystroke reconsider every story in the project.
-
-  `preview_status` is the surviving input of that shape and the one the graph
-  genuinely reads: `Promotion.serving/2` turns on it, and `preview_checked_at`
-  beside it is a heartbeat the fingerprint must ignore. So the criteria on story
-  1063 that used git state to tell "a value that matters" from "a timestamp that
-  does not" ask the same question here, of an input that still exists.
-  """
-  @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
-  def record_preview_status(working_copy_id, status) do
-    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
-    {:ok, _} = CodeMySpec.WorkingCopies.record_preview_status(copy, status)
-    :ok
-  end
 
   @doc """
   Files observed by a *different* working copy on this project.
@@ -3810,18 +3778,6 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Agents.set_agent_continuous(scope, agent_id, false)
   end
 
-  @doc """
-  A turn this agent has started and not finished.
-
-  The same `agent_turn_event` push `end_turn/3` sends, with the event a
-  scenario names instead of `:turn_ended` — so an agent mid-response is
-  produced by the harness's own entry point rather than by writing a flag
-  nothing in production sets.
-
-  Nothing ends it. That is the state criteria 3279 and 3297 are about: a
-  connection open to a model with a response coming back, which from every
-  other angle is indistinguishable from an agent that has stopped.
-  """
   @doc """
   Put this session into continuous mode, the way `start_implementation` does.
 
