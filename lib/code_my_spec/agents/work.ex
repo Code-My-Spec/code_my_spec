@@ -11,8 +11,20 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
 
-  @prompt "Eligible work is available. Use list_requirements or get_next_requirement to inspect it, " <>
-            "then choose work with start_task. No task has been selected or assigned for you."
+  # Only tools the agent actually carries directly.
+  #
+  # This named `list_requirements` and, for main, `list_notifications` — both
+  # reachable from `run_script` and neither on an agent's direct surface. A main
+  # agent measured on 2026-09-20 called `list_notifications` first because the
+  # prompt told it to, got `Unknown tool`, and then did exactly what
+  # `OperatingRules` requires of it: reported the failure, refused to work
+  # around it, and stopped. It never reached `start_task`.
+  #
+  # So the prompt talked the agent out of the loop the prompt was sent to start.
+  # `Tools.GetNextRequirement` and `Tools.StartTask` are on the engine's list;
+  # nothing else named here was.
+  @prompt "Eligible work is available. Call get_next_requirement to see it, " <>
+            "then claim it with start_task. No task has been selected or assigned for you."
 
   def consider_project(scope, reason) do
     scope
@@ -129,8 +141,13 @@ defmodule CodeMySpec.Agents.Work do
 
   defp question_work?(_scope, _agent), do: false
 
+  # `list_notifications` is code mode, like most of the catalogue — a main agent
+  # reaches it from inside a script, and saying so is the difference between a
+  # tool it can use and one it reports as broken.
   defp prompt(%{role: :main}) do
-    @prompt <> " Also inspect list_notifications for questions held by the main agent."
+    @prompt <>
+      " Questions are also waiting for you: read them with " <>
+      "`run_script` calling list_notifications."
   end
 
   defp prompt(_agent), do: @prompt

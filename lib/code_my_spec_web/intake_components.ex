@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
   """
 
   use Phoenix.Component
+  use CodeMySpecWeb, :verified_routes
 
   @doc """
   One thing somebody said.
@@ -128,6 +129,95 @@ defmodule CodeMySpecWeb.IntakeComponents do
       >{@draft}</textarea>
       <.button class="btn-primary">Send</.button>
     </form>
+    """
+  end
+
+  @doc """
+  The gate. A card in the conversation rather than a page the visitor is sent
+  to — GitHub, Google and email offered together, and the names already
+  confirmed shown rather than asked for again: what gets created is exactly
+  what was just typed into the plan card, or the procedural form.
+
+  Email is a plain HTML form rather than `phx-submit`, on purpose: creating
+  the session cookie is a job for a controller, not a LiveView process, which
+  cannot write the session itself. GitHub and Google are plain links for the
+  same reason — both already go through `IntegrationsController`, which this
+  only has to point back at `/build/workspace` afterward.
+
+  Shared by `IntakeLive.Plan` and `IntakeLive.Procedural`: the gate between
+  onboarding and signup does not care which door produced the plan.
+  """
+  attr :plan, :map, required: true
+
+  def signup_card(assigns) do
+    ~H"""
+    <div data-test="signup-card" class="border border-base-300 rounded p-4">
+      <p class="font-medium">One more thing, and we can start building.</p>
+
+      <div class="mt-3 space-y-2">
+        <input
+          type="text"
+          value={@plan.account_name}
+          readonly
+          aria-label="Account name"
+          class="w-full input"
+        />
+        <input
+          type="text"
+          value={@plan.project_name}
+          readonly
+          aria-label="Project name"
+          class="w-full input"
+        />
+      </div>
+
+      <div class="mt-4 flex flex-col gap-2">
+        <a href={~p"/auth/github/login?return_to=/build/workspace"} class="btn btn-primary w-full">
+          Continue with GitHub
+        </a>
+        <a href={~p"/auth/google/login?return_to=/build/workspace"} class="btn btn-outline w-full">
+          Continue with Google
+        </a>
+      </div>
+
+      <div class="divider text-xs text-base-content/50">or email</div>
+
+      <.form for={nil} action={~p"/build/sign-up"} method="post" class="flex gap-2">
+        <input
+          type="email"
+          name="user[email]"
+          required
+          placeholder="you@domain.dev"
+          class="input input-bordered flex-1"
+        />
+        <.button class="btn-secondary">Continue</.button>
+      </.form>
+    </div>
+    """
+  end
+
+  @doc """
+  Wipes a test run of guided intake back to the root — a plain form post,
+  like the email signup card, since clearing the session is a controller's
+  job a LiveView cannot do itself.
+
+  Not the same as logging out: `UserAuth.log_out_user/1` carries the intake
+  token across on purpose, so a real visitor logging out mid-conversation
+  does not lose the plan they were building. This exists to lose it on
+  purpose — the whole point of resetting is a new plan — so it goes through
+  `IntakeResetController` instead.
+
+  Shared by `IntakeLive.Procedural` and `IntakeLive.Workspace`: testing the
+  funnel means being able to bail out and start over from wherever the last
+  run left off, not only from its first screen.
+  """
+  def reset_link(assigns) do
+    ~H"""
+    <.form for={nil} action={~p"/build/reset"} method="post" class="mt-4 text-center">
+      <button type="submit" class="text-xs text-base-content/40 underline">
+        Reset (testing) — wipe this run and start over
+      </button>
+    </.form>
     """
   end
 

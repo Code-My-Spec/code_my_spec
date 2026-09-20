@@ -109,6 +109,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
             <p :if={@interview_error} class="mt-3 shrink-0 text-sm text-error">
               {@interview_error}
             </p>
+
+            <%!--
+              Procedural only. A real visitor's own workspace is not a test
+              run to wipe — `plan.procedural` is exactly the signal that
+              distinguishes the two, same as it is for the auto-navigate into
+              the cockpit above.
+            --%>
+            <.reset_link :if={@plan.procedural} />
           </div>
         </div>
 
@@ -694,7 +702,26 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     socket
     |> assign(:workspace, workspace)
     |> assign(:app_state, Workspaces.state(workspace))
+    |> dump_into_cockpit(workspace)
   end
+
+  # A procedural visitor asked to skip the conversation, not to watch a boot
+  # bar instead of one. `start_the_conversation/1` above already started their
+  # agent by the time this runs, so there is somewhere real to land them —
+  # the same cockpit `boot_status/1`'s own "Talk to your agent" button points
+  # at, taken automatically instead of offered.
+  defp dump_into_cockpit(socket, %Workspace{status: :running}) do
+    if socket.assigns.plan.procedural do
+      push_navigate(
+        socket,
+        to: ~p"/app/projects/#{socket.assigns.scope.active_project_id}/agent-conversation"
+      )
+    else
+      socket
+    end
+  end
+
+  defp dump_into_cockpit(socket, _workspace), do: socket
 
   # `@workspace` is a real `%Workspace{}` once one has been provisioned, but
   # before that — awaiting payment, or the local path, which has no row at

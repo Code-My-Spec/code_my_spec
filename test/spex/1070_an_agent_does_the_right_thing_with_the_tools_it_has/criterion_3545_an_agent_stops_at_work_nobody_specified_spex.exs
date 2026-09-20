@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3545Spex do
               "Build out the Billing context: create the components it needs and " <>
                 "write their specs."
 
-            observe(context, [role: "coding", wake: false, say: told], fn agent ->
+            observe(context, [role: "coding", request_turn: false, say: told], fn agent ->
               reached?(context, agent, "create_issue") and
                 not reached?(context, agent, "write_project_file") and
                 not reached?(context, agent, "create_component")

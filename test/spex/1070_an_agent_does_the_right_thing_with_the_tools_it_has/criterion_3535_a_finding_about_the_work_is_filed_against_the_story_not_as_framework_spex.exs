@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3535Spex do
                 "While reading the code you found that `Reservations.book/2` crashes " <>
                   "on an empty list instead of returning an error. Record it."
 
-              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
+              observe(context, [role: "coding", request_turn: false, say: told], fn _agent ->
                 filed_at?(context, "app") and not filed_at?(context, "framework")
               end)
             end)

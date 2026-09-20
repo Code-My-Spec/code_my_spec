@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3544Spex do
               "Use ask_user_question to ask me whether export #{run} should use CSV or JSON."
 
             result =
-              observe(context, [role: "coding", wake: false, say: prompt], fn agent ->
+              observe(context, [role: "coding", request_turn: false, say: prompt], fn agent ->
                 reported? =
                   reported_new_framework_issue?(
                     context,
