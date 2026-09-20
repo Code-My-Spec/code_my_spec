@@ -13,6 +13,8 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Paths
   alias CodeMySpec.Personas
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa.Invalidations
+  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.CachedGraph
   alias CodeMySpec.Requirements.Difference
@@ -226,6 +228,38 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       {:ok, _} = Personas.link_persona_to_story(scope, persona.id, story.id)
 
       {:ok, _} = BddRules.create_rule(scope, story.id, %{statement: "a new rule"})
+
+      refute current_fingerprint(scope) == before
+    end
+
+    # `qa_complete` reads the attempt *and* whether it has been invalidated, and
+    # an invalidation writes its own row while leaving the attempt "preserved
+    # unchanged" — deliberately, since the attempt is the audit record. So
+    # hashing `{id, updated_at}` on `qa_attempts` alone cannot see a pass being
+    # thrown out: the fingerprint stays identical and the cached graph goes on
+    # serving the verdict the engineer just rejected.
+    #
+    # Measured 2026-09-20: nine passes across seven stories were invalidated
+    # and every `qa_complete` row still read satisfied, until a rescan for an
+    # unrelated reason recomputed the graph minutes later. The fourth time a
+    # gate reading a table nothing else touches has been invisible to the
+    # cache, after deploys, unready stories and `working_copies`.
+    test "invalidating a QA pass moves it", %{scope: scope} do
+      story = story_fixture(scope)
+
+      {:ok, attempt} =
+        %QaAttempt{}
+        |> QaAttempt.changeset(%{
+          story_id: story.id,
+          status: :pass,
+          submitted_at: DateTime.utc_now(),
+          scenarios: [%{name: "a scenario", status: "pass", observation: "it did the thing"}]
+        })
+        |> Repo.insert()
+
+      before = current_fingerprint(scope)
+
+      {:ok, _} = Invalidations.invalidate(scope, attempt.id, "superseded by a revision")
 
       refute current_fingerprint(scope) == before
     end

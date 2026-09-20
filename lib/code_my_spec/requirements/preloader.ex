@@ -835,6 +835,20 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   # `qa_attempts` hangs off stories, not the project, so it cannot use `stamps/2`.
   # Read by `Qa.complete_check`, which backs `qa_complete`.
+  #
+  # Invalidations are hashed beside the attempts, and they have to be. An
+  # invalidation writes its own row in `qa_invalidations` and leaves the
+  # attempt "preserved unchanged" — deliberately, since the attempt is the
+  # audit record — so nothing about `{a.id, a.updated_at}` moves when a pass is
+  # rejected. The fingerprint stays identical, the cached graph is served, and
+  # `qa_complete` goes on reporting a pass that an engineer has explicitly
+  # thrown out.
+  #
+  # Measured 2026-09-20: nine passes across seven stories were invalidated and
+  # every one of their `qa_complete` rows still read satisfied afterwards, with
+  # nothing able to change its mind — the fourth time a gate reading a table
+  # nothing else touches has been invisible to the cache, after deploys,
+  # unready stories and `working_copies`.
   defp qa_attempt_stamps(project_id) do
     Repo.all(
       from(a in "qa_attempts",
@@ -843,6 +857,20 @@ defmodule CodeMySpec.Requirements.Preloader do
         where: s.project_id == type(^project_id, :binary_id),
         select: {a.id, a.updated_at},
         order_by: a.id
+      )
+    ) ++ qa_invalidation_stamps(project_id)
+  end
+
+  defp qa_invalidation_stamps(project_id) do
+    Repo.all(
+      from(i in "qa_invalidations",
+        join: a in "qa_attempts",
+        on: a.id == i.qa_attempt_id,
+        join: s in "stories",
+        on: s.id == a.story_id,
+        where: s.project_id == type(^project_id, :binary_id),
+        select: {i.id, i.qa_attempt_id},
+        order_by: i.id
       )
     )
   end

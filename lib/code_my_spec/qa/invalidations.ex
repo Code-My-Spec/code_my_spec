@@ -16,6 +16,7 @@ defmodule CodeMySpec.Qa.Invalidations do
   alias CodeMySpec.Qa.Invalidation
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -46,6 +47,40 @@ defmodule CodeMySpec.Qa.Invalidations do
       %Invalidation{}
       |> Invalidation.changeset(attrs)
       |> Repo.insert()
+      |> tap(&announce_graph_change(scope, &1))
+    end
+  end
+
+  # Rejecting a pass moves the graph exactly as submitting one does, and
+  # nothing said so.
+  #
+  # `QaAttempts.submit/2` announces; this did not, so `qa_complete` went on
+  # reporting a pass an engineer had explicitly thrown out until some unrelated
+  # input happened to move. Measured 2026-09-20: nine passes across seven
+  # stories were invalidated and every `qa_complete` row still read satisfied,
+  # until a rescan for a different reason recomputed the graph minutes later.
+  #
+  # The same event kind as a submission, because it is the same fact about the
+  # same requirement — the story's newest valid attempt has changed — and
+  # `Requirements.Handlers` settles `qa_complete` from that either way.
+  defp announce_graph_change(scope, {:ok, invalidation}) do
+    GraphInputs.event(
+      scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      story_entities(scope, invalidation),
+      # A verdict about the story, not about the tree it was run against.
+      :project_wide
+    )
+  end
+
+  defp announce_graph_change(_scope, _other), do: :ok
+
+  defp story_entities(scope, %Invalidation{qa_attempt_id: attempt_id}) do
+    case QaAttempts.get_in_project(scope, attempt_id) do
+      %{story_id: story_id} when not is_nil(story_id) -> [{"story", story_id}]
+      _ -> []
     end
   end
 
