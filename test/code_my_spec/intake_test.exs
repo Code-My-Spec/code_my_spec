@@ -116,13 +116,25 @@ defmodule CodeMySpec.IntakeTest do
           who_uses: "warehouse staff",
           needs_sign_in: true,
           separate_copies: false,
-          location: "cloud"
+          technical: false
         },
         overrides
       )
     end
 
-    test "fills the plan in and lands on :planned, no conversation involved" do
+    # Both steps: the details form, then the tier a real visitor would have
+    # to confirm separately once `location` is nil. Tests that need a plan
+    # ready to hand to `convert/2` go through both rather than reaching into
+    # `confirm_tier/2` directly, so they exercise the same order a browser
+    # would.
+    defp planned_procedurally(overrides \\ %{}) do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(overrides))
+      {:ok, plan} = Intake.confirm_tier(plan, %{location: "cloud"})
+      plan
+    end
+
+    test "fills the plan in and lands on :planned, location still unanswered" do
       {:ok, plan} = Intake.start_plan(Intake.new_session_token())
 
       assert {:ok, filled} = Intake.plan_procedurally(plan, procedural_attrs())
@@ -134,7 +146,8 @@ defmodule CodeMySpec.IntakeTest do
       assert filled.who_uses == "warehouse staff"
       assert filled.needs_sign_in == true
       assert filled.separate_copies == false
-      assert filled.location == :cloud
+      assert filled.technical == false
+      assert filled.location == nil, "the tier is a separate question — see confirm_tier/2"
       assert filled.shaping_turns == [], "no chat happened, so nothing shaped this plan"
     end
 
@@ -153,13 +166,13 @@ defmodule CodeMySpec.IntakeTest do
       assert %{account_name: ["can't be blank"]} = errors_on(changeset)
     end
 
-    test "defaults to cloud, same as the plan card" do
+    test "requires an answer to whether the visitor is technical" do
       {:ok, plan} = Intake.start_plan(Intake.new_session_token())
 
-      assert {:ok, filled} =
-               Intake.plan_procedurally(plan, procedural_attrs() |> Map.delete(:location))
+      assert {:error, changeset} =
+               Intake.plan_procedurally(plan, procedural_attrs() |> Map.delete(:technical))
 
-      assert filled.location == :cloud
+      assert %{technical: ["can't be blank"]} = errors_on(changeset)
     end
 
     # The whole point: nothing downstream of this — signup, `convert/2`,
@@ -169,8 +182,7 @@ defmodule CodeMySpec.IntakeTest do
     # gets here.
     test "converts exactly like a plan the conversation produced" do
       scope = user_scope_fixture()
-      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
-      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs())
+      plan = planned_procedurally()
 
       assert {:ok, converted} = Intake.convert(plan, scope)
       assert converted.status == :converted
@@ -182,8 +194,7 @@ defmodule CodeMySpec.IntakeTest do
     # as `convert/2`'s "the project gets a persona" test proves for the chat.
     test "creates a persona for who_uses, same as the chat pipe" do
       scope = user_scope_fixture()
-      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
-      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs())
+      plan = planned_procedurally()
 
       assert {:ok, converted} = Intake.convert(plan, scope)
 
@@ -191,6 +202,59 @@ defmodule CodeMySpec.IntakeTest do
 
       assert [persona] = Personas.list_personas(project_scope)
       assert persona.name == "warehouse staff"
+    end
+  end
+
+  describe "suggested_location/1" do
+    test "suggests cloud for a visitor who is not technical" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: false}))
+
+      assert Intake.suggested_location(plan) == :cloud
+    end
+
+    test "suggests local for a visitor who is technical — the free tier they could act on" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      assert Intake.suggested_location(plan) == :local
+    end
+
+    test "suggests cloud before the visitor has answered at all" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert Intake.suggested_location(plan) == :cloud
+    end
+  end
+
+  describe "confirm_tier/2" do
+    test "sets the tier the visitor actually confirmed, not just the suggestion" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      assert Intake.suggested_location(plan) == :local
+
+      assert {:ok, confirmed} = Intake.confirm_tier(plan, %{location: "cloud"})
+      assert confirmed.location == :cloud
+    end
+
+    test "requires a tier — this is a choice, not a default" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs())
+
+      assert {:error, changeset} = Intake.confirm_tier(plan, %{})
+      assert %{location: ["can't be blank"]} = errors_on(changeset)
+    end
+  end
+
+  describe "change_tier/2" do
+    test "pre-selects the suggested tier for the form" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      changeset = Intake.change_tier(plan)
+
+      assert Ecto.Changeset.get_field(changeset, :location) == :local
     end
   end
 

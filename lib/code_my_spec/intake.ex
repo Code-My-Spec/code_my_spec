@@ -287,6 +287,34 @@ defmodule CodeMySpec.Intake do
   def change_procedural(%Plan{} = plan, attrs \\ %{}), do: Plan.procedural_changeset(plan, attrs)
 
   @doc """
+  The tier suggested for this visitor, before they have confirmed one.
+
+  Not a decision — `confirm_tier/2` still requires an explicit choice, and
+  this is only what the form pre-selects. A visitor who said they are not
+  technical could never act on the free, self-hosted option regardless of
+  what it costs, so cloud is what they are shown first; a technical visitor
+  is offered the choice on equal footing, cloud still first because it is
+  what most people actually want.
+  """
+  @spec suggested_location(Plan.t()) :: Plan.location()
+  def suggested_location(%Plan{technical: true}), do: :local
+  def suggested_location(%Plan{}), do: :cloud
+
+  @doc "Confirms which tier the visitor is actually buying."
+  @spec confirm_tier(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def confirm_tier(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.confirm_tier_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc "A form-backing changeset for the tier confirmation, defaulted to the suggested one."
+  @spec change_tier(Plan.t()) :: Ecto.Changeset.t()
+  def change_tier(%Plan{} = plan) do
+    Plan.confirm_tier_changeset(plan, %{location: plan.location || suggested_location(plan)})
+  end
+
+  @doc """
   Whether a visitor has already confirmed the account/project names.
 
   The same signal `confirmed_names/2` in `transcript/3` uses: `location` is

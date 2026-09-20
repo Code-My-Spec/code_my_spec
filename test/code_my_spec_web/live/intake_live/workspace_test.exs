@@ -121,10 +121,13 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
   # Same as `with_confirmed_plan/1`, but through the plain form instead of the
   # conversation — what a plan looks like when `IntakeLive.Procedural` filled
-  # it in.
+  # it in. Two submits, same as a real visitor: the details form, then the
+  # tier — `location` is not part of the first one any more.
   defp with_procedural_plan(conn, plan \\ %{}) do
     conn = get(conn, ~p"/build/procedural")
     {:ok, view, _html} = live(conn)
+
+    {location, details} = Map.pop(plan, :location, "cloud")
 
     view
     |> form("form[phx-submit=submit]", %{
@@ -136,11 +139,15 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
             who_uses: "warehouse staff",
             needs_sign_in: "true",
             separate_copies: "false",
-            location: "cloud"
+            technical: "false"
           },
-          plan
+          details
         )
     })
+    |> render_submit()
+
+    view
+    |> form("form[phx-submit=confirm_tier]", %{plan: %{location: location}})
     |> render_submit()
 
     conn
