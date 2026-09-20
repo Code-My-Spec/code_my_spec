@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1499Spex do
         {agent, _active} =
           Fixtures.agent_task_fixture(context.scope, agent,
             status: :active,
-            requirement_name: "test_file"
+            requirement_name: "implementation_file"
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}

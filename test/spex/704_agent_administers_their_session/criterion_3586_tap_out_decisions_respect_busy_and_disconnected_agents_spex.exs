@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story704.Criterion3586Spex do
         {agent, _active} =
           Fixtures.agent_task_fixture(context.scope, agent,
             status: :active,
-            requirement_name: "test_file"
+            requirement_name: "implementation_file"
           )
 
         other_agent = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
@@ -143,7 +143,7 @@ defmodule CodeMySpecSpex.Story704.Criterion3586Spex do
         {agent, _active} =
           Fixtures.agent_task_fixture(context.scope, agent,
             status: :active,
-            requirement_name: "test_file"
+            requirement_name: "implementation_file"
           )
 
         other_agent = Fixtures.running_agent(context.scope, role: "qa", continuous: true)

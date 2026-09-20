@@ -34,8 +34,16 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
   spex "Graph changes reconsider existing agents in their own scope" do
     scenario "Releasing coding work reaches only its assigned coding agent" do
       given_ "two connected checkouts share a project", context do
-        first = given_a_staffed_checkout(context, "spex_3552_first")
+        # The kicked-off checkout is created *last*, because
+        # `given_a_staffed_checkout/2` designates its copy as the project's
+        # main one and the last call wins. Built the other way round, the
+        # kickoff artifacts landed on a copy the project no longer called main,
+        # `technical_strategy` stayed open at the first vantage, and the serial
+        # chain clamped `bdd_specs_exist` — so releasing the story made nothing
+        # actionable for coding and the turn this criterion is about was
+        # correctly never requested.
         second = given_a_staffed_checkout(context, "spex_3552_second")
+        first = given_a_staffed_checkout(context, "spex_3552_first")
         first = ProjectStateFixtures.apply_project_kickoff(first)
         {:ok, Map.put(first, :second, second)}
       end

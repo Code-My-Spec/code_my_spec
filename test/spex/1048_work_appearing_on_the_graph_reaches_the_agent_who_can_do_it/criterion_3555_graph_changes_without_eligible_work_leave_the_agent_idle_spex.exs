@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3555Spex do
       then_ "the existing QA agent receives neither a turn nor a message", context do
         {:reply, work, _} = GetNextRequirement.execute(%{}, frame(context))
         refute work.isError, response_text(work)
-        assert response_text(work) =~ "review_file"
+        assert response_text(work) =~ "bdd_specs_exist"
 
         {:reply, conversation, _} =
           ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))

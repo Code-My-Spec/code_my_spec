@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
         {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
         refute available.isError, response_text(available)
-        assert response_text(available) =~ "review_file"
+        assert response_text(available) =~ "bdd_specs_exist"
         HeldProvider.release()
         :ok = Machine.await_idle(context.agent_id)
         HeldProvider.hold()

@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
   spex "An active task must be dispositioned before another is claimed" do
     scenario "A second claim is refused and the first task remains active" do
       given_ :synced_context_component
+      given_ :story_linked_to_component
 
       given_ "a coding agent has claimed a task", context do
         agent = Fixtures.running_agent(context.scope, role: "coding")
@@ -34,7 +35,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
         {:reply, first, _} =
           StartTask.execute(
             %{
-              requirement_name: "test_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id)
             },
@@ -45,19 +46,26 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
         {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
-        assert response_text(tasks) =~ "**test_file**"
+        assert response_text(tasks) =~ "**implementation_file**"
 
         {:ok, Map.merge(context, %{agent_frame: frame, tasks_before: response_text(tasks)})}
       end
 
       when_ "it attempts to claim a different requirement without disposing of the first",
             context do
+        # A story requirement, because a component now has exactly one. This
+        # claimed `implementation_file` on the same component when components
+        # carried `spec_file`, `test_file` and `review_file` too, and
+        # `5662b2f6e` simplified them to implementation work alone — after
+        # which "a different requirement" and "the one already held" were the
+        # same call, and `start_task` answered it as the re-entry it looked
+        # like rather than as the second claim this criterion is about.
         {:reply, response, _} =
           StartTask.execute(
             %{
-              requirement_name: "implementation_file",
-              entity_type: "component",
-              entity_id: to_string(context.component.id)
+              requirement_name: "three_amigos_complete",
+              entity_type: "story",
+              entity_id: to_string(context.story.id)
             },
             context.agent_frame
           )

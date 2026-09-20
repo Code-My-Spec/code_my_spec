@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
             context do
         {:reply, coding, _} = GetNextRequirement.execute(%{}, context.coding_frame)
         refute coding.isError, response_text(coding)
-        assert response_text(coding) =~ "review_file"
+        assert response_text(coding) =~ "bdd_specs_exist"
         refute response_text(coding) =~ "issues_triaged"
 
         {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)
@@ -125,9 +125,9 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
         {:reply, claimed, _} =
           StartTask.execute(
             %{
-              requirement_name: "review_file",
-              entity_type: "component",
-              entity_id: to_string(context.component.id)
+              requirement_name: "bdd_specs_exist",
+              entity_type: "story",
+              entity_id: to_string(context.story.id)
             },
             context.coding_frame
           )
@@ -140,7 +140,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
         {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.coding_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
-        assert response_text(tasks) =~ "**review_file**"
+        assert response_text(tasks) =~ "**bdd_specs_exist**"
         refute response_text(tasks) =~ "issues_triaged"
 
         {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)

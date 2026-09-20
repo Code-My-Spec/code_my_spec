@@ -88,9 +88,9 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
         {:reply, claimed, _} =
           StartTask.execute(
             %{
-              requirement_name: "review_file",
-              entity_type: "component",
-              entity_id: to_string(context.component.id)
+              requirement_name: "bdd_specs_exist",
+              entity_type: "story",
+              entity_id: to_string(context.story.id)
             },
             agent_frame
           )
@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
         {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
-        assert response_text(tasks) =~ "**review_file**"
+        assert response_text(tasks) =~ "**bdd_specs_exist**"
         assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
         {:ok, context}

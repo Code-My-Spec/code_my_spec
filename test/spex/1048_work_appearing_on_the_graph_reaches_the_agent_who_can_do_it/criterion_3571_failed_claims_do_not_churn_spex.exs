@@ -75,10 +75,13 @@ defmodule CodeMySpecSpex.Story1048.Criterion3571Spex do
         winner_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: other.id}}
         loser_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
+        # `bdd_specs_exist` on the story, not `review_file` on the component:
+        # `5662b2f6e` simplified component requirements to implementation work
+        # alone, so `review_file` names no node on the graph.
         claim = %{
-          requirement_name: "review_file",
-          entity_type: "component",
-          entity_id: to_string(context.component.id)
+          requirement_name: "bdd_specs_exist",
+          entity_type: "story",
+          entity_id: to_string(context.story.id)
         }
 
         {:reply, claimed, _} = StartTask.execute(claim, winner_frame)

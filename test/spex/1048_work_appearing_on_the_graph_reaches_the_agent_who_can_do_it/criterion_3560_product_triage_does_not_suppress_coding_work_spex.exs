@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3560Spex do
             context do
         {:reply, coding, _} = GetNextRequirement.execute(%{}, context.coding_frame)
         refute coding.isError, response_text(coding)
-        assert response_text(coding) =~ "review_file"
+        assert response_text(coding) =~ "bdd_specs_exist"
         refute response_text(coding) =~ "issues_triaged"
 
         {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)

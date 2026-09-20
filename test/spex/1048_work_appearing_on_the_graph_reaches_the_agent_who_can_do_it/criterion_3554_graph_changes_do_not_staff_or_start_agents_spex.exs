@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3554Spex do
       then_ "the graph offers work without staffing or starting a process", context do
         {:reply, work, _} = GetNextRequirement.execute(%{}, frame(context))
         refute work.isError, response_text(work)
-        assert response_text(work) =~ "review_file"
+        assert response_text(work) =~ "bdd_specs_exist"
         assert listing(context) == "No agents are running on this project."
         assert Machine.running() == context.running_before
         {:ok, context}
