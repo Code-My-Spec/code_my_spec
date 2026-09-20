@@ -100,7 +100,8 @@ defmodule CodeMySpec.Requirements.Freshness do
       # readers, `issues_triaged` and `issues_resolved`, are project nodes, and
       # `recompute_stale/3` rebuilds those unconditionally on every pass — so
       # they do not consult a story's fingerprint and never did.
-      {:issues, Map.get(ctx, :issues_by_story, %{}) |> Map.get(story.id, [])}
+      {:issues, Map.get(ctx, :issues_by_story, %{}) |> Map.get(story.id, [])},
+      config_part(ctx)
     ])
   end
 
@@ -140,7 +141,8 @@ defmodule CodeMySpec.Requirements.Freshness do
       # finding. `problem_digests_by_component` is the same grouping keyed on
       # `{file_path, line, rule, message}`, so a swap at equal count moves it and
       # a re-run that found the same things does not.
-      {:problems, Map.get(ctx, :problem_digests_by_component, %{}) |> Map.get(component.id, %{})}
+      {:problems, Map.get(ctx, :problem_digests_by_component, %{}) |> Map.get(component.id, %{})},
+      config_part(ctx)
       # `analysis_fresh` is deliberately absent, and this is the whole of
       # criterion 3448. It is four project-wide booleans, so a flip made every
       # component's fingerprint move at once: measured on this project, 1116 of
@@ -159,6 +161,37 @@ defmodule CodeMySpec.Requirements.Freshness do
       # `RequirementGraph.serve/2`.
     ])
   end
+
+  @doc """
+  Stamp the configuration onto a context, so every fingerprint taken from it
+  covers the definitions the configuration leaves standing.
+
+  Config is the one node-shape input no per-entity fingerprint can reach on its
+  own. `filter_definitions_by_config/2` decides which requirement *definitions*
+  exist — `devops: :off` removes `devops_setup` from every story and project,
+  the specs/reviews/tests switches remove whole artifact types from every
+  component — and none of that is an input to a story or a component, so
+  neither `story/2` nor `component/2` had any way to notice it moving.
+
+  The topology gate used to cover for that: a config change moved
+  `topology_parts/2` and the pass fell through to a whole-project recompute. It
+  no longer does, because that gate is about edges (see `topology/2`) and
+  configuration was the only thing riding it that was about nodes. So it is
+  hashed where it belongs — into each entity's own fingerprint, which makes
+  every entity stale the moment a switch moves, which is exactly true.
+
+  Set once per pass, by the caller that holds the configuration, and carried on
+  the context so the comparison and the write hash it the same way.
+  `reduce_to/2` narrows the two entity lists and leaves everything else alone,
+  so a partial pass stamps what a whole one would.
+  """
+  @spec with_config(Preloader.context(), map()) :: Preloader.context()
+  def with_config(ctx, config), do: Map.put(ctx, :config_shape, hash(config_shape(config)))
+
+  # `nil` when nobody stamped it, which is the event path: `load_story/3` builds
+  # a context narrow enough that `story_fingerprint/2` already answers `nil` for
+  # the whole row rather than a plausible value computed from less.
+  defp config_part(ctx), do: {:config, Map.get(ctx, :config_shape)}
 
   @doc """
   The shape the graph's edges describe, as a fingerprint.
@@ -180,6 +213,33 @@ defmodule CodeMySpec.Requirements.Freshness do
   passed, when a deploy ran: all of it moves nodes and none of it moves an
   edge, and including it would recompute 6489ms of edges to describe a shape
   that had not changed — which is the behaviour this exists to end.
+
+  ## This gate is about edges, and only about edges
+
+  Moving it used to mean a whole-project recompute — every node re-derived
+  along with every edge. That was never what it says. Nothing in here is an
+  input to a *verdict*: a component's dependencies, a story's attachment and
+  the configured definition set decide which edges exist, and a story arriving
+  or leaving decides which nodes exist through machinery that already costs
+  what it touches (`stale_entities/3` calls a story with no stored rows
+  `appeared`, `departed/2` reaps one the context has lost, and `story/2` and
+  `component/2` hash attachment, type and children).
+
+  So it moves the **edges** now and leaves the nodes to the per-entity
+  fingerprints. `recompute_stale/4` rebuilds the edge set from the whole node
+  set when this moves, recomputes only the entities whose own inputs moved, and
+  widens `ids_by_key` so edges onto reused nodes survive `replace_edges/3`.
+
+  Dropping stories from the hash *without* that was tried first and reverted:
+  the incremental branch reused `stored_edges` wholesale, so a story arriving
+  through it got its seven requirements and none of the edges between them —
+  measured, 7 rows and 0 edges — and its prerequisites silently stopped gating.
+  Criterion 3614 asserts both halves in one scenario for that reason.
+
+  Configuration stays in the hash because it genuinely changes the edge set,
+  and is now hashed into each entity's fingerprint as well — see
+  `with_config/2`, which is what makes it safe for this gate to stop recomputing
+  nodes.
   """
   @spec topology(Preloader.context(), map()) :: String.t()
   def topology(ctx, config) do

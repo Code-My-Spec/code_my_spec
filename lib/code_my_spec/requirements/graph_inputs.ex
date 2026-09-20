@@ -102,6 +102,58 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   @spec kinds() :: [kind()]
   def kinds, do: @kinds
 
+  @doc """
+  Whether an announcement of this shape would be accepted, without making one.
+
+  The same check `event/6` applies, factored out rather than copied — a second
+  implementation of a refusal is a thing that agrees with the first until the
+  day it matters. `event/6` calls this and raises on the error; anything wanting
+  to *ask* calls it and reads the answer.
+
+  It exists because both guarantees it enforces were otherwise unobservable.
+  "An undeclared kind is refused" and "a writer that does not say whose answers
+  it moves is refused" could only be demonstrated by emitting something and
+  catching a raise — which means the only way to confirm the guard was to
+  attempt the thing the guard exists to prevent. Now they can be asked.
+
+  `:ok`, or `{:error, message}` carrying the same explanation the raise would.
+  """
+  @spec check(term(), term()) :: :ok | {:error, String.t()}
+  def check(kind, vantage)
+
+  def check(kind, _vantage) when not is_binary(kind) or kind not in @kinds do
+    {:error,
+     """
+     #{inspect(kind)} is not a declared graph event.
+
+     Add it to `GraphInputs.kinds/0`, then either give it a handler in
+     `Handlers` or add it to the falls-back list in
+     `every_declared_event_is_applied_or_counted_test`. An undeclared kind
+     would be recorded as a mark nothing knows how to apply and silently cost
+     a recompute on every occurrence.
+     """}
+  end
+
+  def check(_kind, vantage) when vantage not in [:project_wide, :this_checkout] do
+    {:error,
+     """
+     #{inspect(vantage)} does not say whose answers this change moves.
+
+     A verdict is a statement about one checkout, so an observation has to say
+     which checkout's answers it moves or the projector cannot route it.
+     `:this_checkout` for a change about the tree the writer is speaking from —
+     files synced, an analyzer run. `:project_wide` for one every checkout reads
+     — a story renamed, an issue filed.
+
+     Not defaulted, because the two cannot be told apart from the ambient scope:
+     an agent renaming a story has an active checkout and the rename is not
+     about it. Inheriting would narrow that rename to the agent's own worktree
+     and leave every other one carrying the old title.
+     """}
+  end
+
+  def check(_kind, _vantage), do: :ok
+
   @doc "Topic for one project's graph-input changes."
   @spec topic(Ecto.UUID.t()) :: String.t()
   def topic(project_id) when is_binary(project_id), do: "project:#{project_id}:graph_inputs"
@@ -239,17 +291,11 @@ defmodule CodeMySpec.Requirements.GraphInputs do
           vantage()
         ) :: :ok
   def event(scope_or_project_id, source, kind, payload, entities, vantage)
-      when is_binary(source) and is_binary(kind) and vantage in [:project_wide, :this_checkout] do
-    kind in @kinds ||
-      raise ArgumentError, """
-      #{kind} is not a declared graph event.
-
-      Add it to `GraphInputs.kinds/0`, then either give it a handler in
-      `Handlers` or add it to the falls-back list in
-      `every_declared_event_is_applied_or_counted_test`. An undeclared kind
-      would be recorded as a mark nothing knows how to apply and silently cost
-      a recompute on every occurrence.
-      """
+      when is_binary(source) and is_binary(kind) do
+    case check(kind, vantage) do
+      :ok -> :ok
+      {:error, message} -> raise ArgumentError, message
+    end
 
     obs = observation_id()
     Logger.info("[#{source}] #{kind}", obs: obs)

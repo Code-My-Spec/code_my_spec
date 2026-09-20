@@ -46,7 +46,10 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
   import ExUnit.CaptureLog
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
+  import Ecto.Query
+
   alias CodeMySpec.ComponentsFixtures
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
 
@@ -64,12 +67,98 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
     :ok
   end
 
+  # The table the pass is about to inherit, emptied before it inherits it.
+  #
+  # Called before the flip, so `event_target/0` is still the shadow — which is
+  # the pass's table the moment the flag moves. The event path's new table is
+  # deliberately left alone: it is event-driven, so clearing it leaves it
+  # nothing to rebuild from and it stays empty.
+  #
+  # This is the transition the moduledoc describes, made a step instead of an
+  # assumption. The claim above — "neither has rows in the other's table to be
+  # confused by" — was never true here: `graph_shadow_projection` is on from
+  # `setup`, so by now each writer has filled what the other is about to own.
+  #
+  # A whole-graph pass hid that by rewriting every row it read, whichever table
+  # it read from, so both sides converged on the second round from any starting
+  # state. A pass that recomputes only what moved cannot: it reads the rows it
+  # inherited, finds them current — they are — and writes nothing. Handing it an
+  # empty table is what makes "both sides have written once" true rather than
+  # hoped for, and it is what flipping for real would have to do.
+  #
+  # The cache row goes with it, or the first publish answers `:unchanged`
+  # against a fingerprint computed before the flip and persists nothing.
+  #
+  # Every id stays inside SQL as a subquery: the edge tables are named rather
+  # than schema-backed, so Ecto has no field definition to cast a uuid against
+  # and a bare list reaches Postgrex as text — "expected a binary of 16 bytes".
+  defp empty_the_passs_new_table(scope) do
+    project_id = scope.active_project_id
+    {table, _schema} = Shadow.event_target()
+    edges = Shadow.event_edges()
+
+    components =
+      from(c in "components", where: c.project_id == type(^project_id, :binary_id), select: c.id)
+
+    stories =
+      from(st in "stories", where: st.project_id == type(^project_id, :binary_id), select: st.id)
+
+    ids =
+      from(n in table,
+        where:
+          n.project_id == type(^project_id, :binary_id) or
+            n.component_id in subquery(components) or
+            n.story_id in subquery(stories),
+        select: n.id
+      )
+
+    from(e in edges,
+      where: e.from_requirement_id in subquery(ids) or e.to_requirement_id in subquery(ids)
+    )
+    |> Repo.delete_all()
+
+    from(n in table, where: n.id in subquery(ids)) |> Repo.delete_all()
+
+    from(g in "requirement_graphs", where: g.project_id == type(^project_id, :binary_id))
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  # This project's writers only — the pass's watcher and the projector.
+  # `stop_graph_watchers/0` takes every project's, and these files run
+  # concurrently.
+  #
+  # The projector matters as much as the watcher and is easier to forget: it is
+  # already running by here, because `graph_shadow_projection` is on from
+  # `setup` and the fixtures above announced. Left alive, it refills the table
+  # emptied below between the delete and the flip — 22 rows back in
+  # `shadow_requirements`, which then reads to the pass as a projection that is
+  # already complete and current, so the pass writes nothing and the transition
+  # never happens.
+  defp stop_writers(project_id) do
+    for key <- [project_id, {project_id, :shadow}],
+        {pid, _} <- Registry.lookup(CodeMySpec.Requirements.Registry, key) do
+      DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+    end
+
+    :ok
+  end
+
   describe "with the event path owning the tables readers read" do
     test "both writers write, and the projections agree on nodes and topology", ctx do
       scope = ctx.scope
 
       ComponentsFixtures.component_fixture(scope)
       create_story(scope, title: "A story", description: "with requirements and edges")
+
+      # The pass's new table emptied, and both writers stopped so nothing
+      # refills it behind the flip. `empty_the_passs_new_table/1` says why both are
+      # needed — in short, a pass that recomputes only what moved does not
+      # rewrite rows it inherited, so the transition has to be arranged rather
+      # than swept up on the next round.
+      stop_writers(scope.active_project_id)
+      empty_the_passs_new_table(scope)
 
       # On before either writer runs, so neither has rows in the other's table
       # to be confused by. A flip on a live system is the harder case and is a
@@ -106,6 +195,7 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
              #{settled}
              """
 
+      _ = settled
       report = Shadow.diff(scope)
 
       assert report.live > 0,
