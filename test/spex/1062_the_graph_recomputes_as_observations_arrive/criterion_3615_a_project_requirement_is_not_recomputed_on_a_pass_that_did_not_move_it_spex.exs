@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1062.Criterion3613Spex do
+defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
   @moduledoc """
   Story 1062 — The graph recomputes as observations arrive.
-  Criterion 3613 — A project requirement is not recomputed on a pass that did
+  Criterion 3615 — A project requirement is not recomputed on a pass that did
   not move it.
 
   Rule: a project requirement is recomputed when its own inputs move, not on

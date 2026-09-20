@@ -73,7 +73,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       # without rebuilding its edges produced seven requirements and no
       # ordering, so `bdd_specs_passing` stopped waiting on `bdd_specs_exist`
       # and every one of them was offered at once. Nothing failed; the graph was
-      # just wrong. Criterion 3614 is the claim, and this is what makes it
+      # just wrong. Criterion 3616 is the claim, and this is what makes it
       # checkable from outside.
       edges: Enum.map(edges, &edge_report/1)
     })

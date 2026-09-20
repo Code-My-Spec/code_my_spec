@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1062.Criterion3614Spex do
+defmodule CodeMySpecSpex.Story1062.Criterion3616Spex do
   @moduledoc """
   Story 1062 — The graph recomputes as observations arrive.
-  Criterion 3614 — A story arriving costs its own requirements and no others'.
+  Criterion 3616 — A story arriving costs its own requirements and no others'.
 
   Rule: a change to the graph's shape recomputes the entities whose shape
   changed, not the project.
@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3614Spex do
   story change is caught by machinery that costs what it touches. The gate is
   doing it a second time at whole-project price.
 
-  A component is the same case, and [[criterion 3615]] is it. That was not
+  A component is the same case, and [[criterion 3617]] is it. That was not
   obvious: a component's arrival changes the tree its siblings hang in, and the
   edge set ends in a transitive reduction over the whole graph. Both of those
   are about *edges*, which project straight from the component and dependency
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3614Spex do
   not everything was.
 
   Project requirements are excluded: `compute_and_publish/3` rebuilds those from
-  the full context on every pass by design, and [[criterion 3613]] is the one
+  the full context on every pass by design, and [[criterion 3615]] is the one
   that narrows them.
   """
 

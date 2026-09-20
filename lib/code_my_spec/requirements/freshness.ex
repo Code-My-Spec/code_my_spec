@@ -234,7 +234,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   the incremental branch reused `stored_edges` wholesale, so a story arriving
   through it got its seven requirements and none of the edges between them —
   measured, 7 rows and 0 edges — and its prerequisites silently stopped gating.
-  Criterion 3614 asserts both halves in one scenario for that reason.
+  Criterion 3616 asserts both halves in one scenario for that reason.
 
   Configuration stays in the hash because it genuinely changes the edge set,
   and is now hashed into each entity's fingerprint as well — see

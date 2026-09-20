@@ -1,14 +1,14 @@
-defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
+defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
   @moduledoc """
   Story 1062 — The graph recomputes as observations arrive.
-  Criterion 3615 — A component arriving costs its own requirements and no others'.
+  Criterion 3617 — A component arriving costs its own requirements and no others'.
 
   Rule: a change to the graph's shape recomputes the entities whose shape
   changed, not the project.
 
   ## The half that was called intractable
 
-  [[Criterion 3614]] is the same rule for a story, and its first draft argued a
+  [[Criterion 3616]] is the same rule for a story, and its first draft argued a
   component could not follow: its arrival changes the tree its siblings hang
   in, `expand_component_families/2` exists because that spreads, and the edge
   set ends in a transitive reduction over the whole graph.
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
   correct.
 
   Project requirements are excluded: `compute_and_publish/3` rebuilds those
-  from the full context by design, and [[criterion 3613]] is the one that
+  from the full context by design, and [[criterion 3615]] is the one that
   narrows them.
   """
 
