@@ -21,11 +21,6 @@ defmodule CmsHarness.Agents.Tools.RunBrowserScript do
 
   alias CmsHarness.Mcp
 
-  # Same ceiling `run_script` has. A page's HTML arrives larger than everything
-  # the agent was going to think about, and the saving two tools were carried
-  # for is gone in one reply.
-  @max_result_chars 24_000
-
   # The deadline the server defaults to, restated here because this side has to
   # wait at least as long as the far side might take. A client that gives up
   # first turns an answer into a timeout with no way to tell them apart.
@@ -117,12 +112,10 @@ defmodule CmsHarness.Agents.Tools.RunBrowserScript do
   defp answer({:error, reason}) when is_binary(reason), do: {:error, truncate(reason)}
   defp answer({:error, reason}), do: {:error, truncate(inspect(reason))}
 
-  defp truncate(text) when byte_size(text) <= @max_result_chars, do: text
-
-  defp truncate(text) do
-    note = "\n\n[truncated — the answer was longer than #{@max_result_chars} characters]"
-    kept = @max_result_chars - byte_size(note)
-
-    binary_part(text, 0, kept) <> note
-  end
+  # `CodeMode.cap/1` rather than a second implementation of it. The copy that
+  # used to live here cut with `binary_part/3` alone, so a cut landing inside a
+  # multi-byte character handed back a binary that was no longer valid UTF-8 —
+  # and a page of prose is full of them. That travels as far as the JSON
+  # encoder and fails there, turning a large answer into no answer at all.
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
 end

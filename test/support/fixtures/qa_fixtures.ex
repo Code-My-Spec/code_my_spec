@@ -64,7 +64,7 @@ defmodule CodeMySpec.QaFixtures do
   # Reads used to cover for it by recomputing on the way past. They serve rows
   # now, so a writer that announces nothing is a writer the graph never hears.
   defp announce({:ok, _attempt} = result, %Scope{} = scope) do
-    GraphInputs.announce(scope, "Qa")
+    GraphInputs.announce(scope, "Qa", [], :project_wide)
     result
   end
 

@@ -65,11 +65,14 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # graph found `get_next_requirement` in its project guide and in no
         # catalogue: "it isn't available in the active tool catalog".
         #
-        # The four ways to a person and out of the loop joined on 2026-09-06:
-        # `ask_user_question`, `send_message`, `tap_out` and `show_in_panel`.
-        # Same shape again — each is refused to scripts for a reason about
-        # scripts and was carried by nothing, so every refusal that offered
-        # `ask_user` or `tap_out` named a tool the agent did not have.
+        # The ways to a person and out of the loop joined on 2026-09-06:
+        # `ask_user_question`, `tap_out` and `show_in_panel`. Same shape again
+        # — each is refused to scripts for a reason about scripts and was
+        # carried by nothing, so every refusal that offered `ask_user` or
+        # `tap_out` named a tool the agent did not have. `send_message` was one
+        # of them and is gone: the durable-work plan deleted it outright,
+        # because an agent creating a blocker and asking a person a question is
+        # not sending prose, and `ask_user_question` already is that surface.
         #
         # `list_problems` was carried in the same pass and taken back out: it is
         # scriptable, so carrying it buys nothing and costs a schema on every
@@ -89,10 +92,14 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # tools the agent did not have. A QA agent followed that sentence, got
         # "Unknown tool", reported the gap rather than working around it, and
         # stopped. Issue `3bc106f6`.
+        # `cancel_task` joined on 2026-09-20, the fourth disposition of a task
+        # the agent is holding. The open-task menu offers complete, ask, tap
+        # out and cancel, and until it was carried the last of those named a
+        # tool no internal agent held.
         unscriptable = ~w(
           start_agent stop_agent assign_subagent
-          get_next_requirement sync_project start_task evaluate_task
-          ask_user_question send_message tap_out show_in_panel start_analysis
+          get_next_requirement sync_project start_task evaluate_task cancel_task
+          ask_user_question tap_out show_in_panel start_analysis
           promote check_answer list_user_questions
         )
 

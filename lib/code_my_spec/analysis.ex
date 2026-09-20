@@ -382,7 +382,14 @@ defmodule CodeMySpec.Analysis do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "analysis:#{scope.active_project_id}",
-      {:analysis, %{source: run.source, status: status, run_id: run.id}}
+      {:analysis,
+       %{
+         source: run.source,
+         status: status,
+         run_id: run.id,
+         started_at: run.started_at,
+         working_copy_id: run.working_copy_id
+       }}
     )
 
     # And to the graph, because a run finishing changes what the graph says.
@@ -402,7 +409,7 @@ defmodule CodeMySpec.Analysis do
     # now wakes only for work that *appeared* — so this recomputes every turn,
     # which is cheap and per-entity, and wakes nobody unless the run genuinely
     # unblocked something.
-    GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [])
+    GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [], :this_checkout)
   end
 
   @doc """

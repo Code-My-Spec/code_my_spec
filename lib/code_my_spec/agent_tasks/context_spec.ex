@@ -7,8 +7,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
-  require Logger
-
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
@@ -16,8 +14,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
@@ -64,23 +60,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
-    spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
-    satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
-    total = length(spec_reqs)
-    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
-
-    Logger.info(
-      "[ContextSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
-    )
-
-    req_feedback =
-      if Enum.empty?(unsatisfied) do
-        nil
-      else
-        RequirementsFormatter.format_unsatisfied(unsatisfied,
-          context: "Context spec requirements not met:"
-        )
-      end
+    req_feedback = CodeMySpec.AgentTasks.artifact_feedback(scope, component, :spec)
 
     problem_feedback = ProblemFeedback.for_spec_task(scope, component, project)
 
@@ -147,37 +127,11 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     {:ok, prompt}
   end
 
-  defp previous_validation_diagnostics(scope, component, project) do
-    component = ComponentRepository.get_component(scope, component.id)
-    spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
-    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
-
-    file_missing? = Enum.any?(unsatisfied, &(&1.name == "spec_file"))
-
-    cond do
-      Enum.empty?(unsatisfied) -> ""
-      file_missing? -> ""
-      true -> format_diagnostics(unsatisfied, component, project)
+  defp previous_validation_diagnostics(scope, component, _project) do
+    case CodeMySpec.AgentTasks.artifact_feedback(scope, component, :spec) do
+      nil -> ""
+      feedback -> "\n# Previous validation diagnostics\n\n" <> Problems.truncate_to_cap(feedback)
     end
-  end
-
-  defp format_diagnostics(unsatisfied, component, project) do
-    %{spec_file: spec_file_path} = Utils.component_files(component, project)
-
-    feedback =
-      RequirementsFormatter.format_unsatisfied(unsatisfied,
-        context: "Previous validation failed for #{spec_file_path}:"
-      )
-
-    """
-
-    # Previous validation diagnostics
-
-    Re-read the spec file at the path above and revise it to address each
-    diagnostic below before re-writing the spec.
-
-    #{Problems.truncate_to_cap(feedback)}
-    """
   end
 
   defp format_stories([]), do: "No user stories provided"
@@ -223,9 +177,8 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  defp validate_document(scope, spec_content) do
-    strict? = CodeMySpec.Configurations.require_specs?(scope)
-    Documents.create_dynamic_document(spec_content, "context_spec", strict: strict?)
+  defp validate_document(_scope, spec_content) do
+    Documents.create_dynamic_document(spec_content, "context_spec", strict: false)
   end
 
   defp create_child_spec_files(scope, %{"components" => components})

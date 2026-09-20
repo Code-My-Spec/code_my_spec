@@ -3,8 +3,9 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   Put your finished work on the checkout the application runs from, so QA tests
   the code you wrote.
 
-  Returns as soon as the promotion starts; the outcome arrives as a message.
-  Takes no arguments — there is one place work goes.
+  Answers when the merge is done, or says why it was refused. The restart runs
+  detached and the answer says so. Takes no arguments — there is one place work
+  goes.
   """
 
   # Kept short deliberately: `Anubis.Server.Component` advertises the moduledoc
@@ -22,23 +23,23 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   # no gate, no sweep, because nothing crosses. That is the case where the code
   # is already in place and the application is simply not up.
   #
-  # Async for the same reason `start_analysis` is: the sweep takes minutes, and
-  # a tool call held open for it blocks an agent with no output and no way to
-  # tell a slow sweep from a hung one. An Alloy agent is told through
-  # `Agents.dispatch_message/3`, which wakes it.
+  # Synchronous, because nothing in it is long-running.
   #
-  # Async for *everyone*, including a connection with no agent on it. This used
-  # to refuse those and point at `promote_sync`, which meant the one caller that
-  # could not be messaged was sent to the one tool that waits minutes over a
-  # transport that gives up in thirty seconds. A Claude Code session promoting
-  # this way got a timeout for a promotion that had already merged and
-  # restarted, retried it, and restarted the shared dev server three times
-  # (88247a09).
+  # It used to be async "for the same reason `start_analysis` is: the sweep
+  # takes minutes". That reason expired at 54aa534c, when `gate/1` stopped
+  # running a sweep and became a read of the runs already on file. What remains
+  # is three DB reads, a `git status`, a `--ff-only` merge and a detached
+  # restart — 0.3s end to end in `AsyncDeploymentTest`.
   #
-  # A caller with nowhere to be messaged learns the outcome the same way
-  # `start_analysis` offers: the log records it either way, and
-  # `POST /api/harnesses/<working_copy_id>/promotion/run` is the door that
-  # blocks for the whole thing without a cap. See `CmsHarness.Web.PromotionController`.
+  # Being async was not free. Every refusal is decided before the merge, so
+  # `promote` answered "Promotion started." to a promotion it had already
+  # declined, and reported the real outcome through a channel only Alloy agents
+  # have. For a Claude Code session, a script or curl, the refusal existed only
+  # in `web.log`. A false success is worse than an error: the caller waits, then
+  # checks whether `main` moved, and that looks exactly like a slow promotion.
+  #
+  # The restart is the one thing still not waited on, and `Promotion.outcome_text/1`
+  # says so in the answer rather than leaving it to be discovered.
 
   use Anubis.Server.Component, type: :tool
 
@@ -54,11 +55,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        :ok = Promotion.promote_async(scope, frame.assigns[:agent_id])
-
-        {:reply,
-         Response.tool()
-         |> Response.text(Responses.started(scope.active_working_copy_id)), frame}
+        {:reply, Responses.respond(Promotion.promote(scope)), frame}
 
       {:error, _reason} ->
         {:reply, Response.tool() |> Response.error(Responses.no_project()), frame}

@@ -58,11 +58,6 @@ defmodule CodeMySpec.McpServers.Qa.Tools.CallMcpServer do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
 
-  # Same ceiling the code-mode tools carry. A `tools/list` against a browser is
-  # eighty-five entries, and an agent asking whether one name is present does not
-  # need the rest in its context.
-  @max_result_chars 24_000
-
   @default_timeout_ms 30_000
 
   # `start_link/1` returns before `initialize` has landed, so the first request
@@ -283,12 +278,10 @@ defmodule CodeMySpec.McpServers.Qa.Tools.CallMcpServer do
     Response.text(Response.tool(), truncate(content))
   end
 
-  defp truncate(text) when byte_size(text) <= @max_result_chars, do: text
-
-  defp truncate(text) do
-    note = "\n\n[truncated — the answer was longer than #{@max_result_chars} characters]"
-    kept = @max_result_chars - byte_size(note)
-
-    binary_part(text, 0, kept) <> note
-  end
+  # `CodeMode.cap/1` rather than a second implementation of it. The copy that
+  # used to live here cut with `binary_part/3` alone, so a cut landing inside a
+  # multi-byte character handed back a binary that was no longer valid UTF-8 —
+  # and a page of prose is full of them. That travels as far as the JSON
+  # encoder and fails there, turning a large answer into no answer at all.
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
 end

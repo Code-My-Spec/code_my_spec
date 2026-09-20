@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3490Spex do
 
   spex "An empty namespace is not an empty subtree" do
     scenario "a LiveView arrives under a container that has nothing of its own" do
-      given_ :live_context_under_a_config_that_empties_it
+      given_ :live_context_with_implementation_children
 
       when_ "a second LiveView is written beneath it and the project is synced", context do
         context

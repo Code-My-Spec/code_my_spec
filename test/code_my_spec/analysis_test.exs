@@ -220,6 +220,27 @@ defmodule CodeMySpec.AnalysisTest do
       assert persisted.component_id == component.id
     end
 
+    test "stamps component_id on credo and compiler problems too, not just exunit/spex",
+         %{scope: scope} do
+      component = CodeMySpec.ComponentsFixtures.component_fixture(scope)
+      upsert_file!(scope, "lib/foo.ex", :implementation, "abc", %{component_id: component.id})
+
+      for source <- ["credo", "compiler"] do
+        {:ok, run} = RunsRepository.start_run(scope, %{source: source, kind: :full})
+
+        {:ok, _} =
+          Reconciler.reconcile(scope, run, %{
+            problems: [problem("lib/foo.ex", source: source)],
+            output: "",
+            exit_status: 1,
+            stats: %{}
+          })
+
+        [persisted] = Problems.list_project_problems(scope, source: source)
+        assert persisted.component_id == component.id
+      end
+    end
+
     test "nil file_path problems are patched, not dropped", %{scope: scope} do
       {:ok, run} = RunsRepository.start_run(scope, %{source: "compiler", kind: :full})
 

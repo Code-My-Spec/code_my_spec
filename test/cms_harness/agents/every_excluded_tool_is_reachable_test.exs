@@ -109,7 +109,7 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
   test "every tool the stop menu tells an agent to call is carried" do
     carried = carried()
 
-    for tool <- ~w(get_next_requirement evaluate_task ask_user_question send_message tap_out) do
+    for tool <- ~w(get_next_requirement evaluate_task ask_user_question tap_out) do
       assert tool in carried, "the stop menu says to call `#{tool}` and the agent cannot"
     end
   end

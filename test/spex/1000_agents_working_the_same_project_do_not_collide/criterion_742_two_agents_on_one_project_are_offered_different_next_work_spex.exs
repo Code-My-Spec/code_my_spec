@@ -9,9 +9,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   Where the two halves of this story meet. The stories are shared (criterion 734)
   and the files are not (criterion 732), so the graph — which is computed from
   both — must come out differently per agent while still being about the same
-  authored work. An agent that wrote the spec a requirement asks for should be
+  authored work. An agent that wrote the implementation a requirement asks for should be
   offered the next thing; the one that has not written it should still be offered
-  the spec.
+  the implementation.
 
   Get this wrong and the tool stops working in the ordinary case: two agents on
   one project are either handed identical work (so they duplicate or collide) or
@@ -61,15 +61,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
         # then be indistinguishable from one nobody has ever scanned.
         {:ok, reply, socket} =
           UserSocket
-          |> socket("harness_without_the_spec", %{scope: context.scope})
+          |> socket("harness_without_the_implementation", %{scope: context.scope})
           |> subscribe_and_join(
             HarnessProjectChannel,
             "harness_project:#{context.project.id}",
             %{
               "contract_version" => @contract_version,
               "harness_id" => nil,
-              "root" => "/workspace/without-the-spec",
-              "label" => "the checkout that has not written the spec",
+              "root" => "/workspace/without-the-implementation",
+              "label" => "the checkout that has not written the implementation",
               "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
             }
           )
@@ -96,21 +96,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
          |> Map.put(:other, %{context.scope | active_working_copy_id: other_id})}
       end
 
-      given_ "one has written the spec a requirement asks for and the other has not", context do
-        # given: already true — `:synced_context_in_satisfied_project` wrote and
-        # synced the spec into the first agent's working copy, and the given
-        # above had the second report a tree without it. That is the only
-        # difference between them: same project, same stories, same architecture.
-        #
-        # What this checks is that the difference is *visible to the graph*,
-        # which is the premise the rest of the scenario rests on and the one
-        # thing neither of those two steps proves on its own.
-        assert component_work(context.writer) != "",
-               "the first agent's graph has no component work at all, so there is no spec " <>
-                 "requirement for either agent to differ about"
-
-        {:ok, context}
-      end
+      # given: already true — the satisfied fixture has implementation files;
+      # the second checkout has reported only an unrelated implementation.
 
       when_ "each asks for its next requirement", context do
         {:ok,
@@ -119,19 +106,20 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
          |> Map.put(:other_view, component_work(context.other))}
       end
 
-      then_ "the agent that wrote the spec is offered the following requirement", context do
-        refute context.writer_view =~ "spec_file",
-               "the agent that already wrote the spec was offered it again, so its own files " <>
+      then_ "the agent that wrote the implementation is offered the following requirement",
+            context do
+        refute context.writer_view =~ "implementation_file",
+               "the agent that already wrote the implementation was offered it again, so its own files " <>
                  "are not reaching its graph. Got: #{context.writer_view}"
 
         {:ok, context}
       end
 
-      then_ "the other is still offered the spec", context do
-        assert context.other_view =~ "spec_file",
-               "the agent with a checkout that has no spec was not offered one, so it is " <>
+      then_ "the other is still offered the implementation", context do
+        assert context.other_view =~ "implementation_file",
+               "the agent with a checkout that has no implementation was not offered one, so it is " <>
                  "being credited with work done in a tree it cannot see — and will be sent " <>
-                 "to write tests against a file that is not there. Got: #{context.other_view}"
+                 "to proceed past implementation work it has not done. Got: #{context.other_view}"
 
         {:ok, context}
       end
@@ -163,8 +151,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   # the criterion then reads as failing when nothing is wrong.
   #
   # To `ExampleContext` rather than the whole list, because a real project has
-  # other components that legitimately still need specs — `MyAppWeb.Application`
-  # does, in both checkouts. Asking whether the string "spec_file" appears
+  # other components that legitimately still need implementations — `MyAppWeb.Application`
+  # does, in both checkouts. Asking whether the string "implementation_file" appears
   # anywhere answers a question about the project's backlog, not about whether
   # this agent's own files reached its graph.
   @component "ExampleContext"
@@ -177,15 +165,17 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   # agent was offered nothing.
   defp components_offered(scope) do
     ~r/^## Component: (.+)$/m
-    |> Regex.scan(outstanding(scope))
+    |> Regex.scan(requirements(scope, "all"))
     |> Enum.map(fn [_, module] -> module end)
     |> Enum.sort()
   end
 
-  defp outstanding(scope) do
+  defp outstanding(scope), do: requirements(scope, "unsatisfied")
+
+  defp requirements(scope, status) do
     {:reply, response, _frame} =
       ListRequirements.execute(
-        %{entity_type: "component", status: "unsatisfied", summary: false},
+        %{entity_type: "component", status: status, summary: false},
         %Frame{assigns: %{current_scope: scope}}
       )
 

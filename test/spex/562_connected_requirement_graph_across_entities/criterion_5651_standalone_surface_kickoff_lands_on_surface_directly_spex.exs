@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "bdd_specs_exist has an outgoing edge to the parent live_context's first req",
+      then_ "bdd_specs_exist has an outgoing edge to the child LiveView's implementation",
             context do
         # The liveview surface depends on its parent live_context, which has
         # no further deps — so the chain root IS the parent live_context.
@@ -89,10 +89,10 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         ctx_first_key =
-          GraphAssertions.node_key("component", context.surface_ctx.id, "spec_file")
+          GraphAssertions.node_key("component", context.surface.id, "implementation_file")
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, ctx_first_key),
-               "expected bdd_specs_exist to kickoff at the parent live_context's first requirement"
+               "expected bdd_specs_exist to kickoff at the child LiveView's implementationuirement"
 
         {:ok, context}
       end

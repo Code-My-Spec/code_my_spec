@@ -56,6 +56,17 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert report.live > 0, "the live projection wrote nothing, so there is nothing to compare"
       assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
       assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
+
+      assert report.live_edges > 0,
+             "the live projection wrote no edges, so the topology comparison proves nothing"
+
+      assert report.edges_missing == 0,
+             "a seeded shadow is missing #{report.edges_missing} of #{report.live_edges} " <>
+               "edge(s): #{inspect(report.edge_sample)}"
+
+      assert report.edges_extra == 0,
+             "a seeded shadow holds #{report.edges_extra} edge(s) the pass does not: " <>
+               "#{inspect(report.edge_sample)}"
     end
   end
 
@@ -128,7 +139,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       project_live(scope)
       project_shadow(scope)
 
-      GraphInputs.announce(scope, "Test", [])
+      GraphInputs.announce(scope, "Test", [], :project_wide)
       assert Invalidations.pending(scope.active_project_id) != []
 
       :ok = ShadowProjector.settle(scope.active_project_id)
@@ -246,6 +257,66 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       project_live(ctx.scope)
       Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
       :ok
+    end
+
+    # Story 1020, "A writer says whether what it moved is about one checkout or
+    # about the whole project". The narrowing above is about *which entities*;
+    # this is about *whose answers*, and the two are independent — a writer can
+    # name one story precisely and still be wrong about which checkouts read it.
+    #
+    # Asserted on the mark rather than on the projection for the same reason the
+    # rest of this block is: a mark that fans out when it should not still
+    # agrees, because settling every vantage is never *wrong*, only wasteful.
+    # Only the shape says which happened.
+    test "a story change is about no checkout in particular", ctx do
+      create_story(ctx.scope, title: "Everyone's", description: "read from every checkout")
+
+      assert copies_named(ctx.scope, "Stories") == [nil],
+             """
+             A story is not a checkout's. Taking the copy from the writer's ambient
+             scope would settle the worktree the rename happened in and leave every
+             other checkout carrying the old title.
+             """
+    end
+
+    test "an analyzer result is about the checkout it ran on", ctx do
+      scope = ctx.scope
+
+      # Or the assertion below is `[nil] == [nil]` and says nothing. The whole
+      # point is that a `:this_checkout` writer records something a
+      # `:project_wide` writer does not.
+      refute is_nil(scope.active_working_copy_id),
+             "this test needs a scope with a checkout on it, or it passes vacuously"
+
+      GraphInputs.event(
+        scope,
+        "Analysis",
+        "analysis_completed",
+        %{},
+        [:project],
+        :this_checkout
+      )
+
+      assert copies_named(scope, "Analysis") == [scope.active_working_copy_id]
+    end
+
+    test "a writer that cannot say is read as the whole project", ctx do
+      scope = ctx.scope
+
+      # `:this_checkout` from a scope with no checkout on it is not a narrowing
+      # that failed, it is a writer speaking from nowhere — and that has to read
+      # as every checkout, never as the `nil` *vantage*, which is one particular
+      # row-space a reader with no checkout is answered from.
+      GraphInputs.event(
+        %{scope | active_working_copy_id: nil},
+        "Nowhere",
+        "analysis_completed",
+        %{},
+        [:project],
+        :this_checkout
+      )
+
+      assert copies_named(scope, "Nowhere") == [nil]
     end
 
     test "Stories names the story it changed, and claims project scope", ctx do
@@ -375,7 +446,19 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     |> Invalidations.entities()
   end
 
+  # The checkouts a writer's marks name, `nil` included — `nil` is an answer
+  # ("not about a checkout"), not a missing one, so it is never filtered out.
+  defp copies_named(scope, source) do
+    scope.active_project_id
+    |> Invalidations.pending()
+    |> Enum.filter(&(&1.source == source))
+    |> Enum.map(& &1.working_copy_id)
+    |> Enum.uniq()
+  end
+
   defp assert_shadow_agrees(scope, writer) do
+    assert_mark_recorded(scope, writer)
+
     project_live(scope)
     :ok = ShadowProjector.settle(scope.active_project_id)
 
@@ -386,6 +469,50 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
     assert report.disagree == 0,
            "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+
+    # Edges too, for the reason `Shadow.log/1` now gates on them: an edge is a
+    # prerequisite, so a missing one lets work start before the thing it waits
+    # on and an extra one blocks work that is ready. Both change the answer to
+    # "what should I do next", and this asserted neither — a writer that got
+    # every verdict right and the whole topology wrong passed here.
+    assert report.edges_missing == 0,
+           "#{writer} left the shadow missing #{report.edges_missing} edge(s) " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
+
+    assert report.edges_extra == 0,
+           "#{writer} left the shadow holding #{report.edges_extra} edge(s) the pass does not " <>
+             "(live #{report.live_edges}, shadow #{report.shadow_edges}): " <>
+             inspect(report.edge_sample)
+  end
+
+  # The durable mark, not the broadcast.
+  #
+  # This waited on `{:graph_inputs_changed, ...}` and reasoned that PubSub
+  # delivers in order, so a `call` issued after this process had the message
+  # would be served behind the projector's copy. Sound for one event and not for
+  # a writer that announces two — `accept_issue/2` moves issues *and* the story
+  # those issues gate — where the subscription lands between them, the receive
+  # returns on the first, and the drain runs before the second arrives.
+  #
+  # Measured: green in isolation every time, red on four full analyzer sweeps
+  # across 2026-09-17, naming a different story each run. A wait that is right
+  # most of the time is the shape of that.
+  #
+  # A mark is a row the writer commits in its own transaction, so by the time
+  # the writer has returned it is there to be read. Asking the table is a state
+  # check with no hop to race, and it keeps what the old wait was also for: a
+  # writer that recorded nothing is a coverage failure, and it says so here
+  # rather than showing up below as a disagreement with no cause.
+  defp assert_mark_recorded(scope, writer) do
+    assert Invalidations.pending(scope.active_project_id) != [],
+           """
+           #{writer} recorded no invalidation.
+
+           Every writer whose table the fingerprint hashes records one, so a
+           silent writer means the shadow will never hear about this change —
+           a coverage failure in the writer rather than a timing one.
+           """
   end
 
   describe "computing one entity" do

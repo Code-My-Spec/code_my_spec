@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   alias CodeMySpec.DevState
   alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
@@ -80,6 +81,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
      |> assign(projects: projects, selected: selected, feed: [], checking?: false)
      |> assign_report()
      |> assign_watched()
+     |> assign_vantages()
      |> assign_stale()}
   end
 
@@ -92,6 +94,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
     {:noreply,
      socket
      |> assign(selected: selected, feed: [])
+     |> assign_vantages()
      |> assign_report()
      |> assign_watched()
      |> assign_stale()}
@@ -113,12 +116,12 @@ defmodule CodeMySpecWeb.DevGraphLive do
   # A pass landed. Re-read the rows and re-run the diff, because this is the
   # moment the answer is supposed to have become right.
   def handle_info({:graph_updated, _project_id}, socket) do
-    {:noreply, socket |> close_pass() |> assign_report() |> assign_stale()}
+    {:noreply, socket |> close_pass() |> assign_report() |> assign_vantages() |> assign_stale()}
   end
 
   def handle_info(:tick, socket) do
     schedule_tick()
-    {:noreply, socket |> assign_report() |> assign_watched()}
+    {:noreply, socket |> assign_report() |> assign_watched() |> assign_vantages()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -213,6 +216,31 @@ defmodule CodeMySpecWeb.DevGraphLive do
     :exit, _ -> []
   end
 
+  # The two questions that needed `psql` to answer, and that both of the
+  # 2026-09-17 routing bugs hid behind.
+  #
+  # A verdict is a statement about one checkout, so this graph is ten parallel
+  # answers. From any single vantage, "one checkout current and eight frozen for
+  # two hours" looks exactly like a healthy graph — which is why it ran that way
+  # for two hours. Side by side it is obvious at a glance.
+  #
+  # The backlog is the other half. Marks are durable so a crash cannot lose
+  # them, and the cost of that is a queue nobody could see: when the projector
+  # raised on every drain, the only symptom visible from outside was that
+  # nothing changed.
+  defp assign_vantages(%{assigns: %{selected: nil}} = socket),
+    do: assign(socket, vantages: [], backlog: %{total: 0, groups: []}, drain: nil)
+
+  defp assign_vantages(%{assigns: %{selected: project}} = socket) do
+    scope = scope_of(project)
+
+    assign(socket,
+      vantages: Requirements.vantage_report(scope),
+      backlog: Requirements.backlog_report(scope),
+      drain: DrainCost.last(project.id)
+    )
+  end
+
   defp assign_stale(%{assigns: %{selected: nil}} = socket), do: assign(socket, stale: nil)
 
   defp assign_stale(%{assigns: %{selected: project}} = socket) do
@@ -285,6 +313,96 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
           <p :if={match?({:error, _}, @stale)} class="text-sm opacity-70">
             Could not read this project: {inspect(elem(@stale, 1))}
+          </p>
+        </section>
+
+        <section class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            Checkouts — {length(@vantages)} answering
+          </h2>
+          <p class="text-xs opacity-60">
+            A verdict is a statement about one checkout, so this is ten parallel answers rather
+            than one. From any single vantage a stuck checkout looks exactly like a healthy
+            graph; the <em>spread</em> between newest stamps is what says otherwise.
+          </p>
+          <table class="table table-xs">
+            <thead>
+              <tr>
+                <th>checkout</th>
+                <th class="text-right">rows</th>
+                <th>newest</th>
+                <th>oldest</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={v <- @vantages}>
+                <td class={if is_nil(v.working_copy_id), do: "opacity-60", else: ""}>
+                  {v.label}
+                </td>
+                <td class="text-right tabular-nums">{v.rows}</td>
+                <td class="tabular-nums">{v.newest}</td>
+                <td class="tabular-nums opacity-60">{v.oldest}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            Backlog — {@backlog.total} pending
+          </h2>
+          <p :if={@backlog.total == 0} class="text-xs opacity-60">
+            Nothing queued. Marks are durable so a crash cannot lose them, which means a
+            number that grows here is drains failing, and a number that sits still is drains
+            falling behind.
+          </p>
+          <table :if={@backlog.total > 0} class="table table-xs">
+            <thead>
+              <tr>
+                <th>writer</th>
+                <th>kind</th>
+                <th>scope</th>
+                <th class="text-right">pending</th>
+                <th>oldest</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={g <- @backlog.groups}>
+                <td>{g.source}</td>
+                <td class="opacity-60">{g.kind || "invalidate"}</td>
+                <td class={if g.entity_scope == "unknown", do: "text-warning", else: "opacity-60"}>
+                  {g.entity_scope}
+                </td>
+                <td class="text-right tabular-nums">{g.count}</td>
+                <td class="tabular-nums opacity-60">{g.oldest}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="text-xs opacity-60">
+            <code>unknown</code> scope is the expensive one: the writer could not say what it
+            moved, so it is read as the whole project at every checkout.
+          </p>
+        </section>
+
+        <section :if={@drain} class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            Last drain — {@drain.kind}
+          </h2>
+          <div class="flex flex-wrap gap-4 text-sm tabular-nums">
+            <span>{@drain.queries} queries</span>
+            <span>{@drain.rows_written} rows written</span>
+            <span>{@drain.vantages || "—"} checkouts</span>
+            <span class="opacity-60">{@drain.observations || 0} observations</span>
+            <span class="opacity-60">settled {@drain.handled || 0}</span>
+            <span class={if (@drain.recomputed || 0) > 0, do: "text-warning", else: "opacity-60"}>
+              recomputed {@drain.recomputed || 0}
+            </span>
+            <span class="opacity-40">{@drain.duration_ms}ms</span>
+          </div>
+          <p class="text-xs opacity-60">
+            Queries and rows are the cost; milliseconds measure the machine. The same
+            seventeen-query drain has been seen at 4ms and 18ms per query inside one minute
+            under load, while the counts did not move.
           </p>
         </section>
 

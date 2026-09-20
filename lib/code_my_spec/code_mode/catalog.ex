@@ -57,7 +57,6 @@ defmodule CodeMySpec.CodeMode.Catalog do
   @excluded %{
     "ask_user_question" =>
       "it waits on a person, and a loop around it is questions nobody agreed to answer",
-    "send_message" => "it waits on a person, the same as `ask_user_question`",
     "check_answer" => "it belongs with the asking tools, which a script cannot call",
     "list_user_questions" => "it belongs with the asking tools, which a script cannot call",
     "start_analysis" =>
@@ -100,7 +99,15 @@ defmodule CodeMySpec.CodeMode.Catalog do
       "it is one of the four tools you already have directly — call it as a tool",
     "sync_project" => "it is one of the four tools you already have directly — call it as a tool",
     "start_task" => "it is one of the four tools you already have directly — call it as a tool",
-    "evaluate_task" => "it is one of the four tools you already have directly — call it as a tool"
+    "evaluate_task" =>
+      "it is one of the four tools you already have directly — call it as a tool",
+
+    # The fourth disposition, carried for the same reason as `evaluate_task`.
+    # The open-task menu offers complete, ask, tap out and cancel, and until
+    # this was carried the last of those named a tool no internal agent held.
+    "cancel_task" =>
+      "it dispositions the task you are holding, which you already have directly — " <>
+        "call it as a tool"
   }
 
   # Three answers, not two. `:error` is the tool saying it could not do the

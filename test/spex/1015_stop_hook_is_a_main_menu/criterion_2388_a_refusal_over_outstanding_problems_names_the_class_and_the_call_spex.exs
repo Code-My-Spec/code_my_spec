@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2388Spex do
   spex "A refusal names the class of work and the call that opens it" do
     scenario "outstanding problems block the stop and the reason names list_problems" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent leaves a finding behind in a file it edited", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

@@ -51,12 +51,12 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     questions = open_questions(agents)
     tapped_out = tapped_out(agents)
     problems = problems_by_copy(scope)
-    idle_roles = idle_roles(scope, agents)
+    idle_queues = idle_queues(scope, agents)
     stories = story_titles(agents)
 
     Enum.map(agents, fn agent ->
       copy = Map.get(copies, agent.working_copy_id)
-      task = Agent.active_task(agent)
+      task = current_task(agent)
 
       %AgentWork{
         agent_id: agent.id,
@@ -65,6 +65,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         working_copy_id: agent.working_copy_id,
         working_copy_root: copy && copy.root,
         task_name: task && task.requirement_name,
+        task_status: task && task.status,
         task_started_at: task && task.started_at,
         story_title: task && Map.get(stories, task.story_id),
         last_said_at: Map.get(last_said, agent.id),
@@ -73,11 +74,32 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         turn_started_at: agent.turn_started_at,
         # A claimed task means there is work whatever the queue says; idle is
         # only ever about an agent with nothing in hand.
-        idle?: is_nil(task) and MapSet.member?(idle_roles, agent.role),
+        idle?: is_nil(task) and MapSet.member?(idle_queues, queue_key(agent)),
         machine_tools: copy && copy.machine_tools,
         problems: Map.get(problems, agent.working_copy_id, [])
       }
     end)
+  end
+
+  # The work this agent is on, which is not only the active one.
+  #
+  # An agent that asked a question has no *active* task by construction — the
+  # question blocked it — and reading only `active_task/1` reported that agent
+  # as having nothing to do while the line below it said what it was blocked
+  # on. Criterion 3275 is exactly this pair: the main agent is handed the parts
+  # and draws its own conclusion, and "no task" beside "blocked on a question"
+  # is two parts that contradict each other.
+  #
+  # Newest first among blocked attempts, because that is the one the agent is
+  # waiting on now; older blocked attempts are history it has not cancelled.
+  defp current_task(agent) do
+    Agent.active_task(agent) || latest_blocked_task(agent)
+  end
+
+  defp latest_blocked_task(%Agent{tasks: tasks}) do
+    (tasks || [])
+    |> Enum.filter(&(&1.status == :blocked))
+    |> Enum.max_by(& &1.blocked_at, DateTime, fn -> nil end)
   end
 
   defp working_copies(agents) do
@@ -165,19 +187,44 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     |> Enum.group_by(& &1.working_copy_id)
   end
 
-  # Which roles the graph currently holds nothing for.
+  # Which queues the graph currently holds nothing for.
   #
   # Asked of the graph rather than read off a field, because there is no field:
   # "nothing to do" is a property of the project's outstanding work and an
   # implementation reporting it from somewhere a scenario had set would pass a
   # scenario and fail in production, where nobody sets it.
-  defp idle_roles(scope, agents) do
+  #
+  # A queue is a role *on a checkout*, not a role. This asked once per role at
+  # the caller's own scope, which is the blended vantage `Preloader.load/1`
+  # warns about — "a file present in one and absent in another reads as
+  # present. Expected for the UI; an agent path here is a bug." A supervisor's
+  # report about an agent is an agent path, and `Agents.wake_project_roles/2`
+  # already computes each agent's menu at `at_agents_vantage/2` for exactly
+  # this reason.
+  #
+  # Measured 2026-09-17 with seven checkouts joined: both QA agents were
+  # reported as having work for their role while each, asked from its own
+  # connection, correctly answered that it had none. An agent that has stood
+  # down correctly then reads identically to one that is stuck, so every remedy
+  # the supervisor has is aimed at a fault that is not there.
+  defp idle_queues(scope, agents) do
     agents
-    |> Enum.map(& &1.role)
+    |> Enum.map(&queue_key/1)
     |> Enum.uniq()
-    |> Enum.filter(&(Requirements.actionable_count(scope, &1) == 0))
+    |> Enum.filter(fn {copy_id, role} ->
+      Requirements.actionable_count(at_vantage(scope, copy_id), role) == 0
+    end)
     |> MapSet.new()
   end
+
+  defp queue_key(agent), do: {agent.working_copy_id, agent.role}
+
+  # An agent with no checkout has no vantage of its own, and the caller's is
+  # the only honest answer rather than a wrong one.
+  defp at_vantage(%Scope{} = scope, nil), do: scope
+
+  defp at_vantage(%Scope{} = scope, copy_id),
+    do: %Scope{scope | active_working_copy_id: copy_id}
 
   # The story each task is against, by title.
   #

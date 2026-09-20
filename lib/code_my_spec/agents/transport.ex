@@ -84,6 +84,10 @@ defmodule CodeMySpec.Agents.Transport do
               timeout()
             ) :: {:ok, :started | :queued} | {:error, term()}
 
+  @doc "Request work on an existing idle Engine; never queue it as user chat."
+  @callback request_work_turn(String.t(), Agent.t(), String.t(), String.t(), timeout()) ::
+              {:ok, :started} | {:error, term()}
+
   @doc """
   Take back a message the agent has not picked up yet.
 

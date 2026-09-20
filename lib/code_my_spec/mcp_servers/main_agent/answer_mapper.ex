@@ -64,6 +64,20 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
     """)
   end
 
+  def error(:is_permission) do
+    Response.tool()
+    |> Response.error("""
+    That id is a permission, not a question — a `tap_out`, or an agent asking
+    to call something. It cannot be answered with prose: pass
+    `decision: "allow"` or `decision: "deny"` instead, and leave `answer` and
+    `basis` out.
+
+    Both kinds sit in `list_notifications` together because both stop an agent
+    the same way, so reaching for the wrong verb is ordinary. The entry's
+    `kind` says which it is.
+    """)
+  end
+
   def error({:unknown_decision, decision}) do
     Response.tool()
     |> Response.error("""

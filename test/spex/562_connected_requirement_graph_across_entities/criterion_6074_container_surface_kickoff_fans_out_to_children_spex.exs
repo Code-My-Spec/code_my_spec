@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.StoryHelpers
@@ -44,23 +43,7 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
         {:ok, Map.put(context, :story, story)}
       end
 
-      given_ :on_configuration_page
-
-      when_ "the engineer disables all three requirement toggles", context do
-        context.config_live
-        |> form("[data-test='configuration-form']",
-          configuration: %{
-            require_specs: false,
-            require_reviews: false,
-            require_unit_tests: false
-          }
-        )
-        |> render_submit()
-
-        {:ok, context}
-      end
-
-      and_ "the engineer renders the requirements graph", context do
+      when_ "the engineer views the component requirements", context do
         {:ok, _live, html} =
           live(
             context.conn,

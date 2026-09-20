@@ -114,6 +114,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analysis.Reconciler
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
@@ -1314,12 +1316,22 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Record whether a checkout's application is answering, the way its harness
-  would.
+  Record what a checkout's application is doing, the way its harness would.
 
   `CmsHarness.Sync` measures this against the checkout's `preview_url` on the
   machine that can reach it; a spec has no harness, so it records through the
   same surface the channel handler calls.
+
+  Replaces `record_git_state/2`, which recorded the checkout's `ahead`/`behind`/
+  `dirty` counts. Those columns are gone — they were a mirror of git that
+  nothing decided on, and hashing them into every story's fingerprint made one
+  keystroke reconsider every story in the project.
+
+  `preview_status` is the surviving input of that shape and the one the graph
+  genuinely reads: `Promotion.serving/2` turns on it, and `preview_checked_at`
+  beside it is a heartbeat the fingerprint must ignore. So the criteria on story
+  1063 that used git state to tell "a value that matters" from "a timestamp that
+  does not" ask the same question here, of an input that still exists.
   """
   @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
   def record_preview_status(working_copy_id, status) do
@@ -1366,12 +1378,6 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc """
-  Designate a checkout as the one the application runs from.
-
-  Here rather than in a criterion because `CodeMySpec.WorkingCopies` is not a
-  spex dependency.
-  """
   @doc """
   Start watching this project's graph, and subscribe to its announcements.
 
@@ -1560,21 +1566,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Wait for the background work this project started to finish.
-
-  Public because teardown needs it as much as a scenario does, and for a
-  sharper reason. A wake runs in a task off `CodeMySpec.TaskSupervisor`; if it
-  is still running when the test's sandbox owner stops, it dies on a connection
-  that is no longer there and the supervisor logs the crash at `:error` — and
-  `SexySpex.ErrorCapture` fails whichever spex happens to be running when that
-  lands. So the straggler does not fail its own test, it fails somebody else's,
-  intermittently, and the failure text is a `Task.Supervisor` report with
-  nothing in it about either scenario.
-
-  Bounded, so a spex with some other long-running task under the same
-  supervisor fails its own assertion rather than hanging here.
-  """
-  @doc """
   Stop every graph watcher, so nothing new starts during teardown.
 
   Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
@@ -1659,27 +1650,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def stop_watching(%Scope{}), do: :ok
-
-  @doc """
-  Record what a checkout's application is doing, the way its harness would.
-
-  Replaces `record_git_state/2`, which recorded the checkout's `ahead`/`behind`/
-  `dirty` counts. Those columns are gone — they were a mirror of git that
-  nothing decided on, and hashing them into every story's fingerprint made one
-  keystroke reconsider every story in the project.
-
-  `preview_status` is the surviving input of that shape and the one the graph
-  genuinely reads: `Promotion.serving/2` turns on it, and `preview_checked_at`
-  beside it is a heartbeat the fingerprint must ignore. So the criteria on story
-  1063 that used git state to tell "a value that matters" from "a timestamp that
-  does not" ask the same question here, of an input that still exists.
-  """
-  @spec record_preview_status(Ecto.UUID.t(), String.t()) :: :ok
-  def record_preview_status(working_copy_id, status) do
-    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(working_copy_id)
-    {:ok, _} = CodeMySpec.WorkingCopies.record_preview_status(copy, status)
-    :ok
-  end
 
   @doc """
   Files observed by a *different* working copy on this project.
@@ -1969,6 +1939,86 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     request.id
+  end
+
+  @doc """
+  Make question inserts for this test user write no row.
+
+  PostgreSQL's BEFORE INSERT cancellation exercises an actual failed write
+  without aborting the surrounding sandbox transaction. In particular, this
+  fixture does not wrap the tool call in a rollback that would hide a task
+  mutation made before the insert. The trigger and temporary function are
+  transactional DDL and disappear with the test sandbox's rollback.
+  """
+  @spec refuse_question_inserts(Scope.t()) :: :ok
+  def refuse_question_inserts(%Scope{user: %{id: user_id}}) when is_integer(user_id) do
+    CodeMySpec.Repo.query!("""
+    CREATE FUNCTION pg_temp.spex_refuse_question_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.user_id = #{user_id} THEN
+        RETURN NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$
+    """)
+
+    CodeMySpec.Repo.query!("""
+    CREATE TRIGGER spex_refuse_question_insert
+    BEFORE INSERT ON question_requests
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.spex_refuse_question_insert()
+    """)
+
+    :ok
+  end
+
+  @doc """
+  Refuse this test user's tap-out inserts without aborting the sandbox transaction.
+  This injects storage failure, not task state or a permission outcome.
+  """
+  @spec refuse_tap_out_inserts(Scope.t()) :: :ok
+  def refuse_tap_out_inserts(%Scope{user: %{id: user_id}}) when is_integer(user_id) do
+    CodeMySpec.Repo.query!("""
+    CREATE FUNCTION pg_temp.spex_refuse_tap_out_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.user_id = #{user_id} AND NEW.tool_name = 'tap_out' THEN
+        RETURN NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$
+    """)
+
+    CodeMySpec.Repo.query!("""
+    CREATE TRIGGER spex_refuse_tap_out_insert
+    BEFORE INSERT ON permission_requests
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.spex_refuse_tap_out_insert()
+    """)
+
+    :ok
+  end
+
+  @doc """
+  Establish the age of a question already created through its public surface.
+
+  Changes only its timestamps, never its answer, status, ownership, or task
+  blocker. This supplies historical setup without sleeping through a real TTL.
+  """
+  @spec age_question(Scope.t(), String.t(), pos_integer()) :: :ok
+  def age_question(%Scope{user: %{id: user_id}}, question_id, seconds)
+      when is_integer(seconds) and seconds > 0 do
+    timestamp =
+      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+
+    {1, _} =
+      from(q in Notifications.QuestionRequest,
+        where: q.id == ^question_id and q.user_id == ^user_id
+      )
+      |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
+
+    :ok
   end
 
   @doc """
@@ -2362,6 +2412,24 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Which agent raised a question, if an agent did.
+
+  The identity `Plugs.AgentScope` puts on the frame in production, read back
+  off the question it wrote. `check_answer` refuses a question whose `agent_id`
+  is not the caller's — correctly, one agent must not read another's reply — so
+  a spex collecting an answer has to call as the asker, and this is where the
+  asker is recorded. Nil for a Claude Code session's question, which has no
+  agent.
+  """
+  @spec asking_agent_id(String.t()) :: String.t() | nil
+  def asking_agent_id(question_id) do
+    case CodeMySpec.Notifications.get_question_request(question_id) do
+      %{agent_id: agent_id} -> agent_id
+      nil -> nil
+    end
+  end
+
+  @doc """
   Answer a question the way the person answering it does.
 
   `Notifications.answer_question_request/2` is what the inbox form calls, and it
@@ -2381,19 +2449,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
     {:ok, _answered} = CodeMySpec.Notifications.answer_question_request(question_id, answers)
 
-    :ok
-  end
-
-  @doc """
-  Whether this project asks for spec files, and a component to ask it about.
-
-  `require_specs` is what `graph_for_type/1` filters a template by, so turning it
-  off is how a project stops needing a whole class of requirement — the surface
-  behind criterion 3359.
-  """
-  def require_specs(%Scope{} = scope, required?) do
-    CodeMySpec.Configurations.get_or_create(scope)
-    {:ok, _config} = CodeMySpec.Configurations.update(scope, %{require_specs: required?})
     :ok
   end
 
@@ -2599,8 +2654,44 @@ defmodule CodeMySpecSpex.Fixtures do
     CmsHarness.Agents.send_message(agent_id, "spec-" <> Ecto.UUID.generate(), text)
   end
 
+  @doc """
+  Tell an agent something and wait for the turn it takes about it.
+
+  The waiting half of the pair above, and the one a *measured* run needs.
+  `send_message/4` answers `:queued` the moment the message is accepted, and an
+  agent that has not dequeued it yet reads as idle — so a helper that sent and
+  then waited for idle could return before the turn began, with an empty
+  transcript, and count that as the agent having done nothing.
+
+  Measured 2026-09-17 on story 1070's criterion 3543: three runs, three
+  agents told something, three "called nothing at all", the whole measurement
+  in 28 seconds. The messages were delivered; nothing waited for what they
+  caused.
+  """
+  def message_agent_and_wait(agent_id, text, timeout) do
+    CmsHarness.Agents.message(agent_id, text, timeout)
+  end
+
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
   defdelegate agent_tool_context(agent_id), to: CmsHarness.Agents, as: :tool_context
+
+  @doc """
+  Send every agent's turn events to the server over `socket`.
+
+  The one hop an in-process agent has always been missing. `CmsHarness.Agents`
+  defaults `on_event` to a lookup in the harness registry, which in a spex
+  finds nothing and answers `:ok` — so every agent the suite has ever started
+  ran with its transcript going nowhere, and a criterion asking what an agent
+  *did* had only the agent's own account of itself to read.
+
+  Through the bridge for the same reason `install_workspace_runner/2` is: a
+  criterion cannot name `CodeMySpecTest`, and should not.
+
+  `socket` must be a joined `harness_project` channel. Uninstalls itself when
+  the test ends; the key is global, so this is `async: false` territory.
+  """
+  @spec relay_turn_events(Phoenix.Socket.t()) :: :ok
+  defdelegate relay_turn_events(socket), to: CodeMySpecTest.TurnEventRelay, as: :install
 
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
@@ -3253,26 +3344,9 @@ defmodule CodeMySpecSpex.Fixtures do
     path
   end
 
-  @doc """
-  Turns the three requirement toggles on for a project.
-
-  A fresh project defaults them off — it writes BDD spex and code and nothing
-  else. The spex suite exercises the full development workflow, so it needs the
-  whole chain (spec → review → test → implementation) to have anything to drive.
-
-  Lives on the bridge rather than being called directly: `CodeMySpecSpex` is its
-  own Boundary and may not reach into `CodeMySpec.*`, so every fixture the specs
-  need has to come through here.
-  """
-  @spec require_all!(Scope.t()) :: Scope.t()
-  def require_all!(scope) do
-    {:ok, _config} =
-      Configurations.update(scope, %{
-        require_specs: true,
-        require_reviews: true,
-        require_unit_tests: true
-      })
-
+  @doc "Ensure the project has its default analyzer and deployment configuration."
+  def ensure_configuration!(scope) do
+    Configurations.get_or_create(scope)
     scope
   end
 
@@ -3441,7 +3515,9 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  An active task on the agent's own row — `TaskOwner`'s shape, not a session's.
+  A recorded task on the agent's own row — `TaskOwner`'s shape, not a session's.
+  Defaults to active; `:status` can establish a pre-existing terminal task for
+  scenarios about rejecting an operation on historical work.
 
   `start_task` is what a real Alloy agent calls to claim work, and it goes
   through `TaskOwner.add_task/3` directly on the agent — there is no session in
@@ -3449,7 +3525,7 @@ defmodule CodeMySpecSpex.Fixtures do
   somebody else's session naming this agent by id, which is what an *external*
   Claude Code session's sub-agent looks like, not one we run ourselves.
 
-  Returns `{agent, task}`, both the updated agent and the task now active on
+  Returns `{agent, task}`, both the updated agent and the task recorded on
   it — spex files reach `CodeMySpec` only through this bridge, so the caller
   should not need a second call through `TaskOwner` just to read back what was
   just staged.
@@ -3462,7 +3538,7 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, agent} =
       TaskOwner.add_task(scope, agent, %{
         id: task_id,
-        status: :active,
+        status: Keyword.get(opts, :status, :active),
         requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
         story_id: Keyword.get(opts, :story_id),
         # Settable, because a criterion about how long a task has been open
@@ -3470,7 +3546,7 @@ defmodule CodeMySpecSpex.Fixtures do
         started_at: Keyword.get(opts, :started_at, DateTime.utc_now())
       })
 
-    {agent, TaskOwner.active_task(agent)}
+    {agent, TaskOwner.find_task(agent, task_id)}
   end
 
   @doc """
@@ -3497,6 +3573,62 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec cadence_tick(Scope.t()) :: :ok
   def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+
+  @doc "Start a real recovery timer for a scheduling spec and clean up its supervised child."
+  @spec start_recovery_timer(Scope.t()) :: :ok
+  def start_recovery_timer(%Scope{} = scope) do
+    {:ok, pid} = CodeMySpec.MainAgent.ensure_cadence(scope)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+    end)
+
+    :ok
+  end
+
+  @doc "Wait for recovery events and verify the public cadence report advanced."
+  def await_recovery_check(read_report, since) when is_function(read_report, 0) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "cadence:checks")
+
+    try do
+      deadline = System.monotonic_time(:millisecond) + 5_000
+      await_recovery_check(read_report, since, deadline)
+    after
+      Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "cadence:checks")
+    end
+  end
+
+  defp await_recovery_check(read_report, since, deadline) do
+    body = read_report.()
+
+    checked_at =
+      with [_, timestamp] <- Regex.run(~r/last check:\s*(\S+)/i, body),
+           {:ok, instant, _} <- DateTime.from_iso8601(timestamp),
+           :gt <- DateTime.compare(instant, since) do
+        instant
+      else
+        _ -> nil
+      end
+
+    cond do
+      checked_at ->
+        checked_at
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+
+      true ->
+        remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+        receive do
+          {:recovery_checked, _project_id, _checked_at} ->
+            await_recovery_check(read_report, since, deadline)
+        after
+          remaining ->
+            raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+        end
+    end
+  end
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
@@ -3647,18 +3779,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  A turn this agent has started and not finished.
-
-  The same `agent_turn_event` push `end_turn/3` sends, with the event a
-  scenario names instead of `:turn_ended` — so an agent mid-response is
-  produced by the harness's own entry point rather than by writing a flag
-  nothing in production sets.
-
-  Nothing ends it. That is the state criteria 3279 and 3297 are about: a
-  connection open to a model with a response coming back, which from every
-  other angle is indistinguishable from an agent that has stopped.
-  """
-  @doc """
   Put this session into continuous mode, the way `start_implementation` does.
 
   The stop hook's menu-on-turn-end path is gated on the *session's* own
@@ -3716,6 +3836,19 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _message} =
       Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
 
+    :ok
+  end
+
+  @doc "Seed an operator instruction already present before the tested agent turn."
+  def prior_operator_instruction(%Scope{} = scope, %{id: agent_id}, text) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _message} = Conversations.add_message(conversation, :operator, text, "operator")
     :ok
   end
 
@@ -4519,6 +4652,53 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Start a full analyzer run, the way a real sweep enqueues one.
+
+  Split from `complete_analysis_run/2` so a scenario can put an edit between
+  the two: a file written after this call and read by `complete_analysis_run/2`
+  is what "in flight" means to `Coverage.seen_entries/3` — the analyzer never
+  saw it, and recording it anyway would be a false fact rather than a stale one.
+  """
+  @spec start_analysis_run(Scope.t(), String.t()) :: CodeMySpec.Analysis.Run.t()
+  def start_analysis_run(%Scope{} = scope, source) do
+    {:ok, run} =
+      RunsRepository.start_run(scope, %{source: source, kind: :full})
+
+    run
+  end
+
+  @doc """
+  Finish a run through `Reconciler.reconcile/4` — the only path that ever
+  calls `Coverage.record/4`.
+
+  `fresh_analysis_runs/2` stamps the ledger directly and reaches `Coverage`
+  not at all, which is right for a fixture whose job is "this source is
+  current" and wrong for a criterion about what a run actually read: proving
+  that requires going through the producer it names.
+  """
+  @spec complete_analysis_run(Scope.t(), CodeMySpec.Analysis.Run.t()) :: :ok
+  def complete_analysis_run(%Scope{} = scope, run) do
+    {:ok, _finished} =
+      Reconciler.reconcile(scope, run, %{
+        problems: [],
+        output: "",
+        exit_status: 0,
+        stats: %{}
+      })
+
+    :ok
+  end
+
+  @doc "Files a source's roles feed that it has never read — as the dev freshness page counts them."
+  defdelegate unread_files(scope, source), to: CodeMySpec.Analysis.Coverage, as: :unanalyzed_files
+
+  @doc "Files a source read whose content has since moved, with what it saw and what changed."
+  defdelegate stale_coverage(scope, source), to: CodeMySpec.Analysis.Coverage, as: :stale_report
+
+  @doc "Whether a source has read everything it should and none of it has moved since."
+  defdelegate coverage_fresh?(scope, source), to: CodeMySpec.Analysis.Coverage, as: :fresh?
+
+  @doc """
   Stamp completed analysis runs at the CURRENT input fingerprints.
 
   `tests_passing` / `spex_passing` require a fresh completed run in the
@@ -4567,7 +4747,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # frontier left the graph believing the specs had never passed, so every
     # scenario built on that frontier was handed `FixBddSpecs` for the story the
     # fixture had just prepared — criteria 6529 and 6533, deterministically.
-    :ok = GraphInputs.announce(scope, "Analysis")
+    :ok = GraphInputs.announce(scope, "Analysis", [], :project_wide)
 
     # And settled before returning, so the graph agrees with the world this
     # fixture has just finished building.

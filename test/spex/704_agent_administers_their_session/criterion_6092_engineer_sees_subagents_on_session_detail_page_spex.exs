@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6092Spex do
         {:reply, _response, _frame} =
           StartTask.execute(
             %{
-              requirement_name: "spec_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id,
@@ -123,8 +123,8 @@ defmodule CodeMySpecSpex.Story704.Criterion6092Spex do
                "expected idle classification for #{context.idle_agent} in row context: #{inspect(idle_line)}"
 
         assert html =~
-                 ~r/data-agent-id="#{Regex.escape(context.assigned_agent)}"[\s\S]*?assigned: spec_file/,
-               "expected `assigned: spec_file` classification for #{context.assigned_agent}"
+                 ~r/data-agent-id="#{Regex.escape(context.assigned_agent)}"[\s\S]*?assigned: implementation_file/,
+               "expected `assigned: implementation_file` classification for #{context.assigned_agent}"
 
         {:ok, context}
       end

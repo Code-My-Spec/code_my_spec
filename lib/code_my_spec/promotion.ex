@@ -181,8 +181,13 @@ defmodule CodeMySpec.Promotion do
   #
   # Still has to be serving. The code is here by definition; whether anything
   # is answering is a separate question and QA needs both.
-  defp verdict(%WorkingCopy{id: id} = running, %Scope{active_working_copy_id: id}, _entity, _local),
-    do: serving(running, %{status: "Working on the running copy"})
+  defp verdict(
+         %WorkingCopy{id: id} = running,
+         %Scope{active_working_copy_id: id},
+         _entity,
+         _local
+       ),
+       do: serving(running, %{status: "Working on the running copy"})
 
   defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity, _local),
     do: {true, %{status: "No checkout on this scope"}}
@@ -319,10 +324,23 @@ defmodule CodeMySpec.Promotion do
   """
   @spec promote(Scope.t(), keyword()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope, opts \\ []) do
-    with {:ok, running} <- running_copy(scope) do
-      Lock.with_lock(running.project_id, fn -> promote_into(scope, running, opts) end)
-      |> unlocked()
-    end
+    result =
+      with {:ok, running} <- running_copy(scope) do
+        Lock.with_lock(running.project_id, fn -> promote_into(scope, running, opts) end)
+        |> unlocked()
+      end
+
+    log_outcome(result)
+  end
+
+  # Kept from `report_to/3`, which is gone: the log answers "what did it decide"
+  # independently of who received it. That mattered enormously while delivery was
+  # a message to an agent and could fail silently. It still earns its place, now
+  # as a record beside an answer the caller already has rather than instead of
+  # one.
+  defp log_outcome(result) do
+    Logger.info("[Promotion] #{outcome_label(result)}: #{outcome_text(result)}")
+    result
   end
 
   defp unlocked({:error, {:already_promoting, started_at}}) do
@@ -554,102 +572,28 @@ defmodule CodeMySpec.Promotion do
 
   def restart_acknowledgement_lost?(_), do: false
 
-  @doc """
-  Start a promotion and report the outcome back to the agent that asked.
-
-  `agent_id` is who to tell, and `nil` is nobody. An Alloy agent has a
-  conversation, so the result arrives there as a message; every other caller —
-  a Claude Code session, a script, a person with curl — gets the outcome in the
-  log and confirms by asking what the application is serving. The work is the
-  same either way, which is why having nowhere to be messaged is not a reason
-  to make the caller wait.
-
-  A promotion sweeps analyzers before it will call a copy clean, and a sweep is
-  minutes. Holding a tool call open for that is the wrong shape twice over — the
-  agent is blocked with no output, and it cannot tell a slow sweep from a hung
-  one. Started-then-told is what the work actually looks like.
-
-  The task is supervised, and its result reaches the agent through
-  `Agents.message_agent/4` — which wakes it, which is the point.
-  """
-  @spec promote_async(Scope.t(), Ecto.UUID.t() | nil) :: :ok
-  def promote_async(%Scope{} = scope, agent_id) when is_binary(agent_id) or is_nil(agent_id) do
-    {:ok, _pid} =
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        scope
-        |> promote(notify: agent_id)
-        |> report_to(scope, agent_id)
-      end)
-
-    :ok
-  end
-
-  # Written down before it is delivered, and that ordering is the point.
+  # Nothing here is long-running, which is why there is no async variant any more.
   #
-  # A promotion runs in a supervised task and reports through one channel: a
-  # message to the agent. So every way that channel can fail — the agent busy,
-  # the call timing out, the task dying between the work and the telling — ends
-  # with nobody knowing anything. There is no second place to look, because
-  # until now there was no first one.
+  # `promote_async/2` wrapped the whole thing in a task because "a promotion
+  # sweeps analyzers before it will call a copy clean, and a sweep is minutes".
+  # That stopped being true at 54aa534c: `gate/1` no longer runs a sweep, it
+  # reads the runs already on file. What was left is three DB reads, a `git
+  # status`, a `--ff-only` merge, and a restart that is dispatched rather than
+  # awaited. Measured: a full `promote/2` including the merge completes in 0.3s
+  # in `AsyncDeploymentTest`.
   #
-  # Measured: a promotion refused on 192 credo problems, correctly, and twelve
-  # minutes later the agent had not been told, the conversation held no outcome,
-  # and `web.log` held nothing between the gate reconciling and silence. The
-  # refusal was right and completely invisible.
+  # The wrapper outlived its reason and cost more than it saved. Every refusal
+  # was computed in milliseconds and then reported through a channel that only
+  # exists for Alloy agents, so a Claude Code session, a script or curl got
+  # "Promotion started." for a promotion that had already been refused — a false
+  # success, indistinguishable from a slow one. John: "Promotion should return
+  # immediately on failure with a clear reason why... I bet this has been
+  # fucking us for a while." It had: one was silently refused for a stale sweep
+  # and nobody knew for half an hour.
   #
-  # The log line costs nothing and answers "what did it decide" independently of
-  # whether anyone received it.
-  #
-  # `dispatch_message/3`, not `message_agent/4`. The latter runs the agent's
-  # whole turn inside a `GenServer.call` and waits for it, so a promotion that
-  # finished parked itself behind however long the agent felt like working —
-  # and an agent that had just been told to go and fix 28 credo problems is
-  # exactly the one that will not come back soon. Watched: the refusal was
-  # computed and logged at 02:45:55 and had still not reached the conversation
-  # eleven minutes later, with no error anywhere, because the task was sitting
-  # in that call.
-  #
-  # `dispatch_message/3` answers `:started` or `:queued` as soon as the machine
-  # has taken it, and records the message on the conversation either way, which
-  # is the whole of what reporting an outcome needs. The dev tools' own message
-  # route defaults to the same non-waiting shape for the same reason.
-  # No agent to tell, which is every caller that is not one of our own agents —
-  # a Claude Code session, a script, a person with curl. The work is identical
-  # and only the telling is missing, so the log line above is the whole report.
-  #
-  # This clause is what lets `promote` be a sink for everybody. It used to
-  # refuse a connection with no agent and point at `promote_sync`, which waits
-  # for a gate, a merge, an analyzer sweep and a restart — minutes — over a
-  # transport that gives up in thirty seconds. So the one caller told to use the
-  # blocking tool was the one that could never survive it, and a promotion that
-  # succeeded came back as a timeout.
-  defp report_to(result, %Scope{} = _scope, nil) do
-    Logger.info(
-      "[Promotion] #{outcome_label(result)} (no agent to tell): #{outcome_text(result)}"
-    )
-
-    :ok
-  end
-
-  defp report_to(result, %Scope{} = scope, agent_id) do
-    Logger.info(
-      "[Promotion] #{outcome_label(result)} for agent #{agent_id}: #{outcome_text(result)}"
-    )
-
-    case Agents.dispatch_message(scope, agent_id, outcome_text(result)) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] outcome #{disposition} to agent #{agent_id}")
-        :ok
-
-      # The promotion already happened; only the telling failed. Logged rather
-      # than retried, because a second delivery of a result the agent may
-      # already have acted on is worse than a log line.
-      {:error, reason} ->
-        Logger.warning(
-          "[Promotion] finished but could not tell agent #{agent_id}: #{inspect(reason)}"
-        )
-    end
-  end
+  # So `promote/2` is the whole API. The restart stays detached inside it and
+  # `outcome_text/1` says so in the answer, which is the one thing that genuinely
+  # must not be waited on.
 
   defp outcome_label({:ok, _}), do: "promoted"
   defp outcome_label({:error, _}), do: "refused"
@@ -662,7 +606,15 @@ defmodule CodeMySpec.Promotion do
   # completion, not as an anomaly needing explanation, for the same reason
   # `Steps.not_fast_forward/3`'s wording says divergence is routine: this is
   # about to become the most-read string in the system.
-  defp outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
+  @doc """
+  What a promotion's result says, in the words the caller reads.
+
+  Public because the caller now receives this. It used to be written only into
+  `web.log` and a message to an agent, which is why a refusal reached nobody
+  without one.
+  """
+  @spec outcome_text(term()) :: String.t()
+  def outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
     "Your promotion merged #{branch} onto the running dev copy. The application " <>
       "restart is running now in the background, not waited on — that is by " <>
       "design, so a promotion answers in seconds regardless of how long the " <>
@@ -678,17 +630,17 @@ defmodule CodeMySpec.Promotion do
   # Promoting from the running copy is a restart and nothing else, so it has
   # no branch to name — the same "dispatched, not awaited" outcome as a
   # merge, worded for the case where nothing was merged.
-  defp outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
+  def outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
     "Your promotion finished. There was nothing to merge — you are working on " <>
       "the running copy — so the application at #{root} is restarting now in " <>
       "the background, not waited on. Do not promote again just to check; ask " <>
       "what is serving instead."
   end
 
-  defp outcome_text({:error, %{reason: reason}}),
+  def outcome_text({:error, %{reason: reason}}),
     do: "Your promotion did not go through. #{reason}"
 
-  defp outcome_text(other),
+  def outcome_text(other),
     do: "Your promotion returned something unexpected: #{inspect(other)}"
 
   defp running_copy(%Scope{} = scope) do

@@ -55,13 +55,13 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
           |> Phoenix.ConnTest.json_response(200)
         end
 
-        # assigned_agent claims the spec_file task
+        # assigned_agent claims the implementation_file task
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, _response, _frame} =
           StartTask.execute(
             %{
-              requirement_name: "spec_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id,

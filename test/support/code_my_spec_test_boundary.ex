@@ -38,5 +38,8 @@ defmodule CodeMySpecTest do
       CodeMySpec.Users,
       CodeMySpec.Workspaces
     ],
-    exports: [FakeWorkspaceRunner, WorkspaceWatchers]
+    # `TurnEventRelay` is exported for the same reason the other two are:
+    # `CodeMySpecSpex.Fixtures` installs it on a criterion's behalf. It is the
+    # seam that lets an in-process agent's turn events reach the server at all.
+    exports: [FakeWorkspaceRunner, TurnEventRelay, WorkspaceWatchers]
 end

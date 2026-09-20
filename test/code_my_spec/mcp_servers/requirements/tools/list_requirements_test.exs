@@ -16,17 +16,16 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
   describe "execute/2" do
     test "returns requirements grouped by entity with satisfaction status" do
-      # Asserts on a `spec_file` node, which only exists when specs are
-      # required — a fresh project defaults to spex and code only.
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      # Read the surviving component implementation requirement.
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component = component_fixture(scope)
       # Reads serve rows; the write path computes them.
       CodeMySpec.Requirements.recompute(scope)
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      # Seed a spec file to satisfy spec_file for this component
-      requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})
+      # Seed an implementation file to satisfy implementation_file for this component
+      requirement_fixture(scope, component, %{name: "implementation_file", satisfied: true})
 
       assert {:reply, response, ^frame} = ListRequirements.execute(%{}, frame)
 
@@ -34,7 +33,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       content = response_text(response)
 
       assert content =~ "Project Requirements"
-      assert content =~ "spec_file"
+      assert content =~ "implementation_file"
       assert content =~ "personas_complete"
     end
 
@@ -53,7 +52,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
     end
 
     test "entity_id narrows to one entity instead of being silently ignored (69b418e0)" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       one = component_fixture(scope)
       other = component_fixture(scope)
       CodeMySpec.Requirements.recompute(scope)

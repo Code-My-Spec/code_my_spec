@@ -54,6 +54,7 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolSets
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent.AgentWork
@@ -434,11 +435,8 @@ defmodule CodeMySpec.MainAgent do
   Silent when the main agent has stood down (3334) and when there is no main
   agent to wake, which is ordinary rather than an error.
   """
-  @spec check_in(Scope.t()) :: :ok
-  def check_in(%Scope{} = scope), do: wake(Cadence.running?(scope), scope)
-
-  defp wake(false, _scope), do: :ok
-  defp wake(true, scope), do: deliver_check_in(scope, Cadence.digest(scope))
+  @spec check_in(Scope.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def check_in(%Scope{} = scope), do: deliver_check_in(scope, Cadence.digest(scope))
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
@@ -460,6 +458,8 @@ defmodule CodeMySpec.MainAgent do
   @doc "Whether a cadence timer actually exists for this project right now."
   @spec cadence_alive?(Scope.t()) :: boolean()
   defdelegate cadence_alive?(scope), to: Cadence, as: :alive?
+
+  defdelegate last_recovery_check(scope), to: Cadence, as: :last_check
 
   @doc "Start this project's cadence if it is not already running."
   @spec ensure_cadence(Scope.t()) :: {:ok, pid()} | {:error, term()}
@@ -493,30 +493,13 @@ defmodule CodeMySpec.MainAgent do
       """
     )
 
-    tell_main_agent(scope, "The check-in could not be assembled: #{reason}")
-
     _ = digest
-    :ok
+    {:error, reason}
   end
 
   defp deliver_check_in(scope, %Digest{} = digest) do
-    tell_main_agent(scope, CheckInReport.render(digest))
-  end
-
-  # The report reaches the main agent as a message, the way everything else
-  # that has something to say to an agent does. It used to be written into the
-  # conversation as an orchestrator row, which `Chat.Runner.to_provider_message/1`
-  # drops on the floor — so the check-in the main agent was meant to act on was
-  # visible to the person watching and to nobody else.
-  defp tell_main_agent(scope, text) do
-    case main_agent_other_than(scope, nil) do
-      nil ->
-        :ok
-
-      agent ->
-        Agents.send_to_agent(agent.id, text)
-        :ok
-    end
+    :ok = Work.consider_project(scope, :recovery_check)
+    {:ok, CheckInReport.render(digest)}
   end
 
   @doc """
@@ -548,13 +531,31 @@ defmodule CodeMySpec.MainAgent do
   @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def answer_question(%Scope{} = scope, question_id, answer, opts \\ []) do
-    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id) do
+    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
+         :ok <- answerable(question) do
       case within_scope(question, opts) do
         :ok -> weigh(scope, question, answer, opts)
         refusal -> refusal
       end
     end
   end
+
+  # A permission is not answerable with prose, and the queue holds both kinds.
+  #
+  # `list_open_questions/1` unions questions and permissions deliberately —
+  # both stop an agent identically — so `fetch_open_question/2` finds a
+  # `tap_out` and hands it over as if it were a question. Everything after that
+  # treats it as one, and the first thing to actually need a question row is
+  # `escalate_question/3` inside `weigh/4`: it looks the id up among
+  # `QuestionRequest`s, finds nothing, and raises `expected a map, got: nil` —
+  # a `BadMapError` three layers below a caller who asked a perfectly ordinary
+  # thing.
+  #
+  # Measured 2026-09-17 while granting two QA agents' tap-outs: an *unknown* id
+  # refused cleanly and a permission id crashed, which is the wrong way round —
+  # the one the caller can act on is the one that told them nothing.
+  defp answerable(%{kind: :permission}), do: {:error, :is_permission}
+  defp answerable(_question), do: :ok
 
   @doc """
   Settle one entry from the queue, whichever kind it is.
@@ -745,7 +746,10 @@ defmodule CodeMySpec.MainAgent do
   # Added as a key rather than a different shape, so every existing caller that
   # matches `%{turns: _, truncated?: _}` is unaffected.
   defp no_match(result, [], _reason), do: result
-  defp no_match(%{turns: []} = result, _unfiltered, reason), do: Map.put(result, :no_match, reason)
+
+  defp no_match(%{turns: []} = result, _unfiltered, reason),
+    do: Map.put(result, :no_match, reason)
+
   defp no_match(result, _unfiltered, _reason), do: result
 
   defp within?(turn, opts) do
@@ -772,7 +776,7 @@ defmodule CodeMySpec.MainAgent do
 
       calls ->
         call = List.last(calls)
-        %{turns: [call | results_for(turns, call)], truncated?: false}
+        %{turns: [call | results_for(turns, call, tool)], truncated?: false}
     end
   end
 
@@ -782,8 +786,27 @@ defmodule CodeMySpec.MainAgent do
 
   defp calls?(_turn, _tool), do: false
 
-  defp results_for(turns, call) do
-    ids = Enum.map(call.tool_calls, &MapAccess.get(&1, :id))
+  # The results of *this* tool's calls, not of everything the turn happened to do.
+  #
+  # This mapped over every id in `call.tool_calls`, so a turn that batched
+  # several different calls returned all of their results. Asking agent
+  # `880c7713` for `list_problems` came back with `list_tasks`, `list_issues`, a
+  # Lua error and a timeout mixed in — found by QA on criterion 3282, which is
+  # precisely "a targeted question deserves a targeted answer".
+  #
+  # It looked right because the common case hides it: a turn with one tool call
+  # has one id, and filtering by name is a no-op there. Every test and every
+  # manual check had been on single-call turns.
+  #
+  # The assistant turn itself is still returned whole. It is a record of what the
+  # agent did and narrowing its `tool_calls` would be editing history; the leak
+  # was in the results attached to it.
+  defp results_for(turns, call, tool) do
+    ids =
+      call.tool_calls
+      |> Enum.filter(&(MapAccess.get(&1, :name) == tool))
+      |> Enum.map(&MapAccess.get(&1, :id))
+
     Enum.filter(turns, &(&1.tool_call_id in ids))
   end
 
@@ -1232,11 +1255,10 @@ defmodule CodeMySpec.MainAgent do
 
   def escalate_question(%Scope{} = scope, question_id, reason, opts)
       when is_binary(reason) and reason != "" do
-    with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
+    with {:ok, _question} <- QuestionsRepository.fetch_open_question(scope, question_id),
          {:ok, _updated} <-
            QuestionsRepository.hand_to_user(question_id, reason, Keyword.get(opts, :as)) do
       QuestionsRepository.fetch_open_question(scope, question_id)
-      |> tell_the_asker_it_went_up(question)
     end
   end
 
@@ -1264,27 +1286,21 @@ defmodule CodeMySpec.MainAgent do
   end
 
   @doc """
-  Tell the project's main agent that one of its agents is waiting.
+  Reconsider the existing main agent when a durable question arrives.
 
-  Criterion 3265 — a question is delivered, not discovered. Story 1059 gives the
-  main agent a cadence, which makes this look already-solved: a question raised
-  now *will* be seen, at the next tick. The difference is a blocked agent
-  waiting out a whole window for somebody who was idle throughout.
-
-  Silent when there is no main agent running, which is ordinary rather than an
-  error — the question is in the listing either way, and failing an agent's
-  `ask_user` because nobody happened to be there to be told would lose the
-  question to save the notification.
+  Admission honors continuous intent, active tasks and in-flight turns. The
+  question remains in the inbox even when no turn is admitted; recovery and
+  turn completion reconsider it without queueing stale eligibility signals.
   """
   @spec question_raised(Scope.t(), map()) :: :ok
-  def question_raised(%Scope{} = scope, %{agent_id: agent_id} = request)
+  def question_raised(%Scope{} = scope, %{agent_id: agent_id})
       when is_binary(agent_id) do
     case main_agent_other_than(scope, agent_id) do
       nil ->
         :ok
 
       agent ->
-        Agents.send_to_agent(agent.id, raised(request))
+        Work.request_turn_if_runnable(scope, agent, :question_raised)
         :ok
     end
   end
@@ -1301,32 +1317,18 @@ defmodule CodeMySpec.MainAgent do
     |> Enum.find(fn agent -> agent.role == :main and agent.id != asking_agent_id end)
   end
 
-  defp raised(%{questions: questions, title: title}) do
-    body = Enum.map_join(questions, "\n", fn q -> "- #{MapAccess.get(q, :question)}" end)
-
-    """
-    An agent is waiting on an answer: #{title}
-
-    #{body}
-
-    Answer it if the project already knows, and escalate it if the decision is
-    the user's. Either way it is yours until you move it.
-    """
-  end
-
-  # The asking agent hears that its question moved, so a chain it cannot see
-  # does not look like silence. Criterion 3269 is the same fact read from the
-  # asker's own side; this is the push, that is the pull, and an agent that
-  # stopped after asking has only the push.
-  defp tell_the_asker_it_went_up({:ok, escalated}, %OpenQuestion{agent_id: agent_id}) do
-    Agents.send_to_agent(
-      agent_id,
-      "Your question went up to the user: #{escalated.escalation_reason}. " <>
-        "It is still open and now waiting on them."
-    )
-
-    {:ok, escalated}
-  end
-
-  defp tell_the_asker_it_went_up(error, _question), do: error
+  # Escalating tells the asker nothing, on purpose.
+  #
+  # It used to push — "your question went up to the user" — so that a chain the
+  # asker cannot see would not look like silence. The push was the problem it
+  # was meant to solve, one layer down: a message to an idle agent starts a
+  # turn, so a main agent tidying its inbox woke every agent whose question it
+  # handed up, and 3268 and 3269 both state it outright ("no answer or
+  # escalation has started a turn").
+  #
+  # The asker still learns, by asking. `check_answer` reads the holder and says
+  # which of the two waits it is in — "still waiting on the main agent" against
+  # "still waiting on the user" — which is the same fact, arriving when the
+  # agent is in a position to act on it rather than in the middle of something
+  # else.
 end

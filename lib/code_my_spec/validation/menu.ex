@@ -99,7 +99,7 @@ defmodule CodeMySpec.Validation.Menu do
 
       [top | rest] ->
         directive(scope, top, role, owner) <>
-          tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
+          tally(rest) <> offers(scope, owner) <> tap_out_offer(continuous?)
     end
   end
 
@@ -294,8 +294,11 @@ defmodule CodeMySpec.Validation.Menu do
     "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}." <>
       obstacle(scope, task) <>
       " Nothing closes a task for you — when the work is done, call " <>
-      "`evaluate_task` with task_id \"#{task.id}\". If it is not done, finish it " <>
-      "before taking anything else." <> backlog_note(count)
+      "`evaluate_task` with task_id \"#{task.id}\". Otherwise block it with " <>
+      "`ask_user_question` or `tap_out` using that task_id, or cancel the attempt " <>
+      "with `cancel_task`. Disposition this active task before starting another." <>
+      evaluation_feedback_note(task) <>
+      backlog_note(count)
   end
 
   # Names the tool; does not say "call" it.
@@ -321,11 +324,27 @@ defmodule CodeMySpec.Validation.Menu do
   # thing it cannot. It spends a turn on `get_next_requirement` finding out.
   # `directive/3`'s `:task` clause has named its subject since it was written,
   # for the same reason.
-  defp directive(scope, {:requirements, _count} = class_count, role, _owner) do
-    plain(class_count) <> next_requirement_note(scope, role)
+  defp directive(_scope, {:requirements, _count} = class_count, _role, _owner) do
+    plain(class_count) <>
+      " Use `list_requirements` or `get_next_requirement` to inspect available work, " <>
+      "then choose a task with `start_task`. No requirement has been selected for you."
   end
 
   defp directive(_scope, class_count, _role, _owner), do: plain(class_count)
+
+  defp evaluation_feedback_note(%{evaluation_feedback: nil}), do: ""
+
+  defp evaluation_feedback_note(task) do
+    repeated =
+      if task.evaluation_feedback_count >= 5,
+        do:
+          " The same feedback has repeated #{task.evaluation_feedback_count} times; reconsider your approach.",
+        else: ""
+
+    "\n\nEvaluation feedback for task #{task.id}: #{task.evaluation_feedback}" <>
+      repeated <>
+      " If this is a harness defect, report it with `create_issue` using scope `framework`."
+  end
 
   defp plain({class, count}), do: "\n\nNext: #{label(class, count)} — `#{@tools[class]}`."
 
@@ -336,16 +355,6 @@ defmodule CodeMySpec.Validation.Menu do
   # Silent when there is nothing to name — a class that is not live never
   # reaches here, but an actionable set that emptied underneath this render
   # does.
-  defp next_requirement_note(scope, role) do
-    case Requirements.actionable_for_role(scope, role) do
-      [%{description: description} | _] when is_binary(description) ->
-        " The first is: #{description}"
-
-      _ ->
-        ""
-    end
-  end
-
   # Why the requirement is still open, from the checker that refused it.
   #
   # Was two copies of this sentence — one here, one in each caller's own nudge —
@@ -377,9 +386,29 @@ defmodule CodeMySpec.Validation.Menu do
   defp backlog_note(1), do: ""
 
   defp backlog_note(_n) do
-    " The others are still open too; `list_tasks` shows them, and each one needs " <>
+    " The others are still open too; #{list_tasks()} shows them, and each one needs " <>
       "its own `evaluate_task`."
   end
+
+  # How to reach `list_tasks`, said the way the reader can actually act on it.
+  #
+  # This named the tool bare, as though it were one to call. It is not: story
+  # 1038's criterion 3015 keeps the in-BEAM surface to code mode's two plus
+  # `tool_docs`, deliberately, and `list_tasks` is reachable through a script
+  # like the other ninety-odd. So an agent following the instruction called it
+  # directly and got `no tool called "list_tasks"` — the sentence a genuinely
+  # missing tool answers with. Two of them read that as their bindings being
+  # broken and stood down; one lost a day (`23f5544e`).
+  #
+  # The menu names this on every landing where an agent holds more than one
+  # task, so it is not an occasional mistake — it is an instruction, given
+  # repeatedly, pointing at a door that is not there.
+  #
+  # Carrying the tool instead was tried and is wrong: 3015 asserts that nothing
+  # an agent carries is also reachable from a script, and adding this broke it
+  # immediately. The small surface is the decision; the prose was what
+  # disagreed with it.
+  defp list_tasks, do: "`run_script` with `list_tasks({})`"
 
   # What the task is about, when the row says. Both fields are nullable and a
   # task with neither is still worth naming as open.
@@ -403,7 +432,7 @@ defmodule CodeMySpec.Validation.Menu do
   # problems learns it is holding a task and never how to act on it.
   defp task_tally_note(rest) do
     if List.keymember?(rest, :task, 0) do
-      " `list_tasks` shows them, and each one needs its own `evaluate_task`."
+      " #{list_tasks()} shows them, and each one needs its own `evaluate_task`."
     else
       ""
     end
@@ -442,17 +471,30 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # What is left in the tiers is only what the hook can both detect and rank:
   # rows describing work in this working copy.
-  defp offers(scope) do
-    answer_offer(open_questions(scope)) <>
+  defp offers(scope, owner) do
+    answer_offer(open_questions(scope, owner)) <>
+      blocked_task_note(owner) <>
       "\n\nNobody is reading this conversation. If you need a decision from the " <>
       "user, `ask_user_question` is what reaches them — name the alternatives and " <>
-      "they answer with a tap; `send_message` is for when the answer is genuinely " <>
+      "they answer with a tap; use a single free-text question when the answer is genuinely " <>
       "prose. A question written into your reply reaches no one, and stopping on " <>
       "it just brings you back here. Ask, then carry on with anything the answer " <>
       "does not block." <>
       "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."
+  end
+
+  defp blocked_task_note(nil), do: ""
+
+  defp blocked_task_note(owner) do
+    owner
+    |> TaskOwner.tasks()
+    |> Enum.filter(&(&1.status == :blocked))
+    |> Enum.map_join("", fn task ->
+      "\n\nBlocked task #{task.id}: #{task.blocker_type} #{task.blocker_id}. " <>
+        "This does not block unrelated work; resume explicitly when its blocker is resolved."
+    end)
   end
 
   # The count is a fact about now; the offer without it is boilerplate that
@@ -483,7 +525,13 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # Never raises the stop. A question count that could fail the hook would make
   # asking a question a liability, and the whole point is that asking is cheap.
-  defp open_questions(scope) do
+  defp open_questions(_scope, %CodeMySpec.Agents.Agent{id: id}) do
+    id
+    |> Notifications.list_question_requests_for_agent()
+    |> Enum.count(&(&1.status == "pending"))
+  end
+
+  defp open_questions(scope, _owner) do
     with id when is_binary(id) <- working_copy_id(scope),
          external_id when is_binary(external_id) <- Sessions.external_id_for_harness(id) do
       external_id

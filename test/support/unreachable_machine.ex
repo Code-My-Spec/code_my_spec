@@ -24,6 +24,10 @@ defmodule CodeMySpecTest.UnreachableMachine do
     do: {:error, :harness_not_connected}
 
   @impl true
+  def request_work_turn(_copy, _agent, _ref, _message, _timeout),
+    do: {:error, :harness_not_connected}
+
+  @impl true
   def withdraw_message(_copy, _agent, _ref, _timeout), do: {:error, :harness_not_connected}
 
   @impl true

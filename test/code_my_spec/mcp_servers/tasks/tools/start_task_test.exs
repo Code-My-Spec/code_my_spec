@@ -7,12 +7,33 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
+  end
+
+  test "authenticated agents cannot redirect a claim to another durable agent" do
+    {scope, _session, _component, params} = setup_requirement()
+    caller = durable_agent(scope)
+    other = durable_agent(scope)
+    frame = %Frame{assigns: %{current_scope: scope, agent_id: caller.id}}
+
+    assert {:reply, response, ^frame} =
+             StartTask.execute(Map.put(params, :agent_id, other.id), frame)
+
+    assert response.isError
+    assert response_text(response) =~ "Cannot start another agent's task"
+    assert CodeMySpec.Repo.reload!(caller).tasks == []
+    assert CodeMySpec.Repo.reload!(other).tasks == []
+
+    assert {:reply, own_response, ^frame} = StartTask.execute(params, frame)
+    refute own_response.isError
+    assert length(CodeMySpec.Repo.reload!(caller).tasks) == 1
+    assert CodeMySpec.Repo.reload!(other).tasks == []
   end
 
   describe "execute/2 — happy path" do
@@ -34,7 +55,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       # DB state: task is active with correct linkage
       updated_session = Sessions.get_session(scope, session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "implementation_file"))
       assert task.status == :active
       assert task.component_id == component.id
       assert task.started_at
@@ -53,7 +74,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       refute response.isError
 
       updated_session = Sessions.get_session(scope, session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "implementation_file"))
       assert task.agent_id == "agent-42"
     end
 
@@ -73,7 +94,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       refute response.isError
 
       updated_session = Sessions.get_session(scope, ext_session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "implementation_file"))
       assert task.status == :active
     end
 
@@ -96,7 +117,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       assert created, "start_task should have registered the missing session"
 
       updated_session = Sessions.get_session(scope, created.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "implementation_file"))
       assert task.status == :active
     end
   end
@@ -118,7 +139,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       assert response_text(response) =~ "Task ID:"
 
       final_session = Sessions.get_session(scope, session.id)
-      matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "spec_file"))
+      matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "implementation_file"))
       assert length(matching) == 1
     end
 
@@ -128,8 +149,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       # Manually prepare a task (simulates leftover from old flow)
       task_attrs = %{
-        session_type: CodeMySpec.AgentTasks.ComponentSpec,
-        requirement_name: "spec_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        requirement_name: "implementation_file",
         project_id: scope.active_project_id,
         component_id: component.id
       }
@@ -154,7 +175,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
   describe "execute/2 — entity scoping" do
     test "two components with the same requirement_name get separate tasks" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component_a = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
       component_b = component_fixture(scope, %{name: "Item", module_name: "MyApp.Item"})
       session = session_fixture(scope)
@@ -166,7 +187,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params_a = %{
-        requirement_name: "spec_file",
+        requirement_name: "implementation_file",
         entity_type: "component",
         entity_id: component_a.id,
         session_id: session.id,
@@ -174,7 +195,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       }
 
       params_b = %{
-        requirement_name: "spec_file",
+        requirement_name: "implementation_file",
         entity_type: "component",
         entity_id: component_b.id,
         session_id: session.id,
@@ -191,12 +212,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       # Verify: two separate tasks exist, each linked to the correct component
       final_session = Sessions.get_session(scope, session.id)
-      spec_tasks = Enum.filter(final_session.tasks, &(&1.requirement_name == "spec_file"))
 
-      assert length(spec_tasks) == 2
+      implementation_tasks =
+        Enum.filter(final_session.tasks, &(&1.requirement_name == "implementation_file"))
 
-      task_a = Enum.find(spec_tasks, &(&1.component_id == component_a.id))
-      task_b = Enum.find(spec_tasks, &(&1.component_id == component_b.id))
+      assert length(implementation_tasks) == 2
+
+      task_a = Enum.find(implementation_tasks, &(&1.component_id == component_a.id))
+      task_b = Enum.find(implementation_tasks, &(&1.component_id == component_b.id))
 
       assert task_a, "Expected a task for component A"
       assert task_b, "Expected a task for component B"
@@ -257,7 +280,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_name: "spec_file", entity_type: "component", entity_id: "x", session_id: "x"},
+                 %{
+                   requirement_name: "implementation_file",
+                   entity_type: "component",
+                   entity_id: "x",
+                   session_id: "x"
+                 },
                  frame
                )
 
@@ -269,10 +297,23 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
+  defp durable_agent(scope) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "zai",
+        role: "coding",
+        working_copy: "/tmp/start-task-test",
+        working_copy_id: scope.active_working_copy_id,
+        status: :running
+      })
+
+    agent
+  end
+
   defp setup_requirement do
-    # Every case here starts a `spec_file` task, and that node only exists when
-    # specs are required — a fresh project defaults to spex and code only.
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    # Exercise task dispatch using the component implementation requirement.
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope)
     session = session_fixture(scope)
 
@@ -282,7 +323,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     CodeMySpec.Requirements.recompute(scope)
 
     req_params = %{
-      requirement_name: "spec_file",
+      requirement_name: "implementation_file",
       entity_type: "component",
       entity_id: component.id
     }

@@ -4,13 +4,13 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   error isolation, and result aggregation.
 
   The Runner provides a unified interface for running static analysis tools (Credo,
-  Sobelow, SpecAlignment) either individually or in parallel. It manages analyzer
+  Sobelow) either individually or in parallel. It manages analyzer
   availability checks, error handling, and ensures all returned Problems have proper project_id
   assignments.
   """
 
   alias CodeMySpec.Problems.Problem
-  alias CodeMySpec.StaticAnalysis.Analyzers.{Credo, Sobelow, SpecAlignment}
+  alias CodeMySpec.StaticAnalysis.Analyzers.{Credo, Sobelow}
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -25,16 +25,14 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
       iex> Runner.list_analyzers()
       [
         CodeMySpec.StaticAnalysis.Analyzers.Credo,
-        CodeMySpec.StaticAnalysis.Analyzers.Sobelow,
-        CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
+        CodeMySpec.StaticAnalysis.Analyzers.Sobelow
       ]
   """
   @spec list_analyzers() :: [module()]
   def list_analyzers do
     [
       Credo,
-      Sobelow,
-      SpecAlignment
+      Sobelow
     ]
   end
 
@@ -60,7 +58,7 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
       iex> Runner.run(scope, :credo)
       {:ok, [%Problem{}, ...]}
 
-      iex> Runner.run(scope, :spec_alignment, paths: ["lib"])
+      iex> Runner.run(scope, :sobelow, paths: ["lib"])
       {:ok, [%Problem{}, ...]}
 
       iex> Runner.run(scope, :nonexistent)
@@ -148,8 +146,7 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   defp resolve_analyzer(analyzer_name) when is_atom(analyzer_name) do
     analyzer_map = %{
       credo: Credo,
-      sobelow: Sobelow,
-      spec_alignment: SpecAlignment
+      sobelow: Sobelow
     }
 
     case Map.get(analyzer_map, analyzer_name) do

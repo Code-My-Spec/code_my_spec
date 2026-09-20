@@ -50,6 +50,7 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
 
   setup ctx do
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
+    {:ok, _} = CodeMySpec.WorkingCopies.set_active_story(ctx.scope, ctx.story.id)
     :ok = GraphWatcher.settle(ctx.scope)
     ctx
   end
@@ -113,7 +114,10 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
   test "triage is still product's, and is not handed to coding", ctx do
     file_an_issue(ctx.scope)
 
-    product = names(ctx.scope, :product)
+    product =
+      ctx.scope
+      |> Requirements.next_actionable_project()
+      |> Enum.map(& &1.name)
     coding = names(ctx.scope, :coding)
 
     assert "issues_triaged" in product,

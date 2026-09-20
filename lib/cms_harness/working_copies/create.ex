@@ -38,7 +38,14 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   alias ClientUtils.Harness.Onboarding
 
-  @worktrees ".claude/worktrees"
+  # The recipe a project owns for making a copy of itself.
+  #
+  # Called rather than reimplemented, because what a fresh copy needs is the
+  # project's business and not ours. `code_my_spec` needs its `.code_my_spec`
+  # submodule populated; the next project will need something else. A harness
+  # that serves every project cannot know, and every time it guessed it guessed
+  # for one of them.
+  @recipe "init-worktree"
 
   @doc """
   Make a working copy beside `root` and give it an identity.
@@ -50,7 +57,19 @@ defmodule CmsHarness.WorkingCopies.Create do
           {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
   def run(root, request) when is_binary(root) and root != "" do
     name = slug(request["label"])
-    target = request["root"] || Path.join([root, @worktrees, name])
+
+    # Adjacent to the checkout, not under `.claude/worktrees`. A working copy is
+    # a peer of the checkout it came from, and putting real work inside a folder
+    # people reasonably treat as disposable editor state invites losing it.
+    #
+    # Prefixed with the checkout's own name, because "adjacent" alone collides.
+    # A parent directory holds many repositories — `~/Documents/github` here —
+    # so a copy called `refactor` from one project takes the name for every
+    # other, and for any unrelated directory that already has it. Caught by
+    # story 1013's spex the first time this ran: six criteria each asked for
+    # "the war epic's copy" beside their own temp root, the second one got
+    # `{:already_exists, …}`, and `refuse_existing/1` was right to refuse.
+    target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
     with :ok <- refuse_existing(target),
          :ok <- add_worktree(root, target, name),
@@ -128,14 +147,94 @@ defmodule CmsHarness.WorkingCopies.Create do
   # here, not an exceptional one.
   defp add_worktree(root, target, name) do
     with :ok <- make_parent(target) do
-      case System.cmd("git", ["worktree", "add", "-b", name, target],
-             cd: root,
-             stderr_to_stdout: true
-           ) do
-        {_out, 0} -> :ok
-        {out, status} -> {:error, {:worktree_failed, status, String.trim(out)}}
+      case recipe(root, name, target) do
+        :ok -> :ok
+        :no_recipe -> plain_worktree(root, target, name)
+        {:error, _} = error -> error
       end
     end
+  end
+
+  # `just init-worktree <name> <target>`, when the project has one.
+  #
+  # A project that wants anything on a fresh copy — submodules populated, a
+  # fixture linked, a file written — says so there, and we do not have to know
+  # what it is. `cms_new` generates the recipe, so a project made by it has one
+  # from the start.
+  defp recipe(root, name, target) do
+    case System.cmd("just", [@recipe, name, target], cd: root, stderr_to_stdout: true) do
+      {_out, 0} ->
+        :ok
+
+      {out, status} ->
+        if missing_recipe?(out),
+          do: :no_recipe,
+          else: {:error, {:worktree_failed, status, String.trim(out)}}
+    end
+  rescue
+    # `just` is not on this machine. Not a failure — most projects do not use it.
+    ErlangError -> :no_recipe
+  end
+
+  # Told apart from a recipe that ran and failed, because they deserve opposite
+  # answers: the first falls back silently, the second is this project saying
+  # its own copy cannot be made and must not be papered over.
+  defp missing_recipe?(out) do
+    out = String.downcase(out)
+
+    String.contains?(out, "justfile does not contain recipe") or
+      String.contains?(out, "no justfile found") or
+      String.contains?(out, "could not find justfile")
+  end
+
+  # What every project gets when it says nothing: a worktree, and its submodules.
+  #
+  # Submodules by default because the alternative is silent and expensive.
+  # `git worktree add` does not populate them, and the harness then scans a copy
+  # whose `.code_my_spec` is empty and computes a requirement graph from what it
+  # finds — which does not read as a missing checkout, it reads as a project
+  # with no personas, no architecture and no specs, and the agent is told to redo
+  # work that already exists. Worktree `963-main-agent-nontechnical` sat that way
+  # with all 26 stories routed to it blocked behind one absent file, while every
+  # surface reported a healthy idle agent (`fde40b27`).
+  defp plain_worktree(root, target, name) do
+    case System.cmd("git", ["worktree", "add", "-b", name, target],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} ->
+        init_submodules(target)
+        :ok
+
+      {out, status} ->
+        {:error, {:worktree_failed, status, String.trim(out)}}
+    end
+  end
+
+  # Failure does not fail the creation, for the reason `onboard/4` gives: the
+  # worktree exists and refusing here would leave a directory behind that the
+  # caller was told does not exist. Logged loudly instead, because the one thing
+  # this must never be is silent — that silence is the whole defect.
+  defp init_submodules(target) do
+    if File.exists?(Path.join(target, ".gitmodules")) do
+      case System.cmd("git", ["submodule", "update", "--init", "--recursive"],
+             cd: target,
+             stderr_to_stdout: true
+           ) do
+        {_out, 0} ->
+          Logger.info("[CmsHarness] populated submodules in #{target}")
+
+        {out, status} ->
+          Logger.error(
+            "[CmsHarness] #{target} has submodules and they are not populated " <>
+              "(git exited #{status}): #{String.trim(out)}. The requirement graph " <>
+              "is computed from what is on disk, so this copy will read as a " <>
+              "project with work never done. Run `git submodule update --init` in it."
+          )
+      end
+    end
+
+    :ok
   end
 
   defp make_parent(target) do

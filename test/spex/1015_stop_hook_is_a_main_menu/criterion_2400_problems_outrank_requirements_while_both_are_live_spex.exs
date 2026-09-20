@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2400Spex do
   spex "Problems are offered before requirements" do
     scenario "both classes live, and the directive is the problem one" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding alongside unsatisfied requirements", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

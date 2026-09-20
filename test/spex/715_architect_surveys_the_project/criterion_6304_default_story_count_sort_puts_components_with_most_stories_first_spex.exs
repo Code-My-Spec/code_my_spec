@@ -34,16 +34,16 @@ defmodule CodeMySpecSpex.Story715.Criterion6304Spex do
       end
 
       then_ "the story-linked component appears before the orphan in the response", context do
-        live_pos = position_of(context.body, "Marketing.HomeLive")
+        live_pos = position_of(context.body, context.surface_liveview.module_name)
         orphan_pos = position_of(context.body, "OrphanContext")
 
         assert is_integer(live_pos),
-               "expected Marketing.HomeLive in response, got:\n#{context.body}"
+               "expected #{context.surface_liveview.module_name} in response, got:\n#{context.body}"
 
         assert is_integer(orphan_pos), "expected OrphanContext in response, got:\n#{context.body}"
 
         assert live_pos < orphan_pos,
-               "expected story-linked Marketing.HomeLive to appear before orphan OrphanContext, got positions #{live_pos} vs #{orphan_pos}"
+               "expected story-linked #{context.surface_liveview.module_name} to appear before orphan OrphanContext, got positions #{live_pos} vs #{orphan_pos}"
 
         {:ok, context}
       end

@@ -25,6 +25,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Priority ordering surfaces the higher-priority story's context first" do
     scenario "high-priority context appears before low-priority context in the response" do
       given_ "two top-level contexts synced via the real /sync pipeline", context do
@@ -40,9 +44,6 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
               Content.context_spec(module, type: Atom.to_string(type), dependencies: deps)
 
             :ok = Environments.write_file(env, Content.spec_path(module), spec_content)
-
-            :ok =
-              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 
@@ -58,7 +59,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
       and_ "a high-priority story (1) is linked to HighContext and a low-priority story (5) to LowContext",
            context do
         high_story =
-          StoryHelpers.create_and_link(context.scope, "HighContext",
+          StoryHelpers.create_ready_and_link(context, "HighContext",
             title: "High priority work",
             description: "As a user, I want to work on the urgent thing first.",
             acceptance_criteria: ["Urgent thing happens"],
@@ -66,7 +67,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
           )
 
         low_story =
-          StoryHelpers.create_and_link(context.scope, "LowContext",
+          StoryHelpers.create_ready_and_link(context, "LowContext",
             title: "Low priority work",
             description: "As a user, I want this lower-priority thing eventually.",
             acceptance_criteria: ["Eventually thing happens"],

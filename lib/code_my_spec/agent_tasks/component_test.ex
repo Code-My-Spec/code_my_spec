@@ -12,7 +12,6 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   alias CodeMySpec.Components.{Component, ComponentRepository}
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
@@ -53,7 +52,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
   Called by the stop hook after Claude writes tests. Checks that:
   1. The test file exists
-  2. No blocking problems (compilation errors, credo, spec alignment)
+  2. No blocking problems (compilation errors, credo, file validation)
 
   Test failures are filtered out — failing tests are expected in TDD mode
   when the implementation doesn't exist yet.
@@ -67,19 +66,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
-    # Check test-artifact requirements (test_file, test_spec_alignment)
-    test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
-
-    unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
-
-    req_feedback =
-      if Enum.empty?(unsatisfied) do
-        nil
-      else
-        RequirementsFormatter.format_unsatisfied(unsatisfied,
-          context: "Test requirements not met:"
-        )
-      end
+    req_feedback = CodeMySpec.AgentTasks.artifact_feedback(scope, component, :test)
 
     problem_feedback = ProblemFeedback.for_test_task(scope, component, project)
     ProblemFeedback.combine(req_feedback, problem_feedback)
@@ -88,7 +75,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   def dispatch(_node) do
     "Write the test file for a component based on its spec's test assertions. " <>
       "Use when the component spec is valid and no test file exists yet, or " <>
-      "test_spec_alignment failed. Sub-agent: spawn @test-writer."
+      "the test file needs revision. Sub-agent: spawn @test-writer."
   end
 
   # Private functions - command
@@ -185,30 +172,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   # (test_file missing) — there's nothing to diagnose yet.
   defp previous_validation_diagnostics(scope, component, project) do
     component = ComponentRepository.get_component(scope, component.id)
-    test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
-    unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
-    file_missing? = Enum.any?(unsatisfied, &(&1.name == "test_file"))
-
-    if file_missing? do
-      ""
-    else
-      format_diagnostics(scope, component, project, unsatisfied)
-    end
-  end
-
-  defp format_diagnostics(scope, component, project, unsatisfied) do
-    %{test_file: test_file_path} = Utils.component_files(component, project)
-
-    req_section =
-      case unsatisfied do
-        [] ->
-          nil
-
-        reqs ->
-          RequirementsFormatter.format_unsatisfied(reqs,
-            context: "Previous validation failed for #{test_file_path}:"
-          )
-      end
+    req_section = CodeMySpec.AgentTasks.artifact_feedback(scope, component, :test)
 
     problem_section = ProblemFeedback.for_test_task(scope, component, project)
 

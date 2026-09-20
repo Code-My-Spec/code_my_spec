@@ -186,30 +186,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "vacuous truth prevention" do
-    test "tests_passing is unsatisfied when no test file exists for repository" do
-      {scope, tmp_dir} = setup_project()
-
-      # Repository type has tests_passing in its requirements
-      component = create_component(scope, "MyApp.WidgetRepo", "repository")
-
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/widget_repo.spec.md",
-        spec_content("MyApp.WidgetRepo", "repository")
-      )
-
-      write_file(tmp_dir, "lib/my_app/widget_repo.ex", impl_content("MyApp.WidgetRepo"))
-      sync!(scope, tmp_dir)
-
-      {nodes, _} = RequirementGraph.compute_graph(scope)
-
-      tests_passing = find_node(nodes, "component", component.id, "tests_passing")
-      assert tests_passing, "repository should have tests_passing requirement"
-
-      refute tests_passing.satisfied,
-             "tests_passing should not be vacuously satisfied with no test file"
-    end
-
     test "bdd_specs_exist is unsatisfied when no bdd spec files exist" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
@@ -262,14 +238,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Entry: bdd_specs_exist → component.spec_file
+      # Entry: bdd_specs_exist → component.implementation_file
       entry =
         Enum.find(edges, fn e ->
           e.from == {"story", story.id, "bdd_specs_exist"} and
-            e.to == {"component", component.id, "spec_file"}
+            e.to == {"component", component.id, "implementation_file"}
         end)
 
-      assert entry, "should have entry edge from story.bdd_specs_exist to component.spec_file"
+      assert entry,
+             "should have entry edge from story.bdd_specs_exist to component.implementation_file"
 
       # Exit: component.implementation_file → story.bdd_specs_passing
       # (terminal for schema). The specs-passing gate sits between the
@@ -328,7 +305,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       ctx_entry =
         Enum.find(edges, fn e ->
           e.from == {"story", story.id, "bdd_specs_exist"} and
-            e.to == {"component", context.id, "spec_file"}
+            e.to == {"component", context.id, "implementation_file"}
         end)
 
       assert ctx_entry, "should have entry edge to direct dependency context"
@@ -425,123 +402,48 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
-  describe "container edges" do
-    test "live_context creates parent-child edges to liveview children" do
+  describe "implementation container edges" do
+    test "a context implementation waits for its child implementation" do
       {scope, tmp_dir} = setup_project()
-
-      parent = create_component(scope, "MyApp.TodoListLive", "live_context")
-      child = create_child_component(scope, "MyApp.TodoListLive.Index", "liveview", parent.id)
-
-      sync!(scope, tmp_dir)
-
-      {_nodes, edges} = RequirementGraph.compute_graph(scope)
-
-      # Fan-out: parent.spec_valid → child.spec_file
-      fan_out =
-        Enum.find(edges, fn e ->
-          e.from == {"component", parent.id, "spec_valid"} and
-            e.to == {"component", child.id, "spec_file"}
-        end)
-
-      assert fan_out,
-             "live_context should create fan-out edge from spec_valid to liveview child spec_file"
-
-      # Fan-in: child.spec_valid → parent.review_file
-      fan_in =
-        Enum.find(edges, fn e ->
-          e.from == {"component", child.id, "spec_valid"} and
-            e.to == {"component", parent.id, "review_file"}
-        end)
-
-      assert fan_in, "liveview child should create fan-in edge to live_context review_file"
-    end
-
-    test "context creates parent-child edges to schema children" do
-      {scope, tmp_dir} = setup_project()
-
       parent = create_component(scope, "MyApp.Accounts", "context")
       child = create_child_component(scope, "MyApp.Accounts.User", "schema", parent.id)
 
-      sync!(scope, tmp_dir)
-
-      {_nodes, edges} = RequirementGraph.compute_graph(scope)
-
-      # Fan-out: parent.spec_valid → child.spec_file (children wait for parent design)
-      fan_out =
-        Enum.find(edges, fn e ->
-          e.from == {"component", parent.id, "spec_valid"} and
-            e.to == {"component", child.id, "spec_file"}
-        end)
-
-      assert fan_out,
-             "context should create fan-out edge from spec_valid to schema child spec_file"
-
-      # Fan-in: child.implementation_file (schema's terminal — schemas have no tests) → parent.implementation_file
-      fan_in =
-        Enum.find(edges, fn e ->
-          e.from == {"component", child.id, "implementation_file"} and
-            e.to == {"component", parent.id, "implementation_file"}
-        end)
-
-      assert fan_in, "schema child should fan-in to context implementation_file"
-    end
-  end
-
-  describe "parent-child actionability" do
-    test "children become actionable after parent spec is valid" do
-      {scope, tmp_dir} = setup_project()
-      seed_setup(tmp_dir)
-
-      parent = create_component(scope, "MyApp.Accounts", "context")
-      child = create_child_component(scope, "MyApp.Accounts.User", "schema", parent.id)
-
-      # Write parent AND child spec files (child must exist for sync to track it)
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        spec_content("MyApp.Accounts", "context")
-      )
-
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts/user.spec.md",
-        spec_content("MyApp.Accounts.User", "schema")
-      )
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Accounts",
+          description: "Accounts work",
+          acceptance_criteria: ["accounts work"],
+          component_id: parent.id
+        })
 
       sync!(scope, tmp_dir)
-
-      parent_spec =
-        CodeMySpec.Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
-
-      maybe_mark_validated(parent_spec)
-
       {nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Verify parent spec_valid is satisfied
-      parent_spec_valid =
-        Enum.find(nodes, fn n ->
-          n.entity_type == "component" and n.entity_id == parent.id and n.name == "spec_valid"
-        end)
+      assert Enum.all?(
+               Enum.filter(nodes, &(&1.entity_type == "component")),
+               &(&1.name == "implementation_file")
+             )
 
-      assert parent_spec_valid, "parent spec_valid node should exist"
-      assert parent_spec_valid.satisfied, "parent spec_valid should be satisfied after validation"
+      assert %{
+               from: {"component", child.id, "implementation_file"},
+               to: {"component", parent.id, "implementation_file"}
+             } in edges
 
-      # Verify fan-out edge exists: parent.spec_valid → child.spec_file
-      fan_out =
-        Enum.find(edges, fn e ->
-          e.from == {"component", parent.id, "spec_valid"} and
-            e.to == {"component", child.id, "spec_file"}
-        end)
+      assert %{
+               from: {"component", parent.id, "implementation_file"},
+               to: {"story", story.id, "bdd_specs_passing"}
+             } in edges
+    end
 
-      assert fan_out, "fan-out edge should exist from parent.spec_valid to child.spec_file"
-
-      # Child spec_file node should exist and be satisfied (file was written)
-      child_spec =
-        Enum.find(nodes, fn n ->
-          n.entity_type == "component" and n.entity_id == child.id and n.name == "spec_file"
-        end)
-
-      assert child_spec, "child spec_file node should exist in graph"
+    test "a live context holds only its children's implementation work" do
+      {scope, tmp_dir} = setup_project()
+      parent = create_component(scope, "MyApp.TodoListLive", "live_context")
+      child = create_child_component(scope, "MyApp.TodoListLive.Index", "liveview", parent.id)
+      sync!(scope, tmp_dir)
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
+      refute Enum.any?(nodes, &(&1.entity_type == "component" and &1.entity_id == parent.id))
+      assert find_node(nodes, "component", child.id, "implementation_file")
     end
   end
 
@@ -641,168 +543,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
-  describe "full context lifecycle sequencing" do
-    @tag :lifecycle
-    test "parent-child phases are correctly gated end-to-end" do
-      {scope, tmp_dir} = setup_project()
-
-      # Advance the project-level serial chain so component-level requirements
-      # become the actionable frontier. Without this, the chain (project_setup
-      # → personas_complete → stories_exist → technical_strategy →
-      # architecture_designed → ...) clamps every component-level requirement.
-      kickoff_context =
-        ProjectStateFixtures.apply_project_kickoff(%{
-          scope: scope,
-          environment: scope.environment
-        })
-
-      scope = kickoff_context.scope
-      persona_id = kickoff_context.persona_id
-
-      # Write stub spec files for all three components upfront. Stubs carry
-      # the correct `## Type` (so ComponentSync derives the right graph shape)
-      # but deliberately omit required sections — sync will mark them
-      # `valid: false`. Subsequent steps overwrite with full valid content
-      # to drive spec_valid transitions, which is the only way to flip
-      # validity state that survives the next `sync!` call.
-      parent_path = ".code_my_spec/spec/my_app/accounts.spec.md"
-      user_path = ".code_my_spec/spec/my_app/accounts/user.spec.md"
-      token_path = ".code_my_spec/spec/my_app/accounts/token.spec.md"
-      review_path = ".code_my_spec/spec/my_app/accounts/design_review.md"
-
-      write_file(tmp_dir, parent_path, spec_stub("MyApp.Accounts", "context"))
-      write_file(tmp_dir, user_path, spec_stub("MyApp.Accounts.User", "repository"))
-      write_file(tmp_dir, token_path, spec_stub("MyApp.Accounts.Token", "repository"))
-
-      # Sync to create components from files, then set up parent-child relationships
-      sync!(scope, tmp_dir)
-
-      parent = Components.get_component_by_module_name(scope, "MyApp.Accounts")
-      child1 = Components.get_component_by_module_name(scope, "MyApp.Accounts.User")
-      child2 = Components.get_component_by_module_name(scope, "MyApp.Accounts.Token")
-
-      assert parent, "parent component should exist after sync"
-      assert child1, "child1 component should exist after sync"
-      assert child2, "child2 component should exist after sync"
-
-      # ComponentSync normally derives parent relationships from module names;
-      # set them explicitly in case the derivation hasn't stuck.
-      {:ok, _} = Components.update_component(scope, child1, %{parent_component_id: parent.id})
-      {:ok, _} = Components.update_component(scope, child2, %{parent_component_id: parent.id})
-
-      # Link the parent context to a story to satisfy `stories_exist` AND
-      # the architecture orphan check (children inherit linkage transitively
-      # via parent_component_id).
-      story =
-        StoryHelpers.create_and_link(scope, "MyApp.Accounts",
-          title: "Accounts context",
-          description: "As a user, I want accounts so that I can sign in.",
-          acceptance_criteria: ["accounts work"],
-          priority: 5
-        )
-
-      # Clear the full story-level chain (three_amigos_complete →
-      # bdd_specs_exist → bdd_specs_passing → qa_complete) so the wave
-      # can advance to component-level work for Accounts. Without all
-      # four gates cleared, actionable stays parked on the next story-
-      # level gate.
-      seed_story_chain_complete(scope, tmp_dir, story, persona_id)
-
-      # === STEP 1: Spec files exist but content is invalid ===
-      # All three files fail required-section validation → spec_valid: false.
-      # Children's deeper gates (test_file, implementation_file) are clamped
-      # by the fan-out from parent.spec_valid.
-      actionable = actionable_component_names(scope)
-
-      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
-             "child impl should NOT be actionable"
-
-      # === STEP 2: Overwrite parent spec with valid content ===
-      write_file(tmp_dir, parent_path, spec_content("MyApp.Accounts", "context"))
-      sync!(scope, tmp_dir)
-
-      actionable = actionable_component_names(scope)
-
-      refute {"MyApp.Accounts", "review_file"} in actionable,
-             "review should NOT be actionable until all children have valid specs"
-
-      # === STEP 3: Overwrite children specs with valid content ===
-      write_file(tmp_dir, user_path, spec_content("MyApp.Accounts.User", "repository"))
-      write_file(tmp_dir, token_path, spec_content("MyApp.Accounts.Token", "repository"))
-      sync!(scope, tmp_dir)
-
-      actionable = actionable_component_names(scope)
-
-      assert {"MyApp.Accounts", "review_file"} in actionable,
-             "review should be actionable after all children spec_valid. Got: #{inspect(actionable)}"
-
-      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
-             "child impl should NOT be actionable before review_valid"
-
-      # === STEP 4: Write valid review → children can implement ===
-      # Review files live at .code_my_spec/spec/{module_path}/design_review.md
-      write_file(tmp_dir, review_path, review_content())
-      sync!(scope, tmp_dir)
-
-      # After review, both test_file and implementation_file become actionable
-      # for each child. The graph surfaces them in parallel and relies on the
-      # agent to order them sensibly — it does not enforce TDD.
-      actionable = actionable_component_names(scope)
-
-      assert {"MyApp.Accounts.User", "test_file"} in actionable,
-             "child1 test_file should be actionable after review_valid. Got: #{inspect(actionable)}"
-
-      assert {"MyApp.Accounts.Token", "test_file"} in actionable,
-             "child2 test_file should be actionable after review_valid"
-
-      # === STEP 5: Write tests → children can implement ===
-      # Tests auto-align because the children's specs have no Test Assertions
-      # section, so SpecAlignment returns {:ok, :aligned} → valid: true on sync.
-      write_file(
-        tmp_dir,
-        "test/my_app/accounts/user_test.exs",
-        "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend"
-      )
-
-      write_file(
-        tmp_dir,
-        "test/my_app/accounts/token_test.exs",
-        "defmodule MyApp.Accounts.TokenTest do\n  use ExUnit.Case\nend"
-      )
-
-      sync!(scope, tmp_dir)
-
-      actionable = actionable_component_names(scope)
-
-      assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
-             "child1 impl should be actionable after tests written. Got: #{inspect(actionable)}"
-
-      # === STEP 6: Implement children → parent can implement ===
-      write_file(tmp_dir, "lib/my_app/accounts/user.ex", impl_content("MyApp.Accounts.User"))
-      write_file(tmp_dir, "lib/my_app/accounts/token.ex", impl_content("MyApp.Accounts.Token"))
-      sync!(scope, tmp_dir)
-
-      # tests_passing needs a fresh analysis run — zero persisted problems
-      # only counts once results are current for these files (run ledger).
-      CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope)
-
-      actionable = actionable_component_names(scope)
-
-      assert {"MyApp.Accounts", "implementation_file"} in actionable,
-             "parent impl should be actionable after all children reach terminal. Got: #{inspect(actionable)}"
-    end
-  end
-
-  # -- Helpers --
-
-  defp actionable_component_names(scope) do
-    RequirementGraph.recompute(scope)
-    RequirementGraph.next_actionable(scope)
-    |> Enum.filter(fn n -> n.entity_type == "component" end)
-    |> Enum.map(fn n -> {n.entity_name, n.name} end)
-    |> MapSet.new()
-  end
-
   defp setup_project do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
@@ -817,7 +557,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
     # Graph-shape tests need the full spec -> review -> test -> implementation
     # chain; a fresh project defaults to spex and code only.
-    {ConfigurationsFixtures.require_all!(scope), tmp_dir}
+    {ConfigurationsFixtures.ensure_configuration!(scope), tmp_dir}
   end
 
   defp create_component(scope, module_name, type) do
@@ -979,28 +719,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
   # Review content that passes the "design_review" doc type's required_sections:
   # ["overview", "architecture", "integration", "conclusion"].
-  defp review_content do
-    """
-    # Design Review
-
-    ## Overview
-
-    Approved.
-
-    ## Architecture
-
-    Looks good.
-
-    ## Integration
-
-    Integrates cleanly.
-
-    ## Conclusion
-
-    Ready to implement.
-    """
-  end
-
   defp impl_content(module_name) do
     """
     defmodule #{module_name} do
@@ -1008,7 +726,4 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
     """
   end
-
-  defp maybe_mark_validated(nil), do: :ok
-  defp maybe_mark_validated(spec), do: CodeMySpec.Files.mark_validated(spec, true)
 end

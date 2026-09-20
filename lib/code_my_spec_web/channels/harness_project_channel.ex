@@ -454,6 +454,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # Which of this checkout's agents are actually alive, from the process table.
+  #
+  # `agents.status` is written on a clean start and a clean stop, so it is a
+  # claim about the past. `record_reported/2` exists to correct exactly that and
+  # is fed only by `LaneReporter`, which composes from Presence on *lane*
+  # topics — the Claude Code lane concept. An in-BEAM Alloy agent joins no lane,
+  # so it was invisible to the one mechanism that could have contradicted its
+  # row.
+  #
+  # Measured 2026-09-17: `f8fbe49e` and `93bdde5a` read `starting` for six hours
+  # with nothing behind them, while `wakeable?/3` accepted `:starting` and kept
+  # routing work to processes that had never started (`0c912986`).
+  #
+  # The ids come from `Engine.running/0`, a registry select filtered by
+  # `Process.alive?`, so what arrives here is the process table rather than
+  # anything we were told. Machine-wide, and reconciled per copy: this harness
+  # serves this checkout, so one of its agents absent from the machine's set is
+  # genuinely gone, and an agent on somebody else's box is never considered.
+  def handle_in("agents_running", %{"agent_ids" => ids}, socket) when is_list(ids) do
+    Agents.record_running_on_copy(
+      socket.assigns.scope,
+      socket.assigns.scope.active_working_copy_id,
+      ids
+    )
+
+    {:reply, :ok, socket}
+  end
+
   # What the box is carrying, from the box.
   #
   # Story 1057, criterion 3324. A harness already reports facts it observes
@@ -842,6 +870,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
     push(socket, "send_message", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
+  def handle_call({:request_work_turn, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+    push(socket, "request_work_turn", Map.put(request, "ref", ref))
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}

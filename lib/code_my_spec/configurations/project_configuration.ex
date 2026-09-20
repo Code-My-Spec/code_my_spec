@@ -4,7 +4,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
 
   One record per project. Controls:
 
-  - Requirement toggles (what's required for a component to be "done")
   - Analyzer modes (what runs at stop time and whether it blocks)
 
   Lives only in the local DB — never synced to the server. The engineer
@@ -28,9 +27,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
-          require_specs: boolean(),
-          require_reviews: boolean(),
-          require_unit_tests: boolean(),
           compile_warnings: compile_mode(),
           credo: analyzer_mode(),
           exunit: analyzer_mode(),
@@ -45,22 +41,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
 
   schema "project_configurations" do
     field :project_id, :binary_id
-
-    # Requirement toggles.
-    #
-    # All three default off: a fresh project writes BDD spex and code, and
-    # nothing else. Markdown specs, design reviews and unit tests are real
-    # artifacts with real value, but requiring them from the first commit means
-    # a new project's first hours go into paperwork about code that does not
-    # exist yet — and the spex already say what the code has to do, from the
-    # outside, in the language of the story.
-    #
-    # Off is also the cheaper mistake. Turning one on later costs a
-    # configuration change; turning one off after the graph has demanded
-    # eighty spec files costs eighty files nobody asked for.
-    field :require_specs, :boolean, default: false
-    field :require_reviews, :boolean, default: false
-    field :require_unit_tests, :boolean, default: false
 
     # Analyzer modes
     field :compile_warnings, Ecto.Enum, values: @compile_modes, default: :block
@@ -123,9 +103,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     configuration
     |> cast(attrs, [
       :project_id,
-      :require_specs,
-      :require_reviews,
-      :require_unit_tests,
       :compile_warnings,
       :credo,
       :exunit,

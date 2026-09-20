@@ -5,7 +5,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
   time it is accessed it is auto-created with the documented defaults.
 
   Defaults per the rules doc:
-  - require_specs, require_reviews, require_unit_tests: true
   - compile_warnings: block
   - credo: block_changed
   - exunit: block_all
@@ -30,16 +29,10 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
         {:ok, Map.put(context, :config_live, config_live)}
       end
 
-      then_ "all requirement toggles default to checked", context do
-        assert has_element?(context.config_live, "[data-test='require-specs']:checked"),
-               "require_specs must default to true"
-
-        assert has_element?(context.config_live, "[data-test='require-reviews']:checked"),
-               "require_reviews must default to true"
-
-        assert has_element?(context.config_live, "[data-test='require-unit-tests']:checked"),
-               "require_unit_tests must default to true"
-
+      then_ "retired component workflow toggles are absent", context do
+        refute has_element?(context.config_live, "[data-test='require-specs']")
+        refute has_element?(context.config_live, "[data-test='require-reviews']")
+        refute has_element?(context.config_live, "[data-test='require-unit-tests']")
         {:ok, context}
       end
 

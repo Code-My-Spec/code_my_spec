@@ -43,6 +43,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # precondition true in the only way available — the provider is the thing
   # that decides, and the seam is how a criterion about *display* avoids
   # buying a machine to say so.
+  # `given_a_harnessed_checkout` is listed by the same precedent as
+  # `given_a_main_checkout`: its whole body is the drive. It makes a directory,
+  # joins `harness_project` for it — which is what mints the working copy — and
+  # points the agents' tool calls at that checkout's vantage. A criterion whose
+  # premise is "a checkout on the harness" has no other way to say it.
+  #
   # A channel is a public surface too. The widget half of a support conversation
   # has no other one — there is no page to mount, so joining the socket and
   # pushing to it IS driving the app. `join_widget` is listed by the same
@@ -194,7 +200,15 @@ defmodule CodeMySpec.SpexGivensTest do
   # environment. `await_connected` is genuinely a wait, not an establishing
   # call by itself — listed because every given_ that calls it also calls one
   # of the others in the same block, and the check reads the whole body.
+  # `Slice.` is `CodeMySpecSpex.StorySliceHelpers`, and its whole surface drives:
+  # `base/1` selects a story through `SetActiveStory.execute/2`, `child/2`,
+  # `missing/2` and `implement/2` write and delete real files through
+  # `Environments` and re-sync, and `waiting/2` creates and links a story through
+  # `StoryHelpers` and assigns it through the epic tools. A story-slice criterion
+  # whose premise is "a story whose component has no implementation yet" has no
+  # other way to say it.
   @establishes ~w(
+    Slice.
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
     .execute(
@@ -211,6 +225,7 @@ defmodule CodeMySpec.SpexGivensTest do
     put_env! delete_env!
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
+    given_a_harnessed_checkout
     machine_out_of_reach
     main_answers user_answers
     Req.Test.stub

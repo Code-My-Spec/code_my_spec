@@ -154,6 +154,8 @@ defmodule CodeMySpec.Agents.Agent do
     # running is the interesting part: five seconds is normal and fifty minutes
     # is not, and a flag cannot tell them apart.
     field :turn_started_at, :utc_datetime_usec
+    field :work_request_id, :string
+    field :work_requested_at, :utc_datetime_usec
 
     # The work this agent has claimed.
     #
@@ -250,6 +252,8 @@ defmodule CodeMySpec.Agents.Agent do
       :status,
       :continuous,
       :turn_started_at,
+      :work_request_id,
+      :work_requested_at,
       :working_copy_id,
       :project_id,
       :account_id

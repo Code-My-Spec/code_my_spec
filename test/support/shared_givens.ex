@@ -43,10 +43,10 @@ defmodule CodeMySpecSpex.SharedGivens do
     MCP tool to create an active `WriteBddSpecs` task on a story.
     Produces `context.session_id`, `context.task_id`, `context.prompt`,
     and `context.start_response`. Requires `context.story`.
-  - `:context_spec_task_started` — drives session_start + start_task for
-    the `spec_file` requirement on `context.component` (satisfied by
-    `:synced_context_component`'s synced spec file). Gives specs a
-    main_agent/automatic task whose evaluation trivially passes, so
+  - `:context_implementation_task_started` — drives session_start + start_task for
+    the `implementation_file` requirement on `context.component` (satisfied by
+    `:synced_context_component`'s synced implementation file). Gives specs a
+    implementation task with automatic validation whose evaluation trivially passes, so
     the spec can observe pipeline behavior without evaluator noise.
     Produces `context.session_id`. Requires `context.component`.
   - `:credo_available` — plants `deps/credo` under `context.scope.cwd`
@@ -375,13 +375,13 @@ defmodule CodeMySpecSpex.SharedGivens do
   end
 
   # Drives the real POST /api/hooks/session-start hook and the
-  # start_task MCP tool to create an active main_agent/automatic task
+  # start_task MCP tool to create an active implementation task with automatic validation
   # on `context.component`. Uses the context_graph's :parent-scoped
-  # `spec_file` requirement — already satisfied because
-  # :synced_context_component wrote and synced the spec file — so
+  # `implementation_file` requirement — already satisfied because
+  # :synced_context_component wrote and synced the implementation file — so
   # TaskEvaluator passes via RequirementCalculator with no extra
   # artifacts needed.
-  register_given :context_spec_task_started, context do
+  register_given :context_implementation_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -396,7 +396,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:reply, _response, _frame} =
       StartTask.execute(
         %{
-          requirement_name: "spec_file",
+          requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: to_string(context.component.id),
           session_id: session_id
@@ -537,7 +537,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   # The agent has signalled SessionStart and called start_task for the
   # `personas_complete` requirement on the active project. Same shape as
-  # :context_spec_task_started / :bdd_task_started — drives the real hook
+  # :context_implementation_task_started / :bdd_task_started — drives the real hook
   # + MCP call so the pipeline sees a live `PersonaResearch` task.
   # Captures the active task id from the session so specs can call
   # `evaluate_task` against it (personas_complete is manual-validation).

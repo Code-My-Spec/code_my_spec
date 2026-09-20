@@ -70,8 +70,16 @@ defmodule CodeMySpec.MainAgent.Cadence do
   @spec set_interval(Scope.t(), pos_integer()) :: :ok | {:error, Ecto.Changeset.t()}
   def set_interval(%Scope{} = scope, seconds) when is_integer(seconds) and seconds > 0 do
     case Configurations.update(scope, %{main_agent_cadence_seconds: seconds}) do
-      {:ok, _configuration} -> :ok
-      {:error, changeset} -> {:error, changeset}
+      {:ok, _configuration} ->
+        case Registry.lookup(@registry, scope.active_project_id) do
+          [{pid, _}] -> GenServer.cast(pid, :reschedule)
+          [] -> :ok
+        end
+
+        :ok
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -111,6 +119,13 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   def alive?(%Scope{active_project_id: project_id}) do
     Registry.lookup(@registry, project_id) != []
+  end
+
+  def last_check(%Scope{active_project_id: project_id}) do
+    case Registry.lookup(@registry, project_id) do
+      [{pid, _}] -> GenServer.call(pid, :last_check)
+      [] -> nil
+    end
   end
 
   @doc "Stop waking this project's main agent, because it has stood down."
@@ -224,16 +239,33 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def init(%Scope{} = scope) do
-    {:ok, schedule(%{scope: scope})}
+    {:ok, schedule(%{scope: scope, last_check: nil})}
   end
+
+  @impl true
+  def handle_call(:last_check, _from, state), do: {:reply, state.last_check, state}
 
   @impl true
   def handle_info(:check_in, state) do
     MainAgent.check_in(state.scope)
-    {:noreply, schedule(state)}
+    checked_at = DateTime.utc_now()
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "cadence:checks",
+      {:recovery_checked, state.scope.active_project_id, checked_at}
+    )
+
+    {:noreply, schedule(%{state | last_check: checked_at})}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
+
+  @impl true
+  def handle_cast(:reschedule, state) do
+    Process.cancel_timer(state.timer)
+    {:noreply, schedule(state)}
+  end
 
   # Coalescing rather than extending, the same shape `GraphWatcher` uses: the
   # next wake-up is one interval from this one, whatever happened in between.

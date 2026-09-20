@@ -96,4 +96,36 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
              "two numbers is how the two paths came to disagree in the first place."
     end
   end
+
+  describe "one implementation of the cut" do
+    # b9632bba was two implementations of one rule, and fixing the number they
+    # disagreed on left the *cutting* still copied three ways. Two of those
+    # copies cut with `binary_part/3` and nothing else, so a cut landing inside
+    # a multi-byte character handed back invalid UTF-8 — `run_browser_script`
+    # on a page of prose and `call_mcp_server` on a `tools/list` are exactly
+    # where multi-byte text arrives. An em-dash is `E2 80 94`, which is why
+    # this surfaces as `invalid byte 0xE2` at the encoder rather than anywhere
+    # near the tool that produced it.
+    #
+    # Scanning the source rather than calling the functions because both are
+    # private, and the property is "nobody writes a second one", which a
+    # behavioural test on the one that exists cannot express.
+    @lib_root Path.expand("../../../lib", __DIR__)
+
+    test "only CodeMode builds the truncation note" do
+      authors =
+        @lib_root
+        |> Path.join("**/*.ex")
+        |> Path.wildcard()
+        |> Enum.filter(fn path ->
+          path |> File.read!() |> String.contains?("[truncated — the answer was longer than")
+        end)
+        |> Enum.map(&Path.relative_to(&1, @lib_root))
+
+      assert authors == ["code_my_spec/code_mode.ex"],
+             "a second module builds the note, which means it also does its own " <>
+               "cutting: #{inspect(authors)}. Call `CodeMode.cap/1` instead — it is " <>
+               "the one that trims back to a valid UTF-8 boundary."
+    end
+  end
 end

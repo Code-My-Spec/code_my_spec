@@ -6,6 +6,50 @@ default:
 server:
     iex -S mix phx.server
 
+# Make a working copy of this project, adjacent to this checkout.
+#
+# The harness calls this (`CmsHarness.WorkingCopies.Create`) instead of running
+# `git worktree add` itself. What a fresh copy of *this* project needs is this
+# project's business — the harness serves every project and cannot know it — so
+# anything a new copy here requires belongs in this recipe rather than in the
+# harness's Elixir.
+#
+# Submodules are the reason this exists. `git worktree add` does not populate
+# them and nothing downstream notices: the harness scans the copy and computes
+# the requirement graph from what it finds, so an uninitialised `.code_my_spec`
+# does not read as a missing checkout — it reads as a project with no personas,
+# no architecture and no specs, and the agent is told to redo work that already
+# exists. Measured: worktree `963-main-agent-nontechnical` sat with an empty
+# `.code_my_spec` and all 26 stories routed to it blocked behind one missing
+# `qa/plan.md`, while every surface reported a healthy idle agent (`fde40b27`).
+#
+# Adjacent to the checkout rather than under `.claude/worktrees`. A worktree is
+# a peer of the checkout it came from, not a detail of the editor's directory,
+# and burying them there put real work inside a folder people reasonably treat
+# as disposable tooling state.
+#
+# Creating only. `worktree-setup` below is the separate, slower half (deps, test
+# database, symlinks) and is left to be run in the new copy — it takes minutes
+# and making a copy should not.
+init-worktree name target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # The main checkout owns the worktree list, and this may be invoked from a
+    # worktree — `--git-common-dir` resolves there from either.
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+
+    echo "→ worktree: {{target}}"
+    git -C "$main" worktree add -b "{{name}}" "{{target}}"
+
+    if [ -f "{{target}}/.gitmodules" ]; then
+      echo "→ submodules"
+      git -C "{{target}}" submodule update --init --recursive
+    fi
+
+    echo
+    echo 'Made. Run `just worktree-setup` in it before `mix test` or `mix spex`.'
+
 # Make a fresh worktree runnable. Idempotent; safe to re-run.
 #
 # A new worktree looks complete and is not. Three things are missing and each

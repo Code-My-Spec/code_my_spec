@@ -47,6 +47,13 @@ defmodule CodeMySpecTest.GraphHelpersTest do
         engine: :alloy,
         role: role,
         continuous: true,
+        # `project_wakeable?/2` requires `:running`, and the column defaults to
+        # `:starting`. A fixture row performs no start handshake, so without
+        # this it is never wakeable and `assert_woken/1` fails for a reason
+        # that has nothing to do with what the test is checking — see the same
+        # correction in
+        # `filing_an_issue_reaches_the_role_that_triages_it_test`.
+        status: :running,
         working_copy: scope.cwd,
         working_copy_id: scope.active_working_copy_id
       })

@@ -61,6 +61,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Requirements.Invalidation
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Users.Scope
@@ -150,12 +151,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # narrow drain would reintroduce the read the narrow path exists to
        # avoid. Only a writer that touched files or an analyzer run can move it,
        # and every one of those records `:unknown`.
-       analysis_fresh: nil,
+       analysis_fresh: %{},
        # The topology this projector last wrote edges for. Edges are a global
        # computation, so the cheap question is whether they can have moved at
        # all — `Freshness.topology/2` is the same hash the pass records, over
        # component ids, types, parents, dependencies and the story population.
-       last_topology: nil,
+       last_topology: %{},
        last_drain: nil,
        last_error: nil
      }}
@@ -194,8 +195,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
   end
 
+  # The vantages these marks are about — asked of the marks, not enumerated.
+  #
+  # A verdict is a statement about a checkout, so the graph is projected per
+  # vantage and this process was settling whichever scope happened to start it,
+  # leaving the rest to whatever wrote them last. Found by `shadow_test`'s
+  # accepted-issue case, which settles one vantage and asserts on another.
+  #
+  # The fix is not to loop every vantage on every drain. A file sync happens in
+  # one worktree and moves one checkout's answers; dragging the other eight
+  # through a settle for it is the whole-project recompute this path exists to
+  # avoid, wearing a different hat. So a mark records the copy it was written
+  # from and this reads it back — `nil` means the writer's change is not about a
+  # checkout (a story renamed, an issue accepted), which every vantage reads and
+  # which is the only case that fans out.
+  #
+  # The two caches go with it. `analysis_fresh` is computed from a checkout's
+  # own files and `last_topology` from what that checkout can see, so both are
+  # per-vantage facts and a single slot silently answered one vantage's question
+  # with another's.
   defp apply_marks(state, marks) do
     config = Configurations.get_or_create(state.scope)
+    base_scope = state.scope
 
     # Events first, and only what is left over goes to a plan.
     #
@@ -212,11 +233,22 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       DrainCost.measure(
         %{kind: :event, project_id: state.project_id, observations: length(marks)},
         fn ->
-          {handled, unhandled} = apply_handlers(state, marks)
-          state = if unhandled == [], do: state, else: run(plan(state, unhandled), state, config)
-          log_handled(state, handled)
+          vantages = vantages(state, marks)
 
-          {state, %{handled: length(handled), recomputed: length(unhandled)}}
+          # Counted per vantage rather than accumulated, and `log_handled/2` is
+          # asked per vantage too. "This handler change matched no row" is a
+          # statement about one checkout, so summing the lists first lets a hit
+          # in one worktree cover a miss in another — which is the class of bug
+          # the whole shadow exists to catch.
+          {state, handled, recomputed} =
+            Enum.reduce(
+              vantages,
+              {state, 0, 0},
+              &settle_vantage(&1, &2, marks, base_scope, config)
+            )
+
+          {%{state | scope: base_scope},
+           %{handled: handled, recomputed: recomputed, vantages: length(vantages)}}
         end
       )
 
@@ -226,6 +258,48 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     Invalidations.consume(marks)
 
     %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
+  end
+
+  # What the marks say, widened to everything only when one of them cannot say.
+  #
+  # `nil` on a mark is a writer whose change is not about a checkout — a story
+  # renamed, an issue accepted — which every checkout reads, so it is the one
+  # case that fans out. That is the conservative reading rather than a gap, the
+  # same meaning `entity_scope` gives an un-narrowed writer.
+  #
+  # The `nil` *vantage* is not the same thing and does not follow from the same
+  # rule. It is the row-space a reader with no checkout is answered from, and
+  # `Preloader.files_vantage/1` computes it from the project's default checkout
+  # — so a file sync in that checkout moves it, and a sync in any other
+  # worktree does not. `live_vantages/2` prepends `nil` unconditionally, which
+  # is right for a reader asking what to compute and wrong here: it would drag
+  # the browser's view through a settle for every worktree on the project.
+  # The seed asks a different question, and it is the question `init/1` says it
+  # asks: not "which checkouts did these marks move" but "what is true". With no
+  # marks there is nothing to read a checkout off, so this answered the empty
+  # list and the whole-project computation ran against no vantage at all.
+  #
+  # The cost of that is exactly what `init/1` warns about: a projector that only
+  # ever applies deltas is permanently missing every entity nothing has touched
+  # since it started, and reports the gap as a coverage failure it cannot fix.
+  # Measured on dev, 2026-09-17 — nine verdicts wrong at three vantages, last
+  # settled before two fixes that would have corrected them, surviving four
+  # restarts of the process whose arrival was supposed to correct them.
+  defp vantages(%{seeded: false} = state, _marks),
+    do: Projection.live_vantages(state.scope, Projection.vantages(state.scope))
+
+  defp vantages(state, marks) do
+    named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
+
+    if Enum.any?(named, &is_nil/1) do
+      Projection.live_vantages(state.scope, Projection.vantages(state.scope))
+    else
+      keep_nil? = Preloader.files_vantage(state.scope) in named
+
+      state.scope
+      |> Projection.live_vantages(named)
+      |> Enum.filter(&(keep_nil? or not is_nil(&1)))
+    end
   end
 
   # Each event offered to its handler; anything without one handed back.
@@ -262,17 +336,43 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # The lock hold that would normally argue against this is not there: sweeps
   # skip rows whose answer did not move, so the steady state locks nothing and
   # a real change locks only what it changed.
+  # One settle per distinct kind, not one per mark.
+  #
+  # A handler is a function of current state: `Handlers.apply_event/3` takes the
+  # kind and ignores the payload, reloads the profiles that kind dirties, and
+  # settles every requirement they move across the whole population. Running it
+  # twice in one drain reaches the same answer and pays for it twice.
+  #
+  # Marks arrive in bulk more often than the design assumed.
+  # `Stories.mark_ready_stories_promoted/2` broadcasts per story, so one
+  # promotion stamping 130 stories emitted 130 `story_changed` marks — and this
+  # settled each of them: four profile loads and eleven sweeps apiece, with
+  # `ArchitectureChecker.orphans/1` preloading every component's stories on
+  # every pass through. That is the whole-project recompute the event path
+  # exists to avoid, 130 times over, for one act.
+  #
+  # Every mark of a handled kind is still returned, because `apply_handlers/2`
+  # drops fallback marks by observation id and needs all of them. Only the first
+  # carries the changes, so `log_handled/2` counts the work once rather than
+  # once per mark.
   defp split_handled(state, marks) do
-    Enum.reduce(marks, {[], []}, fn mark, {handled, unhandled} ->
-      case handler_result(state.scope, mark) do
+    marks
+    |> Enum.group_by(& &1.kind)
+    |> Enum.reduce({[], []}, fn {_kind, kind_marks}, {handled, unhandled} ->
+      case handler_result(state.scope, hd(kind_marks)) do
         {:ok, changes, sweeps} ->
-          {[{mark, changes, settle(state.scope, changes, sweeps)} | handled], unhandled}
+          written = settle(state.scope, changes, sweeps)
+          {attribute(kind_marks, changes, written) ++ handled, unhandled}
 
         :no_handler ->
-          {handled, [mark | unhandled]}
+          {handled, kind_marks ++ unhandled}
       end
     end)
   end
+
+  # The work belongs to the drain, not to each mark that asked for it.
+  defp attribute([first | rest], changes, written),
+    do: [{first, changes, written} | Enum.map(rest, &{&1, [], []})]
 
   defp settle(scope, changes, sweeps) do
     {:ok, written} =
@@ -299,6 +399,26 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # A handler that wrote nothing matched no row, which means the event named an
   # entity this vantage has never projected. Worth a line, because a handler
   # silently writing nothing is precisely the failure that looks like success.
+  # `unhandled == []` is "nothing left to re-derive", which is true of a drain
+  # whose handlers covered everything — and of the seed, which has no marks at
+  # all. Those are not the same, and collapsing them is what stopped the seed
+  # seeding: `plan/2` still answers `:everything` for an unseeded projector, and
+  # nothing ever asked it. So the guard is "no work to do", and a projector that
+  # has not established what is true has work to do whatever its marks say.
+  defp settle_vantage(vantage, {state, handled, recomputed}, marks, base_scope, config) do
+    state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
+    {applied, unhandled} = apply_handlers(state, marks)
+
+    state =
+      if unhandled == [] and state.seeded,
+        do: state,
+        else: run(plan(state, unhandled), state, config)
+
+    log_handled(state, applied)
+
+    {state, handled + length(applied), recomputed + length(unhandled)}
+  end
+
   defp log_handled(state, []), do: state
 
   defp log_handled(state, handled) do
@@ -355,8 +475,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state = reproject_topology(state, ctx, config)
 
     # The whole context was just read, so the cached freshness is current by
-    # construction.
-    %{state | analysis_fresh: ctx.analysis_fresh}
+    # construction — for *this* checkout. Keyed by vantage because it is
+    # computed from one checkout's own files.
+    cache_analysis(state, ctx.analysis_fresh)
   end
 
   # The narrow path: one entity at a time, each loading only what it needs, and
@@ -373,10 +494,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # gives: a component's unit is its family, so two marks naming siblings are
   # one piece of work.
   defp run({:narrow, entities}, state, config) do
-    analysis_fresh = state.analysis_fresh || Preloader.analysis_freshness(state.scope)
+    analysis_fresh =
+      Map.get(state.analysis_fresh, vantage(state)) ||
+        Preloader.analysis_freshness(state.scope)
     narrow_each(entities, state.scope, config, analysis_fresh)
     state = reproject_topology(state, nil, config)
-    %{state | analysis_fresh: analysis_fresh}
+    cache_analysis(state, analysis_fresh)
   end
 
   @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
@@ -421,7 +544,15 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     #
     # A fallback drain is usually one entity being recomputed for a reason that
     # has nothing to do with shape, so the common answer is no.
-    last = state.last_topology
+    # Keyed by vantage, and that is not tidiness. Read as a single slot, each
+    # checkout compared its topology against whichever checkout was settled
+    # before it, never matched, and replaced the whole edge set — measured on
+    # this project at 123,236 edges deleted and reinserted, 246,472 row writes
+    # and ~16s, repeating for every observation that fell back. The comment
+    # above `apply_marks/2` has said these are per-vantage facts since the
+    # vantage loop was written; the reads and writes never followed.
+    vantage = vantage(state)
+    last = Map.get(state.last_topology, vantage)
 
     case Freshness.topology(ctx, config) do
       ^last ->
@@ -430,9 +561,17 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       topology ->
         {_nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
         {:ok, _count} = Shadow.write_edges(state.scope, edges)
-        %{state | last_topology: topology}
+        %{state | last_topology: Map.put(state.last_topology, vantage, topology)}
     end
   end
+
+  # Which checkout this drain is currently settling. `Projection.vantage/1`
+  # rather than the raw field, so the unscoped reader keys the same way it
+  # reads.
+  defp vantage(state), do: Projection.vantage(state.scope)
+
+  defp cache_analysis(state, freshness),
+    do: %{state | analysis_fresh: Map.put(state.analysis_fresh, vantage(state), freshness)}
 
   defp narrow_load(scope, {"story", story_id}, analysis_fresh),
     do: Preloader.load_story(scope, story_id, analysis_fresh)

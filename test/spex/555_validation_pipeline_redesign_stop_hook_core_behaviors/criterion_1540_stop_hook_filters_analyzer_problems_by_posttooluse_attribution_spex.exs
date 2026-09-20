@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story555.Criterion1540Spex do
   spex "Stop hook filters analyzer problems by PostToolUse attribution" do
     scenario "spec_validation finding on an unattributed spec file is excluded for session A" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "session A rewrites its own impl and records the edit via PostToolUse", context do
         :ok =

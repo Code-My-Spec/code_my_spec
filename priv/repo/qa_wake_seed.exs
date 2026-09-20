@@ -340,35 +340,171 @@ scope = %{scope | active_working_copy_id: copy.id}
 # Two roles, because 3249 and 3250 are a pair: one agent's kind of work appears
 # and the other's does not, and a single agent cannot show that the deciding is
 # per-listener.
-for {role, tools} <- [{"product", ["create_issue"]}, {"coding", ["create_issue"]}] do
+#
+# A count per role, not one each, because story 1004 needs shapes a single agent
+# per role cannot make:
+#
+#   * two coding agents — "only the assigned one is woken" is a claim about
+#     which listener hears, and one listener cannot fail to show it
+#   * a main agent — "a story interview reaches the main agent" has no subject
+#     otherwise, and the only main-role agent that existed was the real one on
+#     the top-level checkout, which no QA session may safely drive
+#
+# Deliberately no qa-role agent: "QA work waiting does not wake the coding
+# agent" needs the *work* outstanding, and an agent of that role would claim it
+# and take the premise away.
+# An attempt nobody is making any more is not an attempt.
+#
+# `runnable_state?/1` requires `is_nil(Agent.active_task(agent))`, so one task
+# left `:active` by a QA pass that ended days ago makes that agent permanently
+# un-admittable — the same shape as the `:stopped` status above, and it bit the
+# same way: the one fixture agent with genuinely eligible work carried a
+# `personas_complete` task started 2026-09-12 and never dispositioned, so the
+# turn-admission race could not be constructed against it at all.
+#
+# Cancelled rather than deleted, because `:cancelled` is what the lifecycle
+# says an abandoned attempt becomes and it keeps the row readable. Only
+# `:active` and `:blocked` are touched; a completed or failed attempt is
+# history and stays.
+stale_statuses = [:active, :blocked]
+
+cleared_tasks = fn agent ->
+  Enum.map(agent.tasks || [], fn task ->
+    if task.status in stale_statuses do
+      %{task | status: :cancelled, completed_at: DateTime.utc_now()}
+    else
+      task
+    end
+  end)
+end
+
+cleared_note = fn agent ->
+  case Enum.count(agent.tasks || [], &(&1.status in stale_statuses)) do
+    0 -> ""
+    n -> ", #{n} stale task(s) cancelled"
+  end
+end
+
+# One story routed to this checkout, because eligibility is copy-scoped.
+#
+# `Work.graph_work?/2` asks what is actionable *for this agent's working copy*,
+# and a story with no `working_copy_id` is nobody's — so a fixture with three
+# ready stories and none of them routed here has four runnable agents and
+# nothing any of them is eligible for. Issue `fde40b27` measured exactly that:
+# "zero stories with working_copy_id = 56f5bf62 at all, so there is no
+# coding-role work that could ever route there regardless of qa_setup".
+#
+# The first story only. The other two stay unrouted on purpose — "work for
+# another role or working copy does not make an agent runnable" needs work
+# that exists and is not this copy's, and routing all three would take that
+# premise away.
+routed =
+  Repo.one(
+    from s in CodeMySpec.Stories.Story,
+      where: s.project_id == ^project.id,
+      order_by: s.id,
+      limit: 1
+  )
+
+case routed do
+  nil ->
+    IO.puts("  story: none to route")
+
+  %{working_copy_id: id} when id == copy.id ->
+    IO.puts("  story: already routed #{routed.title} -> #{copy.id}")
+
+  story ->
+    {:ok, _} =
+      story |> Ecto.Changeset.change(working_copy_id: copy.id) |> Repo.update()
+
+    IO.puts("  story: routed #{story.title} -> #{copy.id}")
+end
+
+# Every agent on this checkout, not only the four this seed manages.
+#
+# `Work.held?/3` asks whether *any* agent on the copy is holding a node, and it
+# is right to — one claimant per requirement is the rule. But that means one
+# stray row left behind by an earlier QA session, stopped and not continuous
+# and not one of the four ids below, goes on withholding a requirement from the
+# canonical agent forever. Measured 2026-09-20: `personas_complete` read as
+# held by 29232a00 (stopped, continuous=false) and the fixture had no
+# unclaimed, runnable target to admit a turn against at all (`68436370`).
+for stray <-
+      Repo.all(
+        from a in CodeMySpec.Agents.Agent,
+          where: a.working_copy_id == type(^copy.id, :binary_id)
+      ),
+    Enum.any?(stray.tasks || [], &(&1.status in stale_statuses)) do
+  {:ok, _} = stray |> Ecto.Changeset.change(tasks: cleared_tasks.(stray)) |> Repo.update()
+  IO.puts("  agent: released #{stray.role} (#{stray.id}) stale claim(s)")
+end
+
+for {role, tools, wanted} <- [
+      {"product", ["create_issue"], 1},
+      {"coding", ["create_issue"], 2},
+      {"main", ["create_issue"], 1}
+    ] do
   existing =
-    Repo.one(
+    Repo.all(
       from a in CodeMySpec.Agents.Agent,
         where:
           a.project_id == type(^project.id, :binary_id) and a.role == ^role and
             a.continuous == true
     )
 
-  case existing do
-    nil ->
-      {:ok, agent} =
-        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
-          engine: :alloy,
-          provider: "claude-code",
-          role: role,
-          working_copy: local_path,
-          working_copy_id: copy.id,
-          project_id: project.id,
-          account_id: account.id,
-          tools: tools,
-          continuous: true,
-          status: :running
-        })
+  # Re-asserted on every run, not only on create.
+  #
+  # `Work.runnable_state?/1` gates on `status == :running` before it evaluates
+  # eligibility at all, and `Agents.record_running_on_copy/3` reaps any row
+  # claiming to run with no live process behind it — correctly, since nothing
+  # has driven these rows since the last QA pass. So the ordinary case, a
+  # project that already exists, left all four agents `:stopped` and every one
+  # of story 1004's turn-admission criteria untestable through the fixture
+  # this seed exists to provide.
+  #
+  # The only two ways out were a direct DB write or a real `start_agent`
+  # against the connected harness — one denied to a QA session outright, the
+  # other a billed model call — so three separate QA attempts were blocked on
+  # a fixture that reported itself as freshly seeded. Refreshing the fixture
+  # has to actually refresh it (`f3157963`).
+  #
+  # `turn_started_at` and `work_request_id` go with it: a row left mid-turn or
+  # holding a reservation is not runnable either, and both are stale the
+  # moment the process behind them is gone.
+  for agent <- existing do
+    {:ok, _} =
+      agent
+      |> Ecto.Changeset.change(
+        status: :running,
+        continuous: true,
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil,
+        tasks: cleared_tasks.(agent)
+      )
+      |> Repo.update()
 
-      IO.puts("  agent: created #{role} (#{agent.id})")
+    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running#{cleared_note.(agent)}")
+  end
 
-    agent ->
-      IO.puts("  agent: exists #{role} (#{agent.id})")
+  # Idempotent on the count rather than on presence, so re-running tops the set
+  # up instead of stopping at the first one it finds.
+  for _ <- 1..max(wanted - length(existing), 0)//1 do
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "claude-code",
+        role: role,
+        working_copy: local_path,
+        working_copy_id: copy.id,
+        project_id: project.id,
+        account_id: account.id,
+        tools: tools,
+        continuous: true,
+        status: :running
+      })
+
+    IO.puts("  agent: created #{role} (#{agent.id})")
   end
 end
 
@@ -382,12 +518,23 @@ Seeded.
   starts one on demand. `/dev/state?project_id=#{project.id}` shows whether it
   is running.
 
-  Reachable here (through the requirements graph page): 3244, 3351, 3303.
+  All of 1062's wake criteria are reachable here, conversation-watching ones
+  included. That was not true when this seed was written: `dispatch_message/3`
+  calls the transport before it records anything, so with no harness holding
+  this copy a message was undeliverable and never reached the conversation.
+  `1c5540ae` fixed onboarding (`2da6b0e7e`) and this copy is onboarded — check
+  it rather than trust this line:
 
-  NOT reachable here: 3242, 3243, 3249, 3250. They watch an agent's
-  conversation, and `dispatch_message/3` calls the transport before it records
-  anything — so with no harness holding this copy the message is undeliverable
-  and never reaches the conversation. Blocked on 1c5540ae, not on this seed.
+      curl -s localhost:4004/health | grep math_test_project
+
+  It should say `connected: true, onboarded: true, watching: true`. If it does
+  not, the criteria that read a conversation will fail for that reason and not
+  for the story's.
+
+  Story 1004's seven live-unreachable scenarios are the same class and the same
+  remedy: two coding agents for "only the assigned one is woken", a main agent
+  for "a story interview reaches the main agent", and no qa-role agent so that
+  "QA work waiting does not wake the coding agent" keeps its premise.
 
   The agents are rows, not processes. Nothing is running or spending tokens.
 

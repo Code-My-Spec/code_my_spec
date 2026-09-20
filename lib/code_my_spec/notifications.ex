@@ -10,6 +10,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
       CodeMySpec.Repo,
+      CodeMySpec.TaskOwner,
       CodeMySpec.Users,
       CodeMySpec.Utils
     ],
@@ -23,6 +24,8 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
+  alias CodeMySpec.TaskOwner
+  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
   @doc """
@@ -246,29 +249,93 @@ defmodule CodeMySpec.Notifications do
   `"permission_request:<id>"` to await the decision.
   """
   def create_permission_request(user_id, %{} = attrs) do
+    with {:ok, request} <- insert_permission_request(user_id, attrs) do
+      deliver_permission(request)
+      {:ok, request}
+    end
+  end
+
+  defp insert_permission_request(user_id, attrs) do
     attrs = Map.merge(attrs, %{"user_id" => user_id, "status" => "pending"})
 
+    %PermissionRequest{}
+    |> PermissionRequest.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  defp deliver_permission(request) do
+    # Send Web Push notification to the user
+    notify_user(request.user_id, %{
+      type: "permission_request",
+      title: "Claude Code: #{request.tool_name}",
+      body: format_tool_summary(request.tool_name, request.tool_input),
+      url: permission_url(request)
+    })
+
+    broadcast_notifications_changed(request.user_id)
+  end
+
+  @doc "Create one pending tap-out per agent/task intent, blocking linked work atomically."
+  def request_agent_tap_out(scope, agent_id, task_id, reason \\ nil) do
     result =
-      %PermissionRequest{}
-      |> PermissionRequest.changeset(attrs)
-      |> Repo.insert()
+      Repo.transaction(fn ->
+        owner =
+          Repo.one(
+            from agent in CodeMySpec.Agents.Agent,
+              where:
+                agent.id == ^agent_id and agent.account_id == ^scope.active_account_id and
+                  agent.project_id == ^scope.active_project_id,
+              lock: "FOR UPDATE"
+          )
 
-    case result do
-      {:ok, request} ->
-        # Send Web Push notification to the user
-        notify_user(user_id, %{
-          type: "permission_request",
-          title: "Claude Code: #{request.tool_name}",
-          body: format_tool_summary(request.tool_name, request.tool_input),
-          url: permission_url(request)
-        })
+        if is_nil(owner), do: Repo.rollback(:owner_not_found)
 
-        broadcast_notifications_changed(user_id)
+        case pending_tap_out(agent_id, task_id) do
+          nil ->
+            with {:ok, task} <- question_task(owner, task_id),
+                 {:ok, request} <-
+                   insert_permission_request(scope.user.id, %{
+                     "agent_id" => agent_id,
+                     "task_id" => task_id,
+                     "tool_name" => "tap_out",
+                     "tool_input" => %{"task_id" => task_id, "reason" => reason}
+                   }),
+                 :ok <- block_tap_out_task(scope, owner, task, request, reason) do
+              {request, true}
+            else
+              {:error, error} -> Repo.rollback(error)
+            end
 
-        {:ok, request}
+          existing ->
+            {existing, false}
+        end
+      end)
 
-      error ->
-        error
+    with {:ok, {request, created?}} <- result do
+      if created?, do: deliver_permission(request)
+      {:ok, request}
+    end
+  end
+
+  defp pending_tap_out(agent_id, task_id) do
+    query =
+      from p in PermissionRequest,
+        where: p.agent_id == ^agent_id and p.tool_name == "tap_out" and p.status == "pending"
+
+    query =
+      if is_nil(task_id),
+        do: where(query, [p], is_nil(p.task_id)),
+        else: where(query, [p], p.task_id == ^task_id)
+
+    Repo.one(query)
+  end
+
+  defp block_tap_out_task(_scope, _owner, nil, _request, _reason), do: :ok
+
+  defp block_tap_out_task(scope, owner, task, request, reason) do
+    case TaskOwner.block_task(scope, owner, task.id, :tap_out, request.id, reason: reason) do
+      {:ok, _owner} -> :ok
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -281,6 +348,9 @@ defmodule CodeMySpec.Notifications do
     case Repo.get(PermissionRequest, id) do
       nil ->
         {:error, :not_found}
+
+      %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
+        resolve_agent_tap_out(id, decision)
 
       %{status: "pending"} = request ->
         request
@@ -310,6 +380,77 @@ defmodule CodeMySpec.Notifications do
         {:error, {:already_resolved, status}}
     end
   end
+
+  defp resolve_agent_tap_out(id, decision) do
+    result =
+      Repo.transaction(fn ->
+        request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
+
+        case request do
+          %{status: "pending"} ->
+            with {:ok, updated} <-
+                   request
+                   |> PermissionRequest.changeset(%{
+                     status: decision_to_status(decision),
+                     decision: decision
+                   })
+                   |> Repo.update(),
+                 :ok <- apply_tap_out_decision(updated) do
+              updated
+            else
+              {:error, reason} -> Repo.rollback(reason)
+            end
+
+          nil ->
+            Repo.rollback(:not_found)
+
+          %{status: status} ->
+            Repo.rollback({:already_resolved, status})
+        end
+      end)
+
+    with {:ok, updated} <- result do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        "permission_request:#{id}",
+        {:permission_decided, %{id: id, decision: decision}}
+      )
+
+      broadcast_notifications_changed(updated.user_id)
+      {:ok, updated}
+    end
+  end
+
+  defp apply_tap_out_decision(request) do
+    owner =
+      Repo.one(
+        from a in CodeMySpec.Agents.Agent, where: a.id == ^request.agent_id, lock: "FOR UPDATE"
+      )
+
+    case owner do
+      nil ->
+        :ok
+
+      owner ->
+        scope = %Scope{active_account_id: owner.account_id, active_project_id: owner.project_id}
+
+        case update_tap_out_owner(scope, owner, request) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp update_tap_out_owner(_scope, owner, %{task_id: nil, decision: "allow"}),
+    do: owner |> Ecto.Changeset.change(continuous: false) |> Repo.update()
+
+  defp update_tap_out_owner(_scope, owner, %{task_id: nil}), do: {:ok, owner}
+
+  defp update_tap_out_owner(scope, owner, %{decision: "allow"} = request),
+    do: TaskOwner.cancel_blocked_task(scope, owner, request.task_id, request.id)
+
+  defp update_tap_out_owner(scope, owner, request),
+    do: TaskOwner.release_block(scope, owner, request.task_id, request.id)
 
   @doc """
   Clear a pending permission request without a decision.
@@ -395,46 +536,11 @@ defmodule CodeMySpec.Notifications do
   # and an agent that asked to leave and heard nothing has no way to tell a
   # refusal from a decision nobody has made yet.
   defp deliver_decision_to_agent(%{agent_id: nil}), do: :ok
+  defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
-    # An approved tap-out ends the loop, and saying so is not ending it. The
-    # message told the agent "the loop is done" while `continuous` stayed set,
-    # so the next stop woke it again — permission to leave, followed by being
-    # asked to carry on.
-    #
-    # Before the message, so the agent cannot be woken between the two.
-    if tap_out_approved?(request), do: CodeMySpec.Agents.leave_loop(agent_id)
-
     _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request))
     :ok
-  end
-
-  defp tap_out_approved?(%{tool_name: "tap_out", decision: "allow"}), do: true
-  defp tap_out_approved?(_request), do: false
-
-  defp decision_message(%{tool_name: "tap_out", decision: "allow"}) do
-    """
-    Your tap-out was approved. The loop is done — finish what is in front of you
-    and stop. Nothing will ask you to continue.
-    """
-  end
-
-  defp decision_message(%{tool_name: "tap_out", status: "expired"}) do
-    """
-    Your tap-out request expired — nobody decided it either way. Keep going.
-
-    Pick the work back up where you left it. Ask again if you are still stuck.
-    """
-  end
-
-  defp decision_message(%{tool_name: "tap_out"}) do
-    """
-    Your tap-out was declined. Keep going.
-
-    Pick the work back up where you left it. If you asked because you were stuck
-    rather than because you were finished, say what is blocking you — a second
-    identical request will be declined the same way.
-    """
   end
 
   defp decision_message(%{tool_name: tool, decision: "allow"}),
@@ -494,24 +600,80 @@ defmodule CodeMySpec.Notifications do
   `"question_request:<id>"` to await the answer.
   """
   def create_question_request(user_id, %{} = attrs) do
+    with {:ok, request} <- insert_question_request(user_id, attrs) do
+      deliver_question(request)
+      {:ok, request}
+    end
+  end
+
+  @doc "Save an agent's question and its task blocker atomically, then deliver it."
+  def create_agent_question_request(scope, agent_id, attrs, task_ref \\ :active) do
+    result =
+      Repo.transaction(fn ->
+        owner =
+          Repo.one(
+            from agent in CodeMySpec.Agents.Agent,
+              where:
+                agent.id == ^agent_id and agent.account_id == ^scope.active_account_id and
+                  agent.project_id == ^scope.active_project_id,
+              lock: "FOR UPDATE"
+          )
+
+        with {:ok, task} <- question_task(owner, task_ref),
+             attrs = Map.merge(attrs, %{"agent_id" => agent_id, "task_id" => task && task.id}),
+             {:ok, request} <- insert_question_request(scope.user.id, attrs),
+             :ok <- block_question_task(scope, owner, task, request) do
+          request
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, request} <- result do
+      deliver_question(request)
+      {:ok, request}
+    end
+  end
+
+  defp question_task(nil, _task_ref), do: {:error, :owner_not_found}
+  defp question_task(_owner, nil), do: {:ok, nil}
+  defp question_task(owner, :active), do: {:ok, TaskOwner.active_task(owner)}
+
+  defp question_task(owner, id) do
+    case TaskOwner.find_task(owner, id) do
+      %{status: :active} = task -> {:ok, task}
+      nil -> {:error, :task_not_found}
+      _ -> {:error, :task_not_active}
+    end
+  end
+
+  defp block_question_task(_scope, _owner, nil, _request), do: :ok
+
+  defp block_question_task(scope, owner, task, request) do
+    case TaskOwner.block_task(scope, owner, task.id, :question, request.id) do
+      {:ok, _owner} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_question_request(user_id, attrs) do
     attrs =
       attrs
       |> Map.merge(%{"user_id" => user_id, "status" => "pending"})
       |> put_anchor()
 
-    with {:ok, request} <-
-           %QuestionRequest{} |> QuestionRequest.changeset(attrs) |> Repo.insert() do
-      notify_user(user_id, %{
-        type: "question_request",
-        title: request.title || "Claude Code has a question",
-        body: first_question_text(request.questions),
-        url: question_url(request)
-      })
+    %QuestionRequest{} |> QuestionRequest.changeset(attrs) |> Repo.insert()
+  end
 
-      broadcast_notifications_changed(user_id)
+  defp deliver_question(request) do
+    notify_user(request.user_id, %{
+      type: "question_request",
+      title: request.title || "Claude Code has a question",
+      body: first_question_text(request.questions),
+      url: question_url(request)
+    })
 
-      {:ok, request}
-    end
+    broadcast_notifications_changed(request.user_id)
   end
 
   @doc """
@@ -541,7 +703,123 @@ defmodule CodeMySpec.Notifications do
   def answer_question_request(id, %{} = answers, opts \\ []) do
     answered_by = Keyword.get(opts, :answered_by, "user")
 
-    case Repo.get(QuestionRequest, id) do
+    with :ok <- refuse_empty(answers) do
+      settle_and_broadcast(id, answers, answered_by)
+    end
+  end
+
+  # An answer that says nothing is not an answer, and as an override it is
+  # destructive.
+  #
+  # Found by QA on story 1009, 2026-09-20: type a correction into the
+  # "Other..." box without also clicking its radio, press Send, and the page
+  # says "Answer sent" while `answers` is overwritten with `""`, `overruled`
+  # becomes true, and a correct, record-backed main-agent answer stops being
+  # the current value. Recoverable from `answer_history`, but every reader
+  # treats the value as current — `check_answer` handed the asking agent "The
+  # user replied, overruling the main agent's earlier answer:" followed by
+  # nothing.
+  #
+  # Refused here rather than in the form, because the form is one of three
+  # ways in — `QuestionLive`, the conversation page and `QuestionController`
+  # all reach this, and a guard each caller has to remember is one the next
+  # route will not.
+  #
+  # Only when *every* answer is blank. One unanswered question beside an
+  # answered one is a partial reply, which is a person's to give.
+  defp refuse_empty(answers) do
+    if Enum.any?(answers, fn {_question, answer} -> answered?(answer) end) do
+      :ok
+    else
+      {:error, :empty_answer}
+    end
+  end
+
+  defp answered?(answer) when is_list(answer), do: Enum.any?(answer, &answered?/1)
+  defp answered?(answer) when is_binary(answer), do: String.trim(answer) != ""
+  defp answered?(nil), do: false
+  defp answered?(_answer), do: true
+
+  defp settle_and_broadcast(id, answers, answered_by) do
+    result =
+      Repo.transaction(fn ->
+        request = Repo.one(from q in QuestionRequest, where: q.id == ^id, lock: "FOR UPDATE")
+
+        case settle_answer(request, answers, answered_by) do
+          {:ok, settled} -> settled
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, {updated, released?}} <- result do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        "question_request:#{updated.id}",
+        {:question_answered, %{id: updated.id, answers: answers}}
+      )
+
+      broadcast_notifications_changed(updated.user_id)
+      deliver_answer_content(updated, released?)
+      {:ok, updated}
+    end
+  end
+
+  # The answer as content, for an agent that is in the middle of a turn.
+  #
+  # Criterion 3577: a turn in flight is a conversation, and an answer that
+  # lands during one belongs in it — queued behind the turn, never interrupting
+  # it. 3219 is the other side and the reason for the guard: content pushed at
+  # an idle machine *starts* a turn, and a durable question exists so that an
+  # agent which stopped can collect its answer when it comes back rather than
+  # be woken by it.
+  #
+  # Outside the transaction on purpose. `send_to_agent/2` dispatches to the
+  # process holding the working copy, and doing that while still holding the
+  # question's row lock is the shape of the failure John hit — a form
+  # submission waiting out an agent's whole reply.
+  defp deliver_answer_content(_request, false), do: :ok
+
+  defp deliver_answer_content(request, true) do
+    case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
+      %{turn_started_at: %DateTime{}} = agent ->
+        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request))
+        :ok
+
+      _idle_or_gone ->
+        :ok
+    end
+  end
+
+  # What the agent reads mid-turn. Self-contained, because it is arriving in
+  # the middle of something else: a reply without its question is a line of
+  # dialogue with no idea what it answers.
+  defp answer_message(%{questions: questions, answers: answers}) do
+    body =
+      Enum.map_join(questions, "\n\n", fn question ->
+        text = MapAccess.get(question, :question)
+        "Q: #{text}\nA: #{said(answers, text)}"
+      end)
+
+    """
+    The user answered your question.
+
+    #{body}
+
+    This does not resume the task it blocked. Pick that back up deliberately
+    with `start_task` when you are ready for it.
+    """
+  end
+
+  defp said(answers, text) do
+    case answers[text] || answers[to_string(text)] do
+      nil -> "(no answer recorded)"
+      list when is_list(list) -> Enum.join(list, ", ")
+      value -> to_string(value)
+    end
+  end
+
+  defp settle_answer(request, answers, answered_by) do
+    case request do
       nil ->
         {:error, :not_found}
 
@@ -556,80 +834,93 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
+  # Only a committed answer revision reaches this path. Repeated submissions
+  # are refused under the question row lock and cannot enqueue the same answer
+  # again. A user override is a new revision and must carry its corrected text.
+  # An answer is not a delivery.
+  #
+  # This used to `send_to_agent/2` the answer text the moment it was saved,
+  # which made the machine busy and queued content for an agent that had asked
+  # to be left alone. The plan retiring `wake` lists exactly this under what
+  # goes: "task-control `send_to_agent` deliveries".
+  #
+  # Attribution lives on the saved question — `check_answer` reads who answered,
+  # and reads it repeatedly — so nothing about knowing the answer depends on a
+  # message arriving. Criterion 3219 states it as the claim: the originating
+  # agent reads both answers twice while its conversation stays byte-identical
+  # and its engine never takes a turn. 1047 and 1059 assert the same shape for
+  # recovery checks and empty turn boundaries.
+  #
+  # What still happens on answer: the blocker is resolved (`finish/4`), the
+  # question topic is broadcast for anyone waiting, and the next turn is where
+  # the agent meets the resolved blocker and decides to resume or cancel.
+
   defp finish(request, answers, answered_by, overruled) do
-    request
-    |> QuestionRequest.changeset(%{
-      status: "answered",
-      answers: answers,
-      answered_by: answered_by,
-      overruled: overruled
-    })
-    |> Repo.update()
-    |> case do
-      {:ok, updated} ->
-        Phoenix.PubSub.broadcast(
-          CodeMySpec.PubSub,
-          "question_request:#{updated.id}",
-          {:question_answered, %{id: updated.id, answers: answers}}
-        )
+    changeset =
+      request
+      |> QuestionRequest.changeset(%{
+        status: "answered",
+        answers: answers,
+        answered_by: answered_by,
+        overruled: overruled,
+        answer_history: history_with(request, overruled)
+      })
 
-        broadcast_notifications_changed(updated.user_id)
-        deliver_to_agent(updated)
-
-        {:ok, updated}
-
-      error ->
-        error
+    with {:ok, updated} <- Repo.update(changeset),
+         {:ok, released?} <- resolve_question_blocker(updated) do
+      {:ok, {updated, released?}}
     end
   end
 
-  # Hand the answer back to the agent that asked.
+  # The answer this one replaces, kept where the page and the audit can find it.
   #
-  # Here rather than at the three call sites — `QuestionLive`, the conversation
-  # page, and `QuestionController` — because a delivery each caller has to
-  # remember is one that will be missed by whichever route is added next, and
-  # the symptom is an agent that stopped and never woke up. There is nothing to
-  # decide per caller: the question knows who asked.
-  #
-  # Nil `agent_id` is the ordinary case for a Claude Code session, which polls
-  # with `check_answer` and has no process of ours to message.
-  #
-  # Result deliberately dropped. The answer is recorded whether or not the
-  # agent's machine is reachable, and failing the person's submission because an
-  # agent went away would lose the answer to save the notification.
-  defp deliver_to_agent(%{agent_id: nil}), do: :ok
+  # Only on an override: an ordinary first answer replaces nothing, and writing
+  # an empty revision for it would make "has a history" stop meaning "was
+  # overruled".
+  defp history_with(request, false), do: request.answer_history || []
 
-  defp deliver_to_agent(%{agent_id: agent_id} = request) do
-    _ = CodeMySpec.Agents.send_to_agent(agent_id, answer_message(request))
-    :ok
+  defp history_with(request, true) do
+    entry = %{
+      "answers" => request.answers,
+      "answered_by" => request.answered_by,
+      "at" => DateTime.to_iso8601(DateTime.utc_now())
+    }
+
+    (request.answer_history || []) ++ [entry]
   end
 
-  # What the agent is handed. Self-contained on purpose: it asked, stopped, and
-  # is being woken by this — so the question has to come back with the answer or
-  # the agent is reading a reply to something it cannot see.
-  defp answer_message(%{questions: questions, answers: answers}) do
-    body =
-      Enum.map_join(questions, "\n\n", fn question ->
-        text = MapAccess.get(question, :question)
-        "Q: #{text}\nA: #{said(answers, text)}"
-      end)
+  defp resolve_question_blocker(%{agent_id: nil}), do: {:ok, false}
+  defp resolve_question_blocker(%{task_id: nil}), do: {:ok, false}
 
-    """
-    The user answered your question.
+  defp resolve_question_blocker(request) do
+    case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
+      nil ->
+        {:ok, false}
 
-    #{body}
+      owner ->
+        scope = %Scope{active_account_id: owner.account_id, active_project_id: owner.project_id}
+        held? = holds_blocker?(owner, request)
 
-    Carry on from there. If this settles what you were blocked on, finish the
-    task and close it out.
-    """
-  end
-
-  defp said(answers, text) do
-    case answers[text] || answers[to_string(text)] do
-      nil -> "(no answer recorded)"
-      list when is_list(list) -> Enum.join(list, ", ")
-      value -> to_string(value)
+        case TaskOwner.release_block(scope, owner, request.task_id, request.id) do
+          {:ok, _owner} -> {:ok, held?}
+          {:error, reason} -> {:error, reason}
+        end
     end
+  end
+
+  # Whether this answer is the one the task is actually waiting on.
+  #
+  # `release_block/4` answers `{:ok, owner}` either way — correctly, since an
+  # answer arriving for a blocker that has moved on is not an error. But it
+  # leaves the caller unable to tell the two apart, and they mean opposite
+  # things to the agent: 3220 overrides an answer whose task was resumed and
+  # then blocked again by a different question, and nothing about the work in
+  # front of the agent changed.
+  defp holds_blocker?(owner, request) do
+    match?(
+      %{status: :blocked, blocker_resolved_at: nil, blocker_id: id} when id == request.id,
+      TaskOwner.find_task(owner, request.task_id)
+    )
   end
 
   # Where tapping the notification lands you.
@@ -847,6 +1138,15 @@ defmodule CodeMySpec.Notifications do
 
   defp resolve_answer("__other__", other), do: other || ""
   defp resolve_answer(choice, _other) when is_binary(choice), do: choice
+
+  # No option chosen, but something typed in "Other..." — which is a choice.
+  #
+  # There is no competing signal to weigh: a radio that *was* checked matches
+  # the clause above and wins, so this only ever sees the case where the box
+  # is the only thing the person touched. Reading it as blank turned a
+  # correction into an erasure.
+  defp resolve_answer(nil, other) when is_binary(other), do: other
+
   defp resolve_answer(_choice, _other), do: ""
 
   defp first_question_text([%{"question" => q} | _]) when is_binary(q), do: q

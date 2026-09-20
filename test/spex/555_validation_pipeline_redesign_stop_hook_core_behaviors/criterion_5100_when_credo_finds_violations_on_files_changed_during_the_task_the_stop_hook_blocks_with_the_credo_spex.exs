@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
     scenario "credo finds a moduledoc issue on impl, stop blocked with credo listed" do
       given_ :synced_context_component
       given_ :credo_available
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent edits the spec and impl files during the task", context do
         # Re-write both files post-start_task so they land in the

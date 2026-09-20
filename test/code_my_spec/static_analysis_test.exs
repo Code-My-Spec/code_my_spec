@@ -86,12 +86,11 @@ defmodule CodeMySpec.StaticAnalysisTest do
       analyzers = StaticAnalysis.list_analyzers()
 
       assert is_list(analyzers)
-      assert length(analyzers) == 3
+      assert length(analyzers) == 2
 
       expected_modules = [
         CodeMySpec.StaticAnalysis.Analyzers.Credo,
-        CodeMySpec.StaticAnalysis.Analyzers.Sobelow,
-        CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
+        CodeMySpec.StaticAnalysis.Analyzers.Sobelow
       ]
 
       assert analyzers == expected_modules
@@ -119,25 +118,9 @@ defmodule CodeMySpec.StaticAnalysisTest do
       context
     end
 
-    test "executes specified analyzer and returns Problems", %{scope: scope} do
-      # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
-      assert {:ok, problems} = StaticAnalysis.run(scope, :spec_alignment)
-      assert is_list(problems)
-
-      Enum.each(problems, fn problem ->
-        assert %Problem{} = problem
-      end)
-    end
-
-    test "delegates to Runner.run/3 with options", %{scope: scope} do
-      # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
-      assert {:ok, _problems} = StaticAnalysis.run(scope, :spec_alignment, paths: ["lib"])
+    test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
+      assert {:error, "Unknown analyzer: spec_alignment"} =
+               StaticAnalysis.run(scope, :spec_alignment)
     end
 
     test "returns error when analyzer name is invalid", %{scope: scope} do

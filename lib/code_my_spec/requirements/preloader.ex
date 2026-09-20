@@ -339,6 +339,28 @@ defmodule CodeMySpec.Requirements.Preloader do
   # working copy to name. Refusing there took the requirement graph out of the
   # UI entirely and failed 86 spex.
   @doc """
+  Whose files a computation reads: the scope's own checkout, or the project's
+  default when it names none.
+
+  `files_vantage/1` below answers the default checkout for *any* scope — it
+  matches on `active_project_id` and never looks at the working copy. `load/1`
+  has always known that and chosen between them in two clauses; the narrow
+  loaders called `files_vantage/1` unconditionally and so computed every
+  checkout's verdicts from main's files.
+
+  Measured on dev, 2026-09-17: at the `devops-q` vantage the projection matched
+  main's file state on six of six components, in both directions — four
+  over-satisfied, which is an agent told the implementation exists because it
+  exists in another worktree.
+
+  Same rule `Profiles.scope_files_to_copy/2` follows, and now the only place it
+  is written down.
+  """
+  @spec files_copy(Scope.t()) :: Ecto.UUID.t() | nil
+  def files_copy(%Scope{active_working_copy_id: copy}) when is_binary(copy), do: copy
+  def files_copy(%Scope{} = scope), do: files_vantage(scope)
+
+  @doc """
   Which checkout's files a reader that named none is shown.
 
   Public for `Requirements.Profiles`, whose `:files` profile answers the same
@@ -348,33 +370,13 @@ defmodule CodeMySpec.Requirements.Preloader do
   worktree. That is the over-satisfaction direction this function was written
   to close.
 
-  Two fields mean "main" and the application writes only one.
-  `WorkingCopies.designate_main/2` — the button on the working-copies page —
-  sets `working_copy.main`. `Projection.vantage/1` reads
-  `project.default_working_copy_id`, which nothing in `lib/` writes at all.
-  Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had
-  the other field set.
-
-  So the explicit setting wins where somebody made one, and designating a
-  main copy means something here where nobody did. `nil` — a project with no
-  checkout at all — still blends, because there is nothing to blend down to
-  and "this project has no requirements" would be a worse answer.
+  `WorkingCopies.reading_copy_id/1` is where the rule lives and why. It moved
+  there because `Files` has to follow it too and cannot depend on
+  `Requirements` — and had its own copy, which disagreed: see
+  `Files.component_ids_present/1`.
   """
   @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
-  def files_vantage(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    Repo.one(
-      from p in CodeMySpec.Projects.Project,
-        where: p.id == ^project_id,
-        select: p.default_working_copy_id
-    ) ||
-      Repo.one(
-        from w in CodeMySpec.WorkingCopies.WorkingCopy,
-          where: w.project_id == ^project_id and w.main,
-          select: w.id
-      )
-  end
-
-  def files_vantage(%Scope{}), do: nil
+  def files_vantage(%Scope{} = scope), do: CodeMySpec.WorkingCopies.reading_copy_id(scope)
 
   defp scope_to_harness(query, nil), do: query
 
@@ -445,7 +447,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.story_id == ^story.id)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     analysis_fresh
@@ -506,7 +508,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.project_id == ^project_id)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     ctx =
@@ -574,7 +576,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     files =
       File
       |> where([f], f.component_id in ^ids)
-      |> scope_to_harness(files_vantage(scope))
+      |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
     analysis_fresh
@@ -833,6 +835,20 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   # `qa_attempts` hangs off stories, not the project, so it cannot use `stamps/2`.
   # Read by `Qa.complete_check`, which backs `qa_complete`.
+  #
+  # Invalidations are hashed beside the attempts, and they have to be. An
+  # invalidation writes its own row in `qa_invalidations` and leaves the
+  # attempt "preserved unchanged" — deliberately, since the attempt is the
+  # audit record — so nothing about `{a.id, a.updated_at}` moves when a pass is
+  # rejected. The fingerprint stays identical, the cached graph is served, and
+  # `qa_complete` goes on reporting a pass that an engineer has explicitly
+  # thrown out.
+  #
+  # Measured 2026-09-20: nine passes across seven stories were invalidated and
+  # every one of their `qa_complete` rows still read satisfied afterwards, with
+  # nothing able to change its mind — the fourth time a gate reading a table
+  # nothing else touches has been invisible to the cache, after deploys,
+  # unready stories and `working_copies`.
   defp qa_attempt_stamps(project_id) do
     Repo.all(
       from(a in "qa_attempts",
@@ -841,6 +857,20 @@ defmodule CodeMySpec.Requirements.Preloader do
         where: s.project_id == type(^project_id, :binary_id),
         select: {a.id, a.updated_at},
         order_by: a.id
+      )
+    ) ++ qa_invalidation_stamps(project_id)
+  end
+
+  defp qa_invalidation_stamps(project_id) do
+    Repo.all(
+      from(i in "qa_invalidations",
+        join: a in "qa_attempts",
+        on: a.id == i.qa_attempt_id,
+        join: s in "stories",
+        on: s.id == a.story_id,
+        where: s.project_id == type(^project_id, :binary_id),
+        select: {i.id, i.qa_attempt_id},
+        order_by: i.id
       )
     )
   end

@@ -16,8 +16,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Agents
-
   require Logger
 
   alias CodeMySpec.Agents
@@ -110,7 +108,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       case result do
         {:ok, :valid} ->
           {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :completed)
-          clear_feedback(scope, owner)
+          clear_feedback(scope, owner, task.id)
 
           Logger.info(
             "[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed"
@@ -120,7 +118,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
         {:ok, :valid, info} ->
           {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :completed)
-          clear_feedback(scope, owner)
+          clear_feedback(scope, owner, task.id)
 
           Logger.info(
             "[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed"
@@ -141,11 +139,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
           {:reply, TasksMapper.evaluate_skipped_response(task, why), frame}
 
         {:ok, :invalid, feedback} ->
-          # R8: hash the feedback and bump (or reset) the session-level
-          # repeat counter so the stop hook can detect a stuck loop —
-          # this surface (manual evaluate) and TaskEvaluator (auto stop
-          # hook) share the same session-scoped counter.
-          record_feedback(scope, owner, feedback)
+          record_feedback(scope, owner, task.id, feedback)
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")
           {:reply, TasksMapper.evaluate_needs_work_response(task, feedback), frame}
 
@@ -168,19 +162,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
   end
 
-  # R8's repeat counter lives on the session, and an agent we run has its own —
-  # `StopDecision` keys it on the agent, because "the session was never the
-  # right identity for who was told". So these are session-shaped by design
-  # rather than by omission, and an agent owner is a no-op here.
-  defp record_feedback(scope, %Session{} = session, feedback),
+  defp record_feedback(scope, %Session{} = session, _task_id, feedback),
     do: Sessions.record_eval_feedback(scope, session, feedback)
 
-  defp record_feedback(_scope, _owner, _feedback), do: :ok
+  defp record_feedback(scope, owner, task_id, feedback),
+    do: TaskOwner.record_task_feedback(scope, owner, task_id, feedback)
 
-  defp clear_feedback(scope, %Session{} = session),
+  defp clear_feedback(scope, %Session{} = session, _task_id),
     do: Sessions.clear_eval_feedback(scope, session)
 
-  defp clear_feedback(_scope, _owner), do: :ok
+  defp clear_feedback(scope, owner, task_id),
+    do: TaskOwner.clear_task_feedback(scope, owner, task_id)
 
   defp type_name(module) do
     module |> Atom.to_string() |> String.split(".") |> List.last()

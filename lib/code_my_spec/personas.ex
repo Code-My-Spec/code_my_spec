@@ -51,7 +51,7 @@ defmodule CodeMySpec.Personas do
     key = scope.active_project_id
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
 
-    GraphInputs.announce(scope, "Personas", graph_entities(message))
+    GraphInputs.announce(scope, "Personas", graph_entities(message), :project_wide)
   end
 
   # `:project` on everything, because `personas_complete` is a project

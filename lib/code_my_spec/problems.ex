@@ -128,7 +128,9 @@ defmodule CodeMySpec.Problems do
     # The event as well as the marks. `tests_passing` is settled from the
     # problem counts directly — 13 definitions — and the entities beside it are
     # the fallback for anything without a handler.
-    GraphInputs.event(scope, "Problems", "problems_changed", %{}, entities)
+    # Findings come from an analyzer run on one tree, so they are that
+    # checkout's problems.
+    GraphInputs.event(scope, "Problems", "problems_changed", %{}, entities, :this_checkout)
     result
   end
 

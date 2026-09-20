@@ -26,24 +26,24 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Story-linked contexts sort before orphan contexts" do
     scenario "the orchestration group scopes to the story-linked context, not the orphan" do
       given_ "two contexts synced via the real /sync pipeline", context do
         env = context.environment
 
-        Enum.each(["LinkedContext", "OrphanContext"], fn module ->
+        Enum.each([{"LinkedContext", "context"}, {"OrphanContext", "service"}], fn {module, type} ->
           :ok =
             Environments.write_file(
               env,
               Content.spec_path(module),
-              Content.context_spec(module, type: "context", dependencies: [])
-            )
-
-          :ok =
-            Environments.write_file(
-              env,
-              Content.impl_path(module),
-              Content.impl_file(module)
+              Content.context_spec(module,
+                type: type,
+                dependencies: []
+              )
             )
         end)
 
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
 
       and_ "a story is linked to LinkedContext (with explicit priority 1)", context do
         story =
-          StoryHelpers.create_and_link(context.scope, "LinkedContext",
+          StoryHelpers.create_ready_and_link(context, "LinkedContext",
             title: "Linked context work",
             description: "As an engineer, I want the linked context to take precedence.",
             acceptance_criteria: ["LinkedContext receives the next dispatch"],

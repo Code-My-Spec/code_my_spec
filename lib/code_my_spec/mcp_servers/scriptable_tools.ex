@@ -111,6 +111,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop)
+  component(CodeMySpec.McpServers.Stories.Tools.SetActiveStory)
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
@@ -136,7 +137,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
-  component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
 
   # The main agent's view across its working copies, and the one act it can
@@ -148,6 +148,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
+  component(CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
   component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)
   component(CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification)

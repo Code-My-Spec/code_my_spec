@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
   spex "An interactive agent is not told to quit a loop it is not in" do
     scenario "continuous mode is off and the stop is refused on problems" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding", context do
         # No `start_continuous_mode` here, and that absence is the scenario.

@@ -38,6 +38,12 @@ defmodule CodeMySpecWeb.Application do
         # table and nothing else; only `/dev/faults` ever writes to it, and that
         # route is compile-time absent from the release.
         CodeMySpec.Faults,
+        # Holds what the last graph drain cost, per project, so a reader can ask
+        # rather than grep a log. Same shape as `Faults` above: a process that
+        # owns one ETS table. The numbers are already emitted as telemetry; this
+        # is only the most recent one, kept where the graph endpoint can reach
+        # it.
+        CodeMySpec.Requirements.DrainCost,
         # Guided intake conversations, one process per plan. The conversation
         # owns the flow so a LiveView can come and go without taking it — every
         # bug in that feature has been a variation on the socket holding state

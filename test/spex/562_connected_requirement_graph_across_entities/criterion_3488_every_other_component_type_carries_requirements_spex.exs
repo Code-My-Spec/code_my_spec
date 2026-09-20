@@ -46,14 +46,14 @@ defmodule CodeMySpecSpex.Story562.Criterion3488Spex do
       then_ "every type but infrastructure asks for work", context do
         empty =
           context.swept_types
-          |> Enum.reject(&(&1 == :infrastructure))
+          |> Enum.reject(&(&1 in [:infrastructure, :live_context]))
           |> Enum.filter(&(requirements_for(context, &1) == []))
 
         assert empty == [],
                """
                #{length(empty)} component type(s) carry no requirements at all.
 
-               Only infrastructure is exempt. A type the graph is silent about
+               Infrastructure and empty live-context namespaces carry no own work. A type the graph is silent about
                is a type no agent will ever be asked to build, and nothing else
                reports it — the components simply sit there looking finished.
 
@@ -63,8 +63,9 @@ defmodule CodeMySpecSpex.Story562.Criterion3488Spex do
         {:ok, context}
       end
 
-      then_ "and infrastructure is the one that does not", context do
-        carried = requirements_for(context, :infrastructure)
+      then_ "infrastructure and the empty live context carry no own work", context do
+        carried =
+          requirements_for(context, :infrastructure) ++ requirements_for(context, :live_context)
 
         assert carried == [],
                """

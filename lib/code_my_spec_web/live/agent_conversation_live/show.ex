@@ -220,6 +220,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:emptiness, emptiness(conversation, messages))
     |> assign(:questions, questions_for(conversation))
     |> assign(:permissions, permissions_for(conversation))
+    |> assign(:analysis_running_since, analysis_running_since(scope, conversation))
     |> assign(:analysis_running, running_analysis(scope, conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
@@ -835,51 +836,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # What actually happened when the switch was flipped on, since "the flag
-  # changed" and "the agent heard about it" are different claims and a
-  # silent success reads as a broken button either way it fails.
-  #
-  # `:woke` still needs its own check: `StopDecision.wake/2` goes silent —
-  # by design — for an agent with a pending question or tap-out request.
-  # That guard exists for `wake_project_roles/2`'s automatic, project-wide
-  # fan-out, where nagging an agent mid-decision is the bug it fixed; here
-  # it is a person explicitly pressing play, and the same silence reads as
-  # the button doing nothing. John: "when I hit play now, it doesn't
-  # deliver the message... is that being blocked now?" — it was, with no
-  # way to tell from the page.
-  defp flash_for_continuous_outcome(socket, %Agent{} = agent, :woke) do
-    if Notifications.awaiting_answer?(agent.id) do
-      put_flash(
-        socket,
-        :info,
-        "Switched on, but this agent has a pending question or tap-out request — " <>
-          "nothing was sent until that is answered."
-      )
-    else
-      socket
-    end
-  end
-
-  # The case John hit: `status: :running` on a row nothing was actually
-  # holding — a shared harness restart took the process with it, and
-  # nothing had ever told the row. Naming it here is the whole point;
-  # silently restarting would read exactly like the button doing nothing,
-  # the same complaint one layer up.
-  defp flash_for_continuous_outcome(socket, %Agent{}, :restarted) do
+  # Two outcomes, because switching on is two things. An agent with eligible
+  # work takes a turn now; one with none sits exactly as it did, and a flash
+  # that cannot tell them apart leaves the operator asking the question the
+  # button was meant to answer.
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_and_turn_requested) do
     put_flash(
       socket,
       :info,
-      "This agent's process wasn't actually running anymore — restarted it. " <>
-        "Same conversation, a fresh process."
+      "Continuous enabled, and it had work — a turn has been requested; no process was started or restarted."
     )
   end
 
-  defp flash_for_continuous_outcome(socket, %Agent{}, :restart_failed) do
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_without_work) do
     put_flash(
       socket,
-      :error,
-      "This agent's process wasn't running, and restarting it failed too. " <>
-        "Check its provider credential and try again."
+      :info,
+      "Continuous enabled. Nothing to do right now, so no turn was requested and no process was started or restarted — it will be offered one when that changes."
+    )
+  end
+
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled) do
+    put_flash(
+      socket,
+      :info,
+      "Continuous enabled. The agent will take work when runnable; no process was started or restarted."
     )
   end
 
@@ -1052,10 +1033,61 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   #
   # The conversation is about one agent, and that agent has one checkout. That
   # is the vantage the indicator is claiming, so that is the one it asks about.
+  defp analysis_running_since(scope, conversation) do
+    scope |> at_agents_copy(conversation) |> RunsRepository.running_since()
+  end
+
   defp running_analysis(scope, conversation) do
     scope
     |> at_agents_copy(conversation)
     |> RunsRepository.running_since()
+    |> sources_in_order()
+  end
+
+  # Accumulated from the events, not re-read on each one.
+  #
+  # Every transition broadcasts — `:running` when a run starts, its final status
+  # when it ends — and each event now carries the run's own `started_at` and
+  # `working_copy_id`. So "which analyzers are running here, and since when" is
+  # a map this process keeps, seeded once at mount and moved by the events that
+  # change it.
+  #
+  # It used to re-query on every event: one `running_since/1` per analysis
+  # event, per open conversation, to rediscover a column the writer had already
+  # recorded. The earlier comment argued for re-reading over "subtracting the
+  # completed source", because a sweep enqueues several and the arithmetic could
+  # disagree with the rows. That holds when the event says only that *something*
+  # finished — it does not when each event names one source and its new status,
+  # which is a transition rather than a subtraction.
+  #
+  # An event about another checkout is dropped without touching anything: the
+  # indicator claims this agent's copy, and that is the vantage it accumulates.
+  defp apply_analysis_event(socket, %{working_copy_id: copy} = payload) do
+    agents_copy =
+      socket.assigns.current_scope
+      |> at_agents_copy(socket.assigns.conversation)
+      |> Map.get(:active_working_copy_id)
+
+    if copy == agents_copy do
+      since = move(socket.assigns[:analysis_running_since] || %{}, payload)
+
+      socket
+      |> assign(:analysis_running_since, since)
+      |> assign(:analysis_running, sources_in_order(since))
+    else
+      socket
+    end
+  end
+
+  defp apply_analysis_event(socket, _payload), do: socket
+
+  defp move(since, %{status: :running, source: source, started_at: started_at}),
+    do: Map.put(since, source, started_at)
+
+  defp move(since, %{source: source}), do: Map.delete(since, source)
+
+  defp sources_in_order(since) do
+    since
     |> Enum.sort_by(fn {_source, started_at} -> started_at end, DateTime)
     |> Enum.map(fn {source, _started_at} -> to_string(source) end)
   end
@@ -1209,13 +1241,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # A run finished, so what is in flight has changed. Re-read rather than
   # subtracting the completed source: a sweep enqueues several, and the
   # arithmetic would be a second answer that can disagree with the rows.
-  def handle_info({:analysis, _payload}, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :analysis_running,
-       running_analysis(socket.assigns.current_scope, socket.assigns.conversation)
-     )}
+  def handle_info({:analysis, payload}, socket) do
+    {:noreply, apply_analysis_event(socket, payload)}
   end
 
   def handle_info({:new_message, message}, socket) do

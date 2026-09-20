@@ -23,17 +23,25 @@ defmodule CmsHarness.Agents.Tools.TapOut do
   @impl true
   def description do
     """
-    Ask to leave the autonomous loop. Use it when continuing is not worth the
-    tokens — the work left is not yours, or you have tried the same thing
-    repeatedly and it is not moving.
-
-    It returns immediately and a person decides. You are not out of the loop
-    until they approve, so keep working in the meantime.
+    Ask a person to disposition blocked work. Supply task_id to block that task;
+    approval cancels the attempt, rejection permits deliberate resumption.
+    Omit task_id or pass null to request that continuous work be turned off
+    upon approval. Unrelated work may continue while a task decision is pending.
     """
   end
 
   @impl true
   def input_schema do
-    %{type: "object", properties: %{}, required: []}
+    %{
+      type: "object",
+      properties: %{
+        task_id: %{
+          type: ["string", "null"],
+          description: "Task to block; null asks to stop continuous work."
+        },
+        reason: %{type: "string", description: "Why this work should stop."}
+      },
+      required: []
+    }
   end
 end

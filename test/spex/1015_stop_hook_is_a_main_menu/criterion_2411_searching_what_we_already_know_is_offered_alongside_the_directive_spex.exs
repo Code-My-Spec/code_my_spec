@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2411Spex do
   spex "The agent is reminded that the answer may already be written down" do
     scenario "problems are the live class and the documentation offer rides along" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "a problem is outstanding", context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())

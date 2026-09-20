@@ -11,9 +11,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.TaskOwner
 
   schema do
     field :session_id, :string, doc: "Injected by hook — do not set manually"
@@ -27,9 +28,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
     task_id = Map.get(params, :task_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- resolve_session(scope, session_id),
-         {:ok, _task} <- ensure_task(session, task_id),
-         {:ok, _updated} <- Sessions.complete_task(scope, session, task_id, :cancelled) do
+         {:ok, owner} <- resolve_owner(scope, frame.assigns[:agent_id], session_id),
+         {:ok, _task} <- ensure_task(owner, task_id),
+         {:ok, _updated} <- TaskOwner.complete_task(scope, owner, task_id, :cancelled) do
       msg = "Task `#{task_id}` cancelled."
       {:reply, Response.tool() |> Response.text(msg), frame}
     else
@@ -37,6 +38,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
         {:reply, Response.tool() |> Response.error("#{reason}"), frame}
     end
   end
+
+  defp resolve_owner(scope, agent_id, _session_id) when is_binary(agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} -> {:ok, agent}
+      {:error, _} -> {:error, "Agent not found in this project"}
+    end
+  end
+
+  defp resolve_owner(scope, _agent_id, session_id), do: resolve_session(scope, session_id)
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
@@ -56,9 +66,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
          "ask a person about. Report it with `create_issue` and carry on."}
 
   defp ensure_task(session, task_id) do
-    case Session.find_task(session, task_id) do
-      nil -> {:error, "Task not found: #{task_id}"}
-      task -> {:ok, task}
+    case TaskOwner.find_task(session, task_id) do
+      nil ->
+        {:error, "Task not found: #{task_id}"}
+
+      %{status: status} when status in [:completed, :cancelled] ->
+        {:error, "Task is already finished: #{task_id}"}
+
+      task ->
+        {:ok, task}
     end
   end
 end

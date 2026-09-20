@@ -490,7 +490,8 @@ defmodule CodeMySpec.Files.FileSync do
       "files_synced",
       %{},
       entities,
-      obs
+      obs,
+      scope.active_working_copy_id
     )
 
     GraphInputs.changed(scope, obs)
@@ -1032,7 +1033,8 @@ defmodule CodeMySpec.Files.FileSync do
   # A watcher fires on writes that change nothing (a save with no edit, a
   # touch), and announcing those would cost a preload each to discover it.
   defp announce_watched_change(_scope, false), do: :ok
-  defp announce_watched_change(scope, true), do: GraphInputs.announce(scope, "FileSync.watched")
+  defp announce_watched_change(scope, true),
+    do: GraphInputs.announce(scope, "FileSync.watched", [], :this_checkout)
 
   # Roles that have a meaningful component or story owner. Other
   # roles (hex_doc, project_knowledge, rule, architecture, etc.) are

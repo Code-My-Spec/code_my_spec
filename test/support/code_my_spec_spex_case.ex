@@ -6062,7 +6062,7 @@ defmodule CodeMySpecSpex.Case do
     # Set here rather than in seventy files. Story 671's specs are about the
     # toggles themselves and drive the configuration LiveView explicitly, so
     # they override this and keep testing what they always tested.
-    Fixtures.require_all!(updated_scope)
+    Fixtures.ensure_configuration!(updated_scope)
 
     # A project being worked is a project being watched, and that is now the
     # only thing that computes its graph. Reads stopped recomputing — they
@@ -6070,7 +6070,7 @@ defmodule CodeMySpecSpex.Case do
     # spex reads an empty graph forever, and a write that should have moved it
     # looks identical to one that did.
     #
-    # After `require_all!/1` because the configuration is a topology input and
+    # After `ensure_configuration!/1` because the configuration is a topology input and
     # the watcher computes once on arrival; started before it would compute
     # against the wrong shape and then have to redo it.
     Fixtures.watch_graph(updated_scope)

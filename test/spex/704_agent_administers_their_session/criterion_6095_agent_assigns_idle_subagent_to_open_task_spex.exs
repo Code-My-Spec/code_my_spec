@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6095Spex do
         {:reply, _resp, _frame} =
           StartTask.execute(
             %{
-              requirement_name: "spec_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id

@@ -12,8 +12,6 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
-  alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
@@ -65,24 +63,9 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     component = Components.get_component!(scope, task.component_id)
     component = ComponentRepository.get_component(scope, component.id)
 
-    review_reqs = Requirements.check_artifact_requirements(scope, component, :review)
-    satisfied_count = Enum.count(review_reqs, & &1.satisfied)
-    total = length(review_reqs)
-    unsatisfied = Enum.filter(review_reqs, &(not &1.satisfied))
-
-    Logger.info(
-      "[ContextDesignReview] evaluate #{component.module_name}: #{satisfied_count}/#{total} review requirements pass"
-    )
-
-    if Enum.empty?(unsatisfied) do
-      {:ok, :valid}
-    else
-      feedback =
-        RequirementsFormatter.format_unsatisfied(unsatisfied,
-          context: "Design review requirements not met:"
-        )
-
-      {:ok, :invalid, feedback}
+    case CodeMySpec.AgentTasks.artifact_feedback(scope, component, :review) do
+      nil -> {:ok, :valid}
+      feedback -> {:ok, :invalid, feedback}
     end
   end
 

@@ -37,6 +37,24 @@ defmodule CodeMySpec.AgentTasks do
     exports: :all
 
   @doc """
+  Validate an explicitly requested artifact without adding it to the work graph.
+
+  Optional spec, review, and test authoring commands still check their output.
+  These checks read the checkout's file projection directly.
+  """
+  def artifact_feedback(scope, component, role) do
+    key = %{spec: :spec_file, review: :review_file, test: :test_file}[role]
+    path = Map.fetch!(CodeMySpec.Utils.component_files(component, scope.active_project), key)
+
+    case CodeMySpec.Files.get_by_path(scope, path) do
+      nil -> "#{role} file missing: #{path}"
+      %{valid: false} -> "#{role} file invalid: #{path}"
+      %{valid: nil} when role != :test -> "#{role} file has not been validated: #{path}"
+      _ -> nil
+    end
+  end
+
+  @doc """
   Renders a task module's `{:error, reason}` for a human or an agent to read.
 
   Task modules return `{:error, {tag, message}}` where the message explains

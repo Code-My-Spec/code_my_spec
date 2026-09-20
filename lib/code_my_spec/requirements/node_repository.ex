@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement, Shadow}
   alias CodeMySpec.Users.Scope
 
   @replace {:replace,
@@ -331,7 +331,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
     %{components: component_ids, stories: story_ids} = visited
 
-    Node
+    Shadow.pass_target()
     |> where(
       [n],
       n.component_id in ^component_ids or n.story_id in ^story_ids or
@@ -347,7 +347,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     |> Enum.reject(&MapSet.member?(keep, &1))
     |> case do
       [] -> :ok
-      ids -> Repo.delete_all(from(n in Node, where: n.id in ^ids))
+      ids -> Shadow.pass_target() |> where([n], n.id in ^ids) |> Repo.delete_all()
     end
   end
 
@@ -384,7 +384,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     Repo.transaction(fn ->
       delete_edges_outside(node_ids, rows)
 
-      insert_every(Edge, stamp(rows),
+      insert_every(Shadow.pass_edges(), stamp(rows),
         on_conflict: :nothing,
         conflict_target: [:from_requirement_id, :to_requirement_id]
       )
@@ -467,7 +467,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     node_ids
     |> Enum.chunk_every(bind_budget())
     |> Enum.flat_map(fn ids ->
-      Edge
+      Shadow.pass_edges()
       |> where([e], e.from_requirement_id in ^ids)
       |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
       |> Repo.all()
@@ -477,7 +477,9 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     end)
     |> Enum.map(&elem(&1, 0))
     |> Enum.chunk_every(bind_budget())
-    |> Enum.each(fn ids -> Repo.delete_all(from(e in Edge, where: e.id in ^ids)) end)
+    |> Enum.each(fn ids ->
+      Shadow.pass_edges() |> where([e], e.id in ^ids) |> Repo.delete_all()
+    end)
   end
 
   # Stored as a string because the column is one. `nil` stays nil, which
@@ -510,7 +512,10 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     # Ten columns a row, so this one refuses at 6,553 nodes rather than the
     # edge table's 21,845 — the narrower limit of the two, and the one nothing
     # would have found first because edges outnumber nodes.
-    insert_every(Node, entries, on_conflict: @replace, conflict_target: conflict_target)
+    insert_every(Shadow.pass_target(), entries,
+      on_conflict: @replace,
+      conflict_target: conflict_target
+    )
   end
 
   # Only the owner column is set: `Map.put(owner_field, entity_id)` puts a
@@ -555,7 +560,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     component_ids = entity_ids(nodes, "component")
     story_ids = entity_ids(nodes, "story")
 
-    Node
+    Shadow.pass_target()
     |> where([n], n.name in ^names)
     |> where(
       [n],

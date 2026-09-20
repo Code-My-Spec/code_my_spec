@@ -39,8 +39,20 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
   separate acts.
   """
   @spec dispatched?(term(), term()) :: {boolean(), map()}
-  def dispatched?(scope, _entity) do
-    case EpicDispatch.dispatch_state(scope) do
+  def dispatched?(scope, _entity), do: scope |> EpicDispatch.dispatch_state() |> verdict()
+
+  @doc """
+  The verdict for a dispatch state the caller already worked out.
+
+  `dispatch_state/1` costs two queries — is any epic dispatched, and which ready
+  stories belong to none — and `Requirements.Handlers` has the stories in a
+  profile already. A rollup that re-queries on every drain is the thing profiles
+  replace; this keeps the wording in one place while the rows come from
+  wherever the caller got them.
+  """
+  @spec verdict(EpicDispatch.dispatch_state()) :: {boolean(), map()}
+  def verdict(state) do
+    case state do
       {:nothing_to_assign, :in_progress} ->
         {true, %{status: "Work is underway; nothing to assign while an epic is being built"}}
 

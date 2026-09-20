@@ -183,7 +183,7 @@ defmodule CodeMySpec.Analysis.ProjectServer do
            requested_by: job.requested_by
          }) do
       {:ok, run} ->
-        broadcast(state.project_id, job.source, :running, run.id)
+        broadcast(state.project_id, job.source, :running, run)
 
         entry = %{job: job, run: run, scope: scope, task: nil}
 
@@ -236,7 +236,7 @@ defmodule CodeMySpec.Analysis.ProjectServer do
 
     Enum.each(stale, fn entry ->
       Reconciler.fail(entry.run, :superseded)
-      broadcast(state.project_id, entry.job.source, :failed, entry.run.id)
+      broadcast(state.project_id, entry.job.source, :failed, entry.run)
     end)
 
     %{state | queue: keep}
@@ -268,7 +268,7 @@ defmodule CodeMySpec.Analysis.ProjectServer do
         _ -> :failed
       end
 
-    broadcast(state.project_id, job.source, status, run.id)
+    broadcast(state.project_id, job.source, status, run)
     reply_waiters(state, run.id, result)
 
     %{state | running: nil, timeout_ref: nil, waiters: Map.delete(state.waiters, run.id)}
@@ -285,11 +285,25 @@ defmodule CodeMySpec.Analysis.ProjectServer do
     |> Enum.each(&GenServer.reply(&1, result))
   end
 
-  defp broadcast(project_id, source, status, run_id) do
+  # The run's own recorded facts travel with the event.
+  #
+  # `started_at` and `working_copy_id` are columns on the row this broadcast is
+  # about, and a subscriber that wants them was querying them back — once per
+  # event, per open LiveView, to rediscover what the writer already knew.
+  # Carrying them makes "which analyzers are running here, and since when" a
+  # thing a consumer accumulates rather than re-reads.
+  defp broadcast(project_id, source, status, run) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "analysis:#{project_id}",
-      {:analysis, %{source: source, status: status, run_id: run_id}}
+      {:analysis,
+       %{
+         source: source,
+         status: status,
+         run_id: run.id,
+         started_at: run.started_at,
+         working_copy_id: run.working_copy_id
+       }}
     )
   end
 end
