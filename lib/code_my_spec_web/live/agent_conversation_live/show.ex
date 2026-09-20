@@ -836,51 +836,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # What actually happened when the switch was flipped on, since "the flag
-  # changed" and "the agent heard about it" are different claims and a
-  # silent success reads as a broken button either way it fails.
-  #
-  # `:woke` still needs its own check: `StopDecision.wake/2` goes silent —
-  # by design — for an agent with a pending question or tap-out request.
-  # That guard exists for `wake_project_roles/2`'s automatic, project-wide
-  # fan-out, where nagging an agent mid-decision is the bug it fixed; here
-  # it is a person explicitly pressing play, and the same silence reads as
-  # the button doing nothing. John: "when I hit play now, it doesn't
-  # deliver the message... is that being blocked now?" — it was, with no
-  # way to tell from the page.
-  defp flash_for_continuous_outcome(socket, %Agent{} = agent, :woke) do
-    if Notifications.awaiting_answer?(agent.id) do
-      put_flash(
-        socket,
-        :info,
-        "Switched on, but this agent has a pending question or tap-out request — " <>
-          "nothing was sent until that is answered."
-      )
-    else
-      socket
-    end
-  end
-
-  # The case John hit: `status: :running` on a row nothing was actually
-  # holding — a shared harness restart took the process with it, and
-  # nothing had ever told the row. Naming it here is the whole point;
-  # silently restarting would read exactly like the button doing nothing,
-  # the same complaint one layer up.
-  defp flash_for_continuous_outcome(socket, %Agent{}, :restarted) do
+  # Two outcomes, because switching on is two things. An agent with eligible
+  # work takes a turn now; one with none sits exactly as it did, and a flash
+  # that cannot tell them apart leaves the operator asking the question the
+  # button was meant to answer.
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_and_turn_requested) do
     put_flash(
       socket,
       :info,
-      "This agent's process wasn't actually running anymore — restarted it. " <>
-        "Same conversation, a fresh process."
+      "Continuous enabled, and it had work — a turn has been requested; no process was started or restarted."
     )
   end
 
-  defp flash_for_continuous_outcome(socket, %Agent{}, :restart_failed) do
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_without_work) do
     put_flash(
       socket,
-      :error,
-      "This agent's process wasn't running, and restarting it failed too. " <>
-        "Check its provider credential and try again."
+      :info,
+      "Continuous enabled. Nothing to do right now, so no turn was requested and no process was started or restarted — it will be offered one when that changes."
+    )
+  end
+
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled) do
+    put_flash(
+      socket,
+      :info,
+      "Continuous enabled. The agent will take work when runnable; no process was started or restarted."
     )
   end
 

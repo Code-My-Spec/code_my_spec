@@ -13,6 +13,22 @@ defmodule CmsHarness.Agents.Engine.State do
   def offer(%{turn: nil} = state, entry), do: {:start, entry, state}
   def offer(state, entry), do: {:queued, %{state | queue: state.queue ++ [entry]}}
 
+  @doc "Admit a work request only when idle; retain admitted IDs against transport replays."
+  def offer_work(state, entry) do
+    admitted = Map.get(state, :admitted_work_requests, MapSet.new())
+
+    cond do
+      MapSet.member?(admitted, entry.ref) ->
+        {:rejected, :duplicate, state}
+
+      state.turn != nil or state.queue != [] ->
+        {:rejected, :busy, state}
+
+      true ->
+        {:start, entry, Map.put(state, :admitted_work_requests, MapSet.put(admitted, entry.ref))}
+    end
+  end
+
   @spec finish(state()) :: {:idle, state()} | {:start, entry(), state()}
   def finish(%{queue: []} = state), do: {:idle, %{state | turn: nil}}
 
@@ -35,6 +51,8 @@ defmodule CmsHarness.Agents.Engine.State do
       [{pid, _}] -> if(Process.alive?(pid), do: {:ok, pid}, else: {:error, :not_running})
       _ -> {:error, :not_running}
     end
+  rescue
+    ArgumentError -> {:error, :not_running}
   end
 
   def running do
@@ -42,5 +60,7 @@ defmodule CmsHarness.Agents.Engine.State do
     |> Registry.select([{{{:agent, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
     |> Enum.filter(fn {_id, pid} -> Process.alive?(pid) end)
     |> Enum.map(fn {id, _pid} -> id end)
+  rescue
+    ArgumentError -> []
   end
 end

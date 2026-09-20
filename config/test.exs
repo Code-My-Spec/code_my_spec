@@ -171,6 +171,11 @@ config :code_my_spec, CodeMySpec.Repo,
     ),
   pool_size: System.schedulers_online() * 2
 
+# Homebrew's Unix socket avoids TCP port exhaustion during busy local runs.
+if :os.type() == {:unix, :darwin} and File.exists?("/tmp/.s.PGSQL.5432") do
+  config :code_my_spec, CodeMySpec.Repo, socket_dir: "/tmp"
+end
+
 # server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,
 # so nothing here needs a listener. It was true only for Wallaby, which is no
 # longer a dependency and whose test/e2e directory no longer exists.

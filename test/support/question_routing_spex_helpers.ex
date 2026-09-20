@@ -124,7 +124,10 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   def checkout_of(context, question_id) do
     listing = open_questions(context)
 
-    case Regex.run(~r/question: #{Regex.escape(question_id)}\n.*?\n\s*checkout: (\S+)(?: (\S+))?/s, listing) do
+    case Regex.run(
+           ~r/question: #{Regex.escape(question_id)}\n.*?\n\s*checkout: (\S+)(?: (\S+))?/s,
+           listing
+         ) do
       [_, _id, root] ->
         root
 
@@ -166,8 +169,36 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   about this call and not about a row.
   """
   @spec collect(map(), String.t()) :: String.t()
-  def collect(context, question_id),
-    do: CheckAnswer |> call(%{question_id: question_id}, context) |> response_text()
+  def collect(context, question_id) do
+    {:reply, reply, _frame} =
+      CheckAnswer.execute(%{question_id: question_id}, asker_frame(context, question_id))
+
+    response_text(reply)
+  end
+
+  # The frame the *asker* collects in, which is not the main agent's.
+  #
+  # `check_answer` refuses a question whose `agent_id` is not the caller's, and
+  # it is right to — one agent reading another's reply is the bug that check
+  # exists for. But the asking frame here is built inside `ask/3` and thrown
+  # away, so collecting through `frame/1` arrived with no `agent_id` at all,
+  # fell to the user-ownership clause, and answered `:not_found` for every
+  # question an agent had raised. Read as "the answer never came back", which
+  # is what criterion 3218 is about, so the whole story read as broken routing
+  # when the routing was fine and the collector was anonymous.
+  #
+  # The asker's identity is on the question it raised — the same value
+  # `Plugs.AgentScope` puts on the frame in production — so this reconstructs
+  # the caller rather than going round the check.
+  defp asker_frame(context, question_id) do
+    case Fixtures.asking_agent_id(question_id) do
+      agent_id when is_binary(agent_id) ->
+        %Frame{assigns: %{current_scope: context.scope, agent_id: agent_id}}
+
+      nil ->
+        frame(context)
+    end
+  end
 
   @doc "The user answers, the way the inbox form does."
   @spec user_answers(map(), String.t(), String.t()) :: :ok

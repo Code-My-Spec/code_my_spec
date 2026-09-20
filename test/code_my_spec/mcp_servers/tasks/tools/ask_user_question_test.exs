@@ -74,19 +74,26 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestionTest do
              question["options"]
   end
 
-  # A question with no options renders as a textarea, which is `send_message`.
-  # An agent that meant to offer choices should hear that it did not, rather
-  # than get a paragraph back and wonder why.
-  test "a question with no options is refused, and says what to call instead", %{scope: scope} do
+  test "one question with no options uses the free-text form", %{scope: scope} do
     {:reply, response, _} =
       AskUserQuestion.execute(
         %{questions: [%{"question" => "Thoughts?", "options" => []}]},
         frame(scope)
       )
 
+    refute response.isError
+    assert [%{"question" => "Thoughts?", "options" => []}] = latest(scope).questions
+  end
+
+  test "free-text questions must be asked individually", %{scope: scope} do
+    {:reply, response, _} =
+      AskUserQuestion.execute(
+        %{questions: [%{"question" => "Thoughts?", "options" => []}, a_question()]},
+        frame(scope)
+      )
+
     assert response.isError
-    body = Enum.map_join(response.content, "\n", &Map.get(&1, "text", ""))
-    assert body =~ "send_message"
+    assert latest(scope) == nil
   end
 
   # Four is what a person is shown at once. Refused rather than truncated:

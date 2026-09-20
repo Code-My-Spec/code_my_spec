@@ -353,6 +353,92 @@ scope = %{scope | active_working_copy_id: copy.id}
 # Deliberately no qa-role agent: "QA work waiting does not wake the coding
 # agent" needs the *work* outstanding, and an agent of that role would claim it
 # and take the premise away.
+# An attempt nobody is making any more is not an attempt.
+#
+# `runnable_state?/1` requires `is_nil(Agent.active_task(agent))`, so one task
+# left `:active` by a QA pass that ended days ago makes that agent permanently
+# un-admittable — the same shape as the `:stopped` status above, and it bit the
+# same way: the one fixture agent with genuinely eligible work carried a
+# `personas_complete` task started 2026-09-12 and never dispositioned, so the
+# turn-admission race could not be constructed against it at all.
+#
+# Cancelled rather than deleted, because `:cancelled` is what the lifecycle
+# says an abandoned attempt becomes and it keeps the row readable. Only
+# `:active` and `:blocked` are touched; a completed or failed attempt is
+# history and stays.
+stale_statuses = [:active, :blocked]
+
+cleared_tasks = fn agent ->
+  Enum.map(agent.tasks || [], fn task ->
+    if task.status in stale_statuses do
+      %{task | status: :cancelled, completed_at: DateTime.utc_now()}
+    else
+      task
+    end
+  end)
+end
+
+cleared_note = fn agent ->
+  case Enum.count(agent.tasks || [], &(&1.status in stale_statuses)) do
+    0 -> ""
+    n -> ", #{n} stale task(s) cancelled"
+  end
+end
+
+# One story routed to this checkout, because eligibility is copy-scoped.
+#
+# `Work.graph_work?/2` asks what is actionable *for this agent's working copy*,
+# and a story with no `working_copy_id` is nobody's — so a fixture with three
+# ready stories and none of them routed here has four runnable agents and
+# nothing any of them is eligible for. Issue `fde40b27` measured exactly that:
+# "zero stories with working_copy_id = 56f5bf62 at all, so there is no
+# coding-role work that could ever route there regardless of qa_setup".
+#
+# The first story only. The other two stay unrouted on purpose — "work for
+# another role or working copy does not make an agent runnable" needs work
+# that exists and is not this copy's, and routing all three would take that
+# premise away.
+routed =
+  Repo.one(
+    from s in CodeMySpec.Stories.Story,
+      where: s.project_id == ^project.id,
+      order_by: s.id,
+      limit: 1
+  )
+
+case routed do
+  nil ->
+    IO.puts("  story: none to route")
+
+  %{working_copy_id: id} when id == copy.id ->
+    IO.puts("  story: already routed #{routed.title} -> #{copy.id}")
+
+  story ->
+    {:ok, _} =
+      story |> Ecto.Changeset.change(working_copy_id: copy.id) |> Repo.update()
+
+    IO.puts("  story: routed #{story.title} -> #{copy.id}")
+end
+
+# Every agent on this checkout, not only the four this seed manages.
+#
+# `Work.held?/3` asks whether *any* agent on the copy is holding a node, and it
+# is right to — one claimant per requirement is the rule. But that means one
+# stray row left behind by an earlier QA session, stopped and not continuous
+# and not one of the four ids below, goes on withholding a requirement from the
+# canonical agent forever. Measured 2026-09-20: `personas_complete` read as
+# held by 29232a00 (stopped, continuous=false) and the fixture had no
+# unclaimed, runnable target to admit a turn against at all (`68436370`).
+for stray <-
+      Repo.all(
+        from a in CodeMySpec.Agents.Agent,
+          where: a.working_copy_id == type(^copy.id, :binary_id)
+      ),
+    Enum.any?(stray.tasks || [], &(&1.status in stale_statuses)) do
+  {:ok, _} = stray |> Ecto.Changeset.change(tasks: cleared_tasks.(stray)) |> Repo.update()
+  IO.puts("  agent: released #{stray.role} (#{stray.id}) stale claim(s)")
+end
+
 for {role, tools, wanted} <- [
       {"product", ["create_issue"], 1},
       {"coding", ["create_issue"], 2},
@@ -366,7 +452,40 @@ for {role, tools, wanted} <- [
             a.continuous == true
     )
 
-  for agent <- existing, do: IO.puts("  agent: exists #{role} (#{agent.id})")
+  # Re-asserted on every run, not only on create.
+  #
+  # `Work.runnable_state?/1` gates on `status == :running` before it evaluates
+  # eligibility at all, and `Agents.record_running_on_copy/3` reaps any row
+  # claiming to run with no live process behind it — correctly, since nothing
+  # has driven these rows since the last QA pass. So the ordinary case, a
+  # project that already exists, left all four agents `:stopped` and every one
+  # of story 1004's turn-admission criteria untestable through the fixture
+  # this seed exists to provide.
+  #
+  # The only two ways out were a direct DB write or a real `start_agent`
+  # against the connected harness — one denied to a QA session outright, the
+  # other a billed model call — so three separate QA attempts were blocked on
+  # a fixture that reported itself as freshly seeded. Refreshing the fixture
+  # has to actually refresh it (`f3157963`).
+  #
+  # `turn_started_at` and `work_request_id` go with it: a row left mid-turn or
+  # holding a reservation is not runnable either, and both are stale the
+  # moment the process behind them is gone.
+  for agent <- existing do
+    {:ok, _} =
+      agent
+      |> Ecto.Changeset.change(
+        status: :running,
+        continuous: true,
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil,
+        tasks: cleared_tasks.(agent)
+      )
+      |> Repo.update()
+
+    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running#{cleared_note.(agent)}")
+  end
 
   # Idempotent on the count rather than on presence, so re-running tops the set
   # up instead of stopping at the first one it finds.

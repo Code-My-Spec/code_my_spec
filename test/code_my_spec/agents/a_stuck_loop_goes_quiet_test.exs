@@ -117,18 +117,4 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
            "a different task id each turn is a different menu each turn — closing one " <>
              "task and picking up the next must never be silenced as though it were a repeat"
   end
-
-  test "the same blocked task stops being repeated on wake/2", ctx do
-    stuck = holding(ctx.agent, Ecto.UUID.generate())
-
-    for _ <- 1..9, do: StopDecision.wake(ctx.scope, stuck)
-
-    woken = Enum.count(drain(), &String.contains?(&1, "Work of your kind is available"))
-
-    assert woken > 0, "the agent must be woken about its open task at least once"
-
-    assert woken <= 5,
-           "nine identical project-wide wakes delivered the same menu #{woken} times; " <>
-             "wake/2 had no throttle at all before this"
-  end
 end

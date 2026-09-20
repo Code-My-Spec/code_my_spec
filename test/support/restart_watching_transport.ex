@@ -36,6 +36,9 @@ defmodule CodeMySpecTest.RestartWatchingTransport do
   def dispatch_message(_working_copy_id, _agent, _ref, _message, _timeout), do: {:ok, :queued}
 
   @impl true
+  def request_work_turn(_copy, _agent, _ref, _message, _timeout), do: {:error, :not_running}
+
+  @impl true
   def withdraw_message(_working_copy_id, _agent, _ref, _timeout), do: :ok
 
   @impl true

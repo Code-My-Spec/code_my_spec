@@ -46,6 +46,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
 
   schema "question_requests" do
     field :title, :string
+    field :task_id, :string
     field :questions, {:array, :map}, default: []
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
@@ -58,6 +59,16 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # hear that this one is not that — an earlier answer existed and was
     # overruled.
     field :overruled, :boolean, default: false
+
+    # What the overruled answers actually said. `overruled` records that an
+    # earlier answer existed; this is the earlier answer. 3220 asks the page to
+    # keep it "for audit", and the reason is diagnostic rather than clerical: a
+    # main agent that answered wrongly answered wrongly *with something*, and
+    # the wrong reading is the only evidence of how it read the records.
+    #
+    # One entry per replaced revision — `%{"answers", "answered_by", "at"}` —
+    # oldest first.
+    field :answer_history, {:array, :map}, default: []
 
     # Why the main agent could not answer it. Carried so the person reads a
     # question that arrived with a reason rather than one that simply appeared,
@@ -91,6 +102,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     |> cast(attrs, [
       :user_id,
       :agent_id,
+      :task_id,
       :conversation_message_id,
       :title,
       :questions,
@@ -99,6 +111,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :holder,
       :answered_by,
       :overruled,
+      :answer_history,
       :escalation_reason,
       :session_external_id
     ])

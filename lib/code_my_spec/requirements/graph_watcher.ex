@@ -44,12 +44,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   `{:graph_updated, project_id}` on this project's topic, for anyone who wants
   to know — the requirements LiveViews are the obvious future subscriber.
 
-  It also wakes the project's agents directly rather than through that event.
-  Waking is not an optional consumer: it is the reason this exists, and routing
-  it through a second process to subscribe to our own broadcast would put a
-  mailbox between a graph that moved and the agent that has been waiting for it.
-  `Agents.wake_project_roles/2` is already menu-gated, so a role with nothing to
-  do is not charged a turn.
+  It also asks the project's agents to be considered for a turn directly rather
+  than through that event. That is not an optional consumer: it is the reason
+  this exists, and routing it through a second process to subscribe to our own
+  broadcast would put a mailbox between a graph that moved and the agent that
+  has been waiting for it. `Agents.Work.consider_project/2` admits a turn only
+  for an agent that is continuous, idle, holding nothing and has eligible work
+  of its own role, so a role with nothing to do is not charged a turn.
   """
 
   use GenServer, restart: :transient
@@ -59,6 +60,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
@@ -600,13 +602,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   defp keys(actionable),
     do: MapSet.new(actionable, &{&1.entity_type, &1.entity_id, &1.name})
 
-  defp maybe_wake(_state, []), do: nil
+  defp maybe_request_work(_state, []), do: nil
 
-  defp maybe_wake(state, _appeared) do
+  defp maybe_request_work(state, _observations) do
     scope = state.scope
 
     case Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-           CodeMySpec.Agents.wake_project_roles(scope)
+           Work.consider_project(scope, :graph_changed)
          end) do
       {:ok, pid} -> pid
       _ -> nil
@@ -635,16 +637,17 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # is not an agent resolves to. Reads used to cover for that by rebuilding
     # their own row-space on the way past; they no longer do, so the write path
     # has to maintain all of them.
-    # Flattened, so waking asks "did any vantage produce work" rather than
-    # "did mine". `wake_project_roles/2` is menu-gated, so a role with nothing
-    # to do is not charged a turn — over-waking costs a rendered menu and
-    # under-waking is the ninety minutes of silence this exists to end.
+    # Flattened, so admission asks "did any vantage produce work" rather than
+    # "did mine". `Work.consider_project/2` is guarded on eligibility, so a role
+    # with nothing to do is not charged a turn — asking too often costs a query
+    # and asking too rarely is the ninety minutes of silence this exists to end.
     computed = vantages(state)
 
     # Measured here rather than around the whole clause, because the clause also
-    # broadcasts, wakes agents and reports the shadow — work this pass does
-    # *because* the graph moved, not work the graph cost. A number that included
-    # waking would grow with the number of agents connected and say nothing
+    # broadcasts, considers agents for a turn and reports the shadow — work this
+    # pass does *because* the graph moved, not work the graph cost. A number
+    # that included admission would grow with the number of agents connected and
+    # say nothing
     # about the project's size.
     actionable =
       DrainCost.measure(
@@ -688,7 +691,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # own recompute would be calling itself, and the agent that had been waiting
     # would be waiting on a deadlock.
     {now_actionable, appeared} = newly_actionable(actionable, state.last_actionable)
-    waking = maybe_wake(state, consumed)
+    waking = maybe_request_work(state, consumed)
 
     {:ok,
      %{
@@ -715,7 +718,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   #
   # `3ad5e45c` closed a day of looking with "every remaining path either
   # succeeds or means the project is gone" — `Preloader.load/1` is `Repo.all`,
-  # the file side channel is gone, and `wake_project_roles/1` runs in a Task
+  # the file side channel is gone, and `Work.consider_project/2` runs in a Task
   # whose failures never reach the rescue below. The machinery criterion 3248
   # describes is real and right: a genuine fault logs at `:error` and lands on
   # `status/1` as `last_error`, which the requirements graph page renders.

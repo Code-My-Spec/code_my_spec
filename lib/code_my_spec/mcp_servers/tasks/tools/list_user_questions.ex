@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   @moduledoc """
-  Every question you have asked the user in this session, oldest first.
+  Your unanswered questions, oldest first, with their linked task IDs.
 
   The agent's own view of what it is waiting on. `ask_user` returns an id and
   `check_answer` collects one reply, which works while the agent remembers what
@@ -12,17 +12,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
 
   ## Scope
 
-  This session, resolved from the working copy — the agent's scope carries a
-  harness and never a session id, the same asymmetry `ask_user` works around.
-
-  Session rather than harness or user, decided in story 896's Three Amigos.
-  Listing everything open for the *user* would let an agent in one worktree see,
-  and act on, a question another worktree asked — the cross-working-copy bleed
-  that had the stop hook blocking on devops spex belonging somewhere else.
-  Harness scope was the near miss: it survives a restart, which is exactly when
-  an agent has most likely forgotten. The cost of choosing session is that a
-  restarted agent stops seeing its earlier questions; they remain in the user's
-  inbox, which is where a person answers them anyway.
+  Internal callers see questions belonging to their authenticated durable
+  agent, including across restarts. External callers retain session isolation,
+  resolved from their working copy. Neither path lists another owner's questions.
 
   ## Open means unanswered, and nothing else
 
@@ -49,6 +41,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
 
@@ -56,6 +49,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   end
 
   @impl true
+  def execute(_params, %{assigns: %{agent_id: id, current_scope: scope}} = frame)
+      when is_binary(id) do
+    case Agents.fetch_agent(scope, id) do
+      {:ok, _agent} ->
+        questions =
+          id
+          |> Notifications.list_question_requests_for_agent()
+          |> Enum.filter(&(&1.status == "pending"))
+
+        {:reply, Response.tool() |> Response.text(render(questions)), frame}
+
+      {:error, _reason} ->
+        {:reply, Response.tool() |> Response.error("Agent not found in this project."), frame}
+    end
+  end
+
   def execute(_params, frame) do
     scope = frame.assigns[:current_scope]
 
@@ -88,7 +97,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
         n -> "#{n} open questions, waiting on the user:"
       end
 
-    body = Enum.map_join(questions, "\n", &"  - #{text(&1)}\n    id: #{&1.id}")
+    body = Enum.map_join(questions, "\n", &"  - #{text(&1)}\n    id: #{&1.id}#{task_link(&1)}")
 
     header <>
       "\n" <>
@@ -96,6 +105,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
       "\n\nCall `check_answer` with an id to collect a reply once it lands. " <>
       "Do not re-ask any of these — that queues a duplicate for the user."
   end
+
+  defp task_link(%{task_id: id}) when is_binary(id), do: "\n    task: #{id}"
+  defp task_link(_question), do: ""
 
   # The question as the user saw it. `questions` is the tool's array verbatim,
   # and a free-form `ask_user` puts exactly one entry in it.

@@ -2,15 +2,22 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
   @moduledoc """
   The other half of `ask_user` for an agent we run.
 
-  `check_answer` polls, which suits a Claude Code session that keeps running
-  regardless. It cannot suit an agent that stops: a stopped agent has nothing to
-  poll with, and holding one open to poll spends a turn per check on a person
-  who has not started typing.
+  An agent that asks is allowed to stop, and what it comes back to is the
+  *saved question* — its answer, who wrote it, and whether that answer replaced
+  an earlier one. Nothing is pushed at it.
 
-  So an agent that asks is allowed to stop, and the answer is dispatched to it
-  when it lands. Both halves are tested here, because either one alone is a
-  silent hang — allowed to stop with no delivery is an agent that never wakes,
-  and delivery without the allowance is the hammering it was meant to end.
+  It used to be pushed. `answer_question_request/3` dispatched the answer text
+  the moment it was saved, which made the agent's machine busy and queued
+  content for an agent that had asked to be left alone — exactly what the plan
+  retiring `wake` lists under what goes ("task-control `send_to_agent`
+  deliveries"). Criterion 3219 states the replacement as a claim: the
+  originating agent reads both answers twice while its conversation stays
+  byte-identical and its engine never takes a turn.
+
+  So both halves are still tested here, and the second one has inverted. The
+  answer has to be durable enough to read repeatedly — otherwise an agent that
+  stopped never learns it — and answering must reach the agent's process not at
+  all, otherwise "allowed to stop" is a fiction.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -51,9 +58,9 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
         working_copy_id: copy.id
       })
 
-    # `record_orchestrator_action/3` writes into the agent's conversation and
-    # no-ops when there is none, so the delivery has to have one to record into
-    # — which in production it always does, opened when the agent starts.
+    # The conversation the answer must leave alone. An agent always has one in
+    # production, opened when it starts, so "nothing was written into it" is
+    # only a claim worth making against a conversation that exists.
     {:ok, conversation} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(
         scope.active_account_id,
@@ -77,8 +84,44 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
     request
   end
 
+  defp message_texts(conversation) do
+    conversation
+    |> CodeMySpec.Conversations.list_messages()
+    |> Enum.flat_map(fn m -> Enum.map(m.content || [], &Map.get(&1, "text", "")) end)
+  end
+
   describe "when the answer lands" do
-    test "it is dispatched to the agent that asked", %{scope: scope, agent: agent} do
+    test "a repeated submission is refused, while an override replaces the text", ctx do
+      request = ask(ctx.scope, ctx.agent, "Which option?")
+
+      assert {:ok, _} =
+               Notifications.answer_question_request(request.id, %{"Which option?" => "First"},
+                 answered_by: "main_agent"
+               )
+
+      assert %{status: "answered", answered_by: "main_agent", overruled: false} =
+               Notifications.get_question_request(request.id)
+
+      assert {:error, {:already_resolved, "answered"}} =
+               Notifications.answer_question_request(request.id, %{"Which option?" => "First"},
+                 answered_by: "main_agent"
+               )
+
+      # The user is the one party allowed to answer a second time, because
+      # theirs is the intent rather than a reading of the records.
+      assert {:ok, _} =
+               Notifications.answer_question_request(request.id, %{"Which option?" => "Second"})
+
+      assert %{answers: answers, answered_by: "user", overruled: true} =
+               Notifications.get_question_request(request.id)
+
+      assert answers["Which option?"] == "Second"
+
+      assert {:error, {:already_resolved, "answered"}} =
+               Notifications.answer_question_request(request.id, %{"Which option?" => "Second"})
+    end
+
+    test "it is saved against the question the agent raised", %{scope: scope, agent: agent} do
       request = ask(scope, agent, "Are open borders bilateral?")
 
       {:ok, _answered} =
@@ -86,41 +129,38 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
           "Are open borders bilateral?" => "Yes, and either side can revoke"
         })
 
-      assert_receive {:agent_dispatch, id, _ref, message}
-      assert id == agent.id
-      assert message =~ "The user answered your question"
-      assert message =~ "Are open borders bilateral?"
-      assert message =~ "Yes, and either side can revoke"
+      saved = Notifications.get_question_request(request.id)
+
+      assert saved.agent_id == agent.id
+      assert saved.answers["Are open borders bilateral?"] == "Yes, and either side can revoke"
     end
 
-    # The agent asked, stopped, and is being woken by this — so the question has
-    # to come back with the answer, or it is reading a reply to something it
+    # The agent asked and stopped, so the question has to still be on the record
+    # beside the answer — otherwise it comes back to a reply to something it
     # cannot see.
-    test "the message carries the question, not just the answer", %{scope: s, agent: agent} do
+    test "the saved question keeps its text beside the answer", %{scope: s, agent: agent} do
       request = ask(s, agent, "Which city falls first?")
 
       {:ok, _} =
         Notifications.answer_question_request(request.id, %{"Which city falls first?" => "Ravena"})
 
-      assert_receive {:agent_dispatch, _id, _ref, message}
-      assert message =~ "Q: Which city falls first?"
-      assert message =~ "A: Ravena"
+      saved = Notifications.get_question_request(request.id)
+
+      assert Enum.any?(saved.questions, &(Map.get(&1, "question") == "Which city falls first?"))
+      assert saved.answers["Which city falls first?"] == "Ravena"
     end
 
-    # A Claude Code session has no process of ours to message and polls with
-    # `check_answer`. Dispatching for it would be a message to nobody.
-    test "a question with no agent dispatches nothing", %{scope: scope} do
-      {:ok, request} =
-        Notifications.create_question_request(scope.user.id, %{
-          "title" => "Claude has a message",
-          "questions" => [
-            %{"question" => "Anyone?", "header" => nil, "multiSelect" => false, "options" => []}
-          ]
-        })
+    # Reading it is not consuming it. An agent that stopped may come back to the
+    # same question more than once — a second stop hook, a restarted machine —
+    # and each read has to say the same thing.
+    test "it can be read back more than once", %{scope: scope, agent: agent} do
+      request = ask(scope, agent, "Well?")
+      {:ok, _} = Notifications.answer_question_request(request.id, %{"Well?" => "fine"})
 
-      {:ok, _} = Notifications.answer_question_request(request.id, %{"Anyone?" => "no"})
-
-      refute_receive {:agent_dispatch, _id, _ref, _message}, 100
+      for _ <- 1..2 do
+        assert %{status: "answered", answers: %{"Well?" => "fine"}} =
+                 Notifications.get_question_request(request.id)
+      end
     end
   end
 
@@ -140,11 +180,17 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
       refute Notifications.awaiting_answer?(agent.id)
     end
 
-    # The point of the whole change. An agent with an open task is normally
-    # refused a stop — that is the task clause — and an agent waiting on a
-    # person must be exempt, or it is hammered for as long as the person takes
-    # to reply.
-    test "it is allowed to stop even holding an open task", %{scope: scope, agent: agent} do
+    # The point of the whole change, restated for task-scoped questions.
+    #
+    # An agent with an open task is normally refused a stop — that is the task
+    # clause — and an agent waiting on a person must be exempt. It used to be
+    # exempt globally: any unanswered question anywhere silenced the decision,
+    # which is what took `880c7713` out of the fleet for seven hours holding 17
+    # actionable requirements. Now the exemption is the blocker itself. Asking
+    # against the active task blocks *that task*, so there is no active task
+    # left to refuse the stop, and every other eligible thing stays available.
+    test "a task-scoped question blocks its own task rather than the agent",
+         %{scope: scope, agent: agent} do
       {:ok, agent} =
         agent
         |> Agent.add_task(%{
@@ -164,44 +210,64 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
       # Without a question, the open task refuses the stop.
       assert StopDecision.decide(scope, agent) =~ "open task"
 
-      ask(scope, agent, "Are open borders bilateral?")
+      {:ok, _request} =
+        Notifications.create_agent_question_request(scope, agent.id, %{
+          "title" => "Claude has a message",
+          "questions" => [
+            %{
+              "question" => "Are open borders bilateral?",
+              "header" => nil,
+              "multiSelect" => false,
+              "options" => []
+            }
+          ]
+        })
 
-      assert StopDecision.decide(scope, agent) == nil
+      blocked = Repo.get(Agent, agent.id)
+      assert [%{status: :blocked, blocker_type: :question}] = blocked.tasks
+
+      # `nil` is the strongest form of this: nothing to say at all. Either way
+      # what must not happen is a directive demanding disposition of a task the
+      # agent has already handed to a person.
+      decision = StopDecision.decide(scope, blocked)
+
+      refute decision && decision =~ "open task",
+             "the question blocked the task, so nothing active remains to refuse the stop"
     end
   end
 
-  # The failure John hit. `message_agent/4` is a `GenServer.call` to the process
-  # holding the working copy, and that process runs the whole turn inside the
-  # call — so delivering that way waited out the agent's entire reply, inside
-  # the form submission, and timed out. `StopDecision` had already learned this
-  # and dispatches off-process for the same reason.
+  # The failure John hit, and then the second thought about it.
+  #
+  # `message_agent/4` is a `GenServer.call` to the process holding the working
+  # copy, and that process runs the whole turn inside the call — so delivering
+  # that way waited out the agent's entire reply, inside the form submission,
+  # and timed out. Dispatching off-process fixed the timeout and left the
+  # deeper problem: an agent that asked to be left alone was made busy by its
+  # own answer arriving.
+  #
+  # Neither now. Answering writes a record and releases a blocker.
   describe "how it is delivered" do
-    test "it is dispatched, not called", %{scope: scope, agent: agent} do
+    test "it is not delivered to the agent at all", %{scope: scope, agent: agent} do
       request = ask(scope, agent, "Well?")
       {:ok, _} = Notifications.answer_question_request(request.id, %{"Well?" => "fine"})
 
-      assert_receive {:agent_dispatch, _id, ref, _message}
-      assert is_binary(ref), "a dispatch carries a ref so the turn can be tracked"
-
-      # A call would have waited for the turn. Nothing should arrive that way.
+      refute_receive {:agent_dispatch, _id, _ref, _message}, 100
       refute_receive {:agent_message, _id, _text}, 100
     end
 
-    # The only trace of the answer in the transcript, now that an answered
-    # question stops rendering its card.
-    test "the answer is recorded in the conversation", ctx do
+    # Criterion 3219 reads this off `read_agent_conversation` and requires the
+    # transcript to be byte-identical across an answer. Here it is the same
+    # claim one layer down: an answered question leaves the conversation alone,
+    # so nothing an agent reads on its next turn is an interruption it did not
+    # ask for.
+    test "it writes nothing into the agent's conversation", ctx do
+      before = message_texts(ctx.conversation)
       request = ask(ctx.scope, ctx.agent, "Which one?")
 
       {:ok, _} =
         Notifications.answer_question_request(request.id, %{"Which one?" => "the second"})
 
-      texts =
-        ctx.conversation
-        |> CodeMySpec.Conversations.list_messages()
-        |> Enum.flat_map(fn m -> Enum.map(m.content || [], &Map.get(&1, "text", "")) end)
-
-      assert Enum.any?(texts, &(&1 =~ "the second")),
-             "the answer left no trace, so nothing in the transcript says it arrived"
+      assert message_texts(ctx.conversation) == before
     end
   end
 

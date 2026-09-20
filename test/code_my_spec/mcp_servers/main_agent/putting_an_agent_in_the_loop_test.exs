@@ -66,8 +66,18 @@ defmodule CodeMySpec.McpServers.MainAgent.PuttingAnAgentInTheLoopTest do
     refute response.isError, text(response)
     said = text(response)
 
-    assert said =~ "Out of the loop",
+    # "Out of the loop" until the wake retirement, and the wording changed on
+    # purpose: `continuous` is standing intent about turns, not a process
+    # status, and loop-language conflated the two. What the claim was always
+    # about is that switching off says so plainly and says what it does not
+    # touch — the running turn, the queued content, the agent itself.
+    assert said =~ "Continuous disabled",
            "switching off has to say so plainly. Got: #{said}"
+
+    assert said =~ "No new automatic work turn will be requested"
+
+    assert said =~ "durable agent remains",
+           "switching off intent must not read as though the agent were torn down"
 
     assert Repo.get(CodeMySpec.Agents.Agent, ctx.agent.id).continuous == false,
            "the flag is the part that always lands; it did not"

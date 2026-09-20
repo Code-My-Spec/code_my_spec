@@ -780,10 +780,15 @@ defmodule CmsHarness.Agents.Engine.Impl do
       CmsHarness.Agents.Tools.SyncProject,
       CmsHarness.Agents.Tools.StartTask,
       CmsHarness.Agents.Tools.EvaluateTask,
-      # The two ways to a person. Excluded from scripts for a reason about
-      # scripts, and absent here — so every refusal that said "call `ask_user`"
-      # named a tool the agent did not have. `ask_user_question` offers the
-      # choices; `send_message` is for when the answer is genuinely prose.
+      # The fourth disposition. The open-task menu offers complete, ask, tap
+      # out and cancel; without this the last one named a tool the agent could
+      # not call.
+      CmsHarness.Agents.Tools.CancelTask,
+      # The way to a person. Excluded from scripts for a reason about scripts,
+      # and absent here — so every refusal that said "call `ask_user`" named a
+      # tool the agent did not have. `ask_user_question` is the whole surface
+      # now: `send_message` is gone, because an agent asking a person is
+      # creating a durable blocker rather than sending prose.
       # Begins a sweep and returns; the result arrives as a message.
       CmsHarness.Agents.Tools.StartAnalysis,
       # The same shape, for the other long-running thing an agent starts.
@@ -793,7 +798,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
       # governs ours, and a tool added to one is missing from half the fleet.
       CmsHarness.Agents.Tools.Promote,
       CmsHarness.Agents.Tools.AskUserQuestion,
-      CmsHarness.Agents.Tools.SendMessage,
       # The collecting half of the two tools just above. `Validation.Menu`'s
       # offer names both of these on every refusal ("`list_user_questions`
       # shows them, `check_answer` collects a reply once one lands") and

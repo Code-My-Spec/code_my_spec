@@ -71,6 +71,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
@@ -1236,11 +1237,11 @@ defmodule CodeMySpec.Agents do
         # continuous agent after boot and nothing started its cadence.
         MainAgent.ensure_cadence(scope)
 
-        # And the graph has to be worth ringing a bell about.
+        # And the graph has to hold something worth a turn.
         #
-        # `wake_roles/3` renders each role's menu from what the graph holds at
-        # that instant, and on a copy nothing has scanned there is nothing in
-        # it: `personas_complete` reads a verdict `Files.Scanner` decides at
+        # Admission asks what the graph holds for the role at that instant, and
+        # on a copy nothing has scanned there is nothing in it:
+        # `personas_complete` reads a verdict `Files.Scanner` decides at
         # sync time, and it gates `stories_exist`, which gates everything after
         # it. The project chain is one line, so an unscanned copy has an empty
         # actionable set for every role no matter what is on disk — and the
@@ -1250,12 +1251,12 @@ defmodule CodeMySpec.Agents do
         # Asked of the harness rather than done here, because this side does
         # not have the files — on the light harness the server holds no working
         # copy at all. The manifest that comes back announces graph inputs, the
-        # watcher recomputes, and `wake_project_roles/2` rings the bell against
-        # a real graph. So the wake below is for what is already computed, and
+        # watcher recomputes, and `Work.consider_project/2` asks against a real
+        # graph. So the admission below is for what is already computed, and
         # the rescan is what covers the copy that has none.
         request_rescan(scope, copy_id)
 
-        wake_roles(scope, copy_id)
+        Work.consider_copy(scope, copy_id, :continuous_enabled)
       end
 
       {:ok, count}
@@ -1263,186 +1264,48 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Put one agent to work, or let it stop.
+  Set continuous intent without starting, restarting, or stopping a process.
 
-  Same act as `set_copy_continuous/3` at the grain somebody watches — one agent,
-  from its own conversation. Switching on rings its bell for the same reason:
-  an agent is a supervised process that acts when messaged, so a flag on its own
-  marks it willing and leaves it exactly where it was — *if* it is still
-  there to be rung. `status: :running` is not evidence of that; it is only
-  ever set on a clean start or a clean stop, so a shared harness restart (or
-  a crashed machine) leaves the row claiming life indefinitely with nothing
-  behind it. Checked live, against `working_copy_connected?/1`, not read off
-  the row: a process is either there to be nudged or it needs restarting,
-  and the row cannot tell those apart on its own.
-
-  The third element says which: `:woke` (nudged something that was already
-  there), `:restarted` (nothing was there, so the process was started fresh
-  in place), `:restart_failed` (nothing was there and starting it over
-  failed too — the error is logged, not swallowed), or `:paused` (switched
-  off; nothing is sent either way).
+  Enabling requests a turn only when the existing agent is runnable. Disabling
+  leaves any current turn and queued conversation content intact.
   """
   @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
-          {:ok, Agent.t(), :woke | :restarted | :restart_failed | :paused} | {:error, term()}
+          {:ok, Agent.t(), :enabled_and_turn_requested | :enabled_without_work | :paused}
+          | {:error, term()}
   def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
         MainAgent.ensure_cadence(scope)
-        wake_or_restart(scope, agent)
+        {:ok, agent, enabled_disposition(scope, agent)}
       else
         {:ok, agent, :paused}
       end
     end
   end
 
-  # A row that says `:stopped` is the one thing here that is never a lie.
+  # Whether the bell reached anything, rather than only that it was rung.
   #
-  # `:running` can be stale — a shared harness restart leaves it claiming life
-  # with nothing behind it, which is why the clause below checks liveness rather
-  # than trusting the row. But `:stopped` is only ever written by a clean stop,
-  # so there is certainly no process, and asking whether its *working copy* is
-  # connected answers a different question entirely.
-  #
-  # That mismatch is what made the play button do nothing. A deliberately
-  # stopped agent sitting on a perfectly healthy harness took the wake branch,
-  # `StopDecision.wake/2` dispatched to a process that no longer existed, and the
-  # page reported `:woke` — success, with nothing started. John: "I thought I
-  # could now start it with the play button but it's stopped and I can't get it
-  # going again," and, on the same screen, "This agent is not running, so there
-  # is nothing to send a message to" where the chat bar should be. One cause:
-  # the only control that clears `:stopped` could not reach `restart_agent/2`.
-  defp wake_or_restart(scope, %Agent{status: status} = agent)
-       when status in [:stopped, :failed] do
-    case restart_agent(scope, agent.id) do
-      {:ok, restarted} ->
-        {:ok, restarted, :restarted}
-
-      {:error, reason} ->
-        Logger.warning(
-          "[Agents] could not restart #{status} agent #{agent.id}: #{inspect(reason)}"
-        )
-
-        {:ok, agent, :restart_failed}
+  # Switching on is not one outcome: an agent with eligible work takes a turn
+  # now, and an agent with none sits exactly as it did. Both used to answer
+  # "the existing agent may take another turn when idle and eligible for work",
+  # byte for byte, so the operator asking "why are my agents not running" — the
+  # confusion this tool exists to resolve — had to make a second call to find
+  # out. Measured live by QA on story 796 (`fe059aa3`): two enables, one that
+  # admitted a turn and one that admitted nothing, indistinguishable from the
+  # reply.
+  defp enabled_disposition(scope, agent) do
+    case Work.request_turn_if_runnable(scope, agent, :continuous_enabled) do
+      {:ok, ref} when is_binary(ref) -> :enabled_and_turn_requested
+      _not_runnable -> :enabled_without_work
     end
   end
-
-  defp wake_or_restart(scope, agent) do
-    if working_copy_connected?(agent) do
-      StopDecision.wake(scope, agent)
-      {:ok, agent, :woke}
-    else
-      case restart_agent(scope, agent.id) do
-        {:ok, restarted} ->
-          {:ok, restarted, :restarted}
-
-        {:error, reason} ->
-          Logger.warning(
-            "[Agents] could not restart agent #{agent.id} after finding its working " <>
-              "copy disconnected: #{inspect(reason)}"
-          )
-
-          {:ok, agent, :restart_failed}
-      end
-    end
-  end
-
-  @doc """
-  Tell the other roles on this copy that there may be something for them.
-
-  Story 538's R12. An agent whose queue emptied was told nothing and stopped —
-  correctly, under R6 — and then nothing existed that would ever bring it back.
-  Product finishes a spec that unblocks three coding requirements and the coding
-  agent is still sitting there, idle, with no reason to look again.
-
-  So finishing work is what wakes the roles it unblocked. The graph decides what
-  is available and this only delivers it: every woken agent gets the menu, the
-  same one its own stop would have produced, and chooses for itself. Nobody is
-  handed an ordering and nobody is put in charge of anybody.
-
-  ## Only the roles that have something
-
-  `StopDecision`'s rule holds — a message wakes a process and costs it a turn,
-  so an agent woken to be told there is nothing has been charged for no
-  information. `Menu.render/3` answers `""` for a role with an empty queue and
-  that agent is left alone.
-
-  ## Not the agent that just finished
-
-  It is about to make its own stop decision, which is where it finds out what is
-  next. Waking it here would tell it twice.
-
-  ## The count can lag by a cycle
-
-  This reads the requirements read model, which a graph computation writes —
-  `get_next_requirement` is the usual one. A role whose work became actionable
-  in the same breath as this completion may therefore not show until something
-  recomputes. That is a nudge arriving late rather than a wake being lost: the
-  next completion on this copy sends it, and the agent that finished refreshes
-  the model on its own next turn.
-  """
-  @spec wake_roles(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
-  def wake_roles(%Scope{} = scope, copy_id, except_agent_id \\ nil)
-      when is_binary(copy_id) do
-    scope
-    |> AgentsRepository.list_agents()
-    |> Enum.filter(&wakeable?(&1, copy_id, except_agent_id))
-    |> Enum.each(&StopDecision.wake(scope, &1))
-
-    :ok
-  end
-
-  @doc """
-  Tell every role on this project that work may have appeared.
-
-  `wake_roles/3` is per working copy and fires when a task completes, which
-  covers "somebody finished something that unblocked you". It does not cover
-  work arriving from outside the graph's own progress — and that is the case an
-  idle agent was promised.
-
-  A product agent on 2026-09-07, correctly, with nothing to do: "No product work
-  is currently available; I'll stop and wait to be woken when a product
-  requirement is unblocked." Four issues were filed over the next ninety
-  minutes, `issues_triaged` became actionable again, and nothing woke it. The
-  promise was true of task completions and of nothing else.
-
-  Project-wide rather than per copy because an issue belongs to the project; the
-  copy it will be triaged on is not a fact the issue carries.
-
-  Cheap for the same reason `wake_roles/3` is: `StopDecision.wake/2` renders the
-  menu and stays silent for a role with an empty one, so this wakes exactly the
-  agents that now have something and charges no turn to anybody else.
-  """
-  @spec wake_project_roles(Scope.t(), Ecto.UUID.t() | nil) :: :ok
-  def wake_project_roles(%Scope{} = scope, except_agent_id \\ nil) do
-    scope
-    |> AgentsRepository.list_agents()
-    |> Enum.filter(&project_wakeable?(&1, except_agent_id))
-    |> Enum.each(fn agent -> StopDecision.wake(at_agents_vantage(scope, agent), agent) end)
-
-    :ok
-  end
-
-  # Each agent's menu is computed from its own checkout, not from whoever's
-  # scope started the wake.
-  #
-  # `GraphWatcher` is per project and its scope names no working copy, so every
-  # menu was rendered from the blended vantage — which `Preloader.load/1` warns
-  # about in as many words: "every checkout's files are read together, so a file
-  # present in one and absent in another reads as present. Expected for the UI;
-  # an agent path here is a bug." Waking an agent is an agent path.
-  #
-  # Seen live the first time this fired: the graph recomputed and woke the right
-  # agent, with that warning beside it.
-  defp at_agents_vantage(%Scope{} = scope, %Agent{working_copy_id: nil}), do: scope
-
-  defp at_agents_vantage(%Scope{} = scope, %Agent{working_copy_id: copy_id}),
-    do: %Scope{scope | active_working_copy_id: copy_id}
 
   # A copy whose machine is not connected cannot be asked, and that is not a
   # reason to refuse the switch — the flag is still set, the agents are still
-  # woken for whatever is computed, and the copy scans when its harness comes
-  # back. Logged rather than swallowed so a copy that never scans is findable.
+  # considered against whatever is computed, and the copy scans when its
+  # harness comes back. Logged rather than swallowed so a copy that never scans
+  # is findable.
   defp request_rescan(%Scope{} = scope, copy_id) do
     case Analysis.request_rescan(%Scope{scope | active_working_copy_id: copy_id}) do
       :ok ->
@@ -1451,37 +1314,11 @@ defmodule CodeMySpec.Agents do
       {:error, reason} ->
         Logger.info(
           "[Agents] switched on #{copy_id} without a rescan (#{inspect(reason)}); " <>
-            "roles wake against whatever the graph already holds"
+            "roles are considered against whatever the graph already holds"
         )
 
         :ok
     end
-  end
-
-  # `:running` only, and that is the change `0c912986` asked for.
-  #
-  # `:starting` used to count, on the reasoning that an agent we have asked for
-  # is about to exist and a wake arriving a moment early costs nothing. It costs
-  # the wake: `StopDecision.wake/2` renders the menu, sends it to a process that
-  # is not there, and the work it named is then held by a row that will sit at
-  # `:starting` until somebody looks. Measured 2026-09-17 on `f8fbe49e` and
-  # `93bdde5a` — six hours each.
-  #
-  # Safe to narrow now and it was not before: `record_running_on_copy/3` settles
-  # a genuinely-started agent to `:running` from the harness's own process table
-  # within a beat of it coming up, so the window this exclusion opens is that
-  # beat rather than forever.
-  defp project_wakeable?(agent, except_agent_id) do
-    agent.continuous == true and
-      agent.status == :running and
-      agent.id != except_agent_id
-  end
-
-  defp wakeable?(agent, copy_id, except_agent_id) do
-    agent.working_copy_id == copy_id and
-      agent.continuous == true and
-      agent.status == :running and
-      agent.id != except_agent_id
   end
 
   defp start_copy_agent(scope, copy_id, root, role) do
@@ -1831,7 +1668,11 @@ defmodule CodeMySpec.Agents do
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_started"} = event, _opts) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
-           AgentsRepository.update_agent(scope, agent, %{turn_started_at: DateTime.utc_now()}),
+           AgentsRepository.update_agent(scope, agent, %{
+             turn_started_at: DateTime.utc_now(),
+             work_request_id: nil,
+             work_requested_at: nil
+           }),
          {:ok, conversation} <- open_conversation(scope, agent) do
       write_turn_event(conversation, agent, event)
     else
@@ -2134,10 +1975,35 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
+  # What a machine reporting itself as running has just told us.
+  #
+  # A fresh process has no turn in flight and holds no reservation, by
+  # definition — so `turn_started_at`, `work_request_id` and
+  # `work_requested_at` are cleared on the way *up* as well as on the way
+  # down. `record_stopped/2` already did it downward; three paths back to
+  # `:running` did not, and a row carrying a stale timestamp into its next life
+  # reports a turn "in flight" for an agent that is not mid-response, which is
+  # exactly the false positive story 1012's fact-based view exists to avoid.
+  #
+  # There is a real window for one to get there: `record_turn_event(...,
+  # "turn_started")` does not check the row's current status before writing, so
+  # a `turn_started` landing just after a reap leaves the timestamp on a
+  # `:stopped` row with no `turn_ended` ever coming to clear it. Found by QA on
+  # story 1012, `4ce6d903`.
+  #
+  # One map rather than three copies, because three copies is how this drifted
+  # apart in the first place.
+  @running_afresh %{
+    status: :running,
+    turn_started_at: nil,
+    work_request_id: nil,
+    work_requested_at: nil
+  }
+
   defp settle_against(_scope, %Agent{status: :running}, true), do: :ok
 
   defp settle_against(scope, %Agent{} = agent, true) do
-    {:ok, _running} = AgentsRepository.update_agent(scope, agent, %{status: :running})
+    {:ok, _running} = AgentsRepository.update_agent(scope, agent, @running_afresh)
     :ok
   end
 
@@ -2165,6 +2031,15 @@ defmodule CodeMySpec.Agents do
   # apart by role, and finding "the copy's agent" made a second lane overwrite
   # the first — one row flickering between two engines instead of two rows.
   #
+  # `to_string/1` on the stored side, because `agents.role` is an `Ecto.Enum`
+  # and `role/1` reads a string off the wire. `:main == "main"` is false, so
+  # this `find` never matched and every report took the `upsert(nil, ...)`
+  # branch and inserted a fresh row. Measured 2026-09-20 before the fix: 31
+  # main-role rows on one working copy, 17 qa, 12 coding — an agent per report
+  # rather than an agent per lane. It is also where the "unexplained extra
+  # main-role agent" (`47a63331`) came from, and it fed `held?/3`, which scans
+  # every agent on a copy and so let long-dead duplicates withhold work.
+  #
   # The id half: the copy used to be matched by comparing the reported path to
   # `harnesses.root`, which is also a reported path. Two strings that are meant
   # to be equal and are produced independently do not stay equal, and two
@@ -2186,7 +2061,7 @@ defmodule CodeMySpec.Agents do
 
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.working_copy_id == working_copy_id and &1.role == role))
+    |> Enum.find(&(&1.working_copy_id == working_copy_id and to_string(&1.role) == role))
     |> upsert(scope, report)
   end
 
@@ -2218,11 +2093,14 @@ defmodule CodeMySpec.Agents do
 
   defp upsert(%Agent{} = agent, scope, report) do
     {:ok, updated} =
-      AgentsRepository.update_agent(scope, agent, %{
-        engine: engine(report),
-        status: :running,
-        os_pid: recorded_group_or_reported(agent, report)
-      })
+      AgentsRepository.update_agent(
+        scope,
+        agent,
+        Map.merge(@running_afresh, %{
+          engine: engine(report),
+          os_pid: recorded_group_or_reported(agent, report)
+        })
+      )
 
     updated
   end
@@ -2369,11 +2247,28 @@ defmodule CodeMySpec.Agents do
   # Only after something confirmed the process is gone. `os_pid` and
   # `os_boot_id` are cleared here rather than before, because until the process
   # is actually gone they are the only way to reach it again.
+  # Stopping clears what only a live process could have meant.
+  #
+  # `turn_started_at` and `work_request_id` both say "something is happening
+  # right now" — a turn in flight, a turn reserved and about to be dispatched —
+  # and neither can be true of an agent with no process behind it. Left set,
+  # they are worse than stale: `Work.runnable_state?/1` requires both to be nil,
+  # so a reaped agent that comes back is permanently un-admittable, and nothing
+  # would ever clear them because clearing them is what this function is for.
+  #
+  # The agent's *tasks* are deliberately not touched. A claim is a statement
+  # about work, not about a process, and cancelling somebody's attempt because
+  # their machine went away is a decision rather than a cleanup — `held?/3`
+  # going on withholding a node claimed by a stopped agent is a real problem
+  # (`68436370`) and a different one.
   defp record_stopped(scope, agent) do
     AgentsRepository.update_agent(scope, agent, %{
       status: :stopped,
       os_pid: nil,
-      os_boot_id: nil
+      os_boot_id: nil,
+      turn_started_at: nil,
+      work_request_id: nil,
+      work_requested_at: nil
     })
   end
 
@@ -2394,7 +2289,7 @@ defmodule CodeMySpec.Agents do
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
   def record_started(%Scope{} = scope, %Agent{} = agent, %{agent_id: _id}) do
-    AgentsRepository.update_agent(scope, agent, %{status: :running})
+    AgentsRepository.update_agent(scope, agent, @running_afresh)
   end
 
   @doc """

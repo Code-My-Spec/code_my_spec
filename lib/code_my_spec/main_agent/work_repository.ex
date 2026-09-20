@@ -56,7 +56,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
 
     Enum.map(agents, fn agent ->
       copy = Map.get(copies, agent.working_copy_id)
-      task = Agent.active_task(agent)
+      task = current_task(agent)
 
       %AgentWork{
         agent_id: agent.id,
@@ -65,6 +65,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         working_copy_id: agent.working_copy_id,
         working_copy_root: copy && copy.root,
         task_name: task && task.requirement_name,
+        task_status: task && task.status,
         task_started_at: task && task.started_at,
         story_title: task && Map.get(stories, task.story_id),
         last_said_at: Map.get(last_said, agent.id),
@@ -78,6 +79,27 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         problems: Map.get(problems, agent.working_copy_id, [])
       }
     end)
+  end
+
+  # The work this agent is on, which is not only the active one.
+  #
+  # An agent that asked a question has no *active* task by construction — the
+  # question blocked it — and reading only `active_task/1` reported that agent
+  # as having nothing to do while the line below it said what it was blocked
+  # on. Criterion 3275 is exactly this pair: the main agent is handed the parts
+  # and draws its own conclusion, and "no task" beside "blocked on a question"
+  # is two parts that contradict each other.
+  #
+  # Newest first among blocked attempts, because that is the one the agent is
+  # waiting on now; older blocked attempts are history it has not cancelled.
+  defp current_task(agent) do
+    Agent.active_task(agent) || latest_blocked_task(agent)
+  end
+
+  defp latest_blocked_task(%Agent{tasks: tasks}) do
+    (tasks || [])
+    |> Enum.filter(&(&1.status == :blocked))
+    |> Enum.max_by(& &1.blocked_at, DateTime, fn -> nil end)
   end
 
   defp working_copies(agents) do

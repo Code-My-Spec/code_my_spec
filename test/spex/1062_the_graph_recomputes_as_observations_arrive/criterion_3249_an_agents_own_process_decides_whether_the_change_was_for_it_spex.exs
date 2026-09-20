@@ -45,7 +45,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3249Spex do
     :ok
   end
 
-  @wake_text "Work of your kind is available"
+  # What an admitted turn actually says. `wake` sent "Work of your kind is
+  # available" and named the requirement; its replacement admits a turn with a
+  # prompt that names none — "choose work with start_task. No task has been
+  # selected or assigned for you" — because the agent's own selection is the
+  # part that has proved worth keeping. The plan retiring `wake` says so in as
+  # many words: assert turn requests and task state rather than that literal.
+  #
+  # Still read off the conversation here, because this criterion is about a
+  # listener *finding out*, and the transcript is where a person watching sees
+  # that it did.
+  @wake_text "Eligible work is available"
 
   spex "Each listener works out for itself whether a change was its own" do
     scenario "a product observation arrives with two kinds of agent listening" do

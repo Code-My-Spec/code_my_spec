@@ -41,8 +41,8 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Notifications
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -73,6 +73,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
     case decided do
       {nil, _key} ->
+        Work.request_turn_if_runnable(scope, agent, :turn_ended)
         :ok
 
       # A menu that repeats byte-for-byte is a repeat regardless of the key it
@@ -84,130 +85,10 @@ defmodule CodeMySpec.Agents.StopDecision do
       # class of repeat. The escape while it is silenced is `tap_out`, offered
       # in the menu itself.
       {message, :continuing} ->
-        if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+        continuing(scope, agent, message, Agent.active_task(agent))
 
       {message, key} ->
         if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
-    end
-  end
-
-  @doc """
-  Tell one agent that work of its kind is available.
-
-  Story 538's R12, delivered. An agent whose queue emptied was told nothing and
-  stopped — correctly, under R6 — and then nothing existed that would bring it
-  back: product finishes a spec unblocking three coding requirements and the
-  coding agent sits idle with no reason to look again.
-
-  Here rather than in `Agents` because this is the same act as a stop decision
-  and has to travel the same way — recorded before it is dispatched, dispatched
-  off this process so a busy agent is queued rather than interrupted (criterion
-  3053), and silent when there is nothing to say. A second delivery path would
-  drift from this one, and the drift would be invisible until an agent stopped
-  hearing from one of them.
-
-  Silent for a role with an empty queue, for the reason this module keeps
-  everywhere: a message wakes a process and costs it a turn, and an agent woken
-  to be told there is nothing has been charged for no information.
-
-  Not a decision about whether to keep going — that is `deliver/2`, at the end
-  of a turn. This is the nudge that gets an idle agent to take one.
-
-  ## A wake breaks through a pending question; a stop decision does not
-
-  These looked like the same rule and are not, and conflating them cost a day.
-
-  `decide_with_key/3` is right to go quiet for an agent awaiting an answer.
-  That agent has just ended a turn and is asking "what now"; handing it a menu
-  it cannot act on is a loop that looks like diligence and is waste. John:
-  "it shouldn't hit the agent with the stop hook."
-
-  A wake is the opposite case. It fires because something *new* appeared, and
-  it is the only thing that starts an idle agent — a stop hook fires at the end
-  of a turn, and an idle agent is not ending turns. So gating the wake on
-  `awaiting_answer?` did not make an agent quieter, it removed it from the
-  fleet: one unanswered question, or a `tap_out` nobody decided, and the graph
-  could never reach it again. Agent `880c7713` sat idle for seven hours that
-  way, holding 17 actionable requirements, while every surface reported it
-  running and available (`8cb3f626`). Agent `0067d652` did it twice in half an
-  hour simply by reporting a defect it had found.
-
-  John's call: the wake breaks through questions, tap-out requests and
-  anything else of that kind. A question is about one thing; the work that just
-  appeared is usually another, and an agent waiting on an answer can still do
-  it.
-
-  What stops this becoming the spam the old check was added for is that a wake
-  is already narrow: it fires only when an observation actually landed, only
-  when the role's own menu is non-empty, and `stuck?/3` suppresses an identical
-  message after `@stuck_threshold`. Those bound the noise on the axis that
-  matters — repetition — rather than by silencing the agent entirely.
-
-  ## A working agent is never woken
-
-  John's rule, and it settles what two criteria had been disagreeing about: "a
-  running agent never gets a wake message. If the agent is running and it
-  completes something and that triggers a wake message to itself — which is a
-  bit dumb anyway — we would not deliver that message to the working agent
-  because it's already working."
-
-  A wake exists to bring an idle agent back. An agent mid-turn is coming back
-  on its own, and the decision at the end of that turn is where it finds out
-  what is next — so a wake landing during the turn is at best a duplicate of
-  the stop reply and at worst an interruption charged as a turn.
-
-  That is exactly what an agent's own completion produced. `TaskEvaluator`
-  wakes the copy's roles from inside the stop hook (`stop.ex:511` →
-  `wake_the_others/2`), so an agent whose own turn completed its own task was
-  woken by itself, in the same request that was about to hand it the menu in
-  its reply. Criteria 3180 and 3196 are that duplicate. Criterion 3108 is the
-  case that must still get through — a *different* agent, idle, unblocked by
-  work somebody else finished.
-
-  `turn_started_at` is the signal rather than `status`, because it answers the
-  question being asked — is this agent mid-response — and `:running` does not:
-  it is written on a clean start and survives until a clean stop, so it is true
-  of an idle agent all day. Story 1054's criterion 3297 put the column there
-  for this shape of question.
-  """
-  # Only `working?` gates a wake now. A pending question or permission does not:
-  # see the moduledoc above. The pair composes into the behaviour John described
-  # — wake it, it does something, it goes back to sleep — because the wake
-  # breaks through while `decide_with_key/3` stays quiet at the end of that
-  # turn, so the agent takes the work and stops again without being handed a
-  # menu it cannot act on.
-  @spec wake(Scope.t(), Agent.t()) :: :ok
-  def wake(%Scope{} = scope, %Agent{} = agent) do
-    if working?(agent), do: :ok, else: do_wake(scope, agent)
-  end
-
-  defp working?(%Agent{turn_started_at: %DateTime{}}), do: true
-  defp working?(%Agent{}), do: false
-
-  defp do_wake(scope, agent) do
-    case Validation.Menu.render(scope, agent.continuous == true, agent.role, agent) do
-      "" ->
-        :ok
-
-      menu ->
-        message = "Work of your kind is available." <> menu
-
-        # Same reasoning as `deliver/2`'s `:continuing` branch: this fires on
-        # every graph change project-wide, and a change unrelated to this
-        # agent's own menu renders the identical text again. Keyed on the
-        # message rather than the event, so a real change to what this agent
-        # can see still gets through.
-        if stuck?(agent, message, :wake) do
-          :ok
-        else
-          Conversations.find_or_create_agent_conversation(
-            scope.active_account_id,
-            scope.active_project_id,
-            agent.id
-          )
-
-          send_to(scope, agent, message)
-        end
     end
   end
 
@@ -260,11 +141,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # reason to hammer an agent that cannot act on anything until it hears back,
   # and the findings will still be there when it wakes.
   defp decide_with_key(%Scope{} = scope, %Agent{} = agent, opts) do
-    if Notifications.awaiting_answer?(agent.id) do
-      {nil, nil}
-    else
-      decide_with_work(scope, agent, opts)
-    end
+    decide_with_work(scope, agent, opts)
   end
 
   defp decide_with_work(%Scope{} = scope, %Agent{} = agent, opts) do
@@ -322,6 +199,19 @@ defmodule CodeMySpec.Agents.StopDecision do
   # `tag` separates the counters — `:decision`, `:continuing`, `:wake` — so one
   # slot per agent doesn't let them overwrite each other's count and reset a
   # threshold none of them reached on their own.
+  # A turn that ended with no active task is the runnable check's moment: the
+  # agent has nothing open, so eligibility is worth asking about once. With a
+  # task still active the menu is the answer instead, subject to the same
+  # repeat-silencing as any other class.
+  defp continuing(scope, agent, _message, nil) do
+    Work.request_turn_if_runnable(scope, agent, :turn_ended)
+    :ok
+  end
+
+  defp continuing(scope, agent, message, _task) do
+    if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+  end
+
   defp stuck?(agent, key, tag \\ :decision)
 
   defp stuck?(%Agent{} = agent, key, tag) do

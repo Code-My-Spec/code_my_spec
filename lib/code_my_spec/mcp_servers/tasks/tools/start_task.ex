@@ -17,13 +17,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Agents
-
-  require Logger
-
-  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -60,10 +58,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     # over the channel to start it — and `Plugs.AgentScope` has already checked
     # it names an agent on this project.
     #
-    # The argument still means what it always did: who this task is *for*, which
-    # a main agent uses to claim one on behalf of something it started. Caller
-    # and subject are different questions, and only one of them should be
-    # answerable by whoever is asking.
+    # Durable agents choose their own work. An argument cannot change the
+    # authenticated owner; legacy session subagent labels remain supported.
     caller_agent_id = frame.assigns[:agent_id]
     session_id = Map.get(params, :session_id)
     agent_id = Map.get(params, :agent_id) || caller_agent_id
@@ -121,25 +117,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # Ahead of the session clause deliberately. A call that carries both is an
   # agent of ours whose caller also named a session, and the agent is the one
   # that will be asked for its active task at the end of the turn.
-  # The subject owns the task when the subject is an agent we can find.
-  #
-  # `agent_id` has always meant "who this task is for" — the comment in
-  # `execute/2` says so — but the owner was resolved from the *caller*, so a task
-  # the main agent started for another agent landed on the main agent's own
-  # session carrying that agent's id, and the agent it was for never saw it.
-  # Measured: a task assigned to a QA agent came back from it as "no longer
-  # appears in this session's task list, so I used the live one". It was right.
-  # `e15d1ff1`.
-  #
-  # So a subject that names a real agent on this project takes the task. That is
-  # assignment, and it is what makes a fleet directable rather than only
-  # startable.
-  #
-  # Two things keep it honest. `Agents.fetch_agent/2` is scope-guarded, so the
-  # reach stops at this project. And the *caller* is still taken from the
-  # connection and never from the arguments — naming a subject is not claiming to
-  # be one, which is the distinction `execute/2`'s comment is protecting.
   defp resolve_owner(scope, session_id, caller_agent_id, subject_agent_id)
+
+  defp resolve_owner(scope, _session_id, caller, subject) when is_binary(caller) do
+    if subject == caller do
+      Agents.fetch_agent(scope, caller)
+    else
+      {:error, "Cannot start another agent's task. Choose work as the authenticated agent."}
+    end
+  end
 
   defp resolve_owner(scope, session_id, caller_agent_id, subject) when is_binary(subject) do
     case Agents.fetch_agent(scope, subject) do
@@ -210,7 +196,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp find_existing_task(owner, requirement, entity_id) do
     Enum.find(TaskOwner.tasks(owner), fn t ->
       t.requirement_name == requirement.name and
-        t.status in [:prepared, :active] and
+        t.status in [:prepared, :active, :blocked] and
         matches_entity?(t, requirement.entity_type, entity_id)
     end)
   end
@@ -229,8 +215,51 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
         return_prompt(task, scope, frame)
 
       {:error, reason} ->
-        {:reply, TasksMapper.error("Failed to activate task: #{inspect(reason)}"), frame}
+        {:reply, TasksMapper.error(claim_error(reason)), frame}
     end
+  end
+
+  defp handle_existing(
+         %{status: :blocked, blocker_resolved_at: nil} = task,
+         _scope,
+         _owner,
+         _req,
+         _agent_id,
+         frame
+       ) do
+    {:reply, TasksMapper.error("Task #{task.id} is blocked; its blocker has not been resolved."),
+     frame}
+  end
+
+  defp handle_existing(%{status: :blocked} = task, scope, owner, req, _agent_id, frame) do
+    scope = owner_scope(scope, owner)
+
+    with :ok <- eligible_to_resume(scope, owner, req),
+         {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
+      return_prompt(TaskOwner.find_task(updated, task.id), scope, frame)
+    else
+      {:error, reason} ->
+        {:reply, TasksMapper.error("Cannot resume task #{task.id}: #{inspect(reason)}"), frame}
+    end
+  end
+
+  defp owner_scope(scope, %Agent{working_copy_id: id}),
+    do: %{scope | active_working_copy_id: id}
+
+  defp owner_scope(scope, %Session{}), do: scope
+
+  defp eligible_to_resume(scope, owner, requirement) do
+    role = if match?(%Agent{}, owner), do: owner.role, else: nil
+
+    eligible? =
+      scope
+      |> Requirements.actionable_for_role(role)
+      |> Enum.any?(fn node ->
+        node.name == requirement.name and node.entity_type == requirement.entity_type and
+          to_string(node.entity_id) == to_string(requirement.entity_id)
+      end)
+
+    if eligible?, do: :ok, else: {:error, :requirement_not_eligible}
   end
 
   defp return_prompt(task, scope, frame) do
@@ -255,10 +284,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
         return_prompt(task, scope, frame)
 
       {:error, reason} ->
-        Logger.warning("[StartTask] Failed to create task: #{inspect(reason)}")
-        {:reply, TasksMapper.error("Failed to create task: #{inspect(reason)}"), frame}
+        {:reply, TasksMapper.error(claim_error(reason)), frame}
     end
   end
+
+  defp claim_error({:active_task_exists, task_id}) do
+    "You have an active task #{task_id}. Complete, block, or cancel it before starting another task."
+  end
+
+  defp claim_error(reason), do: "Failed to create task: #{inspect(reason)}"
 
   defp build_task_attrs(scope, requirement, agent_id) do
     {component_id, component_module_name, story_id} = build_entity_refs(scope, requirement)

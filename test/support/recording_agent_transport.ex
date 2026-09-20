@@ -32,6 +32,12 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
   end
 
   @impl true
+  def request_work_turn(_copy, agent, ref, message, _timeout) do
+    send(owner(), {:work_turn_requested, agent.id, ref, message})
+    {:ok, :started}
+  end
+
+  @impl true
   def withdraw_message(_working_copy_id, _agent, _ref, _timeout), do: :ok
 
   # `record_started/3` matches `%{agent_id: _id}` — "the machine confirms

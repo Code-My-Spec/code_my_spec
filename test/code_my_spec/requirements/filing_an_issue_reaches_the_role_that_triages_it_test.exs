@@ -120,7 +120,15 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
   # machine is quick.
   @wake_timeout_ms 5_000
 
-  @wake_text "Work of your kind is available"
+  # A turn request *is* the signal now, so nothing here matches on prose. The
+  # plan retiring `wake` says so in as many words: assert turn requests and task
+  # state rather than the literal "Work of your kind is available" text, which
+  # the admission path no longer sends — its prompt begins "Eligible work is
+  # available" and deliberately names no requirement.
+  #
+  # An ordinary `:agent_dispatch` is still classified, because a menu or a nudge
+  # to this agent is not the thing being waited for.
+  @wake_text "Eligible work is available"
 
   defp await_wake(agent_id) do
     await_wake(agent_id, System.monotonic_time(:millisecond) + @wake_timeout_ms)
@@ -130,10 +138,16 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
+      # A graph-driven turn arrives as `:work_turn_requested` since the wake
+      # retirement; an ordinary dispatch is still `:agent_dispatch`. Both mean
+      # the agent was reached, which is what this file is about.
+      {:work_turn_requested, ^agent_id, _ref, _message} ->
+        :woken
+
       {:agent_dispatch, ^agent_id, _ref, message} ->
         classify(message, agent_id, deadline)
 
-      {:agent_dispatch, _other, _ref, _message} ->
+      {shape, _other, _ref, _message} when shape in [:agent_dispatch, :work_turn_requested] ->
         await_wake(agent_id, deadline)
     after
       remaining -> :never

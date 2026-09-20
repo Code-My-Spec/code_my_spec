@@ -74,9 +74,13 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
       interval: every #{MainAgent.cadence_interval(scope)}s
       woken: #{woken(MainAgent.cadence_running?(scope))}
       running: #{running(MainAgent.cadence_alive?(scope))}
+      last check: #{format_check(MainAgent.last_recovery_check(scope))}
       """
     )
   end
+
+  defp format_check(nil), do: "not yet observed"
+  defp format_check(instant), do: DateTime.to_iso8601(instant)
 
   defp woken(true), do: "yes — this project has not stood down"
   defp woken(false), do: "no — this project has stood down; it is still reachable by question"

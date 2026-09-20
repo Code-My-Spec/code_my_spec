@@ -1357,6 +1357,24 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  def handle_message(_topic, "request_work_turn", %{"ref" => ref} = msg, socket) do
+    result =
+      CmsHarness.Agents.request_work_turn(
+        msg["agent_id"],
+        msg["message_ref"],
+        msg["message"]
+      )
+
+    push(
+      socket,
+      socket.assigns.topic,
+      "agent_send_result",
+      Map.put(encode_send_result(result), "ref", ref)
+    )
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "withdraw_message", %{"ref" => ref} = msg, socket) do
     result = CmsHarness.Agents.withdraw(msg["agent_id"], msg["message_ref"])
 
