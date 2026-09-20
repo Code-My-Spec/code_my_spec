@@ -366,7 +366,39 @@ for {role, tools, wanted} <- [
             a.continuous == true
     )
 
-  for agent <- existing, do: IO.puts("  agent: exists #{role} (#{agent.id})")
+  # Re-asserted on every run, not only on create.
+  #
+  # `Work.runnable_state?/1` gates on `status == :running` before it evaluates
+  # eligibility at all, and `Agents.record_running_on_copy/3` reaps any row
+  # claiming to run with no live process behind it — correctly, since nothing
+  # has driven these rows since the last QA pass. So the ordinary case, a
+  # project that already exists, left all four agents `:stopped` and every one
+  # of story 1004's turn-admission criteria untestable through the fixture
+  # this seed exists to provide.
+  #
+  # The only two ways out were a direct DB write or a real `start_agent`
+  # against the connected harness — one denied to a QA session outright, the
+  # other a billed model call — so three separate QA attempts were blocked on
+  # a fixture that reported itself as freshly seeded. Refreshing the fixture
+  # has to actually refresh it (`f3157963`).
+  #
+  # `turn_started_at` and `work_request_id` go with it: a row left mid-turn or
+  # holding a reservation is not runnable either, and both are stale the
+  # moment the process behind them is gone.
+  for agent <- existing do
+    {:ok, _} =
+      agent
+      |> Ecto.Changeset.change(
+        status: :running,
+        continuous: true,
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil
+      )
+      |> Repo.update()
+
+    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running")
+  end
 
   # Idempotent on the count rather than on presence, so re-running tops the set
   # up instead of stopping at the first one it finds.
