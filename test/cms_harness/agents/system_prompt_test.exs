@@ -1,6 +1,7 @@
 defmodule CmsHarness.Agents.SystemPromptTest do
   @moduledoc """
-  An agent is told what it is for, and what this project's workflow is.
+  An agent is told the loop it runs, what this project is, and what it is for —
+  in that order, general to specific.
 
   Before this, `system_prompt` was never set: `Alloy.Agent.Config` defaults it
   to nil and no caller supplied one, so an agent's role picked its tools and
@@ -13,14 +14,8 @@ defmodule CmsHarness.Agents.SystemPromptTest do
 
   alias CmsHarness.Agents.SystemPrompt
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.OperatingRules
   alias CodeMySpec.Agents.RoleBrief
-
-  defp copy_with_guide(contents) do
-    {:ok, dir} = Briefly.create(directory: true)
-    File.mkdir_p!(Path.join(dir, ".code_my_spec"))
-    File.write!(Path.join(dir, ".code_my_spec/AGENTS.md"), contents)
-    dir
-  end
 
   describe "role briefs" do
     test "every role the tool sets scope has something to say about itself" do
@@ -98,48 +93,85 @@ defmodule CmsHarness.Agents.SystemPromptTest do
   end
 
   describe "composing" do
-    test "the agent gets its role first and the project's workflow after" do
-      dir = copy_with_guide("# Project Guide\n\nThe core loop is X.")
+    test "the three sections arrive general to specific" do
+      prompt =
+        SystemPrompt.compose(
+          universal: "UNIVERSAL-SECTION",
+          project_brief: "PROJECT-SECTION",
+          app_url: "https://example.test",
+          tool_index: "TOOL-SECTION",
+          role_brief: RoleBrief.for(:coding)
+        )
 
-      prompt = SystemPrompt.compose(RoleBrief.for(:coding), dir)
+      positions = [
+        {"universal", :binary.match(prompt, "UNIVERSAL-SECTION") |> elem(0)},
+        {"project", :binary.match(prompt, "PROJECT-SECTION") |> elem(0)},
+        {"app url", :binary.match(prompt, "https://example.test") |> elem(0)},
+        {"tool index", :binary.match(prompt, "TOOL-SECTION") |> elem(0)},
+        {"role", :binary.match(prompt, "You are the CODING agent") |> elem(0)}
+      ]
 
-      assert prompt =~ "You are the CODING agent"
-      assert prompt =~ "The core loop is X."
-
-      assert :binary.match(prompt, "You are the CODING agent") <
-               :binary.match(prompt, "The core loop is X."),
-             "the project guide came before the role, so the agent reads workflow before purpose"
+      assert positions == Enum.sort_by(positions, &elem(&1, 1)), """
+      The sections are out of order. A model reads the top of a prompt hardest,
+      so the loop has to come before what the agent is, not after it. Got:
+      #{inspect(positions)}
+      """
     end
 
-    test "a checkout with no guide still tells the agent what it is" do
-      {:ok, dir} = Briefly.create(directory: true)
+    test "the loop reaches the agent without any file on disk" do
+      # The bug this whole ordering exists to remove. The loop used to live only
+      # in `.code_my_spec/AGENTS.md`, read off the working copy — and story
+      # 1039's eval builds its checkout with `File.mkdir_p!` and nothing else,
+      # so the agent was measured on a prompt that never told it to claim work.
+      prompt = SystemPrompt.compose(universal: OperatingRules.text())
 
-      prompt = SystemPrompt.compose(RoleBrief.for(:qa), dir)
+      assert prompt =~ "get_next_requirement"
+      assert prompt =~ "start_task"
 
+      assert :binary.match(prompt, "get_next_requirement") <
+               :binary.match(prompt, "start_task"),
+             "the loop must name asking before claiming — that is the order it asserts"
+    end
+
+    test "a section with nothing in it contributes nothing" do
+      prompt =
+        SystemPrompt.compose(
+          universal: "RULES",
+          project_brief: nil,
+          app_url: nil,
+          tool_index: "",
+          role_brief: RoleBrief.for(:qa)
+        )
+
+      assert prompt =~ "RULES"
       assert prompt =~ "You are the QA agent"
-      refute prompt =~ "AGENTS.md"
+      refute prompt =~ "The project"
+      refute prompt =~ "running at"
     end
 
     test "nothing to say is nil, not an empty prompt" do
-      {:ok, dir} = Briefly.create(directory: true)
-
-      assert SystemPrompt.compose(nil, dir) == nil
-      assert SystemPrompt.compose(nil, nil) == nil
+      assert SystemPrompt.compose([]) == nil
+      assert SystemPrompt.compose(universal: nil, role_brief: nil) == nil
+      assert SystemPrompt.compose(universal: "", tool_index: "   ") == nil
     end
 
-    test "an oversized guide is dropped rather than charged on every turn" do
-      dir = copy_with_guide(String.duplicate("x", 70 * 1024))
+    test "the project's own description is marked as prose, not as truth" do
+      prompt = SystemPrompt.compose(project_brief: "A ledger for small clinics.")
 
-      prompt = SystemPrompt.compose(RoleBrief.for(:main), dir)
+      assert prompt =~ "A ledger for small clinics."
 
-      assert prompt =~ "You are the MAIN agent",
-             "the role brief must survive a guide that does not"
-
-      refute prompt =~ "xxxxxxxxxx", """
-      A 70KB guide was sent. A system prompt is charged on every turn, so one
-      that has quietly become a codebase is an expensive thing to discover from
-      a bill rather than from a log line.
+      assert prompt =~ "prefer what you can see in the repository", """
+      A project description is prose nobody verifies. Measured 2026-09-20, the
+      only substantial one on this account named a port, an MCP library and a
+      tool count that had all moved — and it would have shipped directly above a
+      tool index contradicting it. An agent needs to know which of the two wins.
       """
+    end
+
+    test "a map composes the same as a keyword list" do
+      parts = [universal: "RULES", role_brief: RoleBrief.for(:main)]
+
+      assert SystemPrompt.compose(parts) == SystemPrompt.compose(Map.new(parts))
     end
   end
 end

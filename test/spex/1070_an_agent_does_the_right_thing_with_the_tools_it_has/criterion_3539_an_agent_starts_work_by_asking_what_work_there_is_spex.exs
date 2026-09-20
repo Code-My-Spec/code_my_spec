@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
   import CodeMySpecSpex.AgentEvalHelpers
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Environments
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
@@ -57,6 +58,28 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
       # answer and not the one this criterion is about — the question is what an
       # agent does when there is component work waiting for its own role.
       given_ :synced_context_in_satisfied_project
+
+      given_ "component work waiting for the coding role, and nothing else", context do
+        # The satisfied fixture writes the component's spec *and* its
+        # implementation, so `implementation_file` is already satisfied and the
+        # only thing left on the graph is `code_on_running_copy` — which is
+        # `execution_type=main_agent`. A coding agent was therefore offered
+        # nothing, no turn was admitted, and the run scored "called nothing at
+        # all" as though the agent had seen the work and declined it.
+        #
+        # Removing the implementation puts `implementation_file` back on the
+        # frontier for the role this criterion is about. Done here rather than
+        # in the shared given because twelve other spex depend on that fixture
+        # satisfying the component.
+        :ok = Environments.delete_file(context.environment, "lib/example_context.ex")
+
+        {:ok, sync_live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/files")
+
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
+        {:ok, context}
+      end
 
       given_ "a checkout on the harness, reporting what its agents do", context do
         {:ok, given_a_harnessed_checkout(context, "eval_3539")}

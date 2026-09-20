@@ -16,14 +16,14 @@ defmodule CmsHarness.Agents.TheAgentIsToldWhereTheAppRunsTest do
   @url "https://preview-c8eda3e8.codemyspec.com"
 
   test "the prompt names the address" do
-    prompt = SystemPrompt.compose("You are QA.", nil, @url)
+    prompt = SystemPrompt.compose(role_brief: "You are QA.", app_url: @url)
 
     assert prompt =~ @url
     assert prompt =~ "running at"
   end
 
   test "it says the address belongs to the main checkout" do
-    prompt = SystemPrompt.compose("You are QA.", nil, @url)
+    prompt = SystemPrompt.compose(role_brief: "You are QA.", app_url: @url)
 
     # A QA agent works in a worktree and the preview is the main copy's —
     # `record_preview_url/2` refuses any other. Without saying so, an agent in a
@@ -36,26 +36,27 @@ defmodule CmsHarness.Agents.TheAgentIsToldWhereTheAppRunsTest do
   # looks identical from here to one that never had them, and only one of those
   # is worth telling an agent.
   test "no address says nothing about the app" do
-    prompt = SystemPrompt.compose("You are QA.", nil, nil)
+    prompt = SystemPrompt.compose(role_brief: "You are QA.", app_url: nil)
 
     assert prompt == "You are QA."
     refute prompt =~ "running at"
   end
 
   test "an empty address is the same as none" do
-    assert SystemPrompt.compose("You are QA.", nil, "") == "You are QA."
+    assert SystemPrompt.compose(role_brief: "You are QA.", app_url: "") == "You are QA."
   end
 
-  # The brief is still the first thing, and the address is context for it
-  # rather than a replacement.
-  test "the role brief comes first" do
-    prompt = SystemPrompt.compose("You are QA.", nil, @url)
+  # The address is situational context, so it lands ahead of the role brief —
+  # general before specific. It is still the agent's own section that reads
+  # last, and nothing after it qualifies what the agent is for.
+  test "the address is situational and precedes the role" do
+    prompt = SystemPrompt.compose(role_brief: "You are QA.", app_url: @url)
 
-    assert String.starts_with?(prompt, "You are QA.")
+    assert :binary.match(prompt, @url) < :binary.match(prompt, "You are QA.")
   end
 
-  # It stays optional, so every existing caller keeps working.
+  # It stays optional, so a caller with nothing situational to say keeps working.
   test "composing without an address is unchanged" do
-    assert SystemPrompt.compose("You are QA.", nil) == "You are QA."
+    assert SystemPrompt.compose(role_brief: "You are QA.") == "You are QA."
   end
 end

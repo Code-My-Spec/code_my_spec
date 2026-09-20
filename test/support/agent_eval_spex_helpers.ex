@@ -50,6 +50,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -246,7 +247,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
     agent_id = fresh_agent(context, Keyword.get(opts, :role, "coding"))
 
     try do
-      if Keyword.get(opts, :wake, true), do: wake(context, agent_id)
+      if Keyword.get(opts, :request_turn, true), do: request_turn(context, agent_id)
       if said = Keyword.get(opts, :say), do: say(agent_id, said)
       settle(agent_id)
 
@@ -294,12 +295,19 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
   The production trigger, and the whole of it: an agent is a supervised process
   that acts when messaged and nothing polls, so `set_agent_continuous` sets the
-  flag and rings the bell. The menu it wakes with is `StopDecision.wake/2`'s —
-  rendered from the graph, addressed to this role — which is the same first
-  turn a real agent gets.
+  standing intent and `Agents.Work.request_turn_if_runnable/3` admits the turn
+  if the agent is runnable and the graph has work for its role. That is the
+  same first turn a real agent gets.
+
+  Named for what it does. This was `wake/2`, from the fanout the
+  durable-agent-work plan retired — untyped, project-wide, and replaced by
+  guarded per-agent admission. Nothing in `lib/` performs a wake any more;
+  every remaining mention there is a comment about the concept that went away.
+  A helper still called `wake` left the vocabulary alive in the one place
+  people read to learn how this works.
   """
-  @spec wake(map(), String.t()) :: String.t()
-  def wake(context, agent_id) do
+  @spec request_turn(map(), String.t()) :: String.t()
+  def request_turn(context, agent_id) do
     {:reply, response, _} =
       SetAgentContinuous.execute(%{agent_id: agent_id, continuous: true}, frame(context))
 
@@ -313,7 +321,62 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
            #{said}
            """
 
+    # Enabled is not the same as woken, and the difference is the whole run.
+    #
+    # `set_agent_continuous` answers successfully either way: it may admit a
+    # turn, or it may set the flag and find nothing to offer — no eligible work
+    # for the role on that copy, mid-turn, or holding an undispositioned task.
+    # In the second case the agent never runs, `called_in_order?/3` finds no
+    # tool calls, and the criterion reports "called nothing at all" as though
+    # the agent had considered the work and declined it.
+    #
+    # Measured 2026-09-20 on 3539: 0 of 1 in 1.1 seconds, which is far too fast
+    # for a turn against a real model and was the tell. The distinction only
+    # became visible in the reply at 3a47f6a59 (issue `fe059aa3`) — before that
+    # both outcomes said the same words, and this was undiagnosable from here.
+    #
+    # Same fault as `say/2` one function over: a premise that silently did not
+    # hold, producing a rate that describes the fixture rather than the agent.
+    refute said =~ "Nothing was requested", """
+    The agent was enabled but no turn was admitted, so it never ran and this
+    run measures nothing about its conduct.
+
+    This is the premise failing, not the agent declining. Something the
+    scenario is responsible for is not true: the role has no eligible work on
+    this copy, the agent is mid-turn, or it holds an undispositioned task.
+
+    #{said}
+
+    What the graph offers this agent, asked the way the agent would:
+
+    #{offered(context, agent_id)}
+    """
+
     said
+  end
+
+  # What `get_next_requirement` answers for this agent, quoted into a premise
+  # failure so the reason is in the message rather than in a re-run.
+  #
+  # Through the agent's own surface rather than `Requirements` directly: the
+  # spex boundary does not reach that context, and asking the way the agent
+  # asks is the more useful answer anyway — it is the same filter admission
+  # uses, so an empty answer here and a refused turn are the same fact.
+  defp offered(context, agent_id) do
+    # At the agent's own checkout, which is what admission asks about:
+    # `Work.graph_work?/2` rebinds the scope to `agent.working_copy_id` before
+    # reading `actionable_for_role/2`. Asking at `context.scope` instead answers
+    # a different question and reads as a contradiction — the fixture's copy can
+    # be offered work the agent's copy is not.
+    scope = %{context.scope | active_working_copy_id: context.copy_id}
+    frame = %Frame{assigns: %{current_scope: scope, agent_id: agent_id}}
+
+    case GetNextRequirement.execute(%{}, frame) do
+      {:reply, response, _} -> text(response)
+      other -> inspect(other)
+    end
+  rescue
+    error -> "could not ask: #{inspect(error)}"
   end
 
   @doc """

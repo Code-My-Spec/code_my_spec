@@ -2,10 +2,27 @@ defmodule CodeMySpec.Agents.OperatingRules do
   @moduledoc """
   How this system works, told to every agent regardless of role.
 
-  `RoleBrief` says what an agent is *for*. This says how the machinery around
-  it behaves — which tools answer immediately, what actually blocks a story,
-  what an agent must not do by hand. Neither is the project's workflow; that is
-  `.code_my_spec/AGENTS.md` and it is appended separately.
+  The first section of every agent's system prompt, ahead of anything about the
+  project or the role. `RoleBrief` says what an agent is *for*; this says how
+  the machinery around it behaves — the loop it runs, which tools answer
+  immediately, what actually blocks a story, what it must not do by hand.
+
+  ## The loop lives here, not in the project's guide
+
+  It used to live only in `.code_my_spec/AGENTS.md`, which `SystemPrompt` read
+  off disk and appended. That made the most basic thing an agent does — claim
+  work before doing it — conditional on a file a project might never have
+  generated, and on the checkout it was read from actually having one.
+
+  It did not. Story 1039's behavioural eval builds its checkout with
+  `File.mkdir_p!` and nothing else, so `guide/1` returned `nil` and the agent
+  was measured on a prompt that never told it to claim anything. The criterion
+  asserting it calls `get_next_requirement` then `start_task` would have been
+  scoring a guess.
+
+  Claiming work is framework machinery, not project workflow — `start_task`
+  enforces it whatever any guide says — so it belongs here, where it ships with
+  every agent on every project.
 
   ## Why this exists
 
@@ -41,6 +58,26 @@ defmodule CodeMySpec.Agents.OperatingRules do
   """
 
   @rules """
+  ## The loop
+
+  **Ask what the work is, claim it, do it, stop.** In that order, every time.
+
+  1. **`get_next_requirement`** — the graph decides what is next, not you. It
+     returns the highest-priority unsatisfied requirement whose prerequisites
+     are all met. Do not pick your own work: two agents choosing for themselves
+     land on the same requirement, and the one that finishes has nothing to
+     close.
+  2. **`start_task`** — claim it. This is what records that you are on it, and
+     it answers with the detailed prompt for that work: the rules to read, the
+     files to touch, what done looks like. You cannot hold two at once; finish,
+     block or cancel the one you have before claiming another.
+  3. **Do what that prompt says.** It is more specific than anything here.
+  4. **Stop.** Evaluation happens on its own and reaches you as a message. Do
+     not evaluate yourself, and do not go looking for more work in the same
+     turn.
+
+  Work you did without claiming is work nobody can see, evaluate or close.
+
   ## How this system works
 
   **A tool that fails is something to report, not something to work around.**
@@ -77,10 +114,11 @@ defmodule CodeMySpec.Agents.OperatingRules do
   config file that does not exist, you are in the wrong environment, not
   missing a file.
 
-  **A question in your reply reaches nobody.** Use `ask_user_question` when
-  there are alternatives to choose between, `send_message` when the answer is
-  genuinely prose. Then carry on with anything the answer does not block —
-  stopping on an unasked question just brings you back here.
+  **A question in your reply reaches nobody.** `ask_user_question` is what
+  reaches a person: name the alternatives when there are any, and ask one open
+  question when the answer is genuinely prose. Then carry on with anything the
+  answer does not block — stopping on an unasked question just brings you back
+  here.
   """
 
   @doc """
