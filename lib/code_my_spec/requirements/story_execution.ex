@@ -19,6 +19,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
            RequirementGraph.cached_graph_with_actionable(scope) do
       case selected(scope, copy, requested_story_id) do
         {:ok, story} -> from_graph(story, nodes, edges, ctx, role)
+        {:refused, reason} -> result(:unavailable, nil, reason)
         :none -> from_copy(nodes, edges, ctx, role)
       end
     else
@@ -27,12 +28,29 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   end
 
   # The story this copy has selected, if it has selected one that is still
-  # eligible. A requested id that is not the selected one answers `:none`
-  # rather than the project: asking for another story's work is not a reason to
-  # widen the answer.
-  defp selected(scope, copy, requested_story_id) do
+  # eligible.
+  #
+  # Three answers, not two, and the third is the whole of this. `:none` means
+  # the copy chose nothing and is answered for the project — story 1005's rule,
+  # and the fourteen project-level requirements that belong to no story depend
+  # on it. `{:refused, why}` means the caller named a story that this copy
+  # cannot answer for.
+  #
+  # Those were one answer until dogfooding separated them. A mismatched
+  # `story_id` fell through to `:none` and handed back the entire project:
+  # asking for story 802 while 1020 was active returned `# Story scope, Wave 1,
+  # Remaining 33` — byte-identical to the answer for no selection at all. The
+  # comment here already said that must not happen; only the code disagreed,
+  # and it started disagreeing when `from_copy/5` widened to the whole project
+  # and `:none` quietly acquired a second meaning.
+  #
+  # So the split is by whether the caller named a story, not by what the copy
+  # holds. Asked bare, behaviour is unchanged. Asked for a story, the answer is
+  # about that story or it is a refusal — never the project. `GetNextRequirement`
+  # has always documented it that way: "an explicit story must agree with the
+  # working copy's active assignment".
+  defp selected(scope, copy, nil) do
     with id when not is_nil(id) <- copy.active_story_id,
-         true <- is_nil(requested_story_id) or to_string(requested_story_id) == to_string(id),
          %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
          true <- story.working_copy_id == copy.id do
       {:ok, story}
@@ -40,6 +58,36 @@ defmodule CodeMySpec.Requirements.StoryExecution do
       _ -> :none
     end
   end
+
+  defp selected(scope, copy, requested_story_id) do
+    with id when not is_nil(id) <- copy.active_story_id,
+         true <- to_string(requested_story_id) == to_string(id),
+         %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
+         true <- story.working_copy_id == copy.id do
+      {:ok, story}
+    else
+      _ -> {:refused, refusal(requested_story_id, copy.active_story_id)}
+    end
+  end
+
+  defp refusal(requested, nil),
+    do:
+      "This working copy has no active story, so it has nothing to answer for story " <>
+        "#{requested}. Select it with `set_active_story` first."
+
+  defp refusal(requested, active), do: refusal_for(to_string(requested), to_string(active))
+
+  # Matched on the same binding twice: the ids agree, so the story the caller
+  # named *is* the selection and something else made it ineligible.
+  defp refusal_for(same, same),
+    do:
+      "Story #{same} is this copy's active story but is not available to it right now — " <>
+        "it is not ready for development, or it has been assigned elsewhere."
+
+  defp refusal_for(requested, active),
+    do:
+      "Story #{requested} is not this working copy's active story (#{active}). Asking for " <>
+        "another story does not widen the answer; switch with `set_active_story`."
 
   # No story selected, which is not the same as nothing to do.
   #
