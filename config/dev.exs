@@ -25,6 +25,11 @@ config :code_my_spec, CodeMySpec.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# Homebrew's Unix socket avoids TCP port exhaustion during busy local runs.
+if :os.type() == {:unix, :darwin} and File.exists?("/tmp/.s.PGSQL.5432") do
+  config :code_my_spec, CodeMySpec.Repo, socket_dir: "/tmp"
+end
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
