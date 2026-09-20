@@ -119,6 +119,47 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     conn
   end
 
+  # Same as `with_confirmed_plan/1`, but through the plain form instead of the
+  # conversation — what a plan looks like when `IntakeLive.Procedural` filled
+  # it in.
+  defp with_procedural_plan(conn, plan \\ %{}) do
+    conn = get(conn, ~p"/build/procedural")
+    {:ok, view, _html} = live(conn)
+
+    view
+    |> form("form[phx-submit=submit]", %{
+      plan:
+        Map.merge(
+          %{
+            account_name: "Acme",
+            project_name: "Widget Tracker",
+            who_uses: "warehouse staff",
+            needs_sign_in: "true",
+            separate_copies: "false",
+            location: "cloud"
+          },
+          plan
+        )
+    })
+    |> render_submit()
+
+    conn
+  end
+
+  describe "a procedural plan (dump into the cockpit)" do
+    test "reaching :running sends the visitor straight to their agent, not a card", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_procedural_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      project_id = :sys.get_state(view.pid).socket.assigns.scope.active_project_id
+
+      pay(view)
+
+      assert_redirect(view, ~p"/app/projects/#{project_id}/agent-conversation")
+    end
+  end
+
   describe "coming up" do
     test "the visitor sees a progress bar driven by the container's own phases", %{conn: conn} do
       fake(healthy?: false, alive?: true, logs: "\e[1;36m==> Fetching dependencies\e[0m")

@@ -107,6 +107,78 @@ defmodule CodeMySpec.IntakeTest do
     end
   end
 
+  describe "plan_procedurally/2" do
+    defp procedural_attrs(overrides \\ %{}) do
+      Map.merge(
+        %{
+          account_name: "Acme",
+          project_name: "Widget Tracker",
+          who_uses: "warehouse staff",
+          needs_sign_in: true,
+          separate_copies: false,
+          location: "cloud"
+        },
+        overrides
+      )
+    end
+
+    test "fills the plan in and lands on :planned, no conversation involved" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:ok, filled} = Intake.plan_procedurally(plan, procedural_attrs())
+
+      assert filled.status == :planned
+      assert filled.procedural == true
+      assert filled.account_name == "Acme"
+      assert filled.project_name == "Widget Tracker"
+      assert filled.who_uses == "warehouse staff"
+      assert filled.needs_sign_in == true
+      assert filled.separate_copies == false
+      assert filled.location == :cloud
+      assert filled.shaping_turns == [], "no chat happened, so nothing shaped this plan"
+    end
+
+    test "a plan filled in this way is not marked procedural until it is" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      refute plan.procedural
+    end
+
+    test "still requires what the plan card requires" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:error, changeset} =
+               Intake.plan_procedurally(plan, procedural_attrs(%{account_name: ""}))
+
+      assert %{account_name: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "defaults to cloud, same as the plan card" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:ok, filled} =
+               Intake.plan_procedurally(plan, procedural_attrs() |> Map.delete(:location))
+
+      assert filled.location == :cloud
+    end
+
+    # The whole point: nothing downstream of this — signup, `convert/2`,
+    # `IntakeLive.Workspace`'s payment and boot — reads `plan.status` for
+    # anything but the `:converted` short-circuit, so a plan that skipped the
+    # chat has to be indistinguishable from one that didn't by the time it
+    # gets here.
+    test "converts exactly like a plan the conversation produced" do
+      scope = user_scope_fixture()
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs())
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+      assert converted.status == :converted
+      assert converted.project_id
+      assert converted.account_id
+    end
+  end
+
   describe "convert/2" do
     # `who_uses` was collected from the first conversation and used only to
     # write a summary. The project was created without a persona, and that is

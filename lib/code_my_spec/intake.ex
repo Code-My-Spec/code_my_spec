@@ -16,6 +16,7 @@ defmodule CodeMySpec.Intake do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Agents.Phase,
       CodeMySpec.Analytics,
       CodeMySpec.Events,
       CodeMySpec.Faults,
@@ -265,6 +266,25 @@ defmodule CodeMySpec.Intake do
   @doc "A form-backing changeset for the name corrections."
   @spec change_names(Plan.t(), map()) :: Ecto.Changeset.t()
   def change_names(%Plan{} = plan, attrs \\ %{}), do: Plan.names_changeset(plan, attrs)
+
+  @doc """
+  Fills a plan in directly from one form, no conversation involved.
+
+  For a visitor who wants `/build/procedural` instead of the chat. Lands on
+  `:planned` in one write, same as a model call finishing would — signup,
+  payment and boot all read the plan row alone and cannot tell which door
+  produced it.
+  """
+  @spec plan_procedurally(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def plan_procedurally(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.procedural_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc "A form-backing changeset for the procedural form."
+  @spec change_procedural(Plan.t(), map()) :: Ecto.Changeset.t()
+  def change_procedural(%Plan{} = plan, attrs \\ %{}), do: Plan.procedural_changeset(plan, attrs)
 
   @doc """
   Whether a visitor has already confirmed the account/project names.

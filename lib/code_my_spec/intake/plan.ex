@@ -24,6 +24,7 @@ defmodule CodeMySpec.Intake.Plan do
           first_build: String.t() | nil,
           account_name: String.t() | nil,
           project_name: String.t() | nil,
+          procedural: boolean(),
           account_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -62,6 +63,11 @@ defmodule CodeMySpec.Intake.Plan do
     # that has not reached the confirmation card has not been asked, and that is
     # a different state from either answer.
     field :location, Ecto.Enum, values: [:local, :cloud]
+
+    # Set only by `procedural_changeset/2`. Nullable rather than defaulted at
+    # the column so an existing row's silence stays silence — every row this
+    # matters for is written by that changeset, which always sets it.
+    field :procedural, :boolean, default: false
 
     belongs_to :account, Account
     belongs_to :project, Project
@@ -155,6 +161,39 @@ defmodule CodeMySpec.Intake.Plan do
     ])
     |> validate_length(:account_name, min: 1, max: 100)
     |> validate_length(:project_name, min: 1, max: 100)
+  end
+
+  @doc """
+  Everything the conversation would have inferred, given directly instead —
+  for a visitor who wants the plain form rather than the chat. Lands on
+  `:planned`, the same status `plan_changeset/2` reaches after a model call:
+  same arrival, a different door, and everything past this page (signup,
+  payment, boot) reads `plan.status`/`plan.location`/names alone and cannot
+  tell which door was used.
+  """
+  def procedural_changeset(%__MODULE__{} = plan, attrs) do
+    plan
+    |> cast(attrs, [
+      :account_name,
+      :project_name,
+      :who_uses,
+      :needs_sign_in,
+      :separate_copies,
+      :location
+    ])
+    |> default_location()
+    |> validate_required([
+      :account_name,
+      :project_name,
+      :needs_sign_in,
+      :separate_copies,
+      :location
+    ])
+    |> validate_length(:account_name, min: 1, max: 100)
+    |> validate_length(:project_name, min: 1, max: 100)
+    |> validate_length(:who_uses, max: 500)
+    |> put_change(:status, :planned)
+    |> put_change(:procedural, true)
   end
 
   # Cloud unless they say otherwise. Not a default column — a plan abandoned

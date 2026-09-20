@@ -52,6 +52,7 @@ defmodule CodeMySpecWeb.Router do
     live_session :intake,
       on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
       live "/build", IntakeLive.Plan, :plan
+      live "/build/procedural", IntakeLive.Procedural, :procedural
     end
 
     # Email from the sign-up card — a plain form post, not `phx-submit`,
