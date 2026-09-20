@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5948Spex do
             context.environment,
             @malformed_spec_path,
             """
-            # BrokenContext
+            No module heading
 
             no Type section, no Functions section — this should fail spec validation.
             """

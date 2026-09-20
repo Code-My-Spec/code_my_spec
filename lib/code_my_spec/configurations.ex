@@ -62,10 +62,7 @@ defmodule CodeMySpec.Configurations do
       |> ProjectConfiguration.changeset(attrs)
       |> Repo.update()
 
-    # `GraphFingerprint` hashes the configuration, and it decides real gates —
-    # `require_specs?` alone adds or removes a requirement on every component
-    # in the project. Turning it on is work appearing for a role that has
-    # nothing to read that would tell it so.
+    # Configuration can change project gates and analyzer policy.
     case result do
       {:ok, _config} -> GraphInputs.announce(scope, "Configurations", [], :project_wide)
       {:error, _changeset} -> :ok
@@ -81,22 +78,6 @@ defmodule CodeMySpec.Configurations do
   def change(%ProjectConfiguration{} = configuration, attrs \\ %{}) do
     ProjectConfiguration.changeset(configuration, attrs)
   end
-
-  @doc """
-  Whether the active project requires specs as a generated artifact.
-  Drives `Documents.create_dynamic_document`'s strict-section gate:
-  off means partial specs are allowed.
-
-  Falls back to `true` when no scope/project is available so non-
-  scoped callers stay in strict mode by default.
-  """
-  @spec require_specs?(Scope.t() | nil) :: boolean()
-  def require_specs?(%Scope{active_project_id: project_id} = scope)
-      when not is_nil(project_id) do
-    get_or_create(scope).require_specs
-  end
-
-  def require_specs?(_), do: true
 
   @doc """
   Minimum issue severity the FixIssues loop gates on. Accepted issues

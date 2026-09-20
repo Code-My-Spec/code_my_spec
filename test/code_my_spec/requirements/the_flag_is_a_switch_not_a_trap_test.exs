@@ -18,16 +18,32 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
   goes back off at the end of the test, and turning it on for real is a
   decision about evidence rather than about mechanism.
 
-  ## Why the assertion is the diff rather than a row count
+  ## Two assertions, because there are two ways to be wrong
 
-  A writer that raises is the easy failure and a `Repo.all` would catch it. The
-  one worth guarding is the quiet one — each writer writing somewhere nothing
-  reads — and the only thing that can see that is the comparison, which asks
-  for its two sides by role and so keeps meaning the same thing either way
-  round.
+  `Shadow.diff/1` compares row set to row set and never asks whether either is
+  *readable* — `Projection.rehydrate/2` drops a row whose entity it cannot place
+  or whose definition it cannot find, and a dropped row is an agent told it has
+  less work than it has. So the diff is one assertion and the reader is the
+  other: `verify_round_trip/4` compares what a fresh computation produced
+  against what `Projection.load/2` returns, which inverted is the event path's
+  rows as every reader sees them.
+
+  ## The flip is a transition, and the check says so
+
+  Both warn on the *first* round and neither warns on the second. At the instant
+  of the flip each writer publishes against tables the other has not filled yet,
+  so a graph computed from scratch differs from what the reader can see — which
+  is true, and worth being told. It converges as soon as both sides have written
+  once.
+
+  That is measured here rather than asserted away, because it is the live-flip
+  question in miniature: flipping on a running system means ordering the two
+  writers, not hoping. A check that fires during a transition is not a check
+  that lies, which is why it is no longer skipped when inverted.
   """
   use CodeMySpecSpex.Case
 
+  import ExUnit.CaptureLog
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias CodeMySpec.ComponentsFixtures
@@ -60,9 +76,35 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
       # separate question — this one asks whether the mechanism works at all.
       Application.put_env(:code_my_spec, :graph_event_is_source, true)
 
-      CodeMySpec.Requirements.recompute(scope)
+      # The event path first. Inverted, it owns the tables `Projection.load/2`
+      # reads, and the pass's `verify_round_trip/4` reads them the moment it
+      # publishes — so recomputing first compares a fresh graph against tables
+      # the event path has not filled yet and warns, correctly, about a
+      # transition rather than about the mechanism.
       {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
       :ok = ShadowProjector.settle(scope.active_project_id)
+      CodeMySpec.Requirements.recompute(scope)
+
+      # Both sides have written once now, so the transition is over and the
+      # reader's view has to match a graph computed from scratch.
+      settled =
+        capture_log(fn ->
+          :ok = ShadowProjector.settle(scope.active_project_id)
+          CodeMySpec.Requirements.recompute(scope)
+        end)
+
+      refute settled =~ "does not round-trip",
+             """
+             Inverted and settled, what a fresh computation produces is not what
+             `Projection.load/2` returns.
+
+             That reader is every consumer of the graph, and it is reading the
+             event path's rows now. A difference here that does not resolve is
+             the event path holding something the reader cannot serve — which
+             `Shadow.diff/1` cannot see, because it compares rows to rows.
+
+             #{settled}
+             """
 
       report = Shadow.diff(scope)
 

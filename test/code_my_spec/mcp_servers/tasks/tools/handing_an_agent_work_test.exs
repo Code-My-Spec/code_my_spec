@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
   end
 
   defp a_project_with_an_agent do
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
 
     {:ok, copy} =
@@ -86,7 +86,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
     {:reply, started, _} =
       StartTask.execute(
         %{
-          requirement_name: "spec_file",
+          requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: component.id,
           session_id: session.external_conversation_id,
@@ -101,7 +101,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
     agent_frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
     {:reply, listed, _} = ListTasks.execute(%{}, agent_frame)
 
-    assert text(listed) =~ "spec_file",
+    assert text(listed) =~ "implementation_file",
            """
            The task was started for this agent and is not on its queue.
 
@@ -126,7 +126,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
     {:reply, started, _} =
       StartTask.execute(
         %{
-          requirement_name: "spec_file",
+          requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: component.id,
           session_id: external,
@@ -149,7 +149,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.HandingAnAgentWorkTest do
 
     {:reply, listed, _} = ListTasks.execute(%{session_id: external}, frame)
 
-    assert text(listed) =~ "spec_file",
+    assert text(listed) =~ "implementation_file",
            "the task should be on the caller's session, which is where a label's task belongs"
   end
 end

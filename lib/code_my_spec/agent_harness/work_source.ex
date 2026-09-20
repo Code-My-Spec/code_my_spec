@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
       server routes to it (falling back to the manager).
 
   Requirement resolution reuses the same path `get_next_requirement` uses:
-  `RequirementGraph.next_actionable/1` filtered to the role's `role`,
+  `Requirements.story_execution/2` scoped to the active story and lane role,
   rendered to directive text via `RequirementsMapper`. Only the sub-agent roles
   (`coding` / `spec_writer` / `qa`) auto-pull; `product` is interview-driven and
   `manager` is the puller, so both resolve to `:none`.
@@ -23,9 +23,9 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
 
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   # Role string -> requirement `role`. Roles absent here don't auto-pull.
   @auto_pull_roles %{"coding" => :coding, "spec_writer" => :spec_writer, "qa" => :qa}
@@ -83,18 +83,15 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
   defp next_for_role(external_id, role) do
     with role_atom when not is_nil(role_atom) <- Map.get(@auto_pull_roles, role),
          {:ok, scope} <- resolve_scope(external_id) do
-      scope
-      |> RequirementGraph.next_actionable()
-      |> Enum.filter(&(&1.role == role_atom))
-      |> case do
-        [node | _] ->
+      case Requirements.story_execution(scope, role_atom) do
+        %{status: :ready, wave: [node | _]} = execution ->
           {:ok,
            %{
              requirement_name: node.name,
-             prompt: RequirementsMapper.format_next_requirements([node], %{})
+             prompt: RequirementsMapper.format_story_execution(execution)
            }}
 
-        [] ->
+        _ ->
           :none
       end
     else
@@ -102,10 +99,18 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
     end
   end
 
-  # Same working-dir resolution as the socket handshake: external_id = "pi:<cwd>".
+  # A pi session names its local checkout. Resolve its persisted harness identity
+  # rather than substituting the project's default working copy. If the server
+  # cannot read this checkout, it cannot safely dispatch from a path alone.
   defp resolve_scope("pi:" <> working_dir) when working_dir != "" do
-    with {:ok, project} <- Projects.get_project_by_local_path(working_dir) do
-      Scope.for_local_project(project)
+    with {:ok, contents} <- File.read(Path.join(working_dir, ".cms_harness.json")),
+         {:ok, config} <- Jason.decode(contents),
+         {:ok, copy} <- WorkingCopies.fetch(config["harness_id"] || config["working_copy_id"]),
+         true <- is_binary(copy.root) and Path.expand(copy.root) == Path.expand(working_dir),
+         {:ok, scope} <- Scope.for_local_project(copy.project, working_dir) do
+      {:ok, %{scope | active_working_copy_id: copy.id}}
+    else
+      _ -> {:error, :unavailable_working_copy}
     end
   end
 

@@ -9,6 +9,55 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   # Public — response builders
   # ---------------------------------------------------------------------------
 
+  def story_execution_response(execution, active_subagents \\ %{}) do
+    execution |> format_story_execution(active_subagents) |> tool_text()
+  end
+
+  def format_story_execution(execution, active_subagents \\ %{}) do
+    "#{story_header(execution.story)}\n\nStatus: #{execution.status}\n\n" <>
+      execution_body(execution, active_subagents)
+  end
+
+  defp story_header(nil), do: "# Story scope"
+  defp story_header(story), do: "# Story #{story.id}: #{story.title}"
+
+  defp execution_body(%{status: :ready} = execution, active_subagents) do
+    wave = execution.wave
+
+    "Wave: #{length(wave)} requirement(s)\nRemaining: #{execution.remaining}\n\n" <>
+      format_next_requirements(wave, active_subagents) <>
+      "\n\nExecution metadata:\n" <> Enum.map_join(wave, "\n", &execution_metadata/1)
+  end
+
+  # `:complete` with no story is a copy that has nothing actionable, which is
+  # not the same statement as a story finishing — and the difference is the one
+  # `nothing_for_this_role_response/2` was written for. A copy answered for the
+  # project says so in the project's terms; "this story is complete" names a
+  # story that was never selected.
+  defp execution_body(%{status: :complete, story: nil, reason: reason}, _active), do: reason
+
+  defp execution_body(%{status: :complete}, _active),
+    do:
+      "This story is complete for this working copy. Selecting the next story requires a new assignment."
+
+  defp execution_body(execution, _active) do
+    blockers = Enum.map_join(execution.blockers, "\n", &blocker_line/1)
+
+    Enum.join(Enum.reject([execution.reason, blockers], &(&1 in [nil, ""])), "\n\n")
+  end
+
+  defp execution_metadata(node) do
+    "- #{node.name} (#{node.entity_type} #{node.entity_id}): " <>
+      "execution_type=#{node.execution_type}, " <>
+      "orchestrated_by=#{node.orchestrated_by || "none"}, " <>
+      "validation_type=#{node.validation_type}"
+  end
+
+  defp blocker_line(blocker) do
+    "- #{Map.get(blocker, :name, "prerequisite")}: #{Map.get(blocker, :entity_name, "")} " <>
+      to_string(Map.get(blocker, :reason) || Map.get(blocker, :description) || "unsatisfied")
+  end
+
   def next_requirements_response(nodes, active_subagents \\ %{}) do
     nodes
     |> format_next_requirements(active_subagents)
@@ -305,7 +354,11 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   # Structured dispatch for sub-agent requirements: choose SendMessage to a
   # live sub-agent or fresh Agent spawn depending on the registry.
-  defp render_directive(%{execution_type: :sub_agent} = node, %{role: role, prompt: text}, active_subagents) do
+  defp render_directive(
+         %{execution_type: :sub_agent} = node,
+         %{role: role, prompt: text},
+         active_subagents
+       ) do
     role_key = to_string(role)
 
     case Map.get(active_subagents, role_key) do

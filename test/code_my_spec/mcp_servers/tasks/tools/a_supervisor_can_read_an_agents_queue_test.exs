@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
   end
 
   defp a_project_with_an_agent_holding_a_task do
-    scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     component = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
 
     {:ok, copy} =
@@ -70,7 +70,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     {:reply, started, _} =
       StartTask.execute(
         %{
-          requirement_name: "spec_file",
+          requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: component.id
         },
@@ -93,7 +93,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     refute response.isError, response_text(response)
     text = response_text(response)
 
-    assert text =~ "spec_file",
+    assert text =~ "implementation_file",
            """
            Asking about a named agent did not return that agent's work.
 
@@ -114,7 +114,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
     {_scope, _agent, _frame} = a_project_with_an_agent_holding_a_task()
 
     # A second project, whose scope has no business seeing the first one's agent.
-    other = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+    other = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
     other_frame = %Frame{assigns: %{current_scope: other}}
 
     {:reply, response, _} = ListTasks.execute(%{agent_id: Ecto.UUID.generate()}, other_frame)
@@ -148,7 +148,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
            Got: #{response_text(response)}
            """
 
-    assert response_text(response) =~ "spec_file",
+    assert response_text(response) =~ "implementation_file",
            "the agent's own call has to return its own work, not an empty list"
   end
 end

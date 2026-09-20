@@ -85,14 +85,19 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       # the component's spec_file becomes actionable.
       seed_story_chain_complete(scope, tmp_dir, story, persona_id)
 
-      write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/widget.spec.md",
+        "# MyApp.Widget\n\n## Type\n\nschema"
+      )
+
       sync!(scope, tmp_dir)
 
       actionable = actionable(scope)
       names = Enum.map(actionable, & &1.name)
 
       # Component needs a spec (spec_file is first requirement for schema)
-      assert "spec_file" in names
+      assert "implementation_file" in names
     end
 
     # Issue 5e7ffbd9 reported the graph offering implementation_file for MCP
@@ -379,34 +384,36 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
           module_name: "MyApp.Widget"
         })
 
-      # No files → spec_file unsatisfied
+      # No files → implementation_file unsatisfied
       nodes = RequirementGraph.compute_all(scope)
 
-      widget_spec =
+      widget_impl =
         Enum.find(nodes, fn n ->
-          n.entity_type == "component" and n.entity_id == component.id and n.name == "spec_file"
+          n.entity_type == "component" and n.entity_id == component.id and
+            n.name == "implementation_file"
         end)
 
-      assert widget_spec
-      refute widget_spec.satisfied
+      assert widget_impl
+      refute widget_impl.satisfied
 
-      # Add spec file → spec_file satisfied
+      # Add implementation file → implementation_file satisfied
       write_file(
         tmp_dir,
-        ".code_my_spec/spec/my_app/widget.spec.md",
-        "# MyApp.Widget\n\n## Type\n\nschema"
+        "lib/my_app/widget.ex",
+        "defmodule MyApp.Widget do\nend"
       )
 
       sync!(scope, tmp_dir)
 
       nodes2 = RequirementGraph.compute_all(scope)
 
-      widget_spec2 =
+      widget_impl2 =
         Enum.find(nodes2, fn n ->
-          n.entity_type == "component" and n.entity_id == component.id and n.name == "spec_file"
+          n.entity_type == "component" and n.entity_id == component.id and
+            n.name == "implementation_file"
         end)
 
-      assert widget_spec2.satisfied
+      assert widget_impl2.satisfied
     end
   end
 
@@ -576,7 +583,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
     # Graph-shape tests need the full spec -> review -> test -> implementation
     # chain; a fresh project defaults to spex and code only.
-    {ConfigurationsFixtures.require_all!(scope), tmp_dir}
+    {ConfigurationsFixtures.ensure_configuration!(scope), tmp_dir}
   end
 
   defp sync!(scope, tmp_dir) do

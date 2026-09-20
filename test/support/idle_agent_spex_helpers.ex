@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   @doc """
   Claim a task the way an agent we run claims one — owned by the agent.
 
-  `:context_spec_task_started` is the wrong premise for a criterion about what
+  `:context_implementation_task_started` is the wrong premise for a criterion about what
   an *agent* holds. It posts `session-start` and passes a `session_id`, so the
   task lands on a `Session`, and `TaskOwner` is explicit that ownership is the
   list a task is stored in rather than a field on it. The agent then holds

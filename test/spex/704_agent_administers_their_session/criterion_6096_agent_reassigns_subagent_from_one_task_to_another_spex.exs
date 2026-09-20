@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.AssignSubagent
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -48,11 +49,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        # Task A: agent claims spec_file
+        # Task A: agent claims implementation work
         {:reply, _, _} =
           StartTask.execute(
             %{
-              requirement_name: "spec_file",
+              requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id,
@@ -61,14 +62,21 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
             frame
           )
 
-        # Task B: open (no agent_id) — start it for the same component
-        # but a different requirement so they share an entity
+        # Task B belongs to a different component, with the same implementation requirement.
+        other =
+          ComponentHelpers.create(context.scope,
+            type: "context",
+            module_name: "OtherContext",
+            name: "Other Context",
+            description: "Another implementation task."
+          )
+
         {:reply, _, _} =
           StartTask.execute(
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
-              entity_id: to_string(context.component.id),
+              entity_id: to_string(other.id),
               session_id: session_id
             },
             frame
@@ -80,8 +88,8 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
 
         list_text = TaskResponseHelpers.response_text(list_resp)
 
-        task_a_id = task_id_for_requirement(list_text, "spec_file")
-        task_b_id = task_id_for_requirement(list_text, "implementation_file")
+        task_a_id = task_id_for_requirement(list_text, context.component.module_name)
+        task_b_id = task_id_for_requirement(list_text, other.module_name)
 
         {:ok,
          Map.merge(context, %{

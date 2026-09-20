@@ -2485,19 +2485,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Whether this project asks for spec files, and a component to ask it about.
-
-  `require_specs` is what `graph_for_type/1` filters a template by, so turning it
-  off is how a project stops needing a whole class of requirement — the surface
-  behind criterion 3359.
-  """
-  def require_specs(%Scope{} = scope, required?) do
-    CodeMySpec.Configurations.get_or_create(scope)
-    {:ok, _config} = CodeMySpec.Configurations.update(scope, %{require_specs: required?})
-    :ok
-  end
-
-  @doc """
   A schema component, whose whole template is spec requirements.
 
   `schema_graph/0` is `spec_file` and `spec_valid` and nothing else, which makes
@@ -3389,26 +3376,9 @@ defmodule CodeMySpecSpex.Fixtures do
     path
   end
 
-  @doc """
-  Turns the three requirement toggles on for a project.
-
-  A fresh project defaults them off — it writes BDD spex and code and nothing
-  else. The spex suite exercises the full development workflow, so it needs the
-  whole chain (spec → review → test → implementation) to have anything to drive.
-
-  Lives on the bridge rather than being called directly: `CodeMySpecSpex` is its
-  own Boundary and may not reach into `CodeMySpec.*`, so every fixture the specs
-  need has to come through here.
-  """
-  @spec require_all!(Scope.t()) :: Scope.t()
-  def require_all!(scope) do
-    {:ok, _config} =
-      Configurations.update(scope, %{
-        require_specs: true,
-        require_reviews: true,
-        require_unit_tests: true
-      })
-
+  @doc "Ensure the project has its default analyzer and deployment configuration."
+  def ensure_configuration!(scope) do
+    Configurations.get_or_create(scope)
     scope
   end
 

@@ -96,16 +96,14 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
     # A run landing moves spex freshness, and writes problems.
-    "analysis_completed" => [:specs, :problems],
+    "analysis_completed" => [:specs],
     # Safe again: the four project delegates a sync moves —
     # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
     # `architecture_designed` — now have `settle/3` clauses, so nothing this
     # event moves is left to the marks it discards.
     "files_synced" => [:files, :specs],
-    # Problems feed `tests_passing` *and* `bdd_specs_passing` — a story's own
-    # failing spex specs are problem rows — so both profiles, or the story
-    # verdict is left behind by a run that changed it.
-    "problems_changed" => [:problems, :specs],
+    # Story test verdicts must be refreshed when analysis problems change.
+    "problems_changed" => [:specs],
     "deploy_changed" => [:links],
     # A story row reaches five profiles, which is why this event took five
     # conversions to turn on:
@@ -157,9 +155,8 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # What each requirement is moved by, and what its `settle/3` clause reads.
   #
-  # Declared per requirement rather than per profile, because `tests_passing`
-  # reads two — whether the component has a test file at all, and how many
-  # exunit problems it has — and a table keyed the other way cannot say that.
+  # Some requirements read multiple profiles; bdd_specs_exist uses both files
+  # and story criteria. Each profile is loaded once per event.
   #
   # Usually the two are the same list, which is the bare-list shape. They come
   # apart for the rollups in `@delegate_requirements`, written
@@ -173,12 +170,6 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issues_resolved" => [:issues],
     "story_issues_resolved" => [:issues],
     "bdd_specs_passing" => [:specs],
-    "spec_file" => [:files],
-    "spec_valid" => [:files],
-    "test_file" => [:files],
-    "test_spec_alignment" => [:files],
-    "review_file" => [:files],
-    "review_valid" => [:files],
     "implementation_file" => [:files],
     # Files for the spec paths, stories for the criteria those paths have to
     # cover. Not a `@file_requirements` row any more — see its `settle/3`.
@@ -189,7 +180,6 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_journey_plan" => [:files],
     "qa_journey_execute" => [:files],
     "qa_journey_wallaby" => [:files],
-    "tests_passing" => [:files, :problems],
     "component_linked" => [:links],
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
@@ -241,17 +231,8 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_integration_plan" => {QaIntegrationPlan, :delegate}
   }
 
-  # Every `file_exists` and `file_valid` requirement, as a table. Each of the
-  # eight maps to exactly one role and one kind across all fifteen graphs —
-  # checked, not assumed — so these are two shapes parameterised rather than
-  # eight handlers. 76 of the graph's 110 definitions.
+  # Component work is the presence of its implementation file.
   @file_requirements %{
-    "spec_file" => {:exists, :spec, "component"},
-    "spec_valid" => {:valid, :spec, "component"},
-    "test_file" => {:exists, :test, "component"},
-    "test_spec_alignment" => {:valid, :test, "component"},
-    "review_file" => {:exists, :review, "component"},
-    "review_valid" => {:valid, :review, "component"},
     "implementation_file" => {:exists, :implementation, "component"}
   }
 
@@ -448,23 +429,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   defp settle(name, %{files: profile}, _scope) when is_map_key(@path_requirements, name) do
     {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
     project_sweep(name, satisfied?, detail, detail)
-  end
-
-  # `tests_passing`, the one requirement reading two profiles: whether the
-  # component has a test file at all, and how many exunit problems it carries.
-  #
-  # `analysis_source` rides in the details deliberately — `RequirementGraph.serve/2`
-  # reads it to mark the node stale when the exunit run predates the code, which
-  # is applied at read time and is why this verdict does not need to know about
-  # freshness itself.
-  defp settle("tests_passing", %{files: files, problems: problems}, _scope) do
-    %{
-      entity_type: "component",
-      name: "tests_passing",
-      default: true,
-      default_details: details(%{status: "No test failures", analysis_source: "exunit"}),
-      except: tests_failures(files, problems)
-    }
   end
 
   # A story's component link is satisfied when the named component *exists*,
@@ -682,32 +646,6 @@ defmodule CodeMySpec.Requirements.Handlers do
       n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
     end
   end
-
-  defp tests_failures(files, problems) do
-    for component <- files.components,
-        verdict = tests_verdict(component, files, problems),
-        verdict != :ok,
-        do: change("component", component.id, "tests_passing", false, tests_detail(verdict))
-  end
-
-  # A component with no test file fails before the count is consulted, which is
-  # the order `check/5` takes them in — "No test file exists yet" rather than a
-  # vacuous zero.
-  defp tests_verdict(component, files, problems) do
-    if Map.has_key?(files.by_component_role, {component.id, :test}) do
-      case problems.by_component_source |> Map.get(component.id, %{}) |> Map.get("exunit", 0) do
-        0 -> :ok
-        n -> {:failures, n}
-      end
-    else
-      :no_test_file
-    end
-  end
-
-  defp tests_detail(:no_test_file), do: %{reason: "No test file exists yet"}
-
-  defp tests_detail({:failures, n}),
-    do: %{reason: "#{n} test failure(s)", count: n, analysis_source: "exunit"}
 
   # A project requirement has one entity, so its sweep is one row — expressed as
   # a sweep anyway so every requirement settles through the same path.

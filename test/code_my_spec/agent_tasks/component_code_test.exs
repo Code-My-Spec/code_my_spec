@@ -78,7 +78,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       assert feedback =~ "requirements not met"
     end
 
-    test "returns invalid when tests_passing requirement is unsatisfied", %{
+    test "returns invalid when test analysis reports problems", %{
       task: task,
       scope: scope,
       component: component
@@ -99,7 +99,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       })
 
       assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
-      assert feedback =~ "requirements not met"
+      assert feedback =~ "Problems found"
     end
 
     test "returns valid when all :code requirements are satisfied", %{
@@ -204,7 +204,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         ])
 
       assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
-      assert feedback =~ "requirements not met"
+      assert feedback =~ "Problems found"
       assert feedback =~ "undefined function"
     end
   end

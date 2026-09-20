@@ -25,6 +25,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Same priority, oldest created_at wins" do
     scenario "older story's context leads when both stories share priority 1" do
       given_ "two contexts synced and linked to two priority-1 stories created in sequence",
@@ -40,9 +44,6 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
                 Content.spec_path(module),
                 Content.context_spec(module, type: "context", dependencies: deps)
               )
-
-            :ok =
-              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 
@@ -58,7 +59,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
         # rows took the same timestamp, leaving the tie-break with nothing to
         # break the tie on (48924084).
         older =
-          StoryHelpers.create_and_link(context.scope, "FirstContext",
+          StoryHelpers.create_ready_and_link(context, "FirstContext",
             title: "First",
             description: "As a user, I want the older story to lead on tiebreak.",
             acceptance_criteria: ["First ships first"],
@@ -67,7 +68,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
 
         Fixtures.age_story(context.scope, older.id, 60)
 
-        StoryHelpers.create_and_link(context.scope, "SecondContext",
+        StoryHelpers.create_ready_and_link(context, "SecondContext",
           title: "Second",
           description: "As a user, I want the newer story to wait.",
           acceptance_criteria: ["Second ships second"],

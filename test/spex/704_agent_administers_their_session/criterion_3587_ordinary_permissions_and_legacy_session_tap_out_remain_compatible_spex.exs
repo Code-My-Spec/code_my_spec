@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
   spex "Human approves the tap-out and continuous mode clears" do
     scenario "after approval, continuous is false and next stop hook allows" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "continuous mode is enabled and tap_out has been called", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)

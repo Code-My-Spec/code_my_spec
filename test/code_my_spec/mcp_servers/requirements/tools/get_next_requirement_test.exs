@@ -13,21 +13,25 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   end
 
   describe "execute/2" do
-    test "returns the next actionable requirement" do
+    # A session that names no checkout has nothing to answer for, and answering
+    # it with the project's work hands an agent a queue it has no tree to build
+    # in. A copy *with* a checkout and no selected story is a different case and
+    # does get the project's work — see `StoryExecution.from_copy/5`.
+    test "a session with no working copy is unavailable rather than given project work" do
       scope = full_scope_fixture()
       # Reads serve rows; the write path computes them.
       CodeMySpec.Requirements.recompute(scope)
 
-      frame = %Frame{assigns: %{current_scope: scope}}
+      frame = %Frame{assigns: %{current_scope: %{scope | active_working_copy_id: nil}}}
 
       assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
 
       refute response.isError
       content = response_text(response)
 
-      # Should return the first actionable project-level requirement
-      assert content =~ "### PersonaResearch"
-      assert content =~ "start_task"
+      assert content =~ "Status: unavailable"
+      refute content =~ "start_task"
+      refute content =~ "All requirements satisfied"
     end
 
     test "returns init checklist when no project is linked" do

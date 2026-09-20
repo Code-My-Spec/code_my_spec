@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
   alias CodeMySpec.AgentTasks.StartAgentTask
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements
 
   # skill → {subcommand → session_type}
   # nil subcommand means "no args" default
@@ -201,42 +201,62 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
   end
 
   defp next_prompt(scope) do
-    # `embed: false` and `changed_paths` threaded through to `ComponentSync` —
-    # this is the documented shortcut for `get_next_requirement` → `start_task`,
-    # so it inherits both hot-path fixes: skip the framework-knowledge
-    # re-embed/hex-doc re-projection, and scope the component backfill to what
-    # this call's own scan actually found changed rather than forcing a full,
-    # non-incremental resync of every component on every call.
-    if scope.cwd do
-      case FileSync.sync(scope, base_dir: scope.cwd, embed: false) do
-        {:ok, file_result} ->
-          FileComponentSync.sync_from_files(scope,
-            base_dir: scope.cwd,
-            changed_paths: file_result.changed_paths,
-            removed_module_names: file_result.removed_module_names
-          )
+    sync_working_tree(scope)
+    execution = Requirements.story_execution(scope)
 
-        {:error, _reason} ->
-          :ok
-      end
+    {:ok,
+     %{
+       prompt: "#{header(execution.story)}\n\nStatus: #{execution.status}\n\n#{body(execution)}"
+     }}
+  end
+
+  # `embed: false` and `changed_paths` threaded through to `ComponentSync` —
+  # this is the documented shortcut for `get_next_requirement` → `start_task`,
+  # so it inherits both hot-path fixes: skip the framework-knowledge
+  # re-embed/hex-doc re-projection, and scope the component backfill to what
+  # this call's own scan actually found changed rather than forcing a full,
+  # non-incremental resync of every component on every call.
+  defp sync_working_tree(%{cwd: nil}), do: :ok
+
+  defp sync_working_tree(scope) do
+    case FileSync.sync(scope, base_dir: scope.cwd, embed: false) do
+      {:ok, file_result} ->
+        FileComponentSync.sync_from_files(scope,
+          base_dir: scope.cwd,
+          changed_paths: file_result.changed_paths,
+          removed_module_names: file_result.removed_module_names
+        )
+
+      {:error, _reason} ->
+        :ok
     end
+  end
 
-    case RequirementGraph.next_actionable(scope) do
-      [] ->
-        {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+  defp header(nil), do: "# Story scope"
+  defp header(story), do: "# Story #{story.id}: #{story.title}"
 
-        case nodes do
-          [] ->
-            {:ok,
-             %{prompt: "No requirements found. Run `/codemyspec:sync` to refresh the graph."}}
+  defp body(%{status: :ready} = execution) do
+    "Wave: #{length(execution.wave)} requirement(s)\nRemaining: #{execution.remaining}\n\n" <>
+      Enum.map_join(execution.wave, "\n\n", &render_next_prompt/1)
+  end
 
-          _ ->
-            {:ok, %{prompt: "✓ All requirements satisfied. Nothing left to do on this project."}}
-        end
+  # `:complete` with no story is a copy that has nothing actionable at all, not
+  # a story that finished — `StoryExecution.from_copy/5` says which in its own
+  # words, so use them rather than naming a story that does not exist.
+  defp body(%{status: :complete, story: nil, reason: reason})
+       when is_binary(reason) and reason != "",
+       do: reason
 
-      [node | _] ->
-        {:ok, %{prompt: render_next_prompt(node)}}
-    end
+  defp body(%{status: :complete}),
+    do: "This story is complete for this working copy. Assign the next story when ready."
+
+  defp body(execution) do
+    blockers =
+      Enum.map_join(execution.blockers, "\n", fn node ->
+        "- #{node.name}: #{Map.get(node, :reason) || Map.get(node, :description) || "unsatisfied"}"
+      end)
+
+    Enum.join(Enum.reject([execution.reason, blockers], &(&1 in [nil, ""])), "\n")
   end
 
   defp render_next_prompt(node) do
@@ -244,6 +264,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
     # Next: #{node.name}
 
     Your next task is **#{node.name}** for #{node.entity_type} `#{node.entity_name}`.
+    execution_type=#{node.execution_type}, orchestrated_by=#{node.orchestrated_by || "none"}, validation_type=#{node.validation_type}
 
     Call `start_task` with:
     - `requirement_name`: `"#{node.name}"`

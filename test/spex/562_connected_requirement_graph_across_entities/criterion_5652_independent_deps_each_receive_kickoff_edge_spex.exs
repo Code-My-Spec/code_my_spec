@@ -58,8 +58,8 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
-        dep_a = Fixtures.get_component_by_module_name(context.scope, "DepA")
-        dep_b = Fixtures.get_component_by_module_name(context.scope, "DepB")
+        dep_a = Fixtures.get_component_by_module_name(context.scope, "DepA.Item")
+        dep_b = Fixtures.get_component_by_module_name(context.scope, "DepB.Item")
         surface_ctx = Fixtures.get_component_by_module_name(context.scope, "FanCtx")
         surface = Fixtures.get_component_by_module_name(context.scope, "FanCtx.FanLive")
 
@@ -96,16 +96,16 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         dep_a_key =
-          GraphAssertions.node_key("component", context.dep_a.id, "spec_file")
+          GraphAssertions.node_key("component", context.dep_a.id, "implementation_file")
 
         dep_b_key =
-          GraphAssertions.node_key("component", context.dep_b.id, "spec_file")
+          GraphAssertions.node_key("component", context.dep_b.id, "implementation_file")
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_a_key),
-               "expected bdd_specs_exist → DepA.spec_file to be present"
+               "expected bdd_specs_exist → DepA.implementation_file to be present"
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_b_key),
-               "expected bdd_specs_exist → DepB.spec_file to be present"
+               "expected bdd_specs_exist → DepB.implementation_file to be present"
 
         {:ok, context}
       end
@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
               {"surface liveview", context.surface}
             ] do
           comp_first_key =
-            GraphAssertions.node_key("component", comp.id, "spec_file")
+            GraphAssertions.node_key("component", comp.id, "implementation_file")
 
           refute GraphAssertions.edge?(context.graph, bdd_exist_key, comp_first_key),
                  "expected no direct kickoff edge from bdd_specs_exist to #{label} (subsumed by paths through DepA / DepB)"

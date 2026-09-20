@@ -74,8 +74,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       # Based on spec, should include these analyzer modules
       expected_modules = [
         CodeMySpec.StaticAnalysis.Analyzers.Credo,
-        CodeMySpec.StaticAnalysis.Analyzers.Sobelow,
-        CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
+        CodeMySpec.StaticAnalysis.Analyzers.Sobelow
       ]
 
       Enum.each(expected_modules, fn expected ->
@@ -97,61 +96,8 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   # ============================================================================
 
   describe "run/3" do
-    test "executes specified analyzer and returns Problems", %{scope: scope} do
-      # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
-      assert {:ok, problems} = Runner.run(scope, :spec_alignment)
-      assert is_list(problems)
-
-      Enum.each(problems, fn problem ->
-        assert %Problem{} = problem
-      end)
-    end
-
-    test "passes options through to analyzer", %{scope: scope} do
-      # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
-      assert {:ok, _problems} = Runner.run(scope, :spec_alignment, paths: ["lib"])
-    end
-
-    test "validates Problems have project_id set", %{scope: scope} do
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
-      spec_content = """
-      # MyModule
-
-      **Type**: module
-
-      ## Functions
-
-      ### missing_function/0
-
-      Missing function.
-
-      ```elixir
-      @spec missing_function() :: :ok
-      ```
-      """
-
-      spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
-
-      impl_file = Path.join(scope.cwd, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
-
-      {:ok, problems} = Runner.run(scope, :spec_alignment)
-
-      assert problems != []
-
-      Enum.each(problems, fn problem ->
-        assert problem.project_id == scope.active_project_id
-      end)
+    test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
+      assert {:error, "Unknown analyzer: spec_alignment"} = Runner.run(scope, :spec_alignment)
     end
 
     @tag timeout: 120_000
@@ -164,8 +110,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         # Test each analyzer that's available
         analyzers_to_test = [
           :credo,
-          :sobelow,
-          :spec_alignment
+          :sobelow
         ]
 
         Enum.each(analyzers_to_test, fn analyzer_name ->
@@ -272,10 +217,8 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
         {:ok, problems} = Runner.run_all(scope)
 
-        # Should have problems from spec_alignment (at minimum)
-        # Other analyzers may not be available without deps
-        assert problems != [], "Expected at least one problem"
-        assert Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
+        assert is_list(problems)
+        refute Enum.any?(problems, &(&1.source == "spec_alignment"))
       end
     end
 

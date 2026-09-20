@@ -54,6 +54,25 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
              "server-side walk could make them"
   end
 
+  # A copy with no story selected is answered for the project, so an empty
+  # project graph is the terminal state and says so — story 1015's criterion
+  # 2393 is the one that lets an agent with nothing to do stop.
+  #
+  # What it must never do is name a story. "This story is complete" against a
+  # copy that was never given one describes work that does not exist, and the
+  # header has no story to put in it either.
+  test "/next answers for the copy's own scope without naming a story it never had", %{
+    scope: scope
+  } do
+    assert {:ok, %{prompt: prompt}} =
+             SkillRouter.resolve(harness_scope(scope), %{"skill" => "next"})
+
+    assert prompt =~ "# Story scope"
+    assert prompt =~ "All requirements satisfied"
+    refute prompt =~ "This story is complete"
+    refute prompt =~ "Call `start_task`"
+  end
+
   # The counterpart to the test above, and the whole point of the pair: the
   # excuse is the harness's alone. Anything else that fails to scan says why.
   #

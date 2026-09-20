@@ -119,15 +119,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     | Requirement | What You Produce |
     |---|---|
-    | `spec_file` | Module specification in `#{base}/spec/` |
-    | `spec_valid` | Fix validation errors in the spec |
-    | `review_file` | Design review for a context and its children |
-    | `review_valid` | Fix validation errors in the review |
-    | `test_file` | Test file following TDD — write tests before implementation |
-    | `test_spec_alignment` | Ensure tests cover all spec assertions |
     | `implementation_file` | Implementation code in `lib/` |
-    | `tests_passing` | Fix failing tests |
     | `bdd_specs_exist` | BDD scenario files for a story's acceptance criteria |
+    | `bdd_specs_passing` | Fix failing story specifications |
     | `qa_complete` | QA brief and results for a story |
 
     ### Step 4: Automatic Evaluation
@@ -136,7 +130,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     - Does the file exist at the expected path?
     - Does it parse/validate against the document schema?
     - Do tests compile and pass?
-    - Is the test aligned with the spec's assertions?
 
     If evaluation finds problems, you receive structured feedback. Fix and continue.
 

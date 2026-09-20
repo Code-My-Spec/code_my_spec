@@ -26,6 +26,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    {:ok, CodeMySpecSpex.ProjectStateFixtures.apply_project_kickoff(context)}
+  end
+
   spex "Lower priority number leads" do
     scenario "the priority-1 story's context appears, the priority-5 story's does not lead" do
       given_ "two unrelated contexts synced, each linked to a story with distinct priority",
@@ -37,9 +41,6 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
           fn {module, deps} ->
             spec = Content.context_spec(module, type: "context", dependencies: deps)
             :ok = Environments.write_file(env, Content.spec_path(module), spec)
-
-            :ok =
-              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 
@@ -49,14 +50,14 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
         urgent = Fixtures.get_component_by_module_name(context.scope, "UrgentContext")
         later = Fixtures.get_component_by_module_name(context.scope, "LaterContext")
 
-        StoryHelpers.create_and_link(context.scope, "UrgentContext",
+        StoryHelpers.create_ready_and_link(context, "UrgentContext",
           title: "Urgent",
           description: "As a user, I want urgent things first.",
           acceptance_criteria: ["Urgent ships"],
           priority: 1
         )
 
-        StoryHelpers.create_and_link(context.scope, "LaterContext",
+        StoryHelpers.create_ready_and_link(context, "LaterContext",
           title: "Later",
           description: "As a user, I want later things later.",
           acceptance_criteria: ["Later ships"],

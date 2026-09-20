@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     beside a `Plumbing` infrastructure component. Produces
     `context.ordinary` and `context.infrastructure`.
 
-  - `:live_context_under_a_config_that_empties_it` — a live context
+  - `:live_context_with_implementation_children` — a live context
     and one LiveView beneath it, on a project with `require_specs`
     and `require_reviews` off, which leaves the container nothing of
     its own and the child its implementation. Produces
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     an orphan from nothing). Produces `context.orphan`.
 
   - `:story_with_liveview_surface` — a story linked to a LiveView
-    surface (`Marketing.HomeLive`) that depends on a context
+    surface (`MarketingWeb.HomeLive`) that depends on a context
     (`Marketing`). Produces `context.surface_liveview`,
     `context.dep_context`, `context.story`.
 
@@ -172,13 +172,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # is the only shape in the system where those two sit side by side. Seven of
   # these on this project.
 
-  register_given :live_context_under_a_config_that_empties_it, context do
-    {:ok, _config} =
-      Fixtures.update_project_configuration(context.scope, %{
-        require_specs: false,
-        require_reviews: false
-      })
-
+  register_given :live_context_with_implementation_children, context do
     write_specs(context.environment, [
       {"Reservations", :context, []},
       {"MyAppWeb.BookingLive", :live_context, []},
@@ -415,16 +409,16 @@ defmodule CodeMySpecSpex.GraphGivens do
   register_given :story_with_liveview_surface, context do
     write_specs(context.environment, [
       {"Marketing", :context, []},
-      {"Marketing.HomeLive", :liveview, ["Marketing"]}
+      {"MarketingWeb.HomeLive", :liveview, ["Marketing"]}
     ])
 
     sync_project(context)
 
-    surface = Fixtures.get_component_by_module_name(context.scope, "Marketing.HomeLive")
+    surface = Fixtures.get_component_by_module_name(context.scope, "MarketingWeb.HomeLive")
     dep_context = Fixtures.get_component_by_module_name(context.scope, "Marketing")
 
     story =
-      StoryHelpers.create_and_link(context.scope, "Marketing.HomeLive",
+      StoryHelpers.create_and_link(context.scope, "MarketingWeb.HomeLive",
         title: "User visits the home page",
         description: "The home page renders the marketing landing.",
         acceptance_criteria: ["Home page renders"]

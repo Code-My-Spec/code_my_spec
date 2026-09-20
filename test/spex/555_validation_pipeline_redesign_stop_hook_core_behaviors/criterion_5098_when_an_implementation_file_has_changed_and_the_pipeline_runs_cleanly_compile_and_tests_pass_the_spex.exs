@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
   spex "Active task with a clean pipeline run is allowed to stop" do
     scenario "agent writes a clean impl, pipeline runs clean, stop allowed" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       given_ "the agent writes a fresh implementation and a passing test",
              context do

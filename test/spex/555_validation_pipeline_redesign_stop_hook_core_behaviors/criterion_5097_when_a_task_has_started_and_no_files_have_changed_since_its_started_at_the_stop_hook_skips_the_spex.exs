@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
   Real-contract flow: `:synced_context_component` writes + syncs the
   component's files (updated_at T0), a 1.1-second clock advance
   guarantees the task's `started_at` lands past every file's
-  updated_at, then `:context_spec_task_started` drives the actual
+  updated_at, then `:context_implementation_task_started` drives the actual
   `POST /api/hooks/session-start` + `start_task` MCP tool on the
   already-satisfied `spec_file` requirement. When the stop hook
   fires with no further writes, `Files.changed_since` returns [] and
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
   spex "Active task with no file changes skips the pipeline" do
     scenario "task started after sync, no writes follow, stop allowed" do
       given_ :synced_context_component
-      given_ :context_spec_task_started
+      given_ :context_implementation_task_started
 
       when_ "the stop hook fires with no additional file writes", context do
         response =

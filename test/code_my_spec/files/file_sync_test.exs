@@ -349,7 +349,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert impl_file.valid == true
     end
 
-    test "sets valid false for invalid spec files" do
+    test "accepts partial architecture specs" do
       {scope, tmp_dir} = setup_project()
 
       # Spec missing required sections
@@ -362,7 +362,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert spec_file.valid == false
+      assert spec_file.valid == true
       assert spec_file.validation_errors != nil
     end
 
@@ -531,7 +531,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert test_file.valid == true
     end
 
-    test "marks test file invalid when spec assertions are missing" do
+    test "does not compare unit tests with markdown assertions" do
       {scope, tmp_dir} = setup_project()
 
       spec_content = """
@@ -592,9 +592,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       test_file = Files.get_by_path(scope, "test/my_app/user_live/show_test.exs")
-      assert test_file.valid == false
-      assert "opens edit form on click" in test_file.validation_errors["missing"]
-      assert "handles missing user" in test_file.validation_errors["missing"]
+      assert test_file.valid == true
+      assert test_file.validation_errors == nil
     end
 
     test "ignores deps, _build, .git directories" do
@@ -759,7 +758,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
 
       file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert file.valid == false
+      assert file.valid == true
       assert file.validation_errors != nil
     end
 
@@ -886,7 +885,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     # now defaults off — without this the "invalid spec file" cases validate
     # leniently and come back valid, which is correct behaviour and the wrong
     # thing for these tests to be exercising.
-    {CodeMySpec.ConfigurationsFixtures.require_all!(scope), tmp_dir}
+    {CodeMySpec.ConfigurationsFixtures.ensure_configuration!(scope), tmp_dir}
   end
 
   defp write_file(tmp_dir, relative_path, content) do

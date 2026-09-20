@@ -16,10 +16,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
 
   describe "execute/2" do
     test "surfaces the checker's reason when the requirement is not satisfied" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component = component_fixture(scope)
 
-      requirement_fixture(scope, component, %{name: "spec_file", satisfied: false})
+      requirement_fixture(scope, component, %{name: "implementation_file", satisfied: false})
 
       # Reads serve rows; the write path computes them.
       CodeMySpec.Requirements.recompute(scope)
@@ -28,20 +28,24 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
 
       assert {:reply, response, ^frame} =
                ShowRequirement.execute(
-                 %{name: "spec_file", entity_type: "component", entity_id: component.id},
+                 %{
+                   name: "implementation_file",
+                   entity_type: "component",
+                   entity_id: component.id
+                 },
                  frame
                )
 
       content = response_text(response)
       assert content =~ "**Status:** Not satisfied"
-      assert content =~ "**Why:** spec file missing"
+      assert content =~ "**Why:** implementation file missing"
     end
 
     test "omits the reason line when the requirement is satisfied" do
-      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
+      scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
       component = component_fixture(scope)
 
-      requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})
+      requirement_fixture(scope, component, %{name: "implementation_file", satisfied: true})
 
       # Reads serve rows; the write path computes them.
       CodeMySpec.Requirements.recompute(scope)
@@ -50,7 +54,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirementTest do
 
       assert {:reply, response, ^frame} =
                ShowRequirement.execute(
-                 %{name: "spec_file", entity_type: "component", entity_id: component.id},
+                 %{
+                   name: "implementation_file",
+                   entity_type: "component",
+                   entity_id: component.id
+                 },
                  frame
                )
 
