@@ -246,6 +246,14 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   def observe(context, opts \\ [], fun) do
     agent_id = fresh_agent(context, Keyword.get(opts, :role, "coding"))
 
+    # Starting the agent moves the graph, and asking for a turn before it has
+    # settled measures a frontier that is still changing. Observed on 3539:
+    # `main: ["technical_strategy"]` at admission and `bdd_specs_passing`
+    # (coding) by the time the admitted agent asked — a different role's work,
+    # one turn apart, so whichever role the scenario picked was wrong at one end
+    # or the other.
+    settle_frontier(context)
+
     try do
       if Keyword.get(opts, :request_turn, true), do: request_turn(context, agent_id)
       if said = Keyword.get(opts, :say), do: say(agent_id, said)
@@ -347,12 +355,33 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
     #{said}
 
-    What the graph offers this agent, asked the way the agent would:
+    What the graph holds actionable at this agent's checkout, by role:
 
     #{offered(context, agent_id)}
     """
 
     said
+  end
+
+  # Drain the graph at both vantages until the actionable set stops moving.
+  #
+  # Bounded rather than looping: a graph that never settles is a finding, not
+  # something to wait out, and a spex that hangs here reports nothing at all.
+  defp settle_frontier(context) do
+    at_copy = %{context.scope | active_working_copy_id: context.copy_id}
+
+    Enum.reduce_while(1..10, nil, fn _, previous ->
+      :ok = Fixtures.settle_graph(context.scope)
+      :ok = Fixtures.settle_graph(at_copy)
+
+      now =
+        for role <- [:coding, :main, :product, :qa],
+            do: {role, Fixtures.actionable_names(at_copy, role)}
+
+      if now == previous, do: {:halt, now}, else: {:cont, now}
+    end)
+
+    :ok
   end
 
   # What `get_next_requirement` answers for this agent, quoted into a premise
@@ -362,22 +391,26 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   # spex boundary does not reach that context, and asking the way the agent
   # asks is the more useful answer anyway — it is the same filter admission
   # uses, so an empty answer here and a refused turn are the same fact.
-  defp offered(context, agent_id) do
-    # At the agent's own checkout, which is what admission asks about:
-    # `Work.graph_work?/2` rebinds the scope to `agent.working_copy_id` before
-    # reading `actionable_for_role/2`. Asking at `context.scope` instead answers
-    # a different question and reads as a contradiction — the fixture's copy can
-    # be offered work the agent's copy is not.
+  defp offered(context, _agent_id) do
+    # `Fixtures.actionable_names/2` rather than `get_next_requirement`: it reads
+    # what `Work.graph_work?/2` reads, and it settles the graph first. The MCP
+    # tool renders for a person and answered a different question — it showed
+    # work at the fixture's copy while admission was asking about the agent's,
+    # which read as a contradiction rather than as two vantages.
+    #
+    # Per role, because the role filter is usually what is wrong: a scenario
+    # measuring a coding agent on a project whose only actionable work belongs
+    # to main is the commonest way one of these premises fails.
     scope = %{context.scope | active_working_copy_id: context.copy_id}
-    frame = %Frame{assigns: %{current_scope: scope, agent_id: agent_id}}
 
-    case GetNextRequirement.execute(%{}, frame) do
-      {:reply, response, _} -> text(response)
-      other -> inspect(other)
+    for role <- [:coding, :main, :product, :qa] do
+      "  #{role}: #{inspect(Fixtures.actionable_names(scope, role))}"
     end
+    |> Enum.join("\n")
   rescue
-    error -> "could not ask: #{inspect(error)}"
+    error -> "  could not ask: #{inspect(error)}"
   end
+
 
   @doc """
   Wait until the agent has nothing in flight and nothing queued.

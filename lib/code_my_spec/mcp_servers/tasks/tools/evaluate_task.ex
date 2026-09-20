@@ -103,7 +103,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     if is_nil(task_module) do
       {:reply, TasksMapper.error("No task module configured for this task"), frame}
     else
-      result = dispatch_evaluate(task_module, scope, task)
+      result = dispatch_evaluate(task_module, scope, task, owner)
 
       case result do
         {:ok, :valid} ->
@@ -152,11 +152,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   # Modules with custom evaluate logic bypass the unified Evaluator.
   # Everything else goes through the Evaluator (FileSync + RequirementCalculator).
-  defp dispatch_evaluate(module, scope, task) do
-    if Evaluator.has_custom_evaluate?(module) do
-      module.evaluate(scope, task)
-    else
-      Evaluator.evaluate(scope, task)
+  # `owner` is offered to any module that wants it, because some answers depend
+  # on *who* is asking rather than on what the task says.
+  #
+  # `Task.agent_id` cannot carry that: `Agent.add_task/2` deliberately leaves it
+  # nil — "the list a task is in says who owns it" — and on a session's task the
+  # field means the Claude Code sub-agent it was assigned to. A module reading it
+  # as "is this one of ours" is wrong in both directions, which is how an agent
+  # in our own BEAM came to be told to `curl` a harness id this machine does not
+  # serve (it should have been told to stop and wait to be notified).
+  defp dispatch_evaluate(module, scope, task, owner) do
+    cond do
+      function_exported?(module, :evaluate, 3) -> module.evaluate(scope, task, owner)
+      Evaluator.has_custom_evaluate?(module) -> module.evaluate(scope, task)
+      true -> Evaluator.evaluate(scope, task)
     end
   rescue
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
