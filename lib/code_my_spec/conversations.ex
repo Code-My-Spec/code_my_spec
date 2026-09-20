@@ -148,7 +148,7 @@ defmodule CodeMySpec.Conversations do
           account_id: account_id,
           project_id: project_id,
           session_external_id: session_external_id,
-          name: generated_name()
+          name: generated_name(account_id, project_id)
         })
         |> Repo.insert()
         |> case do
@@ -190,7 +190,7 @@ defmodule CodeMySpec.Conversations do
           account_id: account_id,
           project_id: project_id,
           agent_id: agent_id,
-          name: generated_name()
+          name: generated_name(account_id, project_id)
         })
         |> Repo.insert()
         |> case do
@@ -1060,9 +1060,38 @@ defmodule CodeMySpec.Conversations do
             kestrel lantern meadow nimbus orchard pillar quarry ridge summit
             thicket vale willow yarrow)
 
-  defp generated_name do
-    "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
+  # Unique within the project, because the name is how an operator tells two
+  # conversations apart.
+  #
+  # 25 adjectives x 23 nouns is 575 names, so two agents on one copy collide
+  # about one time in five hundred — and when they do, both rows render the
+  # same "Open <name>" link to two different transcripts. Criterion 2892 is
+  # exactly that claim ("two agents on one copy are two conversations") and it
+  # caught a real collision on 2026-09-20: an operator picks a link and has
+  # redirected the agent they were not watching, which is worse than having no
+  # link at all.
+  #
+  # A handful of attempts, then a suffix. Retrying forever on a project with
+  # 575 conversations would not terminate, and the suffix is ugly in a way that
+  # says "name me" — which is the right prompt, since the name is editable and
+  # this one was only ever a placeholder.
+  defp generated_name(account_id, project_id) do
+    taken =
+      from(c in Conversation,
+        where: c.account_id == ^account_id and c.project_id == ^project_id,
+        where: not is_nil(c.name),
+        select: c.name
+      )
+      |> Repo.all()
+      |> MapSet.new()
+
+    Enum.find_value(1..8, fn _ ->
+      name = "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
+      if MapSet.member?(taken, name), do: nil, else: name
+    end) || "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}-#{unique_suffix()}"
   end
+
+  defp unique_suffix, do: 4 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
 
   @doc """
   What to show for a conversation that has no name — rows created before names
