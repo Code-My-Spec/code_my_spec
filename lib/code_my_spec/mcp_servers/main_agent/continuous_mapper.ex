@@ -4,7 +4,34 @@ defmodule CodeMySpec.McpServers.MainAgent.ContinuousMapper do
   alias Anubis.Server.Response
 
   @spec set(map(), boolean(), atom()) :: Response.t()
-  def set(agent, true, :enabled) do
+  def set(agent, true, :enabled_and_turn_requested) do
+    Response.tool()
+    |> Response.text("""
+    Continuous enabled: #{agent.id}
+
+    It had eligible work, so a turn has just been requested — the agent chooses
+    which requirement to claim. No process was started or restarted; this is
+    the existing agent taking another turn.
+    """)
+  end
+
+  def set(agent, true, :enabled_without_work) do
+    Response.tool()
+    |> Response.text("""
+    Continuous enabled: #{agent.id}
+
+    Nothing was requested, because there is nothing for it to do right now: no
+    eligible work for its role on its working copy, or it is mid-turn or
+    holding an undispositioned task. No process was started or restarted, and
+    it will be offered a turn when that changes.
+
+    `list_agent_work` says which of those it is.
+    """)
+  end
+
+  # The older shape, kept so a caller that still answers `:enabled` is not
+  # refused outright.
+  def set(agent, true, _enabled) do
     Response.tool()
     |> Response.text("""
     Continuous enabled: #{agent.id}

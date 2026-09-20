@@ -836,6 +836,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # Two outcomes, because switching on is two things. An agent with eligible
+  # work takes a turn now; one with none sits exactly as it did, and a flash
+  # that cannot tell them apart leaves the operator asking the question the
+  # button was meant to answer.
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_and_turn_requested) do
+    put_flash(
+      socket,
+      :info,
+      "Continuous enabled, and it had work — a turn has been requested; no process was started or restarted."
+    )
+  end
+
+  defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_without_work) do
+    put_flash(
+      socket,
+      :info,
+      "Continuous enabled. Nothing to do right now, so no turn was requested and no process was started or restarted — it will be offered one when that changes."
+    )
+  end
+
   defp flash_for_continuous_outcome(socket, %Agent{}, :enabled) do
     put_flash(
       socket,

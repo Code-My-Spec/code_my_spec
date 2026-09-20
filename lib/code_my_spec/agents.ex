@@ -1270,17 +1270,34 @@ defmodule CodeMySpec.Agents do
   leaves any current turn and queued conversation content intact.
   """
   @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
-          {:ok, Agent.t(), :enabled | :paused} | {:error, term()}
+          {:ok, Agent.t(), :enabled_and_turn_requested | :enabled_without_work | :paused}
+          | {:error, term()}
   def set_agent_continuous(%Scope{} = scope, agent_id, continuous?) do
     with {:ok, agent} <- AgentsRepository.set_agent_continuous(scope, agent_id, continuous?) do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
         MainAgent.ensure_cadence(scope)
-        Work.request_turn_if_runnable(scope, agent, :continuous_enabled)
-        {:ok, agent, :enabled}
+        {:ok, agent, enabled_disposition(scope, agent)}
       else
         {:ok, agent, :paused}
       end
+    end
+  end
+
+  # Whether the bell reached anything, rather than only that it was rung.
+  #
+  # Switching on is not one outcome: an agent with eligible work takes a turn
+  # now, and an agent with none sits exactly as it did. Both used to answer
+  # "the existing agent may take another turn when idle and eligible for work",
+  # byte for byte, so the operator asking "why are my agents not running" — the
+  # confusion this tool exists to resolve — had to make a second call to find
+  # out. Measured live by QA on story 796 (`fe059aa3`): two enables, one that
+  # admitted a turn and one that admitted nothing, indistinguishable from the
+  # reply.
+  defp enabled_disposition(scope, agent) do
+    case Work.request_turn_if_runnable(scope, agent, :continuous_enabled) do
+      {:ok, ref} when is_binary(ref) -> :enabled_and_turn_requested
+      _not_runnable -> :enabled_without_work
     end
   end
 

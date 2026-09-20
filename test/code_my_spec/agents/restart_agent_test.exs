@@ -96,7 +96,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
              "the premise failed: this test is about a stopped agent on a *connected* " <>
                "copy, which is the combination the old check read as alive"
 
-      assert {:ok, updated, :enabled} =
+      assert {:ok, updated, :enabled_without_work} =
                Agents.set_agent_continuous(scope, agent.id, true)
 
       assert updated.id == agent.id
@@ -109,7 +109,9 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
     test "a failed agent also retains its lifecycle state", %{scope: scope, agent: agent} do
       {:ok, failed} = AgentsRepository.update_agent(scope, agent, %{status: :failed})
 
-      assert {:ok, updated, :enabled} = Agents.set_agent_continuous(scope, failed.id, true)
+      assert {:ok, updated, :enabled_without_work} =
+               Agents.set_agent_continuous(scope, failed.id, true)
+
       assert updated.status == :failed
       assert updated.continuous
       refute_receive {:work_turn_requested, _, _, _}
