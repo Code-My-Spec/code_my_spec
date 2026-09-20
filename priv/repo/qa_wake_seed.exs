@@ -353,6 +353,41 @@ scope = %{scope | active_working_copy_id: copy.id}
 # Deliberately no qa-role agent: "QA work waiting does not wake the coding
 # agent" needs the *work* outstanding, and an agent of that role would claim it
 # and take the premise away.
+# One story routed to this checkout, because eligibility is copy-scoped.
+#
+# `Work.graph_work?/2` asks what is actionable *for this agent's working copy*,
+# and a story with no `working_copy_id` is nobody's — so a fixture with three
+# ready stories and none of them routed here has four runnable agents and
+# nothing any of them is eligible for. Issue `fde40b27` measured exactly that:
+# "zero stories with working_copy_id = 56f5bf62 at all, so there is no
+# coding-role work that could ever route there regardless of qa_setup".
+#
+# The first story only. The other two stay unrouted on purpose — "work for
+# another role or working copy does not make an agent runnable" needs work
+# that exists and is not this copy's, and routing all three would take that
+# premise away.
+routed =
+  Repo.one(
+    from s in CodeMySpec.Stories.Story,
+      where: s.project_id == ^project.id,
+      order_by: s.id,
+      limit: 1
+  )
+
+case routed do
+  nil ->
+    IO.puts("  story: none to route")
+
+  %{working_copy_id: id} when id == copy.id ->
+    IO.puts("  story: already routed #{routed.title} -> #{copy.id}")
+
+  story ->
+    {:ok, _} =
+      story |> Ecto.Changeset.change(working_copy_id: copy.id) |> Repo.update()
+
+    IO.puts("  story: routed #{story.title} -> #{copy.id}")
+end
+
 for {role, tools, wanted} <- [
       {"product", ["create_issue"], 1},
       {"coding", ["create_issue"], 2},
