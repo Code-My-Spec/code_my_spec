@@ -3,14 +3,21 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
   The same intake, without the conversation.
 
   For checking the mechanical parts — signup, pricing, provisioning — apart
-  from whether the model answers. One form fills the plan in directly
-  (`Intake.plan_procedurally/2`), with no `Shaper`/`Conversation` call
-  anywhere in it, and from there this joins the exact path a shaped plan
-  takes: `/build/sign-up`, then `IntakeLive.Workspace`'s payment and boot.
-  Nothing past this page needs to know a visitor skipped the chat —
-  `plan.procedural` on the row is the only trace, and `Workspace` reads it to
-  land a procedural visitor in the cockpit once their agent is up, rather
-  than leaving them on a card watching a boot bar.
+  from whether the model answers, and for a CRO audit that needs a stable,
+  reproducible funnel rather than one an LLM answers a little differently
+  each run. It asks exactly what the chat conversation asks — who uses it,
+  sign-in, separate copies, the account/project names — as a form instead
+  of a conversation: fewer fields here would mean an audit was never
+  actually looking at what a visitor is asked.
+
+  One form fills the plan in directly (`Intake.plan_procedurally/2`), with
+  no `Shaper`/`Conversation` call anywhere in it, and from there this joins
+  the exact path a shaped plan takes: `/build/sign-up`, then
+  `IntakeLive.Workspace`'s payment and boot. Nothing past this page needs to
+  know a visitor skipped the chat — `plan.procedural` on the row is the only
+  trace, and `Workspace` reads it to land a procedural visitor in the
+  cockpit once their agent is up, rather than leaving them on a card
+  watching a boot bar.
   """
 
   use CodeMySpecWeb, :live_view
@@ -51,6 +58,8 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
             label="Project name"
             class="w-full input"
           />
+          <.input field={@form[:who_uses]} type="text" label="Who uses it" class="w-full input" />
+
           <.input
             field={@form[:needs_sign_in]}
             type="select"

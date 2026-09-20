@@ -171,15 +171,18 @@ defmodule CodeMySpec.Intake.Plan do
   payment, boot) reads `plan.status`/`plan.location`/names alone and cannot
   tell which door was used.
 
-  No `who_uses` here — it feeds `record_persona/3` alone, and a persona is
-  not load-bearing for anything a procedural visitor is checking. Asking for
-  it would be a field with no purpose but noise.
+  Asks the same four generator inputs the shaping conversation asks — who
+  uses it, sign-in, separate copies — plus the names the plan card asks for.
+  This page exists to be audited against the chat pipe, not to be a shorter
+  version of it: dropping a field here would mean the audit was never
+  actually looking at what a visitor is asked.
   """
   def procedural_changeset(%__MODULE__{} = plan, attrs) do
     plan
     |> cast(attrs, [
       :account_name,
       :project_name,
+      :who_uses,
       :needs_sign_in,
       :separate_copies,
       :location
