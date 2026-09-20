@@ -200,7 +200,15 @@ defmodule CodeMySpec.SpexGivensTest do
   # environment. `await_connected` is genuinely a wait, not an establishing
   # call by itself — listed because every given_ that calls it also calls one
   # of the others in the same block, and the check reads the whole body.
+  # `Slice.` is `CodeMySpecSpex.StorySliceHelpers`, and its whole surface drives:
+  # `base/1` selects a story through `SetActiveStory.execute/2`, `child/2`,
+  # `missing/2` and `implement/2` write and delete real files through
+  # `Environments` and re-sync, and `waiting/2` creates and links a story through
+  # `StoryHelpers` and assigns it through the epic tools. A story-slice criterion
+  # whose premise is "a story whose component has no implementation yet" has no
+  # other way to say it.
   @establishes ~w(
+    Slice.
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
     .execute(

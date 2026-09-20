@@ -32,6 +32,84 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
     )
   end
 
+  describe "story execution responses" do
+    test "renders only the selected wave with explicit dispatch metadata and bounded count" do
+      first =
+        build_node(%{
+          name: "implementation_file",
+          orchestrated_by: :develop_context,
+          parent_entity_id: "parent",
+          parent_entity_name: "Accounts"
+        })
+
+      waiting = build_node(%{entity_id: "waiting-component", entity_name: "Unrelated"})
+
+      execution = %{
+        status: :ready,
+        story: %{id: 802, title: "Selected story"},
+        actionable: [first, waiting],
+        wave: [first],
+        remaining: 1,
+        blockers: [],
+        reason: nil
+      }
+
+      text = RequirementsMapper.format_story_execution(execution)
+      assert text =~ "# Story 802: Selected story"
+      assert text =~ "Status: ready"
+      assert text =~ "Wave: 1 requirement(s)"
+      assert text =~ "Remaining: 1"
+      assert text =~ "execution_type=sub_agent"
+      assert text =~ "orchestrated_by=develop_context"
+      assert text =~ "validation_type=automatic"
+      assert text =~ "start_task"
+      refute text =~ "waiting-component"
+    end
+
+    test "blocked and unavailable outcomes explain the barrier without task directives" do
+      for {status, story} <- [
+            {:blocked, %{id: 802, title: "Selected story"}},
+            {:unavailable, nil}
+          ] do
+        text =
+          RequirementsMapper.format_story_execution(%{
+            status: status,
+            story: story,
+            actionable: [],
+            wave: [],
+            remaining: 0,
+            reason: "Waiting for an answer",
+            blockers: [%{name: "question", description: "Must a booking have a customer?"}]
+          })
+
+        assert text =~ "Status: #{status}"
+        assert text =~ "Waiting for an answer"
+        assert text =~ "Must a booking have a customer?"
+        refute text =~ "start_task"
+        refute text =~ "Status: complete"
+      end
+    end
+
+    test "completion names the story and leaves assignment to its caller" do
+      text =
+        RequirementsMapper.format_story_execution(%{
+          status: :complete,
+          story: %{id: 802, title: "Selected story"},
+          actionable: [],
+          wave: [],
+          remaining: 0,
+          blockers: [],
+          reason: nil
+        })
+
+      assert text =~ "# Story 802: Selected story"
+      assert text =~ "Status: complete"
+      assert text =~ "new assignment"
+      refute text =~ "All requirements satisfied"
+      refute text =~ "start_task"
+    end
+  end
+
   describe "list_requirements_response/1" do
     test "returns grouped markdown and structured data" do
       nodes = [

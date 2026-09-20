@@ -54,6 +54,7 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -287,6 +288,77 @@ defmodule CodeMySpec.WorkingCopies do
   def fetch(_), do: {:error, :invalid_id}
 
   @doc """
+  Select the one story every agent on the current working copy works on.
+
+  Selection is explicit. Clearing it leaves the copy idle and preserves its
+  backlog assignments. An unassigned story is assigned to this copy atomically
+  with selection; a story assigned elsewhere cannot be taken by this operation.
+  """
+  def set_active_story(%Scope{active_working_copy_id: nil}, _story_id),
+    do: {:error, :no_working_copy}
+
+  def set_active_story(%Scope{} = scope, story_id) do
+    result =
+      Repo.transaction(fn ->
+        copy =
+          WorkingCopy
+          |> where([c], c.id == ^scope.active_working_copy_id)
+          |> where([c], c.project_id == ^scope.active_project_id)
+          |> lock("FOR UPDATE")
+          |> Repo.one()
+
+        if is_nil(copy), do: Repo.rollback(:not_found)
+
+        selected_id = select_story(scope, copy, story_id)
+
+        case save(copy, %{active_story_id: selected_id}) do
+          {:ok, updated} -> {copy, updated}
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, {before, updated}} ->
+        if before.active_story_id != updated.active_story_id do
+          GraphInputs.announce(scope, "WorkingCopies", [], :project_wide)
+        end
+
+        {:ok, updated}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp select_story(_scope, _copy, nil), do: nil
+
+  defp select_story(scope, copy, story_id) do
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %Story{} = story <-
+           Story
+           |> where([s], s.id == ^id and s.project_id == ^scope.active_project_id)
+           |> where([s], s.account_id == ^scope.active_account_id)
+           |> lock("FOR UPDATE")
+           |> Repo.one() do
+      if not story.ready_for_dev, do: Repo.rollback(:story_not_ready)
+
+      if story.working_copy_id not in [nil, copy.id],
+        do: Repo.rollback(:story_assigned_elsewhere)
+
+      if is_nil(story.working_copy_id) do
+        case story |> Story.changeset(%{working_copy_id: copy.id}) |> Repo.update() do
+          {:ok, _story} -> :ok
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+
+      story.id
+    else
+      _ -> Repo.rollback(:not_found)
+    end
+  end
+
+  @doc """
   Point a scope at a harness: which checkout, where it is, and how to reach it.
 
   All three, together, because the third is the one that gets forgotten.
@@ -354,9 +426,7 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec reading_copy_id(Scope.t()) :: Ecto.UUID.t() | nil
   def reading_copy_id(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    Repo.one(
-      from p in Project, where: p.id == ^project_id, select: p.default_working_copy_id
-    ) ||
+    Repo.one(from p in Project, where: p.id == ^project_id, select: p.default_working_copy_id) ||
       Repo.one(from w in WorkingCopy, where: w.project_id == ^project_id and w.main, select: w.id)
   end
 

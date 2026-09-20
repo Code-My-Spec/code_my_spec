@@ -28,7 +28,6 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Projection
-  alias CodeMySpec.Requirements.Registry
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Validation.Menu
 
@@ -57,14 +56,8 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   end
 
   defp actionable_for(scope, role) do
-    names = Registry.requirement_names_for_role(role)
-
-    # Reads serve rows; the write path computes them.
     CodeMySpec.Requirements.recompute(scope)
-
-    scope
-    |> RequirementGraph.next_actionable()
-    |> Enum.filter(&(&1.name in names))
+    Requirements.actionable_for_role(scope, role)
   end
 
   # The control: the row is exactly the kind the old count counted. Without
@@ -101,6 +94,12 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
 
   # No role means no narrowing — a Claude Code session driving by hand sees the
   # whole graph, which is what it saw before roles existed.
+  #
+  # Deliberately *not* the story slice. Story 561 narrows what an agent is
+  # offered to build; the menu answers who should be told work exists at all,
+  # and project-level requirements belong to no story. Criterion 3606 is where
+  # "unavailable scope does not fall back to the project" is asserted, against
+  # `get_next_requirement` — the surface that claim is about.
   test "no role counts the whole graph" do
     scope = full_scope_fixture()
 

@@ -45,7 +45,6 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
-  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
@@ -54,95 +53,38 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Users.Scope
 
+  @doc "The current story's execution state; never falls back to project work."
+  def story_execution(scope, role \\ nil, requested_story_id \\ nil),
+    do: StoryExecution.read(scope, role, requested_story_id)
+
   @doc """
-  How many requirements this role can act on, from a graph known to be current.
+  How many requirements this role can act on for this working copy.
 
-  One definition of "your work", shared with `get_next_requirement`. They used
-  to have two: the tool computed the graph, and the stop menu counted
-  `requirements` rows directly — so the menu could advertise work that had
-  already been done, send the agent to ask for it, and be told there was none.
-  Watched on 2026-09-07: "27 requirements — `get_next_requirement`" against
-  "All requirements satisfied", once every six seconds until the rows caught up.
+  One definition of "your work", shared with `get_next_requirement` — they used
+  to have two, and the menu could advertise work that had already been done.
 
-  The menu read rows raw to avoid a recompute, on a hazard note in
-  `Validation.Menu` saying `next_actionable/1` "globs the working copy" and
-  would deadlock the stop decision inside the channel process. That was true and
-  is not: `DelegateFiles` used to hash working-copy files off disk, and
-  `RequirementGraph` records that classify claims those files now, so
-  `files_digest` covers them by content hash "and the side channel is gone". The
-  preloader is `Repo.all/1`. A recompute is ~170ms of database.
-
-  So this goes through `cached_graph_with_actionable/1` like every other reader:
-  fingerprint hit serves the published graph, miss recomputes and republishes.
-  Nothing here can be stale, which is the property the count needs and the one
-  reading rows could not give it.
-
-  `nil` role counts everything actionable, which is what a caller outside the
-  loop wants.
+  `story_execution/3` is that definition. With a story selected it is that
+  story's work; without one it is the project's requirements plus whatever
+  stories are assigned to this copy. That fallback is what keeps project-level
+  work — `issues_triaged`, `architecture_designed`, the QA journey — reaching
+  the agent who can do it, which is story 1005's rule.
   """
   @spec actionable_count(Scope.t(), atom() | nil) :: non_neg_integer()
   def actionable_count(%Scope{active_project_id: nil}, _role), do: 0
-
-  def actionable_count(%Scope{} = scope, role),
-    do: scope |> actionable_for_role(role) |> length()
+  def actionable_count(%Scope{} = scope, role), do: length(actionable_for_role(scope, role))
 
   @doc """
-  The actionable requirements this role can act on, in graph order.
-
-  The list `actionable_count/2` counts, so a caller that wants to *say* what
-  the work is reads the same answer the count came from rather than asking a
-  second question that can disagree with it — the failure this module's own
-  comments record twice over.
-
-  `nil` role answers the project's, which is what every caller outside the loop
-  wants.
+  The actionable requirements this role can act on, in graph order — the list
+  `actionable_count/2` counts, so a caller that wants to *say* what the work is
+  reads the same answer the count came from.
   """
   @spec actionable_for_role(Scope.t(), atom() | nil) :: [map()]
   def actionable_for_role(%Scope{active_project_id: nil}, _role), do: []
-
-  def actionable_for_role(%Scope{} = scope, role) do
-    # Settle first. A pending recompute means a write has landed that this count
-    # has not seen, and this count is what decides whether an agent is told to
-    # stop — deciding a beat before the recompute means deciding from the older
-    # answer. `:ok` when nothing is pending and when nobody is watching.
-    GraphWatcher.settle(scope)
-
-    {{nodes, edges}, actionable, _computed_at} =
-      RequirementGraph.cached_graph_with_actionable(scope)
-
-    # A role's answer is computed for that role rather than filtered out of the
-    # project's. Those are different questions and the filtered version answered
-    # the wrong one: the project's actionable set has already had every node
-    # removed that sits downstream of *anyone's* unfinished work, so filtering it
-    # by name could only ever narrow a list product had already emptied.
-    #
-    # `actionable_for_role_from/4` blocks on the same-entity chain and on this
-    # role's own work, and lets another role's unfinished work order rather than
-    # clamp. Story 1005's rule, criterion 3491.
-    #
-    # `nil` still answers the project's, unfiltered, which is what every caller
-    # outside the loop wants — a page showing the whole graph is not a role.
-    case role do
-      nil -> actionable
-      role -> role_actionable(scope, nodes, edges, role)
-    end
-  end
-
-  defp role_actionable(scope, nodes, edges, role) do
-    case RequirementsRegistry.requirement_names_for_role(role) do
-      [] ->
-        []
-
-      _names ->
-        case Preloader.load(scope) do
-          {:ok, ctx} -> RequirementGraph.actionable_for_role_from(nodes, edges, ctx, role)
-          _ -> []
-        end
-    end
-  end
+  def actionable_for_role(%Scope{} = scope, role), do: story_execution(scope, role).actionable
 
   @doc """
   Which entities read stale right now — the expensive diff, run deliberately.

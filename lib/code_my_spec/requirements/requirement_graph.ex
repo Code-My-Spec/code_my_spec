@@ -1493,7 +1493,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp actionable_from(nodes, edges, ctx) do
+  @doc "Actionability against the complete graph, ordered using the supplied story context."
+  def actionable_from(nodes, edges, ctx) do
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
 
@@ -1746,6 +1747,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ctx.components
     |> Enum.filter(& &1.parent_component_id)
     |> Enum.group_by(& &1.parent_component_id)
+  end
+
+  @doc "Component membership shared by story execution and the story kickoff topology."
+  def story_component_ids(story, ctx) do
+    case Map.get(ctx.components_by_id, story.component_id) do
+      nil -> MapSet.new()
+      surface ->
+        surface
+        |> transitive_dep_closure(ctx)
+        |> expand_with_parent_chain_descendants(ctx)
+        |> MapSet.new(& &1.id)
+    end
   end
 
   defp story_chain_edges(story, ctx, config, acc) do
@@ -2876,6 +2889,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     do: at |> DateTime.from_naive!("Etc/UTC") |> DateTime.to_unix(:microsecond)
 
   defp story_age(_story), do: 0
+
+  defp build_component_priority_map(%{execution_component_ids: ids, stories: [story]}) do
+    Map.new(ids, &{&1, story_rank(story)})
+  end
 
   defp build_component_priority_map(ctx) do
     # Direct: story.component_id → component
