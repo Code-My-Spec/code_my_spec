@@ -404,9 +404,34 @@ config :req_llm,
 # drift apart.
 intake_model = env!("INTAKE_MODEL", :string, "anthropic:claude-sonnet-5")
 
+# Shaping runs through `Shaper.Llm` unless this says otherwise. The phase port
+# (`CodeMySpec.Intake.Phases.Shape`, run by `CodeMySpec.Agents.Phase`) is proven
+# against the same recorded calls — `ShaperPhaseAlloyTest` replays the cassettes
+# `ShaperLlmAlloyTest` recorded, and `ShapeTest` asserts the prompt is byte-
+# identical to what is on disk — but equivalence under two recordings is not the
+# same as equivalence in front of visitors, so the switch is deliberate.
+#
+#     INTAKE_SHAPER=phase mix phx.server
+#
+# Anything else, or unset, is the implementation that has been serving.
+intake_shaper =
+  case env!("INTAKE_SHAPER", :string, nil) do
+    "phase" -> CodeMySpec.Intake.Shaper.Phase
+    _ -> CodeMySpec.Intake.Shaper.Llm
+  end
+
 config :code_my_spec, CodeMySpec.Intake,
   model: intake_model,
   planner_model: env!("PLANNER_MODEL", :string, nil) || intake_model
+
+# A separate call, and skipped in test, because `config/2` merges by key: setting
+# `shaper` in the block above overwrote `config/test.exs`'s `Shaper.Scripted` and
+# the whole suite started resolving to `Shaper.Llm`. Confirmed by reading the
+# resolved config back in `MIX_ENV=test` rather than inferred — the suite still
+# passed while it was wrong, which is exactly why it needed looking at.
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Intake, shaper: intake_shaper
+end
 
 # Web search and fetch for agents. Fetching needs nothing; searching needs a key
 # for one of the three providers, and `Research.Search` uses whichever is set —
