@@ -353,6 +353,38 @@ scope = %{scope | active_working_copy_id: copy.id}
 # Deliberately no qa-role agent: "QA work waiting does not wake the coding
 # agent" needs the *work* outstanding, and an agent of that role would claim it
 # and take the premise away.
+# An attempt nobody is making any more is not an attempt.
+#
+# `runnable_state?/1` requires `is_nil(Agent.active_task(agent))`, so one task
+# left `:active` by a QA pass that ended days ago makes that agent permanently
+# un-admittable — the same shape as the `:stopped` status above, and it bit the
+# same way: the one fixture agent with genuinely eligible work carried a
+# `personas_complete` task started 2026-09-12 and never dispositioned, so the
+# turn-admission race could not be constructed against it at all.
+#
+# Cancelled rather than deleted, because `:cancelled` is what the lifecycle
+# says an abandoned attempt becomes and it keeps the row readable. Only
+# `:active` and `:blocked` are touched; a completed or failed attempt is
+# history and stays.
+stale_statuses = [:active, :blocked]
+
+cleared_tasks = fn agent ->
+  Enum.map(agent.tasks || [], fn task ->
+    if task.status in stale_statuses do
+      %{task | status: :cancelled, completed_at: DateTime.utc_now()}
+    else
+      task
+    end
+  end)
+end
+
+cleared_note = fn agent ->
+  case Enum.count(agent.tasks || [], &(&1.status in stale_statuses)) do
+    0 -> ""
+    n -> ", #{n} stale task(s) cancelled"
+  end
+end
+
 # One story routed to this checkout, because eligibility is copy-scoped.
 #
 # `Work.graph_work?/2` asks what is actionable *for this agent's working copy*,
@@ -428,11 +460,12 @@ for {role, tools, wanted} <- [
         continuous: true,
         turn_started_at: nil,
         work_request_id: nil,
-        work_requested_at: nil
+        work_requested_at: nil,
+        tasks: cleared_tasks.(agent)
       )
       |> Repo.update()
 
-    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running")
+    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running#{cleared_note.(agent)}")
   end
 
   # Idempotent on the count rather than on presence, so re-running tops the set
