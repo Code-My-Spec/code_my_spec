@@ -1958,10 +1958,35 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
+  # What a machine reporting itself as running has just told us.
+  #
+  # A fresh process has no turn in flight and holds no reservation, by
+  # definition — so `turn_started_at`, `work_request_id` and
+  # `work_requested_at` are cleared on the way *up* as well as on the way
+  # down. `record_stopped/2` already did it downward; three paths back to
+  # `:running` did not, and a row carrying a stale timestamp into its next life
+  # reports a turn "in flight" for an agent that is not mid-response, which is
+  # exactly the false positive story 1012's fact-based view exists to avoid.
+  #
+  # There is a real window for one to get there: `record_turn_event(...,
+  # "turn_started")` does not check the row's current status before writing, so
+  # a `turn_started` landing just after a reap leaves the timestamp on a
+  # `:stopped` row with no `turn_ended` ever coming to clear it. Found by QA on
+  # story 1012, `4ce6d903`.
+  #
+  # One map rather than three copies, because three copies is how this drifted
+  # apart in the first place.
+  @running_afresh %{
+    status: :running,
+    turn_started_at: nil,
+    work_request_id: nil,
+    work_requested_at: nil
+  }
+
   defp settle_against(_scope, %Agent{status: :running}, true), do: :ok
 
   defp settle_against(scope, %Agent{} = agent, true) do
-    {:ok, _running} = AgentsRepository.update_agent(scope, agent, %{status: :running})
+    {:ok, _running} = AgentsRepository.update_agent(scope, agent, @running_afresh)
     :ok
   end
 
@@ -1989,6 +2014,15 @@ defmodule CodeMySpec.Agents do
   # apart by role, and finding "the copy's agent" made a second lane overwrite
   # the first — one row flickering between two engines instead of two rows.
   #
+  # `to_string/1` on the stored side, because `agents.role` is an `Ecto.Enum`
+  # and `role/1` reads a string off the wire. `:main == "main"` is false, so
+  # this `find` never matched and every report took the `upsert(nil, ...)`
+  # branch and inserted a fresh row. Measured 2026-09-20 before the fix: 31
+  # main-role rows on one working copy, 17 qa, 12 coding — an agent per report
+  # rather than an agent per lane. It is also where the "unexplained extra
+  # main-role agent" (`47a63331`) came from, and it fed `held?/3`, which scans
+  # every agent on a copy and so let long-dead duplicates withhold work.
+  #
   # The id half: the copy used to be matched by comparing the reported path to
   # `harnesses.root`, which is also a reported path. Two strings that are meant
   # to be equal and are produced independently do not stay equal, and two
@@ -2010,7 +2044,7 @@ defmodule CodeMySpec.Agents do
 
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.working_copy_id == working_copy_id and &1.role == role))
+    |> Enum.find(&(&1.working_copy_id == working_copy_id and to_string(&1.role) == role))
     |> upsert(scope, report)
   end
 
@@ -2042,11 +2076,14 @@ defmodule CodeMySpec.Agents do
 
   defp upsert(%Agent{} = agent, scope, report) do
     {:ok, updated} =
-      AgentsRepository.update_agent(scope, agent, %{
-        engine: engine(report),
-        status: :running,
-        os_pid: recorded_group_or_reported(agent, report)
-      })
+      AgentsRepository.update_agent(
+        scope,
+        agent,
+        Map.merge(@running_afresh, %{
+          engine: engine(report),
+          os_pid: recorded_group_or_reported(agent, report)
+        })
+      )
 
     updated
   end
@@ -2235,7 +2272,7 @@ defmodule CodeMySpec.Agents do
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
   def record_started(%Scope{} = scope, %Agent{} = agent, %{agent_id: _id}) do
-    AgentsRepository.update_agent(scope, agent, %{status: :running})
+    AgentsRepository.update_agent(scope, agent, @running_afresh)
   end
 
   @doc """
