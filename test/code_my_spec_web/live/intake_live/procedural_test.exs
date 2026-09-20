@@ -15,6 +15,13 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
   }
 
   describe "before any account exists" do
+    test "offers a reset back to the root, for testing", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/build/procedural")
+
+      assert html =~ "Reset"
+      assert has_element?(view, "form[action='/build/reset']")
+    end
+
     test "filling the form in reaches a plan with no conversation involved", %{conn: conn} do
       conn = get(conn, ~p"/build/procedural")
       {:ok, view, _html} = live(conn)

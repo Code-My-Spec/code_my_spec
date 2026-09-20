@@ -158,6 +158,28 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       assert_redirect(view, ~p"/app/projects/#{project_id}/agent-conversation")
     end
+
+    test "offers a reset back to the root, for testing", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_procedural_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Reset"
+      assert has_element?(view, "form[action='/build/reset']")
+    end
+  end
+
+  describe "a plan the conversation produced" do
+    test "offers no reset — a real visitor's workspace is not a test run to wipe", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      refute html =~ "Reset"
+      refute has_element?(view, "form[action='/build/reset']")
+    end
   end
 
   describe "coming up" do

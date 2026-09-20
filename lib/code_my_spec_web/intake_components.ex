@@ -196,6 +196,31 @@ defmodule CodeMySpecWeb.IntakeComponents do
     """
   end
 
+  @doc """
+  Wipes a test run of guided intake back to the root — a plain form post,
+  like the email signup card, since clearing the session is a controller's
+  job a LiveView cannot do itself.
+
+  Not the same as logging out: `UserAuth.log_out_user/1` carries the intake
+  token across on purpose, so a real visitor logging out mid-conversation
+  does not lose the plan they were building. This exists to lose it on
+  purpose — the whole point of resetting is a new plan — so it goes through
+  `IntakeResetController` instead.
+
+  Shared by `IntakeLive.Procedural` and `IntakeLive.Workspace`: testing the
+  funnel means being able to bail out and start over from wherever the last
+  run left off, not only from its first screen.
+  """
+  def reset_link(assigns) do
+    ~H"""
+    <.form for={nil} action={~p"/build/reset"} method="post" class="mt-4 text-center">
+      <button type="submit" class="text-xs text-base-content/40 underline">
+        Reset (testing) — wipe this run and start over
+      </button>
+    </.form>
+    """
+  end
+
   # Local rather than imported from CoreComponents: this module is used by two
   # LiveViews that already import those, and importing them here too would make
   # every caller ambiguous.
