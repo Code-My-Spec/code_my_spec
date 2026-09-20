@@ -52,12 +52,6 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
     :ok
   end
 
-  # The exact text `Agents.Work` sends with an admitted turn.
-  defp turn_prompt do
-    "Eligible work is available. Call get_next_requirement to see it, then " <>
-      "claim it with start_task. No task has been selected or assigned for you."
-  end
-
   spex "An agent claims work before it does the work" do
     scenario "An agent starts work by asking what work there is" do
       # Project-level work for the main role, which is what an agent on a
@@ -111,19 +105,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
       when_ "a fresh agent takes its first turn, ten times over", context do
         measured =
           measure("An agent starts work by asking what work there is", fn _run ->
-            # The production turn prompt, delivered directly rather than through
-            # admission. `Work.@prompt` is what an admitted turn carries, so the
-            # agent reads exactly what it would read when woken.
-            #
-            # Admission itself is not used here because it cannot currently
-            # deliver a stable premise: the actionable frontier moves between
-            # the turn being granted and the agent reading it — measured as
-            # `main: ["technical_strategy"]` at admission and
-            # `bdd_specs_passing` (coding) at the agent's first call, one turn
-            # apart. That is issue c83c5b58 and it is a product defect, not
-            # something this criterion should absorb. This measures conduct on
-            # the prompt; 3540 covers being woken.
-            observe(context, [role: "coding", request_turn: false, say: turn_prompt()], fn agent ->
+            observe(context, [role: "main"], fn agent ->
               called_in_order?(context, agent, "get_next_requirement", "start_task")
             end)
           end)

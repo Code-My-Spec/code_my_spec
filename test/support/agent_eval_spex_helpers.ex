@@ -50,7 +50,6 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -259,6 +258,8 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       if said = Keyword.get(opts, :say), do: say(agent_id, said)
       settle(agent_id)
 
+      refute_toolless(context, agent_id)
+
       {fun.(agent_id), transcript_of(context, agent_id)}
     after
       stop(context, agent_id)
@@ -361,6 +362,27 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
     """
 
     said
+  end
+
+  # An agent that started without its project tools measured nothing.
+  #
+  # `mcp_session/1` warns and returns nil when the connection fails, and the
+  # agent starts regardless — it can still read and edit its checkout, which is
+  # right for production and useless for measuring conduct. The model is then
+  # told `No such tool available` for `get_next_requirement` and `run_script`,
+  # correctly refuses to improvise, and the run scores `called nothing at all`:
+  # indistinguishable from an agent that saw the work and declined it.
+  #
+  # Measured on 3539: roughly one run in four. Checked after the turn rather
+  # than before it, because the engine process does not exist until the turn is
+  # dispatched — asking earlier answers nil for every run, including the good
+  # ones.
+  defp refute_toolless(context, agent_id) do
+    said = conversation(context, agent_id)
+
+    if said =~ "No such tool available", do: throw({:eval_errored, :no_tools})
+
+    :ok
   end
 
   # Drain the graph at both vantages until the actionable set stops moving.
@@ -698,19 +720,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec measure(String.t(), pos_integer(), (pos_integer() -> {boolean(), term()})) :: map()
   def measure(behaviour, total, fun) do
-    outcomes =
-      Enum.map(1..total, fn n ->
-        case fun.(n) do
-          {held?, evidence} when is_boolean(held?) ->
-            {n, held?, evidence}
-
-          other ->
-            flunk("""
-            A measured run must answer `{held?, evidence}` — whether the agent
-            did the thing, and what it did instead. Got: #{inspect(other)}
-            """)
-        end
-      end)
+    {outcomes, errored} = collect(total, fun, [], 0)
 
     hits = Enum.count(outcomes, fn {_n, held?, _e} -> held? end)
 
@@ -719,8 +729,58 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       runs: total,
       hits: hits,
       rate: hits / total,
+      errored: errored,
       misses: Enum.filter(outcomes, fn {_n, held?, _e} -> not held? end)
     }
+  end
+
+  # A run that errored is not evidence about the agent, so it is not in the
+  # denominator — it is discarded and taken again until `total` runs actually
+  # measured something.
+  #
+  # Capped, because a criterion that errors every time is telling you about the
+  # harness and retrying forever would hide that behind a hang. Measured on 3539
+  # before `await`/`refute_toolless`: about one run in four started with no MCP
+  # session and scored `called nothing at all`, which the rate then reported as
+  # the agent declining work it had never been able to see.
+  @max_errored 10
+
+  defp collect(0, _fun, acc, errored), do: {Enum.reverse(acc), errored}
+
+  defp collect(remaining, fun, acc, errored) do
+    n = length(acc) + 1
+
+    case run_once(fun, n) do
+      {:ok, outcome} ->
+        collect(remaining - 1, fun, [outcome | acc], errored)
+
+      {:errored, reason} ->
+        assert errored < @max_errored, """
+        #{@max_errored} runs errored before #{length(acc)} could be measured, so
+        this is the harness rather than the agent. Last reason: #{inspect(reason)}.
+
+        The commonest cause is an agent starting with no MCP session: it can read
+        and edit its checkout, carries none of the project's tools, and is told
+        `No such tool available` for `get_next_requirement` and `run_script`.
+        """
+
+        collect(remaining, fun, acc, errored + 1)
+    end
+  end
+
+  defp run_once(fun, n) do
+    case fun.(n) do
+      {held?, evidence} when is_boolean(held?) ->
+        {:ok, {n, held?, evidence}}
+
+      other ->
+        flunk("""
+        A measured run must answer `{held?, evidence}` — whether the agent did
+        the thing, and what it did instead. Got: #{inspect(other)}
+        """)
+    end
+  catch
+    {:eval_errored, reason} -> {:errored, reason}
   end
 
   @doc """
