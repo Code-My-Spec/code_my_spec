@@ -420,6 +420,25 @@ case routed do
     IO.puts("  story: routed #{story.title} -> #{copy.id}")
 end
 
+# Every agent on this checkout, not only the four this seed manages.
+#
+# `Work.held?/3` asks whether *any* agent on the copy is holding a node, and it
+# is right to — one claimant per requirement is the rule. But that means one
+# stray row left behind by an earlier QA session, stopped and not continuous
+# and not one of the four ids below, goes on withholding a requirement from the
+# canonical agent forever. Measured 2026-09-20: `personas_complete` read as
+# held by 29232a00 (stopped, continuous=false) and the fixture had no
+# unclaimed, runnable target to admit a turn against at all (`68436370`).
+for stray <-
+      Repo.all(
+        from a in CodeMySpec.Agents.Agent,
+          where: a.working_copy_id == type(^copy.id, :binary_id)
+      ),
+    Enum.any?(stray.tasks || [], &(&1.status in stale_statuses)) do
+  {:ok, _} = stray |> Ecto.Changeset.change(tasks: cleared_tasks.(stray)) |> Repo.update()
+  IO.puts("  agent: released #{stray.role} (#{stray.id}) stale claim(s)")
+end
+
 for {role, tools, wanted} <- [
       {"product", ["create_issue"], 1},
       {"coding", ["create_issue"], 2},

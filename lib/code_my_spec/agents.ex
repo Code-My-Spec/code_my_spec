@@ -2193,11 +2193,28 @@ defmodule CodeMySpec.Agents do
   # Only after something confirmed the process is gone. `os_pid` and
   # `os_boot_id` are cleared here rather than before, because until the process
   # is actually gone they are the only way to reach it again.
+  # Stopping clears what only a live process could have meant.
+  #
+  # `turn_started_at` and `work_request_id` both say "something is happening
+  # right now" — a turn in flight, a turn reserved and about to be dispatched —
+  # and neither can be true of an agent with no process behind it. Left set,
+  # they are worse than stale: `Work.runnable_state?/1` requires both to be nil,
+  # so a reaped agent that comes back is permanently un-admittable, and nothing
+  # would ever clear them because clearing them is what this function is for.
+  #
+  # The agent's *tasks* are deliberately not touched. A claim is a statement
+  # about work, not about a process, and cancelling somebody's attempt because
+  # their machine went away is a decision rather than a cleanup — `held?/3`
+  # going on withholding a node claimed by a stopped agent is a real problem
+  # (`68436370`) and a different one.
   defp record_stopped(scope, agent) do
     AgentsRepository.update_agent(scope, agent, %{
       status: :stopped,
       os_pid: nil,
-      os_boot_id: nil
+      os_boot_id: nil,
+      turn_started_at: nil,
+      work_request_id: nil,
+      work_requested_at: nil
     })
   end
 
