@@ -703,6 +703,44 @@ defmodule CodeMySpec.Notifications do
   def answer_question_request(id, %{} = answers, opts \\ []) do
     answered_by = Keyword.get(opts, :answered_by, "user")
 
+    with :ok <- refuse_empty(answers) do
+      settle_and_broadcast(id, answers, answered_by)
+    end
+  end
+
+  # An answer that says nothing is not an answer, and as an override it is
+  # destructive.
+  #
+  # Found by QA on story 1009, 2026-09-20: type a correction into the
+  # "Other..." box without also clicking its radio, press Send, and the page
+  # says "Answer sent" while `answers` is overwritten with `""`, `overruled`
+  # becomes true, and a correct, record-backed main-agent answer stops being
+  # the current value. Recoverable from `answer_history`, but every reader
+  # treats the value as current — `check_answer` handed the asking agent "The
+  # user replied, overruling the main agent's earlier answer:" followed by
+  # nothing.
+  #
+  # Refused here rather than in the form, because the form is one of three
+  # ways in — `QuestionLive`, the conversation page and `QuestionController`
+  # all reach this, and a guard each caller has to remember is one the next
+  # route will not.
+  #
+  # Only when *every* answer is blank. One unanswered question beside an
+  # answered one is a partial reply, which is a person's to give.
+  defp refuse_empty(answers) do
+    if Enum.any?(answers, fn {_question, answer} -> answered?(answer) end) do
+      :ok
+    else
+      {:error, :empty_answer}
+    end
+  end
+
+  defp answered?(answer) when is_list(answer), do: Enum.any?(answer, &answered?/1)
+  defp answered?(answer) when is_binary(answer), do: String.trim(answer) != ""
+  defp answered?(nil), do: false
+  defp answered?(_answer), do: true
+
+  defp settle_and_broadcast(id, answers, answered_by) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from q in QuestionRequest, where: q.id == ^id, lock: "FOR UPDATE")
@@ -1100,6 +1138,15 @@ defmodule CodeMySpec.Notifications do
 
   defp resolve_answer("__other__", other), do: other || ""
   defp resolve_answer(choice, _other) when is_binary(choice), do: choice
+
+  # No option chosen, but something typed in "Other..." — which is a choice.
+  #
+  # There is no competing signal to weigh: a radio that *was* checked matches
+  # the clause above and wins, so this only ever sees the case where the box
+  # is the only thing the person touched. Reading it as blank turned a
+  # correction into an erasure.
+  defp resolve_answer(nil, other) when is_binary(other), do: other
+
   defp resolve_answer(_choice, _other), do: ""
 
   defp first_question_text([%{"question" => q} | _]) when is_binary(q), do: q
