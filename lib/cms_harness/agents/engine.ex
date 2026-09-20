@@ -25,6 +25,10 @@ defmodule CmsHarness.Agents.Engine do
     do: call(agent_id, {:send, ref, message, timeout})
 
   def withdraw(agent_id, ref), do: call(agent_id, {:withdraw, ref})
+
+  def request_work_turn(agent_id, ref, message, timeout \\ 180_000),
+    do: call(agent_id, {:work_available, ref, message, timeout})
+
   def status(agent_id), do: call(agent_id, :status)
 
   def agent_tools(agent_id), do: optional_call(agent_id, :tools, [])

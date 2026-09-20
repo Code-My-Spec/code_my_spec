@@ -36,7 +36,9 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   def evaluate_needs_work_response(task, feedback) do
     task_name = task_type_name(task)
 
-    text_response("# #{task_name}: Needs work\n\n#{feedback}")
+    text_response(
+      "# #{task_name}: Needs work\n\nTask ID: `#{task.id}` — this task remains open.\n\n#{feedback}"
+    )
   end
 
   @doc """

@@ -16,6 +16,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
 
   schema "permission_requests" do
     field :tool_name, :string
+    field :task_id, :string
     field :tool_input, :map
     field :status, :string, default: "pending"
     field :decision, :string
@@ -32,7 +33,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
 
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:user_id, :agent_id, :tool_name, :tool_input, :status, :decision])
+    |> cast(attrs, [:user_id, :agent_id, :task_id, :tool_name, :tool_input, :status, :decision])
     |> validate_required([:user_id, :tool_name, :tool_input])
     |> validate_inclusion(:status, ~w(pending approved denied expired))
     |> validate_inclusion(:decision, ~w(allow deny ask), message: "must be allow, deny, or ask")

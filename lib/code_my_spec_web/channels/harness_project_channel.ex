@@ -875,6 +875,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  def handle_call({:request_work_turn, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+    push(socket, "request_work_turn", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   def handle_call({:withdraw_message, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 

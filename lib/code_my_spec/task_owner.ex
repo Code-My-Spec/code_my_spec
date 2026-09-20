@@ -52,6 +52,9 @@ defmodule CodeMySpec.TaskOwner do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL
+
+  import Ecto.Query, only: [from: 2]
 
   @type t :: Session.t() | Agent.t()
 
@@ -68,6 +71,182 @@ defmodule CodeMySpec.TaskOwner do
   @spec find_task(t(), String.t()) :: Task.t() | nil
   def find_task(owner, task_id), do: Enum.find(tasks(owner), &(&1.id == task_id))
 
+  @doc "Blocked attempts, including resolved blockers awaiting explicit resumption."
+  @spec blocked_tasks(t()) :: [Task.t()]
+  def blocked_tasks(owner), do: Enum.filter(tasks(owner), &(&1.status == :blocked))
+
+  # Consecutive *identical* feedback is what the count means — a different
+  # message is a different failure and starts over. See criterion 1502.
+  defp feedback_count(%Task{evaluation_feedback: same} = task, same),
+    do: task.evaluation_feedback_count + 1
+
+  defp feedback_count(%Task{}, _different), do: 1
+
+  @doc "Record feedback on one attempt, counting consecutive identical failures."
+  def record_task_feedback(scope, owner, task_id, feedback) when is_binary(feedback) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        %Task{status: :active} = task ->
+          update_embedded_task(current, task_id, %{
+            evaluation_feedback: feedback,
+            evaluation_feedback_count: feedback_count(task, feedback)
+          })
+
+        nil ->
+          {:error, :task_not_found}
+
+        _ ->
+          {:error, :task_not_active}
+      end
+    end)
+  end
+
+  @doc "Clear evaluation feedback for only the named attempt."
+  def clear_task_feedback(scope, owner, task_id) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        nil ->
+          {:error, :task_not_found}
+
+        _ ->
+          update_embedded_task(current, task_id, %{
+            evaluation_feedback: nil,
+            evaluation_feedback_count: 0
+          })
+      end
+    end)
+  end
+
+  @doc "Block an active task while retaining its identity, ownership and continuous policy."
+  @spec block_task(Scope.t(), t(), String.t(), atom(), String.t(), keyword()) ::
+          {:ok, t()} | {:error, term()}
+  def block_task(scope, owner, task_id, type, blocker_id, opts \\ [])
+      when type in [:question, :tap_out, :manual] and is_binary(blocker_id) and blocker_id != "" do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        %Task{status: :active} ->
+          update_embedded_task(current, task_id, %{
+            status: :blocked,
+            blocked_at: now(),
+            blocker_type: type,
+            blocker_id: blocker_id,
+            blocker_resolved_at: nil,
+            blocked_reason: Keyword.get(opts, :reason)
+          })
+
+        nil ->
+          {:error, :task_not_found}
+
+        _ ->
+          {:error, :task_not_active}
+      end
+    end)
+  end
+
+  @doc "Resolve only a matching blocker; never reactivate its task. Replays are no-ops."
+  @spec release_block(Scope.t(), t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def release_block(scope, owner, blocker_id) when is_binary(blocker_id) do
+    locked_update(scope, owner, fn current ->
+      case Enum.find(blocked_tasks(current), &(&1.blocker_id == blocker_id)) do
+        nil -> {:ok, current}
+        task -> resolve_task_block(current, task, blocker_id)
+      end
+    end)
+  end
+
+  @doc "Resolve a request linked to a particular task, ignoring superseded blockers."
+  @spec release_block(Scope.t(), t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def release_block(scope, owner, task_id, blocker_id) when is_binary(blocker_id) do
+    locked_update(scope, owner, fn current ->
+      resolve_task_block(current, find_task(current, task_id), blocker_id)
+    end)
+  end
+
+  @doc "Resume a resolved blocked attempt after the caller revalidates its graph eligibility."
+  @spec resume_task(Scope.t(), t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def resume_task(scope, owner, task_id) do
+    locked_update(scope, owner, fn current ->
+      resume_resolved_task(current, find_task(current, task_id), active_task(current))
+    end)
+  end
+
+  @doc "Cancel only the attempt still held by the matching tap-out request."
+  def cancel_blocked_task(scope, owner, task_id, blocker_id) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        %Task{status: :blocked, blocker_type: :tap_out, blocker_id: ^blocker_id} ->
+          update_embedded_task(current, task_id, %{
+            status: :cancelled,
+            completed_at: now(),
+            blocker_resolved_at: now()
+          })
+
+        _ ->
+          {:ok, current}
+      end
+    end)
+  end
+
+  defp resolve_task_block(
+         owner,
+         %Task{status: :blocked, blocker_id: id, blocker_resolved_at: nil} = task,
+         id
+       ) do
+    update_embedded_task(owner, task.id, %{blocker_resolved_at: now()})
+  end
+
+  defp resolve_task_block(owner, _task, _blocker_id), do: {:ok, owner}
+
+  defp resume_resolved_task(_owner, _task, %Task{}), do: {:error, :active_task_exists}
+  defp resume_resolved_task(_owner, nil, nil), do: {:error, :task_not_found}
+
+  defp resume_resolved_task(
+         owner,
+         %Task{status: :blocked, blocker_resolved_at: %DateTime{}} = task,
+         nil
+       ) do
+    update_embedded_task(owner, task.id, %{
+      status: :active,
+      blocked_at: nil,
+      blocker_type: nil,
+      blocker_id: nil,
+      blocker_resolved_at: nil,
+      blocked_reason: nil
+    })
+  end
+
+  defp resume_resolved_task(_owner, %Task{status: :blocked}, nil),
+    do: {:error, :blocker_unresolved}
+
+  defp resume_resolved_task(_owner, _task, nil), do: {:error, :task_not_blocked}
+
+  defp locked_update(%Scope{} = scope, %module{id: id}, fun) when module in [Agent, Session] do
+    Repo.transaction(fn ->
+      current =
+        Repo.one(
+          from row in module,
+            where:
+              row.id == ^id and row.account_id == ^scope.active_account_id and
+                row.project_id == ^scope.active_project_id,
+            lock: "FOR UPDATE"
+        )
+
+      case current do
+        nil -> Repo.rollback(:owner_not_found)
+        owner -> finish_update(fun.(owner))
+      end
+    end)
+  end
+
+  defp finish_update({:ok, owner}), do: owner
+  defp finish_update({:error, reason}), do: Repo.rollback(reason)
+
+  defp update_embedded_task(%Session{} = owner, id, attrs),
+    do: owner |> Session.update_task(id, attrs) |> Repo.update()
+
+  defp update_embedded_task(%Agent{} = owner, id, attrs),
+    do: owner |> Agent.update_task(id, attrs) |> Repo.update()
+
   @doc """
   Add a task and return the owner with it.
 
@@ -75,50 +254,115 @@ defmodule CodeMySpec.TaskOwner do
   whose it is, and a field repeating that is one more thing that can disagree
   with the row holding it.
   """
-  @spec add_task(Scope.t(), t(), map()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
-  def add_task(%Scope{}, %Session{} = session, attrs) do
+  @spec add_task(Scope.t(), t(), map()) :: {:ok, t()} | {:error, term()}
+  def add_task(%Scope{} = scope, owner, attrs) do
+    locked_update(scope, owner, fn current ->
+      with :ok <- allow_new_task(current, attrs) do
+        add_embedded_task(current, attrs)
+      end
+    end)
+  end
+
+  defp allow_new_task(%Agent{} = owner, %{status: status} = attrs)
+       when status in [:active, "active"] do
+    with :ok <- allow_activation(owner, nil) do
+      allow_requirement_claim(owner, attrs)
+    end
+  end
+
+  defp allow_new_task(_owner, _attrs), do: :ok
+
+  defp allow_requirement_claim(owner, %{requirement_name: name} = attrs) when is_binary(name) do
+    if Enum.any?([:component_id, :story_id, :project_id], &Map.get(attrs, &1)) do
+      check_requirement_claim(owner, attrs)
+    else
+      :ok
+    end
+  end
+
+  defp allow_requirement_claim(_owner, _attrs), do: :ok
+
+  defp check_requirement_claim(owner, attrs) do
+    SQL.query!(Repo, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      "agent-task-claims:#{owner.project_id}:#{owner.working_copy_id}"
+    ])
+
+    others =
+      Repo.all(
+        from agent in Agent,
+          where:
+            agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
+              agent.working_copy_id == ^owner.working_copy_id and agent.id != ^owner.id
+      )
+
+    claimed? = others |> Enum.flat_map(&tasks/1) |> Enum.any?(&holds_requirement?(&1, attrs))
+
+    if claimed?, do: {:error, :task_owned_by_another_agent}, else: :ok
+  end
+
+  defp holds_requirement?(task, attrs) do
+    task.status in [:active, :blocked] and
+      Enum.all?([:requirement_name, :component_id, :story_id, :project_id], fn key ->
+        Map.get(task, key) == Map.get(attrs, key)
+      end)
+  end
+
+  defp allow_activation(%Agent{} = owner, task_id) do
+    case active_task(owner) do
+      nil -> :ok
+      %Task{id: ^task_id} -> :ok
+      task -> {:error, {:active_task_exists, task.id}}
+    end
+  end
+
+  defp allow_activation(%Session{}, _task_id), do: :ok
+
+  defp add_embedded_task(%Session{} = session, attrs) do
     session |> Session.add_task(attrs) |> Repo.update()
   end
 
-  def add_task(%Scope{}, %Agent{} = agent, attrs) do
+  defp add_embedded_task(%Agent{} = agent, attrs) do
     agent |> Agent.add_task(Map.delete(attrs, :agent_id)) |> Repo.update()
   end
 
   @doc "Mark a task active, and note which agent is on it where that matters."
   @spec activate_task(Scope.t(), t(), String.t(), String.t() | nil) ::
-          {:ok, t()} | {:error, Ecto.Changeset.t()}
+          {:ok, t()} | {:error, term()}
   def activate_task(scope, owner, task_id, agent_id \\ nil)
 
-  def activate_task(%Scope{}, %Session{} = session, task_id, agent_id) do
-    updates =
-      %{status: :active, started_at: now()}
-      |> maybe_put_agent(agent_id)
+  def activate_task(%Scope{} = scope, owner, task_id, agent_id) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        %Task{status: :blocked} ->
+          {:error, :task_blocked}
 
-    session |> Session.update_task(task_id, updates) |> Repo.update()
-  end
+        nil ->
+          {:error, :task_not_found}
 
-  def activate_task(%Scope{}, %Agent{} = agent, task_id, _agent_id) do
-    agent
-    |> Agent.update_task(task_id, %{status: :active, started_at: now()})
-    |> Repo.update()
+        _ ->
+          with :ok <- allow_activation(current, task_id) do
+            update_embedded_task(current, task_id, activation_attrs(current, agent_id))
+          end
+      end
+    end)
   end
 
   @doc "Close a task out."
   @spec complete_task(Scope.t(), t(), String.t(), atom()) ::
-          {:ok, t()} | {:error, Ecto.Changeset.t()}
+          {:ok, t()} | {:error, term()}
   def complete_task(scope, owner, task_id, result \\ :completed)
 
-  def complete_task(%Scope{}, %Session{} = session, task_id, result) do
-    session
-    |> Session.update_task(task_id, %{status: result, completed_at: now()})
-    |> Repo.update()
+  def complete_task(%Scope{} = scope, owner, task_id, result) do
+    locked_update(scope, owner, fn current ->
+      update_embedded_task(current, task_id, %{status: result, completed_at: now()})
+    end)
   end
 
-  def complete_task(%Scope{}, %Agent{} = agent, task_id, result) do
-    agent
-    |> Agent.update_task(task_id, %{status: result, completed_at: now()})
-    |> Repo.update()
+  defp activation_attrs(%Session{}, agent_id) do
+    %{status: :active, started_at: now()} |> maybe_put_agent(agent_id)
   end
+
+  defp activation_attrs(%Agent{}, _agent_id), do: %{status: :active, started_at: now()}
 
   defp maybe_put_agent(updates, nil), do: updates
   defp maybe_put_agent(updates, agent_id), do: Map.put(updates, :agent_id, agent_id)

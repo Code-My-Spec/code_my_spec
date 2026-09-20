@@ -182,7 +182,11 @@ defmodule CodeMySpecTest.GraphHelpers do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
-      {:agent_dispatch, id, _ref, message} ->
+      # Both shapes mean "this agent was reached about work". Before the wake
+      # retirement that was always a dispatch; a graph-driven turn now arrives
+      # as `:work_turn_requested` instead, and a helper that listened for only
+      # the old one reported every correctly-admitted agent as never woken.
+      {shape, id, _ref, message} when shape in [:agent_dispatch, :work_turn_requested] ->
         keep_or_wait(matches?(id, message, agent_id, saying), {id, message}, %{
           agent_id: agent_id,
           saying: saying,
@@ -264,8 +268,11 @@ defmodule CodeMySpecTest.GraphHelpers do
 
   defp drain(within, acc) do
     receive do
-      {:agent_dispatch, id, _ref, message} -> drain(within, [{id, message} | acc])
-      {:agent_message, id, message} -> drain(within, [{id, message} | acc])
+      {shape, id, _ref, message} when shape in [:agent_dispatch, :work_turn_requested] ->
+        drain(within, [{id, message} | acc])
+
+      {:agent_message, id, message} ->
+        drain(within, [{id, message} | acc])
     after
       within -> Enum.reverse(acc)
     end

@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   question and returns; this collects the answer whenever the agent gets round
   to asking for it.
 
-  It polls briefly — long enough that a user already looking at the question
+  It waits briefly for an answer event — long enough that a user looking at the question
   answers within one call, short enough that the MCP transport never times out.
   Answering takes as long as it takes, so `pending` is an ordinary result rather
   than a failure: stop, let the stop hook bring you back, and check again.
@@ -32,12 +32,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Sessions
 
   # Comfortably inside the transport's call timeout. The point is to catch the
   # case where the user is already looking at their phone, not to wait them out.
-  @poll_window_ms 3_000
-  @poll_interval_ms 250
+  @answer_window_ms 3_000
 
   schema do
     field :question_id, :string,
@@ -47,7 +48,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
 
   @impl true
   def execute(%{question_id: id}, frame) when is_binary(id) and id != "" do
-    case await_answer(id) do
+    case await_answer(id, frame) do
       {:ok, request} ->
         reply =
           request.answers |> Map.values() |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join("\n")
@@ -131,30 +132,62 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   # pending on, because "still waiting" without a holder is not enough for the
   # agent to know what it is waiting for.
   #
-  # Polling rather than subscribing because the caller is a tool invocation with
-  # a deadline, not a process that can wait: it either has an answer inside the
-  # transport's window or it says `pending` and the agent stops. A PubSub
-  # subscription would be the right shape for something that can block, and this
-  # deliberately cannot.
-  defp await_answer(id) do
-    deadline = System.monotonic_time(:millisecond) + @poll_window_ms
-    poll(id, deadline)
+  # Subscribe before reading so an answer committed between the read and wait
+  # cannot be missed. The receive is bounded by the transport's deadline.
+  defp await_answer(id, frame) do
+    with {:ok, _request} <- owned_request(id, frame) do
+      subscribe_and_wait(id, frame)
+    end
   end
 
-  defp poll(id, deadline) do
+  defp owned_request(id, frame) do
     case Notifications.get_question_request(id) do
       nil ->
         {:error, :not_found}
 
-      %{status: "answered", answers: answers} = request when is_map(answers) ->
+      request ->
+        if owned?(request, frame.assigns), do: {:ok, request}, else: {:error, :not_found}
+    end
+  end
+
+  defp owned?(request, %{agent_id: id, current_scope: scope}) when is_binary(id) do
+    request.agent_id == id and match?({:ok, _}, Agents.fetch_agent(scope, id))
+  end
+
+  defp owned?(request, %{current_scope: %{user: %{id: user_id}} = scope}) do
+    is_nil(request.agent_id) and request.user_id == user_id and
+      request.session_external_id ==
+        Sessions.external_id_for_harness(scope.active_working_copy_id)
+  end
+
+  defp owned?(_request, _assigns), do: false
+
+  defp subscribe_and_wait(id, frame) do
+    topic = "question_request:#{id}"
+    :ok = Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
+
+    try do
+      await_record(id, frame, System.monotonic_time(:millisecond) + @answer_window_ms)
+    after
+      Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, topic)
+    end
+  end
+
+  defp await_record(id, frame, deadline) do
+    case owned_request(id, frame) do
+      {:error, _} = error ->
+        error
+
+      {:ok, %{status: "answered", answers: answers} = request} when is_map(answers) ->
         {:ok, request}
 
-      %{holder: holder} ->
-        if System.monotonic_time(:millisecond) >= deadline do
-          {:error, {:pending, holder}}
-        else
-          Process.sleep(@poll_interval_ms)
-          poll(id, deadline)
+      {:ok, %{holder: holder}} ->
+        remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+        receive do
+          {:question_answered, %{id: ^id}} -> await_record(id, frame, deadline)
+        after
+          remaining -> {:error, {:pending, holder}}
         end
     end
   end

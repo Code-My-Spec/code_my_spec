@@ -64,6 +64,10 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   end
 
   @impl true
+  def request_work_turn(_working_copy_id, agent, ref, message, timeout),
+    do: Agents.request_work_turn(agent.id, ref, message, timeout)
+
+  @impl true
   def withdraw_message(_working_copy_id, agent, ref, _timeout) do
     Machine.ensure_supervisor()
     Agents.withdraw(agent.id, ref)

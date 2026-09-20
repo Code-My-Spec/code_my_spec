@@ -478,7 +478,12 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              "a connected working copy should be woken, not restarted"
     end
 
-    test "an agent with a pending tap-out says why nothing was sent", %{
+    # A pending tap-out used to withhold the wake, so the page had to explain
+    # why the button appeared to do nothing. It no longer gates anything
+    # globally — a tap-out blocks its own task — and the button no longer sends
+    # a wake at all. What it must still do is flip the flag and say plainly that
+    # no process was touched.
+    test "a pending tap-out no longer gates the button, which says what it did", %{
       conn: conn,
       scope: scope,
       project: project
@@ -497,19 +502,22 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       html = view |> element("[data-test='toggle-agent-working']") |> render_click()
 
-      assert html =~ "pending question or tap-out",
+      assert html =~ "no process was started or restarted",
              "the button did something invisible and the page said nothing about it"
 
       assert Repo.get(Agent, agent.id).continuous,
-             "the flag still has to flip — only the wake message is withheld"
+             "the flag is the part that always lands; it did not"
     end
 
-    # The case this whole feature is for: `status: :running` on a row a
-    # shared harness restart pulled the rug out from under. Nothing is
-    # registered for its working copy, so this must restart it in place
-    # rather than nudging a process that is not there — and land on the
-    # same conversation, not a new one.
-    test "an agent whose working copy is not connected gets restarted, not nudged", %{
+    # `status: :running` on a row a shared harness restart pulled the rug out
+    # from under. Nothing is registered for its working copy.
+    #
+    # This used to restart the agent in place. Starting and setting continuous
+    # were coupled, and decoupling them is the point: the button records
+    # standing intent about turns and starts nothing. So the claim is no longer
+    # "it restarted" but the honest half that always mattered — the page says
+    # what happened instead of pretending the button ran something.
+    test "a disconnected working copy is told plainly that nothing was started", %{
       conn: conn,
       scope: scope,
       project: project
@@ -521,9 +529,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       html = view |> element("[data-test='toggle-agent-working']") |> render_click()
 
-      assert html =~ "wasn't actually running" or html =~ "restarting it failed",
-             "a disconnected working copy must say it restarted (or that restarting " <>
-               "failed) rather than silently pretending the button worked"
+      assert html =~ "no process was started or restarted",
+             "a disconnected working copy must say what happened rather than " <>
+               "silently pretending the button started something"
 
       assert Repo.get(Agent, agent.id).continuous
     end

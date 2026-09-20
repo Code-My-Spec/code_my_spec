@@ -23,16 +23,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
     scope = full_scope_fixture()
-    {:ok, user_id: scope.user.id}
+    {:ok, user_id: scope.user.id, scope: scope}
   end
 
-  defp frame, do: %Anubis.Server.Frame{assigns: %{}}
+  defp frame(scope), do: %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
   defp text(response) do
     response.content |> Enum.map_join("\n", &Map.get(&1, "text", ""))
   end
 
-  test "an answered question returns what the user said", %{user_id: user_id} do
+  test "an answered question returns what the user said", %{user_id: user_id, scope: scope} do
     {:ok, request} =
       Notifications.create_question_request(user_id, %{
         "title" => "Claude has a message",
@@ -44,20 +44,23 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
         "Which storage backend?" => "S3"
       })
 
-    {:reply, response, _} = CheckAnswer.execute(%{question_id: request.id}, frame())
+    {:reply, response, _} = CheckAnswer.execute(%{question_id: request.id}, frame(scope))
 
     refute response.isError
     assert text(response) =~ "S3"
   end
 
-  test "an unanswered question reports pending rather than failing", %{user_id: user_id} do
+  test "an unanswered question reports pending rather than failing", %{
+    user_id: user_id,
+    scope: scope
+  } do
     {:ok, request} =
       Notifications.create_question_request(user_id, %{
         "title" => "Claude has a message",
         "questions" => [%{"question" => "Which storage backend?"}]
       })
 
-    {:reply, response, _} = CheckAnswer.execute(%{question_id: request.id}, frame())
+    {:reply, response, _} = CheckAnswer.execute(%{question_id: request.id}, frame(scope))
 
     refute response.isError,
            "pending is an ordinary result — an agent that reads it as an error " <>
@@ -65,4 +68,64 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
 
     assert text(response) =~ "Still waiting"
   end
+
+  test "another user's scope cannot collect the answer", %{user_id: user_id} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Private decision?"}]
+      })
+
+    {:ok, _} =
+      Notifications.answer_question_request(request.id, %{"Private decision?" => "secret"})
+
+    {:reply, response, _} =
+      CheckAnswer.execute(%{question_id: request.id}, frame(full_scope_fixture()))
+
+    assert response.isError
+    refute text(response) =~ "secret"
+  end
+
+  test "an answer event completes an in-flight check", %{user_id: user_id, scope: scope} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Which store?"}]
+      })
+
+    waiter =
+      Task.async(fn ->
+        receive do
+          :check -> CheckAnswer.execute(%{question_id: request.id}, frame(scope))
+        end
+      end)
+
+    Sandbox.allow(CodeMySpec.Repo, self(), waiter.pid)
+    handler = "answer-wait-#{request.id}"
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :repo, :query],
+        &__MODULE__.question_read/4,
+        {self(), waiter.pid}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    send(waiter.pid, :check)
+    assert_receive :question_read
+    assert_receive :question_read
+    {:ok, _} = Notifications.answer_question_request(request.id, %{"Which store?" => "S3"})
+    assert {:reply, response, _} = Task.await(waiter, 2_000)
+    refute response.isError
+    assert text(response) =~ "S3"
+    assert_receive :question_read
+    refute_receive :question_read
+  end
+
+  def question_read(_event, _measurements, %{source: "question_requests"}, {listener, waiter})
+      when self() == waiter do
+    send(listener, :question_read)
+  end
+
+  def question_read(_event, _measurements, _metadata, _config), do: :ok
 end

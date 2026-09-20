@@ -512,6 +512,23 @@ defmodule CodeMySpecWeb.ChatComponents do
               <dd>{format_answer(a)}</dd>
             </div>
           </dl>
+          <%!-- The answer this one replaced, kept in front of the person who
+          replaced it. Criterion 3220: a main agent that reads the records
+          wrongly is only diagnosable from the reading it gave, and this page
+          is the one place it was ever shown. --%>
+          <div
+            :for={revision <- answer_history(@request)}
+            data-test="answer-superseded"
+            class="mt-4 border-l-2 border-base-300 pl-3 text-sm opacity-60"
+          >
+            <p class="font-semibold">Replaced {superseded_by(revision)} answer</p>
+            <dl class="mt-1 space-y-1">
+              <div :for={{q, a} <- revision_answers(revision)}>
+                <dt class="opacity-70">{q}</dt>
+                <dd>{format_answer(a)}</dd>
+              </div>
+            </dl>
+          </div>
         </div>
 
         <form
@@ -624,6 +641,20 @@ defmodule CodeMySpecWeb.ChatComponents do
   # be refused is worse than no form at all.
   defp main_agent_answered?(%{status: "answered", answered_by: "main_agent"}), do: true
   defp main_agent_answered?(_request), do: false
+
+  # Nil rather than `[]` for every row written before `answer_history` existed,
+  # which is most of them.
+  defp answer_history(%{answer_history: revisions}) when is_list(revisions), do: revisions
+  defp answer_history(_request), do: []
+
+  defp revision_answers(revision), do: Map.get(revision, "answers") || %{}
+
+  defp superseded_by(revision) do
+    case Map.get(revision, "answered_by") do
+      "main_agent" -> "the main agent's"
+      _user -> "an earlier"
+    end
+  end
 
   # The same string the recorder stores, built from the array shape instead.
   #

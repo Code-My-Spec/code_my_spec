@@ -13,9 +13,20 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
   agent does not have. What an agent needs is the decision delivered back.
 
   Declined is the case that matters. Approved and the loop ends, which the agent
-  notices by not being asked to continue. Declined and it must carry on — and an
-  agent that asked to leave and heard nothing cannot tell a refusal from a
-  decision nobody has made yet.
+  notices by not being asked to continue. Declined and it must carry on.
+
+  ## What a decision no longer does
+
+  It no longer dispatches a message. Persisting a state change and interrupting
+  a running agent are different acts, and this file used to infer the second
+  from the first: two tests asserted an `:agent_dispatch` carrying "declined" or
+  "loop is done". The decision is durable, and the agent meets it at its next
+  turn rather than mid-turn.
+
+  What replaced those assertions is the half that was never covered: a tap-out
+  carrying a `task_id` is "stop *this task*", and one carrying none is "stop
+  work period". The nullable link is the whole intent discriminator, so each
+  half needs its own case.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -61,6 +72,23 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
     %{scope: scope, agent: agent, conversation: conversation}
   end
 
+  defp active_task(scope, agent) do
+    owner = CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, agent.id)
+
+    {:ok, with_task} =
+      CodeMySpec.TaskOwner.add_task(scope, owner, %{
+        status: :active,
+        requirement_name: "spec_file"
+      })
+
+    List.last(with_task.tasks)
+  end
+
+  defp reload_task(agent_id, task_id) do
+    CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, agent_id).tasks
+    |> Enum.find(&(&1.id == task_id))
+  end
+
   defp ask_to_leave(scope, agent) do
     {:ok, request} =
       Notifications.create_permission_request(scope.user.id, %{
@@ -72,25 +100,37 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
     request
   end
 
-  test "a declined tap-out tells the agent to carry on", ctx do
-    request = ask_to_leave(ctx.scope, ctx.agent)
+  # Declining a task-scoped tap-out leaves the attempt standing with its blocker
+  # resolved, so the next turn is where the agent resumes or cancels it. It is
+  # not reactivated here: the agent's judgement about a task it asked to leave
+  # is the whole point of asking.
+  test "a declined task tap-out resolves the blocker and leaves the task blocked", ctx do
+    task = active_task(ctx.scope, ctx.agent)
+    {:ok, request} = Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id)
 
     {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
 
-    assert_receive {:agent_dispatch, id, _ref, message}
-    assert id == ctx.agent.id
-    assert message =~ "declined"
-    assert message =~ "Keep going"
+    blocked = reload_task(ctx.agent.id, task.id)
+    assert blocked.status == :blocked
+    assert blocked.blocker_resolved_at
+
+    assert CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, ctx.agent.id).continuous,
+           "declining one task must not take the agent out of the loop"
   end
 
-  test "an approved tap-out says the loop is done", ctx do
-    request = ask_to_leave(ctx.scope, ctx.agent)
+  # Approving it ends that attempt and nothing else. `continuous` is the user's
+  # standing intent about the agent, not a verdict on one task.
+  test "an approved task tap-out ends the task without ending the loop", ctx do
+    task = active_task(ctx.scope, ctx.agent)
+    {:ok, request} = Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id)
 
     {:ok, _} = Notifications.resolve_permission_request(request.id, "allow")
 
-    assert_receive {:agent_dispatch, _id, _ref, message}
-    assert message =~ "approved"
-    assert message =~ "loop is done"
+    refute reload_task(ctx.agent.id, task.id).status in [:active, :blocked]
+
+    assert CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, ctx.agent.id).continuous,
+           "approving one task's tap-out must not clear continuous; only an " <>
+             "unlinked tap-out means stop work period"
   end
 
   # Saying the loop is done is not ending it. Approving a tap-out left

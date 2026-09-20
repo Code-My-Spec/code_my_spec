@@ -94,7 +94,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   defp handle_result({:ok, :valid}, scope, session, task, _type_name, _opts) do
     Sessions.complete_task(scope, session, task.id, :completed)
     Sessions.clear_eval_feedback(scope, session)
-    wake_the_others(scope, task)
+    reconsider_other_agents(scope, task)
     {:ok, :valid}
   end
 
@@ -106,7 +106,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
     Sessions.complete_task(scope, session, task.id, :completed)
     Sessions.clear_eval_feedback(scope, session)
-    wake_the_others(scope, task)
+    reconsider_other_agents(scope, task)
     {:ok, :valid}
   end
 
@@ -262,14 +262,20 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   # Never the reason an evaluation fails. The task is complete either way, and a
   # nudge that could take that down would be worse than a nudge that is missed —
   # the next completion sends it again.
-  defp wake_the_others(scope, task) do
+  defp reconsider_other_agents(scope, task) do
     case scope.active_working_copy_id do
-      nil -> :ok
-      copy_id -> Agents.wake_roles(scope, copy_id, Map.get(task, :agent_id))
+      nil ->
+        :ok
+
+      copy_id ->
+        Agents.Work.consider_copy(scope, copy_id, :task_completed, Map.get(task, :agent_id))
     end
   rescue
     error ->
-      Logger.warning("[TaskEvaluator] could not wake the others: " <> Exception.message(error))
+      Logger.warning(
+        "[TaskEvaluator] could not reconsider agent work: " <> Exception.message(error)
+      )
+
       :ok
   end
 

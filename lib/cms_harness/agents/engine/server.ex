@@ -56,6 +56,17 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
+  def handle_call({:work_available, ref, message, timeout}, _from, state) do
+    case State.offer_work(state, %{ref: ref, message: message, timeout: timeout}) do
+      {:start, entry, state} ->
+        {:reply, {:ok, :started},
+         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, nil)}}
+
+      {:rejected, reason, state} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   # Only what is still waiting can be taken back. Anything else the agent
   # already has, and there is no unsaying it — so this says so instead of
   # clearing a queue entry that is not there and reporting success.

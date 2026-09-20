@@ -202,7 +202,11 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
 
       assert menu =~ "Nobody is reading this conversation"
       assert menu =~ "`ask_user_question`"
-      assert menu =~ "`send_message`"
+
+      # `send_message` was the other half of this sentence and is gone: the
+      # agent was never sending prose, it was creating a durable blocker and
+      # asking a person. `ask_user_question` is the whole surface now.
+      refute menu =~ "`send_message`"
     end
   end
 end

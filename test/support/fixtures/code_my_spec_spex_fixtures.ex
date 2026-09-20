@@ -1974,6 +1974,86 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Make question inserts for this test user write no row.
+
+  PostgreSQL's BEFORE INSERT cancellation exercises an actual failed write
+  without aborting the surrounding sandbox transaction. In particular, this
+  fixture does not wrap the tool call in a rollback that would hide a task
+  mutation made before the insert. The trigger and temporary function are
+  transactional DDL and disappear with the test sandbox's rollback.
+  """
+  @spec refuse_question_inserts(Scope.t()) :: :ok
+  def refuse_question_inserts(%Scope{user: %{id: user_id}}) when is_integer(user_id) do
+    CodeMySpec.Repo.query!("""
+    CREATE FUNCTION pg_temp.spex_refuse_question_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.user_id = #{user_id} THEN
+        RETURN NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$
+    """)
+
+    CodeMySpec.Repo.query!("""
+    CREATE TRIGGER spex_refuse_question_insert
+    BEFORE INSERT ON question_requests
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.spex_refuse_question_insert()
+    """)
+
+    :ok
+  end
+
+  @doc """
+  Refuse this test user's tap-out inserts without aborting the sandbox transaction.
+  This injects storage failure, not task state or a permission outcome.
+  """
+  @spec refuse_tap_out_inserts(Scope.t()) :: :ok
+  def refuse_tap_out_inserts(%Scope{user: %{id: user_id}}) when is_integer(user_id) do
+    CodeMySpec.Repo.query!("""
+    CREATE FUNCTION pg_temp.spex_refuse_tap_out_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.user_id = #{user_id} AND NEW.tool_name = 'tap_out' THEN
+        RETURN NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$
+    """)
+
+    CodeMySpec.Repo.query!("""
+    CREATE TRIGGER spex_refuse_tap_out_insert
+    BEFORE INSERT ON permission_requests
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.spex_refuse_tap_out_insert()
+    """)
+
+    :ok
+  end
+
+  @doc """
+  Establish the age of a question already created through its public surface.
+
+  Changes only its timestamps, never its answer, status, ownership, or task
+  blocker. This supplies historical setup without sleeping through a real TTL.
+  """
+  @spec age_question(Scope.t(), String.t(), pos_integer()) :: :ok
+  def age_question(%Scope{user: %{id: user_id}}, question_id, seconds)
+      when is_integer(seconds) and seconds > 0 do
+    timestamp =
+      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+
+    {1, _} =
+      from(q in Notifications.QuestionRequest,
+        where: q.id == ^question_id and q.user_id == ^user_id
+      )
+      |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
+
+    :ok
+  end
+
+  @doc """
   Request a tool permission the way the Claude Code hook does.
 
   The inbox lists questions and permission requests together, so a scenario
@@ -2361,6 +2441,24 @@ defmodule CodeMySpecSpex.Fixtures do
   def question_id_from(response_text) do
     [_, id] = Regex.run(~r/Question id: ([0-9a-f-]{36})/, response_text)
     id
+  end
+
+  @doc """
+  Which agent raised a question, if an agent did.
+
+  The identity `Plugs.AgentScope` puts on the frame in production, read back
+  off the question it wrote. `check_answer` refuses a question whose `agent_id`
+  is not the caller's — correctly, one agent must not read another's reply — so
+  a spex collecting an answer has to call as the asker, and this is where the
+  asker is recorded. Nil for a Claude Code session's question, which has no
+  agent.
+  """
+  @spec asking_agent_id(String.t()) :: String.t() | nil
+  def asking_agent_id(question_id) do
+    case CodeMySpec.Notifications.get_question_request(question_id) do
+      %{agent_id: agent_id} -> agent_id
+      nil -> nil
+    end
   end
 
   @doc """
@@ -3479,7 +3577,9 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  An active task on the agent's own row — `TaskOwner`'s shape, not a session's.
+  A recorded task on the agent's own row — `TaskOwner`'s shape, not a session's.
+  Defaults to active; `:status` can establish a pre-existing terminal task for
+  scenarios about rejecting an operation on historical work.
 
   `start_task` is what a real Alloy agent calls to claim work, and it goes
   through `TaskOwner.add_task/3` directly on the agent — there is no session in
@@ -3487,7 +3587,7 @@ defmodule CodeMySpecSpex.Fixtures do
   somebody else's session naming this agent by id, which is what an *external*
   Claude Code session's sub-agent looks like, not one we run ourselves.
 
-  Returns `{agent, task}`, both the updated agent and the task now active on
+  Returns `{agent, task}`, both the updated agent and the task recorded on
   it — spex files reach `CodeMySpec` only through this bridge, so the caller
   should not need a second call through `TaskOwner` just to read back what was
   just staged.
@@ -3500,7 +3600,7 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, agent} =
       TaskOwner.add_task(scope, agent, %{
         id: task_id,
-        status: :active,
+        status: Keyword.get(opts, :status, :active),
         requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
         story_id: Keyword.get(opts, :story_id),
         # Settable, because a criterion about how long a task has been open
@@ -3508,7 +3608,7 @@ defmodule CodeMySpecSpex.Fixtures do
         started_at: Keyword.get(opts, :started_at, DateTime.utc_now())
       })
 
-    {agent, TaskOwner.active_task(agent)}
+    {agent, TaskOwner.find_task(agent, task_id)}
   end
 
   @doc """
@@ -3535,6 +3635,62 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec cadence_tick(Scope.t()) :: :ok
   def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+
+  @doc "Start a real recovery timer for a scheduling spec and clean up its supervised child."
+  @spec start_recovery_timer(Scope.t()) :: :ok
+  def start_recovery_timer(%Scope{} = scope) do
+    {:ok, pid} = CodeMySpec.MainAgent.ensure_cadence(scope)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+    end)
+
+    :ok
+  end
+
+  @doc "Wait for recovery events and verify the public cadence report advanced."
+  def await_recovery_check(read_report, since) when is_function(read_report, 0) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "cadence:checks")
+
+    try do
+      deadline = System.monotonic_time(:millisecond) + 5_000
+      await_recovery_check(read_report, since, deadline)
+    after
+      Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "cadence:checks")
+    end
+  end
+
+  defp await_recovery_check(read_report, since, deadline) do
+    body = read_report.()
+
+    checked_at =
+      with [_, timestamp] <- Regex.run(~r/last check:\s*(\S+)/i, body),
+           {:ok, instant, _} <- DateTime.from_iso8601(timestamp),
+           :gt <- DateTime.compare(instant, since) do
+        instant
+      else
+        _ -> nil
+      end
+
+    cond do
+      checked_at ->
+        checked_at
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+
+      true ->
+        remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+        receive do
+          {:recovery_checked, _project_id, _checked_at} ->
+            await_recovery_check(read_report, since, deadline)
+        after
+          remaining ->
+            raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+        end
+    end
+  end
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
@@ -3754,6 +3910,19 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _message} =
       Conversations.add_agent_message(conversation, to_string(role), "assistant", text)
 
+    :ok
+  end
+
+  @doc "Seed an operator instruction already present before the tested agent turn."
+  def prior_operator_instruction(%Scope{} = scope, %{id: agent_id}, text) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent_id
+      )
+
+    {:ok, _message} = Conversations.add_message(conversation, :operator, text, "operator")
     :ok
   end
 

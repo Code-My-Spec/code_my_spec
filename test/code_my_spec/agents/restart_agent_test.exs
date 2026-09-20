@@ -91,27 +91,28 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
       %{agent: stopped}
     end
 
-    test "restarts it rather than nudging nothing", %{scope: scope, agent: agent} do
+    test "enables intent without restarting a stopped agent", %{scope: scope, agent: agent} do
       assert Agents.working_copy_connected?(agent),
              "the premise failed: this test is about a stopped agent on a *connected* " <>
                "copy, which is the combination the old check read as alive"
 
-      assert {:ok, restarted, :restarted} =
+      assert {:ok, updated, :enabled} =
                Agents.set_agent_continuous(scope, agent.id, true)
 
-      assert restarted.id == agent.id,
-             "a restart that changes the id is a new, empty conversation — the exact " <>
-               "outcome restart_agent/2 exists to avoid"
-
-      refute restarted.status == :stopped,
-             "the button reported success and left the agent stopped, which is what " <>
-               "made it read as doing nothing"
+      assert updated.id == agent.id
+      assert updated.continuous
+      assert updated.status == :stopped
+      refute_receive {:work_turn_requested, _, _, _}
+      refute_receive {:agent_dispatch, _, _, _}
     end
 
-    test "a failed agent is restarted too", %{scope: scope, agent: agent} do
+    test "a failed agent also retains its lifecycle state", %{scope: scope, agent: agent} do
       {:ok, failed} = AgentsRepository.update_agent(scope, agent, %{status: :failed})
 
-      assert {:ok, _, :restarted} = Agents.set_agent_continuous(scope, failed.id, true)
+      assert {:ok, updated, :enabled} = Agents.set_agent_continuous(scope, failed.id, true)
+      assert updated.status == :failed
+      assert updated.continuous
+      refute_receive {:work_turn_requested, _, _, _}
     end
   end
 

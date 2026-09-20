@@ -96,10 +96,16 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
 
   defp holding(%AgentWork{} = work) do
     """
-    task: #{work.task_name}#{story(work)}
+    task: #{work.task_name}#{task_state(work)}#{story(work)}
       task opened: #{moment(work.task_started_at)}\
     """
   end
+
+  # A blocked attempt is still the work the agent is on, and saying only its
+  # name would read as an agent that is working when it is waiting. The line
+  # below says what it is waiting for.
+  defp task_state(%AgentWork{task_status: :blocked}), do: " [blocked]"
+  defp task_state(%AgentWork{}), do: ""
 
   defp story(%AgentWork{story_title: nil}), do: ""
   defp story(%AgentWork{story_title: title}), do: ~s( — "#{title}")

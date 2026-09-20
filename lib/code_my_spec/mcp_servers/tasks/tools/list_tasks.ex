@@ -81,14 +81,35 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     agent = if task.agent_id, do: "agent=#{task.agent_id}", else: "unassigned"
     component = task.component_module_name || "—"
 
-    "- #{icon} **#{task.requirement_name}** #{component} [#{task.status}] #{agent} `#{task.id}`"
+    "- #{icon} **#{task.requirement_name}** #{component} [#{task.status}] #{agent} `#{task.id}`" <>
+      blocker(task)
   end
+
+  # What a blocked task is waiting on, and whether it still is.
+  #
+  # `[blocked]` alone says neither, and both are things the agent has to know
+  # without reading the database. Criterion 3223 reads the question id off this
+  # row after an explicit restart — the agent comes back with nothing in memory
+  # and this listing is where the link between the task and the question it
+  # asked survives. Criterion 2419 is the other half: an agent holding two
+  # blocked attempts has to tell the one that has been answered from the one
+  # still waiting, and picking the wrong one is a `start_task` that gets
+  # refused for no visible reason.
+  defp blocker(%{status: :blocked, blocker_type: type} = task) when not is_nil(type) do
+    " — blocked on #{type} `#{task.blocker_id}` #{waiting_or_resolved(task)}"
+  end
+
+  defp blocker(_task), do: ""
+
+  defp waiting_or_resolved(%{blocker_resolved_at: nil}), do: "(waiting)"
+  defp waiting_or_resolved(_task), do: "(resolved — resume it with start_task)"
 
   defp status_icon(:completed), do: "✓"
   defp status_icon(:active), do: "●"
   defp status_icon(:failed), do: "✗"
   defp status_icon(:cancelled), do: "—"
   defp status_icon(:prepared), do: "○"
+  defp status_icon(:blocked), do: "⏸"
   defp status_icon(_), do: "?"
 
   # An agent we run owns its tasks directly, so it is the owner and there is no
@@ -143,7 +164,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
          "cannot supply it — this is a harness fault, not something to retry or " <>
          "ask a person about. Report it with `create_issue` and carry on."}
 
-  @valid_statuses ~w(prepared active completed failed cancelled)
+  # From the schema, not a copy of it. This list said
+  # `prepared active completed failed cancelled` while the schema had been
+  # writing `:blocked` for days, so filtering for the state the whole
+  # durable-work model turns on answered "Invalid status".
+  @valid_statuses Enum.map(CodeMySpec.Sessions.Task.statuses(), &Atom.to_string/1)
 
   defp parse_status(nil), do: {:ok, nil}
 

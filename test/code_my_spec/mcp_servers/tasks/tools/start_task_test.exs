@@ -7,12 +7,33 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
+  end
+
+  test "authenticated agents cannot redirect a claim to another durable agent" do
+    {scope, _session, _component, params} = setup_requirement()
+    caller = durable_agent(scope)
+    other = durable_agent(scope)
+    frame = %Frame{assigns: %{current_scope: scope, agent_id: caller.id}}
+
+    assert {:reply, response, ^frame} =
+             StartTask.execute(Map.put(params, :agent_id, other.id), frame)
+
+    assert response.isError
+    assert response_text(response) =~ "Cannot start another agent's task"
+    assert CodeMySpec.Repo.reload!(caller).tasks == []
+    assert CodeMySpec.Repo.reload!(other).tasks == []
+
+    assert {:reply, own_response, ^frame} = StartTask.execute(params, frame)
+    refute own_response.isError
+    assert length(CodeMySpec.Repo.reload!(caller).tasks) == 1
+    assert CodeMySpec.Repo.reload!(other).tasks == []
   end
 
   describe "execute/2 — happy path" do
@@ -257,7 +278,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_name: "spec_file", entity_type: "component", entity_id: "x", session_id: "x"},
+                 %{
+                   requirement_name: "spec_file",
+                   entity_type: "component",
+                   entity_id: "x",
+                   session_id: "x"
+                 },
                  frame
                )
 
@@ -268,6 +294,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
+
+  defp durable_agent(scope) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "zai",
+        role: "coding",
+        working_copy: "/tmp/start-task-test",
+        working_copy_id: scope.active_working_copy_id,
+        status: :running
+      })
+
+    agent
+  end
 
   defp setup_requirement do
     # Every case here starts a `spec_file` task, and that node only exists when

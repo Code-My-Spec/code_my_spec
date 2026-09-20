@@ -19,44 +19,35 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
 
   schema do
     field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :task_id, :string, doc: "Task to block; omit for whole-agent continuous stop approval."
+    field :reason, :string, doc: "Why this work should stop."
   end
 
   @impl true
-  # An agent we run asks, stops, and is told what was decided.
-  #
-  # The session implementation writes its pending request into `session.state`
-  # and a waiter polls it. An agent has no session to write into — and did not
-  # need one: the permission request row *is* the pending state, and
-  # `session.state` was a second copy of it for a waiter an agent does not have.
-  #
-  # So this is the same shape as `ask_user_question`: the request is published,
-  # the tool returns, the agent stops, and `resolve_permission_request/2`
-  # delivers the decision as a message. Denied is the case that matters — an
-  # agent that asked to leave and heard nothing cannot tell a refusal from a
-  # decision nobody has made yet.
-  def execute(_params, %{assigns: %{agent_id: agent_id}} = frame)
+  # Durable requests live on the permission row, linked to a task only when
+  # explicitly requested. A task blocker does not change continuous intent.
+  def execute(params, %{assigns: %{agent_id: agent_id}} = frame)
       when is_binary(agent_id) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, request} <- request_agent_tap_out(scope, agent_id) do
-      # A main agent that has finished asks not to be woken again, so the
-      # cadence stops with it — story 1059's criterion 3334. The timer only:
-      # criterion 3335 is the other half, and a question raised afterwards still
-      # reaches it, because the alternative has no symptom on either side.
-      stand_down_if_main(scope, agent_id)
-
+         {:ok, request} <-
+           Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason]) do
       {:reply,
        Response.tool()
        |> Response.text("""
        Tap-out requested (request_id=`#{request.id}`). A human decides.
 
-       Stop now. You will be told what was decided — approved and the loop is
-       done, declined and you carry on from where you left off. Do not wait and
-       do not ask again.
+       A linked task is blocked; unrelated work may continue. Without a task,
+       this asks to turn off continuous work upon approval. Do not ask again.
        """), frame}
     else
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
     end
+  rescue
+    error ->
+      {:reply,
+       Response.tool() |> Response.error("Tap-out was not saved: #{Exception.message(error)}"),
+       frame}
   end
 
   def execute(params, frame) do
@@ -75,38 +66,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
     end
   end
-
-  # Only the main agent's tap-out stops the cadence. A coding agent leaving its
-  # own loop says nothing about whether the project still needs looking in on —
-  # and that agent going quiet is precisely what the cadence exists to notice.
-  defp stand_down_if_main(scope, agent_id) do
-    case CodeMySpec.Agents.fetch_agent(scope, agent_id) do
-      {:ok, %{role: :main}} -> CodeMySpec.MainAgent.stand_down(scope)
-      _ -> :ok
-    end
-  end
-
-  # Idempotent, not a fresh ask. An agent that calls this again while its
-  # first request is still pending is not asking twice — it is the same
-  # question, asked because the loop handed it a menu that still offers
-  # `tap_out` on every unrelated wake. A second row would be a second
-  # decision for a human to make about a question already asked, and the
-  # backlog that leaves behind never gets smaller.
-  defp request_agent_tap_out(%{user: %{id: user_id}}, agent_id) do
-    case Notifications.get_pending_tap_out_request(agent_id) do
-      nil ->
-        Notifications.create_permission_request(user_id, %{
-          "agent_id" => agent_id,
-          "tool_name" => "tap_out",
-          "tool_input" => %{"agent_id" => agent_id}
-        })
-
-      existing ->
-        {:ok, existing}
-    end
-  end
-
-  defp request_agent_tap_out(_scope, _agent_id), do: {:error, :no_user}
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do

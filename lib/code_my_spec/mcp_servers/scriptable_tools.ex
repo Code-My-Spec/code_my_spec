@@ -136,7 +136,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
-  component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
 
   # The main agent's view across its working copies, and the one act it can

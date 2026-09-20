@@ -47,6 +47,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
@@ -455,6 +456,76 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   @spec filed_at?(map(), String.t()) :: boolean()
   def filed_at?(context, scope) do
     not String.contains?(issues_filed(context, %{scope: scope}), "No issues found")
+  end
+
+  @doc "Snapshot issue identities before a measured run, so older findings cannot count."
+  @spec framework_issue_ids(map()) :: [String.t()]
+  def framework_issue_ids(context) do
+    ~r/\bID:\s*([0-9a-f-]{36})/
+    |> Regex.scan(issues_filed(context, %{scope: "framework"}))
+    |> Enum.map(fn [_, id] -> id end)
+    |> Enum.uniq()
+  end
+
+  @doc """
+  A new framework issue must be returned by this agent's actual create call,
+  remain readable through MCP, and contain the failed tool and error evidence.
+  A mention in prose, another run's issue, or a listing result is not creation.
+  """
+  @spec reported_new_framework_issue?(map(), String.t(), [String.t()], String.t(), Regex.t()) ::
+          boolean()
+  def reported_new_framework_issue?(context, agent_id, before_ids, tool, error_pattern) do
+    created = context |> conversation(agent_id) |> created_issue_ids()
+    new_ids = framework_issue_ids(context) -- before_ids
+
+    Enum.any?(new_ids, fn id ->
+      id in created and issue_has_evidence?(context, id, tool, error_pattern)
+    end)
+  end
+
+  defp issue_has_evidence?(context, id, tool, error_pattern) do
+    {:reply, response, _} = GetIssue.execute(%{issue_id: id}, frame(context))
+    refute response.isError, text(response)
+    body = text(response)
+    String.contains?(body, tool) and Regex.match?(error_pattern, body)
+  end
+
+  @doc "Creation receipts correlated to create_issue tool calls in a rendered conversation."
+  @spec created_issue_ids(String.t()) :: [String.t()]
+  def created_issue_ids(rendered) do
+    blocks = Regex.split(~r/(?=^\s{2}\[[^\]]+\] )/m, rendered, trim: true)
+    call_ids = blocks |> Enum.flat_map(&issue_creation_call/1) |> MapSet.new()
+
+    blocks
+    |> Enum.flat_map(&issue_creation_receipt(&1, call_ids))
+    |> Enum.uniq()
+  end
+
+  defp issue_creation_call(block) do
+    case Regex.run(~r/^\s*\[[^\]]+\] called (\w+)\((.*)\) id=(\S+)\s*$/s, block) do
+      [_, "create_issue", _args, id] -> [id]
+      [_, "run_script", args, id] -> script_creation_call(args, id)
+      _ -> []
+    end
+  end
+
+  defp script_creation_call(args, id) do
+    if Regex.match?(~r/\bcreate_issue\s*\(/, args), do: [id], else: []
+  end
+
+  defp issue_creation_receipt(block, call_ids) do
+    case Regex.run(~r/^\s*\[[^\]]+\] tool returned id=(\S+)\n(.*)$/s, block) do
+      [_, call_id, result] -> creation_ids(result, MapSet.member?(call_ids, call_id))
+      _ -> []
+    end
+  end
+
+  defp creation_ids(_result, false), do: []
+
+  defp creation_ids(result, true) do
+    ~r/Issue created:[^\n]*\(ID:\s*([0-9a-f-]{36})\)/
+    |> Regex.scan(result)
+    |> Enum.map(fn [_, id] -> id end)
   end
 
   @doc """

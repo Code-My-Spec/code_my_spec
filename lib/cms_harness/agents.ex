@@ -118,6 +118,9 @@ defmodule CmsHarness.Agents do
   """
   @spec send_message(String.t(), String.t(), String.t(), timeout()) ::
           {:ok, :started | :queued} | {:error, term()}
+  def request_work_turn(agent_id, ref, text, timeout \\ 180_000),
+    do: Engine.request_work_turn(agent_id, ref, text, timeout)
+
   def send_message(agent_id, ref, text, timeout \\ 180_000) when is_binary(text) do
     Engine.send_message(agent_id, ref, text, timeout)
   end

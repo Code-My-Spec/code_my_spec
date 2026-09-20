@@ -52,13 +52,12 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
       """
       Checked in.
 
-      The digest went to the main agent's conversation rather than coming back
-      here — that is where the cadence delivers it too, so what you read there is
-      what a scheduled wake-up would have said.
+      Recovery inspected the fleet and reconsidered eligible work for existing
+      agents. Only runnable agents may receive a new turn; no process was
+      started or restarted, and no unconditional digest message was sent.
 
-      If it could not be assembled, a fault was raised on the conversation
-      instead of an empty all-quiet. An empty digest and an unbuildable one read
-      identically, and only one of them is good news.
+      If the digest could not be assembled, a fault was recorded rather than
+      treating unavailable evidence as an empty, healthy fleet.
       """
     )
   end
