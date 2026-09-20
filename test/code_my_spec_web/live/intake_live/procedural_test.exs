@@ -8,7 +8,6 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
   @attrs %{
     account_name: "Acme",
     project_name: "Widget Tracker",
-    who_uses: "warehouse staff",
     needs_sign_in: "true",
     separate_copies: "false",
     location: "cloud"
@@ -35,7 +34,7 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
 
       assert plan.status == :planned
       assert plan.procedural == true
-      assert plan.who_uses == "warehouse staff"
+      refute plan.who_uses, "no persona field on this form — not load-bearing here"
       assert plan.shaping_turns == [], "the form filled this in, not a model call"
     end
 

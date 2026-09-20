@@ -51,8 +51,6 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
             label="Project name"
             class="w-full input"
           />
-          <.input field={@form[:who_uses]} type="text" label="Who uses it" class="w-full input" />
-
           <.input
             field={@form[:needs_sign_in]}
             type="select"

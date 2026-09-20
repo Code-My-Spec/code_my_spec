@@ -170,13 +170,16 @@ defmodule CodeMySpec.Intake.Plan do
   same arrival, a different door, and everything past this page (signup,
   payment, boot) reads `plan.status`/`plan.location`/names alone and cannot
   tell which door was used.
+
+  No `who_uses` here — it feeds `record_persona/3` alone, and a persona is
+  not load-bearing for anything a procedural visitor is checking. Asking for
+  it would be a field with no purpose but noise.
   """
   def procedural_changeset(%__MODULE__{} = plan, attrs) do
     plan
     |> cast(attrs, [
       :account_name,
       :project_name,
-      :who_uses,
       :needs_sign_in,
       :separate_copies,
       :location

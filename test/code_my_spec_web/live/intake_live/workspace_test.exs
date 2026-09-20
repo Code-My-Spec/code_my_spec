@@ -133,7 +133,6 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
           %{
             account_name: "Acme",
             project_name: "Widget Tracker",
-            who_uses: "warehouse staff",
             needs_sign_in: "true",
             separate_copies: "false",
             location: "cloud"
