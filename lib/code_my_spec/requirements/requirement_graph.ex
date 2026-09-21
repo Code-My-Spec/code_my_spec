@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
@@ -314,9 +315,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # fingerprints go on narrowing the nodes.
     topology_moved? = topology != GraphCache.topology_fingerprint(scope)
 
-    with {_, true} <- {:no_stored_rows, stored_nodes != []},
-         {_, {:partial, stale}} <-
-           {:everything_stale, stale_entities(stored_nodes, ctx, config)} do
+    if stored_nodes == [] do
+      # The one thing left that genuinely cannot be partial. Everything else a
+      # pass might find — every entity stale, the shape moved, a whole family
+      # expanded — is now a reason rather than a route, and goes through the
+      # machinery below with a larger stale set. A vantage with no rows has
+      # nothing to be partial *against*.
+      #
+      # Said out loud for the reason the old fallback was: the only observable
+      # difference between "reuse is working" and "reuse never fires" is a log
+      # line that does not appear, and on this project it did not appear once.
+      Logger.info("[Requirements] full recompute — no_stored_rows")
+      publish_timed(scope, ctx, config, started)
+    else
+      stale = stale_set(stored_nodes, ctx, config)
       reduced = reduce_to(ctx, stale)
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
@@ -408,31 +420,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       })
 
       {served, edges}
-    else
-      # Which guard sent it to the whole computation, because without this the
-      # only observable difference between "reuse is working" and "reuse never
-      # fires" is a log line that does not appear — and on this project it did
-      # not appear once. Reuse is the point of the function; a fallback nobody
-      # can see the reason for is the function quietly not doing it.
-      # The counts that decided it, for the same reason `topology_moved` prints
-      # its parts one clause up: `everything_stale` on its own says a full
-      # recompute happened and nothing about why, and "why" here is a
-      # comparison between two numbers that are not otherwise recoverable.
-      #
-      # Cost of not having them: three wrong hypotheses in one sitting, each
-      # plausible and each taking a database query to rule out — entities that
-      # never produce rows counting as new forever, a component family
-      # expanding to the whole project, a vantage small enough that an ordinary
-      # stale set clears its bar. The line below distinguishes all three, and
-      # the last one is not a fault at all: a copy holding twenty entities has
-      # nothing to reuse, and recomputing it whole is both correct and cheap.
-      {:everything_stale, {:all, why}} ->
-        Logger.info("[Requirements] full recompute — everything_stale #{why}")
-        publish_timed(scope, ctx, config, started)
-
-      {why, _} ->
-        Logger.info("[Requirements] full recompute — #{why}")
-        publish_timed(scope, ctx, config, started)
     end
   end
 
@@ -467,6 +454,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp edges_for(scope, ctx, config, nodes, stored_nodes, stored_edges, topology_moved?) do
     if topology_moved? or not same_node_set?(nodes, stored_nodes) do
       log_edge_rebuild(ctx, config, nodes, stored_nodes, topology_moved?)
+      announce_edge_rebuild(scope, nodes)
       ctx = Map.put(ctx, :template_edges, template_edges(scope, ctx, config))
       {compute_edges(nodes, ctx, config), nodes}
     else
@@ -494,6 +482,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # pass that is not an error anyone sees. `GraphWatcher` catches it, logs, and
   # tries again, which is a recompute loop at full tilt.
   defp pass_tables, do: {Shadow.pass_target(), {Shadow.pass_edges(), Edge}}
+
+  # Said out loud, because a rebuild is the largest thing a pass does and the
+  # only one a reading taken at the database cannot see. `DrainCost.measure/2`
+  # counts this alongside the queries, so `last_drain` reports it and criterion
+  # 3618 can assert on it.
+  defp announce_edge_rebuild(scope, nodes) do
+    :telemetry.execute(
+      DrainCost.edges_rebuilt(),
+      %{count: 1, nodes: length(nodes)},
+      %{project_id: scope.active_project_id}
+    )
+  end
 
   defp same_node_set?(nodes, stored_nodes) do
     MapSet.new(nodes, &node_key/1) == MapSet.new(stored_nodes, &node_key/1)
@@ -708,16 +708,54 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     verdict(stale, entities, {mismatched, moved}, appeared, ctx)
   end
 
-  # `{:partial, set}` or `{:all, why}`, rather than a set or the bare atom the
+  # The entities this pass has to recompute, whether that is some of them or all
+  # of them.
+  #
+  # Everything being stale is still reported — it has three causes and they are
+  # not the same news, and guessing between them once cost three wrong
+  # hypotheses in a sitting: entities that never produce rows counting as new
+  # forever, a component family expanding to the whole project, and a vantage
+  # small enough that an ordinary stale set clears its bar. `why_all/5`
+  # distinguishes all three, and the last is not a fault at all.
+  #
+  # What no longer follows from it is a whole rebuild. The stale set goes to the
+  # machinery a partial pass uses, so every verdict is recomputed — they are all
+  # genuinely stale — and `edges_for/7` reuses the edge set unless the shape
+  # actually moved. Criterion 3618 is that claim; the measurement behind it is
+  # 1341ms of edges against 2220ms of nodes on this project, and an edge rebuild
+  # costing more than every verdict in the project on a narrower checkout.
+  defp stale_set(stored_nodes, ctx, config) do
+    case stale_entities(stored_nodes, ctx, config) do
+      {:partial, stale} ->
+        stale
+
+      {:all, why, stale} ->
+        Logger.info("[Requirements] every entity is stale — #{why}")
+        stale
+    end
+  end
+
+  # `{:partial, set}` or `{:all, why, set}`, rather than a set or the bare atom the
   # guard used to compare against. The reason travels with the verdict because
   # the caller logs it and cannot reconstruct it: by then `recorded` and
   # `appeared` are out of scope, and the two numbers being compared are the
   # whole of the decision.
+  # `{:all, why, stale}` rather than `{:all, why}`, and the third element is the
+  # whole of the change. "Everything is stale" used to be a *route* — it sent
+  # the pass to `compute_and_publish/3`, which recomputes every node and every
+  # edge — and the set was dropped on the way because nothing downstream needed
+  # it.
+  #
+  # It is a *reason* now. Everything being stale is a statement about verdicts,
+  # and the edges come from the component and dependency rows, so the pass takes
+  # the road it always takes with the whole project in its stale set and lets
+  # `edges_for/7` decide whether the shape moved. That decision cannot be made
+  # without knowing which entities are stale, so the set travels.
   defp verdict(stale, entities, moved, appeared, ctx) do
     all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
 
     if all?,
-      do: {:all, why_all(stale, entities, moved, appeared, ctx)},
+      do: {:all, why_all(stale, entities, moved, appeared, ctx), stale},
       else: {:partial, stale}
   end
 
@@ -958,6 +996,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
 
+    # This path rebuilds the edge set unconditionally, so it announces
+    # unconditionally. Without this the reading is a false negative on exactly
+    # the case worth watching: `edges_for/7` is the partial path's decision and
+    # never runs here, so a whole recompute — the most expensive thing that
+    # happens — reported no rebuild at all.
+    announce_edge_rebuild(scope, nodes)
     {edges_us, edges} = :timer.tc(fn -> compute_edges(nodes, enriched_ctx, config) end)
 
     log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges)
@@ -1451,7 +1495,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       case stale_entities(stored, ctx, config) do
         {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
-        {:all, why} -> {:all, why}
+        {:all, why, _stale} -> {:all, why}
       end
     end
   end
@@ -1507,7 +1551,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       {:partial, stale} ->
         if MapSet.size(stale) > 0, do: warn_stale(scope, stale, ctx)
 
-      {:all, why} ->
+      {:all, why, _stale} ->
         Logger.warning(
           "[Requirements] STALE READ — every entity reads stale (#{why}). " <>
             "Served anyway; reads do not recompute. " <>
