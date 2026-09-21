@@ -264,15 +264,20 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
           # statement about one checkout, so summing the lists first lets a hit
           # in one worktree cover a miss in another — which is the class of bug
           # the whole shadow exists to catch.
-          {state, handled, recomputed} =
+          {state, handled, recomputed, kinds} =
             Enum.reduce(
               vantages,
-              {state, 0, 0},
+              {state, 0, 0, %{}},
               &settle_vantage(&1, &2, marks, base_scope, config)
             )
 
           {%{state | scope: base_scope},
-           %{handled: handled, recomputed: recomputed, vantages: length(vantages)}}
+           %{
+             handled: handled,
+             recomputed: recomputed,
+             vantages: length(vantages),
+             kinds: kinds_line(kinds)
+           }}
         end
       )
 
@@ -478,7 +483,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # seeding: `plan/2` still answers `:everything` for an unseeded projector, and
   # nothing ever asked it. So the guard is "no work to do", and a projector that
   # has not established what is true has work to do whatever its marks say.
-  defp settle_vantage(vantage, {state, handled, recomputed}, marks, base_scope, config) do
+  defp settle_vantage(vantage, {state, handled, recomputed, kinds}, marks, base_scope, config) do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
     {applied, unhandled} = apply_handlers(state, marks)
 
@@ -489,7 +494,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     log_handled(state, applied)
 
-    {state, handled + length(applied), recomputed + length(unhandled)}
+    {state, handled + length(applied), recomputed + length(unhandled),
+     tally(kinds, applied, unhandled)}
+  end
+
+  # Which kinds this drain handled and which it fell back on, by mark count,
+  # for the cost line. Queries are attributable to a kind only if the line
+  # names the kinds; without this every 37-query drain read alike, and the
+  # question "which event costs three profile loads" had no answer in the log.
+  defp tally(kinds, applied, unhandled) do
+    applied
+    |> Enum.frequencies_by(fn {mark, _changes, _written} -> {:handled, kind_of(mark)} end)
+    |> Map.merge(Enum.frequencies_by(unhandled, &{:recomputed, kind_of(&1)}))
+    |> Map.merge(kinds, fn _key, a, b -> a + b end)
+  end
+
+  defp kind_of(%Invalidation{kind: kind}) when kind in [nil, "invalidate"], do: "invalidation"
+  defp kind_of(%Invalidation{kind: kind}), do: kind
+
+  defp kinds_line(kinds) when map_size(kinds) == 0, do: "none"
+
+  defp kinds_line(kinds) do
+    Enum.map_join(Enum.sort(kinds), " ", fn {{side, kind}, n} -> "#{side}:#{kind}×#{n}" end)
   end
 
   defp log_handled(state, []), do: state
