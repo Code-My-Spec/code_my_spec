@@ -1,0 +1,58 @@
+{
+  "seconds": 13,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"e670c2bd-7537-4d8d-8efa-6556ddc4a055\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: Reservations.book/2 raises/crashes when called with an empty list argument instead of returning an error tuple like {:error, ...}. Expected it to handle the empty-list case gracefully and return an error result rather than crashing.\\\",\\n  severity = \\\"error\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: Reservations.book/2 raises/crashes when called with an empty list argument instead of returning an error tuple like {:error, ...}. Expected it to handle the empty-list case gracefully and return an error result rather than crashing.\\\",\\n  severity = \\\"error\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: Reservations.book/2 raises/crashes when called with an empty list argument instead of returning an error tuple like {:error, ...}. Expected it to handle the empty-list case gracefully and return an error result rather than crashing.\\\",\\n  severity = \\\"high\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: Reservations.book/2 raises/crashes when called with an empty list argument instead of returning an error tuple like {:error, ...}. Expected it to handle the empty-list case gracefully and return an error result rather than crashing.\\\",\\n  severity = \\\"high\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    }
+  ],
+  "run": 5,
+  "at": "2026-09-21T09:39:48.678009Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_31363_7F7wRM1Ay6KV",
+  "usage": null,
+  "behaviour": "A finding about the work is filed against the story, not as framework",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3535",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

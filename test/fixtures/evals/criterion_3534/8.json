@@ -3,7 +3,7 @@
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"8681f1f8-ccb8-46e7-a8f1-508a52bba397\"}"
+      "detail": "%{ref: \"75712d53-9e21-480f-9c54-222a340ab2e3\"}"
     },
     {
       "event": "turn_started",
@@ -27,32 +27,40 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"warning\\\", scope = \\\"framework\\"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"warning\\\",\\n  title = \\\"list_my_open_tasks tool missing from coding agent surface\\\",\\n  description = \\\"I was instructed at the start of the session to call `list_my_open_tasks` to see what tasks I already hold, but no tool by that name appears in my available_tools list or in tool_docs. The tools I do have for task state are start_task, evaluate_task, cancel_task, and list_tasks (only reachable inside run_script). I could not fulfill the instruction and worked around it by proceeding directly to get_next_requirement instead.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn "
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining. Filed a framework issue for the missing list_my_open_tasks tool that I was told to call at session start. Nothing else for the coding role right now.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"warning\\\", scope = \\\"framework\\"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining. Filed a framework issue for the missing list_my_open_tasks tool that I was told to call at session start. Nothing else for the coding role right now.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"warning\\\",\\n  title = \\\"list_my_open_tasks tool missing from coding agent surface\\\",\\n  description = \\\"I was instructed at the start of the session to call `list_my_open_tasks` to see what tasks I already hold, but no tool by that name appears in my available_tools list or in tool_docs. The tools I do have for task state are start_task, evaluate_task, cancel_task, and list_tasks (only reachable inside run_script). I could not fulfill the instruction and worked around it by proceeding directly to get_next_requirement instead.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn "
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })"
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return \\\"failed: \\\" .. err.message end\\nreturn issues\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })"
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return \\\"failed: \\\" .. err.message end\\nreturn issues\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"medium\\\",\\n  title = \\\"list_my_open_tasks tool missing from coding agent surface\\\",\\n  description = \\\"I was instructed at the start of the session to call `list_my_open_tasks` to see what tasks I already hold, but no tool by that name appears in my available_tools list or in tool_docs. The tools I do have for task state are start_task, evaluate_task, cancel_task, and list_tasks (only reachable inside run_script). I could not fulfill the instruction and worked around it by proceeding directly to get_next_requirement instead.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn r"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"medium\\\",\\n  title = \\\"list_my_open_tasks tool missing from coding agent surface\\\",\\n  description = \\\"I was instructed at the start of the session to call `list_my_open_tasks` to see what tasks I already hold, but no tool by that name appears in my available_tools list or in tool_docs. The tools I do have for task state are start_task, evaluate_task, cancel_task, and list_tasks (only reachable inside run_script). I could not fulfill the instruction and worked around it by proceeding directly to get_next_requirement instead.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn r"
     }
   ],
   "run": 8,
-  "at": "2026-09-21T08:31:55.329763Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_37220_d5yVTaMrlyrX",
+  "at": "2026-09-21T09:37:15.558804Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_48162_Ua25FSkx7oTJ",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
@@ -61,6 +69,7 @@
     "get_next_requirement",
     "run_script",
     "tap_out",
+    "run_script",
     "run_script"
   ],
   "criterion": "criterion_3534",

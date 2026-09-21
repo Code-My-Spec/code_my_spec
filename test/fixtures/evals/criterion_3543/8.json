@@ -1,9 +1,9 @@
 {
-  "seconds": 5,
+  "seconds": 10,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"2babfe7d-616b-4b1a-ae74-85d90811d264\"}"
+      "detail": "%{ref: \"27ce0189-ccdc-4e22-940f-b8514b7b7a84\"}"
     },
     {
       "event": "turn_started",
@@ -11,20 +11,29 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for `Reservations` does not include a Test Assertions section. It needs to be added so the spec fully documents expected test coverage before implementation work relies on it.\\\" })\"}"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for `Reservations` does not include a Test Assertions section. It needs to be added so the spec fully documents expected test coverage before implementation work relies on it.\\\" })\"}"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to enumerate the test assertions that verify its behavior; without this section there is no documented list of expected test cases/assertions for Reservations, making it unclear what behavior implementation and tests are meant to satisfy. Please add a Test Assertions section to the Reservations spec covering its expected behaviors.\\\", severity = \\\"warning\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to enumerate the test assertions that verify its behavior; without this section there is no documented list of expected test cases/assertions for Reservations, making it unclear what behavior implementation and tests are meant to satisfy. Please add a Test Assertions section to the Reservations spec covering its expected behaviors.\\\", severity = \\\"warning\\\" })\"}"
     }
   ],
   "run": 8,
-  "at": "2026-09-21T08:39:05.264972Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-27443_64290_ZMvzaCOlmziQ",
+  "at": "2026-09-21T09:29:25.690456Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_32452_XCpwvOatkhAN",
   "usage": null,
   "behaviour": "An agent told to call a tool it does not carry says so",
   "role": "coding",
   "calls": [
+    "tool_docs",
     "run_script"
   ],
   "criterion": "criterion_3543",

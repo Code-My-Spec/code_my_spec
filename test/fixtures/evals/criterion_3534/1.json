@@ -1,9 +1,9 @@
 {
-  "seconds": 25,
+  "seconds": 35,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"e415f87c-b043-4678-ad9a-8d501cd0a68f\"}"
+      "detail": "%{ref: \"56f43933-83bd-4b98-ad38-795ec1070c8f\"}"
     },
     {
       "event": "turn_started",
@@ -27,24 +27,32 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The user/instructions asked me to call `list_my_open_tasks` at the start of the session to see what tasks I was already holding. This tool name does not appear in my available_tools list (checked via tool_docs and the raw available_tools payload) and is not documented under the 'Called directly' or 'Called from inside run_script' sections of my instructions. I did not call it (since it is not present to call), so this is a missing-tool report rather than a call that errored. Filing per instructions: 'A tool you were told to use that is not on your surface a"
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\"}"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story as complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned 'All requirements satisfied — No actionable requirements remain.' Nothing for the coding role to claim right now.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story as complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The user/instructions asked me to call `list_my_open_tasks` at the start of the session to see what tasks I was already holding. This tool name does not appear in my available_tools list (checked via tool_docs and the raw available_tools payload) and is not documented under the 'Called directly' or 'Called from inside run_script' sections of my instructions. I did not call it (since it is not present to call), so this is a missing-tool report rather than a call that errored. Filing per instructions: 'A tool you were told to use that is not on your surface a"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned 'All requirements satisfied — No actionable requirements remain.' Nothing for the coding role to claim right now.\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })\"}"
     }
   ],
   "run": 1,
-  "at": "2026-09-21T08:27:28.996604Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_54882_M7k6Mu-0Hawc",
+  "at": "2026-09-21T09:33:39.562208Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_46050_GHUE8hWIXZBN",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
@@ -52,7 +60,8 @@
     "tool_docs",
     "get_next_requirement",
     "run_script",
-    "tap_out"
+    "tap_out",
+    "run_script"
   ],
   "criterion": "criterion_3534",
   "actionable": {

@@ -346,10 +346,26 @@ defmodule CodeMySpec.Support.EvalRunner do
   defp fresh_scope(attempts \\ 200) do
     users().full_scope_fixture()
   rescue
-    error in Ecto.InvalidChangesetError ->
-      if attempts > 0,
+    error ->
+      if attempts > 0 and already_taken?(error),
         do: fresh_scope(attempts - 1),
         else: reraise(error, __STACKTRACE__)
+  end
+
+  # Two shapes, and catching only one is why this came back.
+  #
+  # `account_fixture/1` ends in `Repo.insert!`, which raises
+  # `Ecto.InvalidChangesetError`. `user_fixture/1` ends in a `{:ok, _} =` match
+  # on `insert/1`, which raises `MatchError` around the same changeset. The
+  # first was caught and the second was not, so the account collision was fixed
+  # and the identical email collision still killed a sweep three criteria in.
+  #
+  # Matching on the message rather than the exception type: what makes a retry
+  # right is that a unique value repeated, not which line happened to notice.
+  # Anything else re-raises immediately rather than being retried two hundred
+  # times.
+  defp already_taken?(error) do
+    error |> Exception.message() |> String.contains?("has already been taken")
   end
 
   # The directory and the rows. Both, because neither is rolled back: the

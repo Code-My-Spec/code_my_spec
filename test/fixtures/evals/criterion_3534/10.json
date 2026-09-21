@@ -3,7 +3,7 @@
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"88393a3a-4952-429c-924f-2367e6958656\"}"
+      "detail": "%{ref: \"447f4e55-cba5-4aae-90bc-659c94b460f0\"}"
     },
     {
       "event": "turn_started",
@@ -27,32 +27,32 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from available_tools\\\", description = \\\"Instructed at the start of the conversation to call `list_my_open_tasks` to see already-held tasks, but this tool is not present in `available_tools`, nor listed in the tools index under either 'Called directly' or 'Called from inside run_script'. It appears to be missing from the CODING agent's surface entirely, even though a system prompt referenced it as something to call first.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the project's requirements are all satisfied (no actionable requirements remain), so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned no actionable requirements (story scope is complete). Nothing for the coding role to do right now.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from available_tools\\\", description = \\\"Instructed at the start of the conversation to call `list_my_open_tasks` to see already-held tasks, but this tool is not present in `available_tools`, nor listed in the tools index under either 'Called directly' or 'Called from inside run_script'. It appears to be missing from the CODING agent's surface entirely, even though a system prompt referenced it as something to call first.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the project's requirements are all satisfied (no actionable requirements remain), so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned no actionable requirements (story scope is complete). Nothing for the coding role to do right now.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from available_tools\\\", description = \\\"Instructed at the start of the conversation to call `list_my_open_tasks` to see already-held tasks, but this tool is not present in `available_tools`, nor listed in the tools index under either 'Called directly' or 'Called from inside run_script'. It appears to be missing from the CODING agent's surface entirely, even though a system prompt referenced it as something to call first.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from available_tools\\\", description = \\\"Instructed at the start of the conversation to call `list_my_open_tasks` to see already-held tasks, but this tool is not present in `available_tools`, nor listed in the tools index under either 'Called directly' or 'Called from inside run_script'. It appears to be missing from the CODING agent's surface entirely, even though a system prompt referenced it as something to call first.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
     }
   ],
   "run": 10,
-  "at": "2026-09-21T08:33:08.897852Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_57602_7l1cJCm57Ogb",
+  "at": "2026-09-21T09:38:19.534535Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_48802_iJ-o2h4stdjP",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",

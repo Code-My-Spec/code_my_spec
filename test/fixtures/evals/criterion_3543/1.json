@@ -1,9 +1,9 @@
 {
-  "seconds": 5,
+  "seconds": 8,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"23147dd2-30f0-43b0-881d-b21ec9ae1ef6\"}"
+      "detail": "%{ref: \"21414e8a-7e8e-455c-acf4-6a2224ec39b0\"}"
     },
     {
       "event": "turn_started",
@@ -11,20 +11,29 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. Add one that enumerates the assertions the test suite should verify, consistent with other component specs.\\\" })\"}"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. Add one that enumerates the assertions the test suite should verify, consistent with other component specs.\\\" })\"}"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. It should list the concrete assertions the tests are expected to verify (inputs, expected outputs/state changes, and error conditions) so implementation and test coverage can be checked against it.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. It should list the concrete assertions the tests are expected to verify (inputs, expected outputs/state changes, and error conditions) so implementation and test coverage can be checked against it.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\"}"
     }
   ],
   "run": 1,
-  "at": "2026-09-21T08:37:48.717613Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-27443_1354_wG4J0fZjPEjB",
+  "at": "2026-09-21T09:27:45.883037Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_39717_hwjkHCH8QUMl",
   "usage": null,
   "behaviour": "An agent told to call a tool it does not carry says so",
   "role": "coding",
   "calls": [
+    "tool_docs",
     "run_script"
   ],
   "criterion": "criterion_3543",
