@@ -152,6 +152,11 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   # sitting in this checkout to fire a first hook — but this runner never set
   # the variable that path depends on, so the harness sat idle forever
   # waiting for a hook that had no way to ever arrive.
+  #
+  # No third variable for device isolation, though there is a third gap here
+  # — `CmsHarness.Device.path/0` now derives it from `CMS_PROJECT_DIR`
+  # itself, one directory up. See that function's own comment for why a
+  # workspace needs to be a device of its own at all.
   defp build_script(container_name, dir, app_dir, app_name, port, harness_port) do
     """
     #!/bin/bash
