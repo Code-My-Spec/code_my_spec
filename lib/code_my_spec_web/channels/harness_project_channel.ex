@@ -84,7 +84,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
              device: device,
              root: payload["root"]
            ),
-         {:ok, harness} <- report_root(harness, payload["root"]),
+         {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
          :ok <-
@@ -2035,10 +2035,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the field existed does not send one, and its identity is unaffected either
   # way, because the root is recorded about the harness rather than used to
   # find it.
-  defp report_root(harness, root) when is_binary(root) and root != "",
-    do: WorkingCopies.report_root(harness, root)
+  #
+  # Corrects any agent's stale `working_copy` snapshot in the same beat as
+  # the working copy's own root, not just at read time — `LaunchRequest.for/1`
+  # sends `agent.working_copy` verbatim on a restore, so a row started against
+  # the old path would otherwise keep offering it forever, and restore fails
+  # with `:working_copy_missing` against a checkout that just joined correctly.
+  defp report_root(scope, harness, root) when is_binary(root) and root != "" do
+    with {:ok, harness} <- WorkingCopies.report_root(harness, root) do
+      {:ok, _count} = Agents.sync_working_copy_root(scope, harness.id, harness.root)
+      {:ok, harness}
+    end
+  end
 
-  defp report_root(harness, _), do: {:ok, harness}
+  defp report_root(_scope, harness, _), do: {:ok, harness}
 
   # Story 968. The checkout's config is the source; this is the server's copy of
   # it, kept the way `root` is, so the web app can render a frame at an address
