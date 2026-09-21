@@ -1,0 +1,49 @@
+{
+  "seconds": 9,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"5f9b6bcf-4add-4f68-92bc-56aa37d7c350\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to document the assertions its tests verify; without this section, it's unclear what behavior the spec commits Reservations to testing. Add a Test Assertions section to the Reservations spec enumerating the expected test assertions.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return { ok = false, error = err.message } end\\nreturn { ok = true, issue = result }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to document the assertions its tests verify; without this section, it's unclear what behavior the spec commits Reservations to testing. Add a Test Assertions section to the Reservations spec enumerating the expected test assertions.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return { ok = false, error = err.message } end\\nreturn { ok = true, issue = result }\"}"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T07:31:14.351782Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-90951_62754_2HoPu_GYCwxu",
+  "usage": null,
+  "behaviour": "An agent told to call a tool it does not carry says so",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3543",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

@@ -1,0 +1,49 @@
+{
+  "seconds": 12,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"0a0e618f-d5f0-4cad-bf9e-20d2ff754b64\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to define its test assertions so implementation and QA have a concrete basis for verification. Add a Test Assertions section to the Reservations spec covering the expected behaviors and edge cases for this component.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Every component spec is expected to define its test assertions so implementation and QA have a concrete basis for verification. Add a Test Assertions section to the Reservations spec covering the expected behaviors and edge cases for this component.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    }
+  ],
+  "run": 6,
+  "at": "2026-09-21T07:30:51.695772Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-90951_62754_2HoPu_GYCwxu",
+  "usage": null,
+  "behaviour": "An agent told to call a tool it does not carry says so",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3543",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

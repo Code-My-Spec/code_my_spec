@@ -1,0 +1,49 @@
+{
+  "seconds": 10,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"f3fcf138-6201-4524-ba4a-d9f5812fa642\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component is missing its Test Assertions section. It should be added so the component's expected test behavior is documented alongside the rest of the spec.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component is missing its Test Assertions section. It should be added so the component's expected test behavior is documented alongside the rest of the spec.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\"}"
+    }
+  ],
+  "run": 3,
+  "at": "2026-09-21T07:30:19.221032Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-90951_62754_2HoPu_GYCwxu",
+  "usage": null,
+  "behaviour": "An agent told to call a tool it does not carry says so",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3543",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}
