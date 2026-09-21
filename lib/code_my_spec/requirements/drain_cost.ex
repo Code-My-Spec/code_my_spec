@@ -55,6 +55,26 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
   @event [:code_my_spec, :requirements, :drain]
   @query_event [:code_my_spec, :repo, :query]
+
+  # Whether the pass rebuilt the graph's edges, counted the same way the queries
+  # are: an event the work emits, tallied for the length of the drain and
+  # filtered to the drain's own process.
+  #
+  # It needs its own channel because neither number already here can see it. An
+  # edge rebuild that produces the set already stored deletes nothing and
+  # inserts nothing — `delete_edges_outside/2` keeps every pair it was handed
+  # and `insert_every/3` is `on_conflict: :nothing` — so `rows_written` reads
+  # zero, and it resolves its ids from the same map the node write returned, so
+  # `queries` does not move either. The work is a transitive reduction over the
+  # whole graph, in memory, and it is invisible to a reading taken at the
+  # database.
+  #
+  # Measured on this project the day it was added: 6640 edges at 1341ms against
+  # 2220ms of node computation, and on four narrower vantages the edge rebuild
+  # cost *more* than every verdict in the project — 378ms of edges against 187ms
+  # of nodes at 1532 nodes. A cost that large cannot be the one thing a pass
+  # does not report.
+  @edges_event [:code_my_spec, :requirements, :edges_rebuilt]
   @table :requirements_drain_cost
 
   @doc """
@@ -156,9 +176,15 @@ defmodule CodeMySpec.Requirements.DrainCost do
   def measure(meta, fun) when is_map(meta) and is_function(fun, 0) do
     owner = self()
     handler_id = {__MODULE__, owner, System.unique_integer([:positive])}
-    counter = :counters.new(2, [:write_concurrency])
+    counter = :counters.new(3, [:write_concurrency])
 
-    :telemetry.attach(handler_id, @query_event, &__MODULE__.count_query/4, {owner, counter})
+    :telemetry.attach_many(
+      handler_id,
+      [@query_event, @edges_event],
+      &__MODULE__.count_query/4,
+      {owner, counter}
+    )
+
     started = System.monotonic_time()
 
     try do
@@ -181,13 +207,20 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # Runs in whichever process issued the query, so comparing against the owner
   # is what scopes the count. Without it a drain would be charged for every
   # query the node happened to run while it was in flight.
-  def count_query(_event, _measurements, metadata, {owner, counter}) do
+  def count_query(event, _measurements, metadata, {owner, counter}) do
     if self() == owner do
-      :counters.add(counter, 1, 1)
-      :counters.add(counter, 2, rows_written(metadata))
+      case event do
+        @edges_event -> :counters.add(counter, 3, 1)
+        _query -> both(counter, metadata)
+      end
     end
 
     :ok
+  end
+
+  defp both(counter, metadata) do
+    :counters.add(counter, 1, 1)
+    :counters.add(counter, 2, rows_written(metadata))
   end
 
   defp rows_written(%{query: query, result: {:ok, result}}) when is_binary(query) do
@@ -202,7 +235,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
     measurements = %{
       duration: duration,
       queries: :counters.get(counter, 1),
-      rows_written: :counters.get(counter, 2)
+      rows_written: :counters.get(counter, 2),
+      edges_rebuilt: :counters.get(counter, 3)
     }
 
     :telemetry.execute(@event, measurements, meta)
@@ -243,6 +277,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
       duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
       queries: measurements.queries,
       rows_written: measurements.rows_written,
+      edges_rebuilt: measurements.edges_rebuilt,
       observations: Map.get(meta, :observations),
       handled: Map.get(meta, :handled),
       recomputed: Map.get(meta, :recomputed),
@@ -257,7 +292,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
     Logger.info(
       "[DrainCost] #{meta.kind} drain in #{ms}ms — " <>
-        "#{measurements.queries} queries, #{measurements.rows_written} rows written" <>
+        "#{measurements.queries} queries, #{measurements.rows_written} rows written, " <>
+        "#{measurements.edges_rebuilt} edge rebuild(s)" <>
         detail(meta)
     )
   end
@@ -272,4 +308,16 @@ defmodule CodeMySpec.Requirements.DrainCost do
   @doc "The event this emits, for anything attaching a handler to it."
   @spec event() :: [atom()]
   def event, do: @event
+
+  @doc """
+  Said by the pass when it rebuilds the edge set, counted into the drain it
+  happened inside.
+
+  Emitted rather than returned because the drain is measured around
+  `recompute_vantage/2` and the decision is taken several calls below it. A
+  return value would have to be threaded up through `recompute/1`'s public
+  shape to reach the place that could report it.
+  """
+  @spec edges_rebuilt() :: [atom()]
+  def edges_rebuilt, do: @edges_event
 end
