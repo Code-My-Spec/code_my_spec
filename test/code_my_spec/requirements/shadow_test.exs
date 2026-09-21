@@ -362,7 +362,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert flags[:project?], "a story moving must invalidate the project requirements"
     end
 
-    test "Components names the component and its parent", ctx do
+    test "Components names the component; its parent follows from the family", ctx do
       parent = ComponentsFixtures.component_fixture(ctx.scope)
       Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
 
@@ -380,14 +380,22 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       refute flags[:unknown?], "Components could not say what it moved"
       assert MapSet.member?(named, {"component", child.id})
 
-      # `architecture_designed` reads the component set.
+      # `architecture_designed` reads the component set. The event is
+      # project-wide, and the kind is handled for `[:architecture]` — settled
+      # from the profile rather than by a `:project` entity recomputing the
+      # project's nodes at every vantage.
       assert flags[:project?], "a component moving must invalidate the project requirements"
 
-      # `Freshness.component/2` hashes `children_by_parent`, so a child
-      # appearing moves the parent's requirements too. A writer that named only
-      # the child would leave the parent stale with nothing to say so.
-      assert MapSet.member?(named, {"component", parent.id}),
-             "a child appearing must invalidate its parent"
+      # The parent is reconsidered through the child's family, not through a
+      # mark of its own: `Preloader.load_component_family/3` roots at the
+      # parent and instantiates its template over parent and siblings, which
+      # is where the child's nodes come from. A mark naming the parent named
+      # the *parent's* family instead — rooted at the grandparent — and a child
+      # created under `CodeMySpec.Workspaces` recomputed `CodeMySpec` and its
+      # 101 children at every vantage: 7.1s across ten checkouts, measured
+      # 2026-09-21.
+      refute MapSet.member?(named, {"component", parent.id}),
+             "a child appearing must not name its parent — the family already covers it"
     end
 
     test "AcceptanceCriteria names the story its criterion hangs off", ctx do

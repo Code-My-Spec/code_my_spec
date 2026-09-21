@@ -474,7 +474,10 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # fallback, and it has been superseded. Dropping it by observation id is
     # what stops a handled event *also* recomputing the entities it named —
     # which would have made the handler pure overhead rather than a saving.
-    answered = MapSet.new(handled, fn {mark, _c, _w} -> mark.observation_id end)
+    answered =
+      handled
+      |> Enum.reject(fn {mark, _c, _w} -> mark.kind in Handlers.partial_kinds() end)
+      |> MapSet.new(fn {mark, _c, _w} -> mark.observation_id end)
 
     {handled,
      Enum.reject(rest, fn mark ->

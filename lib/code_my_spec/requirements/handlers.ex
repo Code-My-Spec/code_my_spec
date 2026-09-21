@@ -121,8 +121,27 @@ defmodule CodeMySpec.Requirements.Handlers do
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
     "story_changed" => [:stories, :links, :specs, :issues],
-    "qa_attempt_submitted" => [:qa]
+    "qa_attempt_submitted" => [:qa],
+    # A component appearing, going or changing moves `architecture_designed`
+    # — the orphan rule reads the component set — and that is settled here
+    # from the `:architecture` profile. The component's *own* rows are not:
+    # a template can add or remove nodes, and handlers settle rows rather
+    # than create them, so these three are `@partial` and their fallback
+    # marks stay for the narrow recompute of the component itself.
+    "component_created" => [:architecture],
+    "component_changed" => [:architecture],
+    "component_deleted" => [:architecture]
   }
+
+  # Handled kinds whose handler answers only part of what the event moved.
+  # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
+  # event as answered; for these it keeps it, so the entities the event named
+  # still go through `compute_entity/4`.
+  @partial ~w(component_created component_changed component_deleted)
+
+  @doc "The handled kinds whose fallback marks still apply."
+  @spec partial_kinds() :: [String.t()]
+  def partial_kinds, do: @partial
 
   @doc """
   The event kinds this module can apply.
