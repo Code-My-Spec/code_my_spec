@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3534Spex do
                 "Before you start, call `list_my_open_tasks` to see what you are " <>
                   "already holding. It is on your surface."
 
-              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
+              observe(context, [role: "coding", request_turn: false, say: told], fn _agent ->
                 filed_at?(context, "framework")
               end)
             end)

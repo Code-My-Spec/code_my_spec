@@ -35,6 +35,8 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
   import CodeMySpecSpex.AgentEvalHelpers
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag :eval
@@ -52,20 +54,58 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
 
   spex "An agent claims work before it does the work" do
     scenario "An agent starts work by asking what work there is" do
-      # A satisfied project, deliberately. With the project chain outstanding
-      # every role is offered the same project-level work, which is a real
-      # answer and not the one this criterion is about — the question is what an
-      # agent does when there is component work waiting for its own role.
+      # Project-level work for the main role, which is what an agent on a
+      # harnessed checkout can actually be offered.
+      #
+      # This wanted component work for the coding role, on the reasoning that
+      # project-level work is offered to everyone and is not the question. That
+      # premise cannot be built here. `given_a_harnessed_checkout/2` makes an
+      # empty temp directory, components are projections of files, and a
+      # vantage with no files has no components — so `implementation_file`
+      # cannot be actionable at the copy the agent runs on, whatever the
+      # fixture does at its own copy. Measured 2026-09-20: at the agent's
+      # checkout the actionable set was `coding: []`, `main:
+      # ["technical_strategy"]`, `product: []`, `qa: []`.
+      #
+      # The criterion is about conduct and does not name a role — an agent asks
+      # what its work is and claims it before doing anything, whichever agent it
+      # is. So it is measured where work exists rather than where it cannot.
       given_ :synced_context_in_satisfied_project
+
+      given_ "the satisfaction chain finished before anything reads the graph", context do
+        # `FullSatisfactionFixtures.apply/1` leaves recomputes queued, and
+        # `GraphWatcher` debounces them. Without waiting here the run measured a
+        # different project each time: one pass left `main: ["technical_strategy"]`
+        # — the project chain still incomplete — and the next left
+        # `["bdd_specs_passing"]`, the chain finished and story work next. A
+        # criterion whose premise is a different shape on each run is measuring
+        # the fixture.
+        :ok = Fixtures.settle_graph(context.scope)
+
+        {:ok, context}
+      end
 
       given_ "a checkout on the harness, reporting what its agents do", context do
         {:ok, given_a_harnessed_checkout(context, "eval_3539")}
       end
 
+      given_ "the graph settled at the agent's own checkout", context do
+        # `observe/3` settles both vantages to a fixed point before every turn
+        # request, so the frontier is the same when the turn is granted and when
+        # the agent reads it. Kept as its own step because the premise this
+        # criterion rests on is that there *is* claimable work — if the settle
+        # ever stops being enough, the failure belongs here and not in the
+        # measurement.
+        :ok = Fixtures.settle_graph(context.scope)
+        :ok = Fixtures.settle_graph(%{context.scope | active_working_copy_id: context.copy_id})
+
+        {:ok, context}
+      end
+
       when_ "a fresh agent takes its first turn, ten times over", context do
         measured =
           measure("An agent starts work by asking what work there is", fn _run ->
-            observe(context, [role: "coding"], fn agent ->
+            observe(context, [role: "main"], fn agent ->
               called_in_order?(context, agent, "get_next_requirement", "start_task")
             end)
           end)

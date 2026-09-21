@@ -56,9 +56,9 @@ defmodule CodeMySpecSpex.Story1070.Criterion3541Spex do
       when_ "an agent holding an open task is woken", context do
         measured =
           measure("An agent closes its task when the stop hook asks", fn _run ->
-            observe(context, [role: "coding", wake: false], fn agent ->
+            observe(context, [role: "coding", request_turn: false], fn agent ->
               hand_a_task(context, agent)
-              wake(context, agent)
+              request_turn(context, agent)
               settle(agent)
 
               called?(context, agent, "evaluate_task")

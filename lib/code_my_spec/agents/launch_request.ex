@@ -29,8 +29,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential, RoleBrief, ToolIndex}
+  alias CodeMySpec.Agents.{Agent, Credential, OperatingRules, RoleBrief, ToolIndex}
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -73,6 +74,22 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # set that enforces them, and the harness has no opinion about what a QA
       # agent may do.
       "role_brief" => RoleBrief.for(agent.role),
+      # Section one: the loop every agent runs, and how the machinery behaves.
+      # The same words for every role on every project, which is why it is
+      # resolved here once rather than assembled per agent on the machine.
+      #
+      # It carries the loop because the loop is framework machinery — a project
+      # cannot opt out of claiming work, `start_task` enforces it — and because
+      # the only other place it was written down was a file on disk that a
+      # checkout might not have. See `OperatingRules`.
+      "universal" => OperatingRules.text(),
+      # Section two, first part: what this project actually is, so an agent that
+      # has never seen it has the broad idea before it reads a requirement.
+      #
+      # Nil when the project has not written one. Nil rather than a placeholder,
+      # for the reason `app_url/1` gives below: an agent told something vague is
+      # worse off than one told nothing, because it will act on it.
+      "project_brief" => project_brief(agent),
       # Every tool it can reach, by name and nothing else.
       #
       # It already has schemas for what it carries and `tool_docs` answers for
@@ -118,6 +135,31 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   end
 
   defp app_url(_agent), do: nil
+
+  # What the project is, in its own words.
+  #
+  # Measured 2026-09-20: 7 of 76 projects have written one, and the longest had
+  # drifted far enough to contradict the tool index shipping beside it in the
+  # same prompt — it named a port, an MCP library and a tool count that had all
+  # moved. So this is sent when it exists and omitted when it does not, and
+  # keeping it true is the project's job rather than something inferred here.
+  defp project_brief(%Agent{project_id: project_id}) when is_binary(project_id) do
+    case Projects.get_project_by_id(project_id) do
+      %{description: description} -> presence(description)
+      nil -> nil
+    end
+  end
+
+  defp project_brief(_agent), do: nil
+
+  defp presence(text) when is_binary(text) do
+    case String.trim(text) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp presence(_), do: nil
 
   # The browser this machine offers, read from the copy the agent runs on.
   #

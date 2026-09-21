@@ -22,6 +22,22 @@ defmodule CodeMySpec.Requirements.BacklogReport do
 
   `kind` distinguishes an event, which a handler may be able to apply, from a
   bare invalidation, which can only be recomputed.
+
+  ## Why the checkout is grouped on too
+
+  `entity_scope` and `working_copy_id` are two different narrowings and a mark
+  can be narrow on one and wide on the other. An analyzer completing names the
+  checkout it ran on and no entities at all — correct on both counts, since a
+  run reports about a tree rather than about a list of components — so it shows
+  as `unknown` scope on a perfectly well-routed mark.
+
+  Reading one and assuming the other is how criterion 3507 was misdiagnosed:
+  the entity scope said `unknown` and the checkout said exactly the right
+  thing. They are grouped separately so the page cannot be read that way.
+
+  It is also the operational question. A queue that will not drain is usually
+  one worktree generating marks, and "which checkout" is the first thing worth
+  knowing about it.
   """
 
   import Ecto.Query
@@ -44,11 +60,12 @@ defmodule CodeMySpec.Requirements.BacklogReport do
     groups =
       Invalidation
       |> where([i], i.project_id == ^project_id)
-      |> group_by([i], [i.source, i.kind, i.entity_scope])
+      |> group_by([i], [i.source, i.kind, i.entity_scope, i.working_copy_id])
       |> select([i], %{
         source: i.source,
         kind: i.kind,
         entity_scope: i.entity_scope,
+        working_copy_id: i.working_copy_id,
         count: count(i.id),
         oldest: min(i.inserted_at)
       })

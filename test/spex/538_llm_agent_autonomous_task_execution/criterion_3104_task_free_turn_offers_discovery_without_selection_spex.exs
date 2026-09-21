@@ -90,7 +90,19 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
         assert is_list(messages)
         assert messages != []
         prompt = Jason.encode!(messages)
-        assert prompt =~ "list_requirements"
+        # `get_next_requirement` and `start_task` only. This also asserted
+        # `list_requirements`, which is reachable from `run_script` and is not on
+        # an agent's direct surface — so the turn prompt was naming a tool the
+        # agent it was sent to could not call.
+        #
+        # Measured 2026-09-20 on story 1039's criterion 3539: the agent called
+        # the tool the prompt named, got `Unknown tool`, and then did what
+        # `OperatingRules` requires — reported it, refused to work around it, and
+        # stopped. It never reached `start_task`. The prompt talked the agent out
+        # of the loop the prompt was sent to start.
+        #
+        # The claim here is unchanged: the turn offers discovery and does not
+        # choose the work. It is now asserted against tools the agent has.
         assert prompt =~ "get_next_requirement"
         assert prompt =~ "start_task"
         refute prompt =~ context.story.title

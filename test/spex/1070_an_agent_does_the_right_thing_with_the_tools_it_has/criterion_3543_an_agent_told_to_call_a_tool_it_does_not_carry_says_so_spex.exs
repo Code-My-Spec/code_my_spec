@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3543Spex do
                 "section. File that now with `create_issue` — a title and a " <>
                 "description. It is in your tool list."
 
-            observe(context, [role: "coding", wake: false, say: told], fn agent ->
+            observe(context, [role: "coding", request_turn: false, say: told], fn agent ->
               reached?(context, agent, "create_issue") and
                 called?(context, agent, "run_script")
             end)

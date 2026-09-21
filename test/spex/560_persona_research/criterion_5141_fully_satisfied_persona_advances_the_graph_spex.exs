@@ -20,9 +20,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
+    alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -57,6 +58,12 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
       when_ "the agent fires the stop hook", context do
         response =
+          # The harness syncs the checkout before firing the stop hook — see
+          # `Validation`, which skips `FileSync.sync_changed/2` "because the
+          # harness has already done" it. No harness here, and the artifacts
+          # this scenario wrote are what the hook is about.
+          ProjectStateFixtures.synced(context)
+
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")

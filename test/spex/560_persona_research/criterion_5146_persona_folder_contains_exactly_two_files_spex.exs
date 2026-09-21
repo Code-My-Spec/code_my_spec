@@ -9,9 +9,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
+    alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -50,6 +51,17 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "- https://example.com — Source — 2026-04-23\n"
           )
+
+        # The harness syncs the checkout before it fires the stop hook — see
+        # `Validation`, which skips `FileSync.sync_changed/2` "because the
+        # harness has already done" it. There is no harness here, and the files
+        # this scenario wrote are what the hook is about, so the fixture does it.
+        #
+        # This used to happen by accident further down: `GetNextRequirement`
+        # opened with a full `FileSync.sync/2`, so files written any time before
+        # the agent asked were picked up on the way to the graph. That made a
+        # read responsible for a write's visibility and is gone (c83c5b58).
+        ProjectStateFixtures.synced(context)
 
         Phoenix.ConnTest.build_conn()
         |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)

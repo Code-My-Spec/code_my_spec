@@ -40,8 +40,15 @@ defmodule CmsHarness.Agents do
       provider: request["provider"],
       credential: credential(request),
       working_copy: request["working_copy"],
-      # Half of the system prompt; the engine composes it with the
-      # project's own guide, which only this side can read.
+      # The system prompt arrives in pieces and `SystemPrompt.compose/1`
+      # orders them general to specific: the universal half, then what this
+      # project and checkout are, then what this agent is for.
+      #
+      # All of it is resolved server-side. Role semantics, the loop and the
+      # tool list are the framework's, and the project's own description is a
+      # column — none of it is knowable from the machine.
+      universal: request["universal"],
+      project_brief: request["project_brief"],
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],
       # Where the application is running, off the project's main working

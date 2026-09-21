@@ -44,7 +44,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   """
   def graph(conn, params) do
     scope = scope_for(conn.assigns.current_scope, params)
-    {nodes, computed_at, served_from} = cached_with_provenance(scope)
+    {nodes, edges, computed_at, served_from} = cached_with_provenance(scope, settle?(params))
 
     json(conn, %{
       computed_at: computed_at,
@@ -63,7 +63,19 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       # project's main checkout's files. Without this the graph carried the
       # answers and nothing saying what they were an answer *about*.
       vantage: Requirements.vantage_of(scope),
-      nodes: Enum.map(nodes, &node_report/1)
+      nodes: Enum.map(nodes, &node_report/1),
+      # The other half of the graph. Nodes alone cannot answer whether a
+      # requirement is *gated* — prerequisites live entirely in
+      # `requirement_edges`, and a set of nodes with no edges between them looks
+      # identical to a correct graph from every surface that reads only nodes.
+      #
+      # That is not hypothetical: computing an arriving story's requirements
+      # without rebuilding its edges produced seven requirements and no
+      # ordering, so `bdd_specs_passing` stopped waiting on `bdd_specs_exist`
+      # and every one of them was offered at once. Nothing failed; the graph was
+      # just wrong. Criterion 3616 is the claim, and this is what makes it
+      # checkable from outside.
+      edges: Enum.map(edges, &edge_report/1)
     })
   end
 
@@ -79,10 +91,23 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   # `"empty"` rather than `"computed"` for the same reason: nothing computed
   # anything. A vantage with no rows has not been computed *by anybody yet*,
   # which is a different and more alarming answer than "this read built it".
-  defp cached_with_provenance(scope) do
-    case Requirements.cached_all(scope) do
-      {nodes, nil} -> {nodes, nil, "empty"}
-      {nodes, computed_at} -> {nodes, computed_at, "cache"}
+  # `?settle=false` answers from the rows without reconciling the watcher first.
+  #
+  # Reading normally settles, and `GraphWatcher.settle/2` remembers the vantage
+  # the reader named — so asking what a checkout currently holds queues a
+  # computation for that checkout. That is right for an agent about to act on
+  # the answer and wrong for anything *observing*: criterion 3507 asks whether
+  # an analyzer run on one checkout left another alone, and reading the other
+  # one to find out was itself causing the recompute it was checking for.
+  #
+  # Read-only either way. This only chooses whether to reconcile first.
+  defp settle?(%{"settle" => "false"}), do: false
+  defp settle?(_params), do: true
+
+  defp cached_with_provenance(scope, settle?) do
+    case RequirementGraph.cached_graph(scope, settle: settle?) do
+      {{nodes, edges}, nil} -> {nodes, edges, nil, "empty"}
+      {{nodes, edges}, computed_at} -> {nodes, edges, computed_at, "cache"}
     end
   end
 
@@ -160,6 +185,14 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       inputs_fingerprint: Map.get(node, :inputs_fingerprint)
     }
   end
+
+  # `{entity_type, entity_id, name}` — `Topology.node_key/1`'s own shape, as a
+  # list because JSON has no tuple. The same three fields `node_report/1`
+  # already emits, so a reader can join the two without an id it has no other
+  # use for.
+  defp edge_report(%{from: from, to: to}), do: %{from: key_report(from), to: key_report(to)}
+
+  defp key_report({entity_type, entity_id, name}), do: [entity_type, to_string(entity_id), name]
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope

@@ -873,16 +873,24 @@ defmodule CmsHarness.Agents.Engine.Impl do
        provider_opts
        |> Keyword.put(:tools, tools(opts))
        |> Keyword.put(:working_directory, working_copy)
-       # What this agent is for. Nothing set this before, so every agent came up
-       # with `system_prompt: nil` and knew only whatever message arrived next —
-       # its role chose its tools and told it nothing. Issue `0f022a10`.
+       # What this agent is for, what the project is, and the loop it runs.
+       # Nothing set this before, so every agent came up with
+       # `system_prompt: nil` and knew only whatever message arrived next — its
+       # role chose its tools and told it nothing. Issue `0f022a10`.
+       #
+       # Passed general to specific; `SystemPrompt` orders and joins, and every
+       # piece of it was resolved by the server. `working_copy` is no longer
+       # among them: the prompt used to be completed by reading the checkout's
+       # own `AGENTS.md`, and a checkout without one shipped an agent that had
+       # never been told to claim its work.
        |> Keyword.put(
          :system_prompt,
          SystemPrompt.compose(
-           Keyword.get(opts, :role_brief),
-           working_copy,
-           Keyword.get(opts, :app_url),
-           Keyword.get(opts, :tool_index)
+           universal: Keyword.get(opts, :universal),
+           project_brief: Keyword.get(opts, :project_brief),
+           app_url: Keyword.get(opts, :app_url),
+           tool_index: Keyword.get(opts, :tool_index),
+           role_brief: Keyword.get(opts, :role_brief)
          )
        )
        |> Keyword.put(:max_turns, @max_turns)

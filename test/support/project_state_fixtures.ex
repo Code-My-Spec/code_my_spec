@@ -42,6 +42,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
+  alias CodeMySpec.Files.ComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
@@ -67,6 +69,30 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     Setup.CredoChecks,
     Setup.ClaudeMd
   ]
+
+
+  @doc false
+  # Put what was just written in front of the graph.
+  #
+  # These fixtures exist to leave a requirement satisfied, and a file on disk
+  # that the graph has never seen satisfies nothing. In production
+  # `FileWatcherServer` drives `ProjectSync.Sync` per changed path; there is no
+  # watcher in a spex, so the fixture does it.
+  #
+  # It used to happen by accident. `GetNextRequirement` opened with a full
+  # `FileSync.sync/2`, so any file written before the agent asked was picked up
+  # on the way to the graph — which made a read path responsible for a write's
+  # visibility, and meant admission (`Agents.Work.graph_work?/2`, no sync) and
+  # the agent's own question answered from two different graphs. Issue
+  # c83c5b58. The sync is gone from there, so it belongs here.
+  @spec synced(map()) :: map()
+  def synced(%{scope: scope} = context) do
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+    context
+  end
+
+  def synced(context), do: context
 
   @doc """
   Bundle of every project-level satisfier in this module. Equivalent to
@@ -105,6 +131,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     |> maybe_apply_qa_setup(Keyword.get(opts, :qa_setup, true))
     |> apply_journey_artifacts()
     |> apply_persona()
+    |> synced()
   end
 
   defp maybe_apply_qa_setup(context, false), do: context
@@ -175,7 +202,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       - Uptime monitors: uat.example.test, example.test
       """)
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -197,7 +224,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         """
       )
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -227,7 +254,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         """
       )
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -284,7 +311,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   def apply_qa_setup(context) do
     env = context.environment
     :ok = Environments.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
-    context
+    synced(context)
   end
 
   @doc """
@@ -312,7 +339,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     # spex (criterion 6491).
     :ok = Environments.write_file(env, "test/journeys/sample_journey_test.exs", wallaby_content())
 
-    context
+    synced(context)
   end
 
   @doc """

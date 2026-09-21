@@ -99,7 +99,30 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
   def last(_no_project), do: nil
 
-  defp unwrap([{_project_id, report}]), do: report
+  @doc """
+  What this project's last drain *of one kind* cost, or `nil` if none has run.
+
+  `last/1` cannot answer the question this feature is actually judged on.
+  Applying an observation is only worth the machinery if it is cheaper than
+  recomputing from it, and both kinds of drain run on the same settle — so a
+  single slot holds whichever finished last and the comparison is lost. The
+  pass is usually the survivor, which made the event path's own numbers read as
+  absent from every surface that asked.
+
+  `:pass` is a whole recompute; `:event` is a projection maintained from
+  handlers.
+  """
+  @spec last(Ecto.UUID.t() | nil, :pass | :event) :: map() | nil
+  def last(project_id, kind) when is_binary(project_id) and kind in [:pass, :event] do
+    case :ets.whereis(@table) do
+      :undefined -> nil
+      _ -> @table |> :ets.lookup({project_id, kind}) |> unwrap()
+    end
+  end
+
+  def last(_no_project, _kind), do: nil
+
+  defp unwrap([{_key, report}]), do: report
   defp unwrap([]), do: nil
 
   # "INSERT", "UPDATE", "DELETE" are all six characters, which is the whole
@@ -190,13 +213,24 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # Last drain wins, deliberately. A reader asking what an observation cost
   # means the one it just caused, and keeping a history here would be a second,
   # worse copy of the telemetry the log and LiveDashboard already carry.
+  #
+  # Kept per kind as well as overall, and that second key is the whole point of
+  # the measurement. The claim this feature rests on is that applying an
+  # observation is cheaper than recomputing from it — a comparison between a
+  # `:pass` drain and an `:event` one. A single slot cannot hold a comparison:
+  # both kinds run on the same settle, the later overwrites the earlier, and
+  # whichever survives is an accident of ordering. The pass is usually the
+  # survivor, which is why the event path's applied-versus-re-derived split read
+  # as zero from every surface that asked for it.
   defp record(%{project_id: project_id} = meta, measurements) when is_binary(project_id) do
     case :ets.whereis(@table) do
       :undefined ->
         :ok
 
       _ ->
-        :ets.insert(@table, {project_id, report(meta, measurements)})
+        entry = report(meta, measurements)
+        :ets.insert(@table, {project_id, entry})
+        :ets.insert(@table, {{project_id, entry.kind}, entry})
         :ok
     end
   end
