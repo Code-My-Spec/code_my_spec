@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Agents
+  alias CodeMySpec.Authorization
   alias CodeMySpec.Billing
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Interview
@@ -127,6 +128,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
           app_state={@app_state}
           project_id={@scope.active_project_id}
           client_secret={@client_secret}
+          intent_type={@intent_type}
           publishable_key={@publishable_key}
           payment_error={@payment_error}
         />
@@ -212,9 +214,11 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{local_commands(@plan)}</code></pre>
       </div>
 
-      <.cloud_payment
+      <.payment_card
         :if={@workspace.status == :awaiting_payment}
+        plan={@plan}
         client_secret={@client_secret}
+        intent_type={@intent_type}
         publishable_key={@publishable_key}
         error={@payment_error}
       />
@@ -232,16 +236,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # A purchase, in plain terms — not a technical setting to configure. The
   # real cost of a cloud copy is not the compute; it is the operational
   # lifecycle of abandoned, unpaid instances, so nothing is provisioned on
-  # the shared host until this succeeds. Reuses the same Stripe Payment
-  # Element `CheckoutLive` already pays with, wired to the same JS hook.
-  defp cloud_payment(assigns) do
+  # the shared host until this succeeds. Local is the same card with
+  # different words: a trial takes no money today, but still needs a card on
+  # file for the charge once it ends, which is exactly what a `:setup`
+  # `intent_type` confirms instead of a payment.
+  defp payment_card(assigns) do
     ~H"""
     <div data-test="cloud-payment" class="border border-base-300 rounded p-4">
-      <p class="text-sm font-medium mb-1">Running in the cloud is $100/month.</p>
-      <p class="text-sm opacity-70 mb-3">
-        Pay to bring your working copy up — nothing is provisioned on our servers
-        until this goes through.
-      </p>
+      <.payment_pitch location={@plan.location} />
 
       <%!--
         Both the conversation above and this card are live and interactive
@@ -261,16 +263,41 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         phx-update="ignore"
         data-publishable-key={@publishable_key}
         data-client-secret={@client_secret}
+        data-intent-type={@intent_type}
       >
         <form id="payment-form">
           <div id="payment-element"></div>
-          <button id="payment-submit" class="btn btn-primary mt-4" type="submit">Pay</button>
+          <button id="payment-submit" class="btn btn-primary mt-4" type="submit">
+            {if @intent_type == :setup, do: "Start free trial", else: "Pay"}
+          </button>
           <p id="payment-error" class="text-error text-sm mt-2"></p>
         </form>
       </div>
 
       <p :if={@error} class="text-error text-sm mt-2">{@error}</p>
     </div>
+    """
+  end
+
+  attr :location, :atom, required: true
+
+  defp payment_pitch(%{location: :local} = assigns) do
+    ~H"""
+    <p class="text-sm font-medium mb-1">7 days free, then $25/month.</p>
+    <p class="text-sm opacity-70 mb-3">
+      We need a card on file so nothing interrupts you on day 8 — you won't be
+      charged until the trial ends.
+    </p>
+    """
+  end
+
+  defp payment_pitch(assigns) do
+    ~H"""
+    <p class="text-sm font-medium mb-1">Running in the cloud is $100/month.</p>
+    <p class="text-sm opacity-70 mb-3">
+      Pay to bring your working copy up — nothing is provisioned on our servers
+      until this goes through.
+    </p>
     """
   end
 
@@ -377,7 +404,13 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     # other path (local, booting, running, failed) still renders
     # `dynamic_panel/1`, which now always receives them as attrs regardless of
     # which card inside it actually uses them.
-    socket = assign(socket, client_secret: nil, publishable_key: nil, payment_error: nil)
+    socket =
+      assign(socket,
+        client_secret: nil,
+        intent_type: nil,
+        publishable_key: nil,
+        payment_error: nil
+      )
 
     {:ok, mount_workspace(socket, scope, plan)}
   end
@@ -386,37 +419,69 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # the front of the flow rather than showing an empty workspace.
   defp mount_workspace(socket, _scope, nil), do: push_navigate(socket, to: ~p"/build")
 
-  # Nothing is booted for a visitor who chose to run it themselves. The project
-  # and its persona are still created — that is what they signed up for — but a
-  # container on our box would be one nobody asked for and nobody would open.
-  defp mount_workspace(socket, %Scope{} = scope, %{location: :local} = plan) do
-    with {:ok, plan} <- Intake.convert(plan, scope),
-         {:ok, scope} <- select_plan_scope(scope, plan) do
-      socket
-      |> assign(page_title: "Your project")
-      |> assign(scope: scope, plan: plan)
-      |> assign_local()
-      |> assign_interview(plan)
-    else
-      {:error, reason} -> failed_to_start(socket, scope, plan, reason)
-    end
-  end
-
+  # Local runs nothing on our box — the project and its persona are still
+  # created, but a container nobody asked for and nobody would open is not
+  # what "run it yourself" means — while cloud boots one once paid. Both are
+  # billing-gated the same way now: a 7-day trial of `:light` for local (the
+  # visitor still has to hand over a card so the renewal after the trial has
+  # something to bill, via a SetupIntent rather than a charge), a straight
+  # `:pro` subscription for cloud. Only what happens once paid differs, which
+  # is `on_paid` below.
   defp mount_workspace(socket, %Scope{} = scope, plan) do
-    with {:ok, plan} <- Intake.convert(plan, scope),
+    with :ok <- authorize_plan(scope, plan),
+         {:ok, plan} <- Intake.convert(plan, scope),
          {:ok, scope} <- select_plan_scope(scope, plan) do
       socket
-      |> assign(page_title: "Your workspace")
+      |> assign(page_title: workspace_title(plan))
       |> assign(scope: scope, plan: plan)
       |> assign_interview(plan)
-      |> start_cloud_or_gate_on_payment(scope, plan)
+      |> gate_on_payment(scope, plan)
     else
+      # A stale token pointing at someone else's converted plan — treated
+      # exactly like no plan at all (same redirect as the `nil` clause
+      # above), and deliberately *before* anything about the plan is
+      # assigned to the socket: not the account, not the project, not even
+      # the conversation transcript is a stranger's to see, and
+      # `failed_to_start/4` below would have shown all three.
+      {:error, :not_a_member} ->
+        push_navigate(socket, to: ~p"/build")
+
       # A boot that never starts is still a boot that failed, and the visitor
       # has to be told. Returning the bare error tuple here crashed mount/3
       # with an ArgumentError instead — a white page at exactly the moment the
       # story says they must be told what happened and keep their plan.
-      {:error, reason} -> failed_to_start(socket, scope, plan, reason)
+      {:error, reason} ->
+        failed_to_start(socket, scope, plan, reason)
     end
+  end
+
+  # `intake_token` is deliberately carried across login/logout — `UserAuth`'s
+  # `restore_intake_token/2` — so a visitor who built a plan anonymously does
+  # not lose it by signing up. That stops being safe once the plan has
+  # converted to a real account: a different signed-in user whose browser
+  # still carries the same token (a shared or kiosk browser, or a lingering
+  # cookie) must not be handed someone else's account just because the token
+  # still resolves. An unconverted plan has no account yet — it becomes this
+  # scope's own the moment `Intake.convert/2` runs — so there is nothing to
+  # check.
+  defp authorize_plan(%Scope{} = scope, %{status: :converted, account_id: account_id})
+       when is_binary(account_id) do
+    if Authorization.authorize(:read_account, scope, account_id) do
+      :ok
+    else
+      {:error, :not_a_member}
+    end
+  end
+
+  defp authorize_plan(%Scope{}, _plan), do: :ok
+
+  defp workspace_title(%{location: :local}), do: "Your project"
+  defp workspace_title(_plan), do: "Your workspace"
+
+  defp gate_on_payment(socket, scope, %{location: :local}) do
+    gate_new_workspace(socket, scope, :light, [trial_days: 7], fn socket, _scope ->
+      assign_local(socket)
+    end)
   end
 
   # The real cost of a cloud copy is not the compute — it is the operational
@@ -428,10 +493,10 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # came up, and neither of those is "ask them to pay again". Once a
   # workspace row exists, every later mount just shows it — the same as
   # before this gate existed.
-  defp start_cloud_or_gate_on_payment(socket, scope, _plan) do
+  defp gate_on_payment(socket, scope, _plan) do
     case Workspaces.get_workspace(scope) do
       nil ->
-        gate_new_cloud_workspace(socket, scope)
+        gate_new_workspace(socket, scope, :pro, [], &boot_workspace/2)
 
       workspace ->
         # `boot_workspace/2` only subscribes the mount that actually starts
@@ -446,19 +511,23 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     end
   end
 
-  defp gate_new_cloud_workspace(socket, scope) do
+  # `on_paid` is what to do once the account is entitled — boot a container
+  # for cloud, just show the local instructions for local — since that is the
+  # only place the two paths actually differ; everything about buying the
+  # tier itself is identical.
+  defp gate_new_workspace(socket, scope, tier, opts, on_paid) do
     if paid?(scope) do
-      boot_workspace(socket, scope)
+      on_paid.(socket, scope)
     else
-      case Billing.start_subscription(scope, :pro) do
-        {:ok, %{client_secret: secret}} when is_binary(secret) ->
-          assign_awaiting_payment(socket, secret, nil)
+      case Billing.start_subscription(scope, tier, opts) do
+        {:ok, %{client_secret: secret, intent_type: intent_type}} when is_binary(secret) ->
+          assign_awaiting_payment(socket, secret, intent_type, nil)
 
         # Nothing to collect — a tier change whose proration was a credit,
-        # not a charge. Already paid, so boot rather than show a payment
+        # not a charge. Already paid, so proceed rather than show a payment
         # form asking for money that is not owed.
         {:ok, %{client_secret: nil}} ->
-          boot_workspace(socket, scope)
+          on_paid.(socket, scope)
 
         {:error, reason} ->
           Logger.error("[IntakeLive.Workspace] could not start payment: #{inspect(reason)}")
@@ -466,6 +535,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
           assign_awaiting_payment(
             socket,
             nil,
+            :payment,
             "We couldn't start checkout. Refresh the page to try again."
           )
       end
@@ -475,9 +545,10 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   defp paid?(%Scope{active_account: %Account{plan: plan}}), do: plan in [:light, :pro, :paid]
   defp paid?(%Scope{}), do: false
 
-  defp assign_awaiting_payment(socket, client_secret, error) do
+  defp assign_awaiting_payment(socket, client_secret, intent_type, error) do
     socket
     |> assign(:client_secret, client_secret)
+    |> assign(:intent_type, intent_type)
     |> assign(:publishable_key, publishable_key())
     |> assign(:payment_error, error)
     |> assign(:workspace, %{status: :awaiting_payment})
@@ -658,11 +729,15 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     {:noreply, assign_workspace(socket, workspace)}
   end
 
-  # The browser confirmed the payment. Stripe has it; the webhook has the
-  # last word on the account's plan, same as `CheckoutLive` — this only
-  # stops waiting and starts provisioning.
+  # The browser confirmed the payment or the trial's setup intent. Stripe has
+  # it; the webhook has the last word on the account's plan, same as
+  # `CheckoutLive` — this only stops waiting. Cloud starts provisioning; local
+  # has nothing to provision, so it just shows the run-it-yourself card.
   def handle_event("payment_confirmed", _params, socket) do
-    {:noreply, boot_workspace(socket, socket.assigns.scope)}
+    case socket.assigns.plan do
+      %{location: :local} -> {:noreply, assign_local(socket)}
+      _ -> {:noreply, boot_workspace(socket, socket.assigns.scope)}
+    end
   end
 
   def handle_event("payment_failed", %{"message" => message}, socket) do

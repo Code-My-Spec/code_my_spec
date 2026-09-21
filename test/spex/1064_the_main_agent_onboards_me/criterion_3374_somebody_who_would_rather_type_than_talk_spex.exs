@@ -43,6 +43,11 @@ defmodule CodeMySpecSpex.Story1064.Criterion3374Spex do
 
   setup :register_and_log_in_user
 
+  setup do
+    stub_local_trial()
+    :ok
+  end
+
   spex "somebody would rather fill the form in than discuss it" do
     scenario "Somebody who would rather type than talk" do
       given_ "somebody would rather fill the form in than discuss it", context do
@@ -93,6 +98,7 @@ defmodule CodeMySpecSpex.Story1064.Criterion3374Spex do
                "completing the form left them on it — nothing was set up"
 
         {:ok, live, _html} = live(context.conn, context.destination)
+        confirm_payment(live)
 
         assert has_element?(live, "[data-test='local-instructions']"),
                """

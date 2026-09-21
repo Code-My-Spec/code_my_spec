@@ -65,6 +65,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Invalidations
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Shadow
@@ -533,6 +535,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # reader can name a checkout that is offboarded before the next pass runs.
   # Computing for a copy that no longer exists raises on the `requirement_graphs`
   # foreign key, and the watcher reports that as a fault forever after.
+  # Every vantage that has ever been read, plus any a reader asked for. The
+  # unnarrowed answer, and the right one when the pass cannot tell what its
+  # observations were about.
   defp vantages(state) do
     Projection.live_vantages(
       state.scope,
@@ -540,9 +545,70 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     )
   end
 
-  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage) do
+  # The vantages this pass's observations actually named.
+  #
+  # A verdict is a statement about one checkout, so an observation recorded from
+  # one says nothing about the others — and recomputing them anyway costs the
+  # project's size times the number of checkouts. Criterion 3518 measured three
+  # vantages, 154 queries and 48 rows written for one finding recorded in one
+  # checkout, on a box serving eleven.
+  #
+  # `Invalidations.record/5` stamps each mark with the checkout it came from,
+  # and `nil` for a writer whose change is not about one — a story renamed, an
+  # issue filed. A single un-narrowed mark therefore widens the whole pass,
+  # deliberately: fanning out too far costs work, narrowing too far costs
+  # correctness.
+  #
+  # ## The `nil` row-space is three cases, not two
+  #
+  # `nil` is not a checkout. It is what every reader that is not an agent is
+  # answered from, and `Preloader.files_vantage/1` decides what it is computed
+  # *from*:
+  #
+  #   * a project with a default checkout — `nil`'s files are that checkout's,
+  #     so an observation from it moves `nil` and one from any other does not;
+  #   * a project with no default — `files_vantage/1` answers `nil`, and
+  #     `Projection.vantage/1` calls that row "the blended computation" over
+  #     every checkout. Anything moves it, so it is always kept.
+  #
+  # Collapsing those two is what broke six criteria on the first attempt: in a
+  # fixture with no designated main copy, `nil in named` is false for every
+  # observation, so the most-read row-space stopped being settled at all.
+  # `ShadowProjector.vantages/2` has the same shape and has not hit it, because
+  # nothing reads the shadow.
+  # No marks is not "no information" — it is "nothing announced". The only
+  # vantages such a pass owes work to are the ones a reader has explicitly asked
+  # for and not yet been given, which is what `requested_vantages` is.
+  #
+  # Falling back to `vantages/1` here undid the narrowing entirely, and quietly:
+  # `settle/2` retries, so one settle runs several passes, and the retry found
+  # an empty mark set — every one having been consumed by the pass before it —
+  # and recomputed every checkout. The first drain reported two vantages and the
+  # second reported all of them, so the cost reading looked correct while the
+  # work was not. Criterion 3507 caught it as a checkout restamped exactly one
+  # hour after being backdated.
+  defp vantages(state, []),
+    do: Projection.live_vantages(state.scope, MapSet.to_list(state.requested_vantages))
+
+  defp vantages(state, marks) do
+    named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
+
+    if Enum.any?(named, &is_nil/1) do
+      vantages(state)
+    else
+      keep_nil? = blended_nil?(state) or Preloader.files_vantage(state.scope) in named
+
+      state.scope
+      |> Projection.live_vantages(Enum.concat(named, state.requested_vantages))
+      |> Enum.filter(&(keep_nil? or not is_nil(&1)))
+    end
+  end
+
+  defp blended_nil?(state), do: is_nil(Preloader.files_vantage(state.scope))
+
+  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage, shared) do
     {_graph, actionable, _computed_at} =
-      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
+      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage}, shared: shared)
 
     actionable
   end
@@ -625,6 +691,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     consumed = Enum.reverse(state.pending_observations)
     Logger.metadata(obs: observation_tag(consumed))
 
+    # The durable marks behind those ids, read for the one thing the ids do not
+    # carry: which checkout each observation was recorded from.
+    marks = Invalidations.pending(state.project_id)
+
     # Recompute, then read. These were one call until the read stopped
     # recomputing — a reader repairing the graph is what made a silent writer
     # indistinguishable from a working one. The watcher is the write path, so
@@ -641,7 +711,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # "did mine". `Work.consider_project/2` is guarded on eligibility, so a role
     # with nothing to do is not charged a turn — asking too often costs a query
     # and asking too rarely is the ninety minutes of silence this exists to end.
-    computed = vantages(state)
+    computed = vantages(state, marks)
 
     # Measured here rather than around the whole clause, because the clause also
     # broadcasts, considers agents for a turn and reports the shadow — work this
@@ -657,10 +727,43 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
           observations: length(consumed),
           vantages: length(computed)
         },
-        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+        fn ->
+          # Loaded once for the whole drain, not once per checkout. Every vantage
+          # settled below shares these rows exactly — the same components with
+          # the same dependencies and children, the same rules, questions, issue
+          # stamps and deploys — and only the files differ, which is the reason a
+          # vantage exists at all. Criterion 3620.
+          shared = Preloader.shared(state.project_id)
+
+          {Enum.flat_map(computed, &recompute_vantage(state, &1, shared)), %{}}
+        end
       )
 
     account_for(consumed)
+
+    # After the writes, never before — a mark consumed on the strength of having
+    # been started is one a crash turns into a permanently stale entity
+    # (criterion 3521). Consumed by the pass as well as the projector now: only
+    # `ShadowProjector` did, and it is off outside dev, so on the default
+    # configuration every writer inserted a mark and nothing deleted one
+    # (`e0729ea9`).
+    #
+    # Unless the shadow is running, and then it consumes instead. `consume/1` is
+    # a delete, so two consumers on one queue is a destructive read: whichever
+    # drains first takes the marks and the other never sees them. With the
+    # shadow on, a background pass winning that race leaves the projector
+    # nothing to apply, it keeps the verdict it had, and `Shadow.diff/1` reports
+    # a disagreement that is really a missed delivery. Caught as a one-in-nine
+    # failure in `ShadowTest`, "accepting an issue on a story moves that story's
+    # verdict", disagreeing on the one requirement that test drives.
+    #
+    # So ownership follows who needs them: outside dev the shadow is off and the
+    # pass consumes, which is what `e0729ea9` was about; in dev the projector
+    # consumes after it has applied, which is what it did before. Neither
+    # configuration leaves a mark undeleted, and the oracle stops missing
+    # observations — which matters more than it sounds, because an oracle that
+    # silently misses one reports agreement it has not checked.
+    unless Shadow.enabled?(), do: Invalidations.consume(marks)
     report_shadow(state, computed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a

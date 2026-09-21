@@ -59,6 +59,11 @@ defmodule CodeMySpecSpex.Story1064.Criterion3375Spex do
 
   setup :register_and_log_in_user
 
+  setup do
+    stub_local_trial()
+    :ok
+  end
+
   spex "the agent cannot be reached" do
     scenario "The agent cannot be reached" do
       given_ "the agent cannot be reached", context do
@@ -122,6 +127,7 @@ defmodule CodeMySpecSpex.Story1064.Criterion3375Spex do
                "the form was on the page but would not complete without the agent"
 
         {:ok, live, _html} = live(context.conn, destination)
+        confirm_payment(live)
 
         assert has_element?(live, "[data-test='local-instructions']"),
                "they finished the form and still have no project to show for it"

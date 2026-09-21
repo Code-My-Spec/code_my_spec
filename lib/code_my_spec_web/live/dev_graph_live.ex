@@ -229,7 +229,15 @@ defmodule CodeMySpecWeb.DevGraphLive do
   # raised on every drain, the only symptom visible from outside was that
   # nothing changed.
   defp assign_vantages(%{assigns: %{selected: nil}} = socket),
-    do: assign(socket, vantages: [], backlog: %{total: 0, groups: []}, drain: nil)
+    do:
+      assign(socket,
+        vantages: [],
+        backlog: %{total: 0, groups: []},
+        vocabulary: Requirements.event_vocabulary(),
+        guarantees: Requirements.emit_guarantees(),
+        drains_by_kind: [],
+        drain: nil
+      )
 
   defp assign_vantages(%{assigns: %{selected: project}} = socket) do
     scope = scope_of(project)
@@ -237,7 +245,14 @@ defmodule CodeMySpecWeb.DevGraphLive do
     assign(socket,
       vantages: Requirements.vantage_report(scope),
       backlog: Requirements.backlog_report(scope),
-      drain: DrainCost.last(project.id)
+      vocabulary: Requirements.event_vocabulary(),
+      guarantees: Requirements.emit_guarantees(),
+      drain: DrainCost.last(project.id),
+      drains_by_kind:
+        Enum.reject(
+          [DrainCost.last(project.id, :event), DrainCost.last(project.id, :pass)],
+          &is_nil/1
+        )
     )
   end
 
@@ -347,7 +362,65 @@ defmodule CodeMySpecWeb.DevGraphLive do
           </table>
         </section>
 
-        <section class="space-y-2">
+        <section data-test="emit-guarantees" class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            Writer guarantees — {Enum.count(@guarantees, & &1.refused?)} of {length(@guarantees)} holding
+          </h2>
+          <p class="text-xs opacity-60">
+            The two refusals that keep the vocabulary closed and the routing honest, asked
+            rather than triggered. Both used to be enforced only by raising, which made them
+            demonstrable only by attempting the thing they prevent — so neither was visible
+            anywhere. These are answered by the same check the writer API applies.
+          </p>
+          <ul class="space-y-1 text-sm">
+            <li
+              :for={g <- @guarantees}
+              data-test="guarantee"
+              data-refused={to_string(g.refused?)}
+              class="flex flex-wrap items-baseline gap-2"
+            >
+              <span class={if g.refused?, do: "text-success", else: "text-error font-semibold"}>
+                {if g.refused?, do: "refused", else: "ACCEPTED"}
+              </span>
+              <span>{g.claim}</span>
+              <span class="opacity-50 font-mono text-xs">({g.probe})</span>
+              <span :if={g.because} class="w-full text-xs opacity-60 pl-4">{g.because}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          data-test="event-vocabulary"
+          data-declared={length(@vocabulary)}
+          data-falls-back={Enum.count(@vocabulary, &(not &1.applied))}
+          class="space-y-2"
+        >
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+            Event vocabulary — {Enum.count(@vocabulary, & &1.applied)} of {length(@vocabulary)} applied
+          </h2>
+          <p class="text-xs opacity-60">
+            The closed list of things that can move the graph. A writer cannot emit a kind
+            that is not here, which is what makes this answerable at all — and each one is
+            either applied by a handler or recomputed from the entities it names.
+            Falling back is slower, never wrong; what it must not be is invisible.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span
+              :for={entry <- @vocabulary}
+              data-test="vocabulary-kind"
+              data-kind={entry.kind}
+              data-applied={to_string(entry.applied)}
+              class={[
+                "badge badge-sm font-mono",
+                if(entry.applied, do: "badge-success badge-outline", else: "badge-ghost")
+              ]}
+            >
+              {entry.kind}{if entry.applied, do: "", else: " — recomputes"}
+            </span>
+          </div>
+        </section>
+
+        <section data-test="backlog" data-pending={@backlog.total} class="space-y-2">
           <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
             Backlog — {@backlog.total} pending
           </h2>
@@ -362,16 +435,26 @@ defmodule CodeMySpecWeb.DevGraphLive do
                 <th>writer</th>
                 <th>kind</th>
                 <th>scope</th>
+                <th>checkout</th>
                 <th class="text-right">pending</th>
                 <th>oldest</th>
               </tr>
             </thead>
             <tbody>
-              <tr :for={g <- @backlog.groups}>
+              <tr
+                :for={g <- @backlog.groups}
+                data-test="backlog-row"
+                data-scope={g.entity_scope}
+                data-source={g.source}
+                data-copy={g.working_copy_id || "project-wide"}
+              >
                 <td>{g.source}</td>
                 <td class="opacity-60">{g.kind || "invalidate"}</td>
                 <td class={if g.entity_scope == "unknown", do: "text-warning", else: "opacity-60"}>
                   {g.entity_scope}
+                </td>
+                <td class="font-mono text-xs opacity-60">
+                  {(g.working_copy_id && String.slice(g.working_copy_id, 0, 8)) || "project-wide"}
                 </td>
                 <td class="text-right tabular-nums">{g.count}</td>
                 <td class="tabular-nums opacity-60">{g.oldest}</td>
@@ -384,20 +467,39 @@ defmodule CodeMySpecWeb.DevGraphLive do
           </p>
         </section>
 
-        <section :if={@drain} class="space-y-2">
+        <section :if={@drain} data-test="last-drain" data-kind={@drain.kind} class="space-y-2">
           <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-            Last drain — {@drain.kind}
+            Last drain of each kind
           </h2>
-          <div class="flex flex-wrap gap-4 text-sm tabular-nums">
-            <span>{@drain.queries} queries</span>
-            <span>{@drain.rows_written} rows written</span>
-            <span>{@drain.vantages || "—"} checkouts</span>
-            <span class="opacity-60">{@drain.observations || 0} observations</span>
-            <span class="opacity-60">settled {@drain.handled || 0}</span>
-            <span class={if (@drain.recomputed || 0) > 0, do: "text-warning", else: "opacity-60"}>
-              recomputed {@drain.recomputed || 0}
+          <p class="text-xs opacity-60">
+            Both kinds run on the same settle, so the last of <em>each</em>
+            is kept rather than
+            the last overall — a single slot holds whichever finished second and the comparison
+            this whole feature rests on is lost. <code>event</code>
+            is a projection maintained from handlers; <code>pass</code>
+            is a whole recompute.
+          </p>
+          <div
+            :for={d <- @drains_by_kind}
+            data-test="drain"
+            data-kind={d.kind}
+            class="flex flex-wrap items-baseline gap-4 text-sm tabular-nums"
+          >
+            <span class="font-mono w-14 opacity-70">{d.kind}</span>
+            <span data-test="drain-queries">{d.queries} queries</span>
+            <span data-test="drain-rows-written">{d.rows_written} rows written</span>
+            <span data-test="drain-vantages">{d.vantages || "—"} checkouts</span>
+            <span data-test="drain-observations" class="opacity-60">
+              {d.observations || 0} observations
             </span>
-            <span class="opacity-40">{@drain.duration_ms}ms</span>
+            <span data-test="drain-handled" class="opacity-60">settled {d.handled || 0}</span>
+            <span
+              data-test="drain-recomputed"
+              class={if (d.recomputed || 0) > 0, do: "text-warning", else: "opacity-60"}
+            >
+              recomputed {d.recomputed || 0}
+            </span>
+            <span class="opacity-40">{d.duration_ms}ms</span>
           </div>
           <p class="text-xs opacity-60">
             Queries and rows are the cost; milliseconds measure the machine. The same

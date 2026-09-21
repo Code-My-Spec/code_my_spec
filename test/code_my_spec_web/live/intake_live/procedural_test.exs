@@ -26,6 +26,12 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
     |> render_submit()
   end
 
+  defp back(view, to) do
+    view
+    |> element("button[phx-click=back][phx-value-to=#{to}]")
+    |> render_click()
+  end
+
   describe "before any account exists" do
     test "offers a reset back to the root, for testing", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/build/procedural")
@@ -42,8 +48,9 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
       refute html =~ "One more thing, and we can start building.",
              "location has not been confirmed yet — the tier is a separate step"
 
-      assert html =~ "$100/month"
-      assert html =~ "$25/month"
+      assert html =~ "$100"
+      assert html =~ "$25"
+      assert html =~ "7 days free"
     end
 
     test "a non-technical visitor is suggested cloud", %{conn: conn} do
@@ -89,6 +96,17 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
       assert plan.shaping_turns == [], "the form filled this in, not a model call"
     end
 
+    test "each tier is a real card with what it includes, not a plain radio row",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/build/procedural")
+
+      html = submit_details(view)
+
+      assert html =~ "Nothing to install"
+      assert html =~ "Bring your own coding agent"
+      assert html =~ "7-day free trial"
+    end
+
     test "a blank required field stays on the details form", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/build/procedural")
 
@@ -96,6 +114,54 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
 
       assert html =~ "can&#39;t be blank"
       refute html =~ "$100/month"
+    end
+  end
+
+  describe "back" do
+    test "from pricing returns to the details form, values still filled in", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/build/procedural")
+
+      submit_details(view)
+      html = back(view, "details")
+
+      assert has_element?(view, "input[name='plan[account_name]'][value='Acme']")
+      refute html =~ "$100/month"
+    end
+
+    test "writes nothing — the plan still has what was already confirmed", %{conn: conn} do
+      conn = get(conn, ~p"/build/procedural")
+      {:ok, view, _html} = live(conn)
+
+      submit_details(view)
+      back(view, "details")
+
+      token = get_session(conn, "intake_token")
+      plan = Intake.get_plan(token)
+
+      assert plan.status == :planned, "going back does not un-submit the details step"
+      assert plan.account_name == "Acme"
+    end
+
+    test "from signup returns to pricing, the confirmed tier still pre-selected", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/build/procedural")
+
+      submit_details(view)
+      confirm_tier(view, "local")
+      html = back(view, "pricing")
+
+      refute html =~ "One more thing, and we can start building."
+      assert has_element?(view, "input[value='local'][checked]")
+    end
+
+    test "forward again after going back reaches the same place", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/build/procedural")
+
+      submit_details(view)
+      back(view, "details")
+      submit_details(view)
+      html = confirm_tier(view, "cloud")
+
+      assert html =~ "One more thing, and we can start building."
     end
   end
 

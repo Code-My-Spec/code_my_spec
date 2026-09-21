@@ -55,6 +55,37 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
   @event [:code_my_spec, :requirements, :drain]
   @query_event [:code_my_spec, :repo, :query]
+
+  # Whether the pass rebuilt the graph's edges, counted the same way the queries
+  # are: an event the work emits, tallied for the length of the drain and
+  # filtered to the drain's own process.
+  #
+  # It needs its own channel because neither number already here can see it. An
+  # edge rebuild that produces the set already stored deletes nothing and
+  # inserts nothing — `delete_edges_outside/2` keeps every pair it was handed
+  # and `insert_every/3` is `on_conflict: :nothing` — so `rows_written` reads
+  # zero, and it resolves its ids from the same map the node write returned, so
+  # `queries` does not move either. The work is a transitive reduction over the
+  # whole graph, in memory, and it is invisible to a reading taken at the
+  # database.
+  #
+  # Measured on this project the day it was added: 6640 edges at 1341ms against
+  # 2220ms of node computation, and on four narrower vantages the edge rebuild
+  # cost *more* than every verdict in the project — 378ms of edges against 187ms
+  # of nodes at 1532 nodes. A cost that large cannot be the one thing a pass
+  # does not report.
+  @edges_event [:code_my_spec, :requirements, :edges_rebuilt]
+
+  # How many times the drain read the project's vantage-invariant half — the
+  # components with their dependencies and children, the rules, the questions,
+  # the issue stamps. Counted for the same reason the edge rebuild is: it is
+  # large, it is paid before any narrowing starts, and no reading taken at the
+  # database can separate it from the per-checkout half beside it.
+  #
+  # A drain settling three checkouts should read it once. Measured on dev
+  # 2026-09-21 before it did: 32 queries at one vantage, 64 at two, 133-163 at
+  # three — linear in checkouts on a project that had not changed between them.
+  @project_preload_event [:code_my_spec, :requirements, :project_preload]
   @table :requirements_drain_cost
 
   @doc """
@@ -99,7 +130,30 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
   def last(_no_project), do: nil
 
-  defp unwrap([{_project_id, report}]), do: report
+  @doc """
+  What this project's last drain *of one kind* cost, or `nil` if none has run.
+
+  `last/1` cannot answer the question this feature is actually judged on.
+  Applying an observation is only worth the machinery if it is cheaper than
+  recomputing from it, and both kinds of drain run on the same settle — so a
+  single slot holds whichever finished last and the comparison is lost. The
+  pass is usually the survivor, which made the event path's own numbers read as
+  absent from every surface that asked.
+
+  `:pass` is a whole recompute; `:event` is a projection maintained from
+  handlers.
+  """
+  @spec last(Ecto.UUID.t() | nil, :pass | :event) :: map() | nil
+  def last(project_id, kind) when is_binary(project_id) and kind in [:pass, :event] do
+    case :ets.whereis(@table) do
+      :undefined -> nil
+      _ -> @table |> :ets.lookup({project_id, kind}) |> unwrap()
+    end
+  end
+
+  def last(_no_project, _kind), do: nil
+
+  defp unwrap([{_key, report}]), do: report
   defp unwrap([]), do: nil
 
   # "INSERT", "UPDATE", "DELETE" are all six characters, which is the whole
@@ -133,9 +187,15 @@ defmodule CodeMySpec.Requirements.DrainCost do
   def measure(meta, fun) when is_map(meta) and is_function(fun, 0) do
     owner = self()
     handler_id = {__MODULE__, owner, System.unique_integer([:positive])}
-    counter = :counters.new(2, [:write_concurrency])
+    counter = :counters.new(4, [:write_concurrency])
 
-    :telemetry.attach(handler_id, @query_event, &__MODULE__.count_query/4, {owner, counter})
+    :telemetry.attach_many(
+      handler_id,
+      [@query_event, @edges_event, @project_preload_event],
+      &__MODULE__.count_query/4,
+      {owner, counter}
+    )
+
     started = System.monotonic_time()
 
     try do
@@ -158,13 +218,21 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # Runs in whichever process issued the query, so comparing against the owner
   # is what scopes the count. Without it a drain would be charged for every
   # query the node happened to run while it was in flight.
-  def count_query(_event, _measurements, metadata, {owner, counter}) do
+  def count_query(event, _measurements, metadata, {owner, counter}) do
     if self() == owner do
-      :counters.add(counter, 1, 1)
-      :counters.add(counter, 2, rows_written(metadata))
+      case event do
+        @edges_event -> :counters.add(counter, 3, 1)
+        @project_preload_event -> :counters.add(counter, 4, 1)
+        _query -> both(counter, metadata)
+      end
     end
 
     :ok
+  end
+
+  defp both(counter, metadata) do
+    :counters.add(counter, 1, 1)
+    :counters.add(counter, 2, rows_written(metadata))
   end
 
   defp rows_written(%{query: query, result: {:ok, result}}) when is_binary(query) do
@@ -179,7 +247,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
     measurements = %{
       duration: duration,
       queries: :counters.get(counter, 1),
-      rows_written: :counters.get(counter, 2)
+      rows_written: :counters.get(counter, 2),
+      edges_rebuilt: :counters.get(counter, 3),
+      project_preloads: :counters.get(counter, 4)
     }
 
     :telemetry.execute(@event, measurements, meta)
@@ -190,13 +260,24 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # Last drain wins, deliberately. A reader asking what an observation cost
   # means the one it just caused, and keeping a history here would be a second,
   # worse copy of the telemetry the log and LiveDashboard already carry.
+  #
+  # Kept per kind as well as overall, and that second key is the whole point of
+  # the measurement. The claim this feature rests on is that applying an
+  # observation is cheaper than recomputing from it — a comparison between a
+  # `:pass` drain and an `:event` one. A single slot cannot hold a comparison:
+  # both kinds run on the same settle, the later overwrites the earlier, and
+  # whichever survives is an accident of ordering. The pass is usually the
+  # survivor, which is why the event path's applied-versus-re-derived split read
+  # as zero from every surface that asked for it.
   defp record(%{project_id: project_id} = meta, measurements) when is_binary(project_id) do
     case :ets.whereis(@table) do
       :undefined ->
         :ok
 
       _ ->
-        :ets.insert(@table, {project_id, report(meta, measurements)})
+        entry = report(meta, measurements)
+        :ets.insert(@table, {project_id, entry})
+        :ets.insert(@table, {{project_id, entry.kind}, entry})
         :ok
     end
   end
@@ -209,6 +290,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
       duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
       queries: measurements.queries,
       rows_written: measurements.rows_written,
+      edges_rebuilt: measurements.edges_rebuilt,
+      project_preloads: measurements.project_preloads,
       observations: Map.get(meta, :observations),
       handled: Map.get(meta, :handled),
       recomputed: Map.get(meta, :recomputed),
@@ -223,7 +306,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
 
     Logger.info(
       "[DrainCost] #{meta.kind} drain in #{ms}ms — " <>
-        "#{measurements.queries} queries, #{measurements.rows_written} rows written" <>
+        "#{measurements.queries} queries, #{measurements.rows_written} rows written, " <>
+        "#{measurements.edges_rebuilt} edge rebuild(s), " <>
+        "#{measurements.project_preloads} project preload(s)" <>
         detail(meta)
     )
   end
@@ -238,4 +323,27 @@ defmodule CodeMySpec.Requirements.DrainCost do
   @doc "The event this emits, for anything attaching a handler to it."
   @spec event() :: [atom()]
   def event, do: @event
+
+  @doc """
+  Said by the pass when it rebuilds the edge set, counted into the drain it
+  happened inside.
+
+  Emitted rather than returned because the drain is measured around
+  `recompute_vantage/2` and the decision is taken several calls below it. A
+  return value would have to be threaded up through `recompute/1`'s public
+  shape to reach the place that could report it.
+  """
+  @spec edges_rebuilt() :: [atom()]
+  def edges_rebuilt, do: @edges_event
+
+  @doc """
+  Said by `Preloader` when it reads the project's vantage-invariant half,
+  counted into the drain it happened inside.
+
+  One per drain is the target, whatever the checkout count. Emitted rather than
+  returned for the same reason the edge rebuild is: the drain is measured around
+  `recompute_vantage/2` and this happens a call below it.
+  """
+  @spec project_preload() :: [atom()]
+  def project_preload, do: @project_preload_event
 end

@@ -335,7 +335,8 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     |> where(
       [n],
       n.component_id in ^component_ids or n.story_id in ^story_ids or
-        n.project_id == ^project_id
+        n.project_id == ^project_id or
+        n.story_id in subquery(parked_story_ids(project_id))
     )
     # And only this copy's rows. Without it, one checkout syncing would treat
     # every other checkout's nodes as departed and delete them — the same
@@ -349,6 +350,32 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       [] -> :ok
       ids -> Shadow.pass_target() |> where([n], n.id in ^ids) |> Repo.delete_all()
     end
+  end
+
+  # Stories that are not released, whose rows are departed whoever was visited.
+  #
+  # `Preloader` loads only `ready_for_dev` stories, on purpose — a parked story
+  # that projected would surface as actionable work nobody released. The cost of
+  # that filter lands here: rows the story published while it *was* ready stay
+  # in the table, and `Projection.rehydrate/2` cannot resolve them to an entity
+  # any more, so it drops them. The read is then a strict subset of what the
+  # publish counted, `served_graph/3` refuses the short read, and the graph
+  # recomputes in full — on every read, for as long as the story stays parked.
+  # Measured on the live database: 63 rows across 8 parked stories on one
+  # project.
+  #
+  # Asked here rather than by widening `visited/1`, and the distinction matters.
+  # `visited` is built from the context, which on an incremental pass is
+  # deliberately narrowed to the stale entities — so a story absent from it may
+  # simply not have been this pass's business, and reaping on that basis would
+  # delete live rows. "This story is not released" is true regardless of what
+  # the pass was looking at, which makes it safe on a full pass and a narrow one
+  # alike.
+  defp parked_story_ids(project_id) do
+    from(s in CodeMySpec.Stories.Story,
+      where: s.project_id == ^project_id and s.ready_for_dev == false,
+      select: s.id
+    )
   end
 
   @doc """
@@ -554,6 +581,23 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # Read back rather than trusting `insert_all`'s returning: an upsert that
   # conflicted returns the existing row, and the ids have to be the same ones
   # edges will reference either way.
+  @doc """
+  The stored id of each of these nodes, keyed by `{entity_type, entity_id, name}`.
+
+  For a partial pass that rebuilt the edge set. `upsert_all/3` already answers
+  this for the nodes it wrote, and that is the narrow half — a pass drawing
+  edges over the whole graph has to resolve the nodes it *kept* as well, or
+  `replace_edges/3` drops every edge touching one and deletes the rest.
+
+  Reads, writes nothing, and takes no view of its own on which rows exist: a
+  node with no row is simply absent from the result, which is what
+  `replace_edges/3` already expects of a key it cannot resolve.
+  """
+  @spec ids_for(Scope.t(), [Requirement.t()]) :: %{{String.t(), term(), String.t()} => term()}
+  def ids_for(%Scope{active_project_id: project_id} = scope, nodes) when is_list(nodes) do
+    ids_by_key(project_id, Projection.vantage(scope), nodes)
+  end
+
   defp ids_by_key(project_id, working_copy_id, nodes) do
     names = nodes |> Enum.map(& &1.name) |> Enum.uniq()
 

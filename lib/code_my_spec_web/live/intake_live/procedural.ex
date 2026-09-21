@@ -10,15 +10,23 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
   of a conversation: fewer fields here would mean an audit was never
   actually looking at what a visitor is asked.
 
-  ## Two steps, not one, once the details are in
+  ## Three steps, and back is real navigation, not a reset
 
-  "Where should it run" used to be a field on that same form, and it is not
-  a question a non-technical visitor can answer — self-hosting is not
+  "Where should it run" used to be a field on the details form, and it is
+  not a question a non-technical visitor can answer — self-hosting is not
   something they could act on either way. `Intake.plan_procedurally/2` asks
-  whether they are technical instead and leaves `location` nil; `show_pricing?/1`
-  then shows a priced tier card (`Intake.suggested_location/1` picks which one
-  is pre-selected), and `Intake.confirm_tier/2` is what actually sets it. Two
-  questions a person can each answer, rather than one they can't.
+  whether they are technical instead and leaves `location` nil; the pricing
+  step then shows a priced tier card (`Intake.suggested_location/1` picks
+  which one is pre-selected), and `Intake.confirm_tier/2` is what actually
+  sets it.
+
+  `@step` is its own assign rather than derived fresh from the plan on every
+  render, specifically so "back" can work: the plan does not un-confirm a
+  tier just because the visitor wants to look at it again, so deriving the
+  step from `plan.location == nil` would make "back" from pricing land
+  straight back on pricing. Forward transitions still come from the plan
+  succeeding a real write (`assign_step_from_plan/1`, used once on mount to
+  resume where a reload found them); "back" only ever moves `@step`.
 
   From there this joins the exact path a shaped plan takes: `/build/sign-up`,
   then `IntakeLive.Workspace`'s payment and boot. Nothing past this page
@@ -38,8 +46,6 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
   alias CodeMySpecWeb.Plugs.IntakeSession
 
   def render(assigns) do
-    assigns = assign(assigns, :show_pricing?, show_pricing?(assigns))
-
     ~H"""
     <div class="flex min-h-dvh items-center justify-center px-4 py-12">
       <div class="w-full max-w-md">
@@ -47,12 +53,14 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
           // procedural intake
         </div>
 
-        <.signup_card :if={@awaiting_signup?} plan={@plan} />
+        <.signup_card :if={@step == :signup} plan={@plan} />
+        <.back :if={@step == :signup} to="pricing" />
 
-        <.tier_card :if={@show_pricing?} plan={@plan} form={@tier_form} />
+        <.tier_card :if={@step == :pricing} plan={@plan} form={@tier_form} />
+        <.back :if={@step == :pricing} to="details" />
 
         <.form
-          :if={not @awaiting_signup? and not @show_pricing?}
+          :if={@step == :details}
           for={@form}
           phx-submit="submit"
           phx-change="validate"
@@ -103,62 +111,108 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
     """
   end
 
-  # Between the details form and signup: `status == :planned` means the four
-  # generator inputs are known, and `location` still nil means the visitor
-  # has not confirmed a tier for them yet. `awaiting_signup?` is checked first
-  # because it can also be true here — once the tier is confirmed `location`
-  # is set and `names_confirmed?/1` flips, and this must stop claiming the
-  # pricing step still needs answering.
-  defp show_pricing?(%{awaiting_signup?: true}), do: false
-  defp show_pricing?(%{plan: %{status: :planned, location: nil}}), do: true
-  defp show_pricing?(%{}), do: false
+  # A plain button rather than folded into each card's own form: going back
+  # writes nothing, so it has no business inside a form whose submit does.
+  attr :to, :string, required: true
+
+  defp back(assigns) do
+    ~H"""
+    <button phx-click="back" phx-value-to={@to} class="mt-2 text-sm text-base-content/50 underline">
+      ← Back
+    </button>
+    """
+  end
 
   # Priced, not a generic infra select — "are you technical" only decides
   # which of these two a visitor is shown first; either is a real choice.
+  # Cards borrow their shape from the marketing `/pricing` page's own
+  # `pricing_tiers/1` (bulleted feature lists) and `CheckoutLive`'s
+  # `tier_choice/1` (a real card per tier) rather than the plain radio rows
+  # this replaced — a CRO audit of the funnel has to see the same kind of
+  # pricing presentation a visitor buying anywhere else on the site sees.
+  @tiers [
+    %{
+      value: "cloud",
+      name: "Cloud",
+      price: "$100",
+      period: "/month + usage",
+      tagline: "We host it. Nothing to install.",
+      bullets: [
+        "Nothing to install — open a link and it's there",
+        "We run the agent and the infrastructure",
+        "Billed monthly, scales with usage"
+      ]
+    },
+    %{
+      value: "local",
+      name: "Dev local",
+      price: "$25",
+      period: "/month",
+      tagline: "Bring your own agent. You run it yourself.",
+      trial: "7 days free, then $25/month",
+      bullets: [
+        "Runs on your own machine",
+        "Bring your own coding agent",
+        "7-day free trial — cancel before it ends and pay nothing"
+      ]
+    }
+  ]
+
   attr :plan, :map, required: true
   attr :form, :any, required: true
 
   defp tier_card(assigns) do
+    assigns = assign(assigns, :tiers, @tiers)
+
     ~H"""
-    <.form
-      for={@form}
-      phx-submit="confirm_tier"
-      class="border border-base-300 rounded p-4 space-y-3"
-    >
+    <.form for={@form} phx-submit="confirm_tier" class="space-y-3">
       <p class="font-medium">Pick a plan.</p>
 
-      <label class="flex items-start gap-3 border border-base-300 rounded p-3 cursor-pointer">
-        <input
-          type="radio"
-          name={@form[:location].name}
-          value="cloud"
-          checked={to_string(@form[:location].value) == "cloud"}
-          class="radio mt-1"
-        />
-        <span>
-          <span class="font-medium">Cloud — $100/month + usage</span>
-          <br />
-          <span class="text-sm opacity-70">We host it. Nothing to install.</span>
-        </span>
-      </label>
-
-      <label class="flex items-start gap-3 border border-base-300 rounded p-3 cursor-pointer">
-        <input
-          type="radio"
-          name={@form[:location].name}
-          value="local"
-          checked={to_string(@form[:location].value) == "local"}
-          class="radio mt-1"
-        />
-        <span>
-          <span class="font-medium">Dev local — $25/month</span>
-          <br />
-          <span class="text-sm opacity-70">Bring your own agent. You run it yourself.</span>
-        </span>
-      </label>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <.tier_option :for={tier <- @tiers} tier={tier} form={@form} />
+      </div>
 
       <.button class="btn-primary w-full">Next</.button>
     </.form>
+    """
+  end
+
+  attr :tier, :map, required: true
+  attr :form, :any, required: true
+
+  defp tier_option(assigns) do
+    ~H"""
+    <label class={[
+      "flex flex-col gap-2 rounded border p-4 cursor-pointer",
+      if(to_string(@form[:location].value) == @tier.value,
+        do: "border-primary border-2",
+        else: "border-base-300"
+      )
+    ]}>
+      <input
+        type="radio"
+        name={@form[:location].name}
+        value={@tier.value}
+        checked={to_string(@form[:location].value) == @tier.value}
+        class="radio radio-sm self-start"
+      />
+      <span class="font-medium">{@tier.name}</span>
+      <span>
+        <span class="text-2xl font-bold">{@tier.price}</span>
+        <span class="text-sm opacity-70">{@tier.period}</span>
+      </span>
+      <span class="text-sm opacity-70">{@tier.tagline}</span>
+
+      <span :if={@tier[:trial]} class="badge badge-primary badge-sm w-fit">
+        {@tier.trial}
+      </span>
+
+      <ul class="mt-1 space-y-1 text-sm">
+        <li :for={bullet <- @tier.bullets} class="flex gap-2">
+          <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />{bullet}
+        </li>
+      </ul>
+    </label>
     """
   end
 
@@ -169,7 +223,8 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
     {:ok,
      socket
      |> assign(page_title: "Build something, procedurally")
-     |> assign_plan(plan)}
+     |> assign_plan(plan)
+     |> assign_step_from_plan()}
   end
 
   def handle_event("validate", %{"plan" => attrs}, socket) do
@@ -179,11 +234,8 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
 
   def handle_event("submit", %{"plan" => attrs}, socket) do
     case Intake.plan_procedurally(socket.assigns.plan, attrs) do
-      # No `confirmed/2` here — `location` is still nil, so `show_pricing?/1`
-      # takes over the render on its own. The tier is a separate question,
-      # asked once the visitor has been through this one.
       {:ok, plan} ->
-        {:noreply, assign_plan(socket, plan)}
+        {:noreply, socket |> assign_plan(plan) |> assign(:step, :pricing)}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
@@ -200,18 +252,40 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
     end
   end
 
+  # Writes nothing. The plan already carries whatever was last confirmed on
+  # each step — going back and forward again without changing an answer
+  # re-submits the same values, which is a no-op write, not data loss.
+  def handle_event("back", %{"to" => "details"}, socket),
+    do: {:noreply, assign(socket, :step, :details)}
+
+  def handle_event("back", %{"to" => "pricing"}, socket),
+    do: {:noreply, assign(socket, :step, :pricing)}
+
   # Same gate `IntakeLive.Plan` uses: a stranger sees the signup card in this
   # same page, an already-signed-in visitor goes straight through.
   defp confirmed(socket, %Scope{user: %User{}}),
     do: push_navigate(socket, to: ~p"/build/workspace")
 
-  defp confirmed(socket, _scope), do: assign(socket, :awaiting_signup?, true)
+  defp confirmed(socket, _scope), do: assign(socket, :step, :signup)
 
   defp assign_plan(socket, plan) do
     socket
     |> assign(:plan, plan)
     |> assign(:form, to_form(Intake.change_procedural(plan)))
     |> assign(:tier_form, to_form(Intake.change_tier(plan)))
-    |> assign_new(:awaiting_signup?, fn -> Intake.names_confirmed?(plan) end)
+  end
+
+  # Resumes wherever a reload finds the plan. Only used once, on mount —
+  # every transition after that is either a real write (submit, confirm_tier)
+  # or "back", never a re-derivation from the row.
+  defp assign_step_from_plan(socket) do
+    step =
+      cond do
+        Intake.names_confirmed?(socket.assigns.plan) -> :signup
+        socket.assigns.plan.status == :planned -> :pricing
+        true -> :details
+      end
+
+    assign(socket, :step, step)
   end
 end
