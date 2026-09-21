@@ -126,6 +126,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
   alias CodeMySpec.Faults
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Integrations.Integration
@@ -1495,6 +1496,26 @@ defmodule CodeMySpecSpex.Fixtures do
   def settle_graph(%Scope{} = scope) do
     :ok = GraphWatcher.settle(scope)
     drain_background_work()
+  end
+
+  @doc """
+  Publish what a fixture wrote, so the graph can see it.
+
+  The bridge, because `CodeMySpecSpex` does not depend on `CodeMySpec.Files` and
+  should not start: this module is the one approved crossing.
+
+  Fixtures used to get this for free. `GetNextRequirement` opened with a full
+  `FileSync.sync/2` on its way to the graph, so anything written before an agent
+  asked was published by the asking — which made a read responsible for a
+  write's visibility and left admission and the agent reading two different
+  graphs (c83c5b58). The sync is gone from there, so a fixture that writes a
+  file publishes it itself.
+  """
+  @spec sync_files(Scope.t()) :: :ok
+  def sync_files(%Scope{} = scope) do
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+    :ok
   end
 
   @doc """

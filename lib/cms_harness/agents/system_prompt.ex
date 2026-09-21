@@ -13,7 +13,8 @@ defmodule CmsHarness.Agents.SystemPrompt do
                        — the same for every agent on every project
 
       §2  Situational  what this project is, where its application runs,
-                       which tools this machine offers
+                       which tools this machine offers, and how a tool call
+                       happens on the engine running this agent
                        — the same for every agent on this checkout
 
       §3  Role         what this agent in particular is for
@@ -71,6 +72,9 @@ defmodule CmsHarness.Agents.SystemPrompt do
       project_brief(parts[:project_brief]),
       running_app(parts[:app_url]),
       parts[:tool_index],
+      # Beside the index, because it is about that list: where it arrives and
+      # what to conclude when a name seems absent from it.
+      parts[:provider_brief],
       # §3 — role
       parts[:role_brief]
     ]

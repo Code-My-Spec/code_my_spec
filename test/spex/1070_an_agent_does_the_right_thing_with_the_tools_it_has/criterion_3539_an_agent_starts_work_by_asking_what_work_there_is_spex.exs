@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
       end
 
       given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3539")}
+        {:ok, given_a_harnessed_checkout(context, "eval_3539", root: :project)}
       end
 
       given_ "the graph settled at the agent's own checkout", context do
@@ -105,6 +105,27 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
       when_ "a fresh agent takes its first turn, ten times over", context do
         measured =
           measure("An agent starts work by asking what work there is", fn _run ->
+            # One run until the premise can regenerate, and the blocker is the
+            # spex environment rather than this criterion.
+            #
+            # These are real turns and they finish the work: run 1's agent
+            # claimed `technical_strategy`, read the architecture overview and
+            # the workflow, and satisfied it — so at n=10 run 2 arrived to
+            # `main: []`. Handing each run its own story does not help, because
+            # no story requirement is actionable while the project chain is
+            # open, and the chain cannot be closed from here.
+            #
+            # `impl(:memory)` is `Support.InMemoryEnvironment`, so
+            # `Environments.write_file/3` answers `:ok` and puts nothing on
+            # disk. The fixture's `.code_my_spec/architecture/decisions.md`
+            # exists as a File row and not as a file. A real agent reads real
+            # files, so the fixture and the agent are looking at two different
+            # filesystems — which is fine for a spex that drives a surface and
+            # is exactly wrong for one that drives an agent.
+            #
+            # Evals need a disk-backed environment rooted at the checkout the
+            # agent works in. That is an infrastructure change, not a fixture
+            # tweak, and n=10 waits on it.
             observe(context, [role: "main"], fn agent ->
               called_in_order?(context, agent, "get_next_requirement", "start_task")
             end)

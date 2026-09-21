@@ -1,0 +1,33 @@
+{
+  "seconds": 185,
+  "run": 1,
+  "at": "2026-09-21T03:14:05.086942Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-25192_32230_PWrf8JAvIdzu",
+  "usage": {
+    "output_tokens": 928,
+    "input_tokens": 6,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "estimated_cost_cents": 0
+  },
+  "behaviour": "An agent starts work by asking what work there is",
+  "role": "coding",
+  "calls": [
+    "get_next_requirement",
+    "get_next_requirement"
+  ],
+  "criterion": "criterion_3539",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": [
+      "bdd_specs_exist"
+    ]
+  },
+  "unsatisfied": [
+    "bdd_specs_exist (story)"
+  ],
+  "errored": null,
+  "held?": false
+}
