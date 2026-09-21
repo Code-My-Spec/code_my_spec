@@ -1064,9 +1064,22 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_topology(Scope.t(), map(), map()) ::
           {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
   def compute_topology(scope, ctx, config) do
-    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, enriched_ctx} = compute_nodes(scope, ctx, config)
     {nodes, compute_edges(nodes, enriched_ctx, config)}
   end
+
+  @doc """
+  The project's whole node set, computed and not written, with the context
+  the computation enriched — what `compute_topology/3` does before the edges.
+
+  On its own so a caller settling several vantages can decide about the edges
+  itself: they are a function of the node set and the shape, and every vantage
+  of a project shares the shape, so a seed that computed them ten times was
+  computing the same set ten times. `edges_over/4` draws them when the caller
+  has no set to reuse.
+  """
+  @spec compute_nodes(Scope.t(), map(), map()) :: {[Requirement.t()], map()}
+  def compute_nodes(scope, ctx, config), do: compute_all_from_ctx(scope, ctx, config)
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     stamp_project(scope)
