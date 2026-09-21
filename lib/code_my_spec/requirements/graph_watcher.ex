@@ -738,7 +738,23 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # `ShadowProjector` did, and it is off outside dev, so on the default
     # configuration every writer inserted a mark and nothing deleted one
     # (`e0729ea9`).
-    Invalidations.consume(marks)
+    #
+    # Unless the shadow is running, and then it consumes instead. `consume/1` is
+    # a delete, so two consumers on one queue is a destructive read: whichever
+    # drains first takes the marks and the other never sees them. With the
+    # shadow on, a background pass winning that race leaves the projector
+    # nothing to apply, it keeps the verdict it had, and `Shadow.diff/1` reports
+    # a disagreement that is really a missed delivery. Caught as a one-in-nine
+    # failure in `ShadowTest`, "accepting an issue on a story moves that story's
+    # verdict", disagreeing on the one requirement that test drives.
+    #
+    # So ownership follows who needs them: outside dev the shadow is off and the
+    # pass consumes, which is what `e0729ea9` was about; in dev the projector
+    # consumes after it has applied, which is what it did before. Neither
+    # configuration leaves a mark undeleted, and the oracle stops missing
+    # observations — which matters more than it sounds, because an oracle that
+    # silently misses one reports agreement it has not checked.
+    unless Shadow.enabled?(), do: Invalidations.consume(marks)
     report_shadow(state, computed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a
