@@ -266,10 +266,37 @@ defmodule CodeMySpec.Workspaces do
     end
   end
 
-  # Where the entrypoint puts it. One place decides this and it is not the
-  # instance: `docker/devbox/entrypoint.sh` generates into `/workspace/$APP_NAME`
-  # and nowhere else.
-  defp instance_root(%Project{} = project), do: "/workspace/#{app_name(project)}"
+  @doc """
+  Where the instance actually lands, whichever runner is configured.
+
+  One place decides this and it is not the instance: `docker/devbox/entrypoint.sh`
+  generates into `/workspace/$APP_NAME` and nowhere else — true only for
+  `Runner.Docker`. A bare-metal boot has no such fixed path (it depends on
+  this box's own `local_workspace_root` configuration), so `Runner.Local.root/2`
+  is asked instead of assumed. Getting this wrong is silent and specific: the
+  harness joins under its real root, the server has recorded the container
+  one, the two never match, and `cms harness` reports it as
+  `:working_copy_missing` on agent restore rather than as a root mismatch,
+  since nothing here compares them directly.
+
+  Public so the branch on the configured runner can be asserted on directly —
+  the same reason `Runner.Local.prepare/4` is public — rather than only
+  through a full `boot/1`, which runs against whichever runner test config
+  happens to have installed and so never actually exercises this choice.
+  """
+  @spec instance_root(Project.t()) :: String.t()
+  def instance_root(%Project{} = project) do
+    case runner() do
+      Runner.Local -> Runner.Local.root(container_name(project), app_name(project))
+      _ -> "/workspace/#{app_name(project)}"
+    end
+  end
+
+  defp runner do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Workspaces, [])
+    |> Keyword.get(:runner, Runner.Docker)
+  end
 
   # The instance's only credential. `ensure_deploy_key/2` is what makes this
   # clause reachable: nothing mints a key at project creation, so a project
