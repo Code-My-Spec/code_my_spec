@@ -302,28 +302,27 @@ config :code_my_spec, graph_stale_read_log: true
 # nothing; the pass still serves. Turning it off stops the second projection
 # without losing the marks that would let it restart.
 #
-# Off since 2026-09-21, because it had become the most expensive thing in the
-# system and could no longer answer the question it was kept for.
+# The projection stays ON. It is the event path — the direction this project is
+# moving toward, not away from — and a projection nothing drives stops being a
+# candidate to swap to.
 #
-# The cost: `Shadow.diff/1` opens with its own `Preloader.load/2`, per vantage,
-# on top of the pass's. Measured on this dev copy — **814 preloads for 157
-# passes**, 5.2x — against a preload that is the largest phase of a pass at
-# 21-90ms. The oracle was consuming the majority of the work the pass had just
-# been optimised to avoid.
+# What is off is the *comparison*. `Shadow.diff/1` opens with a full
+# `Preloader.load/2` per computed vantage, on every pass; `ShadowProjector` is
+# built to avoid exactly that ("`Preloader.load/1` is never called"). Measured
+# here 2026-09-21: **814 preloads for 157 passes**, 5.2x, against a preload
+# that is the largest phase of a pass at 21-90ms. Almost all of it was the
+# measurement rather than the thing measured.
 #
-# What it proved, it proved: 157 consecutive passes at `shadow agrees`, nodes
-# and edges exact (2107/2107, 6653/6653). The event path computes what the pass
-# computes.
+# These were one flag, and turning it off to stop paying for the diff also
+# stopped the event path and left the batched pass serving alone — backwards.
+# Hence two.
 #
-# What it cannot prove is the thing now blocking the swap. `report_shadow/2`
-# diffs only the vantages the pass just computed, so a clean run is evidence
-# about checkouts something named and silent about the ones nothing did — and
-# those are exactly where the risk is. Measured the same day: the `Harness`
-# vantage sat 6h36m behind on the event side while the diff read clean, which
-# is criterion 3522 observed rather than predicted.
-#
-# So it is off, not gone. `ShadowProjector` is the event path itself, not
-# scaffolding around it, and deleting it would end the swap rather than tidy up
-# after it. Turn this back on to re-validate when the idle-vantage question is
-# settled; the marks are still recorded, so it restarts without a backfill.
-config :code_my_spec, graph_shadow_projection: false
+# Turn `graph_shadow_diff` on to re-validate. What it proved while it ran: 157
+# consecutive passes at `shadow agrees`, nodes and edges exact (2107/2107,
+# 6653/6653). What it cannot prove, and what still blocks
+# `graph_event_is_source`, is idle-vantage staleness — `report_shadow/2` diffs
+# only the vantages the pass just computed, so a clean run says nothing about
+# the checkouts nothing named. Measured the same day: the `Harness` vantage sat
+# 6h36m behind on the event side while every diff read clean. Criterion 3522.
+config :code_my_spec, graph_shadow_projection: true
+config :code_my_spec, graph_shadow_diff: false
