@@ -101,6 +101,27 @@ defmodule CodeMySpec.Support.EvalRunner do
         deadline_ms: 300_000,
         seed: &seed_unlinked_story/2,
         judge: &closed_before_taking_more?/1
+      },
+      %{
+        id: "criterion_3542",
+        behaviour: "An agent with no work of its kind stops rather than inventing some",
+        # Coding on a checkout with nothing authored on it — the ordinary way an
+        # agent finds itself idle, rather than a project whose work has been
+        # consumed, which is a different state and one where it can still see
+        # what the work was.
+        role: "coding",
+        world: :bare,
+        # The turn has to come from a person. `StopDecision.wake/2` renders the
+        # menu and stays silent for a role with an empty one, deliberately, so
+        # an idle agent costs nothing — switching this agent on sends it nothing
+        # and it never speaks. What the criterion is about is the turn an idle
+        # agent *does* get. "Carry on." names neither a tool nor tapping out,
+        # because naming either would be telling it the answer.
+        say: "Carry on.",
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: fn _world, _run -> :ok end,
+        judge: &asked_to_leave?/1
       }
     ]
   end
@@ -113,7 +134,29 @@ defmodule CodeMySpec.Support.EvalRunner do
   # directory — the `:memory` one a spex gets comes from its Case, not from
   # here. So the fixture's writes and the agent's reads are the same filesystem,
   # which is the whole reason this runner exists.
-  defp setup_world(_criterion) do
+  defp setup_world(criterion) do
+    case Map.get(criterion, :world, :full_satisfaction) do
+      :full_satisfaction -> full_satisfaction_world()
+      :bare -> bare_world()
+    end
+  end
+
+  # A checkout with nothing authored on it, for the criteria about an agent with
+  # nothing to do. No fixture, no sync: the graph is empty because there is
+  # nothing to compute one from, which is the state being measured.
+  defp bare_world do
+    scope = users().full_scope_fixture()
+    root = scope.environment.cwd
+    scope = %Scope{scope | cwd: root}
+    File.mkdir_p!(Path.join(root, ".code_my_spec"))
+
+    Requirements.recompute(scope)
+    settle(scope)
+
+    %{root: root, scope: scope, context: %{scope: scope}}
+  end
+
+  defp full_satisfaction_world do
     scope = users().full_scope_fixture()
     root = scope.environment.cwd
     scope = %Scope{scope | cwd: root}
@@ -201,7 +244,9 @@ defmodule CodeMySpec.Support.EvalRunner do
       case drive_agent(criterion, world) do
         {:ok, calls, usage, trace} ->
           %{
-            held?: criterion.judge.(calls),
+            # Judged on the record that is written down, so the artifact and the
+            # verdict cannot disagree.
+            held?: criterion.judge.(%{calls: calls, trace: trace}),
             calls: calls,
             usage: usage,
             trace: trace,
@@ -247,7 +292,7 @@ defmodule CodeMySpec.Support.EvalRunner do
 
     try do
       with {:ok, agent_id} <- start_agent(criterion, world, collector),
-           :ok <- request_turn(agent_id, world),
+           :ok <- request_turn(agent_id, world, criterion),
            {:ok, calls} <- await_judgement(collector, criterion) do
         # Usage rides on `:turn_ended`, so it arrives rather than being asked
         # for. Asking was the problem: the loop answers busy mid-turn, and an
@@ -352,10 +397,31 @@ defmodule CodeMySpec.Support.EvalRunner do
     # on this project has that id".
     agent_id = agent.id
 
-    case machine().start_agent(agent_id, world.root,
-           provider: "claude-code",
-           on_event: fn _agent_id, event -> record_event(collector, event) end
-         ) do
+    # Launched with the request the *server* builds, not the bare map
+    # `Machine.start_agent/3` assembles.
+    #
+    # That helper sends `agent_id`, `working_copy`, `provider` and nothing else,
+    # so `universal`, `role_brief`, `tool_index`, `project_brief` and
+    # `provider_brief` all arrived nil and `SystemPrompt.compose/1` answered
+    # `nil`. Every eval so far measured an agent with **no system prompt at
+    # all** — no loop, no role, no tool index — while a production agent gets
+    # all five. The criteria were scoring a different agent than the one that
+    # ships, and a prompt change could not move a rate because the prompt was
+    # not reaching the model.
+    #
+    # Found on 3542: the rule telling an idle agent to `tap_out` was added to
+    # `OperatingRules`, the run was taken again, and nothing changed — because
+    # `OperatingRules.text()` was never in the request.
+    request =
+      world.scope
+      |> launch_request().hydrate(agent)
+      |> launch_request().for()
+      |> Map.merge(%{
+        "api_key" => "unused-in-eval",
+        "on_event" => fn _agent_id, event -> record_event(collector, event) end
+      })
+
+    case machine().launch(request) do
       {:ok, _} -> {:ok, agent_id}
       other -> {:error, {:start_agent, other}}
     end
@@ -464,7 +530,16 @@ defmodule CodeMySpec.Support.EvalRunner do
   # Admission, the production trigger: continuous is standing intent and
   # `Work.request_turn_if_runnable/3` gives the turn when the graph has work for
   # the role. An answer naming no request is a premise failure, not conduct.
-  defp request_turn(agent_id, world) do
+  defp request_turn(agent_id, world, criterion) do
+    with :ok <- put_in_loop(agent_id, world, criterion) do
+      case Map.get(criterion, :say) do
+        nil -> :ok
+        said -> say(agent_id, said)
+      end
+    end
+  end
+
+  defp put_in_loop(agent_id, world, criterion) do
     case SetAgentContinuous.execute(
            %{agent_id: agent_id, continuous: true},
            frame(world)
@@ -474,13 +549,37 @@ defmodule CodeMySpec.Support.EvalRunner do
 
       {:reply, r, _} ->
         said = text(r)
-        if said =~ "Nothing was requested", do: {:error, {:no_work, said}}, else: :ok
+
+        cond do
+          not (said =~ "Nothing was requested") -> :ok
+          # For a criterion measuring an idle agent, being sent nothing is the
+          # premise rather than a broken one — the loop is silent for an empty
+          # menu on purpose, and the turn comes from the operator instead.
+          Map.has_key?(criterion, :say) -> :ok
+          true -> {:error, {:no_work, said}}
+        end
+    end
+  end
+
+  # Tell a running agent something, the way an operator's message reaches it,
+  # without waiting for the turn — `await_judgement/2` is what watches it
+  # happen, and waiting here would mean waiting for the whole job.
+  defp say(agent_id, said) do
+    case machine().send_message(agent_id, Ecto.UUID.generate(), said) do
+      {:ok, _} -> :ok
+      other -> {:error, {:say, other}}
     end
   end
 
   # Wait for the conduct, not for the job. Decided as soon as the calls the
   # criterion asks about have happened, bounded so a run that never decides
   # reports rather than hangs.
+  #
+  # A closed turn also ends the wait, because the criteria are about the first
+  # turn and an agent that has finished one is not about to add a call to it.
+  # Without that, a run the agent decides in twenty seconds still costs the
+  # whole deadline — 3542 sat for 180 seconds after the agent had stopped, and
+  # a failing measurement is the one you take most often while fixing it.
   defp await_judgement(collector, criterion) do
     deadline_ms = Map.get(criterion, :deadline_ms, 180_000)
 
@@ -488,11 +587,15 @@ defmodule CodeMySpec.Support.EvalRunner do
 
     Stream.repeatedly(fn ->
       Process.sleep(500)
-      calls = Elixir.Agent.get(collector, & &1.calls)
-      {calls, criterion.judge.(calls), System.monotonic_time(:millisecond) - started}
+      state = Elixir.Agent.get(collector, & &1)
+
+      {state.calls, criterion.judge.(state), state.turn_ended?,
+       System.monotonic_time(:millisecond) - started}
     end)
-    |> Enum.find(fn {_calls, decided?, elapsed} -> decided? or elapsed > deadline_ms end)
-    |> then(fn {calls, _, _} -> {:ok, calls} end)
+    |> Enum.find(fn {_calls, decided?, ended?, elapsed} ->
+      decided? or ended? or elapsed > deadline_ms
+    end)
+    |> then(fn {calls, _, _, _} -> {:ok, calls} end)
   end
 
   # Let in-flight tool calls land before anything is torn down.
@@ -580,6 +683,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp machine, do: Module.concat([CmsHarnessTest, Machine])
+  defp launch_request, do: Module.concat([CodeMySpec, Agents, LaunchRequest])
 
   # One story's worth of claimable coding work.
   #
@@ -647,7 +751,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # One claim and a close is right; a second claim before the close is the
   # failure — an agent that abandons work half-done leaves a task nobody can
   # evaluate and a requirement nobody is on.
-  defp closed_before_taking_more?(calls) do
+  defp closed_before_taking_more?(%{calls: calls}) do
     closed = Enum.find_index(calls, &(&1 == "evaluate_task"))
 
     starts =
@@ -664,7 +768,40 @@ defmodule CodeMySpec.Support.EvalRunner do
     end
   end
 
-  defp called_in_order(calls, first, second) do
+  # Tapping out, and neither of the two ways of inventing work.
+  #
+  # `tap_out` exists for exactly this and asks a person rather than deciding, so
+  # calling it is the right answer and stopping silently is not: a silent stop
+  # is indistinguishable from a crash from every surface there is.
+  #
+  # The two negatives are separately load-bearing. Taking another role's task is
+  # how an idle coding agent ends up doing QA badly, and writing files nobody
+  # asked for is 3545 arriving by a different road.
+  defp asked_to_leave?(%{calls: calls} = record) do
+    "tap_out" in calls and
+      "start_task" not in calls and
+      not reached?(record, "write_project_file")
+  end
+
+  # Whether the agent reached a tool, including through `run_script` — code mode
+  # means the name shows up in a script rather than as a call of its own.
+  #
+  # `tool_docs` is excluded on purpose. Its argument is a list of names the
+  # agent is asking *about*, so counting it would score an agent that read the
+  # documentation and then correctly decided not to act as though it had acted.
+  # Reading about a tool is not reaching for one.
+  defp reached?(%{calls: calls, trace: trace}, name) do
+    name in calls or
+      Enum.any?(trace, fn event ->
+        detail = Map.get(event, :detail, "")
+
+        is_binary(detail) and
+          not String.starts_with?(detail, "tool_docs") and
+          String.contains?(detail, name)
+      end)
+  end
+
+  defp called_in_order(%{calls: calls}, first, second) do
     with i when not is_nil(i) <- Enum.find_index(calls, &(&1 == first)),
          j when not is_nil(j) <- Enum.find_index(calls, &(&1 == second)) do
       i < j

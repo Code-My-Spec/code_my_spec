@@ -76,6 +76,12 @@ defmodule CodeMySpec.Agents.OperatingRules do
      not evaluate yourself, and do not go looking for more work in the same
      turn.
 
+  **When there is nothing for your role, `tap_out`.** An empty
+  `get_next_requirement` is an answer, not a problem to solve: do not take
+  another role's work and do not invent your own. `tap_out` tells a person and
+  asks what they want next. Stopping silently does not, and from every surface
+  there is it looks the same as a crash.
+
   Work you did without claiming is work nobody can see, evaluate or close.
 
   ## How this system works
