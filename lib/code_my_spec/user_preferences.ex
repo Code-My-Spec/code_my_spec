@@ -5,10 +5,18 @@ defmodule CodeMySpec.UserPreferences do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Authorization,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users
+    ],
     exports: :all
 
   import Ecto.Query, warn: false
+  alias CodeMySpec.Authorization
+  alias CodeMySpec.Projects
   alias CodeMySpec.Repo
 
   alias CodeMySpec.UserPreferences.UserPreference
@@ -180,6 +188,13 @@ defmodule CodeMySpec.UserPreferences do
   @doc """
   Selects an active account for the user.
 
+  Refused for an account the user has no membership on — this is the one
+  place `active_account_id` is written, so it is the last line of defense
+  against a caller handing it an id that came from somewhere other than the
+  user's own account list (a stale token, a copy-pasted id). Without this
+  check, `Scope.for_user/1` preloads whatever `active_account_id` says with
+  no membership filter of its own, and the rest of the app trusts the scope.
+
   ## Examples
 
       iex> select_active_account(scope, 123)
@@ -188,21 +203,33 @@ defmodule CodeMySpec.UserPreferences do
       iex> select_active_account(scope, invalid_id)
       {:error, %Ecto.Changeset{}}
 
+      iex> select_active_account(scope, an_account_the_user_does_not_belong_to)
+      {:error, :not_a_member}
+
   """
   def select_active_account(%Scope{} = scope, account_id) do
-    attrs = %{active_account_id: account_id, active_project_id: nil}
+    if Authorization.authorize(:read_account, scope, account_id) do
+      attrs = %{active_account_id: account_id, active_project_id: nil}
 
-    case get_user_preference(scope) do
-      {:ok, _user_preference} ->
-        update_user_preferences(scope, attrs)
+      case get_user_preference(scope) do
+        {:ok, _user_preference} ->
+          update_user_preferences(scope, attrs)
 
-      {:error, :not_found} ->
-        create_user_preferences(scope, attrs)
+        {:error, :not_found} ->
+          create_user_preferences(scope, attrs)
+      end
+    else
+      {:error, :not_a_member}
     end
   end
 
   @doc """
   Selects an active project for the user.
+
+  Refused unless the project belongs to an account the user has membership
+  on — same reasoning as `select_active_account/2`. A project has no members
+  of its own, only its account does, so this is checked through the
+  project's `account_id` rather than the project directly.
 
   ## Examples
 
@@ -212,14 +239,22 @@ defmodule CodeMySpec.UserPreferences do
       iex> select_active_project(scope, invalid_id)
       {:error, %Ecto.Changeset{}}
 
+      iex> select_active_project(scope, a_project_on_an_account_the_user_does_not_belong_to)
+      {:error, :not_a_member}
+
   """
   def select_active_project(%Scope{} = scope, project_id) do
-    case get_user_preference(scope) do
-      {:ok, _user_preference} ->
-        update_user_preferences(scope, %{active_project_id: project_id})
+    with %{account_id: account_id} <- Projects.get_project_by_id(project_id),
+         true <- Authorization.authorize(:read_account, scope, account_id) do
+      case get_user_preference(scope) do
+        {:ok, _user_preference} ->
+          update_user_preferences(scope, %{active_project_id: project_id})
 
-      {:error, :not_found} ->
-        create_user_preferences(scope, %{active_project_id: project_id})
+        {:error, :not_found} ->
+          create_user_preferences(scope, %{active_project_id: project_id})
+      end
+    else
+      _ -> {:error, :not_a_member}
     end
   end
 
