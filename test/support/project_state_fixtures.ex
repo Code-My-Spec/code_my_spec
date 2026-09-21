@@ -70,7 +70,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     Setup.ClaudeMd
   ]
 
-
   @doc false
   # Put what was just written in front of the graph.
   #

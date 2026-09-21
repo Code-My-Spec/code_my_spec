@@ -392,16 +392,17 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   defp settle_frontier(context) do
     at_copy = %{context.scope | active_working_copy_id: context.copy_id}
 
-    Enum.reduce_while(1..10, nil, fn _, previous ->
-      :ok = Fixtures.settle_graph(context.scope)
-      :ok = Fixtures.settle_graph(at_copy)
+    _ =
+      Enum.reduce_while(1..10, nil, fn _, previous ->
+        :ok = Fixtures.settle_graph(context.scope)
+        :ok = Fixtures.settle_graph(at_copy)
 
-      now =
-        for role <- [:coding, :main, :product, :qa],
-            do: {role, Fixtures.actionable_names(at_copy, role)}
+        now =
+          for role <- [:coding, :main, :product, :qa],
+              do: {role, Fixtures.actionable_names(at_copy, role)}
 
-      if now == previous, do: {:halt, now}, else: {:cont, now}
-    end)
+        if now == previous, do: {:halt, now}, else: {:cont, now}
+      end)
 
     :ok
   end
@@ -432,7 +433,6 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   rescue
     error -> "  could not ask: #{inspect(error)}"
   end
-
 
   @doc """
   Wait until the agent has nothing in flight and nothing queued.
