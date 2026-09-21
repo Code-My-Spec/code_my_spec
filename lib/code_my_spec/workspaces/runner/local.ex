@@ -87,7 +87,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     File.write!(log_file, "")
 
     harness_port = free_port()
-    script = build_script(dir, app_dir, app_name, port, harness_port)
+    script = build_script(container_name, dir, app_dir, app_name, port, harness_port)
     script_path = Path.join(dir, "run.sh")
     File.write!(script_path, script)
     File.chmod!(script_path, 0o755)
@@ -120,7 +120,23 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   # such internal/external split, so the line is informational scaffolding
   # for the same marker match, not a claim about where the app is actually
   # bound — `PORT` is what actually places it.
-  defp build_script(dir, app_dir, app_name, port, harness_port) do
+  #
+  # `CMS_NODE_NAME=#{container_name}` on the harness line is load-bearing, not
+  # decoration. `rel/env.sh.eex` names every `cms start` node `codemyspec` by
+  # default — one cms per machine is the desktop-install assumption — and
+  # `env.sh.eex`'s own comment already names this exact failure: "a fixed
+  # sname makes the second one die at boot with 'the name codemyspec@<host>
+  # seems to be in use', including when a sprite runs next to a developer's
+  # own cms." This host runs its own `cms harness` continuously for this very
+  # checkout, so every local-tier workspace's harness used to collide with it
+  # on the very first boot — silently: the app came up and answered fine, the
+  # harness died on `epmd` registration, and the only trace was this
+  # workspace's own `run.log`, which nothing serves or reads. From the
+  # visitor's side that is "dumped into the cockpit, no preview, and every
+  # message refused with 'nothing here is holding that working copy.'" One
+  # unique name per workspace, reusing the same `container_name` that already
+  # keys everything else about it, is what `CMS_NODE_NAME` exists for.
+  defp build_script(container_name, dir, app_dir, app_name, port, harness_port) do
     """
     #!/bin/bash
     set -uo pipefail
@@ -174,7 +190,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     fi
 
     log "Starting the cms harness server on :#{harness_port}"
-    CMS_HARNESS_PORT=#{harness_port} cms start &
+    CMS_NODE_NAME=#{container_name} CMS_HARNESS_PORT=#{harness_port} cms start &
 
     log "Starting #{app_name} on :4000"
     exec env PORT=#{port} mix phx.server
