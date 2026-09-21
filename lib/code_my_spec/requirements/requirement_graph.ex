@@ -328,8 +328,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Logger.info("[Requirements] full recompute — no_stored_rows")
       publish_timed(scope, ctx, config, started)
     else
-      stale = stale_set(stored_nodes, ctx, config)
-      reduced = reduce_to(ctx, stale)
+      {covered, written} = stale_set(stored_nodes, ctx, config)
+
+      # `covered` here, because instantiation has to see whole families or
+      # `component_families/1` classifies a narrowed child as top-level and
+      # invents nodes for it. `written` decides whose rows are rewritten, a few
+      # lines down.
+      reduced = reduce_to(ctx, covered)
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
       {story_nodes, _} = compute_story_nodes(scope, reduced, config)
@@ -349,17 +354,26 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       {project_ms, project_nodes} =
         timed(fn -> project_nodes(scope, ctx, config, stored_nodes) end)
 
-      fresh = project_nodes ++ story_nodes ++ component_nodes
+      # Only what actually moved, plus the project's own. A sibling pulled into
+      # `covered` so its family could be instantiated correctly has had nothing
+      # happen to it — `upsert_all/3` stamps `checked_at` on every row it is
+      # handed, so handing it one is how a requirement nothing touched comes to
+      # claim it was reconsidered. Criterion 3619.
+      fresh =
+        (project_nodes ++ story_nodes ++ component_nodes)
+        |> Enum.filter(&(&1.entity_type == "project" or entity_key(&1) in written))
 
       # Departed as well as stale: a row for an entity the context no longer has
       # is not refreshed by this pass and must not be carried into the served
       # graph on the strength of having been true once.
       gone = departed(stored_nodes, ctx)
 
+      # `written`, matching `fresh`: a row this pass did not rewrite is kept and
+      # served as it stands, which is the claim the fingerprint makes about it.
       kept =
         Enum.reject(
           stored_nodes,
-          &(entity_key(&1) in stale or entity_key(&1) in gone or &1.entity_type == "project")
+          &(entity_key(&1) in written or entity_key(&1) in gone or &1.entity_type == "project")
         )
 
       nodes = kept ++ fresh
@@ -373,11 +387,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # is the running copy moving, and a partial count of each is genuine file
       # change. Guessing between those three cost most of a day.
       {stale_stories, stale_comps} =
-        Enum.split_with(stale, fn {type, _id} -> type == "story" end)
+        Enum.split_with(written, fn {type, _id} -> type == "story" end)
 
       Logger.info(
         "[Requirements] recomputed #{length(fresh)} of #{length(nodes)} requirements — " <>
-          "#{MapSet.size(stale)} entity(ies) stale " <>
+          "#{MapSet.size(written)} entity(ies) stale " <>
+          "(#{MapSet.size(covered)} covered) " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
           "in #{elapsed_ms(started)}ms " <>
@@ -402,7 +417,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       scope
       |> GraphCache.publish(fingerprint, {nodes, edges}, topology)
-      |> persist_projection(scope, reduced, fresh, edges,
+      |> persist_projection(scope, reduce_to(ctx, written), fresh, edges,
         verify: {ctx, nodes},
         edge_nodes: edge_nodes
       )
@@ -675,7 +690,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       end)
       |> MapSet.new(fn {key, _} -> key end)
 
-    stale = expand_component_families(mismatched, ctx)
+    # Two sets from here on, because they answer different questions and were
+    # the same value.
+    #
+    # `covered` is what must be *in the context* for instantiation to be right.
+    # `component_families/1` decides top-level from nested by asking whether a
+    # component's parent is in the set it was given, so a child narrowed to
+    # itself is classified top-level, runs its own template, and invents an
+    # `implementation_file` node the whole-project pass never produces. 549 of
+    # this project's components are nested.
+    #
+    # `mismatched` is whose *answers* moved, and it is a strictly smaller claim.
+    # A sibling's file did not change, so its verdict did not, and rewriting its
+    # row stamps `checked_at` on a requirement nothing touched. Criterion 3619,
+    # measured on dev: one child edited under `CodeMySpec`, which has 101
+    # children, and 105 components recomputed for it on a sync that reported
+    # `0 changed`.
+    covered = expand_component_families(mismatched, ctx)
 
     # An entity the context has and the rows do not is stale by definition:
     # nothing has ever computed it.
@@ -701,11 +732,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> MapSet.reject(&Map.has_key?(recorded, &1))
       |> MapSet.difference(barren_components(ctx, config))
 
-    moved = stale
-    stale = MapSet.union(stale, appeared)
+    expanded = covered
+    covered = MapSet.union(covered, appeared)
+    written = MapSet.union(mismatched, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    verdict(stale, entities, {mismatched, moved}, appeared, ctx)
+    verdict(covered, written, entities, {mismatched, expanded}, appeared, ctx)
   end
 
   # The entities this pass has to recompute, whether that is some of them or all
@@ -726,12 +758,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # costing more than every verdict in the project on a narrower checkout.
   defp stale_set(stored_nodes, ctx, config) do
     case stale_entities(stored_nodes, ctx, config) do
-      {:partial, stale} ->
-        stale
+      {:partial, covered, written} ->
+        {covered, written}
 
-      {:all, why, stale} ->
+      {:all, why, covered, written} ->
         Logger.info("[Requirements] every entity is stale — #{why}")
-        stale
+        {covered, written}
     end
   end
 
@@ -751,12 +783,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # the road it always takes with the whole project in its stale set and lets
   # `edges_for/7` decide whether the shape moved. That decision cannot be made
   # without knowing which entities are stale, so the set travels.
-  defp verdict(stale, entities, moved, appeared, ctx) do
-    all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
+  defp verdict(covered, written, entities, moved, appeared, ctx) do
+    all? = MapSet.size(covered) >= MapSet.size(entities) and MapSet.size(entities) > 0
 
     if all?,
-      do: {:all, why_all(stale, entities, moved, appeared, ctx), stale},
-      else: {:partial, stale}
+      do: {:all, why_all(covered, entities, moved, appeared, ctx), covered, written},
+      else: {:partial, covered, written}
   end
 
   # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
@@ -1084,32 +1116,37 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # `projection is empty for a payload`. So the rows are the graph, and the
   # payload was a second copy of them that could disagree.
   #
-  # What is kept from it is the one thing rows cannot say about themselves:
-  # `node_count`, recorded by the publish that wrote them. Rows that are empty
-  # where the publish counted nodes are rows that were never written, and that
-  # is a miss — recompute — rather than an empty graph served as current. An
-  # empty graph tells an agent it has no work, which is the wrong answer to give
-  # for a write that failed.
+  # `node_count` outlived it and no longer guards anything, which is worth
+  # saying because the guard is what most of this comment used to describe.
   #
-  # Short counts are the same failure, and were served as current until QA found
-  # them. `Projection.load/2` rebuilds each row against the preloaded context and
-  # drops whatever it cannot — `rehydrate/2` answers nil when `entity_for/2`
-  # cannot place the row's entity or `definition_for/2` cannot find its
-  # definition — so a hit could return a strict subset of what the publish
-  # counted, with nothing amiss in either the write or the read.
+  # It was a distrust mechanism: the publish recorded how many nodes it wrote,
+  # a read compared that against what it had loaded, and a short count meant
+  # refuse and recompute. It was earned — `Projection.load/3` rebuilds each row
+  # against the preloaded context and drops whatever `rehydrate/2` cannot place,
+  # so a hit could return a strict subset with nothing amiss in either the write
+  # or the read. Measured on story 1062: 2009 nodes computed, 1844 served,
+  # stable across reads, back to 2009 on the next recompute, all under one
+  # `computed_at` (7a6b92e3) — two graphs wearing one timestamp, which criterion
+  # 3246 forbids and 3358 states directly.
   #
-  # Measured on story 1062: 2009 nodes computed, 1844 served from cache, stable
-  # across reads, back to 2009 on the next recompute, all under one `computed_at`
-  # (7a6b92e3). Two graphs wearing one timestamp, which is precisely what
-  # criterion 3246 says must not happen and what criterion 3358 now states
-  # directly.
+  # Reads stopped recomputing, and the comparison went with them. `published_at/2`
+  # is the only thing that still reads the cache row and it takes the timestamp
+  # and discards the count (`{:ok, _nodes, at}`), so nothing anywhere counts the
+  # rows in order to doubt them. Criterion 3422 — "stored requirements are
+  # trusted rather than counted" — is therefore a description of this code
+  # rather than an argument with it, which is how issue `34b3ce00` resolved:
+  # not by choosing a side, but because the vantage alignment that caused the
+  # short reads removed the reason for the guard.
   #
-  # Refusing the short read rather than repairing the projection, deliberately.
-  # The count is the publish's own claim about itself and is therefore the one
-  # number a read cannot argue with; whatever makes rehydration fail is worth
-  # finding, but until it is found a recompute is a correct answer and a subset
-  # is not. The cost is a recompute on a project that reproduces it, which is
-  # loud in the log and better than quiet wrong numbers.
+  # The measurement that settled it, taken 2026-09-21 across every rotation of
+  # `web.log` and `server.log`: **212 publishes, zero** `the projection does not
+  # round-trip`. The drop the guard existed to catch does not happen any more.
+  #
+  # The count is still written. `GraphCache`'s own doc says why — a reader
+  # finding no rows can tell "nothing to do" from "the write did not land" —
+  # and no reader does that today. Left in place rather than migrated out,
+  # because a column that costs a integer per publish is cheaper than being
+  # wrong about who might want it.
 
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
@@ -1494,8 +1531,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       config = CodeMySpec.Configurations.get_or_create(scope)
 
       case stale_entities(stored, ctx, config) do
-        {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
-        {:all, why, _stale} -> {:all, why}
+        {:partial, covered, _written} -> {:partial, Enum.sort(MapSet.to_list(covered))}
+        {:all, why, _covered, _written} -> {:all, why}
       end
     end
   end
@@ -1548,10 +1585,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp do_log_stale_read(scope, ctx, stored) do
     case stale_entities(stored, ctx, CodeMySpec.Configurations.get_or_create(scope)) do
-      {:partial, stale} ->
-        if MapSet.size(stale) > 0, do: warn_stale(scope, stale, ctx)
+      {:partial, covered, _written} ->
+        if MapSet.size(covered) > 0, do: warn_stale(scope, covered, ctx)
 
-      {:all, why, _stale} ->
+      {:all, why, _covered, _written} ->
         Logger.warning(
           "[Requirements] STALE READ — every entity reads stale (#{why}). " <>
             "Served anyway; reads do not recompute. " <>
