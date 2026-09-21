@@ -712,25 +712,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     cache_analysis(state, ctx.analysis_fresh)
   end
 
-  # The edge set for this vantage's nodes: the one drawn for the previous
-  # vantage when the shape and the node keys are the same, drawn afresh
-  # otherwise and remembered for the next.
-  defp edges_for_seed(state, nodes, enriched, topology, config) do
-    key = memo_key(topology, nodes)
-
-    case state.edge_memo do
-      {^key, edges} ->
-        {state, edges, "reused"}
-
-      _other ->
-        edges = RequirementGraph.edges_over(state.scope, nodes, enriched, config)
-        {%{state | edge_memo: {key, edges}}, edges, "drawn"}
-    end
-  end
-
-  defp memo_key(topology, nodes),
-    do: {topology, nodes |> Enum.map(&Topology.node_key/1) |> Enum.sort() |> :erlang.phash2()}
-
   # The narrow path: one entity at a time, each loading only what it needs, and
   # no project-wide read at all.
   #
@@ -753,6 +734,25 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state = reproject_topology(state, config, node_set_moved?)
     cache_analysis(state, analysis_fresh)
   end
+
+  # The edge set for this vantage's nodes: the one drawn for the previous
+  # vantage when the shape and the node keys are the same, drawn afresh
+  # otherwise and remembered for the next.
+  defp edges_for_seed(state, nodes, enriched, topology, config) do
+    key = memo_key(topology, nodes)
+
+    case state.edge_memo do
+      {^key, edges} ->
+        {state, edges, "reused"}
+
+      _other ->
+        edges = RequirementGraph.edges_over(state.scope, nodes, enriched, config)
+        {%{state | edge_memo: {key, edges}}, edges, "drawn"}
+    end
+  end
+
+  defp memo_key(topology, nodes),
+    do: {topology, nodes |> Enum.map(&Topology.node_key/1) |> Enum.sort() |> :erlang.phash2()}
 
   # Answers whether any write added or reaped a row, beside what it covered.
   @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) ::
