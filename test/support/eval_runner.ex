@@ -78,7 +78,29 @@ defmodule CodeMySpec.Support.EvalRunner do
         behaviour: "An agent starts work by asking what work there is",
         role: "coding",
         threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_coding_work/2,
         judge: &called_in_order(&1, "get_next_requirement", "start_task")
+      },
+      %{
+        id: "criterion_3540",
+        behaviour: "An agent that finishes work closes the task",
+        # Product and a link, not coding and a spec suite.
+        #
+        # This criterion is about *closing*, and any claimable work will do — so
+        # the premise should be work an agent can plausibly finish. The first
+        # run handed it `bdd_specs_exist` and watched it work honestly for the
+        # whole 180-second deadline: tool_docs, five reads, two scripts, bash,
+        # more reads. It was writing the specs. It never got to `evaluate_task`
+        # because it had not finished, which says nothing about whether it
+        # closes what it takes.
+        #
+        # `component_linked` is one call's worth of work on an unlinked story.
+        role: "product",
+        threshold: 0.9,
+        deadline_ms: 300_000,
+        seed: &seed_unlinked_story/2,
+        judge: &closed_before_taking_more?/1
       }
     ]
   end
@@ -123,11 +145,38 @@ defmodule CodeMySpec.Support.EvalRunner do
     {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: root)
     Requirements.recompute(scope)
 
+    # Then wait for the echo, which is not optional.
+    #
+    # `FileSync.sync/2` publishes one file at a time, `GraphWatcher` debounces
+    # the burst into a recompute, and that recompute spawns
+    # `Work.consider_project/2` under `CodeMySpec.TaskSupervisor` for every
+    # vantage it moved. Those tasks are still running when the calls above
+    # return.
+    #
+    # Run 1 of every measurement was being taken inside that storm. On 3540 it
+    # asked `get_next_requirement` twice, got a pool error both times, and
+    # reported it — correctly — as infrastructure rather than improvising
+    # around it; the run scored False at the 300-second deadline while runs 2
+    # and 3 of the same batch passed in 73 seconds on the same pool. Neither
+    # the agent nor the pool was at fault. The runner was measuring while its
+    # own setup was still landing, and only the first run ever paid for it.
+    # `context.scope` rather than `scope`: the fixture may have moved the
+    # vantage, and the world hands this one to the agent.
+    settle(context.scope)
+
     %{root: root, scope: context.scope, context: context}
   end
 
+  # Every vantage's pending graph work, drained.
+  #
+  # `CodeMySpecSpex.Fixtures.settle_graph/1` is the approved bridge and already
+  # does exactly this — `GraphWatcher.settle/1`, then drain the task supervisor
+  # — so the runner borrows it rather than growing a second one to drift from.
+  defp settle(scope), do: :ok = fixtures().settle_graph(scope)
+
   defp users, do: Module.concat([CodeMySpec, UsersFixtures])
   defp project_state, do: Module.concat([CodeMySpecSpex, ProjectStateFixtures])
+  defp fixtures, do: Module.concat([CodeMySpecSpex, Fixtures])
 
   defp teardown_world(%{root: root}), do: File.rm_rf(root)
 
@@ -138,18 +187,29 @@ defmodule CodeMySpec.Support.EvalRunner do
     # consumed premise is not a premise. This is the whole reason the runner
     # owns its own world: a spex sets up once per scenario and cannot reseed
     # between measurements.
-    seed_work(world, run)
+    criterion.seed.(world, run)
+
+    # The seed writes and recomputes too, so it has an echo of its own — same
+    # reason as `setup_world/1`, and a run measured during it measures the
+    # storm rather than the agent.
+    settle(world.scope)
 
     started = DateTime.utc_now()
     actionable = actionable_by_role(world.scope)
 
     outcome =
       case drive_agent(criterion, world) do
-        {:ok, calls, usage} ->
-          %{held?: criterion.judge.(calls), calls: calls, usage: usage, errored: nil}
+        {:ok, calls, usage, trace} ->
+          %{
+            held?: criterion.judge.(calls),
+            calls: calls,
+            usage: usage,
+            trace: trace,
+            errored: nil
+          }
 
         {:error, reason} ->
-          %{held?: nil, calls: [], usage: nil, errored: inspect(reason)}
+          %{held?: nil, calls: [], usage: nil, trace: [], errored: inspect(reason)}
       end
 
     outcome =
@@ -180,28 +240,29 @@ defmodule CodeMySpec.Support.EvalRunner do
     prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
     Application.put_env(:code_my_spec, :harness_mcp_scope, world.scope)
 
-    {:ok, collector} = Elixir.Agent.start_link(fn -> %{calls: [], turn_ended?: false, usage: nil} end)
+    {:ok, collector} =
+      Elixir.Agent.start_link(fn ->
+        %{calls: [], turn_ended?: false, usage: nil, trace: [], in_flight: 0}
+      end)
 
     try do
       with {:ok, agent_id} <- start_agent(criterion, world, collector),
            :ok <- request_turn(agent_id, world),
            {:ok, calls} <- await_judgement(collector, criterion) do
-        # The behaviour is decided, but the agent is still working — it claimed
-        # the requirement and went off to do it. Usage is only readable once the
-        # turn ends, so wait a little for `:turn_ended` and record nothing
-        # rather than wait for the job.
-        # Usage rides on `:turn_ended` now, so it arrives rather than being
-        # asked for. Asking was the problem: the loop answers busy mid-turn and
-        # the agent is busy for minutes once it has claimed something.
+        # Usage rides on `:turn_ended`, so it arrives rather than being asked
+        # for. Asking was the problem: the loop answers busy mid-turn, and an
+        # agent that claimed a requirement is busy for minutes doing it.
         #
-        # It is still absent by default, and that is a statement about *when*
-        # rather than about the instrumentation: the behaviour is decided in
-        # seconds and the turn runs on for minutes, because an agent that
-        # claimed a requirement goes and does it. `CMS_EVAL_USAGE=1` waits for
-        # the turn to close and pays the wall clock for the number.
+        # Absent by default, and that is a statement about *when* rather than
+        # about the instrumentation — the behaviour is decided in seconds and
+        # the turn runs on. `CMS_EVAL_USAGE=1` waits for the turn to close and
+        # pays the wall clock for the number.
+        await_quiet(collector)
         usage = maybe_await_usage(collector)
+        trace = Elixir.Agent.get(collector, & &1.trace)
         machine().stop_agent(agent_id)
-        {:ok, calls, usage}
+        retire(agent_id, world)
+        {:ok, calls, usage, trace}
       end
     after
       :ok
@@ -211,6 +272,45 @@ defmodule CodeMySpec.Support.EvalRunner do
         scope -> Application.put_env(:code_my_spec, :harness_mcp_scope, scope)
       end
     end
+  end
+
+  # A story with no component, which leaves `component_linked` open for product.
+  #
+  # The smallest claimable thing the graph offers: one `set_story_component`
+  # call and it is done. Small on purpose — a criterion about closing work needs
+  # work that can be closed inside a measurement.
+  defp seed_unlinked_story(%{scope: scope}, run) do
+    story_helpers().create_story(scope,
+      title: "Eval link #{run}",
+      description: "A story whose component nobody has chosen",
+      acceptance_criteria: ["It is linked to the component that implements it"]
+    )
+
+    Requirements.recompute(scope)
+    :ok
+  end
+
+  # Take the agent's row away when its run is over.
+  #
+  # Stopping the process is not enough: the row survives with its claim on it,
+  # and `TaskOwner.check_requirement_claim/2` refuses a later claim on the same
+  # requirement by anyone else sharing the copy — `task_owned_by_another_agent`.
+  #
+  # Measured at n=10 on 3540. Runs 4 through 8 were identical: claim refused,
+  # the agent correctly reported that the only surfaced requirement was "already
+  # claimed by another agent... so I am stopping here rather than retrying the
+  # same claim", and stopped. The other agent was the previous run's, stopped
+  # minutes earlier and still holding.
+  #
+  # Runs are only independent if nothing an agent did survives into the next
+  # one, and a claim is the longest-lived thing it leaves behind.
+  defp retire(agent_id, world) do
+    case CodeMySpec.Agents.AgentsRepository.fetch_agent(world.scope, agent_id) do
+      {:ok, agent} -> CodeMySpec.Repo.delete(agent)
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
   end
 
   # ------------------------------------------------------- driving one agent
@@ -267,8 +367,26 @@ defmodule CodeMySpec.Support.EvalRunner do
   # this is the order the agent actually called things in rather than an order
   # reconstructed from prose. A model will narrate a call it never made; only
   # one of those shows up here.
-  defp record_event(collector, %{event: :tool_start, payload: %{name: name}}) do
-    Elixir.Agent.update(collector, fn c -> %{c | calls: c.calls ++ [name]} end)
+  defp record_event(collector, %{event: :tool_start, payload: %{name: name}} = event) do
+    Elixir.Agent.update(collector, fn c ->
+      %{
+        c
+        | calls: c.calls ++ [name],
+          trace: c.trace ++ [summarise(event)],
+          in_flight: c.in_flight + 1
+      }
+    end)
+
+    :ok
+  end
+
+  # The other half of the count, so the runner can tell a call that has been
+  # made from one that has finished. See `await_quiet/2`.
+  defp record_event(collector, %{event: :tool_end} = event) do
+    Elixir.Agent.update(collector, fn c ->
+      %{c | trace: c.trace ++ [summarise(event)], in_flight: max(c.in_flight - 1, 0)}
+    end)
+
     :ok
   end
 
@@ -280,13 +398,68 @@ defmodule CodeMySpec.Support.EvalRunner do
   # asking here is the one place it answers.
   defp record_event(collector, %{event: :turn_ended} = event) do
     Elixir.Agent.update(collector, fn c ->
-      c |> Map.put(:turn_ended?, true) |> Map.put(:usage, Map.get(event, :usage))
+      c
+      |> Map.put(:turn_ended?, true)
+      |> Map.put(:usage, Map.get(event, :usage))
+      |> Map.put(:trace, c.trace ++ [summarise(event)])
     end)
 
     :ok
   end
 
-  defp record_event(_collector, _event), do: :ok
+  # Everything else, kept as a trace.
+  #
+  # The artifact lost its transcript when usage went in, and the very next run
+  # could not be diagnosed: the agent asked twice and never claimed, and there
+  # was nothing to read. `running_evals.md` says to read the transcript every
+  # iteration, which is only possible if the artifact holds one.
+  defp record_event(collector, event) do
+    Elixir.Agent.update(collector, fn c ->
+      %{c | trace: c.trace ++ [summarise(event)]}
+    end)
+
+    :ok
+  end
+
+  # Small enough to read, complete enough to diagnose.
+  #
+  # What the agent *said* matters as much as what it called: the first traced
+  # run of 3540 showed `get_next_requirement` twice, a message, and the turn
+  # ending — and the message was the only thing that could say why it had
+  # looked at its work and walked away. It came through blank, because this
+  # only knew how to read `payload.name`.
+  #
+  # So: the name for a call, the answer for a result, the words for a message,
+  # and the whole event when it is none of those. Sliced, because a tool result
+  # can be the entire requirements graph and the point is to be readable.
+  defp summarise(event) when is_map(event) do
+    %{event: Map.get(event, :event, :unknown), detail: detail_of(event)}
+  end
+
+  defp summarise(other), do: %{event: :unknown, detail: inspect(other, limit: 6)}
+
+  defp detail_of(%{payload: %{name: name, input: input}}) when input != %{},
+    do: "#{name} #{slice(inspect(input, limit: 8))}"
+
+  defp detail_of(%{payload: %{name: name}}), do: name
+  defp detail_of(%{payload: %{result: result}}), do: slice(to_string_safe(result))
+  defp detail_of(%{payload: %{output: output}}), do: slice(to_string_safe(output))
+  defp detail_of(%{payload: %{text: text}}), do: slice(to_string_safe(text))
+  defp detail_of(%{payload: %{content: content}}), do: slice(to_string_safe(content))
+  defp detail_of(%{payload: payload}), do: slice(inspect(payload, limit: 10))
+  defp detail_of(%{message: message}), do: slice(to_string_safe(message))
+
+  defp detail_of(event) do
+    event
+    |> Map.drop([:event, :v, :seq, :ts_ms, :correlation_id])
+    |> inspect(limit: 10)
+    |> slice()
+  end
+
+  defp to_string_safe(value) when is_binary(value), do: value
+  defp to_string_safe(value), do: inspect(value, limit: 10)
+
+  defp slice(text), do: String.slice(text, 0, 700)
 
   # Admission, the production trigger: continuous is standing intent and
   # `Work.request_turn_if_runnable/3` gives the turn when the graph has work for
@@ -308,7 +481,9 @@ defmodule CodeMySpec.Support.EvalRunner do
   # Wait for the conduct, not for the job. Decided as soon as the calls the
   # criterion asks about have happened, bounded so a run that never decides
   # reports rather than hangs.
-  defp await_judgement(collector, criterion, deadline_ms \\ 180_000) do
+  defp await_judgement(collector, criterion) do
+    deadline_ms = Map.get(criterion, :deadline_ms, 180_000)
+
     started = System.monotonic_time(:millisecond)
 
     Stream.repeatedly(fn ->
@@ -318,6 +493,35 @@ defmodule CodeMySpec.Support.EvalRunner do
     end)
     |> Enum.find(fn {_calls, decided?, elapsed} -> decided? or elapsed > deadline_ms end)
     |> then(fn {calls, _, _} -> {:ok, calls} end)
+  end
+
+  # Let in-flight tool calls land before anything is torn down.
+  #
+  # `await_judgement/2` decides on `:tool_start`, which is right — the criterion
+  # is about what the agent called — but it means the call it judged is still
+  # executing when it returns. Stopping the agent and deleting its row then
+  # races that call.
+  #
+  # Measured on 3540: the agent linked the story, called `evaluate_task`, and
+  # the judge was satisfied by the `tool_start`. `retire/2` deleted the agent
+  # row while the tool was running, so `TaskOwner.complete_task/4` could not
+  # find its owner and the tool crashed with `{:error, :owner_not_found}` —
+  # *after* evaluating the work as valid. The run scored True and the task it
+  # was closing never closed. A criterion about closing work cannot be measured
+  # by a runner that prevents the close.
+  #
+  # Bounded, because a tool that never returns is a finding rather than
+  # something to wait out.
+  defp await_quiet(collector, timeout_ms \\ 30_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+
+    Stream.repeatedly(fn ->
+      Process.sleep(250)
+      {Elixir.Agent.get(collector, & &1.in_flight), System.monotonic_time(:millisecond)}
+    end)
+    |> Enum.find(fn {in_flight, now} -> in_flight == 0 or now > deadline end)
+
+    :ok
   end
 
   # What it called, in order. Off the messages rather than out of prose: a model
@@ -381,7 +585,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   #
   # Sealed through Three Amigos and released, which leaves `bdd_specs_exist`
   # actionable for coding. One agent claiming it does not take it from the next.
-  defp seed_work(%{scope: scope, context: context}, run) do
+  defp seed_coding_work(%{scope: scope, context: context}, run) do
     # Linked and released directly rather than through `StoryHelpers`.
     #
     # `set_component/3` drives the MCP tool and discards its reply, so a link
@@ -437,6 +641,28 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   # ------------------------------------------------------------------ judging
+
+  # Closed what it took, before taking anything else.
+  #
+  # One claim and a close is right; a second claim before the close is the
+  # failure — an agent that abandons work half-done leaves a task nobody can
+  # evaluate and a requirement nobody is on.
+  defp closed_before_taking_more?(calls) do
+    closed = Enum.find_index(calls, &(&1 == "evaluate_task"))
+
+    starts =
+      calls
+      |> Enum.with_index()
+      |> Enum.filter(fn {name, _i} -> name == "start_task" end)
+      |> Enum.map(fn {_name, i} -> i end)
+
+    case {closed, starts} do
+      {nil, _} -> false
+      {_, []} -> false
+      {_, [_only]} -> true
+      {closed, [_first, second | _]} -> closed < second
+    end
+  end
 
   defp called_in_order(calls, first, second) do
     with i when not is_nil(i) <- Enum.find_index(calls, &(&1 == first)),
