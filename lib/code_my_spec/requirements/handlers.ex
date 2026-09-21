@@ -130,7 +130,12 @@ defmodule CodeMySpec.Requirements.Handlers do
     # marks stay for the narrow recompute of the component itself.
     "component_created" => [:architecture],
     "component_changed" => [:architecture],
-    "component_deleted" => [:architecture]
+    "component_deleted" => [:architecture],
+    # A dependency moves edges and no verdict: the cross-context edge between
+    # the two components and every kickoff drawn through them. Handled so its
+    # marks do not send the source's family through a recompute nothing reads,
+    # and `@shape` so the projector redraws the edges for it.
+    "dependency_changed" => []
   }
 
   # Handled kinds whose handler answers only part of what the event moved.
@@ -142,6 +147,18 @@ defmodule CodeMySpec.Requirements.Handlers do
   @doc "The handled kinds whose fallback marks still apply."
   @spec partial_kinds() :: [String.t()]
   def partial_kinds, do: @partial
+
+  # Handled kinds that can move the shape the edges are drawn from — a
+  # dependency declared, a story relinked to another component — without
+  # moving a row a handler creates. Their verdicts are settled here; the
+  # projector asks the shape whether the edges have to be redrawn. Component
+  # kinds are not listed because `@partial` already sends them down the path
+  # that asks.
+  @shape ~w(dependency_changed story_changed)
+
+  @doc "The handled kinds after which the projector checks the shape."
+  @spec shape_kinds() :: [String.t()]
+  def shape_kinds, do: @shape
 
   @doc """
   The event kinds this module can apply.

@@ -57,7 +57,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
-  alias CodeMySpec.Requirements.Edge
+  alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
@@ -571,13 +571,22 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
     {applied, unhandled} = apply_handlers(state, marks)
 
+    shape_moved? =
+      Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
+
+    # Trusted only when every mark was a verdict. A mark still pending when
+    # this process meets a vantage is one the previous process never finished
+    # with, so its edges were drawn over the shape before it; anything that
+    # can move the shape goes to `reproject_topology/3`, which redraws when it
+    # has no baseline to compare against.
     state =
       cond do
         # A vantage with no rows has nothing to be partial against, whatever
         # the marks say — the pass's `no_stored_rows`, asked per checkout.
         not established?(state, vantage) -> run(:everything, state, config)
-        unhandled == [] -> trust(state, config)
-        true -> state |> trust(config) |> run_plan(unhandled, config)
+        unhandled == [] and not shape_moved? -> trust(state, config)
+        unhandled == [] -> reproject_topology(state, config, false)
+        true -> run_plan(state, unhandled, config)
       end
 
     state = %{state | established_vantages: MapSet.put(state.established_vantages, vantage)}
@@ -644,11 +653,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
-  # A vantage this process meets with rows already there. Its edges were
-  # written with those rows, so the shape they were drawn over is taken as the
-  # baseline rather than the edges redrawn to find that out: four queries
-  # instead of an edge set over 2,000 nodes, once per vantage per process.
-  # Nothing to do once this process has been here.
+  # A vantage this process meets with rows already there and only verdicts
+  # pending. Its edges were written with those rows, so the shape they were
+  # drawn over is taken as the baseline rather than the edges redrawn to find
+  # that out: four queries, once per vantage per process. Nothing to do once
+  # this process has been here.
   defp trust(state, config) do
     if MapSet.member?(state.established_vantages, vantage(state)) or
          Map.has_key?(state.last_topology, vantage(state)) do
@@ -700,27 +709,22 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       :timer.tc(fn -> RequirementGraph.compute_nodes(state.scope, ctx, config) end)
 
     topology = Freshness.topology(ctx, config)
-
-    # Drawn per vantage, and it has to be: every checkout sees its own stories,
-    # so no two vantages of the big project share a node set (2,109 nodes at
-    # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21), and an edge
-    # set keyed on the node keys was never reused. What this log line is for:
-    # nodes, edges and write, per vantage, so the seed's cost has a shape.
-    {edges_us, edges} =
-      :timer.tc(fn -> RequirementGraph.edges_over(state.scope, nodes, enriched, config) end)
-
     covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
-    {write_us, _} =
-      :timer.tc(fn ->
-        {:ok, _moved} = Shadow.write(state.scope, covered, nodes)
-        {:ok, _count} = Shadow.write_edges(state.scope, edges)
-      end)
+    {write_us, {:ok, _moved}} = :timer.tc(fn -> Shadow.write(state.scope, covered, nodes) end)
+
+    # Drawn over the rows just written, the way every later drain draws them.
+    # Per vantage, and it has to be: every checkout sees its own stories, so
+    # no two vantages of the big project share a node set (2,109 nodes at
+    # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21). What this log
+    # line is for: nodes, edges and writes, per vantage, so the seed's cost
+    # has a shape.
+    drawn = redraw(state, enriched, config)
 
     Logger.info(
       "[ShadowProjector] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
-        "#{div(nodes_us, 1000)}ms, #{length(edges)} edges in #{div(edges_us, 1000)}ms, " <>
-        "written in #{div(write_us, 1000)}ms"
+        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms; " <>
+        "#{drawn.edges} edges in #{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
     )
 
     state = remember_topology(state, topology)
@@ -767,7 +771,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   # Whether the edges have to be redrawn, asked of the shape and of the node
-  # set — and if so, rebuilt over the rows already written rather than by
+  # set — and if so, redrawn over the rows already written rather than by
   # recomputing every node.
   #
   # Two questions, because they move at different times. The shape —
@@ -784,8 +788,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # This called `Preloader.load/2` — the whole project — on every narrow drain
   # to compare one fingerprint, and on a move called `compute_topology/3`,
   # which computes every node to get the edges. `topology_context/1` is four
-  # queries and holds exactly what `Freshness.topology/2` and
-  # `Projection.rehydrate/2` read; `edges_over/4` draws over the stored rows.
+  # queries and holds exactly what `Freshness.topology/2` and `Edges.over/4`
+  # read.
+  #
+  # No baseline is a reason to redraw, not to trust: `last` is `nil` when this
+  # process has never settled the vantage, and it is here rather than in
+  # `trust/2` because a mark was pending — see `settle_vantage/6`.
   defp reproject_topology(state, config, node_set_moved?) do
     shape = Preloader.topology_context(state.scope)
     last = Map.get(state.last_topology, vantage(state))
@@ -794,14 +802,49 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     if topology == last and not node_set_moved? do
       state
     else
-      {nodes, _edges} = Projection.load(state.scope, shape, source: event_tables())
-      edges = RequirementGraph.edges_over(state.scope, nodes, shape, config)
-      {:ok, _count} = Shadow.write_edges(state.scope, edges)
+      drawn = redraw(state, shape, config)
+
+      Logger.info(
+        "[ShadowProjector] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
+          "#{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
+      )
+
       remember_topology(state, topology)
     end
   end
 
-  defp event_tables, do: {Shadow.event_target(), {Shadow.event_edges(), Edge}}
+  # The edge set at this vantage, drawn over the rows it holds and written as
+  # a difference.
+  #
+  # `Edges.over/4` derives it one entity at a time against the component side,
+  # so a component appearing costs its own edges and the stories drawn through
+  # it — not a reduction of every edge in the project at every vantage, which
+  # is what `edges_over/4` cost: 355ms of a 430ms edge phase per vantage, ten
+  # vantages, for one event (2026-09-21).
+  #
+  # Announced as an edge rebuild for `last_drain`, so criterion 3618 can go on
+  # saying that a drain of verdicts drew nothing.
+  defp redraw(state, shape, config) do
+    ids = Shadow.node_ids(state.scope)
+
+    {draw_us, edges} =
+      :timer.tc(fn -> Edges.over(state.scope, shape, config, Shadow.present?(ids)) end)
+
+    {write_us, {:ok, moved}} = :timer.tc(fn -> Shadow.write_edges(state.scope, edges, ids) end)
+
+    :telemetry.execute(
+      DrainCost.edges_rebuilt(),
+      %{count: 1, nodes: map_size(ids)},
+      %{project_id: state.project_id}
+    )
+
+    %{
+      edges: length(edges),
+      moved: moved,
+      draw_ms: div(draw_us, 1000),
+      write_ms: div(write_us, 1000)
+    }
+  end
 
   # Which checkout this drain is currently settling. `Projection.vantage/1`
   # rather than the raw field, so the unscoped reader keys the same way it
