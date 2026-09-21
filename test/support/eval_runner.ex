@@ -30,6 +30,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   somebody other than whoever ran it.
   """
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
@@ -180,7 +181,8 @@ defmodule CodeMySpec.Support.EvalRunner do
     prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
     Application.put_env(:code_my_spec, :harness_mcp_scope, world.scope)
 
-    {:ok, collector} = Elixir.Agent.start_link(fn -> %{calls: [], turn_ended?: false, usage: nil} end)
+    {:ok, collector} =
+      Elixir.Agent.start_link(fn -> %{calls: [], turn_ended?: false, usage: nil} end)
 
     try do
       with {:ok, agent_id} <- start_agent(criterion, world, collector),
@@ -351,7 +353,7 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp text(response) do
     response
-    |> Anubis.Server.Response.to_protocol()
+    |> Response.to_protocol()
     |> Map.fetch!("content")
     |> hd()
     |> Map.fetch!("text")

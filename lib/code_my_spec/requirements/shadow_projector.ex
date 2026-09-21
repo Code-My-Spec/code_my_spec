@@ -107,6 +107,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   reports as a difference and the number says more about timing than about
   coverage.
   """
+  @doc """
+  Whether a projector is running for this project, and therefore whether
+  anything is going to consume the marks besides the pass.
+
+  `Invalidations.consume/1` is a delete, so the pass and a projector draining
+  the same queue is a destructive read: whichever wins takes the marks and the
+  other never sees them. The pass defers to a projector that exists — and only
+  to one that exists, because deferring to an absent projector is how
+  `e0729ea9` comes back: every writer inserting a mark and nothing deleting one.
+  """
+  @spec running?(Ecto.UUID.t() | nil) :: boolean()
+  def running?(project_id) when is_binary(project_id) do
+    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) != []
+  end
+
+  def running?(_no_project), do: false
+
   @spec settle(Ecto.UUID.t() | nil) :: :ok
   def settle(project_id) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
@@ -497,6 +514,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     analysis_fresh =
       Map.get(state.analysis_fresh, vantage(state)) ||
         Preloader.analysis_freshness(state.scope)
+
     narrow_each(entities, state.scope, config, analysis_fresh)
     state = reproject_topology(state, nil, config)
     cache_analysis(state, analysis_fresh)
