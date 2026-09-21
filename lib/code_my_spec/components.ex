@@ -52,28 +52,21 @@ defmodule CodeMySpec.Components do
     GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
   end
 
-  # Which checkouts a component event moves, and the two halves are not the
-  # same.
+  # Every checkout, whatever the kind. A component is a project fact: the
+  # `components` table has no `working_copy_id`, and every vantage projects
+  # rows for every component from the row's type, parent and dependencies.
   #
-  # A component *changing* moves what one checkout answers about it — its files
-  # are read per checkout, so `spec_file` and the rest are that worktree's
-  # answers and nobody else's.
-  #
-  # A component *appearing or going* changes the entity set, and the
-  # `components` table has no `working_copy_id`: every checkout projects
-  # requirements for every component. Narrowing creation to the checkout that
-  # made it leaves every other vantage without rows for it at all — handlers
-  # settle rows and never create them, so only the fallback creates them, and
-  # the fallback only runs where the mark points.
-  #
-  # Measured on dev, 2026-09-17: ten components created in five minutes, and
-  # every vantage but the creator sat at `missing 4-6` rows and did not
-  # converge. `extra 0` throughout, which is what says the shadow was behind on
-  # creation rather than wrong about what it held.
-  defp vantage_of(kind) when kind in ["component_created", "component_deleted"],
-    do: :project_wide
-
-  defp vantage_of(_changed), do: :this_checkout
+  # Creation and deletion were project-wide already — measured on dev,
+  # 2026-09-17: ten components created in five minutes and every vantage but
+  # the creator sat at `missing 4-6` rows. A *change* was narrowed to the
+  # checkout on the reasoning that its files are read per checkout, which is
+  # true of the files and not of the row: a retype moves the template and a
+  # new dependency moves the edges at every vantage. The event path narrows a
+  # drain to the checkouts its marks name, so a change marked for one checkout
+  # left the others — the UI's vantage first among them — with the component
+  # they knew before, and nothing ever told them otherwise. Per-checkout
+  # effects of the same scan arrive as `files_synced`, marked per checkout.
+  defp vantage_of(_kind), do: :project_wide
 
   # The component, and its parent.
   #

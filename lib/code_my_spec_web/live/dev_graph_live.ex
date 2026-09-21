@@ -506,7 +506,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
             >
               recomputed {d.recomputed || 0}
             </span>
-            <span class="opacity-40">{d.duration_ms}ms</span>
+            <span class="opacity-40">
+              {d.duration_ms}ms (db {d[:db_ms] || 0}, queued {d[:queued_ms] || 0})
+            </span>
           </div>
           <p class="text-xs opacity-60">
             Queries and rows are the cost; milliseconds measure the machine. The same

@@ -70,21 +70,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   # it was `nil` in `delete_edges_outside/3` and `chunk_every/2` raised.
   @bind_budget 60_000
 
-  # What an upsert overwrites on conflict. Named columns rather than
-  # `:replace_all`, which would overwrite `id` and `inserted_at` — and the id is
-  # the whole point of upserting here.
-  @replace {:replace,
-            [
-              :satisfied,
-              :details,
-              :description,
-              :checked_at,
-              :inputs_fingerprint,
-              :owner_component_type,
-              :node_scope,
-              :updated_at
-            ]}
-
   @shadow_table {"shadow_requirements", Node}
   @real_table {"requirements", Node}
   @shadow_edges "shadow_requirement_edges"
@@ -164,6 +149,19 @@ defmodule CodeMySpec.Requirements.Shadow do
   @spec pass_target() :: {String.t(), module()}
   def pass_target, do: if(inverted?(), do: @shadow_table, else: @real_table)
 
+  @doc """
+  Which drain wrote the rows a reader is served: the event drain when
+  inverted, the pass otherwise.
+
+  What the graph JSON's `last_drain` reports. `DrainCost.last/1` answers the
+  last drain of *any* kind, and with both writers on that is whichever ran
+  last — the pass settles the projector after it writes, so it is usually the
+  event drain even where the pass is the source, and the numbers a criterion
+  read would be about the writer nobody is served from.
+  """
+  @spec serving_kind() :: :pass | :event
+  def serving_kind, do: if(inverted?(), do: :event, else: :pass)
+
   @spec event_edges() :: String.t()
   def event_edges, do: if(inverted?(), do: @real_edges, else: @shadow_edges)
 
@@ -227,7 +225,8 @@ defmodule CodeMySpec.Requirements.Shadow do
   swap the event path inherits that writer, so the delete-then-insert version
   would not have fixed itself by flipping the flag.
   """
-  @spec write(Scope.t(), Enumerable.t(), [map()]) :: :ok
+  @spec write(Scope.t(), Enumerable.t(), [map()]) ::
+          {:ok, %{inserted: non_neg_integer(), reaped: non_neg_integer()}}
   def write(%Scope{active_project_id: project_id} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
@@ -235,7 +234,16 @@ defmodule CodeMySpec.Requirements.Shadow do
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
+    # Answers how the node set moved — rows that did not exist before and rows
+    # that departed — because edges are a function of the node set and the
+    # caller has to know whether to redraw them. A story whose rows arrive a
+    # drain after the shape first showed it is otherwise never wired in: the
+    # rebuild ran over a node set without it, the shape hash has not moved
+    # since, and nothing asks again. Read before the upsert, so a row it
+    # inserts is not already among the rows that were there.
     Repo.transaction(fn ->
+      before = existing_ids(target, covered, working_copy_id)
+
       kept =
         nodes
         |> Enum.group_by(& &1.entity_type)
@@ -244,17 +252,18 @@ defmodule CodeMySpec.Requirements.Shadow do
         end)
         |> MapSet.new()
 
-      reap(target, covered, kept, working_copy_id)
-    end)
+      departed = MapSet.difference(before, kept)
+      delete_ids(MapSet.to_list(departed), target)
 
-    :ok
+      %{inserted: MapSet.size(MapSet.difference(kept, before)), reaped: MapSet.size(departed)}
+    end)
   end
 
   # One upsert per entity type, because each has its own conflict target.
   # Answers the `{owner_id, name}` pairs it wrote, which is what the reap needs
   # to know to leave them alone.
-  # Returns the ids the write landed on, so `reap/4` can subtract them rather
-  # than reconstruct them.
+  # Returns the ids the write landed on, so the departed rows can be subtracted
+  # rather than reconstructed.
   defp upsert_group(target, entity_type, nodes, working_copy_id, now) do
     rows = Enum.map(nodes, &row(&1, entity_type, &1.entity_id, working_copy_id, now))
 
@@ -263,7 +272,7 @@ defmodule CodeMySpec.Requirements.Shadow do
     |> Enum.flat_map(fn chunk ->
       {_n, returned} =
         Repo.insert_all(target, chunk,
-          on_conflict: @replace,
+          on_conflict: on_conflict(target),
           conflict_target: conflict_target(entity_type),
           returning: [:id]
         )
@@ -289,27 +298,60 @@ defmodule CodeMySpec.Requirements.Shadow do
   # select the candidates for the covered owners, subtract in memory what the
   # write just returned, delete what is left. `kept` is a set of ids, which is
   # exact — a row this write produced is kept whatever it is named.
-  defp reap(target, covered, kept, working_copy_id) do
-    covered
-    |> Enum.group_by(fn {type, _id} -> type end, fn {_type, id} -> id end)
-    |> Enum.each(fn {entity_type, owner_ids} ->
-      reap_owners(target, entity_type, owner_ids, kept, working_copy_id)
-    end)
+  # What an upsert overwrites on conflict, and when `checked_at` moves.
+  #
+  # `checked_at` is what `computed_at` on every graph read is made of, and it
+  # has to mean one thing whichever path wrote the row. A sweep stamps a row
+  # only when its answer moved — both halves of `sweep/2` carry
+  # `IS DISTINCT FROM` — so a whole-vantage write stamps the same way, or the
+  # one un-narrowed writer left in the system restamps every row it touches
+  # and a read sees every verdict "reconsidered" by an analyzer run that
+  # changed nothing (criterion 3448). Every row is still updated, so
+  # `returning: [:id]` still names them all and the reap leaves them alone.
+  #
+  # Named columns rather than `:replace_all`, which would overwrite `id` and
+  # `inserted_at` — and the id is the whole point of upserting here.
+  defp on_conflict({_table, _schema} = target) do
+    from(n in target,
+      update: [
+        set: [
+          satisfied: fragment("EXCLUDED.satisfied"),
+          details: fragment("EXCLUDED.details"),
+          description: fragment("EXCLUDED.description"),
+          inputs_fingerprint: fragment("EXCLUDED.inputs_fingerprint"),
+          owner_component_type: fragment("EXCLUDED.owner_component_type"),
+          node_scope: fragment("EXCLUDED.node_scope"),
+          updated_at: fragment("EXCLUDED.updated_at"),
+          checked_at:
+            fragment(
+              "CASE WHEN ? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details THEN EXCLUDED.checked_at ELSE ? END",
+              n.satisfied,
+              n.details,
+              n.checked_at
+            )
+        ]
+      ]
+    )
   end
 
-  # Candidates for these owners, minus what the write returned, deleted.
-  defp reap_owners(target, entity_type, owner_ids, kept, working_copy_id) do
-    owner_ids
-    |> Enum.chunk_every(@bind_budget)
-    |> Enum.flat_map(fn ids ->
-      target
-      |> where(^owners_filter(entity_type, ids))
-      |> where(^copy_filter(working_copy_id))
-      |> select([n], n.id)
-      |> Repo.all()
+  # Every row the covered owners hold at this vantage. What a write may reap
+  # is exactly this set minus what it just wrote — and never a row of an
+  # owner it did not cover.
+  defp existing_ids(target, covered, working_copy_id) do
+    covered
+    |> Enum.group_by(fn {type, _id} -> type end, fn {_type, id} -> id end)
+    |> Enum.flat_map(fn {entity_type, owner_ids} ->
+      owner_ids
+      |> Enum.chunk_every(@bind_budget)
+      |> Enum.flat_map(fn ids ->
+        target
+        |> where(^owners_filter(entity_type, ids))
+        |> where(^copy_filter(working_copy_id))
+        |> select([n], n.id)
+        |> Repo.all()
+      end)
     end)
-    |> Enum.reject(&MapSet.member?(kept, &1))
-    |> delete_ids(target)
+    |> MapSet.new()
   end
 
   defp delete_ids([], _target), do: :ok
@@ -832,6 +874,25 @@ defmodule CodeMySpec.Requirements.Shadow do
         sample_suffix(report.sample ++ report.edge_sample)
     )
   end
+
+  @doc """
+  Whether this vantage has been projected at all.
+
+  Asked of the project's own rows, because every seed writes them and nothing
+  narrower does. A vantage with none has nothing to be partial against — the
+  pass's `no_stored_rows` — and it is the one question a settle has to ask
+  before it trusts the marks: a checkout somebody just read, with no mark
+  naming it, is otherwise never written. One indexed query.
+  """
+  @spec projected?(Scope.t()) :: boolean()
+  def projected?(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    event_target()
+    |> where([n], n.project_id == ^project_id)
+    |> where(^copy_filter(Projection.vantage(scope)))
+    |> Repo.exists?()
+  end
+
+  def projected?(%Scope{}), do: false
 
   @doc "Forget the shadow projection for this vantage, so it rebuilds from scratch."
   @spec clear(Scope.t()) :: :ok

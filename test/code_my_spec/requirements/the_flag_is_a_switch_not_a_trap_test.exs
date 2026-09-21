@@ -57,12 +57,19 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  # Restored to what the config said, never deleted: the test config sets both
+  # flags, and deleting the key would strip that for every test after this one.
+  # Each test here starts on the pass and flips inside itself, so it forces the
+  # starting side rather than assuming it.
   setup do
+    projection = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
+    source = Application.get_env(:code_my_spec, :graph_event_is_source, false)
     Application.put_env(:code_my_spec, :graph_shadow_projection, true)
+    Application.put_env(:code_my_spec, :graph_event_is_source, false)
 
     on_exit(fn ->
-      Application.delete_env(:code_my_spec, :graph_shadow_projection)
-      Application.delete_env(:code_my_spec, :graph_event_is_source)
+      Application.put_env(:code_my_spec, :graph_shadow_projection, projection)
+      Application.put_env(:code_my_spec, :graph_event_is_source, source)
     end)
 
     :ok
@@ -279,7 +286,12 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
         )
 
       assert verdict,
-             "the read served no `story_issues_resolved` for the story, so nothing below is about a verdict"
+             """
+             the read served no `story_issues_resolved` for the story, so nothing below is about a verdict
+
+             vantage: #{inspect(scope.active_working_copy_id)}  served: #{length(nodes)} node(s)
+             story rows served: #{inspect(nodes |> Enum.filter(&(&1.entity_type == "story")) |> Enum.map(&{&1.entity_id, &1.name}))}
+             """
 
       refute verdict.satisfied,
              """

@@ -60,16 +60,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  # The projection is a switch, and it is off in test. On for this file the way
-  # criterion 3516 turns it on, restored on exit so nothing else here inherits
-  # it.
-  setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
-    :ok
-  end
-
   @moduletag timeout: 60_000
 
   spex "A seed is one computation and one write" do
@@ -77,7 +67,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
       given_ :cross_context_dependency
 
       given_ "a pass has run, so there is something to seed from", context do
-        Fixtures.stop_graph_watchers()
         Fixtures.watch_graph(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
 
@@ -85,10 +74,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
       end
 
       when_ "the event path seeds the checkout", context do
-        # The pass settles the projector after it writes, and a projector that
-        # has not seeded seeds. This settle is the one that does it; the drain
-        # it reports is the seed and nothing else, because nothing else has
-        # been announced.
+        # A projector arriving trusts the rows it finds, so the ones the
+        # project's construction left are taken away first and the projector
+        # is restarted: it meets the checkout with nothing of its own and
+        # seeds. The drain it reports is the seed and nothing else, because
+        # nothing else has been announced.
+        Fixtures.stop_graph_watchers()
+        :ok = Fixtures.forget_projection(context.scope)
+        Fixtures.watch_graph(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :seed, event_drain(context))}

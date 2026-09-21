@@ -258,13 +258,19 @@ defmodule CodeMySpec.Files.ComponentSync do
   # component set: this path re-types components from their specs, and a
   # component becoming or ceasing to be `infrastructure` moves the orphan rule's
   # verdict.
+  #
+  # Project-wide, because what this scan changed is the component *rows* —
+  # type, parent, description — and those are read by every checkout's
+  # projection. Marked for this checkout, the event path settled only this
+  # checkout and the others kept the component they knew before; the files
+  # behind the same scan are per checkout and arrive as `files_synced`.
   defp announce_graph_change(scope, changed_component_ids),
     do:
       GraphInputs.announce(
         scope,
         "Files.ComponentSync",
         [:project | Enum.map(changed_component_ids, &{"component", &1})],
-        :this_checkout
+        :project_wide
       )
 
   defp compute_changed_ids(synced_components, existing_map) do
