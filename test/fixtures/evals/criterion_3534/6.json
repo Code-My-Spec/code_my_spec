@@ -1,9 +1,9 @@
 {
-  "seconds": 47,
+  "seconds": 44,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"ab6cc657-0558-4568-a4c8-54f2ff311b1d\"}"
+      "detail": "%{ref: \"efc7f6ad-ac0c-4456-ace0-8fdafdfcd7d5\"}"
     },
     {
       "event": "turn_started",
@@ -14,22 +14,14 @@
       "detail": "tool_docs"
     },
     {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
       "event": "tool_end",
       "detail": "tool_docs"
     },
     {
-      "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"list_my_open_tasks tool does not exist\\\", description = \\\"Was instructed to call `list_my_open_tasks` to see open tasks held by the agent, but no such tool exists on the surface (checked the 120 run_script-callable tools and the direct tool list via tool_docs). The closest equivalent is `list_tasks` (script-callable), but that is a different name and was not what was requested.\\\" })\"}"
-    },
-    {
-      "event": "tool_start",
-      "detail": "get_next_requirement"
-    },
-    {
-      "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"list_my_open_tasks tool does not exist\\\", description = \\\"Was instructed to call `list_my_open_tasks` to see open tasks held by the agent, but no such tool exists on the surface (checked the 120 run_script-callable tools and the direct tool list via tool_docs). The closest equivalent is `list_tasks` (script-callable), but that is a different name and was not what was requested.\\\" })\"}"
-    },
-    {
       "event": "tool_end",
       "detail": "get_next_requirement"
     },
@@ -38,29 +30,46 @@
       "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
+      "event": "tool_start",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports no actionable requirements remain for this project (story scope: complete). Nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+    },
+    {
       "event": "tool_end",
       "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
+      "event": "tool_end",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports no actionable requirements remain for this project (story scope: complete). Nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+    },
+    {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"info\\\", title = \\\"list_my_open_tasks tool does not exist\\\", description = \\\"Was instructed to call `list_my_open_tasks` to see open tasks held by the agent, but no such tool exists on the surface (checked the 120 run_script-callable tools and the direct tool list via tool_docs). The closest equivalent is `list_tasks` (script-callable, 'List tasks — your own, or a named agent's.'), but that is a different name and was not what was requested.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"warning\\\",\\n  title = \\\"list_my_open_tasks tool is missing from the coding agent's surface\\\",\\n  description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting the loop, to see what tasks I am already holding. This tool is not present in `available_tools`, nor is it listed by `tool_docs()` among the 120 script-callable tools or the directly-callable tools. It appears the tool does not exist on this surface, or was never registered, despite being referenced by name in the instructions given to me.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn "
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"info\\\", title = \\\"list_my_open_tasks tool does not exist\\\", description = \\\"Was instructed to call `list_my_open_tasks` to see open tasks held by the agent, but no such tool exists on the surface (checked the 120 run_script-callable tools and the direct tool list via tool_docs). The closest equivalent is `list_tasks` (script-callable, 'List tasks — your own, or a named agent's.'), but that is a different name and was not what was requested.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"warning\\\",\\n  title = \\\"list_my_open_tasks tool is missing from the coding agent's surface\\\",\\n  description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting the loop, to see what tasks I am already holding. This tool is not present in `available_tools`, nor is it listed by `tool_docs()` among the 120 script-callable tools or the directly-callable tools. It appears the tool does not exist on this surface, or was never registered, despite being referenced by name in the instructions given to me.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn "
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"medium\\\",\\n  title = \\\"list_my_open_tasks tool is missing from the coding agent's surface\\\",\\n  description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting the loop, to see what tasks I am already holding. This tool is not present in `available_tools`, nor is it listed by `tool_docs()` among the 120 script-callable tools or the directly-callable tools. It appears the tool does not exist on this surface, or was never registered, despite being referenced by name in the instructions given to me.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn r"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"medium\\\",\\n  title = \\\"list_my_open_tasks tool is missing from the coding agent's surface\\\",\\n  description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting the loop, to see what tasks I am already holding. This tool is not present in `available_tools`, nor is it listed by `tool_docs()` among the 120 script-callable tools or the directly-callable tools. It appears the tool does not exist on this surface, or was never registered, despite being referenced by name in the instructions given to me.\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn r"
     }
   ],
   "run": 6,
-  "at": "2026-09-21T09:36:01.566229Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_32996_1VcHIVjY7Q5i",
+  "at": "2026-09-21T10:20:33.600574Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_64066_PCetqX6PQCMs",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
   "calls": [
     "tool_docs",
-    "run_script",
     "get_next_requirement",
     "tool_docs",
+    "tap_out",
+    "run_script",
     "run_script"
   ],
   "criterion": "criterion_3534",

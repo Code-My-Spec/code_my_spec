@@ -1,0 +1,85 @@
+{
+  "seconds": 48,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"ad2e4958-0f8b-4ecd-9fbd-da158f7c8553\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"multiSelect\" => false, \"options\" => [%{\"description\" => \"Comma-separated values, tabular format\", \"label\" => \"CSV\"}, ...], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"multiSelect\" => false, \"options\" => [%{\"description\" => \"Comma-separated values, tabular format\", \"label\" => \"CSV\"}, ...], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale struct insert on QuestionRequest\\\",\\n  severity = \\\"error\\\",\\n  description = \\\"Calling ask_user_question (with task_id=null, one question about CSV vs JSON export format, no story context) failed. The tool returned an is_error result:\\\\n\\\\n\\\\\\\"The question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\\\\\\\\\"question_requests\\\\\\\\\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\\\\\\\\\"pending\\\\\\\\\\\\\\\", answers: %{}, holder: \\\\\\\\\\\\\\\"user\\\\\\\\\\\\\\\", answered_by: \\\\\\\\"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale struct insert on QuestionRequest\\\",\\n  severity = \\\"error\\\",\\n  description = \\\"Calling ask_user_question (with task_id=null, one question about CSV vs JSON export format, no story context) failed. The tool returned an is_error result:\\\\n\\\\n\\\\\\\"The question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\\\\\\\\\"question_requests\\\\\\\\\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\\\\\\\\\"pending\\\\\\\\\\\\\\\", answers: %{}, holder: \\\\\\\\\\\\\\\"user\\\\\\\\\\\\\\\", answered_by: \\\\\\\\"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return \\\"failed: \\\" .. err.message end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity or \\\"nil\\\"] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn out\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return \\\"failed: \\\" .. err.message end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity or \\\"nil\\\"] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn out\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"list_issues\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"list_issues\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale struct insert on QuestionRequest\\\",\\n  severity = \\\"high\\\",\\n  description = \\\"Calling ask_user_question (with task_id=null, one question about CSV vs JSON export format, no story context) failed. The tool returned an is_error result:\\\\n\\\\n\\\\\\\"The question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\\\\\\\\\"question_requests\\\\\\\\\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\\\\\\\\\"pending\\\\\\\\\\\\\\\", answers: %{}, holder: \\\\\\\\\\\\\\\"user\\\\\\\\\\\\\\\", answered_by: \\\\\\\\\\"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale struct insert on QuestionRequest\\\",\\n  severity = \\\"high\\\",\\n  description = \\\"Calling ask_user_question (with task_id=null, one question about CSV vs JSON export format, no story context) failed. The tool returned an is_error result:\\\\n\\\\n\\\\\\\"The question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\\\\\\\\\"question_requests\\\\\\\\\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\\\\\\\\\"pending\\\\\\\\\\\\\\\", answers: %{}, holder: \\\\\\\\\\\\\\\"user\\\\\\\\\\\\\\\", answered_by: \\\\\\\\\\"
+    }
+  ],
+  "run": 7,
+  "at": "2026-09-21T10:43:03.203833Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_45380_NrOIQc1YB6bR",
+  "usage": null,
+  "behaviour": "Repeated tool failures are reported without bypass",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "tool_docs",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3544",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

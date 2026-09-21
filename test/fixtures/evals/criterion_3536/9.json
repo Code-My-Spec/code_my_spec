@@ -1,0 +1,94 @@
+{
+  "seconds": 46,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"dc7e80ca-4b7b-4f7f-8930-cf09bcc8a24d\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Association.NotLoaded<associat"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Association.NotLoaded<associat"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associat"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associat"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, i in ipairs(issues) do severities[i.severity] = true end\\nreturn severities\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, i in ipairs(issues) do severities[i.severity] = true end\\nreturn severities\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"list_issues\", \"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"list_issues\", \"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associati"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, title 'Export format') returns an error instead of delivering the question:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associati"
+    }
+  ],
+  "run": 9,
+  "at": "2026-09-21T10:38:01.110885Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_44900_YSISKQoXuRfK",
+  "usage": null,
+  "behaviour": "A genuine tool failure is recorded without a separate message tool",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "tool_docs",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3536",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

@@ -1,9 +1,9 @@
 {
-  "seconds": 26,
+  "seconds": 59,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"82386faa-3864-44df-a2ca-cc5a2160a6d9\"}"
+      "detail": "%{ref: \"3db139be-4ba5-4b64-8213-44c1c8c97703\"}"
     },
     {
       "event": "turn_started",
@@ -11,7 +11,15 @@
     },
     {
       "event": "tool_start",
-      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+      "detail": "tool_docs"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks — your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
     },
     {
       "event": "tool_start",
@@ -19,7 +27,7 @@
     },
     {
       "event": "tool_end",
-      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks — your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
     },
     {
       "event": "tool_end",
@@ -27,40 +35,68 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work to see what tasks I am already holding, but this tool is not present in available_tools for the coding agent role. The full available_tools list only includes: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. There is no list_my_open_tasks tool to call, and no equivalent was foun"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is no work for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks - your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work to see what tasks I am already holding, but this tool is not present in available_tools for the coding agent role. The full available_tools list only includes: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. There is no list_my_open_tasks tool to call, and no equivalent was foun"
-    },
-    {
-      "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is no work for the coding role to claim right now.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks - your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work to see what tasks I am already holding, but this tool is not present in available_tools for the coding agent role. The full available_tools list only includes: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. There is no list_my_open_tasks tool to call. Expected: either the tool "
+      "detail": "run_script %{\"script\" => \"local issues = list_issues({})\\nlocal seen = {}\\nif issues then\\n  for _, i in ipairs(issues) do\\n    if i.severity then seen[i.severity] = true end\\n  end\\nend\\nreturn { issues_err = issues == nil, seen = seen, sample = issues and issues[1] or nil }\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work to see what tasks I am already holding, but this tool is not present in available_tools for the coding agent role. The full available_tools list only includes: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. There is no list_my_open_tasks tool to call. Expected: either the tool "
+      "detail": "run_script %{\"script\" => \"local issues = list_issues({})\\nlocal seen = {}\\nif issues then\\n  for _, i in ipairs(issues) do\\n    if i.severity then seen[i.severity] = true end\\n  end\\nend\\nreturn { issues_err = issues == nil, seen = seen, sample = issues and issues[1] or nil }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return list_issues({})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return list_issues({})\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return semantic_search({ query = \\\"issue severity levels create_issue\\\", limit = 5 })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return semantic_search({ query = \\\"issue severity levels create_issue\\\", limit = 5 })\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks - your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"Missing tool: list_my_open_tasks\\\", description = \\\"Instructed to call `list_my_open_tasks` to see open tasks before starting the loop, but it is not present in available_tools (direct) nor in the tool_docs script-tool listing (120 tools). Closest existing tool is `list_tasks` (list tasks - your own, or a named agent's), but that is a different name and I was told to report rather than substitute.\\\" })\"}"
     }
   ],
   "run": 9,
-  "at": "2026-09-21T09:37:52.834291Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_48482_hGxEseJBNNVf",
+  "at": "2026-09-21T10:22:20.299914Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_26055_mQnquYDyBvho",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
   "calls": [
     "tool_docs",
-    "get_next_requirement",
     "run_script",
-    "tap_out",
+    "get_next_requirement",
+    "tool_docs",
+    "run_script",
+    "run_script",
+    "run_script",
+    "run_script",
     "run_script"
   ],
   "criterion": "criterion_3534",

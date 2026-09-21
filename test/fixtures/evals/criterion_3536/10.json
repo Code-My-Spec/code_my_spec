@@ -1,0 +1,76 @@
+{
+  "seconds": 29,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"0827720f-a5b4-4b58-8f78-de2cab61f946\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Export format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Export format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associati"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Associati"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"error\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: ni"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"error\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: ni"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"high\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"high\\\",\\n  title = \\\"ask_user_question fails with stale struct insert error\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON, with two labeled options and no task_id) fails to deliver the question. Error returned:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil"
+    }
+  ],
+  "run": 10,
+  "at": "2026-09-21T10:38:48.456389Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_74978_2IBhnD2VuLql",
+  "usage": null,
+  "behaviour": "A genuine tool failure is recorded without a separate message tool",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3536",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

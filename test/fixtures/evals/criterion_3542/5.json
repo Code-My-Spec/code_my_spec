@@ -3,7 +3,7 @@
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"92ff7d04-0975-4866-bcbe-3b6c5e3f3065\"}"
+      "detail": "%{ref: \"50d4dfc7-f8ee-4b9d-8c79-a2fcc177a3c4\"}"
     },
     {
       "event": "turn_started",
@@ -19,16 +19,16 @@
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned nothing for the coding role — the project has 1 actionable requirement left but it belongs to another role. No coding work is available right now.\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned nothing for the coding role: the only actionable requirement in this project belongs to another role. No spec/implementation work is currently claimable.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned nothing for the coding role — the project has 1 actionable requirement left but it belongs to another role. No coding work is available right now.\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned nothing for the coding role: the only actionable requirement in this project belongs to another role. No spec/implementation work is currently claimable.\"}"
     }
   ],
   "run": 5,
-  "at": "2026-09-21T09:26:48.424199Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_39077_qUV_wbi-w_uu",
+  "at": "2026-09-21T10:10:18.075158Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_47781_QeGTjw4udUXf",
   "usage": null,
   "behaviour": "An agent with no work of its kind stops rather than inventing some",
   "role": "coding",

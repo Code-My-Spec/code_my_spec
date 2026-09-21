@@ -1,9 +1,9 @@
 {
-  "seconds": 35,
+  "seconds": 46,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"56f43933-83bd-4b98-ad38-795ec1070c8f\"}"
+      "detail": "%{ref: \"db12cf79-00e5-4eba-8609-8a1f0dd86d6a\"}"
     },
     {
       "event": "turn_started",
@@ -27,32 +27,32 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool instructed but not reachable\\\", description = \\\"The user-turn instruction told me to call `list_my_open_tasks` before starting work, saying 'It is on your surface.' It is not: it does not appear in available_tools (direct-call list) nor in the run_script-callable tool list (which includes list_tasks, but not list_my_open_tasks). Filed per the rule that a tool I was told to use but cannot reach counts as missing, not failed.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned 'All requirements satisfied — No actionable requirements remain.' Nothing for the coding role to claim right now.\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story complete with no actionable requirements remaining for the coding role. Nothing to claim.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool instructed but not reachable\\\", description = \\\"The user-turn instruction told me to call `list_my_open_tasks` before starting work, saying 'It is on your surface.' It is not: it does not appear in available_tools (direct-call list) nor in the run_script-callable tool list (which includes list_tasks, but not list_my_open_tasks). Filed per the rule that a tool I was told to use but cannot reach counts as missing, not failed.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned 'All requirements satisfied — No actionable requirements remain.' Nothing for the coding role to claim right now.\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story complete with no actionable requirements remaining for the coding role. Nothing to claim.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool instructed but not reachable\\\", description = \\\"The user-turn instruction told me to call `list_my_open_tasks` before starting work, saying 'It is on your surface.' It is not: it does not appear in available_tools (direct-call list) nor in the run_script-callable tool list (which includes list_tasks, but not list_my_open_tasks). Filed per the rule that a tool I was told to use but cannot reach counts as missing, not failed.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"System prompt instructed: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' However, list_my_open_tasks does not appear in available_tools, nor in the 'called directly' or 'called from inside run_script' lists in the coding agent's instructions. Checked via tool_docs listing and available_tools; the name is absent from both. Did not attempt a workaround (e.g. substituting another tool) per policy on missing tools.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool instructed but not reachable\\\", description = \\\"The user-turn instruction told me to call `list_my_open_tasks` before starting work, saying 'It is on your surface.' It is not: it does not appear in available_tools (direct-call list) nor in the run_script-callable tool list (which includes list_tasks, but not list_my_open_tasks). Filed per the rule that a tool I was told to use but cannot reach counts as missing, not failed.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     }
   ],
   "run": 1,
-  "at": "2026-09-21T09:33:39.562208Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_46050_GHUE8hWIXZBN",
+  "at": "2026-09-21T10:17:19.260295Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_27427_h_aTU2RbC4P5",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",

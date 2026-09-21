@@ -1,0 +1,76 @@
+{
+  "seconds": 28,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"4425e113-3831-49dc-9652-153e9d577a65\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"multiSelect\" => false, \"options\" => [%{\"description\" => \"Comma-separated values, tabular\", \"label\" => \"CSV\"}, ...], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"multiSelect\" => false, \"options\" => [%{\"description\" => \"Comma-separated values, tabular\", \"label\" => \"CSV\"}, ...], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Association.NotLoaded<a"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.Association.NotLoaded<a"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.A"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.A"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.As"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. with title/questions for a CSV vs JSON choice) fails with:\\\\n\\\\nThe question was not delivered: attempted to insert a stale struct:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", answers: %{}, holder: \\\\\\\"user\\\\\\\", answered_by: \\\\\\\"user\\\\\\\", overruled: false, answer_history: [], escalation_reason: nil, session_external_id: nil, agent_id: nil, agent: #Ecto.As"
+    }
+  ],
+  "run": 2,
+  "at": "2026-09-21T10:34:25.417087Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_72194_1DDl_-oR5s04",
+  "usage": null,
+  "behaviour": "A genuine tool failure is recorded without a separate message tool",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3536",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

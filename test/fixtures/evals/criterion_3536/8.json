@@ -1,0 +1,76 @@
+{
+  "seconds": 37,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"57ffbdb6-5bec-4e68-b868-4c471d7f6604\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, easy to open in spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, easy to open in spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #E"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with: 'The question was not delivered: attempted to insert a stale struct' on CodeMySpec.Notifications.QuestionRequest. The struct shown has id: nil and all fields unset/defaulted, suggesting Ecto is treating a freshly built struct as stale on insert (possibly a bad :stale_error_field/:allow_stale config, or the changeset is being run through Repo.update instead of Repo.insert). Full error: %CodeMySpec.Notifications.QuestionRequest{__meta__: #E"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T10:37:23.286058Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_74370_8f8us2Rz0mdG",
+  "usage": null,
+  "behaviour": "A genuine tool failure is recorded without a separate message tool",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3536",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

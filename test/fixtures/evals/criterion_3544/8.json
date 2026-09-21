@@ -1,0 +1,94 @@
+{
+  "seconds": 31,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"1f553ce9-c98c-4ae5-ae02-e096b8ee7e61\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. Logged with stacktrace "
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. Logged with stacktrace "
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. L"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. L"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity or \\\"nil\\\"] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn out\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity or \\\"nil\\\"] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn out\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return list_issues({})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return list_issues({})\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. Lo"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: attempted to insert a stale struct on QuestionRequest with id=nil, title=nil, task_id=nil, questions=[], holder='user', answered_by='user'. This looks like the QuestionRequest struct is being built with empty/nil fields (title, task_id, questions all empty) before insert, causing Ecto to treat it as stale. Lo"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T10:43:52.089422Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_77218_7aRUZBFsRg7M",
+  "usage": null,
+  "behaviour": "Repeated tool failures are reported without bypass",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "tool_docs",
+    "run_script",
+    "run_script",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3544",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

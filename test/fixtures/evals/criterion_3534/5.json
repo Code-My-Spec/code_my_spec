@@ -1,9 +1,9 @@
 {
-  "seconds": 22,
+  "seconds": 26,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"3517edad-cc3a-4971-9923-c5ebe0ee6e5f\"}"
+      "detail": "%{ref: \"47e08d0a-c5e3-4368-8503-1905bcbabdc4\"}"
     },
     {
       "event": "turn_started",
@@ -14,53 +14,35 @@
       "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
-      "event": "tool_start",
-      "detail": "get_next_requirement"
-    },
-    {
       "event": "tool_end",
       "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Missing tool: list_my_open_tasks\\\",\\n  description = \\\"I was instructed (via a system prompt at session start) to call `list_my_open_tasks` before starting work, to see what tasks I am already holding. This tool name does not appear anywhere in my available_tools list, nor in the 'Called directly' or 'Called from inside run_script' tool indexes for the coding role. I confirmed via tool_docs that no such tool is registered. There is no working equivalent I could find to check currently-held/open tasks for this agent without it. Expected: either the tool exists and should be exposed to the coding role, or the instruction to call it"
+    },
+    {
       "event": "tool_end",
-      "detail": "get_next_requirement"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Missing tool: list_my_open_tasks\\\",\\n  description = \\\"I was instructed (via a system prompt at session start) to call `list_my_open_tasks` before starting work, to see what tasks I am already holding. This tool name does not appear anywhere in my available_tools list, nor in the 'Called directly' or 'Called from inside run_script' tool indexes for the coding role. I confirmed via tool_docs that no such tool is registered. There is no working equivalent I could find to check currently-held/open tasks for this agent without it. Expected: either the tool exists and should be exposed to the coding role, or the instruction to call it"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The coding agent's system prompt instructed calling `list_my_open_tasks` before starting work, but no such tool appears in available_tools for this session (checked via tool_docs and the direct/run_script tool lists). Tool was never callable, so it could not be invoked to check for held tasks.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
-    },
-    {
-      "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"No actionable requirements remain (get_next_requirement returned 'All requirements satisfied'), and the requested list_my_open_tasks tool is not on my surface to check for held work.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Missing tool: list_my_open_tasks\\\",\\n  description = \\\"I was instructed (via a system prompt at session start) to call `list_my_open_tasks` before starting work, to see what tasks I am already holding. This tool name does not appear anywhere in my available_tools list, nor in the 'Called directly' or 'Called from inside run_script' tool indexes for the coding role. I confirmed via tool_docs that no such tool is registered. There is no working equivalent I could find to check currently-held/open tasks for this agent without it. Expected: either the tool exists and should be exposed to the coding role, or the instruction to call it"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The coding agent's system prompt instructed calling `list_my_open_tasks` before starting work, but no such tool appears in available_tools for this session (checked via tool_docs and the direct/run_script tool lists). Tool was never callable, so it could not be invoked to check for held tasks.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
-    },
-    {
-      "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"No actionable requirements remain (get_next_requirement returned 'All requirements satisfied'), and the requested list_my_open_tasks tool is not on my surface to check for held work.\", \"task_id\" => nil}"
-    },
-    {
-      "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The coding agent's system prompt instructed calling `list_my_open_tasks` before starting work, but no such tool appears in available_tools for this session (checked via tool_docs and the direct/run_script tool lists). Tool was never callable, so it could not be invoked to check for held tasks.\\\", severity = \\\"medium\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
-    },
-    {
-      "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The coding agent's system prompt instructed calling `list_my_open_tasks` before starting work, but no such tool appears in available_tools for this session (checked via tool_docs and the direct/run_script tool lists). Tool was never callable, so it could not be invoked to check for held tasks.\\\", severity = \\\"medium\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Missing tool: list_my_open_tasks\\\",\\n  description = \\\"I was instructed (via a system prompt at session start) to call `list_my_open_tasks` before starting work, to see what tasks I am already holding. This tool name does not appear anywhere in my available_tools list, nor in the 'Called directly' or 'Called from inside run_script' tool indexes for the coding role. I confirmed via tool_docs that no such tool is registered. There is no working equivalent I could find to check currently-held/open tasks for this agent without it. Expected: either the tool exists and should be exposed to the coding role, or the instruction to call it"
     }
   ],
   "run": 5,
-  "at": "2026-09-21T09:35:38.374836Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_32964_ZSHqngzlZHL5",
+  "at": "2026-09-21T10:20:06.911677Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_49061_LRaPPDKY-7kn",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
   "calls": [
     "tool_docs",
-    "get_next_requirement",
     "run_script",
-    "tap_out",
     "run_script"
   ],
   "criterion": "criterion_3534",

@@ -1,0 +1,85 @@
+{
+  "seconds": 34,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"d39ec510-b71f-4c44-9a7f-9f1a343fa287\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, "
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_requests\\\\\\\">, id: nil, "
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"error\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"error\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues = list_issues({})\\nreturn issues\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues = list_issues({})\\nreturn issues\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"high\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"high\\\",\\n  title = \\\"ask_user_question fails: stale QuestionRequest struct insert\\\",\\n  description = \\\"Calling ask_user_question (e.g. asking whether an export should use CSV or JSON) fails with an Ecto.StaleEntryError. The tool attempts to insert a stale %CodeMySpec.Notifications.QuestionRequest{} struct (id: nil, title: nil, task_id: nil, questions: [], status: \\\\\\\"pending\\\\\\\", ...) and Ecto reports: 'attempted to insert a stale struct'. Full error: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{__meta__: #Ecto.Schema.Metadata<:built, \\\\\\\"question_"
+    }
+  ],
+  "run": 4,
+  "at": "2026-09-21T10:41:04.152415Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_45124_948rmByZOR7F",
+  "usage": null,
+  "behaviour": "Repeated tool failures are reported without bypass",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3544",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

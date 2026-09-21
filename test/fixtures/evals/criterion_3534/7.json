@@ -1,9 +1,9 @@
 {
-  "seconds": 25,
+  "seconds": 27,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"4c47ab67-34a3-4156-a446-b6c12d38f9f0\"}"
+      "detail": "%{ref: \"7202789d-ba09-47b8-b384-58c29dc61244\"}"
     },
     {
       "event": "turn_started",
@@ -11,54 +11,54 @@
     },
     {
       "event": "tool_start",
-      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
-    },
-    {
-      "event": "tool_start",
-      "detail": "get_next_requirement"
-    },
-    {
-      "event": "tool_end",
-      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
-    },
-    {
-      "event": "tool_end",
       "detail": "get_next_requirement"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructed by the system prompt to call `list_my_open_tasks` before starting work, but no such tool is present in available_tools for the coding agent role. Confirmed by checking the full available_tools list. Expected: either the tool should be on this role's surface, or the instruction to call it should be removed.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"No actionable requirements remain (get_next_requirement returned 'Story scope: complete, No actionable requirements remain'). Also filed an issue that list_my_open_tasks, which the system prompt instructed me to call first, is not on my available_tools surface.\", \"task_id\" => nil}"
-    },
-    {
-      "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructed by the system prompt to call `list_my_open_tasks` before starting work, but no such tool is present in available_tools for the coding agent role. Confirmed by checking the full available_tools list. Expected: either the tool should be on this role's surface, or the instruction to call it should be removed.\\\", severity = \\\"warning\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
-    },
-    {
-      "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"No actionable requirements remain (get_next_requirement returned 'Story scope: complete, No actionable requirements remain'). Also filed an issue that list_my_open_tasks, which the system prompt instructed me to call first, is not on my available_tools surface.\", \"task_id\" => nil}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not "
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructed by the system prompt to call `list_my_open_tasks` before starting work, but no such tool is present in available_tools for the coding agent role. Confirmed by checking the full available_tools list. Expected: either the tool should be on this role's surface, or the instruction to call it should be removed.\\\", severity = \\\"medium\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining, so there is no coding work to claim right now.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructed by the system prompt to call `list_my_open_tasks` before starting work, but no such tool is present in available_tools for the coding agent role. Confirmed by checking the full available_tools list. Expected: either the tool should be on this role's surface, or the instruction to call it should be removed.\\\", severity = \\\"medium\\\", scope = \\\"framework\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining, so there is no coding work to claim right now.\", \"task_id\" => nil}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not "
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not c"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not c"
     }
   ],
   "run": 7,
-  "at": "2026-09-21T09:36:49.341212Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_47810_1O4QUGoLbC6z",
+  "at": "2026-09-21T10:21:18.351368Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_27587_E6xWuiRm8ybL",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
   "calls": [
-    "tool_docs",
     "get_next_requirement",
+    "tool_docs",
     "run_script",
     "tap_out",
     "run_script"

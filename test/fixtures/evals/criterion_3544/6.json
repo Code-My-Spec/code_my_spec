@@ -1,0 +1,76 @@
+{
+  "seconds": 26,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"4af37d47-d64d-4634-8ca0-19f6f407ae75\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"label\" => \"CSV\"}, %{\"label\" => \"JSON\"}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"label\" => \"CSV\"}, %{\"label\" => \"JSON\"}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fields nil/default). Thi"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fields nil/default). Thi"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fi"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fi"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fie"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert on QuestionRequest\\\", description = \\\"Calling ask_user_question (title='Export format', one question about CSV vs JSON, task_id=null) failed with:\\\\n\\\\n%CodeMySpec.Notifications.QuestionRequest{...} attempted to insert a stale struct: id=nil, title=nil, task_id=nil, questions=[], status='pending', answers=%{}, holder='user', answered_by='user', overruled=false, ...\\\\n\\\\nEcto raised a stale-entry error trying to insert a QuestionRequest struct that appears to have never been populated with the given title/questions before the insert was attempted (all fie"
+    }
+  ],
+  "run": 6,
+  "at": "2026-09-21T10:42:35.924632Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_29443_4GkDK_9bK9Ul",
+  "usage": null,
+  "behaviour": "Repeated tool failures are reported without bypass",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3544",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

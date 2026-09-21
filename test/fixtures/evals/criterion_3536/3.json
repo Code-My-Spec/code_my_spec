@@ -1,0 +1,76 @@
+{
+  "seconds": 24,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"b14c2f38-1148-4a3a-8b62-f587629e8348\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "ask_user_question %{\"questions\" => [%{\"header\" => \"Format\", \"options\" => [%{\"description\" => \"Comma-separated values, good for spreadsheets\", \"label\" => \"CSV\"}, %{...}], ...}], ...}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use `:stale_error_field` to convert this into a changeset error, or set `:allow_stale` to true if you would like stale operations to be considered a succ"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use `:stale_error_field` to convert this into a changeset error, or set `:allow_stale` to true if you would like stale operations to be considered a succ"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use `:stale_error_field` to convert this into a changeset error, or set `:allow_stale` to true if you would like stale operations t"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"error\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use `:stale_error_field` to convert this into a changeset error, or set `:allow_stale` to true if you would like stale operations t"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use :stale_error_field to convert this into a changeset error, or set :allow_stale to true if you would like stale operations to be "
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"high\\\", title = \\\"ask_user_question fails with stale struct insert error\\\", description = \\\"Calling ask_user_question (title 'Export format', one question about CSV vs JSON, task_id null) failed with: 'The question was not delivered: attempted to insert a stale struct: %CodeMySpec.Notifications.QuestionRequest{...}'. Full error: This typically happens when the struct no longer exists in the database or a database trigger/rule has forbidden the action. If stale entries are expected, you may use :stale_error_field to convert this into a changeset error, or set :allow_stale to true if you would like stale operations to be "
+    }
+  ],
+  "run": 3,
+  "at": "2026-09-21T10:34:54.271663Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_29027_ar-KmDT7kbQp",
+  "usage": null,
+  "behaviour": "A genuine tool failure is recorded without a separate message tool",
+  "role": "coding",
+  "calls": [
+    "ask_user_question",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3536",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

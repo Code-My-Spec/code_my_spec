@@ -1,9 +1,9 @@
 {
-  "seconds": 28,
+  "seconds": 32,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"447f4e55-cba5-4aae-90bc-659c94b460f0\"}"
+      "detail": "%{ref: \"c89f61ef-be55-4585-8024-0146acd0d343\"}"
     },
     {
       "event": "turn_started",
@@ -27,32 +27,24 @@
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"low\\\",\\n  title = \\\"list_my_open_tasks tool not available to coding agent\\\",\\n  description = \\\"The session's opening instruction directed me to call `list_my_open_tasks` before starting work, to see tasks already held. This tool is not present in the coding role's available_tools list (read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent). Per the missing-tool policy, f"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned no actionable requirements (story scope is complete). Nothing for the coding role to do right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining. Nothing for the coding role to claim right now.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining. Nothing for the coding role to claim right now.\"}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement returned no actionable requirements (story scope is complete). Nothing for the coding role to do right now.\", \"task_id\" => nil}"
-    },
-    {
-      "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
-    },
-    {
-      "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"low\\\", title = \\\"list_my_open_tasks tool missing\\\", description = \\\"Instructions directed me to call `list_my_open_tasks` before starting work, but it is not present in available_tools, and it is not listed under either the 'Called directly' or 'Called from inside run_script' groups in the system prompt. I could not call it, worked around it, and am filing this report instead.\\\" })\"}"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  scope = \\\"framework\\\",\\n  severity = \\\"low\\\",\\n  title = \\\"list_my_open_tasks tool not available to coding agent\\\",\\n  description = \\\"The session's opening instruction directed me to call `list_my_open_tasks` before starting work, to see tasks already held. This tool is not present in the coding role's available_tools list (read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent). Per the missing-tool policy, f"
     }
   ],
   "run": 10,
-  "at": "2026-09-21T09:38:19.534535Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-42898_48802_iJ-o2h4stdjP",
+  "at": "2026-09-21T10:23:20.214854Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_43364_uy4gXBytfG6V",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
   "role": "coding",
@@ -60,8 +52,7 @@
     "tool_docs",
     "get_next_requirement",
     "run_script",
-    "tap_out",
-    "run_script"
+    "tap_out"
   ],
   "criterion": "criterion_3534",
   "actionable": {
