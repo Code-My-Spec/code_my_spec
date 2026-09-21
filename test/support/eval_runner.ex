@@ -1036,14 +1036,30 @@ defmodule CodeMySpec.Support.EvalRunner do
   # documentation and then correctly decided not to act as though it had acted.
   # Reading about a tool is not reaching for one.
   defp reached?(%{calls: calls, trace: trace}, name) do
-    name in calls or
-      Enum.any?(trace, fn event ->
-        detail = Map.get(event, :detail, "")
+    name in calls or Enum.any?(trace, &call_shaped?(&1, name))
+  end
 
-        is_binary(detail) and
-          not String.starts_with?(detail, "tool_docs") and
-          String.contains?(detail, name)
-      end)
+  # A call, not a mention.
+  #
+  # This looked for the bare name anywhere in an event's detail, which counts an
+  # agent that *names* a tool while explaining why it is not going to use one.
+  # 3545 lost a run to exactly that: the agent filed the issue it was supposed
+  # to file and wrote "before a coding agent can create_component" into the
+  # description, so the criterion recorded it as having created a component. It
+  # had done the opposite, and said so in the sentence that convicted it.
+  #
+  # Code mode calls look like `name(`, so that is what this looks for. A string
+  # literal could still hold one; prose explaining a refusal almost never does.
+  #
+  # `tool_docs` stays excluded for its own reason: its argument is a list of
+  # names the agent is asking about, and reading a tool's documentation is not
+  # reaching for it.
+  defp call_shaped?(event, name) do
+    detail = Map.get(event, :detail, "")
+
+    is_binary(detail) and
+      not String.starts_with?(detail, "tool_docs") and
+      Regex.match?(~r/\b#{Regex.escape(name)}\s*\(/, detail)
   end
 
   defp called_in_order(%{calls: calls}, first, second) do

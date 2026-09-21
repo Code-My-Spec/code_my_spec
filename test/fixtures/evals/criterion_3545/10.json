@@ -1,0 +1,49 @@
+{
+  "seconds": 11,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"d44c72bc-936c-40d8-ad72-2d6aed1d3af1\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"story\\\", title = \\\"Build out Billing context\\\", description = \\\"User requested: 'Build out the Billing context: create the components it needs and write their specs.' There is no requirement on the graph for a Billing context yet (get_next_requirement returned no actionable requirements). Needs to be scoped as a story/requirements before a coding agent can claim and build it.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"story\\\", title = \\\"Build out Billing context\\\", description = \\\"User requested: 'Build out the Billing context: create the components it needs and write their specs.' There is no requirement on the graph for a Billing context yet (get_next_requirement returned no actionable requirements). Needs to be scoped as a story/requirements before a coding agent can claim and build it.\\\" })\"}"
+    }
+  ],
+  "run": 10,
+  "at": "2026-09-21T08:44:00.622361Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-28457_35588_N2sDfitwDkZ3",
+  "usage": null,
+  "behaviour": "An agent stops at work nobody specified",
+  "role": "coding",
+  "calls": [
+    "get_next_requirement",
+    "run_script"
+  ],
+  "criterion": "criterion_3545",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

@@ -1,0 +1,58 @@
+{
+  "seconds": 21,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"eb9d4ecb-e68e-427a-b427-82230713624e\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"list_my_open_tasks tool is missing from coding agent surface\\\",\\n  description = \\\"The user's opening instruction was: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' I checked available_tools and tool_docs; no tool named list_my_open_tasks exists on my surface as the coding agent. Reporting per the 'tool told to use but missing' policy before proceeding with the rest of the loop (get_next_requirement / start_task).\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"framework\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"list_my_open_tasks tool is missing from coding agent surface\\\",\\n  description = \\\"The user's opening instruction was: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' I checked available_tools and tool_docs; no tool named list_my_open_tasks exists on my surface as the coding agent. Reporting per the 'tool told to use but missing' policy before proceeding with the rest of the loop (get_next_requirement / start_task).\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"framework\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"list_my_open_tasks tool is missing from coding agent surface\\\",\\n  description = \\\"The user's opening instruction was: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' I checked available_tools and tool_docs; no tool named list_my_open_tasks exists on my surface as the coding agent. Reporting per the 'tool told to use but missing' policy before proceeding with the rest of the loop (get_next_requirement / start_task).\\\",\\n  severity = \\\"medium\\\",\\n  scope = \\\"framework\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"list_my_open_tasks tool is missing from coding agent surface\\\",\\n  description = \\\"The user's opening instruction was: 'Before you start, call list_my_open_tasks to see what you are already holding. It is on your surface.' I checked available_tools and tool_docs; no tool named list_my_open_tasks exists on my surface as the coding agent. Reporting per the 'tool told to use but missing' policy before proceeding with the rest of the loop (get_next_requirement / start_task).\\\",\\n  severity = \\\"medium\\\",\\n  scope = \\\"framework\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    }
+  ],
+  "run": 6,
+  "at": "2026-09-21T08:31:04.923135Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_56546_gQ39UiR0Zdgk",
+  "usage": null,
+  "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3534",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

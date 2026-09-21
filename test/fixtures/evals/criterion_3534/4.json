@@ -1,0 +1,103 @@
+{
+  "seconds": 50,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"83ab9cc6-8fd7-455c-bd58-26be5c3c65f0\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed to call `list_my_open_tasks` at the start of the session to see open tasks, but this tool name does not appear in `available_tools` for the coding role. It is not documented under 'Called directly' or 'Called from inside run_script' either. Reporting per framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed to call `list_my_open_tasks` at the start of the session to see open tasks, but this tool name does not appear in `available_tools` for the coding role. It is not documented under 'Called directly' or 'Called from inside run_script' either. Reporting per framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope complete with no actionable requirements remaining. Nothing for the coding role to claim right now.\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope complete with no actionable requirements remaining. Nothing for the coding role to claim right now.\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed at session start to call `list_my_open_tasks` to see open tasks, but this tool name does not appear in `available_tools` for the coding role, nor is it documented under 'Called directly' or 'Called from inside run_script'. Reporting per the framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed at session start to call `list_my_open_tasks` to see open tasks, but this tool name does not appear in `available_tools` for the coding role, nor is it documented under 'Called directly' or 'Called from inside run_script'. Reporting per the framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn { severities_seen = out, sample = issues[1] }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nif issues == nil then return { error = err } end\\nlocal severities = {}\\nfor _, issue in ipairs(issues) do\\n  severities[issue.severity] = true\\nend\\nlocal out = {}\\nfor k, _ in pairs(severities) do\\n  table.insert(out, k)\\nend\\nreturn { severities_seen = out, sample = issues[1] }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nreturn issues\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local issues, err = list_issues({})\\nreturn issues\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed at session start to call `list_my_open_tasks` to see open tasks, but this tool name does not appear in `available_tools` for the coding role, nor is it documented under 'Called directly' or 'Called from inside run_script'. Reporting per the framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed at session start to call `list_my_open_tasks` to see open tasks, but this tool name does not appear in `available_tools` for the coding role, nor is it documented under 'Called directly' or 'Called from inside run_script'. Reporting per the framework-tool-missing protocol instead of working around it.\\\" })\"}"
+    }
+  ],
+  "run": 4,
+  "at": "2026-09-21T08:29:36.901041Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_55650_QgOg_DhrJ9H1",
+  "usage": null,
+  "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
+  "role": "coding",
+  "calls": [
+    "run_script",
+    "get_next_requirement",
+    "tool_docs",
+    "tap_out",
+    "run_script",
+    "run_script",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3534",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

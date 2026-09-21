@@ -1,0 +1,76 @@
+{
+  "seconds": 36,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"8681f1f8-ccb8-46e7-a8f1-508a52bba397\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"warning\\\", scope = \\\"framework\\"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"warning\\\", scope = \\\"framework\\"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story scope is complete with no actionable requirements remaining, so there is nothing for the coding role to claim right now.\", \"task_id\" => nil}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"list_my_open_tasks tool missing\\\", description = \\\"I was instructed to call list_my_open_tasks at the start of my session to see open tasks I already hold, but this tool is not present in available_tools for the coding agent role. It is not on my surface at all, so I could not call it. Tools I do have: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent.\\\", severity = \\\"low\\\", scope = \\\"framework\\\" })"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T08:31:55.329763Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-15907_37220_d5yVTaMrlyrX",
+  "usage": null,
+  "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "get_next_requirement",
+    "run_script",
+    "tap_out",
+    "run_script"
+  ],
+  "criterion": "criterion_3534",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}
