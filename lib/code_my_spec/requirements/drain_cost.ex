@@ -86,6 +86,13 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # 2026-09-21 before it did: 32 queries at one vantage, 64 at two, 133-163 at
   # three — linear in checkouts on a project that had not changed between them.
   @project_preload_event [:code_my_spec, :requirements, :project_preload]
+
+  # How many times the event path opened a write transaction. One per drain is
+  # the target; the seed was doing one per entity — ~1,300 per vantage, nine
+  # vantages, 17.9s and 26,395 queries with `observations: 0`. Queries alone
+  # could not name that: a transaction is a handful of queries however many
+  # rows it carries, so the count of transactions is the count of "per entity".
+  @projection_write_event [:code_my_spec, :requirements, :projection_write]
   @table :requirements_drain_cost
 
   @doc """
@@ -187,11 +194,11 @@ defmodule CodeMySpec.Requirements.DrainCost do
   def measure(meta, fun) when is_map(meta) and is_function(fun, 0) do
     owner = self()
     handler_id = {__MODULE__, owner, System.unique_integer([:positive])}
-    counter = :counters.new(4, [:write_concurrency])
+    counter = :counters.new(5, [:write_concurrency])
 
     :telemetry.attach_many(
       handler_id,
-      [@query_event, @edges_event, @project_preload_event],
+      [@query_event, @edges_event, @project_preload_event, @projection_write_event],
       &__MODULE__.count_query/4,
       {owner, counter}
     )
@@ -223,6 +230,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
       case event do
         @edges_event -> :counters.add(counter, 3, 1)
         @project_preload_event -> :counters.add(counter, 4, 1)
+        @projection_write_event -> :counters.add(counter, 5, 1)
         _query -> both(counter, metadata)
       end
     end
@@ -249,7 +257,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
       queries: :counters.get(counter, 1),
       rows_written: :counters.get(counter, 2),
       edges_rebuilt: :counters.get(counter, 3),
-      project_preloads: :counters.get(counter, 4)
+      project_preloads: :counters.get(counter, 4),
+      projection_writes: :counters.get(counter, 5)
     }
 
     :telemetry.execute(@event, measurements, meta)
@@ -292,6 +301,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
       rows_written: measurements.rows_written,
       edges_rebuilt: measurements.edges_rebuilt,
       project_preloads: measurements.project_preloads,
+      projection_writes: measurements.projection_writes,
       observations: Map.get(meta, :observations),
       handled: Map.get(meta, :handled),
       recomputed: Map.get(meta, :recomputed),
@@ -308,7 +318,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
       "[DrainCost] #{meta.kind} drain in #{ms}ms — " <>
         "#{measurements.queries} queries, #{measurements.rows_written} rows written, " <>
         "#{measurements.edges_rebuilt} edge rebuild(s), " <>
-        "#{measurements.project_preloads} project preload(s)" <>
+        "#{measurements.project_preloads} project preload(s), " <>
+        "#{measurements.projection_writes} projection write(s)" <>
         detail(meta)
     )
   end
@@ -346,4 +357,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
   """
   @spec project_preload() :: [atom()]
   def project_preload, do: @project_preload_event
+
+  @doc "Said by `Shadow.write/3` when it opens a write transaction, counted into the drain it happened inside."
+  @spec projection_write() :: [atom()]
+  def projection_write, do: @projection_write_event
 end

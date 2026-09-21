@@ -55,6 +55,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
@@ -483,17 +484,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp run(:everything, state, config) do
     {:ok, ctx} = Preloader.load(state.scope)
 
-    ctx
-    |> all_entities()
-    |> MapSet.put({"project", nil})
-    |> Enum.to_list()
-    |> write_each(state.scope, ctx, config)
+    # Computed once and written once. This used to compute every entity on its
+    # own — `write_each/4`, one `compute_entity/4` and one `Shadow.write/3`
+    # transaction per entity — and then call `reproject_topology/3`, which
+    # computed every node a second time to get the edges. Measured on dev: the
+    # seed after every restart was **17.9-19.9s, 26,395 queries, 14,945 rows**
+    # across nine vantages, with `observations: 0`. Nothing had happened; the
+    # process had merely started.
+    #
+    # `compute_topology/3` is one `compute_all_from_ctx/3` and one
+    # `compute_edges/3`, which is exactly what the pass does on a cold vantage.
+    {nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
 
-    state = reproject_topology(state, ctx, config)
+    covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
+    Shadow.write(state.scope, covered, nodes)
+    {:ok, _count} = Shadow.write_edges(state.scope, edges)
 
-    # The whole context was just read, so the cached freshness is current by
-    # construction — for *this* checkout. Keyed by vantage because it is
-    # computed from one checkout's own files.
+    state = remember_topology(state, Freshness.topology(ctx, config))
     cache_analysis(state, ctx.analysis_fresh)
   end
 
@@ -516,7 +523,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         Preloader.analysis_freshness(state.scope)
 
     narrow_each(entities, state.scope, config, analysis_fresh)
-    state = reproject_topology(state, nil, config)
+    state = reproject_topology(state, config)
     cache_analysis(state, analysis_fresh)
   end
 
@@ -534,59 +541,42 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     end)
   end
 
-  # Topology, whenever this drain wrote nodes — and only then.
+  # Whether the shape moved, asked of the shape and nothing else — and if it
+  # did, the edges rebuilt over the rows already written rather than by
+  # recomputing every node.
   #
-  # Edges are a function of the node set: a sweep settles verdicts with
-  # `UPDATE`s and cannot add or remove a node, so a drain that only swept cannot
-  # have moved topology. Sweeps never reach `run/3` at all — `apply_marks/2`
-  # calls it only for the marks no handler answered — so putting this here is
-  # what confines a full topology computation to the fallback path.
-  #
-  # And it has to be the whole topology. `Topology.transitive_reduction/1` is
-  # global: an edge here disappears because of a path through a node somewhere
-  # else, so there is no subset of edges one entity's change is confined to.
-  # `RequirementGraph.compute_topology/3` carries the long version.
-  #
-  # The `:everything` branch already holds a context; the narrow one has to read
-  # one, which is the honest price of a global question. It is paid on entity
-  # arrival and departure — a component created, retyped or deleted, a story
-  # released or parked — and on nothing else.
-  defp reproject_topology(state, ctx, config) do
-    ctx = ctx || elem(Preloader.load(state.scope), 1)
+  # This called `Preloader.load/2` — the whole project — on every narrow drain
+  # to compare one fingerprint, and on a move called `compute_topology/3`,
+  # which computes every node to get the edges. The first is ~50 queries and
+  # the largest phase of a pass, paid to learn that nothing had changed; the
+  # second is the cost `template_edges/3` took out of the pass last night.
+  # `topology_context/1` is four queries and holds exactly what
+  # `Freshness.topology/2` and `Projection.rehydrate/2` read.
+  defp reproject_topology(state, config) do
+    shape = Preloader.topology_context(state.scope)
+    last = Map.get(state.last_topology, vantage(state))
 
-    # Writing edges costs a whole-topology computation and a full replace —
-    # measured at 8s and 57,000 rows on this project — so the first thing to ask
-    # is whether topology can have moved at all. This hash is over component
-    # ids, types, parents and dependencies plus the story population: exactly
-    # the inputs edges are built from, and nothing a verdict touches.
-    #
-    # A fallback drain is usually one entity being recomputed for a reason that
-    # has nothing to do with shape, so the common answer is no.
-    # Keyed by vantage, and that is not tidiness. Read as a single slot, each
-    # checkout compared its topology against whichever checkout was settled
-    # before it, never matched, and replaced the whole edge set — measured on
-    # this project at 123,236 edges deleted and reinserted, 246,472 row writes
-    # and ~16s, repeating for every observation that fell back. The comment
-    # above `apply_marks/2` has said these are per-vantage facts since the
-    # vantage loop was written; the reads and writes never followed.
-    vantage = vantage(state)
-    last = Map.get(state.last_topology, vantage)
-
-    case Freshness.topology(ctx, config) do
+    case Freshness.topology(shape, config) do
       ^last ->
         state
 
       topology ->
-        {_nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
+        {nodes, _edges} = Projection.load(state.scope, shape, source: event_tables())
+        edges = RequirementGraph.edges_over(state.scope, nodes, shape, config)
         {:ok, _count} = Shadow.write_edges(state.scope, edges)
-        %{state | last_topology: Map.put(state.last_topology, vantage, topology)}
+        remember_topology(state, topology)
     end
   end
+
+  defp event_tables, do: {Shadow.event_target(), {Shadow.event_edges(), Edge}}
 
   # Which checkout this drain is currently settling. `Projection.vantage/1`
   # rather than the raw field, so the unscoped reader keys the same way it
   # reads.
   defp vantage(state), do: Projection.vantage(state.scope)
+
+  defp remember_topology(state, topology),
+    do: %{state | last_topology: Map.put(state.last_topology, vantage(state), topology)}
 
   defp cache_analysis(state, freshness),
     do: %{state | analysis_fresh: Map.put(state.analysis_fresh, vantage(state), freshness)}
@@ -610,45 +600,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Each entity in turn, skipping what an earlier one in this drain already
   # answered for.
   #
-  # A component's unit is its family, so asking about a nested component answers
-  # for its parent and siblings too. Without this, seeding recomputes each
-  # family once per member — 549 of this project's 1138 components are nested —
-  # and spends most of its time rewriting rows it just wrote.
-  #
-  # Not batching: nothing is deferred and no window is waited on. This declines
-  # to redo work whose answer is already on disk.
-  @spec write_each([Shadow.entity()], Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
-  defp write_each(entities, scope, ctx, config) do
-    Enum.reduce(entities, MapSet.new(), fn entity, done ->
-      if MapSet.member?(done, entity),
-        do: done,
-        else: MapSet.union(done, compute_and_write(scope, ctx, config, entity))
-    end)
-  end
-
-  # Answers with everything it covered, so the drain can skip those.
-  defp compute_and_write(scope, ctx, config, {"project", _} = requested) do
-    entity = {"project", scope.active_project_id}
-    {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-    Shadow.write(scope, covered, nodes)
-    MapSet.put(covered, requested)
-  end
-
-  defp compute_and_write(scope, ctx, config, entity) do
-    if present?(ctx, entity) do
-      {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-      Shadow.write(scope, covered, nodes)
-      covered
-    else
-      Shadow.write(scope, [entity], [])
-      MapSet.new([entity])
-    end
-  end
-
-  defp present?(ctx, {"component", id}), do: Enum.any?(ctx.components, &(&1.id == id))
-  defp present?(ctx, {"story", id}), do: Enum.any?(ctx.stories, &(&1.id == id))
-  defp present?(_ctx, _entity), do: false
-
   @doc false
   def entity_of(%Invalidation{} = mark), do: Invalidation.entity(mark)
 end

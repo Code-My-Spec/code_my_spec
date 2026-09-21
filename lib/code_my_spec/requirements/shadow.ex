@@ -57,6 +57,7 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -227,15 +228,12 @@ defmodule CodeMySpec.Requirements.Shadow do
   would not have fixed itself by flipping the flag.
   """
   @spec write(Scope.t(), Enumerable.t(), [map()]) :: :ok
-  def write(%Scope{} = scope, covered, nodes) do
+  def write(%Scope{active_project_id: project_id} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-
-    # `event_target()` whole, not just its table name. The tuple carries the
-    # `Node` schema, and that is what casts a `:binary_id` from its string form
-    # — without it Postgrex is handed a 36-character UUID where it wants 16
-    # bytes, and every write raises inside the projector's rescue.
     target = event_target()
+
+    :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
     Repo.transaction(fn ->
       kept =
@@ -255,19 +253,23 @@ defmodule CodeMySpec.Requirements.Shadow do
   # One upsert per entity type, because each has its own conflict target.
   # Answers the `{owner_id, name}` pairs it wrote, which is what the reap needs
   # to know to leave them alone.
+  # Returns the ids the write landed on, so `reap/4` can subtract them rather
+  # than reconstruct them.
   defp upsert_group(target, entity_type, nodes, working_copy_id, now) do
     rows = Enum.map(nodes, &row(&1, entity_type, &1.entity_id, working_copy_id, now))
 
     rows
     |> Enum.chunk_every(div(@bind_budget, map_size(hd(rows))))
-    |> Enum.each(fn chunk ->
-      Repo.insert_all(target, chunk,
-        on_conflict: @replace,
-        conflict_target: conflict_target(entity_type)
-      )
-    end)
+    |> Enum.flat_map(fn chunk ->
+      {_n, returned} =
+        Repo.insert_all(target, chunk,
+          on_conflict: @replace,
+          conflict_target: conflict_target(entity_type),
+          returning: [:id]
+        )
 
-    Enum.map(nodes, &{entity_type, to_string(&1.entity_id), &1.name})
+      Enum.map(returned, & &1.id)
+    end)
   end
 
   # Everything the covered entities own that this write did not produce.
@@ -275,18 +277,52 @@ defmodule CodeMySpec.Requirements.Shadow do
   # One statement per entity rather than one for all of them, for the reason
   # `owner_filter/2` is shaped the way it is: the three owner columns are
   # different columns, and a covered set mixes types freely.
+  # Rows the write did not land on, for the entities it covered.
+  #
+  # One select and one delete per owner kind, not one delete per entity. This
+  # was `Enum.each(covered, ... Repo.delete_all())` — a `DELETE` per covered
+  # entity, which on a seed is every entity in the project, once per vantage.
+  # Nine vantages of ~1,300 entities is where most of the seed's 26,395 queries
+  # came from.
+  #
+  # The same shape `NodeRepository.delete_departed/4` uses on the pass side:
+  # select the candidates for the covered owners, subtract in memory what the
+  # write just returned, delete what is left. `kept` is a set of ids, which is
+  # exact — a row this write produced is kept whatever it is named.
   defp reap(target, covered, kept, working_copy_id) do
-    Enum.each(covered, fn {entity_type, entity_id} ->
-      names =
-        for {^entity_type, id, name} <- kept, id == to_string(entity_id), do: name
-
-      target
-      |> where(^owner_filter(entity_type, entity_id))
-      |> where(^copy_filter(working_copy_id))
-      |> where([n], n.name not in ^names)
-      |> Repo.delete_all()
+    covered
+    |> Enum.group_by(fn {type, _id} -> type end, fn {_type, id} -> id end)
+    |> Enum.each(fn {entity_type, owner_ids} ->
+      reap_owners(target, entity_type, owner_ids, kept, working_copy_id)
     end)
   end
+
+  # Candidates for these owners, minus what the write returned, deleted.
+  defp reap_owners(target, entity_type, owner_ids, kept, working_copy_id) do
+    owner_ids
+    |> Enum.chunk_every(@bind_budget)
+    |> Enum.flat_map(fn ids ->
+      target
+      |> where(^owners_filter(entity_type, ids))
+      |> where(^copy_filter(working_copy_id))
+      |> select([n], n.id)
+      |> Repo.all()
+    end)
+    |> Enum.reject(&MapSet.member?(kept, &1))
+    |> delete_ids(target)
+  end
+
+  defp delete_ids([], _target), do: :ok
+
+  defp delete_ids(ids, target) do
+    ids
+    |> Enum.chunk_every(@bind_budget)
+    |> Enum.each(fn chunk -> target |> where([n], n.id in ^chunk) |> Repo.delete_all() end)
+  end
+
+  defp owners_filter("component", ids), do: dynamic([n], n.component_id in ^ids)
+  defp owners_filter("story", ids), do: dynamic([n], n.story_id in ^ids)
+  defp owners_filter("project", ids), do: dynamic([n], n.project_id in ^ids)
 
   # The three partial unique indexes, matching `NodeRepository.owner/1`. An
   # `unsafe_fragment` because the index is partial and Ecto cannot name one any
@@ -593,9 +629,14 @@ defmodule CodeMySpec.Requirements.Shadow do
       |> Enum.uniq()
       |> Enum.flat_map(fn %{from: {ft, fi, fname}, to: {tt, ti, tname}} ->
         case {Map.get(ids, {ft, to_string(fi), fname}), Map.get(ids, {tt, to_string(ti), tname})} do
-          {nil, _} -> []
-          {_, nil} -> []
-          {from_id, to_id} -> [%{from_requirement_id: from_id, to_requirement_id: to_id, inserted_at: now}]
+          {nil, _} ->
+            []
+
+          {_, nil} ->
+            []
+
+          {from_id, to_id} ->
+            [%{from_requirement_id: from_id, to_requirement_id: to_id, inserted_at: now}]
         end
       end)
 
@@ -718,10 +759,24 @@ defmodule CodeMySpec.Requirements.Shadow do
       |> Enum.filter(&(Map.fetch!(live, &1) != Map.fetch!(shadow, &1)))
 
     live_edges =
-      edge_keys(pass_target(), pass_edges(), project_id, component_ids, story_ids, working_copy_id)
+      edge_keys(
+        pass_target(),
+        pass_edges(),
+        project_id,
+        component_ids,
+        story_ids,
+        working_copy_id
+      )
 
     shadow_edges =
-      edge_keys(event_target(), event_edges(), project_id, component_ids, story_ids, working_copy_id)
+      edge_keys(
+        event_target(),
+        event_edges(),
+        project_id,
+        component_ids,
+        story_ids,
+        working_copy_id
+      )
 
     %{
       missing: MapSet.size(missing),

@@ -254,13 +254,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     # `nil` is the UI path, which blends every checkout deliberately (see the
     # clause above) and must not be narrowed to the unassigned pool — the page
     # is showing the project, not standing in a checkout.
-    {stories_us, stories} =
-      :timer.tc(fn ->
-        Story
-        |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
-        |> assigned_here_or_unassigned(working_copy_id)
-        |> Repo.all()
-      end)
+    {stories_us, stories} = :timer.tc(fn -> project_stories(project_id, working_copy_id) end)
 
     story_ids = Enum.map(stories, & &1.id)
 
@@ -482,6 +476,39 @@ defmodule CodeMySpec.Requirements.Preloader do
         "rest #{ms.(parts.rest)}ms; " <>
         "project=#{project_id} copy=#{inspect(working_copy_id)}"
     )
+  end
+
+  @doc """
+  The shape inputs and nothing else: components with their dependencies and
+  children, and this vantage's stories.
+
+  Enough for `Freshness.topology/2` to say whether the shape moved, and enough
+  for `Projection.rehydrate/2` to place a stored row — it reads
+  `components_by_id` and `stories` — so the event path can rebuild edges over
+  the rows it already holds. Not enough for any verdict, on purpose: nothing
+  here reads a file, a problem or a criterion.
+
+  Four queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
+  for this on every narrow drain — the whole project, ~50 queries and the
+  largest phase of a pass, to compare one fingerprint that had not moved.
+  """
+  @spec topology_context(Scope.t()) :: map()
+  def topology_context(%Scope{active_project_id: project_id} = scope) do
+    components = project_components(project_id)
+
+    %{
+      components: components,
+      components_by_id: Map.new(components, &{&1.id, &1}),
+      children_by_parent: Enum.group_by(components, & &1.parent_component_id),
+      stories: project_stories(project_id, scope.active_working_copy_id)
+    }
+  end
+
+  defp project_stories(project_id, working_copy_id) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+    |> assigned_here_or_unassigned(working_copy_id)
+    |> Repo.all()
   end
 
   defp scope_to_harness(query, nil), do: query

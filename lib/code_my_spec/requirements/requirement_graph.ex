@@ -438,6 +438,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
+  @doc """
+  The edge set over a node set, without computing a verdict.
+
+  `compute_topology/3` answers the same question by computing every node first
+  and is the right call on a cold vantage, where the nodes have to be computed
+  anyway. It is the wrong call when the nodes are already stored: the event
+  path was recomputing every node in the project to rebuild edges after a
+  shape change, which is the one cost the pass no longer pays.
+
+  `ctx` needs the shape — `Preloader.topology_context/1` is enough — and
+  `nodes` are whatever the caller holds for the vantage.
+  """
+  @spec edges_over(Scope.t(), [Requirement.t()], map(), map()) :: [edge()]
+  def edges_over(scope, nodes, ctx, config) do
+    ctx =
+      ctx
+      |> Freshness.with_config(config)
+      |> Map.put(:template_edges, template_edges(scope, ctx, config))
+
+    compute_edges(nodes, ctx, config)
+  end
+
   # The edge set for a partial pass, and what it is entitled to rewrite.
   #
   # Returns `{edges, edge_nodes}`. `edge_nodes` is the node set those edges were
