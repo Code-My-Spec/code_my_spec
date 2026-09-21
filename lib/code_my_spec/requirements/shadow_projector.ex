@@ -100,14 +100,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   @doc """
-  Handle everything pending now, before the caller compares.
-
-  The diff reads both projections, so it has to be asked at a moment when the
-  event path has been given its chance — otherwise every mark still in flight
-  reports as a difference and the number says more about timing than about
-  coverage.
-  """
-  @doc """
   Whether a projector is running for this project, and therefore whether
   anything is going to consume the marks besides the pass.
 
@@ -124,6 +116,14 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   def running?(_no_project), do: false
 
+  @doc """
+  Handle everything pending now, before the caller compares.
+
+  The diff reads both projections, so it has to be asked at a moment when the
+  event path has been given its chance — otherwise every mark still in flight
+  reports as a difference and the number says more about timing than about
+  coverage.
+  """
   @spec settle(Ecto.UUID.t() | nil) :: :ok
   def settle(project_id) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
