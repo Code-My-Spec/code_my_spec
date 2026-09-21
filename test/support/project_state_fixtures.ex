@@ -42,8 +42,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files.ComponentSync
-  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
@@ -86,8 +84,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   # c83c5b58. The sync is gone from there, so it belongs here.
   @spec synced(map()) :: map()
   def synced(%{scope: scope} = context) do
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
-    {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+    :ok = Fixtures.sync_files(scope)
     context
   end
 
@@ -529,10 +526,10 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         )
     end)
 
-    {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
-
-    sync_live |> element("button[phx-click='sync']") |> render_click()
+    # The sync, not the button — see `synced/1`. `live/2` raises outside a test
+    # process, which made every fixture that used it unusable from
+    # `mix cms.eval`.
+    synced(context)
 
     :ok
   end

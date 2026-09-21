@@ -15,6 +15,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
   alias CmsHarness.Agents.SystemPrompt
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.OperatingRules
+  alias CodeMySpec.Agents.ProviderBrief
   alias CodeMySpec.Agents.RoleBrief
 
   describe "role briefs" do
@@ -166,6 +167,44 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       tool count that had all moved — and it would have shipped directly above a
       tool index contradicting it. An agent needs to know which of the two wins.
       """
+    end
+
+    test "an agent on claude-code is told where its tools arrive" do
+      # `claude-code` runs the CLI with `--tools ""` and emulates tool calling
+      # by serialising the definitions into the request as `available_tools`.
+      # Nothing told the agent that, so when the model doubted, it reported its
+      # tools missing and stopped — measured on criterion 3539 at roughly one
+      # first turn in four, with `No such tool available` in its own words: a
+      # string that appears nowhere in this codebase or any dependency.
+      prompt =
+        SystemPrompt.compose(
+          tool_index: "## Tools you can reach\n\n**Called directly:** run_script",
+          provider_brief: ProviderBrief.for("claude-code"),
+          role_brief: RoleBrief.for(:main)
+        )
+
+      assert prompt =~ "available_tools"
+
+      assert prompt =~ "has not failed", """
+      The brief must say that a tool you did not call has not failed. Refusing
+      to improvise is what `OperatingRules` asks for, so an agent that believes
+      a tool is gone stops correctly on a false premise — and that reads as the
+      agent declining work rather than as a prompt that never told it where its
+      tools were.
+      """
+
+      assert :binary.match(prompt, "Tools you can reach") <
+               :binary.match(prompt, "available_tools"),
+             "the brief is about the index, so it reads after it"
+    end
+
+    test "a provider whose tool calling needs no explanation gets none" do
+      assert ProviderBrief.for("anthropic") == nil
+      assert ProviderBrief.for(nil) == nil
+
+      prompt = SystemPrompt.compose(provider_brief: ProviderBrief.for("zai"), role_brief: "You are QA.")
+
+      assert prompt == "You are QA."
     end
 
     test "a map composes the same as a keyword list" do

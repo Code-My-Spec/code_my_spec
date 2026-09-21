@@ -8,80 +8,100 @@ defmodule Mix.Tasks.Cms.Eval do
       mix cms.eval --pattern criterion_3539
       mix cms.eval --runs 3              # fewer measurements, while writing one
 
-  These are spex like any other, in `test/spex/1070_*`, and they are excluded
-  from every ordinary run by `config :ex_unit, exclude: [:eval]`. This task is
-  the switch: it includes the tag, raises the per-test deadline, and hands the
-  rest to `mix spex`.
+  Each run starts a fresh agent against a real model, records what it called,
+  and writes an artifact under `test/fixtures/evals/`. `mix spex` then asserts
+  on those artifacts and never calls a model.
 
-  ## Why they are not in the gate
+  ## This is not a test run
 
-  A criterion here starts a fresh agent, lets it take real turns against a real
-  model, and repeats that ten times. Minutes each, and a dozen of them. The
-  promote gate runs the spex suite under a deadline, so carrying these would
-  make every promotion wait on a measurement — and a measurement that has to
-  finish inside somebody else's deadline stops being one.
+  It used to be — this task set `include: [:eval]` and handed the rest to
+  `mix spex`, so every eval inherited a spex's constraints. That is the
+  coupling the artifact split exists to remove, and it cost a day:
 
-  Run them when a prompt, a role brief or a tool list changes. That is when the
-  answer can have moved, and it is exactly the change nothing else here
-  notices.
+  A spex runs inside ExUnit with the Ecto sandbox, and its environment is
+  `Support.InMemoryEnvironment`, where `Environments.write_file/3` answers `:ok`
+  and puts nothing on disk. Right for a scenario driving a LiveView, exactly
+  wrong for one driving an agent — a real agent reads real files. The fixture
+  and the agent were on two different filesystems, so the project chain never
+  closed at the agent's vantage, one requirement was actionable in the whole
+  world, and the first run consumed it. At n=10 the second run found nothing to
+  do.
+
+  `Support.EvalRunner` owns its setup instead: a real directory, real files, a
+  disk-backed environment, no sandbox. Nothing about a measurement is bounded
+  by what a spex can express.
 
   ## Reading the result
 
   A failure reports a rate, not a pass or a fail. A rate in the middle is the
-  finding: the agent read the instruction one way sometimes and another way
-  the rest of the time, which is a statement about the prompt being ambiguous.
-  Fix the ambiguity and measure again — re-running until it passes is
-  discarding the measurement.
+  finding: the agent read the instruction one way sometimes and another way the
+  rest of the time, which is a statement about the prompt being ambiguous. Fix
+  the ambiguity and measure again — re-running until it passes is discarding the
+  measurement.
+
+  A run that errored is not in the denominator. It is not evidence about the
+  agent, so it is recorded and taken again.
   """
 
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  alias Mix.Tasks.Spex
-
-  @default_timeout 900_000
+  @requirements ["app.start"]
 
   @impl Mix.Task
   def run(args) do
     {runs, args} = take_flag(args, "--runs")
-    {timeout, args} = take_flag(args, "--timeout")
+    {pattern, _args} = take_flag(args, "--pattern")
 
-    Application.put_env(:ex_unit, :include, [:eval])
-    Application.put_env(:ex_unit, :exclude, [])
+    opts =
+      [pattern: pattern]
+      |> then(fn o -> if runs, do: Keyword.put(o, :runs, String.to_integer(runs)), else: o end)
+      |> Enum.reject(&match?({_, nil}, &1))
 
-    if runs, do: Application.put_env(:code_my_spec, :agent_eval_runs, String.to_integer(runs))
+    # Resolved rather than aliased: the runner is test-only, and a compile-time
+    # reference from `lib/` would break every other environment. Same shape as
+    # `Mix.Tasks.Cms.TestFixtures` reaching `Support.TestAdapter`.
+    runner = Module.concat([CodeMySpec, Support, EvalRunner])
 
-    Spex.run(spex_args(args, timeout))
+    unless Code.ensure_loaded?(runner) do
+      Mix.raise("""
+      #{inspect(runner)} is not loaded. Evals run in the test environment,
+      where `test/support` is compiled:
+
+          MIX_ENV=test mix cms.eval
+      """)
+    end
+
+    report = runner.run(opts)
+    report_to_stdout(report)
   end
 
-  # Taken out by hand rather than through `OptionParser`, because everything
-  # this does not recognise has to reach `mix spex` untouched — and `parse/2`
-  # drops an unknown switch into `invalid` and carries on, so `--pattern` would
-  # silently vanish and the whole suite would run instead of the one criterion
-  # that was asked for.
+  defp report_to_stdout(%{criteria: criteria, artifact_root: root}) do
+    Mix.shell().info("")
+
+    Enum.each(criteria, fn %{criterion: id, behaviour: behaviour, outcomes: outcomes} ->
+      measured = Enum.reject(outcomes, & &1.errored)
+      hits = Enum.count(measured, & &1.held?)
+      total = length(measured)
+      errored = length(outcomes) - total
+
+      rate = if total > 0, do: "#{hits}/#{total}", else: "no measured runs"
+      note = if errored > 0, do: " (#{errored} errored, not counted)", else: ""
+
+      Mix.shell().info("#{id}  #{rate}#{note}\n  #{behaviour}")
+    end)
+
+    Mix.shell().info("\nArtifacts in #{root}")
+  end
+
+  # Taken out by hand rather than through `OptionParser`: everything this does
+  # not recognise has to reach the runner untouched, and `parse/2` drops an
+  # unknown switch into `invalid` and carries on, so a flag would silently
+  # vanish.
   defp take_flag(args, flag) do
     case Enum.find_index(args, &(&1 == flag)) do
       nil -> {nil, args}
       i -> {Enum.at(args, i + 1), List.delete_at(List.delete_at(args, i), i)}
     end
   end
-
-  # A behavioural run is many model calls, and ExUnit's deadline is per test
-  # rather than per turn. Fifteen minutes because ten runs of a multi-turn
-  # scenario genuinely take that, and a timeout part-way through discards every
-  # run that had already completed.
-  defp spex_args(args, timeout) do
-    named_files? =
-      Enum.any?(args, &(&1 == "--pattern")) or Enum.any?(args, &String.ends_with?(&1, "_spex.exs"))
-
-    pattern = if named_files?, do: [], else: ["--pattern", default_pattern()]
-
-    args ++ pattern ++ ["--timeout", timeout || to_string(@default_timeout)]
-  end
-
-  # Only story 1070's directory. Every other spex carries no `:eval` tag, so
-  # including the tag would run them too — and this task exists to run the
-  # expensive ones deliberately, not to run the whole suite with a long
-  # deadline.
-  defp default_pattern, do: "test/spex/1070_*/**/*_spex.exs"
 end

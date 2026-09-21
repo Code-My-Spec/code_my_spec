@@ -23,9 +23,35 @@ defmodule CodeMySpec.Requirements.ShadowTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup ctx do
     Application.put_env(:code_my_spec, :graph_shadow_projection, true)
     on_exit(fn -> Application.delete_env(:code_my_spec, :graph_shadow_projection) end)
+
+    # This project's pass, stopped, so the projector is the only thing draining.
+    #
+    # `Invalidations.consume/1` is a delete, so the pass and the projector on
+    # one queue is a destructive read — whichever drains first takes the marks
+    # and the other never sees them. `GraphWatcher` defers to a running
+    # projector, but the flag it reads is global `Application` state that every
+    # concurrent test flips, so a watcher waking in the window where it reads
+    # false consumes marks this file's projector needed.
+    #
+    # It presents as the projector keeping the verdict it had and `Shadow.diff/1`
+    # reporting a disagreement that is really a missed delivery. Measured at
+    # roughly one run in nine, and caught by the analyzer after nine clean local
+    # runs had already called it settled.
+    #
+    # Every test here drives the pass by hand through `project_live/1`, so
+    # nothing needs the watcher.
+    stop_watcher(ctx.scope.active_project_id)
+
+    :ok
+  end
+
+  defp stop_watcher(project_id) do
+    for {pid, _} <- Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+      DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+    end
 
     :ok
   end

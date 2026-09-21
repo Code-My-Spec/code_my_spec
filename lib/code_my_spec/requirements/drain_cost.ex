@@ -75,6 +75,17 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # of nodes at 1532 nodes. A cost that large cannot be the one thing a pass
   # does not report.
   @edges_event [:code_my_spec, :requirements, :edges_rebuilt]
+
+  # How many times the drain read the project's vantage-invariant half — the
+  # components with their dependencies and children, the rules, the questions,
+  # the issue stamps. Counted for the same reason the edge rebuild is: it is
+  # large, it is paid before any narrowing starts, and no reading taken at the
+  # database can separate it from the per-checkout half beside it.
+  #
+  # A drain settling three checkouts should read it once. Measured on dev
+  # 2026-09-21 before it did: 32 queries at one vantage, 64 at two, 133-163 at
+  # three — linear in checkouts on a project that had not changed between them.
+  @project_preload_event [:code_my_spec, :requirements, :project_preload]
   @table :requirements_drain_cost
 
   @doc """
@@ -176,11 +187,11 @@ defmodule CodeMySpec.Requirements.DrainCost do
   def measure(meta, fun) when is_map(meta) and is_function(fun, 0) do
     owner = self()
     handler_id = {__MODULE__, owner, System.unique_integer([:positive])}
-    counter = :counters.new(3, [:write_concurrency])
+    counter = :counters.new(4, [:write_concurrency])
 
     :telemetry.attach_many(
       handler_id,
-      [@query_event, @edges_event],
+      [@query_event, @edges_event, @project_preload_event],
       &__MODULE__.count_query/4,
       {owner, counter}
     )
@@ -211,6 +222,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
     if self() == owner do
       case event do
         @edges_event -> :counters.add(counter, 3, 1)
+        @project_preload_event -> :counters.add(counter, 4, 1)
         _query -> both(counter, metadata)
       end
     end
@@ -236,7 +248,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
       duration: duration,
       queries: :counters.get(counter, 1),
       rows_written: :counters.get(counter, 2),
-      edges_rebuilt: :counters.get(counter, 3)
+      edges_rebuilt: :counters.get(counter, 3),
+      project_preloads: :counters.get(counter, 4)
     }
 
     :telemetry.execute(@event, measurements, meta)
@@ -278,6 +291,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
       queries: measurements.queries,
       rows_written: measurements.rows_written,
       edges_rebuilt: measurements.edges_rebuilt,
+      project_preloads: measurements.project_preloads,
       observations: Map.get(meta, :observations),
       handled: Map.get(meta, :handled),
       recomputed: Map.get(meta, :recomputed),
@@ -293,7 +307,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
     Logger.info(
       "[DrainCost] #{meta.kind} drain in #{ms}ms — " <>
         "#{measurements.queries} queries, #{measurements.rows_written} rows written, " <>
-        "#{measurements.edges_rebuilt} edge rebuild(s)" <>
+        "#{measurements.edges_rebuilt} edge rebuild(s), " <>
+        "#{measurements.project_preloads} project preload(s)" <>
         detail(meta)
     )
   end
@@ -320,4 +335,15 @@ defmodule CodeMySpec.Requirements.DrainCost do
   """
   @spec edges_rebuilt() :: [atom()]
   def edges_rebuilt, do: @edges_event
+
+  @doc """
+  Said by `Preloader` when it reads the project's vantage-invariant half,
+  counted into the drain it happened inside.
+
+  One per drain is the target, whatever the checkout count. Emitted rather than
+  returned for the same reason the edge rebuild is: the drain is measured around
+  `recompute_vantage/2` and this happens a call below it.
+  """
+  @spec project_preload() :: [atom()]
+  def project_preload, do: @project_preload_event
 end

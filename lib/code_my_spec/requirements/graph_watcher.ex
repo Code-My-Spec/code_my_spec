@@ -606,9 +606,20 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   defp blended_nil?(state), do: is_nil(Preloader.files_vantage(state.scope))
 
-  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage) do
+  # Whether something else is going to take these marks.
+  #
+  # Both conditions, and the second is the one the first version missed. The
+  # flag alone says the shadow is *configured*; it says nothing about whether a
+  # projector exists for this project. Deferring to one that does not run leaves
+  # every mark undeleted, which is `e0729ea9` exactly — the defect the pass
+  # started consuming in order to fix.
+  defp shadow_will_consume?(%{project_id: project_id}) do
+    Shadow.enabled?() and ShadowProjector.running?(project_id)
+  end
+
+  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage, shared) do
     {_graph, actionable, _computed_at} =
-      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
+      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage}, shared: shared)
 
     actionable
   end
@@ -727,7 +738,16 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
           observations: length(consumed),
           vantages: length(computed)
         },
-        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+        fn ->
+          # Loaded once for the whole drain, not once per checkout. Every vantage
+          # settled below shares these rows exactly — the same components with
+          # the same dependencies and children, the same rules, questions, issue
+          # stamps and deploys — and only the files differ, which is the reason a
+          # vantage exists at all. Criterion 3620.
+          shared = Preloader.shared(state.project_id)
+
+          {Enum.flat_map(computed, &recompute_vantage(state, &1, shared)), %{}}
+        end
       )
 
     account_for(consumed)
@@ -754,7 +774,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # configuration leaves a mark undeleted, and the oracle stops missing
     # observations — which matters more than it sounds, because an oracle that
     # silently misses one reports agreement it has not checked.
-    unless Shadow.enabled?(), do: Invalidations.consume(marks)
+    unless shadow_will_consume?(state), do: Invalidations.consume(marks)
     report_shadow(state, computed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a

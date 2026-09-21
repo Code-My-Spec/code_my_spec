@@ -21,6 +21,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -107,20 +108,25 @@ defmodule CodeMySpec.Requirements.Preloader do
   # `served_graph/3` stops refusing a projection that never matched the count it
   # published. Measured before: 348 computes in one log, median 2.6s, max
   # 14.8s, 116 of them from stop hooks.
-  def load(%Scope{active_working_copy_id: nil} = scope) do
-    do_load(scope, nil, files_vantage(scope))
+  def load(scope, opts \\ [])
+
+  def load(%Scope{active_working_copy_id: nil} = scope, opts) do
+    do_load(scope, nil, files_vantage(scope), opts)
   end
 
-  def load(%Scope{active_working_copy_id: working_copy_id} = scope),
-    do: do_load(scope, working_copy_id, working_copy_id)
+  def load(%Scope{active_working_copy_id: working_copy_id} = scope, opts),
+    do: do_load(scope, working_copy_id, working_copy_id, opts)
 
-  defp do_load(%Scope{active_project_id: project_id} = scope, working_copy_id, files_copy_id) do
-    # 1. All components with deps and children preloaded
-    components =
-      Component
-      |> where([c], c.project_id == ^project_id)
-      |> preload([:dependencies, :child_components])
-      |> Repo.all()
+  defp do_load(
+         %Scope{active_project_id: project_id} = scope,
+         working_copy_id,
+         files_copy_id,
+         opts
+       ) do
+    {shared_us, shared} =
+      :timer.tc(fn -> Keyword.get_lazy(opts, :shared, fn -> shared(project_id) end) end)
+
+    %{components: components} = shared
 
     # 2. This working copy's files, grouped by component and story
     #
@@ -144,11 +150,13 @@ defmodule CodeMySpec.Requirements.Preloader do
     # `acde83fd` scoped runs and problems and its own comment says it "missed
     # these two". This is a third site it missed, and it feeds every
     # `file_exists` and `file_valid` check in the graph.
-    all_files =
-      File
-      |> where([f], f.project_id == ^project_id)
-      |> scope_to_harness(files_copy_id)
-      |> Repo.all()
+    {files_us, all_files} =
+      :timer.tc(fn ->
+        File
+        |> where([f], f.project_id == ^project_id)
+        |> scope_to_harness(files_copy_id)
+        |> Repo.all()
+      end)
 
     files_by_component =
       all_files
@@ -181,32 +189,34 @@ defmodule CodeMySpec.Requirements.Preloader do
     # Aggregated in the database so this stays one row per (component, source).
     # The alternative is loading every problem row — messages included — into
     # memory on the path of every graph computation.
-    problem_rows =
-      Problem
-      |> where([p], p.project_id == ^project_id and not is_nil(p.component_id))
-      |> group_by([p], [p.component_id, p.source])
-      |> select(
-        [p],
-        {p.component_id, p.source, count(p.id),
-         fragment(
-           "md5(string_agg(?, '|' ORDER BY ?))",
+    {problems_us, problem_rows} =
+      :timer.tc(fn ->
+        Problem
+        |> where([p], p.project_id == ^project_id and not is_nil(p.component_id))
+        |> group_by([p], [p.component_id, p.source])
+        |> select(
+          [p],
+          {p.component_id, p.source, count(p.id),
            fragment(
-             "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
-             p.file_path,
-             p.line,
-             p.rule,
-             p.message
-           ),
-           fragment(
-             "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
-             p.file_path,
-             p.line,
-             p.rule,
-             p.message
-           )
-         )}
-      )
-      |> Repo.all()
+             "md5(string_agg(?, '|' ORDER BY ?))",
+             fragment(
+               "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
+               p.file_path,
+               p.line,
+               p.rule,
+               p.message
+             ),
+             fragment(
+               "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
+               p.file_path,
+               p.line,
+               p.rule,
+               p.message
+             )
+           )}
+        )
+        |> Repo.all()
+      end)
 
     problems_by_component =
       Enum.reduce(problem_rows, %{}, fn {comp_id, source, count, _digest}, acc ->
@@ -244,13 +254,34 @@ defmodule CodeMySpec.Requirements.Preloader do
     # `nil` is the UI path, which blends every checkout deliberately (see the
     # clause above) and must not be narrowed to the unassigned pool — the page
     # is showing the project, not standing in a checkout.
-    stories =
-      Story
-      |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
-      |> assigned_here_or_unassigned(working_copy_id)
-      |> Repo.all()
+    {stories_us, stories} =
+      :timer.tc(fn ->
+        Story
+        |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+        |> assigned_here_or_unassigned(working_copy_id)
+        |> Repo.all()
+      end)
 
     story_ids = Enum.map(stories, & &1.id)
+
+    {rest_us, rest} =
+      :timer.tc(fn ->
+        %{
+          analysis_fresh: analysis_freshness(scope, all_files),
+          criteria_by_story: criteria_by_story(story_ids),
+          personas_by_story: personas_by_story(story_ids),
+          qa_latest_by_story: qa_latest_by_story(story_ids),
+          delegated_inputs: delegated_inputs(project_id, working_copy_id)
+        }
+      end)
+
+    log_load_cost(project_id, working_copy_id, length(all_files), %{
+      shared: shared_us,
+      files: files_us,
+      problems: problems_us,
+      stories: stories_us,
+      rest: rest_us
+    })
 
     {:ok,
      %{
@@ -260,19 +291,19 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_path: Map.new(all_files, &{&1.path, &1}),
        problems_by_component: problems_by_component,
        problem_digests_by_component: problem_digests_by_component,
-       issues_by_story: issue_stamps_by_story(project_id),
-       analysis_fresh: analysis_freshness(scope, all_files),
+       issues_by_story: shared.issues_by_story,
+       analysis_fresh: rest.analysis_fresh,
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
        children_by_parent: Enum.group_by(components, & &1.parent_component_id),
        stories: stories,
-       rules_by_story: rules_by_story(project_id),
-       questions_by_story: questions_by_story(project_id),
-       criteria_by_story: criteria_by_story(story_ids),
-       personas_by_story: personas_by_story(story_ids),
-       qa_latest_by_story: qa_latest_by_story(story_ids),
-       uat_deploy_by_story: uat_deploy_by_story(project_id),
-       delegated_inputs: delegated_inputs(project_id, working_copy_id)
+       rules_by_story: shared.rules_by_story,
+       questions_by_story: shared.questions_by_story,
+       criteria_by_story: rest.criteria_by_story,
+       personas_by_story: rest.personas_by_story,
+       qa_latest_by_story: rest.qa_latest_by_story,
+       uat_deploy_by_story: shared.uat_deploy_by_story,
+       delegated_inputs: rest.delegated_inputs
      }}
   end
 
@@ -377,6 +408,81 @@ defmodule CodeMySpec.Requirements.Preloader do
   """
   @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
   def files_vantage(%Scope{} = scope), do: CodeMySpec.WorkingCopies.reading_copy_id(scope)
+
+  @doc """
+  The project's vantage-invariant half, loaded once and shared across the
+  checkouts a drain settles.
+
+  Every checkout of a project shares these rows exactly — the same components
+  with the same dependencies and children, the same rules, questions, issue
+  stamps and deploys. What differs per vantage is the files, and the files are
+  the reason a vantage exists. `GraphWatcher.recompute_vantage/2` calls `load/2`
+  once per vantage, so without this the shared half is paid once per checkout
+  for a project that has not changed between them.
+
+  Measured on dev before it was shared: 32 queries at one vantage, 64 at two,
+  133-163 at three. Criterion 3620 asserts the count directly — a ratio could
+  not tell the two apart, because only about seven of fifty queries per vantage
+  are this half.
+
+  Built by `load/2` itself when no caller supplies one, so every existing caller
+  keeps working unchanged and only the drain pays once.
+  """
+  @spec shared(Ecto.UUID.t()) :: map()
+  def shared(project_id) do
+    :telemetry.execute(DrainCost.project_preload(), %{count: 1}, %{project_id: project_id})
+
+    %{
+      components: project_components(project_id),
+      issues_by_story: issue_stamps_by_story(project_id),
+      rules_by_story: rules_by_story(project_id),
+      questions_by_story: questions_by_story(project_id),
+      uat_deploy_by_story: uat_deploy_by_story(project_id)
+    }
+  end
+
+  # The components themselves. Announced through `shared/1` above rather than
+  # here, so the count is of the shared *load* and not of one query inside it.
+  #
+  # Every checkout of a project shares these rows exactly — the same components,
+  # the same dependencies, the same children. What differs per vantage is the
+  # files, which is the whole reason a vantage exists. `recompute_vantage/2`
+  # calls `load/1` once per vantage, so today this runs once per checkout for a
+  # project that has not changed between them.
+  #
+  # Announced rather than counted here, because the interesting number is
+  # per *drain* and a drain spans several loads. `DrainCost.measure/2` tallies
+  # it beside the queries, filtered to the drain's own process, and
+  # `last_drain.project_preloads` is what criterion 3620 asserts on.
+  defp project_components(project_id) do
+    Component
+    |> where([c], c.project_id == ^project_id)
+    |> preload([:dependencies, :child_components])
+    |> Repo.all()
+  end
+
+  # What a preload cost, split the way it splits.
+  #
+  # `pass cost` reports the preload as one number, and on this project it is the
+  # largest of them — 65-811ms against an edge rebuild of 0-2ms once the rest of
+  # the pass was narrowed. One number cannot say which half to attack, and two
+  # guesses at it from reading the code were wrong: the shared half turned out
+  # to be ~7 of ~50 queries, and the file load is 5200 rows carrying a jsonb
+  # column per vantage per pass.
+  #
+  # Row count travels with it because the times only mean something beside it.
+  defp log_load_cost(project_id, working_copy_id, file_count, parts) do
+    ms = fn us -> div(us, 1000) end
+    total = parts |> Map.values() |> Enum.sum() |> ms.()
+
+    Logger.info(
+      "[Preloader] loaded in #{total}ms — " <>
+        "shared #{ms.(parts.shared)}ms, files #{ms.(parts.files)}ms (#{file_count} rows), " <>
+        "problems #{ms.(parts.problems)}ms, stories #{ms.(parts.stories)}ms, " <>
+        "rest #{ms.(parts.rest)}ms; " <>
+        "project=#{project_id} copy=#{inspect(working_copy_id)}"
+    )
+  end
 
   defp scope_to_harness(query, nil), do: query
 

@@ -76,8 +76,26 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   socket is where its turn events land.
   """
   @spec given_a_harnessed_checkout(map(), String.t()) :: map()
-  def given_a_harnessed_checkout(context, label) do
-    copy = CodeMySpec.TempFile.dir(label)
+  def given_a_harnessed_checkout(context, label, opts \\ []) do
+    # `root: :project` puts the agent in the project's own checkout instead of
+    # an empty one, which is where a real agent works.
+    #
+    # An empty directory is its own premise. The graph is computed per vantage,
+    # and a checkout holding no files satisfies nothing — so the whole project
+    # chain reads unsatisfied there and the only actionable requirement is its
+    # first link, whatever the fixture satisfied elsewhere. Measured on 3539:
+    # `technical_strategy` at the agent's copy while the fixture's own copy had
+    # it satisfied, a valid `:architecture` row and all of the story work
+    # waiting behind it.
+    #
+    # Still a temp directory by default, because most of these criteria are
+    # about an agent's conduct and not about what it can see.
+    copy =
+      case Keyword.get(opts, :root, :fresh) do
+        :project -> context.scope.cwd
+        :fresh -> CodeMySpec.TempFile.dir(label)
+      end
+
     File.mkdir_p!(copy)
 
     # `harness_id` is nil because this checkout has never described itself
@@ -364,23 +382,30 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
     said
   end
 
-  # An agent that started without its project tools measured nothing.
+  # A run where the model never called a tool it had measured nothing.
   #
-  # `mcp_session/1` warns and returns nil when the connection fails, and the
-  # agent starts regardless — it can still read and edit its checkout, which is
-  # right for production and useless for measuring conduct. The model is then
-  # told `No such tool available` for `get_next_requirement` and `run_script`,
-  # correctly refuses to improvise, and the run scores `called nothing at all`:
-  # indistinguishable from an agent that saw the work and declined it.
+  # Not an MCP fault, which is what this first looked like. `claude-code` runs
+  # the CLI with `--tools ""` on purpose — with its own tools in hand it would
+  # do the work itself and hand back prose rather than the `tool_use` blocks
+  # Alloy executes — so tool calling is emulated: the definitions are
+  # serialised into the request as `available_tools` and the model is asked to
+  # name one back.
   #
-  # Measured on 3539: roughly one run in four. Checked after the turn rather
-  # than before it, because the engine process does not exist until the turn is
-  # dispatched — asking earlier answers nil for every run, including the good
-  # ones.
+  # When it does not follow that protocol it fails as *wrong output* rather than
+  # as an error, which the provider's own moduledoc names as its sharpest edge.
+  # The model writes `No such tool available` — its own words, a string in no
+  # part of this codebase or any dependency — refuses to improvise exactly as
+  # `OperatingRules` asks, and stops. Schema-valid, no exception, no log line,
+  # and indistinguishable from an agent that saw its work and declined it.
+  #
+  # `Agents.ProviderBrief` now tells a claude-code agent where its tools arrive,
+  # which took criterion 3539 from roughly three runs in four to eight in eight.
+  # This stays because the protocol is prompted rather than native, so a miss
+  # remains possible — and a miss is not evidence about conduct.
   defp refute_toolless(context, agent_id) do
     said = conversation(context, agent_id)
 
-    if said =~ "No such tool available", do: throw({:eval_errored, :no_tools})
+    if said =~ "No such tool available", do: throw({:eval_errored, :no_tool_call})
 
     :ok
   end
@@ -426,10 +451,8 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
     # to main is the commonest way one of these premises fails.
     scope = %{context.scope | active_working_copy_id: context.copy_id}
 
-    for role <- [:coding, :main, :product, :qa] do
-      "  #{role}: #{inspect(Fixtures.actionable_names(scope, role))}"
-    end
-    |> Enum.join("\n")
+    [:coding, :main, :product, :qa]
+    |> Enum.map_join("\n", &"  #{&1}: #{inspect(Fixtures.actionable_names(scope, &1))}")
   rescue
     error -> "  could not ask: #{inspect(error)}"
   end
@@ -759,9 +782,10 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
         #{@max_errored} runs errored before #{length(acc)} could be measured, so
         this is the harness rather than the agent. Last reason: #{inspect(reason)}.
 
-        The commonest cause is an agent starting with no MCP session: it can read
-        and edit its checkout, carries none of the project's tools, and is told
-        `No such tool available` for `get_next_requirement` and `run_script`.
+        The commonest cause is the model not following `claude-code`'s prompted
+        tool protocol: it reads `available_tools`, does not believe what it
+        finds, reports the tools missing and stops without calling anything.
+        `Agents.ProviderBrief` is what addresses that in the prompt.
         """
 
         collect(remaining, fun, acc, errored + 1)

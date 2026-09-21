@@ -1361,14 +1361,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec recompute(Scope.t()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], NaiveDateTime.t() | nil}
           | {:error, term()}
-  def recompute(%Scope{} = scope) do
+  def recompute(%Scope{} = scope, opts \\ []) do
     scope = normalize_vantage(scope)
 
     # Timed here because here is where it is paid. `recompute_stale/4` starts
     # its own clock after this returns, so every duration this path has ever
     # reported excluded the preload — and the preload is the half that runs
     # whether or not the pass finds anything to do.
-    {preload_ms, loaded} = timed(fn -> Preloader.load(scope) end)
+    {preload_ms, loaded} = timed(fn -> Preloader.load(scope, opts) end)
 
     with {:ok, ctx} <- loaded do
       {nodes, edges} =

@@ -49,6 +49,7 @@ defmodule CmsHarness.Agents do
       # column — none of it is knowable from the machine.
       universal: request["universal"],
       project_brief: request["project_brief"],
+      provider_brief: request["provider_brief"],
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],
       # Where the application is running, off the project's main working
