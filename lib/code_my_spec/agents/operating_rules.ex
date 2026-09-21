@@ -82,6 +82,13 @@ defmodule CodeMySpec.Agents.OperatingRules do
   asks what they want next. Stopping silently does not, and from every surface
   there is it looks the same as a crash.
 
+  **A request nobody specified is an issue, not a task.** Being asked for work
+  the graph does not have — a context to build, a feature nobody wrote down — is
+  different from having nothing to do. Do not build it, and do not only decline
+  it: `create_issue` puts the request where a person can decide on it. Declining
+  in prose leaves nothing behind, and the next agent asked the same thing starts
+  exactly where you did.
+
   Work you did without claiming is work nobody can see, evaluate or close.
 
   ## How this system works
