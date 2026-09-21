@@ -67,7 +67,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
   # -- Client --
@@ -211,13 +210,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # all — `Freshness.topology/2` is the same hash the pass records, over
        # component ids, types, parents, dependencies and the story population.
        last_topology: %{},
-       # The last edge set drawn and what it was drawn over, so the next vantage
-       # with the same shape and the same node keys reuses it. Edges are a
-       # function of those two and nothing else — not a verdict, not a file —
-       # and every vantage of a project shares the shape, so a seed that drew
-       # them once per vantage was drawing one set ten times: ~1.2s each on
-       # the big project, most of a 10s seed the database had a quarter of.
-       edge_memo: nil,
        last_drain: nil,
        last_error: nil
      }}
@@ -691,8 +683,13 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     topology = Freshness.topology(ctx, config)
 
-    {edges_us, {state, edges, how}} =
-      :timer.tc(fn -> edges_for_seed(state, nodes, enriched, topology, config) end)
+    # Drawn per vantage, and it has to be: every checkout sees its own stories,
+    # so no two vantages of the big project share a node set (2,109 nodes at
+    # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21), and an edge
+    # set keyed on the node keys was never reused. What this log line is for:
+    # nodes, edges and write, per vantage, so the seed's cost has a shape.
+    {edges_us, edges} =
+      :timer.tc(fn -> RequirementGraph.edges_over(state.scope, nodes, enriched, config) end)
 
     covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
@@ -704,7 +701,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     Logger.info(
       "[ShadowProjector] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
-        "#{div(nodes_us, 1000)}ms, #{length(edges)} edges #{how} in #{div(edges_us, 1000)}ms, " <>
+        "#{div(nodes_us, 1000)}ms, #{length(edges)} edges in #{div(edges_us, 1000)}ms, " <>
         "written in #{div(write_us, 1000)}ms"
     )
 
@@ -734,25 +731,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state = reproject_topology(state, config, node_set_moved?)
     cache_analysis(state, analysis_fresh)
   end
-
-  # The edge set for this vantage's nodes: the one drawn for the previous
-  # vantage when the shape and the node keys are the same, drawn afresh
-  # otherwise and remembered for the next.
-  defp edges_for_seed(state, nodes, enriched, topology, config) do
-    key = memo_key(topology, nodes)
-
-    case state.edge_memo do
-      {^key, edges} ->
-        {state, edges, "reused"}
-
-      _other ->
-        edges = RequirementGraph.edges_over(state.scope, nodes, enriched, config)
-        {%{state | edge_memo: {key, edges}}, edges, "drawn"}
-    end
-  end
-
-  defp memo_key(topology, nodes),
-    do: {topology, nodes |> Enum.map(&Topology.node_key/1) |> Enum.sort() |> :erlang.phash2()}
 
   # Answers whether any write added or reaped a row, beside what it covered.
   @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) ::
