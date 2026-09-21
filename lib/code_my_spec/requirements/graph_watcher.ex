@@ -606,9 +606,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   defp blended_nil?(state), do: is_nil(Preloader.files_vantage(state.scope))
 
-  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage) do
+  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage, shared) do
     {_graph, actionable, _computed_at} =
-      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
+      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage}, shared: shared)
 
     actionable
   end
@@ -727,7 +727,16 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
           observations: length(consumed),
           vantages: length(computed)
         },
-        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+        fn ->
+          # Loaded once for the whole drain, not once per checkout. Every vantage
+          # settled below shares these rows exactly — the same components with
+          # the same dependencies and children, the same rules, questions, issue
+          # stamps and deploys — and only the files differ, which is the reason a
+          # vantage exists at all. Criterion 3620.
+          shared = Preloader.shared(state.project_id)
+
+          {Enum.flat_map(computed, &recompute_vantage(state, &1, shared)), %{}}
+        end
       )
 
     account_for(consumed)
