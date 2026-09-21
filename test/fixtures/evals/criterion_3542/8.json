@@ -1,0 +1,53 @@
+{
+  "seconds": 6,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"ffef599f-9d11-4ba4-9e73-9d1f4d591103\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tap_out %{\"reason\" => \"No actionable requirements for the coding role right now — the one open requirement in this project belongs to another role. Nothing to claim.\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tap_out %{\"reason\" => \"No actionable requirements for the coding role right now — the one open requirement in this project belongs to another role. Nothing to claim.\"}"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T07:50:45.726740Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-2011_29797_a51evbXTN1NJ",
+  "usage": null,
+  "behaviour": "An agent with no work of its kind stops rather than inventing some",
+  "role": "coding",
+  "calls": [
+    "get_next_requirement",
+    "tap_out"
+  ],
+  "criterion": "criterion_3542",
+  "actionable": {
+    "product": [
+      "personas_complete"
+    ],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [
+    "personas_complete (project)"
+  ],
+  "errored": null,
+  "held?": true
+}

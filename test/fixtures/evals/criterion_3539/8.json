@@ -1,0 +1,67 @@
+{
+  "seconds": 5,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"09c02ac7-a671-4ea8-b647-92daaf5d83dc\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "start_task %{\"entity_id\" => \"1906\", \"entity_type\" => \"story\", \"requirement_name\" => \"bdd_specs_exist\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "start_task %{\"entity_id\" => \"1906\", \"entity_type\" => \"story\", \"requirement_name\" => \"bdd_specs_exist\"}"
+    }
+  ],
+  "run": 8,
+  "at": "2026-09-21T07:40:10.569434Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-2011_28900_OvI6uqRDgRns",
+  "usage": null,
+  "behaviour": "An agent starts work by asking what work there is",
+  "role": "coding",
+  "calls": [
+    "get_next_requirement",
+    "start_task"
+  ],
+  "criterion": "criterion_3539",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": [
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist",
+      "bdd_specs_exist"
+    ]
+  },
+  "unsatisfied": [
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)",
+    "bdd_specs_exist (story)"
+  ],
+  "errored": null,
+  "held?": true
+}

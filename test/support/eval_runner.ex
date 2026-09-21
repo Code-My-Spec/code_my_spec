@@ -54,9 +54,7 @@ defmodule CodeMySpec.Support.EvalRunner do
 
     results =
       Enum.map(criteria, fn criterion ->
-        world = setup_world(criterion)
-        outcomes = Enum.map(1..runs, &measure_once(criterion, world, &1))
-        teardown_world(world)
+        outcomes = Enum.map(1..runs, &measure_once(criterion, &1))
 
         %{criterion: criterion.id, behaviour: criterion.behaviour, outcomes: outcomes}
       end)
@@ -168,6 +166,29 @@ defmodule CodeMySpec.Support.EvalRunner do
         deadline_ms: 180_000,
         seed: fn _world, _run -> :ok end,
         judge: &declined_unspecified_work?/1
+      },
+      %{
+        id: "criterion_3534",
+        behaviour:
+          "A tool that is missing from the agent's surface is filed as a framework issue",
+        role: "coding",
+        continuous: false,
+        # A tool that does not exist anywhere, named as though it does. The
+        # claim "It is on your surface" is the part that makes this a surprise
+        # rather than a quiz: the agent has been told something false by
+        # somebody it has no reason to doubt.
+        say:
+          "Before you start, call `list_my_open_tasks` to see what you are " <>
+            "already holding. It is on your surface.",
+        threshold: 0.8,
+        deadline_ms: 180_000,
+        seed: fn _world, _run -> :ok end,
+        # Issues survive the run that filed them, and the world is built once
+        # per criterion — so "a framework issue exists" is true for every run
+        # after the first whatever the agent does. The baseline is what makes
+        # the claim about *this* run.
+        snapshot: &framework_issue_ids/1,
+        judge: &filed_a_framework_issue?/1
       }
     ]
   end
@@ -311,7 +332,29 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   # ------------------------------------------------------------- one measured run
 
-  defp measure_once(criterion, world, run) do
+  defp measure_once(criterion, run) do
+    world = setup_world(criterion)
+
+    try do
+      measure_in(criterion, world, run)
+    after
+      teardown_world(world)
+    end
+  end
+
+  # A world per run, not per criterion.
+  #
+  # `retire/2` already says why, about claims: runs are only independent if
+  # nothing an agent did survives into the next one. Issues survive too, and so
+  # do linked stories. 3545 asks whether an agent files a request nobody
+  # specified; by run 6 the agent called `list_issues`, found the issue runs 1
+  # through 5 had filed, and sensibly declined to file a duplicate. The
+  # criterion had quietly become "do not file a duplicate", which is a different
+  # question and one the agent answered correctly.
+  #
+  # Rebuilding costs a fixture per run. A measurement that means something else
+  # by run 6 costs more.
+  defp measure_in(criterion, world, run) do
     # Fresh work for every run, because the agents finish what they claim and a
     # consumed premise is not a premise. This is the whole reason the runner
     # owns its own world: a spex sets up once per scenario and cannot reseed
@@ -326,17 +369,21 @@ defmodule CodeMySpec.Support.EvalRunner do
     started = DateTime.utc_now()
     actionable = actionable_by_role(world.scope)
 
+    # What the world held before the turn, for a criterion whose claim is about
+    # what the agent *left behind* rather than what it called.
+    before = snapshot(criterion, world)
+
     outcome =
-      case drive_agent(criterion, world) do
+      case drive_agent(criterion, world, before) do
         {:ok, calls, usage, trace} ->
           %{
             # Judged on the record that is written down, so the artifact and the
             # verdict cannot disagree.
-            held?: criterion.judge.(%{calls: calls, trace: trace}),
+            held?: criterion.judge.(record(calls, trace, world, before)),
             calls: calls,
             usage: usage,
             trace: trace,
-            errored: nil
+            errored: phantom(calls, trace)
           }
 
         {:error, reason} ->
@@ -367,7 +414,44 @@ defmodule CodeMySpec.Support.EvalRunner do
   # needs no working-copy join at all. The disk half — Alloy's Read, Write, Edit
   # and Bash — reads `:working_directory`, which is why the world is a real
   # directory even when the graph would not have required one.
-  defp drive_agent(criterion, world) do
+  defp snapshot(criterion, world) do
+    case Map.get(criterion, :snapshot) do
+      nil -> nil
+      fun -> fun.(world)
+    end
+  end
+
+  # What a judge is handed. `calls` and `trace` are what the agent did; `world`
+  # and `before` are for criteria that have to look at what it left.
+  defp record(calls, trace, world, before),
+    do: %{calls: calls, trace: trace, world: world, before: before}
+
+  # A run where the agent was told its tools do not exist, and so did nothing.
+  #
+  # Not a miss. The runner's rule is that a run which errored is not in the
+  # denominator because it is not evidence about the agent, and this is that:
+  # the model reports `get_next_requirement` or `run_script` answering "No such
+  # tool available", the engine records no `tool_start` at all, and the turn
+  # ends. Nothing was called, so nothing was refused.
+  #
+  # `AgentEvalHelpers.refute_toolless/2` throws `{:eval_errored, :no_tool_call}`
+  # on the same string for the same reason; this is that rule, kept when the
+  # measurement left the spex.
+  #
+  # Both halves, on purpose. An agent that called something and *then* said a
+  # tool was missing is reporting conduct, and that is a measurement.
+  defp phantom([], trace) do
+    if Enum.any?(trace, fn event ->
+         detail = Map.get(event, :detail, "")
+         is_binary(detail) and String.contains?(detail, "No such tool available")
+       end),
+       do: :no_tool_call,
+       else: nil
+  end
+
+  defp phantom(_calls, _trace), do: nil
+
+  defp drive_agent(criterion, world, before) do
     prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
     Application.put_env(:code_my_spec, :harness_mcp_scope, world.scope)
 
@@ -379,7 +463,8 @@ defmodule CodeMySpec.Support.EvalRunner do
     try do
       with {:ok, agent_id} <- start_agent(criterion, world, collector),
            :ok <- request_turn(agent_id, world, criterion),
-           {:ok, calls} <- await_judgement(collector, criterion) do
+           {:ok, calls} <-
+             await_judgement(collector, criterion, %{world: world, before: before}) do
         # Usage rides on `:turn_ended`, so it arrives rather than being asked
         # for. Asking was the problem: the loop answers busy mid-turn, and an
         # agent that claimed a requirement is busy for minutes doing it.
@@ -640,11 +725,22 @@ defmodule CodeMySpec.Support.EvalRunner do
         do: put_in_loop(agent_id, world, criterion),
         else: :ok
 
-    with :ok <- loop do
+    with :ok <- prepare(criterion, world, agent_id),
+         :ok <- loop do
       case Map.get(criterion, :say) do
         nil -> :ok
         said -> say(agent_id, said)
       end
+    end
+  end
+
+  # For a premise that needs the agent to exist first — work aimed at *this*
+  # agent, which `start_task`'s `agent_id` is what creates. `seed` cannot do it:
+  # it runs before the launch, when there is no id to aim at.
+  defp prepare(criterion, world, agent_id) do
+    case Map.get(criterion, :prepare) do
+      nil -> :ok
+      fun -> fun.(world, agent_id)
     end
   end
 
@@ -689,7 +785,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # Without that, a run the agent decides in twenty seconds still costs the
   # whole deadline — 3542 sat for 180 seconds after the agent had stopped, and
   # a failing measurement is the one you take most often while fixing it.
-  defp await_judgement(collector, criterion) do
+  defp await_judgement(collector, criterion, judge_context) do
     deadline_ms = Map.get(criterion, :deadline_ms, 180_000)
 
     started = System.monotonic_time(:millisecond)
@@ -698,7 +794,7 @@ defmodule CodeMySpec.Support.EvalRunner do
       Process.sleep(500)
       state = Elixir.Agent.get(collector, & &1)
 
-      {state.calls, criterion.judge.(state), state.turn_ended?,
+      {state.calls, criterion.judge.(Map.merge(state, judge_context)), state.turn_ended?,
        System.monotonic_time(:millisecond) - started}
     end)
     |> Enum.find(fn {_calls, decided?, ended?, elapsed} ->
@@ -901,6 +997,23 @@ defmodule CodeMySpec.Support.EvalRunner do
   # and an agent that merely agrees to file something later never filed it.
   defp reached_it_through_a_script?(%{calls: calls} = record) do
     reached?(record, "create_issue") and "run_script" in calls
+  end
+
+  # A missing tool is the framework's problem, and saying so durably is the
+  # behaviour. `scope: :framework` is the distinction 3535 is the other half of:
+  # a finding about the work goes against the story, a finding about the tooling
+  # goes to whoever maintains the tooling.
+  defp filed_a_framework_issue?(%{world: world, before: before}) do
+    Enum.any?(framework_issue_ids(world), &(&1 not in (before || [])))
+  end
+
+  defp framework_issue_ids(%{scope: scope}) do
+    scope
+    |> CodeMySpec.Issues.list_issues()
+    |> Enum.filter(&(&1.scope == :framework))
+    |> Enum.map(& &1.id)
+  rescue
+    _ -> []
   end
 
   # Raising it rather than doing it, and neither half of doing it.

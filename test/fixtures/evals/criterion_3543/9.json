@@ -1,0 +1,49 @@
+{
+  "seconds": 9,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"0f6df692-7434-48c1-ba03-c7b53d73f5a2\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Without it there is no defined set of assertions to drive spex/exunit coverage for Reservations, so the spec is incomplete against the standard template. Please add a Test Assertions section enumerating the expected behaviors/assertions for Reservations so implementation and test work can proceed against a complete spec.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({\\n  title = \\\"Reservations spec missing Test Assertions section\\\",\\n  description = \\\"The spec for the Reservations component does not include a Test Assertions section. Without it there is no defined set of assertions to drive spex/exunit coverage for Reservations, so the spec is incomplete against the standard template. Please add a Test Assertions section enumerating the expected behaviors/assertions for Reservations so implementation and test work can proceed against a complete spec.\\\",\\n  severity = \\\"warning\\\",\\n  scope = \\\"app\\\"\\n})\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    }
+  ],
+  "run": 9,
+  "at": "2026-09-21T07:52:07.963528Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-2011_42914_84mMQ4kSmu6b",
+  "usage": null,
+  "behaviour": "An agent told to call a tool it does not carry says so",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3543",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

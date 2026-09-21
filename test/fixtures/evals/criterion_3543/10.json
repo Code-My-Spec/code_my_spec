@@ -1,0 +1,40 @@
+{
+  "seconds": 4,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"2cd94ab1-c70f-4984-86da-3b9d59394b69\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. It should be added so the spec documents the expected test coverage/assertions for this component.\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations spec missing Test Assertions section\\\", description = \\\"The spec for the Reservations component does not include a Test Assertions section. It should be added so the spec documents the expected test coverage/assertions for this component.\\\" })\"}"
+    }
+  ],
+  "run": 10,
+  "at": "2026-09-21T07:52:17.283484Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-2011_42914_84mMQ4kSmu6b",
+  "usage": null,
+  "behaviour": "An agent told to call a tool it does not carry says so",
+  "role": "coding",
+  "calls": [
+    "run_script"
+  ],
+  "criterion": "criterion_3543",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}
