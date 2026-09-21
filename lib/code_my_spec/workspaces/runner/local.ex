@@ -206,7 +206,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     fi
 
     log "Starting the cms harness server on :#{harness_port}"
-    CMS_NODE_NAME="#{container_name}" CMS_HARNESS_PORT="#{harness_port}" CMS_PROJECT_DIR="#{app_dir}" cms start &
+    CMS_NODE_NAME="#{container_name}" CMS_HARNESS_PORT="#{harness_port}" CMS_PROJECT_DIR="#{app_dir}" #{harness_source().command()} &
 
     log "Starting #{app_name} on :4000"
     exec env PORT=#{port} mix phx.server
@@ -463,6 +463,15 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Workspaces, [])
     |> Keyword.get(:local_workspace_root, Path.expand("~/.codemyspec/workspaces"))
+  end
+
+  # Defaults to the published release, which is the only correct answer on a
+  # customer's own laptop — see `HarnessSource`'s own moduledoc for what
+  # trusting it unconditionally cost this dev box specifically.
+  defp harness_source do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Workspaces, [])
+    |> Keyword.get(:harness_source, CodeMySpec.Workspaces.HarnessSource.Installed)
   end
 
   defp free_port do
