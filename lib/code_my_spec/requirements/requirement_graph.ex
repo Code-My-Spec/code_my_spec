@@ -515,8 +515,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # the vantage the reader named, which `GraphWatcher` has always folded into
   # its next pass as `requested_vantages` and the projector never heard about.
   defp settle_owner(%Scope{active_project_id: project_id} = scope) do
+    # Settled if it is running and started by nobody here, exactly as the pass
+    # side: `GraphWatcher.settle/1` answers `:ok` for a project nothing watches,
+    # and `ensure_watching/1` is what starts both writers. A read that started
+    # the projector resurrected it after a scenario's teardown had stopped it —
+    # a wake task's read, drained after `stop_graph_watchers/0` — and the
+    # projector then ran its seed on a sandbox whose owner was gone.
     if Shadow.inverted?() do
-      ShadowProjector.ensure_projecting(scope)
       ShadowProjector.settle(project_id, [scope.active_working_copy_id])
     else
       GraphWatcher.settle(scope)

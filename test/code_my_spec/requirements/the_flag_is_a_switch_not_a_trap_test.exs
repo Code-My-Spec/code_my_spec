@@ -57,12 +57,19 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  # Restored to what the config said, never deleted: the test config sets both
+  # flags, and deleting the key would strip that for every test after this one.
+  # Each test here starts on the pass and flips inside itself, so it forces the
+  # starting side rather than assuming it.
   setup do
+    projection = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
+    source = Application.get_env(:code_my_spec, :graph_event_is_source, false)
     Application.put_env(:code_my_spec, :graph_shadow_projection, true)
+    Application.put_env(:code_my_spec, :graph_event_is_source, false)
 
     on_exit(fn ->
-      Application.delete_env(:code_my_spec, :graph_shadow_projection)
-      Application.delete_env(:code_my_spec, :graph_event_is_source)
+      Application.put_env(:code_my_spec, :graph_shadow_projection, projection)
+      Application.put_env(:code_my_spec, :graph_event_is_source, source)
     end)
 
     :ok

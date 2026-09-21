@@ -125,7 +125,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # projects. Started here rather than anywhere else because this is what
     # decides a project is being worked on; `ensure_projecting/1` refuses when
     # the flag is off, so this costs a function call in the normal case.
-    ShadowProjector.ensure_projecting(watcher_scope(scope))
+    # Allowed on the caller's sandbox like the watcher below, so a spex that
+    # runs on its own connection (`async: true`, manual mode) has a projector
+    # that can read it.
+    case ShadowProjector.ensure_projecting(watcher_scope(scope)) do
+      {:ok, projector} -> allow_sandbox(projector)
+      _disabled -> :ok
+    end
 
     case DynamicSupervisor.start_child(
            CodeMySpec.Requirements.WatcherSupervisor,

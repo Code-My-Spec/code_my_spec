@@ -11,6 +11,8 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpecLocalWeb.RequirementsMarkdown
 
   @doc """
@@ -49,14 +51,14 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     json(conn, %{
       computed_at: computed_at,
       served_from: served_from,
-      watcher: watcher_report(GraphWatcher.status(scope.active_project_id)),
+      watcher: watcher_report(serving_status(scope.active_project_id)),
       # What the last drain on this project cost. Here for the same reason
       # `inputs_fingerprint` is on every node: "an observation costs work in
       # proportion to what it changed" is a claim about numbers, and one whose
       # evidence lives only in a log line cannot be asserted against from
       # outside. Queries, rows and checkouts settled — not milliseconds, which
       # measure the machine rather than the work.
-      last_drain: DrainCost.last(scope.active_project_id),
+      last_drain: DrainCost.last(scope.active_project_id, Shadow.serving_kind()),
       # Which row-space answered, and whose tree those rows are about. Two
       # facts, and a reader naming no checkout is where they differ: it is
       # answered from the rows kept under no working copy, computed from the
@@ -124,6 +126,17 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     do: %{scope | active_working_copy_id: id}
 
   defp scope_for(scope, _params), do: scope
+
+  # The writer a reader is served from, which is what `watcher` has always
+  # meant to a reader: is somebody keeping this current, and when did they
+  # last. Inverted, that is the projector — and it has no debounce, so a write
+  # with nobody reading moves `last_recompute` the moment it lands.
+  defp serving_status(project_id) do
+    case Shadow.serving_kind() do
+      :event -> ShadowProjector.status(project_id)
+      :pass -> GraphWatcher.status(project_id)
+    end
+  end
 
   defp watcher_report(nil), do: %{watching: false}
 

@@ -41,14 +41,15 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
   ## What it observes
 
   `checked_at`, backdated first. The stamp is `truncate(:second)` into a
-  precision-0 column, so a pass inside one second is indistinguishable from one
-  that did nothing, and this scenario reads "nothing moved" as its own setup
-  having failed.
+  precision-0 column, so a write inside one second is indistinguishable from
+  none, and this scenario reads "nothing moved" as its own setup having failed.
 
-  `checked_at` is the right instrument here and the wrong one in
-  [[criterion 3618]] — there it moves whether or not the work was necessary,
-  because `upsert_all/3` stamps every row it is handed. That is exactly the
-  property under test here: the sibling must not be handed to it at all.
+  The event path stamps a row only when its answer moves, so the child's has
+  to: the file that goes away is its implementation file — the fixture ships
+  one per module — which flips `implementation_file`, the one requirement a
+  component in this fixture carries. A sibling's file is still there, so its
+  answer did not move, and a stamp on it is a row nothing touched being
+  written anyway.
   """
 
   use CodeMySpecSpex.Case
@@ -65,7 +66,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
   @moduletag timeout: 60_000
 
   spex "One child changing is one child's worth of work" do
-    scenario "a context with three children, one of which is edited" do
+    scenario "a context with three children, one of which loses its file" do
       given_ :context_with_three_children
 
       given_ "a settled graph, old enough to see a rewrite", context do
@@ -74,40 +75,38 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
         :ok = Fixtures.settle_graph(context.scope)
         :ok = Fixtures.backdate_requirement_freshness(context.scope)
 
-        before = stamps(read_graph(context))
+        graph = read_graph(context)
+        before = stamps(graph)
 
         assert before != %{}, "nothing is stored, so no pass can leave anything alone"
 
-        {:ok, Map.put(context, :before, before)}
+        {:ok, context |> Map.put(:before, before) |> Map.put(:before_graph, graph)}
       end
 
-      when_ "one child's spec file is edited", context do
-        # Still valid, and still a schema with no dependencies, so the shape does
-        # not move — only this one component's files. An edit into invalidity
-        # would move `spec_valid`'s verdict too, and then "the sibling was left
-        # alone" could be read off a verdict rather than off the work.
+      when_ "one child's implementation file goes away", context do
+        # The child's own file, so the shape does not move — only this one
+        # component's answer.
         :ok =
-          Fixtures.write_env_file(
+          Fixtures.delete_env_file(
             context.environment,
-            Content.spec_path(context.child_schema.module_name),
-            Content.child_spec(context.child_schema.module_name,
-              type: "schema",
-              dependencies: [],
-              description: "Edited after the graph had been computed."
-            )
+            Content.impl_path(context.child_schema.module_name)
           )
 
         :ok = Fixtures.scan_working_copy(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :after, stamps(read_graph(context)))}
+        graph = read_graph(context)
+        {:ok, context |> Map.put(:after, stamps(graph)) |> Map.put(:after_graph, graph)}
       end
 
       then_ "the child whose file it is gets recomputed", context do
         assert moved?(context, context.child_schema.id),
                """
-               A component's spec file changed and its requirements were not
-               recomputed.
+               A component's implementation file went away and its verdict
+               did not move.
+
+               before: #{inspect(verdicts(context.before_graph, context.child_schema.id))}
+               after:  #{inspect(verdicts(context.after_graph, context.child_schema.id))}
 
                Everything below is about what that pass should *not* also have
                done. If it did nothing, the sibling being untouched is an
@@ -125,7 +124,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
 
         assert siblings == [],
                """
-               One child's file changed and #{length(siblings)} sibling(s) were
+               One child's file went away and #{length(siblings)} sibling(s) were
                rewritten with it: #{Enum.join(siblings, ", ")}.
 
                `expand_component_families/2` puts the whole family in the stale
@@ -146,7 +145,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
       then_ "and neither is the parent context", context do
         refute moved?(context, context.parent_context.id),
                """
-               A child's file changed and the parent context was rewritten.
+               A child's file went away and the parent context was rewritten.
 
                The parent's own requirements read the parent's own files and the
                *ids* of its children — `Freshness.component/2` hashes
@@ -158,6 +157,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
         {:ok, context}
       end
     end
+  end
+
+  defp verdicts(graph, component_id) do
+    (graph["nodes"] || [])
+    |> Enum.filter(&(to_string(&1["entity_id"]) == to_string(component_id)))
+    |> Enum.map(&{&1["name"], &1["satisfied"], &1["checked_at"]})
   end
 
   defp stamps(graph) do

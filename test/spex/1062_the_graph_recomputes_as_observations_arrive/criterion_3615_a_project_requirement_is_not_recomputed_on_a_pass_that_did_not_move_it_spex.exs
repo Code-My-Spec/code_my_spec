@@ -166,9 +166,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
   # criteria 3516 and 3517 read.
   defp queries(context), do: drain_queries(read_graph(context)["last_drain"])
 
-  # Only a `pass` drain. The event path reports its own cost separately, and
-  # mixing the two would compare a projection maintained from handlers against a
-  # whole recompute — which is criterion 3516's comparison, not this one's.
-  defp drain_queries(%{"queries" => queries, "kind" => "pass"}), do: queries
+  # Whichever writer serves the graph. `last_drain` on the read is the drain of
+  # the writer the reader is served from — the pass, or the event path when it
+  # is the source — so this measures the system as served and never mixes the
+  # two, which is criterion 3516's comparison and not this one's.
+  defp drain_queries(%{"queries" => queries}), do: queries
   defp drain_queries(_other), do: nil
 end
