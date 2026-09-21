@@ -143,6 +143,54 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
       nothing is already running in a workspace nobody has connected to yet.
       """
     end
+
+    # A customer's own laptop has no code_my_spec checkout to run the
+    # harness from, and should not need one — the installed release, on
+    # PATH, is the only thing that can be right there. Unconfigured is this
+    # case, not an oversight: HarnessSource.Installed is the default.
+    test "and it runs the installed release, by default", %{prepared: p} do
+      assert File.read!(p.script_path) =~ ~s(CMS_PROJECT_DIR="#{p.app_dir}" cms start &)
+    end
+  end
+
+  # A dev box's own checkout, run straight from source rather than through
+  # the separately-released tap `cms` on PATH resolves to. Not a corner case
+  # of `prepare/4` — every other identity/naming fix above shares this exact
+  # gap once configured this way, since none of them ever reach a bare-metal
+  # boot without it: `promote_sync` updates this server, never the installed
+  # formula. Measured three weeks stale, missing an Alloy provider a
+  # workspace's own agent needed just to restore.
+  describe "a dev box running its own checkout" do
+    setup do
+      original = Application.get_env(:code_my_spec, CodeMySpec.Workspaces, [])
+
+      Application.put_env(
+        :code_my_spec,
+        CodeMySpec.Workspaces,
+        Keyword.put(original, :harness_source, CodeMySpec.Workspaces.HarnessSource.Checkout)
+      )
+
+      on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Workspaces, original) end)
+
+      name = "identity-probe-#{System.unique_integer([:positive])}"
+      prepared = Local.prepare(name, "demo_app", 4001, @env)
+      on_exit(fn -> File.rm_rf(prepared.dir) end)
+      %{prepared: prepared}
+    end
+
+    test "runs from source instead of the installed release", %{prepared: p} do
+      script = File.read!(p.script_path)
+
+      assert script =~
+               ~s(CMS_PROJECT_DIR="#{p.app_dir}" cd #{File.cwd!()} && MIX_ENV=dev_sprite mix run --no-halt &),
+             """
+             Left on the default, this dev box's own harness-side fixes never reach a
+             bare-metal boot — `promote_sync` updates the server this config lives on,
+             not the separately-released tap `cms` resolves to.
+
+             Got: #{script}
+             """
+    end
   end
 
   defp name(%{dir: dir}), do: Path.basename(dir)

@@ -208,9 +208,20 @@ config :code_my_spec, :cloudflare_tunnel,
 # and every message refused with 'nothing here is holding that working
 # copy.'" Caught live: the harness's own connection log named the mismatch
 # directly, once the first two causes stopped hiding it.
+#
+# `harness_source: HarnessSource.Checkout` — a fourth gap the same night
+# surfaced once the first three stopped hiding it. Left at the default
+# (`HarnessSource.Installed`, the published `cms` on PATH), every fix above
+# and every other harness-side fix promoted since would keep silently never
+# reaching a bare-metal boot on this box: `promote_sync` updates this
+# server, not the separately-released tap formula `cms` resolves to, and
+# that formula measured three weeks behind this repo's own HEAD — missing
+# an Alloy provider a workspace's own agent needed just to restore. See
+# `HarnessSource`'s own moduledoc.
 config :code_my_spec, CodeMySpec.Workspaces,
   runner: CodeMySpec.Workspaces.Runner.Local,
-  server_url: "http://localhost:4000"
+  server_url: "http://localhost:4000",
+  harness_source: CodeMySpec.Workspaces.HarnessSource.Checkout
 
 # `codemyspec.com`, not `astralbi.com`, and the reason is the session cookie.
 #
