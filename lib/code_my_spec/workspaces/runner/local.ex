@@ -121,21 +121,37 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   # for the same marker match, not a claim about where the app is actually
   # bound — `PORT` is what actually places it.
   #
-  # `CMS_NODE_NAME=#{container_name}` on the harness line is load-bearing, not
-  # decoration. `rel/env.sh.eex` names every `cms start` node `codemyspec` by
-  # default — one cms per machine is the desktop-install assumption — and
-  # `env.sh.eex`'s own comment already names this exact failure: "a fixed
-  # sname makes the second one die at boot with 'the name codemyspec@<host>
-  # seems to be in use', including when a sprite runs next to a developer's
-  # own cms." This host runs its own `cms harness` continuously for this very
-  # checkout, so every local-tier workspace's harness used to collide with it
-  # on the very first boot — silently: the app came up and answered fine, the
-  # harness died on `epmd` registration, and the only trace was this
-  # workspace's own `run.log`, which nothing serves or reads. From the
-  # visitor's side that is "dumped into the cockpit, no preview, and every
-  # message refused with 'nothing here is holding that working copy.'" One
-  # unique name per workspace, reusing the same `container_name` that already
-  # keys everything else about it, is what `CMS_NODE_NAME` exists for.
+  # `CMS_NODE_NAME` and `CMS_PROJECT_DIR` on the harness line are both
+  # load-bearing, not decoration — two separate gaps that produced the exact
+  # same visitor-facing failure ("dumped into the cockpit, no preview, and
+  # every message refused with 'nothing here is holding that working copy'")
+  # and were only distinguishable by reading this workspace's own `run.log`,
+  # which nothing serves or reads.
+  #
+  # `CMS_NODE_NAME=#{container_name}`: `rel/env.sh.eex` names every
+  # `cms start` node `codemyspec` by default — one cms per machine is the
+  # desktop-install assumption — and its own comment already names this exact
+  # failure: "a fixed sname makes the second one die at boot with 'the name
+  # codemyspec@<host> seems to be in use', including when a sprite runs next
+  # to a developer's own cms." A box that also runs its own persistent `cms
+  # harness` for other checkouts — this one does, continuously — collided
+  # with every workspace booted here on the very first boot, silently: the
+  # app came up and answered fine while the harness died on `epmd`
+  # registration. One unique name per workspace, reusing the same
+  # `container_name` that already keys everything else about it, is what
+  # `CMS_NODE_NAME` exists for.
+  #
+  # `CMS_PROJECT_DIR=#{app_dir}`: fixing the name collision surfaced a second,
+  # independent gap behind it — the harness came up cleanly, under its own
+  # name, and still never served this project. `CmsHarness.Projects`'
+  # moduledoc says why: a project is served either because `CMS_PROJECT_DIR`
+  # named it at boot (the *sprite* path — "one checkout... started at boot
+  # rather than waiting for the first hook") or because a hook request from
+  # an already-running session picked it up (the *laptop* path). A workspace
+  # booted here is the sprite case exactly — there is no developer already
+  # sitting in this checkout to fire a first hook — but this runner never set
+  # the variable that path depends on, so the harness sat idle forever
+  # waiting for a hook that had no way to ever arrive.
   defp build_script(container_name, dir, app_dir, app_name, port, harness_port) do
     """
     #!/bin/bash
@@ -190,7 +206,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     fi
 
     log "Starting the cms harness server on :#{harness_port}"
-    CMS_NODE_NAME=#{container_name} CMS_HARNESS_PORT=#{harness_port} cms start &
+    CMS_NODE_NAME="#{container_name}" CMS_HARNESS_PORT="#{harness_port}" CMS_PROJECT_DIR="#{app_dir}" cms start &
 
     log "Starting #{app_name} on :4000"
     exec env PORT=#{port} mix phx.server
