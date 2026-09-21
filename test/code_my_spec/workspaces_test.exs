@@ -9,6 +9,7 @@ defmodule CodeMySpec.WorkspacesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecTest.FakeWorkspaceRunner
 
   setup do
@@ -184,6 +185,45 @@ defmodule CodeMySpec.WorkspacesTest do
   describe "get_workspace/1" do
     test "a scope with no project has no workspace" do
       assert Workspaces.get_workspace(user_scope_fixture()) == nil
+    end
+  end
+
+  # Never exercised by `boot/1` above — the fake runner configured for this
+  # whole file is neither `Runner.Docker` nor `Runner.Local`, so a test only
+  # through `boot/1` would never actually reach either branch. This is the
+  # exact shape of gap that let the two disagree in production: the harness
+  # joined under its real bare-metal root, the server had recorded the
+  # container one from this same function, and `cms harness` reported the
+  # mismatch as `:working_copy_missing` on agent restore rather than as a
+  # wrong path, since nothing compares the two directly.
+  describe "instance_root/1" do
+    setup do
+      original = Application.get_env(:code_my_spec, CodeMySpec.Workspaces, [])
+      on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Workspaces, original) end)
+      :ok
+    end
+
+    test "a Docker-run instance lands where the entrypoint always puts it" do
+      Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: Runner.Docker)
+      scope = full_scope_fixture(%{name: "Widget Tracker"})
+
+      assert Workspaces.instance_root(scope.active_project) == "/workspace/widget_tracker"
+    end
+
+    test "a bare-metal instance is asked where it actually landed, not assumed" do
+      Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: Runner.Local)
+      scope = full_scope_fixture(%{name: "Widget Tracker"})
+      project = scope.active_project
+
+      expected = Runner.Local.root("cms-workspace-#{project.id}", "widget_tracker")
+
+      refute expected == "/workspace/widget_tracker", """
+      the premise failed: this test needs the bare-metal root to actually
+      differ from the container one, or it cannot tell "asked correctly"
+      from "still assuming the container path by coincidence"
+      """
+
+      assert Workspaces.instance_root(project) == expected
     end
   end
 end

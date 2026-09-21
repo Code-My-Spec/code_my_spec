@@ -147,6 +147,35 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
 
   defp name(%{dir: dir}), do: Path.basename(dir)
 
+  # `Workspaces.instance_root/1` calls this instead of assuming the Docker
+  # container path (`/workspace/<app>`) so the root the server records
+  # actually matches where a bare-metal instance lands — see that function's
+  # own docstring for what mismatching them costs (`:working_copy_missing`
+  # on agent restore, reported with no hint that a root disagreement is why).
+  describe "root/2" do
+    test "is where the app directory actually lands under this box's workspace root" do
+      assert Local.root("cms-workspace-abc123", "widget_tracker") ==
+               Path.join([
+                 Path.expand("~/.codemyspec/workspaces"),
+                 "cms-workspace-abc123",
+                 "widget_tracker"
+               ])
+    end
+
+    test "honors a configured local_workspace_root rather than always the default" do
+      original = Application.get_env(:code_my_spec, CodeMySpec.Workspaces, [])
+
+      Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
+        local_workspace_root: "/tmp/custom_root"
+      )
+
+      on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Workspaces, original) end)
+
+      assert Local.root("cms-workspace-abc123", "widget_tracker") ==
+               "/tmp/custom_root/cms-workspace-abc123/widget_tracker"
+    end
+  end
+
   describe "when the host named nothing" do
     test "no file is written and the workspace still boots", %{dir: dir} do
       assert :ok = Local.write_identity(dir, [])

@@ -439,6 +439,24 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   defp state_path(dir), do: Path.join(dir, ".runner_state.json")
   defp log_path(dir), do: Path.join(dir, "run.log")
 
+  @doc """
+  Where an instance of `app_name` under `container_name` actually lands.
+
+  The bare-metal counterpart to `Workspaces.instance_root/1`'s Docker case —
+  "the entrypoint generates into /workspace/<app> and nowhere else" has no
+  equivalent fixed truth here, since a boot's root depends on this box's own
+  `local_workspace_root` configuration (`~/.codemyspec/workspaces` by
+  default) rather than a path baked into an image. Public so the server can
+  ask rather than assume the container path: `WorkingCopies.report_root/2`
+  recording `/workspace/<app>` for an instance that actually landed
+  somewhere under that real root is a path the harness can never match once
+  it joins under its own — which reads as `cms harness`'s own agent-restore
+  failing with `:working_copy_missing`, not as a wrong path, since nothing
+  compares the two directly.
+  """
+  @spec root(String.t(), String.t()) :: String.t()
+  def root(container_name, app_name), do: container_name |> workspace_dir() |> Path.join(app_name)
+
   defp workspace_dir(container_name), do: Path.join(workspace_root(), container_name)
 
   defp workspace_root do
