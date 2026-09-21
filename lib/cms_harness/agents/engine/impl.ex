@@ -971,10 +971,33 @@ defmodule CmsHarness.Agents.Engine.Impl do
   defp to_message(%{"role" => "user", "content" => content}) when is_binary(content),
     do: [Alloy.Message.user(content)]
 
+  # Content blocks, not just text. A seeded turn carries `tool_use` and
+  # `tool_result` blocks so an agent's transcript opens having already made a
+  # call of each shape — `Alloy.Message.text/1` drops them and
+  # `Conversations.as_turn/1` never produced them, so without this clause they
+  # arrive and are silently discarded.
+  defp to_message(%{"role" => "assistant", "content" => blocks}) when is_list(blocks),
+    do: [Alloy.Message.assistant_blocks(Enum.map(blocks, &atomise_block/1))]
+
+  defp to_message(%{"role" => "user", "content" => blocks}) when is_list(blocks),
+    do: [Alloy.Message.tool_results(Enum.map(blocks, &atomise_block/1))]
+
   defp to_message(%{role: role, content: content}),
     do: to_message(%{"role" => to_string(role), "content" => content})
 
   defp to_message(_other), do: []
+
+  # Blocks cross the wire with string keys and the provider serialiser matches
+  # on atoms, so a block that survived the trip would be dropped at the last
+  # step instead of the first.
+  defp atomise_block(block) when is_map(block) do
+    Map.new(block, fn
+      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+      {k, v} -> {k, v}
+    end)
+  rescue
+    ArgumentError -> block
+  end
 
   # A compaction, on its way to whoever keeps this agent's transcript.
   #

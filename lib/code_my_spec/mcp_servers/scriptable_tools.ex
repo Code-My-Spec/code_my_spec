@@ -35,6 +35,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
     capabilities: [:tools]
 
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
+  component(CodeMySpec.McpServers.Health.Tools.ScriptHealth)
   component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
   component(CodeMySpec.McpServers.Issues.Tools.GetIssue)
   component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)

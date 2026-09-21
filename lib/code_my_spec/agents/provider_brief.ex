@@ -56,35 +56,63 @@ defmodule CodeMySpec.Agents.ProviderBrief do
   @claude_code """
   ## How you call a tool
 
-  You are the model backend for a harness. **You do not run tools — you name
-  them.** The harness runs them and sends you the result on the next turn.
+  Every response you produce is one JSON object. Putting a tool in `tool_calls`
+  is how you use it: the harness runs it and sends the result in your next
+  request. Text does not run.
 
-  Your tools arrive with each request as `available_tools`. That list is the
-  whole of what you can reach, and the index above names the same tools. To call
-  one, put its name and arguments in `tool_calls` and return. Naming it there is
-  calling it. Do not describe the call in prose, and do not write out what you
-  would have run; nothing executes text.
+  `available_tools` arrives with each request — the names you may put in
+  `tool_calls`, each with its argument schema.
 
-  **You have no tools of your own.** The process you are running in was started
-  with none on purpose, so reaching for one directly — as though you could read
-  a file or run a command yourself — fails before the harness ever hears about
-  it. What comes back is:
+  ### A tool from the "Called directly" list
 
-      No such tool available: <name>
+      {"stop_reason": "tool_use",
+       "text": "",
+       "tool_calls": [{"call_id": "1",
+                       "name": "get_next_requirement",
+                       "arguments": {}}]}
 
-  That sentence is not the harness and it is not the tool. It is this process
-  telling you that you tried to run something yourself instead of naming it.
-  Everything in `available_tools` is reachable; the call simply has to go in
-  `tool_calls`. If you see it, put the name in `tool_calls` and return — do not
-  report the tool as missing, and do not stop.
+  ### A tool from the "Called from inside `run_script`" list
 
-  A real tool error looks different. It arrives as the *result* of a call you
-  named, on the turn after you named it, and it says `Unknown tool: <name>` or
-  carries the tool's own message. Report that, and report it the way the rules
-  above say to.
+  Those names are Lua functions, not tool names, and have no entry in
+  `available_tools`. Name `run_script` and write the call into its `script`.
+  Each takes one table and returns a value and an error:
 
-  **A tool you did not name in `tool_calls` has not failed.** It has not been
-  called.
+      {"stop_reason": "tool_use",
+       "text": "",
+       "tool_calls": [{"call_id": "1",
+                       "name": "run_script",
+                       "arguments": {"script": "local issue, err = create_issue({ scope = 'framework', severity = 'warning', title = 'short title', description = 'what happened' }); return { issue = issue, err = err }"}}]}
+
+  Single quotes in the script: it is already a JSON string, so nothing is
+  escaped twice. Several calls is ordinary Lua — assign each result, return a
+  table of them.
+
+  ### The arguments a Lua function takes
+
+      {"stop_reason": "tool_use",
+       "text": "",
+       "tool_calls": [{"call_id": "1",
+                       "name": "tool_docs",
+                       "arguments": {"names": ["create_issue"]}}]}
+
+  Ask before your first script rather than composing one from memory.
+
+  ### Answering without calling anything
+
+      {"stop_reason": "end_turn",
+       "text": "what you want to say",
+       "tool_calls": []}
+
+  ### Check before you return
+
+  A tool's result reaches you in the next request, never in the response that
+  calls it. So do not write that a tool returned, failed, or succeeded unless
+  that outcome is in a result you were actually sent earlier. Read back every
+  sentence that has a tool saying or returning something: if there is no result
+  in the conversation to point at, it did not happen — delete the sentence, put
+  the tool in `tool_calls`, and return.
+
+  `tool_calls: []` ends the turn having run nothing.
   """
 
   @doc """
@@ -95,6 +123,23 @@ defmodule CodeMySpec.Agents.ProviderBrief do
   told nothing, the same reason `RoleBrief.for/1` gives.
   """
   @spec for(String.t() | atom() | nil) :: String.t() | nil
-  def for("claude-code"), do: String.trim(@claude_code)
+  def for("claude-code") do
+    # Off by default, and the text kept for comparison.
+    #
+    # `LaunchRequest` seeds the agent's history with a direct call and a nested
+    # one, both real, so the transcript opens having already done each shape.
+    # Measured 2026-09-21 on the two criteria that fabricated tool failures
+    # most: 3535 went from 7 in 10 at its best under prose to 10 in 10 with no
+    # prose at all, and 3545 from 3 in 10 with this text to 8 in 10 without it.
+    #
+    # The text is not neutral. It cannot describe the format without naming
+    # what a failure looks like, and naming that is what the agents echoed back
+    # as live results. A demonstration says the same thing and gives them
+    # nothing to quote. `CMS_PROVIDER_BRIEF=1` puts it back.
+    if System.get_env("CMS_PROVIDER_BRIEF") in ~w(1 true),
+      do: String.trim(@claude_code),
+      else: nil
+  end
+
   def for(_provider), do: nil
 end

@@ -1,9 +1,9 @@
 {
-  "seconds": 27,
+  "seconds": 30,
   "trace": [
     {
       "event": "message_delivered",
-      "detail": "%{ref: \"7202789d-ba09-47b8-b384-58c29dc61244\"}"
+      "detail": "%{ref: \"61af2a19-ae0a-4094-87b5-73e1b86b88c2\"}"
     },
     {
       "event": "turn_started",
@@ -11,54 +11,61 @@
     },
     {
       "event": "tool_start",
-      "detail": "get_next_requirement"
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
       "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
       "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
     },
     {
       "event": "tool_end",
-      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
-    },
-    {
-      "event": "tool_end",
       "detail": "get_next_requirement"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not "
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed via a user-turn system message to call list_my_open_tasks before starting work, to see tasks already held. This tool name does not appear in either the 'Called directly' or 'Called from inside run_script' tool lists available to the coding agent, and tool_docs was not consulted for it since it isn't in the top-level list at all. Filing per the missing-tool reporting rule instead of substituting a different tool or improvising a workaround.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_start",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining, so there is no coding work to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports all requirements satisfied for this project/story scope — no actionable work to claim. Also filed a framework issue: list_my_open_tasks, which the incoming instruction told me to call, isn't on my tool surface.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_end",
-      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports the story is complete with no actionable requirements remaining, so there is no coding work to claim right now.\", \"task_id\" => nil}"
+      "detail": "tap_out %{\"reason\" => \"get_next_requirement reports all requirements satisfied for this project/story scope — no actionable work to claim. Also filed a framework issue: list_my_open_tasks, which the incoming instruction told me to call, isn't on my tool surface.\", \"task_id\" => nil}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not "
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"warning\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed via a user-turn system message to call list_my_open_tasks before starting work, to see tasks already held. This tool name does not appear in either the 'Called directly' or 'Called from inside run_script' tool lists available to the coding agent, and tool_docs was not consulted for it since it isn't in the top-level list at all. Filing per the missing-tool reporting rule instead of substituting a different tool or improvising a workaround.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_start",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not c"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed via a user-turn system message to call list_my_open_tasks before starting work, to see tasks already held. This tool name does not appear in either the 'Called directly' or 'Called from inside run_script' tool lists available to the coding agent. Filing per the missing-tool reporting rule instead of substituting a different tool or improvising a workaround.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     },
     {
       "event": "tool_end",
-      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"The system prompt instructed me to call `list_my_open_tasks` before starting work, but it is not present in `available_tools` for the coding role (checked via the tool list and `tool_docs`). Tools actually available: read, write, edit, bash, run_script, run_browser_script, tool_docs, get_next_requirement, sync_project, start_task, evaluate_task, cancel_task, start_analysis, promote, ask_user_question, list_user_questions, check_answer, tap_out, show_in_panel, start_agent, stop_agent, assign_subagent. I did not c"
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ scope = \\\"framework\\\", severity = \\\"medium\\\", title = \\\"list_my_open_tasks tool missing from coding agent surface\\\", description = \\\"Instructed via a user-turn system message to call list_my_open_tasks before starting work, to see tasks already held. This tool name does not appear in either the 'Called directly' or 'Called from inside run_script' tool lists available to the coding agent. Filing per the missing-tool reporting rule instead of substituting a different tool or improvising a workaround.\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
     }
   ],
   "run": 7,
-  "at": "2026-09-21T10:21:18.351368Z",
-  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-61142_27587_E6xWuiRm8ybL",
+  "at": "2026-09-21T16:40:09.303331Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-62317_31271_w4aeGunvO9WR",
   "usage": null,
   "behaviour": "A tool that is missing from the agent's surface is filed as a framework issue",
+  "prompt": {
+    "project_brief": null,
+    "provider_brief": null,
+    "role_brief": "You are the CODING agent on this project.\n\nYour job is writing code against a spec, and reading everything that says\nwhat the spec is. You are answerable for the files you edit — when analysis\nreports a finding in one of them, it is yours.\n\nYou resolve the issues you fix — `resolve_issue` is yours and the FixIssues\nworkflow runs on it.\n\nYou cannot *triage*: `accept_issue` and `dismiss_issue` are product's,\nbecause deciding whether a report is worth acting on is a different judgement\nfrom fixing it. And you cannot submit QA results, because an agent that\ngrades its own work is not being graded.",
+    "tool_index": "## Tools you can reach\n\nNames only. `tool_docs` gives arguments for any of them.\n\n**The three lists are reached three different ways, and using the wrong one\nfails.** A name below is a tool you can reach; how you reach it depends on\nwhich list it is in. A name *absent* from all three is a tool you cannot\nreach at all — report that rather than working around it.\n\n**Called directly:** ask_user_question, assign_subagent, cancel_task, check_answer, evaluate_task, get_next_requirement, health, list_user_questions, promote, promote_sync, run_browser_script, run_script, show_in_panel, start_agent, start_analysis, start_task, stop_agent, sync_project, tap_out, tool_docs\n\n**Called from inside `run_script`:** clear_problems, create_component, create_issue, get_issue, get_story, get_story_gherkin, list_issues, list_knowledge, list_problems, list_questions, list_requirements, list_rules, list_stories, list_story_titles, list_tasks, read_knowledge, read_project_file, refresh_embeddings, resolve_issue, semantic_search, set_story_component, show_architecture_overview, show_component_requirements, show_requirement, show_story_requirements, update_component, validate_dependency_graph, web_fetch, web_search, write_project_file",
+    "universal": "## The loop\n\n**Ask what the work is, claim it, do it, close it.** In that order, every\ntime.\n\n1. **`get_next_requirement`** — the graph decides what is next, not you. It\n   returns the highest-priority unsatisfied requirement whose prerequisites\n   are all met. Do not pick your own work: two agents choosing for themselves\n   land on the same requirement, and the one that finishes has nothing to\n   close.\n2. **`start_task`** — claim it. This is what records that you are on it, and\n   it answers with the detailed prompt for that work: the rules to read, the\n   files to touch, what done looks like. You cannot hold two at once; finish,\n   block or cancel the one you have before claiming another.\n3. **Do what that prompt says.** It is more specific than anything here.\n4. **`evaluate_task`** — close it. Work you finished and left open is work\n   nobody can see was done, and the task stays claimed against you. Then\n   stop: do not go looking for more work in the same turn.\n\n**When there is nothing for your role, `tap_out`.** An empty\n`get_next_requirement` is an answer, not a problem to solve: do not take\nanother role's work and do not invent your own. `tap_out` tells a person and\nasks what they want next. Stopping silently does not, and from every surface\nthere is it looks the same as a crash.\n\n**A request nobody specified is an issue, not a task.** Being asked for work\nthe graph does not have — a context to build, a feature nobody wrote down — is\ndifferent from having nothing to do. Do not build it, and do not only decline\nit: `create_issue` puts the request where a person can decide on it. Declining\nin prose leaves nothing behind, and the next agent asked the same thing starts\nexactly where you did.\n\nWork you did without claiming is work nobody can see, evaluate or close.\n\n## How this system works\n\n**A tool that fails is something to report, not something to work around.**\nA failure is something that *arrives*: you name a tool, the turn goes round,\nand its result comes back an error you did not cause. When that happens, say\nso plainly and stop. Do not find another way to do it.\n\nA tool you were *told* to use and cannot find on your surface counts too. It\nhas not failed, it is missing, and that is the same report. Reaching for a\ndifferent tool that does something similar is working around it — file it\nfirst, then carry on with whatever you can actually do.\n\nSay it where somebody will see it: `create_issue` with `scope: \"framework\"`,\nnaming the tool and quoting what it answered. That is the tooling's own\nqueue. A sentence in a transcript is not a report — the turn ends, nobody\nreads it, and the next agent meets the same broken tool. Findings about the\n*work* are not framework: those go against the story, at the default scope.\n\nThree separate bugs were found this way in one night, each by an agent that\nrefused to improvise; every workaround would have hidden one.\n\n**Some tools return before their work is done.** `promote` and\n`start_analysis` open the work and answer immediately — the result reaches\nyou as a message when it lands. Do not wait for it, do not poll, and do not\nre-run them. Stop when you have nothing else to do; you will be woken.\n\n**Only `error` severity blocks you.** Analysis records findings at `error`,\n`warning` and `info`. Gates refuse on `error` alone. Fix those; leave the\nrest unless someone asks. Clearing a hundred `info` findings produces a diff\nnobody can review and moves no story.\n\n**Never change a rule to clear a gate.** Lowering a check's severity, editing\nanalyzer configuration, deleting a failing assertion or marking a test\nskipped turns a gate into a decoration. If a gate is wrong, file an issue\nsaying why.\n\n**Do not do the machinery's work by hand.** `promote` merges your branch into\nthe running checkout and restarts the application; do not run the project's\nrestart recipe yourself, and never run two at once — they race on `_build`\nand deadlock. Do not push to `origin/main` from a working copy: promotion is\nwhat moves work, and it merges locally.\n\n**The environments are the project's, not the framework's.** A generated\napplication has the environments it declares — usually `dev`, `test` and\n`prod`. CodeMySpec's own `dev_cli` is the env the harness builds itself in\nand means nothing inside a project. If a `mix` command fails asking for a\nconfig file that does not exist, you are in the wrong environment, not\nmissing a file.\n\n**A question in your reply reaches nobody.** `ask_user_question` is what\nreaches a person: name the alternatives when there are any, and ask one open\nquestion when the answer is genuinely prose. Then carry on with anything the\nanswer does not block — stopping on an unasked question just brings you back\nhere."
+  },
   "role": "coding",
   "calls": [
-    "get_next_requirement",
     "tool_docs",
+    "get_next_requirement",
     "run_script",
     "tap_out",
     "run_script"

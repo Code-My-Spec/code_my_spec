@@ -128,7 +128,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # had deliberately stopped watching. Paused is not stopped: the row is
       # alive, so it belongs in the answer, carrying the state it was in.
       "continuous" => agent.continuous == true,
-      "messages" => agent.history || []
+      "messages" => demo_turns() ++ (agent.history || [])
     }
     |> Map.merge(credential_fields(agent.credential))
   end
@@ -200,6 +200,54 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       {:ok, conversation} -> Conversations.resume_messages(conversation)
       _error -> []
     end
+  end
+
+  # Two calls the agent has already made, before anything it is asked to do.
+  #
+  # The wire format is described to an agent in prose by `ProviderBrief`, and
+  # prose is read in the same mode that gets it wrong: measured on 2026-09-21,
+  # roughly one turn in ten came back with no call made and a fabricated
+  # account of one failing, and four rewrites of that prose moved the rate
+  # around inside noise. Nothing in the transcript ever showed the shape.
+  #
+  # Now it does, in the agent's own voice, before it is asked for anything:
+  # `health` for a direct call and `run_script` for the nested form a Lua
+  # function needs. Demonstration rather than instruction.
+  #
+  # `health` and `script_health` answer `ok` and do nothing else, so a seeded
+  # turn tells the agent nothing about the project it is about to work on.
+  defp demo_turns do
+    [
+      %{
+        "role" => "assistant",
+        "content" => [
+          %{"type" => "tool_use", "id" => "health-1", "name" => "health", "input" => %{}}
+        ]
+      },
+      %{
+        "role" => "user",
+        "content" => [
+          %{"type" => "tool_result", "tool_use_id" => "health-1", "content" => "ok"}
+        ]
+      },
+      %{
+        "role" => "assistant",
+        "content" => [
+          %{
+            "type" => "tool_use",
+            "id" => "health-2",
+            "name" => "run_script",
+            "input" => %{"script" => "local status, err = script_health(); return status"}
+          }
+        ]
+      },
+      %{
+        "role" => "user",
+        "content" => [
+          %{"type" => "tool_result", "tool_use_id" => "health-2", "content" => "ok"}
+        ]
+      }
+    ]
   end
 
   defp credential(%Scope{} = scope, %Agent{provider: provider}) when is_binary(provider) do

@@ -95,10 +95,11 @@ defmodule CodeMySpec.Agents.OperatingRules do
   ## How this system works
 
   **A tool that fails is something to report, not something to work around.**
-  If a tool answers `Unknown tool`, "not available", or an error you did not
-  cause, say so plainly and stop. Do not find another way to do it.
+  A failure is something that *arrives*: you name a tool, the turn goes round,
+  and its result comes back an error you did not cause. When that happens, say
+  so plainly and stop. Do not find another way to do it.
 
-  A tool you were *told* to use that is not on your surface at all counts. It
+  A tool you were *told* to use and cannot find on your surface counts too. It
   has not failed, it is missing, and that is the same report. Reaching for a
   different tool that does something similar is working around it — file it
   first, then carry on with whatever you can actually do.

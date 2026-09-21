@@ -59,9 +59,9 @@ defmodule CodeMySpec.Agents.ToolIndex do
   @spec for(Agent.t(), [String.t()]) :: String.t() | nil
   def for(%Agent{} = agent, machine_tools \\ []) do
     [
-      section("Called directly", carried(agent)),
-      section("Called from inside `run_script`", scriptable(agent)),
-      section("Called from inside `run_browser_script`", Enum.sort(machine_tools || []))
+      section(direct_heading(), carried(agent)),
+      section(scriptable_heading(), scriptable(agent)),
+      section(browser_heading(), Enum.sort(machine_tools || []))
     ]
     |> Enum.reject(&is_nil/1)
     |> case do
@@ -74,9 +74,12 @@ defmodule CodeMySpec.Agents.ToolIndex do
     """
     ## Tools you can reach
 
-    Names only. You already have full schemas for what you carry; `tool_docs`
-    gives arguments for anything else. A name missing here is a tool you cannot
-    reach — report that rather than working around it.
+    Names only. `tool_docs` gives arguments for any of them.
+
+    **The three lists are reached three different ways, and using the wrong one
+    fails.** A name below is a tool you can reach; how you reach it depends on
+    which list it is in. A name *absent* from all three is a tool you cannot
+    reach at all — report that rather than working around it.
     """
     |> String.trim()
   end
@@ -84,9 +87,20 @@ defmodule CodeMySpec.Agents.ToolIndex do
   defp section(_heading, []), do: nil
   defp section(_heading, nil), do: nil
 
-  defp section(heading, names) do
-    "**#{heading}:** " <> Enum.join(names, ", ")
-  end
+  defp section(heading, names), do: "**#{heading}:** " <> Enum.join(names, ", ")
+
+  # Headings name the route, not the wire format.
+  #
+  # They say which of three ways a name is reached and stop there. *How* a call
+  # is physically made is the provider's business — on `claude-code` it is a
+  # `tool_calls` entry in a JSON object, on an engine with native tool calling
+  # it is nothing of the sort — so the shape, and the worked example of the
+  # nested form, live in `ProviderBrief` where they can differ per engine.
+  defp direct_heading, do: "Called directly"
+
+  defp scriptable_heading, do: "Called from inside `run_script`"
+
+  defp browser_heading, do: "Called from inside `run_browser_script`"
 
   # What the direct server exposes, which is the same for every agent.
   #

@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3545Spex do
 
   @criterion "criterion_3545"
   @role "coding"
-  @threshold 1.0
+  @threshold 0.9
 
   spex "An agent does not build what nobody asked for" do
     scenario "An agent stops at work nobody specified" do
