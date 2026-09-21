@@ -325,4 +325,8 @@ config :code_my_spec, graph_stale_read_log: true
 # the checkouts nothing named. Measured the same day: the `Harness` vantage sat
 # 6h36m behind on the event side while every diff read clean. Criterion 3522.
 config :code_my_spec, graph_shadow_projection: true
-config :code_my_spec, graph_shadow_diff: false
+# On for a validation window (2026-09-21): every pass diffs the projector's
+# rows and edges against its own at every live vantage, and `[Requirements]
+# shadow agrees|differs` in web.log is the record. It costs a preload per live
+# vantage per pass; turn it back off once the window has said its piece.
+config :code_my_spec, graph_shadow_diff: true

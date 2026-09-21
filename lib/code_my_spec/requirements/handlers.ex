@@ -190,7 +190,12 @@ defmodule CodeMySpec.Requirements.Handlers do
     # `@delegate_requirements`.
     "qa_integration_plan" => [:files],
     "spex_boundary_ready" => [:files],
-    "personas_complete" => [:personas],
+    # Moved by files as well: a persona's artifacts — `summary.md`,
+    # `sources.md` in its folder — are files, and the `:personas` profile loads
+    # them by role. Profiled as `[:personas]` alone, a sync that wrote them
+    # settled nothing here, and the story-560 criteria read "personas_complete
+    # is still the blocking requirement" after every artifact existed.
+    "personas_complete" => {[:files, :personas], [:personas]},
     # Reads all three now. It used to read nothing and query for itself —
     # four fresh reads per drain, one of them every component with two
     # preloads.
