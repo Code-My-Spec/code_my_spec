@@ -2,7 +2,8 @@ defmodule CmsHarness.Device do
   @moduledoc """
   This machine's identity, established when the harness comes up.
 
-  One file, `~/.codemyspec/device.json`, beside `harness_secret` and
+  One file, `device.json` in `CmsHarness.Config.local_state_dir/0` — beside
+  `harness_secret` on a laptop, where that is `~/.codemyspec` — and
   deliberately **not** inside any working copy.
 
   ## Why the install and not the checkout
@@ -64,8 +65,6 @@ defmodule CmsHarness.Device do
   alias CmsHarness.Config
   alias CmsHarness.Device.Client
   alias CmsHarness.Token
-
-  @default_path "~/.codemyspec/device.json"
 
   @doc """
   Announce this machine and keep the identity it is issued.
@@ -212,7 +211,8 @@ defmodule CmsHarness.Device do
   # type and `Ecto.UUID.cast/1` both only check the string shape.
   defp machine_fingerprint do
     with {:ok, interfaces} <- :inet.getifaddrs(),
-         mac when is_binary(mac) <- interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
+         mac when is_binary(mac) <-
+           interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
          {:ok, uuid} <- mac |> then(&:crypto.hash(:md5, &1)) |> Ecto.UUID.load() do
       uuid
     else
@@ -233,6 +233,10 @@ defmodule CmsHarness.Device do
   @doc """
   Where the identity is kept.
 
+  `Config.local_state_dir/0`, not always `~/.codemyspec` — see that
+  function's own comment for why a `Runner.Local`-booted workspace cannot
+  share the real one.
+
   Overridable so a test can point it somewhere disposable — the same seam
   `harness_secret_path` has, and for the same reason.
   """
@@ -246,7 +250,8 @@ defmodule CmsHarness.Device do
     # a background reconnect crashing on somebody else's test's leftover state
     # is a worse failure than this function being lenient about which "unset"
     # it was given.
-    (Application.get_env(:code_my_spec, :device_config_path) || @default_path)
+    (Application.get_env(:code_my_spec, :device_config_path) ||
+       Path.join(Config.local_state_dir(), "device.json"))
     |> Path.expand()
   end
 
