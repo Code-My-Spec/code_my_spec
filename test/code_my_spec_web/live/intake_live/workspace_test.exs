@@ -512,6 +512,42 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     end
   end
 
+  # `IntakeSession`'s token is deliberately carried across login/logout
+  # (`UserAuth`'s `restore_intake_token/2`) so a visitor who builds a plan
+  # anonymously does not lose it by signing up. That is safe for the visitor
+  # who converted it; it stops being safe the moment a *different* signed-in
+  # user's browser still carries the same token (a shared or kiosk browser,
+  # or a lingering cookie) and reaches this page — `Intake.convert/2`'s
+  # `:converted` clause used to hand back the plan with no ownership check at
+  # all, silently switching the second user's scope onto the first user's
+  # account and rendering the first user's own conversation transcript to a
+  # stranger.
+  describe "a stale intake token from someone else's converted plan" do
+    test "sends the second user to the front of the flow rather than into the first user's account",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+      eventually(view, "It&#39;s running.")
+
+      token = get_session(conn, "intake_token")
+
+      stranger_conn =
+        build_conn()
+        |> log_in_user(user_fixture())
+        |> put_session("intake_token", token)
+
+      assert {:error, {:live_redirect, %{to: "/build"}}} =
+               live(stranger_conn, ~p"/build/workspace"),
+             "a second, unrelated signed-in user must never be scoped onto the " <>
+               "first user's account (or shown their conversation) just because " <>
+               "a stale token still resolves to that plan — this must fail the " <>
+               "exact same way as having no plan on the session at all"
+    end
+  end
+
   describe "the account and project the plan named" do
     test "become the visitor's active ones", %{conn: conn} do
       fake(healthy?: true)

@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Agents
+  alias CodeMySpec.Authorization
   alias CodeMySpec.Billing
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Interview
@@ -427,7 +428,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # `:pro` subscription for cloud. Only what happens once paid differs, which
   # is `on_paid` below.
   defp mount_workspace(socket, %Scope{} = scope, plan) do
-    with {:ok, plan} <- Intake.convert(plan, scope),
+    with :ok <- authorize_plan(scope, plan),
+         {:ok, plan} <- Intake.convert(plan, scope),
          {:ok, scope} <- select_plan_scope(scope, plan) do
       socket
       |> assign(page_title: workspace_title(plan))
@@ -435,13 +437,43 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       |> assign_interview(plan)
       |> gate_on_payment(scope, plan)
     else
+      # A stale token pointing at someone else's converted plan — treated
+      # exactly like no plan at all (same redirect as the `nil` clause
+      # above), and deliberately *before* anything about the plan is
+      # assigned to the socket: not the account, not the project, not even
+      # the conversation transcript is a stranger's to see, and
+      # `failed_to_start/4` below would have shown all three.
+      {:error, :not_a_member} ->
+        push_navigate(socket, to: ~p"/build")
+
       # A boot that never starts is still a boot that failed, and the visitor
       # has to be told. Returning the bare error tuple here crashed mount/3
       # with an ArgumentError instead — a white page at exactly the moment the
       # story says they must be told what happened and keep their plan.
-      {:error, reason} -> failed_to_start(socket, scope, plan, reason)
+      {:error, reason} ->
+        failed_to_start(socket, scope, plan, reason)
     end
   end
+
+  # `intake_token` is deliberately carried across login/logout — `UserAuth`'s
+  # `restore_intake_token/2` — so a visitor who built a plan anonymously does
+  # not lose it by signing up. That stops being safe once the plan has
+  # converted to a real account: a different signed-in user whose browser
+  # still carries the same token (a shared or kiosk browser, or a lingering
+  # cookie) must not be handed someone else's account just because the token
+  # still resolves. An unconverted plan has no account yet — it becomes this
+  # scope's own the moment `Intake.convert/2` runs — so there is nothing to
+  # check.
+  defp authorize_plan(%Scope{} = scope, %{status: :converted, account_id: account_id})
+       when is_binary(account_id) do
+    if Authorization.authorize(:read_account, scope, account_id) do
+      :ok
+    else
+      {:error, :not_a_member}
+    end
+  end
+
+  defp authorize_plan(%Scope{}, _plan), do: :ok
 
   defp workspace_title(%{location: :local}), do: "Your project"
   defp workspace_title(_plan), do: "Your workspace"
