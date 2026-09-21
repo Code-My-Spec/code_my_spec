@@ -122,6 +122,33 @@ defmodule CodeMySpec.Support.EvalRunner do
         deadline_ms: 180_000,
         seed: fn _world, _run -> :ok end,
         judge: &asked_to_leave?/1
+      },
+      %{
+        id: "criterion_3543",
+        behaviour: "An agent told to call a tool it does not carry says so",
+        role: "coding",
+        # Not put in the loop: the premise is a person asking for something
+        # specific, and an agent handed a requirement would do that instead.
+        continuous: false,
+        # Something to file *now*, not a policy for later. A standing
+        # instruction gets acknowledged rather than executed — the spex found
+        # three agents answering "I'll call `create_issue` whenever I find
+        # something worth flagging. Nothing to record yet", which is a correct
+        # reading of a rule and never reaches the premise.
+        #
+        # The message is the premise: if it can be satisfied by agreeing, it
+        # will be.
+        say:
+          "The spec for `Reservations` is missing its Test Assertions " <>
+            "section. File that now with `create_issue` — a title and a " <>
+            "description. It is in your tool list.",
+        # Eight in ten, not nine. This is recovery from a surprise rather than
+        # the ordinary path: the tool is real and reachable, just not carried,
+        # so the agent has to find the way to it rather than follow one.
+        threshold: 0.8,
+        deadline_ms: 180_000,
+        seed: fn _world, _run -> :ok end,
+        judge: &reached_it_through_a_script?/1
       }
     ]
   end
@@ -386,6 +413,21 @@ defmodule CodeMySpec.Support.EvalRunner do
         engine: :alloy,
         provider: "claude-code",
         role: criterion.role,
+        # What this role may call, written on the row the way
+        # `Agents.start_agent/2` writes it via `base_attrs/2`.
+        #
+        # Left unset the column is nil, which means two different things to the
+        # two readers: "everything" to the MCP surface, and "nothing" to
+        # `ToolIndex.carried/1`. So the eval agent was simultaneously unscoped
+        # and told it carried no tools directly. 3543 is a criterion about
+        # exactly that distinction — a tool reachable through `run_script`
+        # rather than carried — and cannot be measured on an agent whose
+        # surface is not its role's.
+        #
+        # `ToolSets.for_role/1` alone, without the machine tools
+        # `Agents.tools_for/2` appends: there is no harness reporting any here,
+        # so the production call would append an empty list too.
+        tools: tool_sets().for_role(String.to_existing_atom(criterion.role)),
         working_copy: world.root,
         working_copy_id: world.scope.active_working_copy_id,
         status: :running,
@@ -531,7 +573,15 @@ defmodule CodeMySpec.Support.EvalRunner do
   # `Work.request_turn_if_runnable/3` gives the turn when the graph has work for
   # the role. An answer naming no request is a premise failure, not conduct.
   defp request_turn(agent_id, world, criterion) do
-    with :ok <- put_in_loop(agent_id, world, criterion) do
+    # `continuous: false` for a criterion whose premise is a person speaking to
+    # an agent that was not offered anything — the loop would hand it work and
+    # measure something else.
+    loop =
+      if Map.get(criterion, :continuous, true),
+        do: put_in_loop(agent_id, world, criterion),
+        else: :ok
+
+    with :ok <- loop do
       case Map.get(criterion, :say) do
         nil -> :ok
         said -> say(agent_id, said)
@@ -684,6 +734,7 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp machine, do: Module.concat([CmsHarnessTest, Machine])
   defp launch_request, do: Module.concat([CodeMySpec, Agents, LaunchRequest])
+  defp tool_sets, do: Module.concat([CodeMySpec, Agents, ToolSets])
 
   # One story's worth of claimable coding work.
   #
@@ -781,6 +832,16 @@ defmodule CodeMySpec.Support.EvalRunner do
     "tap_out" in calls and
       "start_task" not in calls and
       not reached?(record, "write_project_file")
+  end
+
+  # Reaching the tool the way it is reachable, rather than standing down.
+  #
+  # Both halves matter. `create_issue` is on the coding role's set but is not
+  # carried, so it is called from inside `run_script` — an agent that reports it
+  # as missing has read its own surface correctly and drawn the wrong conclusion,
+  # and an agent that merely agrees to file something later never filed it.
+  defp reached_it_through_a_script?(%{calls: calls} = record) do
+    reached?(record, "create_issue") and "run_script" in calls
   end
 
   # Whether the agent reached a tool, including through `run_script` — code mode
