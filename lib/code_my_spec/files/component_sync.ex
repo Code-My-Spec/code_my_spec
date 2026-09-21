@@ -255,10 +255,10 @@ defmodule CodeMySpec.Files.ComponentSync do
   # throwing away — `compute_changed_ids/2` exists to decide whether to announce
   # at all, and the same list answers *what* moved.
   #
-  # `:project` alongside them, because `architecture_designed` reads the
-  # component set: this path re-types components from their specs, and a
-  # component becoming or ceasing to be `infrastructure` moves the orphan rule's
-  # verdict.
+  # Not `:project`: `architecture_designed` is settled by the `files_synced`
+  # handler that follows every scan, from the `:architecture` profile. A
+  # `:project` entity sent every vantage through the project's own recompute
+  # instead — the orphan scan over every component, ten times per scan.
   #
   # Project-wide, because what this scan changed is the component *rows* —
   # type, parent, description — and those are read by every checkout's
@@ -270,7 +270,7 @@ defmodule CodeMySpec.Files.ComponentSync do
       GraphInputs.announce(
         scope,
         "Files.ComponentSync",
-        [:project | Enum.map(announced_component_ids, &{"component", &1})],
+        Enum.map(announced_component_ids, &{"component", &1}),
         :project_wide
       )
 

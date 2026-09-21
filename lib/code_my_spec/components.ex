@@ -108,14 +108,22 @@ defmodule CodeMySpec.Components do
   # hashes the parent's children by id, not by content — and naming the parent
   # sent the whole family of the parent's own root through a recompute at
   # every vantage for a child's retype.
+  #
+  # Never `:project`. The project requirement a component moves is
+  # `architecture_designed`, and these three kinds are handled for it: the
+  # handler settles it from the `:architecture` profile — one query and a
+  # coverage pass — where a `:project` entity sent every vantage through
+  # `compute_project_nodes/3`, whose delegates query for themselves and rerun
+  # the orphan scan over 1,147 components: ~700ms of CPU per vantage, ten
+  # vantages, 9.8s per component event (2026-09-21).
   defp graph_entities({verb, %{id: id} = component}) when verb in [:created, :deleted] do
     case Map.get(component, :parent_component_id) do
-      nil -> [{"component", id}, :project]
-      parent_id -> [{"component", id}, {"component", parent_id}, :project]
+      nil -> [{"component", id}]
+      parent_id -> [{"component", id}, {"component", parent_id}]
     end
   end
 
-  defp graph_entities({_changed, %{id: id}}), do: [{"component", id}, :project]
+  defp graph_entities({_changed, %{id: id}}), do: [{"component", id}]
 
   defp graph_entities(_message), do: []
 
