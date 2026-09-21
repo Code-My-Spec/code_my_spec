@@ -437,14 +437,70 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       fake(healthy?: true)
       conn = with_confirmed_plan(conn, %{location: "local"})
 
-      {:ok, view, html} = live(conn, ~p"/build/workspace")
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      html = pay(view)
 
       assert html =~ "mix cms.new",
              "the premise failed: this test needs the local branch, which provisions " <>
-               "nothing and so never has a workspace row"
+               "nothing and so never has a workspace row even once trialing is confirmed"
 
       assert :ok = GenServer.stop(view.pid, :normal)
       refute Events.exists?("workspace_abandoned")
+    end
+  end
+
+  describe "the local trial (990/3400 follow-up)" do
+    test "a local plan is gated on a card too, not shown instructions for free", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, _view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "7 days free"
+      refute html =~ "mix cms.new"
+    end
+
+    test "confirming the trial's card shows the instructions, with no workspace booted",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      html = pay(view)
+
+      assert html =~ "mix cms.new"
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+      assert Workspaces.get_workspace(scope) == nil
+    end
+
+    test "a reload after the trial already started skips straight to the instructions",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      account = :sys.get_state(view.pid).socket.assigns.scope.active_account
+
+      :ok =
+        CodeMySpec.Billing.apply_event(%{
+          "id" => "evt_trial_started",
+          "type" => "customer.subscription.created",
+          "data" => %{
+            "object" => %{
+              "object" => "subscription",
+              "id" => "sub_workspace",
+              "status" => "trialing",
+              "metadata" => %{"account_id" => account.id, "tier" => "light"}
+            }
+          }
+        })
+
+      {:ok, _view2, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "mix cms.new"
+      refute html =~ "7 days free"
     end
   end
 
