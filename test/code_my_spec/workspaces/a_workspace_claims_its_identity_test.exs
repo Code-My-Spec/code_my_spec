@@ -105,23 +105,42 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
       """
     end
 
-    # Same user-facing failure as ac7a510b (a working application, an agent that
-    # never confirms, "nothing here is holding that working copy") from a
-    # different cause: `rel/env.sh.eex` names every `cms start` node
+    # Same user-facing failure as ac7a510b (a working application, an agent
+    # that never confirms, "nothing here is holding that working copy") from
+    # a different cause: `rel/env.sh.eex` names every `cms start` node
     # `codemyspec` by default, so a host that already runs its own `cms
     # harness` — the ordinary state of this very checkout — collides on the
-    # very first local-tier boot. The harness dies on `epmd` registration
-    # while the app keeps answering, which is indistinguishable from healthy
-    # until someone messages the agent.
+    # very first boot of a workspace here. The harness dies on `epmd`
+    # registration while the app keeps answering, which is indistinguishable
+    # from healthy until someone messages the agent.
     test "and the harness gets a node name unique to this workspace", %{prepared: p} do
       script = File.read!(p.script_path)
 
-      assert script =~ ~s(CMS_NODE_NAME=#{name(p)} CMS_HARNESS_PORT=), """
+      assert script =~ ~s(CMS_NODE_NAME="#{name(p)}" CMS_HARNESS_PORT=), """
       Without CMS_NODE_NAME, every workspace's `cms start` claims the same
       default sname (`codemyspec`) as this machine's own persistent harness —
       the second one to start always loses, silently: the app comes up fine
       and the harness dies on epmd registration, with no trace but this
       workspace's own run.log.
+      """
+    end
+
+    # A second, independent cause of the identical failure, only visible once
+    # the node-name collision above stopped hiding it: the harness can come
+    # up cleanly, under its own name, and still never serve this project.
+    # `CmsHarness.Projects.start_configured/1`'s moduledoc names the two ways
+    # a project gets served — `CMS_PROJECT_DIR` at boot (the sprite path) or a
+    # hook from an already-running session (the laptop path) — and a
+    # workspace booted here has no developer already sitting in the checkout
+    # to fire that first hook, so it needs the sprite path.
+    test "and the harness is told which project to serve, at boot", %{prepared: p} do
+      script = File.read!(p.script_path)
+
+      assert script =~ ~s(CMS_PROJECT_DIR="#{p.app_dir}"), """
+      Without CMS_PROJECT_DIR the harness starts and sits idle forever: it
+      only serves a project because CMS_PROJECT_DIR named it at boot, or
+      because a hook from an already-running session picked it up — and
+      nothing is already running in a workspace nobody has connected to yet.
       """
     end
   end

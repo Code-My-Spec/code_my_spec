@@ -194,13 +194,23 @@ config :code_my_spec, :cloudflare_tunnel,
 # Bare metal, not Docker — see `CodeMySpec.Workspaces.Runner.Local`'s
 # moduledoc for what that trades away (each instance's own filesystem and
 # loopback) against what it does not need (a Docker daemon on this machine).
-# `host.docker.internal`, not localhost: inside a container localhost is the
-# container. An instance told to report to localhost:4000 announces itself to
-# its own Phoenix app, and the working copy the visitor is waiting to see never
-# appears.
+#
+# `localhost`, not `host.docker.internal` — that reasoning belongs to
+# `Runner.Docker` and was copied here when `runner:` switched to `Local`
+# without `server_url` following it. A bare-metal instance shares this box's
+# own loopback with the Phoenix app it is trying to report to — a container
+# has its own, which is the one case `host.docker.internal` names — so a
+# `Local`-run instance told to report to that hostname could never resolve
+# it, silently: the harness came up, minted its own node and served its own
+# project (config/dev.exs's earlier gaps ruled those two out), and every
+# connection attempt failed before it could name why, three failures deep in
+# the same visitor-facing symptom — "dumped into the cockpit, no preview,
+# and every message refused with 'nothing here is holding that working
+# copy.'" Caught live: the harness's own connection log named the mismatch
+# directly, once the first two causes stopped hiding it.
 config :code_my_spec, CodeMySpec.Workspaces,
   runner: CodeMySpec.Workspaces.Runner.Local,
-  server_url: "http://host.docker.internal:4000"
+  server_url: "http://localhost:4000"
 
 # `codemyspec.com`, not `astralbi.com`, and the reason is the session cookie.
 #
