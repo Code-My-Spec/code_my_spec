@@ -1,0 +1,58 @@
+{
+  "seconds": 12,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"bd1966ae-47f0-48b2-a575-352775dea319\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations.book/2 crashes on empty list\\\", description = \\\"Reservations.book/2 raises an exception when called with an empty list instead of returning an error tuple (e.g. {:error, reason}). Found while reading the code. Expected: it should return a proper error result for an empty list input rather than crashing.\\\", severity = \\\"error\\\", scope = \\\"app\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations.book/2 crashes on empty list\\\", description = \\\"Reservations.book/2 raises an exception when called with an empty list instead of returning an error tuple (e.g. {:error, reason}). Found while reading the code. Expected: it should return a proper error result for an empty list input rather than crashing.\\\", severity = \\\"error\\\", scope = \\\"app\\\" })\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations.book/2 crashes on empty list\\\", description = \\\"Reservations.book/2 raises an exception when called with an empty list instead of returning an error tuple (e.g. {:error, reason}). Found while reading the code. Expected: it should return a proper error result for an empty list input rather than crashing.\\\", severity = \\\"high\\\", scope = \\\"app\\\" })\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({ title = \\\"Reservations.book/2 crashes on empty list\\\", description = \\\"Reservations.book/2 raises an exception when called with an empty list instead of returning an error tuple (e.g. {:error, reason}). Found while reading the code. Expected: it should return a proper error result for an empty list input rather than crashing.\\\", severity = \\\"high\\\", scope = \\\"app\\\" })\"}"
+    }
+  ],
+  "run": 2,
+  "at": "2026-09-21T08:47:46.613254Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-30854_25510_h85XE_xCssud",
+  "usage": null,
+  "behaviour": "A finding about the work is filed against the story, not as framework",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3535",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

@@ -1,0 +1,82 @@
+{
+  "seconds": 19,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"7f3f3d58-76b1-4ed8-bd5e-fee9899e2853\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "start_task %{\"entity_id\" => \"2040\", \"entity_type\" => \"story\", \"requirement_name\" => \"component_linked\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "start_task %{\"entity_id\" => \"2040\", \"entity_type\" => \"story\", \"requirement_name\" => \"component_linked\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local ov = show_architecture_overview({})\\nlocal stories = get_story({ story_id = \\\"2040\\\" })\\nreturn { overview = ov, story = stories }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local ov = show_architecture_overview({})\\nlocal stories = get_story({ story_id = \\\"2040\\\" })\\nreturn { overview = ov, story = stories }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result = set_story_component({ story_id = \\\"2040\\\", module_name = \\\"Reservations\\\" })\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result = set_story_component({ story_id = \\\"2040\\\", module_name = \\\"Reservations\\\" })\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "evaluate_task %{\"task_id\" => \"d8d04077-bd97-4cff-b43f-8415af292524\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "evaluate_task %{\"task_id\" => \"d8d04077-bd97-4cff-b43f-8415af292524\"}"
+    }
+  ],
+  "run": 1,
+  "at": "2026-09-21T08:56:10.128944Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-33922_31815_rVqOWq6aFzRB",
+  "usage": null,
+  "behaviour": "An agent closes its task when the stop hook asks",
+  "role": "product",
+  "calls": [
+    "get_next_requirement",
+    "start_task",
+    "run_script",
+    "run_script",
+    "evaluate_task"
+  ],
+  "criterion": "criterion_3541",
+  "actionable": {
+    "product": [
+      "component_linked"
+    ],
+    "main": [
+      "architecture_designed"
+    ],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [
+    "three_amigos_complete (story)"
+  ],
+  "errored": null,
+  "held?": true
+}

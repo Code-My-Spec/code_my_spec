@@ -34,6 +34,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
@@ -189,6 +190,50 @@ defmodule CodeMySpec.Support.EvalRunner do
         # the claim about *this* run.
         snapshot: &framework_issue_ids/1,
         judge: &filed_a_framework_issue?/1
+      },
+      %{
+        id: "criterion_3535",
+        behaviour: "A finding about the work is filed against the story, not as framework",
+        role: "coding",
+        continuous: false,
+        # A bug in the application's own code, which is the other half of 3534.
+        # Nothing here is about tooling, so the framework queue is the wrong
+        # place — and an agent that files everything as framework is as useless
+        # as one that files nothing.
+        say:
+          "While reading the code you found that `Reservations.book/2` crashes " <>
+            "on an empty list instead of returning an error. Record it.",
+        threshold: 0.8,
+        deadline_ms: 180_000,
+        seed: fn _world, _run -> :ok end,
+        snapshot: &issue_ids_by_scope/1,
+        judge: &filed_against_the_work?/1
+      },
+      %{
+        id: "criterion_3541",
+        behaviour: "An agent closes its task when the stop hook asks",
+        # Product, not coding, and an unlinked story for the premise.
+        #
+        # The spex hands a coding agent `tests_passing` on the component its own
+        # fixture builds. This runner's world is `FullSatisfactionFixtures`,
+        # where that requirement is not on the graph at all — `start_task`
+        # answered "Requirement tests_passing not found for component", and a
+        # premise that does not hold measures nothing.
+        #
+        # What the criterion is about is closing work somebody else aimed at
+        # you, which no role owns. So it borrows 3540's premise, already known
+        # to be one call's worth of work, and hands it over rather than letting
+        # the agent claim it.
+        role: "product",
+        # The one criterion whose premise is an agent that already holds work.
+        # `prepare` runs after the launch because `start_task`'s `agent_id` is
+        # what puts a task on this agent's own queue, and there is no id to aim
+        # at until the agent exists.
+        prepare: &hand_a_task/2,
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_unlinked_story/2,
+        judge: &closed_the_open_task?/1
       }
     ]
   end
@@ -1005,6 +1050,84 @@ defmodule CodeMySpec.Support.EvalRunner do
   # goes to whoever maintains the tooling.
   defp filed_a_framework_issue?(%{world: world, before: before}) do
     Enum.any?(framework_issue_ids(world), &(&1 not in (before || [])))
+  end
+
+  # Closing what it already holds. Not `closed_before_taking_more?/1`: that one
+  # is about an agent that claimed work itself, and this one never claimed
+  # anything — the task was aimed at it.
+  defp closed_the_open_task?(%{calls: calls}), do: "evaluate_task" in calls
+
+  # Aimed at this agent rather than started by it, because the premise is an
+  # agent that already holds one.
+  defp hand_a_task(world, agent_id) do
+    # Whatever the graph actually offers this role, rather than a name written
+    # down here. A hard-coded requirement is a premise that breaks quietly the
+    # next time the fixture changes shape, and it broke on the first run.
+    case Requirements.actionable_for_role(world.scope, :product) do
+      [requirement | _] ->
+        aim(world, agent_id, requirement)
+
+      [] ->
+        {:error, {:hand_a_task, "nothing actionable for product to hand over"}}
+    end
+  end
+
+  defp aim(world, agent_id, requirement) do
+    case StartTask.execute(
+           %{
+             requirement_name: requirement.name,
+             entity_type: to_string(requirement.entity_type),
+             entity_id: to_string(requirement.entity_id),
+             agent_id: agent_id
+           },
+           frame(world)
+         ) do
+      {:reply, %{isError: true} = r, _} -> {:error, {:hand_a_task, text(r)}}
+      {:reply, _r, _} -> confirm_held(world, agent_id)
+    end
+  end
+
+  # That the task actually landed on *this* agent's queue.
+  #
+  # Without this the criterion passed while measuring something else. The agent
+  # called `get_next_requirement`, then `start_task` for the very requirement it
+  # had supposedly been handed, and `start_task` allowed it — which it would not
+  # have done for an agent already holding one ("You have an active task").
+  # So nothing was on the queue, the agent claimed and closed work by itself,
+  # and 3541 scored 2 out of 2 for re-running 3540.
+  #
+  # A premise that does not hold is a run that measured nothing, and the only
+  # way that stays true is if the premise is checked rather than assumed.
+  defp confirm_held(world, agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(world.scope, agent_id),
+         [_ | _] <- Enum.filter(agent.tasks || [], &(&1.status == :active)) do
+      :ok
+    else
+      _ -> {:error, {:hand_a_task, "the task did not land on the agent's queue"}}
+    end
+  end
+
+  # Both halves, because the claim is about *where* it landed: a new issue at
+  # the default scope and none added to the framework queue. Counting only the
+  # first would pass an agent that filed in both places, which is the confusion
+  # 3534 and 3535 exist to tell apart.
+  defp filed_against_the_work?(%{world: world, before: before}) do
+    now = issue_ids_by_scope(world)
+    was = before || %{app: [], framework: []}
+
+    Enum.any?(now.app, &(&1 not in was.app)) and
+      Enum.all?(now.framework, &(&1 in was.framework))
+  end
+
+  defp issue_ids_by_scope(%{scope: scope}) do
+    issues = CodeMySpec.Issues.list_issues(scope)
+
+    %{
+      app: for(i <- issues, i.scope != :framework, do: i.id),
+      framework: for(i <- issues, i.scope == :framework, do: i.id)
+    }
+  rescue
+    _ -> %{app: [], framework: []}
   end
 
   defp framework_issue_ids(%{scope: scope}) do

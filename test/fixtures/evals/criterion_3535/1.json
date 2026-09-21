@@ -1,0 +1,58 @@
+{
+  "seconds": 15,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"337393b2-744a-4b17-8734-0a498e48e836\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"app\\\",\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: calling Reservations.book/2 with an empty list argument raises an exception instead of returning an {:error, reason} tuple. Expected: book/2 should return a proper error result for an empty list input rather than crashing.\\\",\\n  severity = \\\"error\\\"\\n})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"app\\\",\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: calling Reservations.book/2 with an empty list argument raises an exception instead of returning an {:error, reason} tuple. Expected: book/2 should return a proper error result for an empty list input rather than crashing.\\\",\\n  severity = \\\"error\\\"\\n})\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"app\\\",\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: calling Reservations.book/2 with an empty list argument raises an exception instead of returning an {:error, reason} tuple. Expected: book/2 should return a proper error result for an empty list input rather than crashing.\\\",\\n  severity = \\\"high\\\"\\n})\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"return create_issue({\\n  scope = \\\"app\\\",\\n  title = \\\"Reservations.book/2 crashes on empty list instead of returning an error\\\",\\n  description = \\\"Found while reading the code: calling Reservations.book/2 with an empty list argument raises an exception instead of returning an {:error, reason} tuple. Expected: book/2 should return a proper error result for an empty list input rather than crashing.\\\",\\n  severity = \\\"high\\\"\\n})\"}"
+    }
+  ],
+  "run": 1,
+  "at": "2026-09-21T08:47:31.190968Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-30854_34152_jvTxL2lpai7p",
+  "usage": null,
+  "behaviour": "A finding about the work is filed against the story, not as framework",
+  "role": "coding",
+  "calls": [
+    "tool_docs",
+    "run_script",
+    "run_script"
+  ],
+  "criterion": "criterion_3535",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}
