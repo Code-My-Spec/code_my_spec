@@ -96,6 +96,19 @@ defmodule CodeMySpec.Billing.StripeClient do
     end
   end
 
+  @doc """
+  Whether a Stripe secret key is configured at all.
+
+  False on a fresh dev box with no billing test keys set up yet — `Billing`
+  reads this to grant a tier directly rather than asking an unconfigured
+  Stripe for anything, so a missing local config value does not block
+  testing the rest of the intake funnel.
+  """
+  @spec configured?() :: boolean()
+  def configured? do
+    match?({:ok, _}, fetch_secret_key())
+  end
+
   defp handle({:ok, %Req.Response{status: status, body: body}}) when status in 200..299,
     do: {:ok, body}
 

@@ -198,6 +198,35 @@ defmodule CodeMySpec.BillingTest do
     end
   end
 
+  describe "start_subscription/3 with no Stripe secret key configured" do
+    setup do
+      Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
+        plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+      )
+
+      :ok
+    end
+
+    test "grants the tier directly rather than reaching Stripe at all" do
+      scope = owner_scope()
+
+      assert {:ok, %{client_secret: nil, subscription_id: nil}} =
+               Billing.start_subscription(scope, :light, trial_days: 7)
+
+      assert reload(scope.active_account).plan == :light
+    end
+
+    test "never touches stripe_customer_id or stripe_subscription_id" do
+      scope = owner_scope()
+
+      {:ok, _} = Billing.start_subscription(scope, :pro)
+
+      account = reload(scope.active_account)
+      assert account.stripe_customer_id == nil
+      assert account.stripe_subscription_id == nil
+    end
+  end
+
   describe "apply_event/1 — the only writer of the plan" do
     test "a succeeded payment puts the account on the tier it paid for" do
       scope = owner_scope()

@@ -21,6 +21,10 @@ defmodule CodeMySpec.Billing do
     * Cancelling keeps the tier until the period already paid for ends.
     * A failed renewal keeps the tier while Stripe retries; only Stripe giving
       up returns the account to free.
+    * With no Stripe secret key configured at all, `start_subscription/3`
+      grants the tier directly instead of asking Stripe for anything — see
+      `grant_without_stripe/2`. The only exception to "the webhook is the
+      only writer," and only because there is no Stripe to send one.
   """
 
   use Boundary,
@@ -68,6 +72,14 @@ defmodule CodeMySpec.Billing do
           {:ok, %{client_secret: String.t() | nil, subscription_id: String.t()}}
           | {:error, term()}
   def start_subscription(%Scope{} = scope, tier, opts \\ []) when tier in @tiers do
+    if StripeClient.configured?() do
+      buy_subscription(scope, tier, opts)
+    else
+      grant_without_stripe(scope, tier)
+    end
+  end
+
+  defp buy_subscription(scope, tier, opts) do
     trial_days = Keyword.get(opts, :trial_days, 0)
 
     with {:ok, account} <- ensure_customer(scope) do
@@ -87,6 +99,28 @@ defmodule CodeMySpec.Billing do
         :none -> create_subscription(account, tier, trial_days)
         {:error, reason} -> {:error, reason}
       end
+    end
+  end
+
+  # No Stripe secret key configured at all — true for a fresh dev box with no
+  # billing test keys set up yet, and never true once real keys exist
+  # (`StripeClient.configured?/0` flips the moment `secret_key` is set, the
+  # same key every other Stripe call already needs or fails outright). Asking
+  # a visitor to configure billing before they can test the rest of the
+  # intake funnel would be gating unrelated work on a missing local config
+  # value, so the tier is granted directly instead — this is the one place
+  # something other than the webhook writes `account.plan` (see moduledoc),
+  # justified only because there is no webhook that will ever arrive to do it.
+  defp grant_without_stripe(%Scope{active_account: %Account{id: id}}, tier) do
+    Logger.info("[Billing] Stripe not configured — granting #{tier} directly for account #{id}")
+
+    id
+    |> Accounts.get_account_by_id()
+    |> Ecto.Changeset.change(plan: tier)
+    |> Repo.update()
+    |> case do
+      {:ok, _account} -> {:ok, %{client_secret: nil, subscription_id: nil}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
