@@ -160,8 +160,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
     end)
   end
 
+  # `\s*` because the formatter wraps a span whose text runs long, and the
+  # digits then open on the next line.
   defp number(body, field) do
-    ~r/data-test="#{field}">(\d+)/
+    ~r/data-test="#{field}">\s*(\d+)/
     |> Regex.run(body)
     |> then(fn
       [_, digits] -> String.to_integer(digits)

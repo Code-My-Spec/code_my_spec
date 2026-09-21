@@ -52,6 +52,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   require Logger
 
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
@@ -125,17 +126,19 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   reports as a difference and the number says more about timing than about
   coverage.
   """
-  @spec settle(Ecto.UUID.t() | nil) :: :ok
-  def settle(project_id) when is_binary(project_id) do
+  @spec settle(Ecto.UUID.t() | nil, Enumerable.t()) :: :ok
+  def settle(project_id, requested \\ [])
+
+  def settle(project_id, requested) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
-      [{pid, _}] -> GenServer.call(pid, :drain, 30_000)
+      [{pid, _}] -> GenServer.call(pid, {:drain, requested}, 30_000)
       [] -> :ok
     end
   catch
     :exit, _ -> :ok
   end
 
-  def settle(_no_project), do: :ok
+  def settle(_no_project, _requested), do: :ok
 
   # -- Server --
 
@@ -164,6 +167,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        project_id: project_id,
        scope: scope,
        seeded: false,
+       requested_vantages: MapSet.new(),
        # The four analyzer-freshness booleans, kept between drains. Project-wide
        # and computed from the whole checkout's files, so recomputing it per
        # narrow drain would reintroduce the read the narrow path exists to
@@ -181,7 +185,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   @impl true
-  def handle_call(:drain, _from, state), do: {:reply, :ok, drain(state)}
+  def handle_call({:drain, requested}, _from, state) do
+    {:reply, :ok, state |> remember(requested) |> drain()}
+  end
 
   @impl true
   def handle_info(:seed, state), do: {:noreply, drain(state)}
@@ -274,8 +280,37 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # for is a mark that a crash turns into a permanently stale entity, which
     # is the failure the durable set exists to rule out.
     Invalidations.consume(marks)
+    announce(state, marks)
 
     %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
+  end
+
+  # What the pass does after it writes, done here when this is the writer that
+  # counts. `GraphWatcher` broadcasts `{:graph_updated, project_id}` and asks
+  # `Work.consider_project/2` whether anyone should be woken, both gated on
+  # having consumed something — a pass that ran for nothing announces nothing.
+  # The projector did neither, so a flip of `graph_event_is_source` would have
+  # left every reader current and every agent asleep.
+  #
+  # Only while inverted. With both writers on and the pass the source, the pass
+  # already does this for every observation; doing it here too would wake each
+  # agent twice per event.
+  defp announce(_state, []), do: :ok
+
+  defp announce(state, _marks) do
+    if Shadow.inverted?() do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        GraphInputs.topic(state.project_id),
+        {:graph_updated, state.project_id}
+      )
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Work.consider_project(state.scope, :graph_changed)
+      end)
+    end
+
+    :ok
   end
 
   # What the marks say, widened to everything only when one of them cannot say.
@@ -307,6 +342,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     do: Projection.live_vantages(state.scope, Projection.vantages(state.scope))
 
   defp vantages(state, marks) do
+    requested = MapSet.to_list(state.requested_vantages)
     named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
 
     if Enum.any?(named, &is_nil/1) do
@@ -315,9 +351,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       keep_nil? = Preloader.files_vantage(state.scope) in named
 
       state.scope
-      |> Projection.live_vantages(named)
-      |> Enum.filter(&(keep_nil? or not is_nil(&1)))
+      |> Projection.live_vantages(Enum.concat(named, requested))
+      |> Enum.filter(&(keep_nil? or not is_nil(&1) or &1 in requested))
     end
+  end
+
+  # The vantages a reader has asked about, which is the half the pass had and
+  # this did not.
+  #
+  # `GraphWatcher` folds `requested_vantages` into every pass, so a checkout
+  # somebody read is considered even when no mark names it. Nothing told the
+  # projector, so it settled only what marks named — and the two drifted for as
+  # long as reads and writes pointed at different checkouts. Measured on dev
+  # 2026-09-21: the `Harness` vantage was current on the pass side at 11:19:47
+  # and 6h36m behind on this one, because a reader had asked the pass for it and
+  # nothing had asked here.
+  #
+  # Not a recompute-on-read, which is what criterion 3423 forbids and what the
+  # 348-computes/2.6s measurement was. The vantage is *considered*; a pass over
+  # it recomputes only entities whose own inputs moved, which is nothing at all
+  # when nothing moved.
+  defp remember(state, requested) do
+    %{state | requested_vantages: Enum.into(requested, state.requested_vantages)}
   end
 
   # Each event offered to its handler; anything without one handed back.

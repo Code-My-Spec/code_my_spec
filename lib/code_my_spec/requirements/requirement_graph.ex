@@ -34,6 +34,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
@@ -501,6 +502,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # `Projection.load/2`, which drops any row it cannot rehydrate, so a short
       # read would delete the edges it failed to read.
       {stored_edges, nil}
+    end
+  end
+
+  # Settle whichever writer owns the rows this read is about to serve.
+  #
+  # A read calls this before it answers, and it used to name `GraphWatcher`
+  # outright. That is right while the pass writes `requirements` and wrong the
+  # moment `graph_event_is_source` flips: the projector then owns the table
+  # being read, and a read would settle the pass — now writing the shadow — and
+  # be served from rows nothing had settled. It also reaches the projector with
+  # the vantage the reader named, which `GraphWatcher` has always folded into
+  # its next pass as `requested_vantages` and the projector never heard about.
+  defp settle_owner(%Scope{active_project_id: project_id} = scope) do
+    if Shadow.inverted?() do
+      ShadowProjector.ensure_projecting(scope)
+      ShadowProjector.settle(project_id, [scope.active_working_copy_id])
+    else
+      GraphWatcher.settle(scope)
     end
   end
 
@@ -1358,7 +1377,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     scope = normalize_vantage(scope)
 
     if Keyword.get(opts, :settle, true) do
-      GraphWatcher.settle(scope)
+      settle_owner(scope)
     end
 
     with {:ok, ctx} <- Preloader.load(scope) do
@@ -1446,7 +1465,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # than as the page being early. Ten of story 562's spex caught it: a child
     # implementation deleted, the sync announcing it, and the page still
     # rendering the node satisfied.
-    GraphWatcher.settle(scope)
+    settle_owner(scope)
 
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
 

@@ -50,6 +50,7 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
 
   alias CodeMySpec.ComponentsFixtures
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
 
@@ -225,6 +226,80 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
              topology frozen at the moment of the flip, and the graph goes on
              looking right.
              """
+    end
+
+    # Two things a reader depends on that only the pass provided, asserted the
+    # way a reader would notice their absence.
+    #
+    # Inverted, every read is served from the projector's table — so a read has
+    # to settle the *projector* before it answers, and a drain that moved
+    # something has to announce it or nothing wakes. Both were hard-wired to
+    # `GraphWatcher`: `cached_graph_with_actionable/2` named it outright, and
+    # `newly_actionable/2` and `maybe_request_work/2` lived only there. A flip
+    # would have left every read current-looking and served from rows nothing
+    # had settled, with every agent asleep.
+    test "a read settles the projector, and a drain announces", ctx do
+      scope = ctx.scope
+      ComponentsFixtures.component_fixture(scope)
+      story = create_story(scope, title: "A story", description: "whose verdict will move")
+
+      stop_writers(scope.active_project_id)
+      empty_the_passs_new_table(scope)
+      Application.put_env(:code_my_spec, :graph_event_is_source, true)
+
+      # Both writers once, so the transition is over before the claim is made.
+      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
+      :ok = ShadowProjector.settle(scope.active_project_id)
+      CodeMySpec.Requirements.recompute(scope)
+      :ok = ShadowProjector.settle(scope.active_project_id)
+
+      GraphInputs.subscribe(scope.active_project_id)
+
+      # An observation that moves exactly one verdict on the event side —
+      # `story_issues_resolved` on this story goes true → false — and is
+      # *not* followed by an explicit projector settle. The read is what has
+      # to do that.
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "breaks the story",
+          description: "accepted, so the verdict moves",
+          severity: :high,
+          story_id: story.id
+        })
+
+      {:ok, _} = CodeMySpec.Issues.accept_issue(scope, issue)
+
+      {nodes, _at} = CodeMySpec.Requirements.cached_all(scope)
+
+      verdict =
+        Enum.find(
+          nodes,
+          &(&1.entity_type == "story" and &1.entity_id == story.id and
+              &1.name == "story_issues_resolved")
+        )
+
+      assert verdict,
+             "the read served no `story_issues_resolved` for the story, so nothing below is about a verdict"
+
+      refute verdict.satisfied,
+             """
+             Inverted, a read was served `story_issues_resolved: true` after an
+             issue was accepted against the story.
+
+             The read is served from the projector's table, so it has to settle
+             the projector before it answers. It settled the pass — which now
+             writes the shadow — and was served rows nothing had touched since
+             the issue landed. `settle_owner/1` is what routes it.
+             """
+
+      assert_receive {:graph_updated, _project_id}, 2_000, """
+      The drain that moved the verdict announced nothing.
+
+      `GraphWatcher` broadcasts `{:graph_updated, project_id}` after a
+      pass that consumed something; the projector did not, so inverted
+      nobody listening on the project's topic — and nobody being
+      considered for a wake — hears about a graph that moved.
+      """
     end
   end
 end
