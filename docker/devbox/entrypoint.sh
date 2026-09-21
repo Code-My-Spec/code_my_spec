@@ -83,6 +83,41 @@ if [ -n "${CMS_WORKING_COPY_ID:-}" ]; then
     ${CMS_DEPLOY_KEY:+--deploy-key "${CMS_DEPLOY_KEY}"} \
     ${CMS_SERVER_URL:+--server-url "${CMS_SERVER_URL}"} \
     || log "Onboarding did not complete; the app still runs, unowned"
+
+  # `mix harness.onboard` comes from client_utils, which a generated app
+  # depends on instead of CodeMySpec — so its flags are `--id`,
+  # `--deploy-key`, `--server-url` and nothing about which project, and
+  # `.cms_harness.json` comes out with `"project_id": null`. That is fatal
+  # here in a way it never was on a laptop: `CmsHarness.Projects.
+  # start_configured/0`'s sprite path (CMS_PROJECT_DIR at boot, which is the
+  # only path this container has — nobody is sitting in it running a
+  # session to fire the laptop path's hook) reads project_id straight off
+  # this file with no network fallback, and refused outright —
+  # `:no_project_id` — the one time this was actually exercised end to end
+  # against a rebuilt image. The host already knows it: CMS_PROJECT_ID is
+  # part of `Workspaces.instance_env/1`'s standard env, the same list
+  # CMS_WORKING_COPY_ID above came from. Patched in rather than passed as a
+  # flag the task does not have; merged rather than overwritten for the same
+  # reason `HarnessConfig.write/2` merges everywhere else — onboarding above
+  # already wrote the deploy key and preview address into this file, and a
+  # fresh map would take both with it.
+  if [ -n "${CMS_PROJECT_ID:-}" ] && [ -f "${APP_DIR}/.cms_harness.json" ]; then
+    # `mix run -e`, not bare `elixir -e`: Jason is a compiled dependency of
+    # this app, on the code path `mix` already knows how to find rather than
+    # one this script would have to locate under `_build` by hand.
+    #
+    # Read through the environment rather than passed as script args — `mix
+    # run -e` needs a `--` separator before extra argv reaches the script,
+    # and CMS_HARNESS_CONFIG_PATH/CMS_PROJECT_ID are already exported into
+    # this same process, which every child inherits for free.
+    CMS_HARNESS_CONFIG_PATH="${APP_DIR}/.cms_harness.json" \
+      mix run --no-start -e '
+        path = System.fetch_env!("CMS_HARNESS_CONFIG_PATH")
+        project_id = System.fetch_env!("CMS_PROJECT_ID")
+        config = path |> File.read!() |> Jason.decode!()
+        config |> Map.put("project_id", project_id) |> Jason.encode!(pretty: true) |> then(&File.write!(path, &1))
+      '
+  fi
 else
   log "No working copy id given; starting un-onboarded"
 fi
@@ -95,8 +130,20 @@ fi
 #
 # Backgrounded: the harness is a companion to the project, not a gate on it.
 # If it dies the app must stay up so the user can still work.
+#
+# CMS_PROJECT_DIR is what makes it actually serve this project rather than
+# come up and sit idle. `CmsHarness.Projects.start_configured/0` only picks a
+# project two ways: this env var at boot (the sprite path) or a hook fired by
+# an already-running dev session (the laptop path) — and nobody is sitting in
+# this container running a session to fire that hook. Onboarding above writes
+# `.cms_harness.json`, which gives the copy an identity, but identity alone
+# was never enough to be served; that is `34e03128` one runner over. Found by
+# booting a real container through `Runner.Docker` for the first time since
+# the image build itself was fixed: it came up, the app answered, and the
+# harness sat there logging nothing but "no machine-wide credential" forever
+# — no join, no restore attempt, nothing for an agent to ever confirm against.
 log "Starting the cms harness server on :4003"
-cms start &
+CMS_PROJECT_DIR="${APP_DIR}" cms start &
 
 # --- app --------------------------------------------------------------------
 log "Starting ${APP_NAME} on :${PORT}"
