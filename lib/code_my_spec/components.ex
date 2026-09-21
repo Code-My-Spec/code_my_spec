@@ -42,14 +42,19 @@ defmodule CodeMySpec.Components do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:components")
   end
 
-  defp broadcast(%Scope{} = scope, message) do
+  # The PubSub message always — the UI wants every change — and the graph
+  # event only when `graph:` says the graph has something to read.
+  defp broadcast(%Scope{} = scope, message, opts \\ []) do
     key = scope.user.id
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    kind = component_event_kind(message)
+    if Keyword.get(opts, :graph, true) do
+      kind = component_event_kind(message)
+      GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
+    end
 
-    GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
+    :ok
   end
 
   # Every checkout, whatever the kind. A component is a project fact: the
@@ -97,12 +102,20 @@ defmodule CodeMySpec.Components do
   # — its orphan rule asks which contexts are story-linked, descended from one,
   # or depended on by one. A component appearing, moving parent or changing type
   # can move that verdict.
-  defp graph_entities({_verb, %{id: id} = component}) do
+  #
+  # Only when the component appears or goes. A *change* to a component moves
+  # its own template and edges and nothing of its parent's — `Freshness`
+  # hashes the parent's children by id, not by content — and naming the parent
+  # sent the whole family of the parent's own root through a recompute at
+  # every vantage for a child's retype.
+  defp graph_entities({verb, %{id: id} = component}) when verb in [:created, :deleted] do
     case Map.get(component, :parent_component_id) do
       nil -> [{"component", id}, :project]
       parent_id -> [{"component", id}, {"component", parent_id}, :project]
     end
   end
+
+  defp graph_entities({_changed, %{id: id}}), do: [{"component", id}, :project]
 
   defp graph_entities(_message), do: []
 
@@ -161,11 +174,27 @@ defmodule CodeMySpec.Components do
   def update_component(%Scope{} = scope, %Component{} = component, attrs, opts \\ []) do
     true = component.project_id == scope.active_project.id
 
-    with {:ok, component = %Component{}} <-
+    with {:ok, updated = %Component{}} <-
            ComponentRepository.update_component(scope, component, attrs, opts) do
-      if Keyword.get(opts, :broadcast, true), do: broadcast(scope, {:updated, component})
-      {:ok, component}
+      if Keyword.get(opts, :broadcast, true),
+        do: broadcast(scope, {:updated, updated}, graph: structural_change?(component, updated))
+
+      {:ok, updated}
     end
+  end
+
+  # What the graph reads off a component row: its type (the template), its
+  # parent (the family and the tree edges) and its name (identity). A change
+  # to anything else — a spec's prose re-synced into `description` — moves no
+  # verdict and no edge, and was costing a whole family recompute at every
+  # vantage: measured 2026-09-21, three prose edits under
+  # `CodeMySpec.Workspaces` ran 9.8s / 923 queries each across ten checkouts,
+  # because the change named its parent and the parent's family root is
+  # `CodeMySpec`, 101 children.
+  @structural [:type, :parent_component_id, :module_name]
+
+  defp structural_change?(%Component{} = before, %Component{} = after_) do
+    Enum.any?(@structural, &(Map.get(before, &1) != Map.get(after_, &1)))
   end
 
   @doc """
