@@ -128,6 +128,28 @@ defmodule CodeMySpec.Requirements.Shadow do
   def inverted?, do: Application.get_env(:code_my_spec, :graph_event_is_source, false)
 
   @doc """
+  Whether to run the comparison, as against running the event path.
+
+  Separate from `enabled?/0` because they are different costs and one flag was
+  hiding that. `ShadowProjector` is built to avoid a whole-project load — its
+  moduledoc says so in as many words, "`Preloader.load/1` is never called" —
+  and applies handlers against narrow contexts. `diff/1` opens with a full
+  `Preloader.load/2`, once per computed vantage, on every pass.
+
+  Measured on dev 2026-09-21: **814 preloads for 157 passes**, 5.2x, against a
+  preload that is the largest phase of a pass. Almost all of it was the
+  comparison, not the projection being compared.
+
+  Turning `enabled?/0` off to stop paying that turns off the event path itself
+  — the new system — and leaves the batched pass serving alone. That is
+  backwards for a project moving *to* event sourcing, and it is what this split
+  exists to prevent. The projection stays on and keeps being exercised; the
+  diff is what you switch on when you want to re-validate.
+  """
+  @spec diffing?() :: boolean()
+  def diffing?, do: Application.get_env(:code_my_spec, :graph_shadow_diff, false)
+
+  @doc """
   Where the event path writes, and where the pass does.
 
   Asked by role, so no call site has to know which way round the flag currently

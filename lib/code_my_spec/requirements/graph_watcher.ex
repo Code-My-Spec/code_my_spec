@@ -494,9 +494,16 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # Once per vantage, because a projection is per row-space and comparing
   # across them would mix two populations.
   defp report_shadow(%{scope: %Scope{} = scope} = state, computed) do
-    if Shadow.enabled?() do
-      ShadowProjector.settle(state.project_id)
+    # Settling is the event path doing its work and is cheap by construction —
+    # narrow loads, never `Preloader.load/1`. It runs whenever the projection is
+    # on, because a projection that stops being driven stops being a candidate
+    # to swap to.
+    if Shadow.enabled?(), do: ShadowProjector.settle(state.project_id)
 
+    # Diffing is the measurement, and it is the expensive half: a full preload
+    # per computed vantage, on every pass. 814 preloads for 157 passes on dev.
+    # On when you are validating, off when you are not.
+    if Shadow.enabled?() and Shadow.diffing?() do
       Enum.each(computed, fn vantage ->
         %Scope{scope | active_working_copy_id: vantage}
         |> Shadow.diff()
