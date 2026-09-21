@@ -798,7 +798,7 @@ defmodule CodeMySpec.Requirements.Shadow do
     disagree =
       live_keys
       |> MapSet.intersection(shadow_keys)
-      |> Enum.filter(&(Map.fetch!(live, &1) != Map.fetch!(shadow, &1)))
+      |> Enum.filter(&(verdict(live, &1) != verdict(shadow, &1)))
 
     live_edges =
       edge_keys(
@@ -830,7 +830,7 @@ defmodule CodeMySpec.Requirements.Shadow do
       edges_extra: MapSet.size(MapSet.difference(shadow_edges, live_edges)),
       live_edges: MapSet.size(live_edges),
       shadow_edges: MapSet.size(shadow_edges),
-      sample: sample(missing, extra, disagree),
+      sample: sample(missing, extra, disagree, live, shadow),
       edge_sample: edge_sample(live_edges, shadow_edges)
     }
   end
@@ -921,19 +921,31 @@ defmodule CodeMySpec.Requirements.Shadow do
   # claims. Everything else on a row is rehydrated from the registry at read
   # time — `Node`'s own moduledoc says a row is "identity plus verdict" — so
   # comparing more would be comparing the registry against itself.
+  #
+  # `checked_at` rides along for the sample, not for the comparison. A
+  # disagreement's first question is which side is fresher: the pass's
+  # per-entity fingerprint leaves analyzer freshness out (criterion 3448), so
+  # a story whose spex run went from stale to failing is settled by the event
+  # path and never restaled for the pass — measured 2026-09-21, `true` from
+  # 17:41 against `false` from 17:51, and readers on the pass told ten failing
+  # specs were passing. Without the stamps that read as the event path wrong.
   defp verdicts(source, project_id, component_ids, story_ids, working_copy_id) do
     source
     |> scoped(project_id, component_ids, story_ids)
     |> where(^copy_filter(working_copy_id))
     |> select_verdicts()
     |> Repo.all()
-    |> Map.new(fn {component_id, story_id, proj_id, name, satisfied} ->
-      {{component_id, story_id, proj_id, name}, satisfied}
+    |> Map.new(fn {component_id, story_id, proj_id, name, satisfied, checked_at} ->
+      {{component_id, story_id, proj_id, name}, {satisfied, checked_at}}
     end)
   end
 
+  defp verdict(side, key), do: side |> Map.fetch!(key) |> elem(0)
+
   defp select_verdicts(query) do
-    from(n in query, select: {n.component_id, n.story_id, n.project_id, n.name, n.satisfied})
+    from(n in query,
+      select: {n.component_id, n.story_id, n.project_id, n.name, n.satisfied, n.checked_at}
+    )
   end
 
   defp scoped(source, project_id, component_ids, story_ids) do
@@ -984,12 +996,21 @@ defmodule CodeMySpec.Requirements.Shadow do
   # A handful, named, because the counts say how wrong and never say where —
   # which is the gap `why_all/5` had to be added to close on the fingerprint
   # side. Three of each is enough to point at the writer that owes a mark.
-  defp sample(missing, extra, disagree) do
+  defp sample(missing, extra, disagree, live, shadow) do
     Enum.concat([
       missing |> Enum.take(3) |> Enum.map(&"missing #{key_label(&1)}"),
       extra |> Enum.take(3) |> Enum.map(&"extra #{key_label(&1)}"),
-      disagree |> Enum.take(3) |> Enum.map(&"disagree #{key_label(&1)}")
+      disagree
+      |> Enum.take(3)
+      |> Enum.map(fn key ->
+        "disagree #{key_label(key)} (live #{side_label(live, key)}, shadow #{side_label(shadow, key)})"
+      end)
     ])
+  end
+
+  defp side_label(side, key) do
+    {satisfied, checked_at} = Map.fetch!(side, key)
+    "#{satisfied}@#{checked_at && NaiveDateTime.to_time(checked_at)}"
   end
 
   defp key_label({component_id, story_id, project_id, name}) do
