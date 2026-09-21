@@ -35,6 +35,8 @@ defmodule CodeMySpec.McpServers.Health do
 
   require Logger
 
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Health.Tools.{Health, ScriptHealth}
 
   @doc """
@@ -56,10 +58,10 @@ defmodule CodeMySpec.McpServers.Health do
   end
 
   defp answers?({_name, module}) do
-    {:reply, response, _frame} = module.execute(%{}, %Anubis.Server.Frame{})
+    {:reply, response, _frame} = module.execute(%{}, %Frame{})
 
     response
-    |> Anubis.Server.Response.to_protocol()
+    |> Response.to_protocol()
     |> Map.get("content")
     |> case do
       [%{"text" => "ok"} | _] -> true

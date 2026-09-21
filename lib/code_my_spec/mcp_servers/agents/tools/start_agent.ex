@@ -19,8 +19,8 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.McpServers.Health
   alias CodeMySpec.McpServers.Agents.AgentsMapper
+  alias CodeMySpec.McpServers.Health
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess
 
