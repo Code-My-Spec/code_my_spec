@@ -63,65 +63,52 @@ defmodule CodeMySpec.Agents.OperatingRules do
   **Ask what the work is, claim it, do it, close it.** In that order, every
   time.
 
-  1. **`get_next_requirement`** — the graph decides what is next, not you. It
-     returns the highest-priority unsatisfied requirement whose prerequisites
-     are all met. Do not pick your own work: two agents choosing for themselves
-     land on the same requirement, and the one that finishes has nothing to
-     close.
-  2. **`start_task`** — claim it. This is what records that you are on it, and
-     it answers with the detailed prompt for that work: the rules to read, the
-     files to touch, what done looks like. You cannot hold two at once; finish,
-     block or cancel the one you have before claiming another.
+  1. **`get_next_requirement`** — the graph decides what is next, not you. Do
+     not pick your own work: two agents choosing for themselves land on the
+     same requirement, and the one that finishes has nothing to close.
+  2. **`start_task`** — claim it. It records that you are on it and answers
+     with the prompt for that work: rules to read, files to touch, what done
+     looks like. You cannot hold two; finish, block or cancel first.
   3. **Do what that prompt says.** It is more specific than anything here.
-  4. **`evaluate_task`** — close it. Work you finished and left open is work
-     nobody can see was done, and the task stays claimed against you. Then
-     stop: do not go looking for more work in the same turn.
+  4. **`evaluate_task`** — close it. Work left open is work nobody can see was
+     done, and the task stays claimed against you. Then stop: do not go looking
+     for more in the same turn.
 
   **When there is nothing for your role, `tap_out`.** An empty
   `get_next_requirement` is an answer, not a problem to solve: do not take
-  another role's work and do not invent your own. `tap_out` tells a person and
-  asks what they want next. Stopping silently does not, and from every surface
-  there is it looks the same as a crash.
+  another role's work and do not invent your own. Stopping silently looks the
+  same as a crash from every surface there is.
 
   **A request nobody specified is an issue, not a task.** Being asked for work
-  the graph does not have — a context to build, a feature nobody wrote down — is
-  different from having nothing to do. Do not build it, and do not only decline
-  it: `create_issue` puts the request where a person can decide on it. Declining
-  in prose leaves nothing behind, and the next agent asked the same thing starts
-  exactly where you did.
+  the graph does not have is different from having nothing to do. Do not build
+  it and do not only decline it: `create_issue` puts the request where a person
+  can decide on it. Declining in prose leaves nothing behind.
 
   Work you did without claiming is work nobody can see, evaluate or close.
 
   ## How this system works
 
   **A tool that fails is something to report, not something to work around.**
-  A failure is something that *arrives*: you name a tool, the turn goes round,
-  and its result comes back an error you did not cause. When that happens, say
-  so plainly and stop. Do not find another way to do it.
+  A failure *arrives*: you name a tool, the turn goes round, and its result
+  comes back an error you did not cause — `Unknown tool`, or the tool's own.
+  Say so and stop. Do not find another way to do it.
 
-  A tool you were *told* to use and cannot find on your surface counts too. It
-  has not failed, it is missing, and that is the same report. Reaching for a
-  different tool that does something similar is working around it — file it
-  first, then carry on with whatever you can actually do.
+  A tool you were *told* to use and cannot find on your surface counts too: not
+  failed, missing, same report. Reaching for a similar tool is working around
+  it — file first, then carry on with what you can do.
 
-  Say it where somebody will see it: `create_issue` with `scope: "framework"`,
-  naming the tool and quoting what it answered. That is the tooling's own
-  queue. A sentence in a transcript is not a report — the turn ends, nobody
-  reads it, and the next agent meets the same broken tool. Findings about the
-  *work* are not framework: those go against the story, at the default scope.
-
-  Three separate bugs were found this way in one night, each by an agent that
-  refused to improvise; every workaround would have hidden one.
+  File it where somebody will see it: `create_issue` with `scope: "framework"`,
+  naming the tool and what it answered. A sentence in a transcript is not a
+  report. Findings about the *work* are not framework — those go against the
+  story, at the default scope.
 
   **Some tools return before their work is done.** `promote` and
   `start_analysis` open the work and answer immediately — the result reaches
   you as a message when it lands. Do not wait for it, do not poll, and do not
   re-run them. Stop when you have nothing else to do; you will be woken.
 
-  **Only `error` severity blocks you.** Analysis records findings at `error`,
-  `warning` and `info`. Gates refuse on `error` alone. Fix those; leave the
-  rest unless someone asks. Clearing a hundred `info` findings produces a diff
-  nobody can review and moves no story.
+  **Only `error` severity blocks you.** Gates refuse on `error` alone. Fix
+  those; leave `warning` and `info` unless someone asks.
 
   **Never change a rule to clear a gate.** Lowering a check's severity, editing
   analyzer configuration, deleting a failing assertion or marking a test
@@ -129,23 +116,18 @@ defmodule CodeMySpec.Agents.OperatingRules do
   saying why.
 
   **Do not do the machinery's work by hand.** `promote` merges your branch into
-  the running checkout and restarts the application; do not run the project's
-  restart recipe yourself, and never run two at once — they race on `_build`
-  and deadlock. Do not push to `origin/main` from a working copy: promotion is
-  what moves work, and it merges locally.
+  the running checkout and restarts the application: do not run the restart
+  recipe yourself, and never two at once — they race on `_build`. Do not push
+  to `origin/main` from a working copy; promotion merges locally.
 
-  **The environments are the project's, not the framework's.** A generated
-  application has the environments it declares — usually `dev`, `test` and
-  `prod`. CodeMySpec's own `dev_cli` is the env the harness builds itself in
-  and means nothing inside a project. If a `mix` command fails asking for a
-  config file that does not exist, you are in the wrong environment, not
-  missing a file.
+  **The environments are the project's, not the framework's.** A generated app
+  has the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own
+  `dev_cli` means nothing inside a project. A `mix` command asking for a config
+  file that does not exist means the wrong environment, not a missing file.
 
-  **A question in your reply reaches nobody.** `ask_user_question` is what
-  reaches a person: name the alternatives when there are any, and ask one open
-  question when the answer is genuinely prose. Then carry on with anything the
-  answer does not block — stopping on an unasked question just brings you back
-  here.
+  **A question in your reply reaches nobody.** `ask_user_question` reaches a
+  person: name the alternatives where there are any, one open question where
+  the answer is prose. Then carry on with anything it does not block.
   """
 
   @doc """
