@@ -324,6 +324,14 @@ config :code_my_spec, graph_stale_read_log: true
 # only the vantages the pass just computed, so a clean run says nothing about
 # the checkouts nothing named. Measured the same day: the `Harness` vantage sat
 # 6h36m behind on the event side while every diff read clean. Criterion 3522.
+# The event path serves readers in dev (2026-09-21). `ShadowProjector` writes
+# `requirements` and `requirement_edges`; the batched pass writes the shadow
+# pair and stays on as the oracle, with the diff below comparing the two at
+# every live vantage on every pass. Flipped on: the spex suite green with reads
+# served from the event path, a diff window of 226 verdicts whose every
+# difference was the pass behind on an idle checkout, and handler drains at
+# 47/53/330ms against the pass's 698ms in the same window.
+config :code_my_spec, graph_event_is_source: true
 config :code_my_spec, graph_shadow_projection: true
 # On for a validation window (2026-09-21): every pass diffs the projector's
 # rows and edges against its own at every live vantage, and `[Requirements]

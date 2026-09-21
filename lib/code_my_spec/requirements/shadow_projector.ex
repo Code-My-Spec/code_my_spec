@@ -173,20 +173,20 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     GraphInputs.subscribe(project_id)
 
-    # One whole-project computation on arrival, then maintain from events.
+    # Establish every vantage on arrival, then maintain from events.
     #
-    # Not an exception to "no batching" — it is the thing that makes the rest of
-    # it possible. An accumulated projection has to start from a known state,
-    # and a consumer that only ever applied deltas would hold a shadow that is
-    # missing every entity nothing has touched since it started, permanently,
-    # while reporting the gap as a coverage failure it cannot fix.
-    #
-    # It is also the shape the design called for: build the state of the graph
-    # with one query up front, and the event handlers after it stay simple
-    # because they never have to reconstruct what they did not see.
+    # A vantage with rows is trusted as it stands: the rows are durable, the
+    # mark queue is durable, so everything that happened while this process
+    # was down is still queued and applied by the first drain — and the files,
+    # the one input with no row of its own, are rescanned by the harness when
+    # it reconnects and arrive as `files_synced`. A vantage with no rows is
+    # seeded whole, which is the one case a delta has nothing to be relative
+    # to. This used to reseed every vantage on every start: 10.3s on the big
+    # project at every promote, recomputing rows the diff had just agreed with.
+    # John, 2026-09-21: "we can trust our domain".
     #
     # Sent rather than done in `init/1`, because this blocks the supervisor and
-    # a cold project is a whole graph.
+    # a vantage with no rows is a whole graph.
     send(self(), :seed)
 
     {:ok,
@@ -194,7 +194,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        project_id: project_id,
        scope: scope,
        seeded: false,
-       requested_vantages: MapSet.new(),
+       # The vantage this projector was started for is asked about from the
+       # first drain, as `GraphWatcher` does: a checkout whose reader started
+       # the writers is established in the same drain as `nil`, not one drain
+       # later when something reads it.
+       requested_vantages: MapSet.new([scope.active_working_copy_id]),
        # The vantages this process has seen rows for — its own writes, or rows
        # found already there. `settle_vantage/6` asks the table once per vantage
        # and remembers the answer here.
@@ -566,12 +570,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     state =
       cond do
-        not state.seeded -> run(:everything, state, config)
         # A vantage with no rows has nothing to be partial against, whatever
         # the marks say — the pass's `no_stored_rows`, asked per checkout.
         not established?(state, vantage) -> run(:everything, state, config)
-        unhandled == [] -> state
-        true -> run(plan(state, unhandled), state, config)
+        unhandled == [] -> trust(state, config)
+        true -> state |> trust(config) |> run_plan(unhandled, config)
       end
 
     state = %{state | established_vantages: MapSet.put(state.established_vantages, vantage)}
@@ -636,12 +639,24 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state
   end
 
-  # What this drain has to load, which is decided before anything is loaded.
-  #
-  # An unseeded projector reads every mark the same way: it has no prior state
-  # for a delta to be relative to.
-  defp plan(%{seeded: false}, _marks), do: :everything
+  defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
+  # A vantage this process meets with rows already there. Its edges were
+  # written with those rows, so the shape they were drawn over is taken as the
+  # baseline rather than the edges redrawn to find that out: four queries
+  # instead of an edge set over 2,000 nodes, once per vantage per process.
+  # Nothing to do once this process has been here.
+  defp trust(state, config) do
+    if MapSet.member?(state.established_vantages, vantage(state)) or
+         Map.has_key?(state.last_topology, vantage(state)) do
+      state
+    else
+      shape = Preloader.topology_context(state.scope)
+      remember_topology(state, Freshness.topology(shape, config))
+    end
+  end
+
+  # What this drain has to load, which is decided before anything is loaded.
   # Three claims, three costs.
   #
   # `unknown?` — some writer could not say what it moved, so the entity set is
@@ -655,7 +670,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   #
   # Anything else narrow. `Preloader.load/1` is reached only when a writer
   # could not say what it moved.
-  defp plan(%{seeded: true}, marks) do
+  defp plan(_state, marks) do
     {named, flags} = Invalidations.entities(marks)
 
     cond do

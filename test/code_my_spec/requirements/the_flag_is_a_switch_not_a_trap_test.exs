@@ -286,7 +286,12 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
         )
 
       assert verdict,
-             "the read served no `story_issues_resolved` for the story, so nothing below is about a verdict"
+             """
+             the read served no `story_issues_resolved` for the story, so nothing below is about a verdict
+
+             vantage: #{inspect(scope.active_working_copy_id)}  served: #{length(nodes)} node(s)
+             story rows served: #{inspect(nodes |> Enum.filter(&(&1.entity_type == "story")) |> Enum.map(&{&1.entity_id, &1.name}))}
+             """
 
       refute verdict.satisfied,
              """

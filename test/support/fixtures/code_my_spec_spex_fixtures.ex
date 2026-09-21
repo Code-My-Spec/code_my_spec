@@ -152,8 +152,10 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.Story
@@ -1615,6 +1617,21 @@ defmodule CodeMySpecSpex.Fixtures do
   watchers alive at the end of one are that one's, and a watcher belonging to
   nothing is what a straggler is.
   """
+  @doc """
+  Forget everything the event path has projected for this project, at every
+  vantage, so the next projector to arrive meets it for the first time.
+
+  A projector arriving trusts rows it finds and seeds only a vantage that has
+  none, so a criterion about the seed has to take the rows away first — a
+  restart alone measures a trust. Oracle tooling, like `watch_graph/1`.
+  """
+  @spec forget_projection(Scope.t()) :: :ok
+  def forget_projection(%Scope{} = scope) do
+    scope
+    |> Projection.vantages()
+    |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
+  end
+
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do
     CodeMySpec.Requirements.WatcherSupervisor
