@@ -104,7 +104,29 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
       that has to be rotated.
       """
     end
+
+    # Same user-facing failure as ac7a510b (a working application, an agent that
+    # never confirms, "nothing here is holding that working copy") from a
+    # different cause: `rel/env.sh.eex` names every `cms start` node
+    # `codemyspec` by default, so a host that already runs its own `cms
+    # harness` — the ordinary state of this very checkout — collides on the
+    # very first local-tier boot. The harness dies on `epmd` registration
+    # while the app keeps answering, which is indistinguishable from healthy
+    # until someone messages the agent.
+    test "and the harness gets a node name unique to this workspace", %{prepared: p} do
+      script = File.read!(p.script_path)
+
+      assert script =~ ~s(CMS_NODE_NAME=#{name(p)} CMS_HARNESS_PORT=), """
+      Without CMS_NODE_NAME, every workspace's `cms start` claims the same
+      default sname (`codemyspec`) as this machine's own persistent harness —
+      the second one to start always loses, silently: the app comes up fine
+      and the harness dies on epmd registration, with no trace but this
+      workspace's own run.log.
+      """
+    end
   end
+
+  defp name(%{dir: dir}), do: Path.basename(dir)
 
   describe "when the host named nothing" do
     test "no file is written and the workspace still boots", %{dir: dir} do
