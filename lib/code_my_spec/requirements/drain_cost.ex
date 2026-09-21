@@ -194,7 +194,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
   def measure(meta, fun) when is_map(meta) and is_function(fun, 0) do
     owner = self()
     handler_id = {__MODULE__, owner, System.unique_integer([:positive])}
-    counter = :counters.new(5, [:write_concurrency])
+    counter = :counters.new(7, [:write_concurrency])
 
     :telemetry.attach_many(
       handler_id,
@@ -225,22 +225,29 @@ defmodule CodeMySpec.Requirements.DrainCost do
   # Runs in whichever process issued the query, so comparing against the owner
   # is what scopes the count. Without it a drain would be charged for every
   # query the node happened to run while it was in flight.
-  def count_query(event, _measurements, metadata, {owner, counter}) do
+  def count_query(event, measurements, metadata, {owner, counter}) do
     if self() == owner do
       case event do
         @edges_event -> :counters.add(counter, 3, 1)
         @project_preload_event -> :counters.add(counter, 4, 1)
         @projection_write_event -> :counters.add(counter, 5, 1)
-        _query -> both(counter, metadata)
+        _query -> both(counter, measurements, metadata)
       end
     end
 
     :ok
   end
 
-  defp both(counter, metadata) do
+  # Where a drain's wall time went, beside how many queries it issued. Nineteen
+  # queries in 550ms on a loaded box is 29ms a query, and the count cannot say
+  # whether that is the statements or the wait for a connection: `query_time`
+  # is the database's share, `queue_time` the pool's — nil when the connection
+  # was already held — and the remainder is this process's own work.
+  defp both(counter, measurements, metadata) do
     :counters.add(counter, 1, 1)
     :counters.add(counter, 2, rows_written(metadata))
+    :counters.add(counter, 6, Map.get(measurements, :query_time) || 0)
+    :counters.add(counter, 7, Map.get(measurements, :queue_time) || 0)
   end
 
   defp rows_written(%{query: query, result: {:ok, result}}) when is_binary(query) do
@@ -258,7 +265,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
       rows_written: :counters.get(counter, 2),
       edges_rebuilt: :counters.get(counter, 3),
       project_preloads: :counters.get(counter, 4),
-      projection_writes: :counters.get(counter, 5)
+      projection_writes: :counters.get(counter, 5),
+      db: :counters.get(counter, 6),
+      queued: :counters.get(counter, 7)
     }
 
     :telemetry.execute(@event, measurements, meta)
@@ -302,6 +311,8 @@ defmodule CodeMySpec.Requirements.DrainCost do
       edges_rebuilt: measurements.edges_rebuilt,
       project_preloads: measurements.project_preloads,
       projection_writes: measurements.projection_writes,
+      db_ms: System.convert_time_unit(measurements.db, :native, :millisecond),
+      queued_ms: System.convert_time_unit(measurements.queued, :native, :millisecond),
       observations: Map.get(meta, :observations),
       handled: Map.get(meta, :handled),
       recomputed: Map.get(meta, :recomputed),
@@ -319,7 +330,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
         "#{measurements.queries} queries, #{measurements.rows_written} rows written, " <>
         "#{measurements.edges_rebuilt} edge rebuild(s), " <>
         "#{measurements.project_preloads} project preload(s), " <>
-        "#{measurements.projection_writes} projection write(s)" <>
+        "#{measurements.projection_writes} projection write(s), " <>
+        "db #{System.convert_time_unit(measurements.db, :native, :millisecond)}ms, " <>
+        "queued #{System.convert_time_unit(measurements.queued, :native, :millisecond)}ms" <>
         detail(meta)
     )
   end

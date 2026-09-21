@@ -1447,12 +1447,27 @@ defmodule CodeMySpecSpex.Fixtures do
     drain_until_settled(project_id)
   end
 
-  defp drain_until_settled(project_id) do
+  defp drain_until_settled(project_id, attempts \\ 50)
+
+  # Loudly, not forever. A watcher whose pass keeps failing keeps its timer
+  # set, so `pending` stays true and this spun until ExUnit's timeout — sixty
+  # seconds of a settle retried five hundred times a second, with the watcher's
+  # own reason in `last_error` the whole time. Measured at 31,058 log lines in
+  # one run, behind a sandbox connection that a process killed mid-query had
+  # taken down.
+  defp drain_until_settled(project_id, 0) do
+    raise "the graph for #{project_id} would not settle; the watcher says: " <>
+            inspect(
+              GraphWatcher.status(project_id) && GraphWatcher.status(project_id)[:last_error]
+            )
+  end
+
+  defp drain_until_settled(project_id, attempts) do
     GraphWatcher.settle(project_id)
     drain_bootstrap_announcements(project_id)
 
     case GraphWatcher.status(project_id) do
-      %{pending: true} -> drain_until_settled(project_id)
+      %{pending: true} -> drain_until_settled(project_id, attempts - 1)
       _ -> :ok
     end
   end

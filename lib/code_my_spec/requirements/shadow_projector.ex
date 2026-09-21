@@ -161,6 +161,16 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   @impl true
   def init({project_id, scope}) do
+    # So a supervisor's `:shutdown` waits for the drain in flight, as
+    # `GraphWatcher` does. This process drains the moment a mark lands, off a
+    # PubSub message, so it is the writer most often mid-transaction when a
+    # spex scenario's teardown stops the supervisor's children — and a
+    # GenServer that does not trap exits dies on the spot, taking the shared
+    # sandbox connection down with it: `Postgrex.Protocol … client exited`,
+    # then `cannot find ownership process` in whichever scenario runs next.
+    # Reproduced in the whole-suite run and never alone.
+    Process.flag(:trap_exit, true)
+
     GraphInputs.subscribe(project_id)
 
     # One whole-project computation on arrival, then maintain from events.

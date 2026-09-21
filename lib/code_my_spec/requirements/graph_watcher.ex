@@ -938,6 +938,21 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     {:ok, schedule(state)}
   end
 
+  # Not transient: an ownership error exists only under the sandbox and means
+  # the process that owned this watcher's connection is gone — a scenario has
+  # ended and this watcher outlived it. Retried, it kept its timer set, so a
+  # fixture waiting on `pending` spun at ~500 settles a second until ExUnit's
+  # timeout: 31,058 log lines in one run. There is nothing to wait for; the
+  # next scenario starts its own.
+  defp handle_failure(false, state, %DBConnection.OwnershipError{} = error) do
+    Logger.warning(
+      "[GraphWatcher] stopping: the sandbox owner for #{state.project_id} is gone " <>
+        "(#{Exception.message(error)})"
+    )
+
+    {:gone, state}
+  end
+
   defp handle_failure(false, state, error) do
     transient?(error)
     |> handle_transient(state, error)
@@ -971,7 +986,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # Contention, not a defect: the pool refusing a checkout, or a query giving
   # up waiting for one.
   defp transient?(%DBConnection.ConnectionError{}), do: true
-  defp transient?(%DBConnection.OwnershipError{}), do: true
   defp transient?(_error), do: false
 
   defp real_failure(state, error) do
