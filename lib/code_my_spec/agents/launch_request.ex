@@ -29,7 +29,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential, OperatingRules, RoleBrief, ToolIndex}
+  alias CodeMySpec.Agents.{Agent, Credential, OperatingRules, ProviderBrief, RoleBrief, ToolIndex}
   alias CodeMySpec.Conversations
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
@@ -100,6 +100,13 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # were available through `run_script` the whole time. Both could see what
       # they held and not what they could reach. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
+      # How a tool call physically happens on the engine running this agent.
+      #
+      # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and
+      # the provider serialises the definitions into the request — so an agent
+      # that does not know where its tools are reports them missing and stops,
+      # having called nothing. See `ProviderBrief`.
+      "provider_brief" => ProviderBrief.for(agent.provider),
       # Where the application it is working on is actually running.
       #
       # An agent that cannot answer this cannot open it. The QA agent on the
