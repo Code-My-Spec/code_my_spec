@@ -109,21 +109,24 @@ defmodule CodeMySpec.Components do
   # sent the whole family of the parent's own root through a recompute at
   # every vantage for a child's retype.
   #
-  # Never `:project`. The project requirement a component moves is
-  # `architecture_designed`, and these three kinds are handled for it: the
-  # handler settles it from the `:architecture` profile — one query and a
-  # coverage pass — where a `:project` entity sent every vantage through
+  # The component and nothing else — not its parent, not the project.
+  #
+  # Not the parent: a component's unit of computation is its family, rooted
+  # at its parent — `Preloader.load_component_family/3` loads the parent and
+  # every sibling and instantiates the parent's template over them, which is
+  # where the child's own nodes come from. Naming the parent as well named
+  # *its* family, rooted at the grandparent: a child created under
+  # `CodeMySpec.Workspaces` recomputed `CodeMySpec` and its 101 children at
+  # every vantage — 7.1s, 483 queries, 1,020 rows across ten checkouts,
+  # measured 2026-09-21 — for nodes that do not read the child at all.
+  #
+  # Not `:project`: the project requirement a component moves is
+  # `architecture_designed`, and the three component kinds are handled for
+  # it — settled from the `:architecture` profile, one query and a coverage
+  # pass — where a `:project` entity sent every vantage through
   # `compute_project_nodes/3`, whose delegates query for themselves and rerun
-  # the orphan scan over 1,147 components: ~700ms of CPU per vantage, ten
-  # vantages, 9.8s per component event (2026-09-21).
-  defp graph_entities({verb, %{id: id} = component}) when verb in [:created, :deleted] do
-    case Map.get(component, :parent_component_id) do
-      nil -> [{"component", id}]
-      parent_id -> [{"component", id}, {"component", parent_id}]
-    end
-  end
-
-  defp graph_entities({_changed, %{id: id}}), do: [{"component", id}]
+  # the orphan scan over 1,147 components: ~700ms of CPU per vantage.
+  defp graph_entities({_verb, %{id: id}}), do: [{"component", id}]
 
   defp graph_entities(_message), do: []
 
