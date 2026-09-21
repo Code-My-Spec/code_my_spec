@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.CodeMode.Catalog
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
 
   @doc """
@@ -87,11 +88,27 @@ defmodule CodeMySpec.Agents.ToolIndex do
     "**#{heading}:** " <> Enum.join(names, ", ")
   end
 
-  # What the row says, not what the role says. `ToolSets.for_role/1` is how the
-  # list is computed at start; the column is what was actually granted, and an
-  # agent that predates scoping has `nil` there meaning "everything".
-  defp carried(%Agent{tools: tools}) when is_list(tools), do: Enum.sort(tools)
-  defp carried(%Agent{}), do: []
+  # What the direct server exposes, which is the same for every agent.
+  #
+  # Not the `tools` column. That column governs what a *script* may call and its
+  # names are `ScriptableTools` components — `create_issue`, `list_stories` and
+  # the rest of the domain; none of them has ever been reachable directly.
+  # Listing them under "Called directly" told the agent to call something the
+  # direct server does not expose, and agents did exactly that: 3543 lost two
+  # runs in ten to one calling `create_issue`, getting `Unknown tool`, and then
+  # correctly refusing to route around a tool it had been told was broken.
+  #
+  # The `nil` branch failed the other way round. An agent whose column was unset
+  # was told it carried nothing at all, so the index contradicted the
+  # `available_tools` it was sent — the likeliest source of agents reporting
+  # `get_next_requirement` as "No such tool available" while it sat in the list.
+  #
+  # The direct surface is the loop: `get_next_requirement`, `start_task`,
+  # `evaluate_task`, `tap_out`, `run_script`, `tool_docs` and their neighbours.
+  # It is not scoped by role, so neither is this.
+  defp carried(%Agent{}) do
+    LocalServer.__components__() |> Enum.map(& &1.name) |> Enum.sort()
+  end
 
   # `Catalog.from/3` maps, rejects and filters a list into a map, and
   # `Catalog.names/1` sorts its keys — both total over a well-formed component

@@ -172,7 +172,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # nothing to do. No fixture, no sync: the graph is empty because there is
   # nothing to compute one from, which is the state being measured.
   defp bare_world do
-    scope = users().full_scope_fixture()
+    scope = fresh_scope()
     root = scope.environment.cwd
     scope = %Scope{scope | cwd: root}
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
@@ -184,7 +184,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp full_satisfaction_world do
-    scope = users().full_scope_fixture()
+    scope = fresh_scope()
     root = scope.environment.cwd
     scope = %Scope{scope | cwd: root}
 
@@ -248,7 +248,47 @@ defmodule CodeMySpec.Support.EvalRunner do
   defp project_state, do: Module.concat([CodeMySpecSpex, ProjectStateFixtures])
   defp fixtures, do: Module.concat([CodeMySpecSpex, Fixtures])
 
-  defp teardown_world(%{root: root}), do: File.rm_rf(root)
+  # A world, retried past whatever earlier invocations left behind.
+  #
+  # `account_fixture/1` slugs itself with `System.unique_integer/1`, which is
+  # unique inside one BEAM and starts again from a low number in the next one.
+  # The eval writes rows nobody rolls back, so after enough invocations a fresh
+  # run generates slugs an earlier run already committed, and setup dies on
+  # `accounts_slug_index` before a single measurement is taken — which is how
+  # a four-criterion n=10 sweep ended with no rates at all.
+  #
+  # Each retry draws the next integer, so it walks past what is there.
+  defp fresh_scope(attempts \\ 200) do
+    users().full_scope_fixture()
+  rescue
+    error in Ecto.InvalidChangesetError ->
+      if attempts > 0,
+        do: fresh_scope(attempts - 1),
+        else: reraise(error, __STACKTRACE__)
+  end
+
+  # The directory and the rows. Both, because neither is rolled back: the
+  # criteria run on a real pool precisely so a long-lived agent process can hold
+  # a connection, and the price of that is a runner that has to clean up after
+  # itself or leave a database that grows by an account per criterion per
+  # invocation.
+  defp teardown_world(%{root: root, scope: scope}) do
+    File.rm_rf(root)
+    drop_account(scope)
+  end
+
+  defp drop_account(%Scope{active_account_id: id}) when is_binary(id) or is_integer(id) do
+    case CodeMySpec.Repo.get(CodeMySpec.Accounts.Account, id) do
+      nil -> :ok
+      account -> CodeMySpec.Repo.delete(account)
+    end
+  rescue
+    # Best effort. A world that will not delete is a tidiness problem, and
+    # raising here would throw away measurements that have already been taken.
+    _ -> :ok
+  end
+
+  defp drop_account(_scope), do: :ok
 
   # ------------------------------------------------------------- one measured run
 
