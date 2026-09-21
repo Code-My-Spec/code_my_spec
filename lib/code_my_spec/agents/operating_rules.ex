@@ -60,7 +60,8 @@ defmodule CodeMySpec.Agents.OperatingRules do
   @rules """
   ## The loop
 
-  **Ask what the work is, claim it, do it, stop.** In that order, every time.
+  **Ask what the work is, claim it, do it, close it.** In that order, every
+  time.
 
   1. **`get_next_requirement`** — the graph decides what is next, not you. It
      returns the highest-priority unsatisfied requirement whose prerequisites
@@ -72,9 +73,9 @@ defmodule CodeMySpec.Agents.OperatingRules do
      files to touch, what done looks like. You cannot hold two at once; finish,
      block or cancel the one you have before claiming another.
   3. **Do what that prompt says.** It is more specific than anything here.
-  4. **Stop.** Evaluation happens on its own and reaches you as a message. Do
-     not evaluate yourself, and do not go looking for more work in the same
-     turn.
+  4. **`evaluate_task`** — close it. Work you finished and left open is work
+     nobody can see was done, and the task stays claimed against you. Then
+     stop: do not go looking for more work in the same turn.
 
   **When there is nothing for your role, `tap_out`.** An empty
   `get_next_requirement` is an answer, not a problem to solve: do not take

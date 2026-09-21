@@ -21,85 +21,52 @@ defmodule CodeMySpecSpex.Story1070.Criterion3541Spex do
   exercises the assignment itself: a task that landed on the wrong queue would
   never appear in this agent's menu, and the criterion would fail with the
   agent having done nothing wrong.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3541/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3541` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3541"
+  @role "product"
+  @threshold 0.9
 
   spex "An agent closes the work it finished" do
     scenario "An agent closes its task when the stop hook asks" do
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3541")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "an agent holding an open task is woken", context do
-        measured =
-          measure("An agent closes its task when the stop hook asks", fn _run ->
-            observe(context, [role: "coding", request_turn: false], fn agent ->
-              hand_a_task(context, agent)
-              request_turn(context, agent)
-              settle(agent)
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-              called?(context, agent, "evaluate_task")
-            end)
-          end)
-
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "it closes the task the menu named", context do
-        assert_rate(context.measured, 0.9)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result("An agent closes its task when the stop hook asks")
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end
     end
-  end
-
-  # Aimed at this agent rather than started by it, because the premise is an
-  # agent that already holds one — `start_task`'s `agent_id` is what puts it on
-  # that agent's own queue.
-  defp hand_a_task(context, agent_id) do
-    {:reply, response, _} =
-      StartTask.execute(
-        %{
-          requirement_name: "tests_passing",
-          entity_type: "component",
-          entity_id: context.component.id,
-          agent_id: agent_id
-        },
-        frame(context)
-      )
-
-    refute response.isError,
-           """
-           No task was handed to the agent, so the premise — an agent whose stop
-           decision names an open task — never held, and this run measures
-           nothing.
-
-           #{response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")}
-           """
-
-    :ok
   end
 end

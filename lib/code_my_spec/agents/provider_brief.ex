@@ -25,15 +25,21 @@ defmodule CodeMySpec.Agents.ProviderBrief do
       though they're the tools I'm instructed to use. I'm not going to
       improvise a workaround around missing core tools.
 
-  Nothing had failed. That string appears nowhere in this codebase or any
-  dependency — it is the model's own words, written after reading
-  `available_tools` and not believing what it found. No exception, no log line,
-  a schema-valid response, and a run indistinguishable from an agent that
-  considered its work and declined it.
+  Nothing had failed, and the first reading of this was wrong. The string is not
+  the model's invention: it is **Claude Code's own**, what the CLI answers when
+  a tool is not in its native list. `--tools ""` means that list is empty, so an
+  agent that reaches for a tool *directly* — as though it could run one itself —
+  is refused by the process it is running in, before Alloy hears anything. No
+  `tool_start` is recorded, because no tool call was ever made.
+
+  So the agent is not disbelieving `available_tools`. It is using the wrong
+  mechanism: executing instead of naming. The harness executes; the model names
+  a tool in `tool_calls` and returns. Measured at n=10 across ten criteria on
+  2026-09-21, this was five runs in a hundred.
 
   Refusing to improvise is exactly what `OperatingRules` asks for, so the agent
-  was obeying its instructions. It was simply wrong about the premise, and no
-  part of the prompt had told it how its tools arrive.
+  was obeying its instructions. It was simply wrong about how a call happens,
+  and no part of the prompt had told it.
 
   ## Why here rather than in the provider
 
@@ -50,21 +56,35 @@ defmodule CodeMySpec.Agents.ProviderBrief do
   @claude_code """
   ## How you call a tool
 
+  You are the model backend for a harness. **You do not run tools — you name
+  them.** The harness runs them and sends you the result on the next turn.
+
   Your tools arrive with each request as `available_tools`. That list is the
-  whole of what you can call, and it is complete — the index above names the
-  same tools.
+  whole of what you can reach, and the index above names the same tools. To call
+  one, put its name and arguments in `tool_calls` and return. Naming it there is
+  calling it. Do not describe the call in prose, and do not write out what you
+  would have run; nothing executes text.
 
-  To call one, return it as a tool call. Do not describe the call in prose and
-  do not write out what you would have run; nothing executes text.
+  **You have no tools of your own.** The process you are running in was started
+  with none on purpose, so reaching for one directly — as though you could read
+  a file or run a command yourself — fails before the harness ever hears about
+  it. What comes back is:
 
-  **If a tool seems to be missing, look in `available_tools` before concluding
-  anything.** Not finding a name there in one reading is not evidence it is
-  gone, and this is the one thing agents on this engine get wrong: reporting
-  `get_next_requirement` or `run_script` as unavailable and stopping, when both
-  were present and no call had been made or refused.
+      No such tool available: <name>
 
-  Report a tool as broken only when you actually called it and it actually
-  answered with an error. A tool you did not call has not failed.
+  That sentence is not the harness and it is not the tool. It is this process
+  telling you that you tried to run something yourself instead of naming it.
+  Everything in `available_tools` is reachable; the call simply has to go in
+  `tool_calls`. If you see it, put the name in `tool_calls` and return — do not
+  report the tool as missing, and do not stop.
+
+  A real tool error looks different. It arrives as the *result* of a call you
+  named, on the turn after you named it, and it says `Unknown tool: <name>` or
+  carries the tool's own message. Report that, and report it the way the rules
+  above say to.
+
+  **A tool you did not name in `tool_calls` has not failed.** It has not been
+  called.
   """
 
   @doc """

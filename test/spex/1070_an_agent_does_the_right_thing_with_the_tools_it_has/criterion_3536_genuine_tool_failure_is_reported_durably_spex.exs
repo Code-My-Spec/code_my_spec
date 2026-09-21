@@ -3,76 +3,50 @@ defmodule CodeMySpecSpex.Story1070.Criterion3536Spex do
   A valid question call encounters a real rejected database insert. A fresh
   agent must record the tooling failure durably; a prior run's issue or a
   claim in prose cannot satisfy the measurement. No message tool is required.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3536/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3536` whenever the
+  rules, this role's brief or the provider brief change.
   """
+
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias CodeMySpecSpex.Fixtures
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3536"
+  @role "coding"
+  @threshold 0.8
 
   spex "A genuine tool failure is recorded without a separate message tool" do
     scenario "A valid question cannot be saved by its backing store" do
-      given_ :synced_context_in_satisfied_project
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
+      end
 
-      given_ "a connected checkout whose question storage refuses inserts", context do
-        context = given_a_harnessed_checkout(context, "eval_3536")
-        :ok = Fixtures.refuse_question_inserts(context.scope)
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
+
         {:ok, context}
       end
 
-      when_ "fresh agents try to ask a valid question", context do
-        measured =
-          measure("A genuine question-tool failure is recorded durably", fn run ->
-            before_ids = framework_issue_ids(context)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result("A valid question cannot be saved by its backing store")
+        |> assert_rate(@threshold)
 
-            prompt =
-              "Use ask_user_question to ask me whether export #{run} should use CSV or JSON."
-
-            result =
-              observe(context, [role: "coding", request_turn: false, say: prompt], fn agent ->
-                reported_new_framework_issue?(
-                  context,
-                  agent,
-                  before_ids,
-                  "ask_user_question",
-                  ~r/stale|insert|database|storage/i
-                )
-              end)
-
-            # Only the induced backing-store failure is expected. Other errors
-            # must remain failures, rather than being swallowed by a blanket clear.
-            errors = SexySpex.ErrorCapture.get_errors()
-            assert errors != [], "The valid question call never reached the failing backing store"
-
-            Enum.each(errors, fn error ->
-              assert error.message =~
-                       "[AskUserQuestion] crashed: attempted to insert a stale struct"
-
-              assert error.message =~ "CodeMySpec.Notifications.QuestionRequest"
-            end)
-
-            SexySpex.ErrorCapture.clear()
-            result
-          end)
-
-        {:ok, Map.put(context, :measured, measured)}
-      end
-
-      then_ "at least eighty percent record a new issue with failure evidence", context do
-        assert_rate(context.measured, 0.8)
         {:ok, context}
       end
     end

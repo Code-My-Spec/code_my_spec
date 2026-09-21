@@ -468,7 +468,7 @@ defmodule CodeMySpec.Support.EvalRunner do
 
     outcome =
       case drive_agent(criterion, world, before) do
-        {:ok, calls, usage, trace} ->
+        {:ok, calls, usage, trace, prompt} ->
           %{
             # Judged on the record that is written down, so the artifact and the
             # verdict cannot disagree.
@@ -476,11 +476,19 @@ defmodule CodeMySpec.Support.EvalRunner do
             calls: calls,
             usage: usage,
             trace: trace,
-            errored: phantom(calls, trace)
+            prompt: prompt,
+            errored: nil
           }
 
         {:error, reason} ->
-          %{held?: nil, calls: [], usage: nil, trace: [], errored: inspect(reason)}
+          %{
+            held?: nil,
+            calls: [],
+            usage: nil,
+            trace: [],
+            prompt: nil,
+            errored: inspect(reason)
+          }
       end
 
     outcome =
@@ -502,11 +510,6 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   # Start an agent, let admission give it a turn, and read back what it called.
   #
-  # No harness channel. `InVmMcpTransport` dispatches in-process and takes the
-  # agent's scope from `:harness_mcp_scope`, so the MCP half of the tool surface
-  # needs no working-copy join at all. The disk half — Alloy's Read, Write, Edit
-  # and Bash — reads `:working_directory`, which is why the world is a real
-  # directory even when the graph would not have required one.
   defp snapshot(criterion, world) do
     case Map.get(criterion, :snapshot) do
       nil -> nil
@@ -519,31 +522,11 @@ defmodule CodeMySpec.Support.EvalRunner do
   defp record(calls, trace, world, before),
     do: %{calls: calls, trace: trace, world: world, before: before}
 
-  # A run where the agent was told its tools do not exist, and so did nothing.
-  #
-  # Not a miss. The runner's rule is that a run which errored is not in the
-  # denominator because it is not evidence about the agent, and this is that:
-  # the model reports `get_next_requirement` or `run_script` answering "No such
-  # tool available", the engine records no `tool_start` at all, and the turn
-  # ends. Nothing was called, so nothing was refused.
-  #
-  # `AgentEvalHelpers.refute_toolless/2` throws `{:eval_errored, :no_tool_call}`
-  # on the same string for the same reason; this is that rule, kept when the
-  # measurement left the spex.
-  #
-  # Both halves, on purpose. An agent that called something and *then* said a
-  # tool was missing is reporting conduct, and that is a measurement.
-  defp phantom([], trace) do
-    if Enum.any?(trace, fn event ->
-         detail = Map.get(event, :detail, "")
-         is_binary(detail) and String.contains?(detail, "No such tool available")
-       end),
-       do: :no_tool_call,
-       else: nil
-  end
-
-  defp phantom(_calls, _trace), do: nil
-
+  # No harness channel. `InVmMcpTransport` dispatches in-process and takes the
+  # agent's scope from `:harness_mcp_scope`, so the MCP half of the tool surface
+  # needs no working-copy join at all. The disk half — Alloy's Read, Write, Edit
+  # and Bash — reads `:working_directory`, which is why the world is a real
+  # directory even when the graph would not have required one.
   defp drive_agent(criterion, world, before) do
     prior = Application.get_env(:code_my_spec, :harness_mcp_scope)
     Application.put_env(:code_my_spec, :harness_mcp_scope, world.scope)
@@ -554,7 +537,7 @@ defmodule CodeMySpec.Support.EvalRunner do
       end)
 
     try do
-      with {:ok, agent_id} <- start_agent(criterion, world, collector),
+      with {:ok, agent_id, prompt} <- start_agent(criterion, world, collector),
            :ok <- request_turn(agent_id, world, criterion),
            {:ok, calls} <-
              await_judgement(collector, criterion, %{world: world, before: before}) do
@@ -571,7 +554,7 @@ defmodule CodeMySpec.Support.EvalRunner do
         trace = Elixir.Agent.get(collector, & &1.trace)
         machine().stop_agent(agent_id)
         retire(agent_id, world)
-        {:ok, calls, usage, trace}
+        {:ok, calls, usage, trace, prompt}
       end
     after
       :ok
@@ -701,10 +684,21 @@ defmodule CodeMySpec.Support.EvalRunner do
       })
 
     case machine().launch(request) do
-      {:ok, _} -> {:ok, agent_id}
+      {:ok, _} -> {:ok, agent_id, prompt_of(request)}
       other -> {:error, {:start_agent, other}}
     end
   end
+
+  # The prompt this run was measured against, kept with the measurement.
+  #
+  # An artifact recorded against one prompt says nothing about a different one,
+  # so a spex asserting on it has to be able to tell whether the prompt has
+  # moved since. Stored in parts rather than as one composed string because the
+  # parts normalise differently — the tool index carries the machine's browser
+  # tools and legitimately differs between boxes, and comparing it verbatim
+  # would stale every artifact on every other machine.
+  defp prompt_of(request),
+    do: Map.take(request, ~w(universal role_brief provider_brief tool_index project_brief))
 
   # Every tool call the agent makes, in order, as it makes them.
   #
@@ -923,31 +917,6 @@ defmodule CodeMySpec.Support.EvalRunner do
     |> Enum.find(fn {in_flight, now} -> in_flight == 0 or now > deadline end)
 
     :ok
-  end
-
-  # What it called, in order. Off the messages rather than out of prose: a model
-  # will narrate a call it never made, and only one of those is evidence.
-  defp tool_names(history) when is_list(history) do
-    Enum.flat_map(history, fn
-      %{tool_calls: calls} when is_list(calls) ->
-        Enum.map(calls, fn
-          %{name: name} -> name
-          %{"name" => name} -> name
-          other -> inspect(other)
-        end)
-
-      _ ->
-        []
-    end)
-  end
-
-  defp tool_names(_), do: []
-
-  defp agent_id_from(said) do
-    case Regex.run(~r/\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/, said) do
-      [_, id] -> {:ok, id}
-      _ -> {:error, {:no_agent_id, said}}
-    end
   end
 
   defp frame(world) do
