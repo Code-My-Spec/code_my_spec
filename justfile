@@ -925,19 +925,19 @@ build-cli:
 devbox-image:
     #!/usr/bin/env bash
     set -euo pipefail
-    # The three --build-context flags are the whole reason this recipe exists.
-    # The Dockerfile COPYs from cms_scan, cms_harness and cms_new by name, so a
+    # The --build-context flag is the whole reason this recipe exists. The
+    # Dockerfile COPYs cms_new by name (it is not published to hex), so a
     # bare `docker build .` fails on a context nobody would guess was needed.
+    # cms_harness and cms_scan used to need the same treatment; both build
+    # from `.` now — see the Dockerfile's own header for why.
     #
     # Located from the main checkout rather than from the working directory:
-    # the siblings sit beside `code_my_spec`, and in a worktree `..` is
+    # cms_new sits beside `code_my_spec`, and in a worktree `..` is
     # `.claude/worktrees`, which is where this quietly built nothing.
     siblings="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")"
     echo "siblings: $siblings"
     docker build -f docker/devbox/Dockerfile \
       --build-context cms_new="$siblings/cms_new" \
-      --build-context cms_harness="$siblings/cms_harness" \
-      --build-context cms_scan="$siblings/cms_scan" \
       -t codemyspec/devbox:latest .
     # Nothing pushes this anywhere. `Workspaces.Runner.Docker` runs
     # `codemyspec/devbox:latest` against whatever daemon it is pointed at, so
