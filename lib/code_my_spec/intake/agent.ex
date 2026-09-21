@@ -43,7 +43,18 @@ defmodule CodeMySpec.Intake.Agent do
   """
   @spec key_configured?(String.t()) :: boolean()
   def key_configured?(model) do
-    case ReqLLM.get_key(:"#{provider_name(model)}_api_key") do
+    case provider_name(model) do
+      # No API key to hold — `claude_code:` runs against a local `claude`
+      # session (Keychain-backed on macOS, no key ever passed), so asking
+      # `ReqLLM` for a `claude_code_api_key` that will never exist would
+      # answer "no key" for a provider that was never missing one.
+      "claude_code" -> true
+      provider -> req_llm_key_configured?(provider)
+    end
+  end
+
+  defp req_llm_key_configured?(provider) do
+    case ReqLLM.get_key(:"#{provider}_api_key") do
       key when is_binary(key) and key != "" -> true
       _ -> false
     end
@@ -124,6 +135,15 @@ defmodule CodeMySpec.Intake.Agent do
 
   defp resolve_provider("anthropic:" <> model_name), do: {Alloy.Provider.Anthropic, model_name}
   defp resolve_provider("openai:" <> model_name), do: {Alloy.Provider.OpenAI, model_name}
+
+  # A subscription-backed local `claude` session rather than a billed API
+  # call — for a dev box that would otherwise need its own funded Anthropic
+  # key just to run an intake conversation. `provider/2` still builds an
+  # `:api_key` entry for this branch (there is no separate lookup path per
+  # provider), but `Alloy.Provider.ClaudeCode` has no such config field and
+  # ignores it — it authenticates the same way the local `claude` CLI always
+  # does.
+  defp resolve_provider("claude_code:" <> model_name), do: {Alloy.Provider.ClaudeCode, model_name}
   # No prefix, or one neither provider owns: falls back to Anthropic with the
   # string as given, the same as the default model's own prefix.
   defp resolve_provider(model_name), do: {Alloy.Provider.Anthropic, model_name}
