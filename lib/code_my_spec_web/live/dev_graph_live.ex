@@ -488,6 +488,13 @@ defmodule CodeMySpecWeb.DevGraphLive do
             <span class="font-mono w-14 opacity-70">{d.kind}</span>
             <span data-test="drain-queries">{d.queries} queries</span>
             <span data-test="drain-rows-written">{d.rows_written} rows written</span>
+            <span data-test="drain-edges-rebuilt">{d[:edges_rebuilt] || 0} edge rebuilds</span>
+            <span data-test="drain-project-preloads">
+              {d[:project_preloads] || 0} project preloads
+            </span>
+            <span data-test="drain-projection-writes">
+              {d[:projection_writes] || 0} projection writes
+            </span>
             <span data-test="drain-vantages">{d.vantages || "—"} checkouts</span>
             <span data-test="drain-observations" class="opacity-60">
               {d.observations || 0} observations

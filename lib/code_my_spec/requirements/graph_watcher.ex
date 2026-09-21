@@ -493,18 +493,33 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   #
   # Once per vantage, because a projection is per row-space and comparing
   # across them would mix two populations.
-  defp report_shadow(%{scope: %Scope{} = scope} = state, computed) do
+  defp report_shadow(%{scope: %Scope{} = scope} = state, _computed) do
     # Settling is the event path doing its work and is cheap by construction —
     # narrow loads, never `Preloader.load/1`. It runs whenever the projection is
     # on, because a projection that stops being driven stops being a candidate
     # to swap to.
-    if Shadow.enabled?(), do: ShadowProjector.settle(state.project_id)
+    # The vantages readers asked this watcher about travel with the settle. The
+    # projector narrows to what marks name, exactly as the pass does, and had no
+    # way to hear about a checkout somebody merely read — which is the whole of
+    # the drift between the two projections.
+    if Shadow.enabled?(),
+      do: ShadowProjector.settle(state.project_id, state.requested_vantages)
 
     # Diffing is the measurement, and it is the expensive half: a full preload
     # per computed vantage, on every pass. 814 preloads for 157 passes on dev.
     # On when you are validating, off when you are not.
+    # Every live vantage, not just the ones this pass computed. `computed` is
+    # what something named, so diffing it compares the two projections exactly
+    # where they were both just settled and stays silent about the checkouts
+    # nothing named — which is where they actually drift. A clean run over
+    # `computed` cannot certify the swap; that is how 157 consecutive
+    # `shadow agrees` coexisted with a vantage 6h36m behind.
+    #
+    # Affordable because the diff is off unless you are validating.
     if Shadow.enabled?() and Shadow.diffing?() do
-      Enum.each(computed, fn vantage ->
+      scope
+      |> Projection.live_vantages(Projection.vantages(scope))
+      |> Enum.each(fn vantage ->
         %Scope{scope | active_working_copy_id: vantage}
         |> Shadow.diff()
         |> Shadow.log()
