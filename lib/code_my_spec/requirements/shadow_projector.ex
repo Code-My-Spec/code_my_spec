@@ -214,6 +214,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # all — `Freshness.topology/2` is the same hash the pass records, over
        # component ids, types, parents, dependencies and the story population.
        last_topology: %{},
+       # The vantage-invariant half of the edges, keyed by the project-wide
+       # shape it was generated for. See `edge_plan/2`.
+       edge_plan: nil,
        last_drain: nil,
        last_error: nil
      }}
@@ -719,7 +722,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21). What this log
     # line is for: nodes, edges and writes, per vantage, so the seed's cost
     # has a shape.
-    drawn = redraw(state, enriched, config)
+    {state, drawn} = redraw(state, enriched, config)
 
     Logger.info(
       "[ShadowProjector] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
@@ -802,7 +805,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     if topology == last and not node_set_moved? do
       state
     else
-      drawn = redraw(state, shape, config)
+      {state, drawn} = redraw(state, shape, config)
 
       Logger.info(
         "[ShadowProjector] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
@@ -816,7 +819,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # The edge set at this vantage, drawn over the rows it holds and written as
   # a difference.
   #
-  # `Edges.over/4` derives it one entity at a time against the component side,
+  # `Edges.over/3` derives it one entity at a time against the component side,
   # so a component appearing costs its own edges and the stories drawn through
   # it — not a reduction of every edge in the project at every vantage, which
   # is what `edges_over/4` cost: 355ms of a 430ms edge phase per vantage, ten
@@ -825,11 +828,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Announced as an edge rebuild for `last_drain`, so criterion 3618 can go on
   # saying that a drain of verdicts drew nothing.
   defp redraw(state, shape, config) do
+    {state, plan} = edge_plan(state, config)
     ids = Shadow.node_ids(state.scope)
+    story_ids = Enum.map(shape.stories, & &1.id)
 
-    {draw_us, edges} =
-      :timer.tc(fn -> Edges.over(state.scope, shape, config, Shadow.present?(ids)) end)
-
+    {draw_us, edges} = :timer.tc(fn -> Edges.over(plan, story_ids, Shadow.present?(ids)) end)
     {write_us, {:ok, moved}} = :timer.tc(fn -> Shadow.write_edges(state.scope, edges, ids) end)
 
     :telemetry.execute(
@@ -838,12 +841,39 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       %{project_id: state.project_id}
     )
 
-    %{
-      edges: length(edges),
-      moved: moved,
-      draw_ms: div(draw_us, 1000),
-      write_ms: div(write_us, 1000)
-    }
+    {state,
+     %{
+       edges: length(edges),
+       moved: moved,
+       draw_ms: div(draw_us, 1000),
+       write_ms: div(write_us, 1000)
+     }}
+  end
+
+  # The generated half of the edges, once per shape rather than once per
+  # vantage. Keyed by the project-wide shape — every ready story, whichever
+  # checkout holds it — so a drain settling ten vantages generates once, and
+  # a later drain that finds the shape unmoved generates nothing. Measured on
+  # dev before this: generating was ~65% of a 452ms redraw, and none of it
+  # read the vantage.
+  defp edge_plan(state, config) do
+    wide = Preloader.topology_context(%{state.scope | active_working_copy_id: nil})
+    key = Freshness.topology(wide, config)
+
+    case state.edge_plan do
+      {^key, plan} ->
+        {state, plan}
+
+      _stale_or_none ->
+        {plan_us, plan} = :timer.tc(fn -> Edges.plan(state.scope, wide, config) end)
+
+        Logger.info(
+          "[ShadowProjector] planned edges for #{map_size(plan.stories)} stories over " <>
+            "#{length(plan.component_side)} component-side edges in #{div(plan_us, 1000)}ms"
+        )
+
+        {%{state | edge_plan: {key, plan}}, plan}
+    end
   end
 
   # Which checkout this drain is currently settling. `Projection.vantage/1`

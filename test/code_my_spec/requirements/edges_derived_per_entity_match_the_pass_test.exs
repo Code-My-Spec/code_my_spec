@@ -30,11 +30,36 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Stories
+  alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
     {:ok, scope: setup_project()}
+  end
+
+  describe "a story on a surface no other component touches" do
+    # A lone LiveView has one requirement and no dependency, parent or child,
+    # so no component-side edge names its node at all. The kickoff lands on
+    # that node and the exit leaves from it — a path of length two through
+    # a node the component graph has never heard of — and the pass drops the
+    # story's own kickoff-to-exit edge for it. Measured on dev before this
+    # case existed: 34 stories carrying an edge the pass had dropped.
+    test "still has its chain cut where the surface carries it", %{scope: scope} do
+      components = shape(scope)
+      stories = stories(scope, components)
+      {pass, ours} = both(scope)
+
+      assert MapSet.new(ours) == MapSet.new(pass), difference(pass, ours)
+
+      lone = stories.on_lone_surface
+
+      refute chain_intact?(pass, lone),
+             "the lone story's own chain should be cut where the surface carries it"
+
+      assert chain_intact?(pass, stories.unlinked),
+             "a story with no component has nothing to carry it"
+    end
   end
 
   describe "a project with components and no stories" do
@@ -123,6 +148,24 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
 
   defp family(components, :tail), do: [components.notifications.id, components.mailer.id]
 
+  # Whether the story's own edges still run unbroken from its first
+  # requirement to its last — false once the components carry a stretch.
+  defp chain_intact?(edges, story_id) do
+    own =
+      for %{from: {"story", ^story_id, _} = f, to: {"story", ^story_id, _} = t} <- edges,
+          do: %{from: f, to: t}
+
+    names = own |> Enum.flat_map(&[elem(&1.from, 2), elem(&1.to, 2)]) |> Enum.uniq()
+    reach = Topology.reach(own)
+    first = {"story", story_id, "component_linked"}
+
+    Enum.all?(
+      names,
+      &(&1 == "component_linked" or
+          Topology.reaches?(reach, first, Topology.mask(reach, [{"story", story_id, &1}])))
+    )
+  end
+
   defp both(scope) do
     {:ok, ctx} = Preloader.load(scope)
     config = Configurations.get_or_create(scope)
@@ -167,6 +210,7 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
     notifications = component(scope, "Notifications", "context")
     mailer = child(scope, "Notifications.Mailer", "schema", notifications)
     home_live = component(scope, "Web.HomeLive", "liveview")
+    about_live = component(scope, "Web.AboutLive", "liveview")
     plumbing = component(scope, "Plumbing", "infrastructure")
 
     depend(scope, billing, accounts)
@@ -183,7 +227,8 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
       invoice: invoice,
       notifications: notifications,
       mailer: mailer,
-      home_live: home_live
+      home_live: home_live,
+      about_live: about_live
     }
   end
 
@@ -194,6 +239,7 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
       also_on_container: story(scope, "Sign in", components.accounts.id),
       on_leaf: story(scope, "Print an invoice", components.invoice.id),
       on_surface: story(scope, "See the home page", components.home_live.id),
+      on_lone_surface: story(scope, "Read about us", components.about_live.id),
       unlinked: story(scope, "Something not yet placed", nil)
     }
   end
@@ -241,10 +287,10 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
 
   defp setup_project do
     {:ok, tmp_dir} = Briefly.create(directory: true)
-    scope = full_scope_fixture()
+    %Scope{} = scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
+    scope = %Scope{
       scope
       | active_project: project,
         cwd: tmp_dir,
