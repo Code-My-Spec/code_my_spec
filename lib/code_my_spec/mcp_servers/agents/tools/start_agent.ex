@@ -19,6 +19,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.McpServers.Health
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess
@@ -44,7 +45,13 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
 
   @impl true
   def execute(params, frame) do
+    # Before the agent, not after: an agent whose tools do not answer produces
+    # plausible prose and no work, and a night went into telling those two
+    # apart by hand. `Health.probe/0` calls a direct tool and a Lua one and
+    # says whether they came back, so an agent that later reports its tools
+    # missing is contradicting a check that ran seconds earlier.
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         :ok <- Health.probe(),
          {:ok, agent} <- Agents.start_agent(scope, attrs(params)) do
       {:reply, AgentsMapper.started(agent), frame}
     else
