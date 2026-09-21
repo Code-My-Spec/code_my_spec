@@ -28,10 +28,22 @@ defmodule CodeMySpec.Intake.Interviewer do
     |> Keyword.get_lazy(:interviewer, &default_impl/0)
   end
 
+  # Named after the *configured model*'s provider, not a fixed one — the same
+  # bug `Planner.default_impl/0` already fixed once (`5a5708a7`'s sibling):
+  # hardcoding `:anthropic_api_key` here answered "no key" for a deployment
+  # running a `claude_code:` or `openai:` model that never needed one, and
+  # fell through to `Scripted` silently.
   defp default_impl do
-    case ReqLLM.get_key(:anthropic_api_key) do
-      key when is_binary(key) and key != "" -> CodeMySpec.Intake.Interviewer.Llm
-      _ -> CodeMySpec.Intake.Interviewer.Scripted
+    if CodeMySpec.Intake.Agent.key_configured?(model()) do
+      CodeMySpec.Intake.Interviewer.Llm
+    else
+      CodeMySpec.Intake.Interviewer.Scripted
     end
+  end
+
+  defp model do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Intake, [])
+    |> Keyword.get(:model, "anthropic:claude-sonnet-5")
   end
 end
