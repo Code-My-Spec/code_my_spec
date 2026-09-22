@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.AnAgentLaunchesHavingAlreadyCalledAToolTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.{Agent, LaunchRequest}
+  alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
   defp request, do: LaunchRequest.for(%Agent{id: "a", provider: "claude-code", role: :coding})
 
@@ -54,14 +55,7 @@ defmodule CodeMySpec.Agents.AnAgentLaunchesHavingAlreadyCalledAToolTest do
   test "both tools it demonstrates are ones the agent can actually reach" do
     # A seeded call naming a tool absent from `available_tools` would teach the
     # exact confusion this exists to remove.
-    assert Enum.any?(
-             CodeMySpec.McpServers.LocalServer.__components__(),
-             &(&1.name == "health")
-           )
-
-    assert Enum.any?(
-             CodeMySpec.McpServers.ScriptableTools.__components__(),
-             &(&1.name == "script_health")
-           )
+    assert Enum.any?(LocalServer.__components__(), &(&1.name == "health"))
+    assert Enum.any?(ScriptableTools.__components__(), &(&1.name == "script_health"))
   end
 end

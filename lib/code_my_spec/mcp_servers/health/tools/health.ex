@@ -20,11 +20,13 @@ defmodule CodeMySpec.McpServers.Health.Tools.Health do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
+
   schema do
   end
 
   @impl true
   def execute(_params, frame) do
-    {:reply, Anubis.Server.Response.text(Anubis.Server.Response.tool(), "ok"), frame}
+    {:reply, Response.tool() |> Response.text("ok"), frame}
   end
 end
