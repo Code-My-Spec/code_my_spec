@@ -92,6 +92,18 @@ defmodule CodeMySpec.Agents.ToolSets do
   # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
   # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
   # between the grant that did nothing and the one that worked.
+  # `install_credo_checks` is coding's because `spex_boundary_ready` is coding's.
+  #
+  # The requirement asks for framework Credo checks on disk and the tool that
+  # installs them was in no role's set at all — registered, reachable by
+  # nobody. A coding agent worked the task properly, read the workflow and the
+  # spex philosophy, called it, and was told "it exists, and this kind of agent
+  # is not given it". It cancelled the task and stopped, which is exactly what
+  # the rules ask of an agent facing a missing tool, and the chain stopped with
+  # it. Measured 2026-09-22 on the math project's first autonomous run.
+  #
+  # The same shape as the `triage_issues` case below: a task prompt naming a
+  # tool the role that receives it cannot call.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -102,6 +114,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_knowledge read_knowledge semantic_search refresh_embeddings
     read_project_file write_project_file
     list_tasks clear_problems list_problems
+    install_credo_checks
     web_search web_fetch
     browser
     promote

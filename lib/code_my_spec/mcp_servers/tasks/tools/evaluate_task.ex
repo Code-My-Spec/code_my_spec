@@ -33,6 +33,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       doc: "Task ID to evaluate"
 
     field :session_id, :string, doc: "Injected by hook — do not set manually"
+
+    field :agent_id, :string,
+      doc: "Whose task to close. An agent we run carries it on the connection and omits this."
   end
 
   @impl true
@@ -41,7 +44,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     # `Plugs.AgentScope`. An agent we run has no session to name and no way to
     # get one, so without this it could start a task and never close it, which
     # is the half of the loop that tells the other roles work is done.
-    caller_agent_id = frame.assigns[:agent_id]
+    # The connection first, then the argument.
+    #
+    # `start_task` takes an `agent_id` and this did not, so a task could be
+    # opened on an agent's behalf and never closed on it — the orchestrator
+    # that hands work out could not take it back, and an agent holding an
+    # active task is not runnable, so the agent was stranded rather than
+    # merely blocked.
+    #
+    # The connection wins where it has one: an agent we run cannot spoof
+    # another by naming it, because `Plugs.AgentScope` has already said who it
+    # is and the argument is never consulted.
+    caller_agent_id = frame.assigns[:agent_id] || Map.get(params, :agent_id)
     session_id = Map.get(params, :session_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
