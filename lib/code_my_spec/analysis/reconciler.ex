@@ -231,11 +231,33 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # agent has already been told. An absent baseline reads as all-new, so a
   # first run, and a run whose predecessor predates signature recording, both
   # still announce.
+  #
+  # A run an agent *asked for* always answers, whatever the delta says. That is
+  # the half this was missing, and it stalled the fleet within the hour: coding
+  # started a spex sweep, said "not polling — will act on the result when it
+  # arrives as a message, task stays open until then", and stopped. The sweep
+  # found the same seven criteria failing for a new reason, so the signatures —
+  # `file:line criterion-name`, which do not carry the error — were unchanged,
+  # the delta was empty, and the answer was swallowed. The agent waited on a
+  # message that was never going to come, holding its task, for twenty-two
+  # minutes.
+  #
+  # The distinction is who started it. An unsolicited repeat is noise; a reply
+  # to a question the agent asked is a reply, and silence there is not quiet, it
+  # is a hang.
   defp announce_if_new(scope, run, problems, previous, signatures) do
-    case Signatures.delta(previous, signatures) do
-      %{new: []} -> :ok
-      _ -> AgentReport.deliver(scope, run.source, problems)
+    if requested_by_agent?(run) or new_findings?(previous, signatures) do
+      AgentReport.deliver(scope, run.source, problems)
+    else
+      :ok
     end
+  end
+
+  defp requested_by_agent?(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: true
+  defp requested_by_agent?(_run), do: false
+
+  defp new_findings?(previous, signatures) do
+    Signatures.delta(previous, signatures).new != []
   end
 
   defp requested_by_suffix(%Run{requested_by: nil}), do: ""
