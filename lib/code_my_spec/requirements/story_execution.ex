@@ -18,14 +18,46 @@ defmodule CodeMySpec.Requirements.StoryExecution do
          {{nodes, edges}, _actionable, _at} <-
            RequirementGraph.cached_graph_with_actionable(scope) do
       case selected(scope, copy, requested_story_id) do
-        {:ok, story} -> from_graph(story, nodes, edges, ctx, role)
-        {:refused, reason} -> result(:unavailable, nil, reason)
-        :none -> from_copy(nodes, edges, ctx, role)
+        {:ok, story} ->
+          story_or_project(story, nodes, edges, ctx, role, requested_story_id)
+
+        {:refused, reason} ->
+          result(:unavailable, nil, reason)
+
+        :none ->
+          from_copy(nodes, edges, ctx, role)
       end
     else
       _ -> result(:unavailable, nil, "This session has no working copy on this project.")
     end
   end
+
+  # A story with nothing in it for this role does not hide the project.
+  #
+  # Only when the caller named no story. Asking *for* a story still answers
+  # about that story or refuses — the rule below, and the bug it was written
+  # for, are untouched.
+  #
+  # Admission asks bare, and that is what made this matter. A copy pointed at a
+  # story answered every role "blocked" while the project chain was
+  # unfinished — so the first thing anyone does on a new project, assign a
+  # story, stopped the fleet dead with `list_agent_work` reporting "the graph
+  # holds no work for its role" and nothing naming the story scope as the
+  # reason. Measured on the math project 2026-09-22: four roles idle for an
+  # hour over a ready `spex_boundary_ready`, which ran within seconds of the
+  # story being cleared.
+  #
+  # The story still wins wherever it has work, so selecting one still steers
+  # who does what. It stops being a blindfold, not a preference.
+  defp story_or_project(story, nodes, edges, ctx, role, nil) do
+    case from_graph(story, nodes, edges, ctx, role) do
+      %{actionable: []} -> from_copy(nodes, edges, ctx, role)
+      story_scoped -> story_scoped
+    end
+  end
+
+  defp story_or_project(story, nodes, edges, ctx, role, _requested),
+    do: from_graph(story, nodes, edges, ctx, role)
 
   # The story this copy has selected, if it has selected one that is still
   # eligible.

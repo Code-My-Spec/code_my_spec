@@ -70,6 +70,32 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
     :ok = GraphWatcher.settle(scope)
   end
 
+  # An active story used to hide the project from every role, because
+  # `actionable_for_role/2` is `story_execution/2` and a selected story scoped
+  # the whole answer. Assigning a story is the first thing anyone does on a new
+  # project, and doing it before the project chain finished stopped the fleet
+  # dead: four roles idle over a ready `spex_boundary_ready`, `list_agent_work`
+  # reporting "the graph holds no work for its role", and nothing naming the
+  # story scope as the reason. Clearing the story started it within seconds.
+  #
+  # Only on a bare ask. Naming a story still answers about that story or
+  # refuses — `selected/3`'s rule, and the bug it was written for, are intact.
+  test "a story with nothing for this role does not hide the project", ctx do
+    main_work = names(ctx.scope, :main)
+
+    assert main_work != [],
+           """
+           The premise is a role whose work lives outside the active story, and
+           there is none — so this cannot tell a clamp from an empty board.
+
+           `set_active_story` ran in setup, so anything here is project-level
+           work reached past a selected story.
+           """
+
+    refute Enum.any?(main_work, &(&1 in ~w(component_linked three_amigos_complete))),
+           "project work, not the active story's own chain"
+  end
+
   test "coding keeps its own work while product's queue is untriaged", ctx do
     before = names(ctx.scope, :coding)
 
@@ -118,6 +144,7 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
       ctx.scope
       |> Requirements.next_actionable_project()
       |> Enum.map(& &1.name)
+
     coding = names(ctx.scope, :coding)
 
     assert "issues_triaged" in product,
