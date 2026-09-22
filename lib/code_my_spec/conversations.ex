@@ -181,29 +181,66 @@ defmodule CodeMySpec.Conversations do
   A Claude Code lane arrives with an external id and no agent row of its own, so
   `find_or_create_session_conversation/3` still answers that question under its
   own name. Two callers, two questions, neither pretending to be the other.
+
+  The one exception: a project born from guided intake already has a
+  conversation before any agent does — `Intake.convert/2` opened one to carry
+  the interview forward, keyed `"intake:<plan id>"`. The first agent this
+  project ever gets adopts that row rather than starting a second one, so the
+  interview and the agent's own turns read as one thread instead of two
+  competing for `get_agent_conversation/2`'s "most recent" pick. Scoped to the
+  `"intake:"` prefix rather than "any unclaimed session row" on purpose: a
+  project has at most one of these today, and a future session-keyed use
+  this function knows nothing about should not be silently annexed by the
+  next agent that happens to start.
   """
   def find_or_create_agent_conversation(account_id, project_id, agent_id) do
     case Repo.get_by(Conversation, agent_id: agent_id) do
       nil ->
-        %Conversation{}
-        |> Conversation.agent_changeset(%{
-          account_id: account_id,
-          project_id: project_id,
-          agent_id: agent_id,
-          name: generated_name(account_id, project_id)
-        })
-        |> Repo.insert()
-        |> case do
-          {:ok, conversation} ->
-            {:ok, conversation}
-
-          # Lost an insert race — fetch the now-existing row.
-          {:error, _changeset} ->
-            {:ok, Repo.get_by!(Conversation, agent_id: agent_id)}
+        case adopt_intake_conversation(project_id, agent_id) do
+          {:ok, conversation} -> {:ok, conversation}
+          :none -> create_agent_conversation(account_id, project_id, agent_id)
         end
 
       conversation ->
         {:ok, conversation}
+    end
+  end
+
+  defp create_agent_conversation(account_id, project_id, agent_id) do
+    %Conversation{}
+    |> Conversation.agent_changeset(%{
+      account_id: account_id,
+      project_id: project_id,
+      agent_id: agent_id,
+      name: generated_name(account_id, project_id)
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, conversation} ->
+        {:ok, conversation}
+
+      # Lost an insert race — fetch the now-existing row.
+      {:error, _changeset} ->
+        {:ok, Repo.get_by!(Conversation, agent_id: agent_id)}
+    end
+  end
+
+  defp adopt_intake_conversation(project_id, agent_id) do
+    query =
+      from c in Conversation,
+        where:
+          c.project_id == ^project_id and is_nil(c.agent_id) and
+            like(c.session_external_id, "intake:%"),
+        limit: 1
+
+    case Repo.one(query) do
+      nil ->
+        :none
+
+      conversation ->
+        conversation
+        |> Conversation.agent_changeset(%{agent_id: agent_id})
+        |> Repo.update()
     end
   end
 
