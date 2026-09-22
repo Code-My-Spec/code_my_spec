@@ -19,25 +19,7 @@ defmodule CodeMySpec.ProjectsTest do
       setup_error: nil
     }
 
-    test "preview_extra_frame_origins accepts the form's comma-separated text" do
-      user = user_fixture()
-      account = account_with_owner_fixture(user)
-      scope = user_scope_fixture(user, account)
-
-      {:ok, project} =
-        Projects.create_project(scope, %{
-          name: "some name",
-          preview_extra_frame_origins: "accounts.google.com, gitlab.com \n github.com"
-        })
-
-      assert project.preview_extra_frame_origins == [
-               "accounts.google.com",
-               "gitlab.com",
-               "github.com"
-             ]
-    end
-
-    test "preview_extra_frame_origins accepts a list directly, for programmatic callers" do
+    test "preview_extra_frame_origins is stored as an array of strings" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
@@ -46,14 +28,14 @@ defmodule CodeMySpec.ProjectsTest do
       assert project.preview_extra_frame_origins == ["gitlab.com"]
     end
 
-    test "an empty preview_extra_frame_origins string clears it to [], not back to nil" do
+    test "an empty preview_extra_frame_origins list clears it to [], not back to nil" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope, preview_extra_frame_origins: ["gitlab.com"])
 
       {:ok, updated} =
-        Projects.update_project(scope, project, %{"preview_extra_frame_origins" => ""})
+        Projects.update_project(scope, project, %{preview_extra_frame_origins: []})
 
       assert updated.preview_extra_frame_origins == []
     end
