@@ -129,7 +129,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
         # the digest on its next tool call through `Hooks.AnalysisAlert`. Two
         # consumers, two shapes, and telling both here would tell one of them
         # twice.
-        AgentReport.deliver(scope, run.source, problems)
+        announce_if_new(scope, run, problems, previous, signatures)
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
@@ -215,6 +215,29 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # row this was still leaves "who asked for it" as a separate lookup unless
   # the line says that too. Blank unless `build_job/4` was given one — most
   # runs still won't be until more callers are taught to pass it.
+  # Only when this run says something the last one did not.
+  #
+  # `AgentReport.deliver/3` used to fire on every completed run, and every stop
+  # hook re-enqueues credo, so an unchanged finding announced itself once a
+  # turn forever. A main agent on the math project spent four consecutive turns
+  # answering "same repeated alert — already covered by issue ..., no action"
+  # and never reached `work_dispatched`, which is the requirement that puts
+  # story work in flight. It diagnosed its own livelock and filed `bffa0da7`
+  # before anyone looked: "no file was edited and no new analysis was requested
+  # between repeats, so nothing about the tree changed between alerts".
+  #
+  # `new` is empty both when nothing changed and when problems only went away,
+  # and neither is worth a wake — the digest counts what remains, which the
+  # agent has already been told. An absent baseline reads as all-new, so a
+  # first run, and a run whose predecessor predates signature recording, both
+  # still announce.
+  defp announce_if_new(scope, run, problems, previous, signatures) do
+    case Signatures.delta(previous, signatures) do
+      %{new: []} -> :ok
+      _ -> AgentReport.deliver(scope, run.source, problems)
+    end
+  end
+
   defp requested_by_suffix(%Run{requested_by: nil}), do: ""
   defp requested_by_suffix(%Run{requested_by: by}) when by == %{}, do: ""
   defp requested_by_suffix(%Run{requested_by: by}), do: " — requested by #{inspect(by)}"
