@@ -55,6 +55,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
      ```elixir
      requires: check_globs,
      checks: %{
+       disabled: [{Credo.Check.Warning.WrongTestFilename, []}],
        extra:
          if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
            do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
@@ -62,6 +63,14 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
          )
      }
      ```
+
+     `WrongTestFilename` is disabled because it contradicts this framework by
+     construction: it insists every file under `test/` ends in `_test.exs`, and
+     BDD specs are `*_spex.exs`. Left on, it reports one finding per spex file,
+     forever, on nothing an agent can act on — and the stop hook blocks on
+     credo, so a coding agent cannot finish a turn. Measured on the math project
+     2026-09-22: seven findings, and the agent refused every stop for half an
+     hour, correctly, having already filed it as framework issue 16f50f61.
 
      The guard is not optional decoration. A `requires:` glob that matches
      nothing loads nothing, prints no warning, and reports a clean bill of
