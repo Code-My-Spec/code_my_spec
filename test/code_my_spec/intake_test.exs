@@ -5,6 +5,8 @@ defmodule CodeMySpec.IntakeTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Plan
   alias CodeMySpec.Personas
@@ -282,6 +284,37 @@ defmodule CodeMySpec.IntakeTest do
 
       assert persona.name == "salon owners"
       assert persona.persona_type == :proto
+    end
+
+    # The `agent-conversation` page reads `Conversations`, not `Plan`/`Turn` —
+    # before this, a project born from guided intake landed there with no
+    # sign the visitor had ever said anything, even though the whole plan is
+    # a conversation. `find_or_create_session_conversation/3` already existed
+    # for exactly this ("the story interview... only borrowed the shape");
+    # nothing ever called it from here.
+    test "carries the shaping conversation into a conversation the agent page can show" do
+      scope = user_scope_fixture()
+      plan = planned_plan("a booking tool for hair salons")
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+
+      {:ok, conversation} =
+        Conversations.find_or_create_session_conversation(
+          converted.account_id,
+          converted.project_id,
+          "intake:#{converted.id}"
+        )
+
+      texts = conversation |> Conversations.list_messages() |> Enum.map(&Message.text/1)
+
+      assert "a booking tool for hair salons" in texts,
+             "the visitor's own first message never reached the agent's own conversation"
+
+      assert Enum.any?(texts, &(&1 =~ "Widget Tracker")),
+             "confirming the plan is part of the record everywhere else in the transcript"
     end
 
     test "a plan that never said who it is for still converts" do

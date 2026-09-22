@@ -15,27 +15,42 @@ defmodule CodeMySpecWeb.IntakeComponents do
   use Phoenix.Component
   use CodeMySpecWeb, :verified_routes
 
+  import CodeMySpecWeb.ChatComponents, only: [chat_message: 1]
+
   @doc """
   One thing somebody said.
+
+  Renders through `ChatComponents.chat_message/1` — the same bubble
+  `AgentConversationLive` uses — rather than a hand-rolled one of its own.
+  There used to be two: this one drifted to `chat-bubble-neutral` for the
+  agent's side while the shared component had since grown markdown
+  rendering, a per-message timestamp and a collapse for long turns, none of
+  which a visitor mid-interview ever got.
+
+  The outer `data-test="intake-said"`/`data-from` wrapper is kept rather than
+  switched to `ChatComponents`' own `data-test="message"` — existing spex
+  assert on it (story 990, 1064, 1067), and "which side this landed on" is
+  the behavior worth a stable hook, not the component that drew it.
 
   Sided by who said it, which is the whole reason the transcript carries `from`
   rather than the caller alternating. An interview turn and a shaping turn are
   the same shape here on purpose.
   """
+  attr :id, :string, required: true
   attr :entry, :map, required: true
 
   def said(%{entry: %{from: :agent}} = assigns) do
     ~H"""
-    <div data-test="intake-said" data-from="agent" class="chat chat-start">
-      <div class="chat-bubble chat-bubble-neutral">{@entry.text}</div>
+    <div data-test="intake-said" data-from="agent">
+      <.chat_message id={@id} role={:assistant} own_role={:user} text={@entry.text} />
     </div>
     """
   end
 
   def said(assigns) do
     ~H"""
-    <div data-test="intake-said" data-from="visitor" class="chat chat-end">
-      <div class="chat-bubble chat-bubble-primary">{@entry.text}</div>
+    <div data-test="intake-said" data-from="visitor">
+      <.chat_message id={@id} role={:user} own_role={:user} text={@entry.text} />
     </div>
     """
   end
@@ -52,9 +67,11 @@ defmodule CodeMySpecWeb.IntakeComponents do
   slot :inner_block
 
   def conversation(assigns) do
+    assigns = assign(assigns, :transcript, Enum.with_index(assigns.transcript))
+
     ~H"""
     <div data-test="intake-transcript" class="min-h-0 flex-1 space-y-4 overflow-y-auto">
-      <.said :for={entry <- @transcript} entry={entry} />
+      <.said :for={{entry, i} <- @transcript} id={"intake-turn-#{i}"} entry={entry} />
 
       <div :if={@thinking} data-test="intake-thinking" class="chat chat-start">
         <div class="chat-bubble chat-bubble-neutral opacity-60">Thinking…</div>
