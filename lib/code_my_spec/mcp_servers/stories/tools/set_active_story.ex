@@ -11,7 +11,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
     field :story_id, :string,
       description:
         "Story database ID to work on. It must be ready for development and not assigned " <>
-          "to another copy. Omit to clear the active story without changing backlog assignments."
+          "to another copy. Pointing a copy at a story releases whatever else it held, so a " <>
+          "copy carries one story at a time. Omit to clear it and release them all."
   end
 
   @impl true
@@ -22,7 +23,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
         if copy.active_story_id do
           "Story #{copy.active_story_id} is active for every agent on working copy #{copy.id}."
         else
-          "Working copy #{copy.id} has no active story. Its backlog assignments are unchanged."
+          "Working copy #{copy.id} has no active story, and the stories it held are free " <>
+            "for another copy to take."
         end
 
       {:reply, Response.text(Response.tool(), message), frame}
