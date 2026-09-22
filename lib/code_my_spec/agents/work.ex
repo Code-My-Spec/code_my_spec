@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Validation.Menu
 
   # Only tools the agent actually carries directly.
   #
@@ -45,6 +46,7 @@ defmodule CodeMySpec.Agents.Work do
 
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
+         :ok <- remind_if_holding(scope, current),
          true <- runnable_state?(current),
          true <- eligible_work?(scope, current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id) do
@@ -79,10 +81,59 @@ defmodule CodeMySpec.Agents.Work do
       end
     else
       false -> {:ok, :not_runnable}
+      {:ok, :reminded} = result -> result
       {:ok, :not_runnable} = result -> result
       error -> error
     end
   end
+
+  # An agent holding a claim with no turn in flight is asked to dispose of it.
+  #
+  # `runnable_state?/1` skips such an agent, which is right — it is not offered
+  # *new* work while it holds a claim. The consequence was that nothing reached
+  # it at all: not a graph change, not the reconnect sweep, not a denied
+  # tap-out, not the cadence. An agent that ended a turn still holding a task
+  # was unreachable until a person messaged it. Three times on the math project
+  # 2026-09-22 — 22, 25 and 26 minutes each — and it is the last thing that
+  # stopped a cold-start story finishing unattended.
+  #
+  # This is not new work and does not reserve a turn. It is the menu the stop
+  # hook already writes ("you have an open task, most recently — ..."), sent
+  # again by the one mechanism that still runs after the agent has stopped.
+  #
+  # It cannot loop the way the stop hook's nudges did (`59c97e41`, `ce3471ef`).
+  # Those re-fired on every stop, and stopping is what an agent does after every
+  # turn. Nothing here fires on a stop: the callers are a harness join, a denied
+  # tap-out, continuous being switched on, a graph change, and the main agent's
+  # cadence. An agent reminded, turning, and stopping without disposing triggers
+  # none of them, so the next reminder waits for a real event.
+  #
+  # `turn_started_at` must be nil: an agent mid-turn is working its task and
+  # interrupting it is the thing the guard exists to prevent.
+  defp remind_if_holding(scope, agent) do
+    case held_task(agent) do
+      nil -> :ok
+      _task -> remind(scope, agent)
+    end
+  end
+
+  defp held_task(%{status: :running, continuous: true, turn_started_at: nil} = agent),
+    do: Agent.active_task(agent)
+
+  defp held_task(_agent), do: nil
+
+  defp remind(scope, agent) do
+    # `TaskOwner.t()` accepts an `%Agent{}` directly — the agent is the owner.
+    message = Menu.render(scope, true, agent.role, agent)
+
+    Conversations.record_sent_to_agent(agent, message)
+
+    Transport.impl().dispatch_message(agent.working_copy_id, agent, ref(), message, 10_000)
+
+    {:ok, :reminded}
+  end
+
+  defp ref, do: "task-reminder-" <> Ecto.UUID.generate()
 
   def release(scope, agent_id, ref) do
     from(a in Agent,
