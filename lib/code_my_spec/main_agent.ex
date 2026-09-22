@@ -578,17 +578,19 @@ defmodule CodeMySpec.MainAgent do
   nobody but a person at a browser. Agent `880c7713` sat unreachable for seven
   hours on exactly that (`8cb3f626`).
   """
-  @spec decide_permission(Scope.t(), String.t(), String.t()) ::
+  @spec decide_permission(Scope.t(), String.t(), String.t(), String.t() | nil) ::
           {:ok, map()} | {:error, term()}
-  def decide_permission(%Scope{} = scope, permission_id, decision)
+  def decide_permission(scope, permission_id, decision, answer \\ nil)
+
+  def decide_permission(%Scope{} = scope, permission_id, decision, answer)
       when decision in ~w(allow deny) do
     case QuestionsRepository.fetch_open_permission(scope, permission_id) do
-      {:ok, _entry} -> Notifications.resolve_permission_request(permission_id, decision)
+      {:ok, _entry} -> Notifications.resolve_permission_request(permission_id, decision, answer)
       {:error, reason} -> {:error, reason}
     end
   end
 
-  def decide_permission(%Scope{}, _permission_id, decision),
+  def decide_permission(%Scope{}, _permission_id, decision, _answer),
     do: {:error, {:unknown_decision, decision}}
 
   # An answer that does not stand up sends the question on rather than stopping

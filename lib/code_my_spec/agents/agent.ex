@@ -157,6 +157,25 @@ defmodule CodeMySpec.Agents.Agent do
     field :work_request_id, :string
     field :work_requested_at, :utc_datetime_usec
 
+    # The offer this agent was last handed and did not take.
+    #
+    # An agent that ends a turn without claiming anything clears every other
+    # in-flight mark — no open turn, no reservation, no active task — so
+    # `Work.runnable_state?/1` finds it instantly eligible again and re-offers
+    # the same work. Nothing recorded that it had just refused, so nothing
+    # could tell the second offer from the first.
+    #
+    # Measured on the math project 2026-09-22: one QA agent declined the same
+    # blocked requirement 197 times in 3m29s — a turn every four seconds, and
+    # 4,500 server log lines a minute — until it was stopped by hand.
+    #
+    # A fingerprint of the offer rather than a flag, so the agent wakes the
+    # moment the work actually changes instead of on a timer; the timestamp is
+    # what keeps that from becoming a wedge when it never does.
+    field :declined_offer, :string
+    field :declined_offer_at, :utc_datetime_usec
+    field :declined_offer_count, :integer
+
     # The work this agent has claimed.
     #
     # Story 538's direction, and the end of an agent that could take turns and
@@ -254,6 +273,9 @@ defmodule CodeMySpec.Agents.Agent do
       :turn_started_at,
       :work_request_id,
       :work_requested_at,
+      :declined_offer,
+      :declined_offer_at,
+      :declined_offer_count,
       :working_copy_id,
       :project_id,
       :account_id

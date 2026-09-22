@@ -19,6 +19,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
@@ -97,6 +98,67 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
 
            Denying it means there is work to do — that is the whole reason to
            deny rather than allow — and nothing else is coming to notice.
+           """
+  end
+
+  test "denying it outranks the agent's own last refusal", ctx do
+    {agent, conversation, request} = staffed_with_work(ctx)
+
+    # The state that makes this different from the test above: the agent has
+    # already been offered this work once and ended its turn without taking it,
+    # so `Work` will not re-offer it on its own. That guard is what stops a
+    # declined offer being handed back every four seconds — and a person
+    # denying the tap-out is precisely the input that has to get past it.
+    {:ok, _declined} = Work.record_decline(ctx.scope, agent)
+
+    :ok = Conversations.subscribe_conversation(conversation.id)
+
+    {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
+
+    assert_receive {:new_message, _}, 5_000
+    assert_receive {:new_message, _}, 5_000
+
+    assert admitted?(conversation),
+           """
+           A person denied the tap-out and the agent was not given a turn.
+
+           The agent had declined this same work before, and the damper that
+           normally suppresses a repeat suppressed the deny as well — so the
+           one input that means "no, there is work, go and do it" silently did
+           nothing. The damper answers the graph; a person answering a gate
+           outranks it.
+           """
+  end
+
+  test "the reason for the denial reaches the agent", ctx do
+    {_agent, conversation, request} = staffed_with_work(ctx)
+
+    :ok = Conversations.subscribe_conversation(conversation.id)
+
+    {:ok, _} =
+      Notifications.resolve_permission_request(
+        request.id,
+        "deny",
+        "The preview is back up and returning 200."
+      )
+
+    assert_receive {:new_message, _}, 5_000
+    assert_receive {:new_message, _}, 5_000
+
+    told =
+      conversation
+      |> Conversations.list_messages()
+      |> Enum.any?(&(inspect(&1.content) =~ "preview is back up"))
+
+    assert told,
+           """
+           The agent was denied and never told why.
+
+           `answer_notification` takes an `answer` and for a permission it went
+           nowhere. An agent that hears only "declined" re-reads its own
+           transcript, finds the conclusion it recorded last time, and reaches
+           it again — which is how a QA agent went on reporting an outage that
+           had been fixed four minutes earlier.
            """
   end
 

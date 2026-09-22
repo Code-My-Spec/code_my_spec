@@ -1662,7 +1662,19 @@ defmodule CodeMySpec.Agents do
         # rather than after: `deliver/3` runs the whole stop menu — analysis,
         # graph, problems — and an agent read during it would show a turn that
         # ended as still running.
+        # Read before the clear: `Work.record_decline/3` needs it to tell a turn
+        # that closed a task from one that did nothing, and the next line is
+        # what destroys it.
+        turn_started_at = agent.turn_started_at
+
         {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+        # Before the stop menu, because `deliver/3` is what produces the
+        # observation that fires `Work.consider_project/2` — recording the
+        # decline afterwards would lose the race with the wake it is meant to
+        # damp.
+        {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
+
         StopDecision.deliver(scope, agent, opts)
 
       _ ->
