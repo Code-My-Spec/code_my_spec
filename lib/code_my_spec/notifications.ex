@@ -20,8 +20,10 @@ defmodule CodeMySpec.Notifications do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -440,7 +442,7 @@ defmodule CodeMySpec.Notifications do
   # In a Task because this is reachable from inside the harness project channel,
   # and `Transport.Harness` dispatches by calling that channel's own process —
   # `:calling_self` kills it and cancels every turn on the copy.
-  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id}, answer)
+  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id} = request, answer)
        when is_binary(agent_id) do
     case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
       %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
@@ -462,7 +464,7 @@ defmodule CodeMySpec.Notifications do
         # loop by hand. The wake added in this same function is what turned a
         # silent stall into a spin, so this is its other half rather than a
         # separate fix.
-        Conversations.record_sent_to_agent(agent, tap_out_denied_notice(answer))
+        Conversations.record_sent_to_agent(agent, tap_out_denied_notice(answer, request))
 
         # A person saying "go and work" outranks the agent's own last refusal.
         # `Work` refuses to re-offer work an agent has already declined, which
@@ -497,7 +499,7 @@ defmodule CodeMySpec.Notifications do
   # 200, and which attempt to invalidate. None of it reached the agent, which
   # went on reporting the app unreachable — an outage that had ended four
   # minutes earlier — until it was stopped by hand.
-  defp tap_out_denied_notice(answer) do
+  defp tap_out_denied_notice(answer, request \\ nil) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there
     is work for your role — that is why it was declined rather than granted.
@@ -507,8 +509,72 @@ defmodule CodeMySpec.Notifications do
     against the thing that is blocking you rather than asking to leave again.
     """
 
-    append_reason(base, answer)
+    base
+    |> append_reason(answer)
+    |> append_settled_blockers(request)
   end
+
+  # Name the agent's own claim back to it when that claim has stopped being true.
+  #
+  # A reason is not enough on its own. Measured three times in one session: an
+  # agent was denied with the fixing commit named in the message, and its next
+  # turns still said "nothing has changed" — it re-reads its transcript, finds
+  # its own last conclusion, and reaches it again, because a generic paragraph
+  # does not contradict anything in particular.
+  #
+  # What broke the loop by hand, every time, was naming the specific statement:
+  # "issue X, which your own request named, is now resolved". So the notice does
+  # that itself when it can — the ids are in the reason the agent wrote, and
+  # their status is a lookup.
+  #
+  # Silent when nothing the request named has moved, which is the honest answer:
+  # in that case the agent's conclusion may well still hold, and the notice
+  # should not imply otherwise.
+  defp append_settled_blockers(notice, nil), do: notice
+
+  defp append_settled_blockers(notice, request) do
+    case settled_blockers(request) do
+      [] ->
+        notice
+
+      settled ->
+        notice <>
+          """
+
+          Specifically, these were named in your own request and have since been
+          resolved:
+
+          #{Enum.map_join(settled, "\n", &"  - #{&1.id} — #{&1.title}")}
+
+          If your last conclusion rested on any of those, it no longer holds.
+          Check before repeating it.
+          """
+    end
+  end
+
+  # Ids the agent wrote into its own reason, that are now resolved issues.
+  #
+  # Queried by project_id rather than through `Issues.list_issues/1`, which
+  # reads `scope.active_project.id` — the loaded association, not the id — so a
+  # scope assembled from an agent row raises there and the rescue below would
+  # quietly answer "nothing has changed", which is the exact failure this
+  # function exists to prevent.
+  defp settled_blockers(%{agent_id: agent_id, tool_input: input}) when is_binary(agent_id) do
+    reason = MapAccess.get(input, :reason) || ""
+
+    with true <- is_binary(reason) and reason != "",
+         %{project_id: project_id} <- Repo.get(Agent, agent_id) do
+      from(i in Issue, where: i.project_id == ^project_id and i.status == :resolved)
+      |> Repo.all()
+      |> Enum.filter(&String.contains?(reason, &1.id))
+    else
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp settled_blockers(_request), do: []
 
   defp append_reason(base, nil), do: base
   defp append_reason(base, ""), do: base

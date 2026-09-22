@@ -31,7 +31,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
   # Staffed after the graph settles, so the only thing that can admit a turn is
   # the decision under test. `GraphWatcher.settle/1` fires its own
   # `consider_project`, and an agent standing there first is woken by that.
-  defp staffed_with_work(ctx) do
+  defp staffed_with_work(ctx, reason \\ "nothing to do") do
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)
 
@@ -54,7 +54,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
       )
 
     {:ok, request} =
-      Notifications.request_agent_tap_out(ctx.scope, agent.id, nil, "nothing to do")
+      Notifications.request_agent_tap_out(ctx.scope, agent.id, nil, reason)
 
     {agent, conversation, request}
   end
@@ -159,6 +159,50 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
            transcript, finds the conclusion it recorded last time, and reaches
            it again — which is how a QA agent went on reporting an outage that
            had been fixed four minutes earlier.
+           """
+  end
+
+  test "an issue the request named, now resolved, is named back to the agent", ctx do
+    {:ok, issue} =
+      CodeMySpec.Issues.create_issue(ctx.scope, %{
+        title: "Clear button leaves the input stale",
+        description: "filed by QA",
+        severity: :high,
+        scope: :app
+      })
+
+    {:ok, issue} = CodeMySpec.Issues.accept_issue(ctx.scope, issue)
+    {:ok, issue} = CodeMySpec.Issues.resolve_issue(ctx.scope, issue, "fixed in abc1234")
+
+    # This agent's only tap-out has to be the one naming the issue: an agent
+    # holds one pending request at a time, so a second `request_agent_tap_out`
+    # hands back the first rather than recording new words.
+    {agent, conversation, request} =
+      staffed_with_work(ctx, "blocked on issue #{issue.id}, which is unfixed")
+
+    _ = agent
+    :ok = Conversations.subscribe_conversation(conversation.id)
+
+    {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
+
+    assert_receive {:new_message, _}, 5_000
+    assert_receive {:new_message, _}, 5_000
+
+    named =
+      conversation
+      |> Conversations.list_messages()
+      |> Enum.any?(&(inspect(&1.content) =~ issue.id))
+
+    assert named,
+           """
+           The agent was denied without being told that the issue its own request
+           named has been resolved.
+
+           A reason alone is not enough — measured three times, an agent read a
+           denial that carried the fixing commit and still answered "nothing has
+           changed", because a general paragraph contradicts nothing in
+           particular. Naming the agent's own claim back to it is what broke the
+           loop by hand every time.
            """
   end
 
