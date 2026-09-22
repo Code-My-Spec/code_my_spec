@@ -71,12 +71,40 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
      ), frame}
   end
 
+  # "Requested", not "Started", and the difference is not pedantry.
+  #
+  # Analyzer concurrency is one run machine-wide. A request made while another
+  # copy is running queues behind it, and nothing on this side knows which
+  # happened — the harness does, and logs "an analyzer run is waiting for a
+  # machine-wide slot: 1 already running (limit 1), waiting up to 1800000ms".
+  # Saying "Started" promises something this tool cannot check.
+  #
+  # The cost of the promise is an agent that holds its task and waits forever.
+  # `Work.runnable_state?/1` skips an agent with an open task, so once it is
+  # waiting on a result that never lands, no wake path in the system can reach
+  # it — only a human message. Measured on the math project 2026-09-22 three
+  # times in one session: 22, 25 and 26 minutes, each ended by hand, each agent
+  # doing exactly what this text told it to do.
+  #
+  # So the text now says what is true (a request was recorded), what silence
+  # means (it may be queued), and what to do about it (dispose of the task
+  # rather than hold it open). `evaluate_task` answers "analysis pending" for a
+  # run that has not landed, which is a clean turn end rather than a hang.
   defp started(source, agent_id) when is_binary(agent_id) do
     """
-    Started #{source}. It runs for several minutes.
+    Requested #{source}. A run usually takes several minutes.
 
-    Do not wait for it and do not poll. Stop when you have nothing else to do —
-    the result is delivered to you as a message when it lands.
+    Do not wait for it and do not poll — the result is delivered to you as a
+    message when it lands. Stop when you have nothing else to do.
+
+    If it has not landed by your next turn, it may be queued: analyzer runs are
+    one-at-a-time across this whole machine, so another checkout's run can be
+    ahead of yours. That is ordinary and not a fault of yours.
+
+    Do not hold a task open waiting for it. Close the loop with `evaluate_task`,
+    which answers "analysis pending" while no fresh run exists — an agent
+    holding an open task cannot be offered another turn, so waiting with one
+    held is how a turn becomes an indefinite wait.
     """
   end
 
