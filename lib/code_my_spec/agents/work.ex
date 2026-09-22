@@ -43,6 +43,83 @@ defmodule CodeMySpec.Agents.Work do
     :ok
   end
 
+  @resume_prompt "Your last turn ended without finishing — the harness restarted " <>
+                   "under it, so whatever it had in flight was discarded and never " <>
+                   "recorded. You still hold the task below. Nothing is wrong with it " <>
+                   "and nothing has been decided about it; pick it back up from where " <>
+                   "the thread leaves off, and dispose of it as usual when the work is " <>
+                   "done. If you cannot tell how far it got, re-check rather than assume."
+
+  @doc """
+  Offer a turn to agents left holding a task with no turn open.
+
+  `runnable_state?/1` refuses an agent with an active task, which is right while
+  a turn is genuinely running and wrong the moment one is not. A turn discarded
+  mid-flight — a harness restart is the common way — clears `turn_started_at`
+  and leaves the task held, which is the exact combination every recovery path
+  in the system then skips. `consider_copy/4` on reconnect skips it too, for the
+  same reason.
+
+  So the agent is not busy; it is stranded, and only a human message frees it.
+  Measured 2026-09-22: a QA agent mid-way through a browser re-test was
+  discarded by another session's promote at 19:02, was told "you have an open
+  task", and then sat untouched until it was messaged by hand six minutes
+  later. The same shape held a coding agent on another project for eight days.
+
+  Holding a task is not evidence of a live turn — `turn_started_at` is, and
+  this requires it to be nil. An open reservation is still respected, because
+  that window is a dispatch genuinely in flight.
+  """
+  def resume_held_tasks(scope, copy_id) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&(&1.working_copy_id == copy_id and stranded?(&1)))
+    |> Enum.each(&resume(scope, &1))
+
+    :ok
+  end
+
+  defp stranded?(agent) do
+    agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
+      not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
+      not is_nil(agent.working_copy_id)
+  end
+
+  defp resume(scope, agent) do
+    with {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
+      Conversations.record_sent_to_agent(reserved, @resume_prompt)
+
+      case Transport.impl().request_work_turn(
+             reserved.working_copy_id,
+             reserved,
+             ref,
+             @resume_prompt,
+             5_000
+           ) do
+        {:ok, :started} -> {:ok, ref}
+        _error -> release(scope, reserved.id, ref)
+      end
+    end
+  end
+
+  # Same row lock and stamp as `reserve/2`, against `stranded?/1` rather than
+  # `runnable_state?/1` — two events racing to resume one agent must still hand
+  # out a single turn.
+  defp reserve_stranded(scope, id) do
+    Repo.transaction(fn ->
+      agent =
+        Repo.one(
+          from a in Agent,
+            where:
+              a.id == ^id and a.project_id == ^scope.active_project_id and
+                a.account_id == ^scope.active_account_id,
+            lock: "FOR UPDATE"
+        )
+
+      if agent && stranded?(agent), do: reserve(agent), else: :not_stranded
+    end)
+  end
+
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          true <- runnable_state?(current),

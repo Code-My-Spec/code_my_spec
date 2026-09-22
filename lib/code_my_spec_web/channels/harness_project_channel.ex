@@ -840,6 +840,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
+
+      # And the agents `consider_copy/4` cannot reach: a restart discards the
+      # turn but leaves the task held, and admission refuses an agent holding
+      # one. That combination is the thing a reconnect is most likely to have
+      # just created, and it is the one case this sweep used to walk straight
+      # past.
+      Agents.Work.resume_held_tasks(scope, copy_id)
     end)
 
     assign(socket, :considered_agents?, true)
