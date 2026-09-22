@@ -246,15 +246,21 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # to a question the agent asked is a reply, and silence there is not quiet, it
   # is a hang.
   defp announce_if_new(scope, run, problems, previous, signatures) do
-    if requested_by_agent?(run) or new_findings?(previous, signatures) do
-      AgentReport.deliver(scope, run.source, problems)
+    requester = requesting_agent_id(run)
+
+    if requester || new_findings?(previous, signatures) do
+      AgentReport.deliver(scope, run.source, problems, requester)
     else
       :ok
     end
   end
 
-  defp requested_by_agent?(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: true
-  defp requested_by_agent?(_run), do: false
+  # Threaded through so `deliver/4` can answer the asker on a clean run while
+  # leaving everyone else the silence criterion 3046 buys them. Without it a
+  # green run told nobody at all, and an agent that had asked for one waited on
+  # an answer that was never going to be sent.
+  defp requesting_agent_id(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: id
+  defp requesting_agent_id(_run), do: nil
 
   defp new_findings?(previous, signatures) do
     Signatures.delta(previous, signatures).new != []

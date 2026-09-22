@@ -176,6 +176,48 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
            """
   end
 
+  # A clean run is silence to the room and an answer to whoever asked.
+  #
+  # `digest/2` returns nil for a tree with no error-severity problems, and
+  # `deliver/4` used to drop the delivery entirely on that — so a green run told
+  # nobody, including the agent that had started it and said it would wait for
+  # the result. Measured on the math project 2026-09-22: a coding agent held an
+  # open `bdd_specs_passing` task for 25 minutes over a spex run that had come
+  # back green, and `Work.runnable_state?/1` skips an agent holding a task, so
+  # nothing in the system could reach it. A human had to say "it was green".
+  test "a clean run answers the agent that asked for it", ctx do
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: "/tmp/asker-#{System.unique_integer([:positive])}",
+        working_copy_id: ctx.copy.id
+      })
+
+    sweep(ctx.scope, [], requested_by: agent.id)
+
+    assert_receive {:agent_dispatch, id, _ref, message}, 2_000
+
+    assert id == agent.id, "the answer goes to the agent that started the run"
+
+    assert message =~ "no problems",
+           """
+           A run the agent started came back green and said nothing.
+
+           Silence is the right answer to a room that did not ask. To the agent
+           waiting on this specific run it is indistinguishable from a run that
+           never happened, and it will wait on it holding a task.
+           """
+  end
+
+  # The other half of criterion 3046, which this must not break.
+  test "a clean run still says nothing to an agent that did not ask", ctx do
+    sweep(ctx.scope, [])
+
+    refute_receive {:agent_dispatch, _id, _ref, _message}, 500
+  end
+
   # Problems going away is a change, and deliberately not one worth a wake: the
   # digest counts what remains, and the agent has already been told about it.
   test "a run that only cleared findings does not announce", ctx do
