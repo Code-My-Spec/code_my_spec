@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.DevGraphLiveReadsTheOracleWhenTheEventPathServesTest do
+defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
   @moduledoc """
   The stale panel's instrument follows the writer.
 
@@ -7,8 +7,8 @@ defmodule CodeMySpecWeb.DevGraphLiveReadsTheOracleWhenTheEventPathServesTest do
   every row the pass wrote before the flip reads as "moved past" the moment
   any input moves, whether or not the verdict did. Read on dev the first time
   after the flip: 447 of 1,134 components, every one agreeing with the pass.
-  So when the event path serves, the panel shows the oracle: the pass
-  computing the same vantage beside it.
+  So when the event path serves, the panel recomputes every entity from its
+  inputs and compares that with what is served.
 
   The harness panel is the same story one door over. It asked the server's
   own filesystem watcher, which nothing starts any more, and read every root
@@ -47,18 +47,19 @@ defmodule CodeMySpecWeb.DevGraphLiveReadsTheOracleWhenTheEventPathServesTest do
     %{conn: log_in_user(conn, scope.user), scope: scope}
   end
 
-  test "the stale panel shows the oracle rather than the pass's fingerprints", %{conn: conn} do
+  test "the stale panel recomputes from the domain rather than reading the pass's fingerprints",
+       %{conn: conn} do
     {:ok, _view, html} = live(conn, ~p"/dev/graph")
 
-    assert html =~ ~s(data-test="oracle"),
+    assert html =~ ~s(data-test="recomputed"),
            "the event path serves and the page still judges it by the pass's fingerprints"
 
     assert html =~ "agree with the rows being served",
            """
-           The oracle panel rendered, but not as agreeing on a freshly seeded
-           project. Either the seed and the pass really differ here — which
-           `shadow_test` would also be saying — or the panel misreads the
-           report.
+           The recompute panel rendered, but not as agreeing on a freshly seeded
+           project. Either a recompute from the domain really differs from the
+           seed here — which the exactness tests would also be saying — or the
+           panel misreads the report.
            """
 
     refute html =~ "inputs have moved past",

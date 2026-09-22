@@ -29,9 +29,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
   fingerprint, so every row the pass wrote before the flip reads as "moved
   past" the moment any input moves, whether or not the verdict did — 447 of
   1,134 components on dev the first time this panel was read after the flip,
-  every one of them agreeing with the pass. So the panel then shows the
-  oracle instead: the batched pass computing the same vantage beside it, row
-  for row and edge for edge.
+  every one of them right. So the panel then recomputes every entity from its
+  inputs, in memory, and compares that with what is served, row for row and
+  edge for edge. Nothing here reads the shadow.
 
   A set that does not empty is the finding. It means an input moved and nothing
   said so, and it names the entities rather than leaving it to be inferred.
@@ -274,14 +274,14 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   # The instrument follows the writer. The fingerprint diff judges the pass's
   # rows, which it stamps on every recompute; the event path stamps nothing,
-  # so under it the oracle is the only comparison that means anything — see
-  # the moduledoc.
+  # so under it the rows are judged by recomputing them from the domain now —
+  # see the moduledoc.
   defp assign_stale(%{assigns: %{selected: project}} = socket) do
     scope = scope_of(project)
 
     stale =
       if Shadow.inverted?(),
-        do: {:oracle, Shadow.diff(scope)},
+        do: {:recomputed, Requirements.served_vs_recomputed(scope)},
         else: Requirements.stale_entities_report(scope)
 
     assign(socket, stale: stale, stale_at: DateTime.utc_now())
@@ -326,28 +326,29 @@ defmodule CodeMySpecWeb.DevGraphLive do
             Nothing. Every entity's inputs agree with the rows being served.
           </div>
 
-          <div :if={match?({:oracle, _}, @stale)} data-test="oracle" class="space-y-1">
-            <p :if={oracle_clean?(@stale)} class="text-sm text-success">
-              Nothing. The pass's rows and edges, computed beside the event path,
-              agree with the rows being served ({elem(@stale, 1).live} rows, {elem(@stale, 1).live_edges} edges).
+          <div :if={match?({:recomputed, _}, @stale)} data-test="recomputed" class="space-y-1">
+            <p :if={recomputed_clean?(@stale)} class="text-sm text-success">
+              Nothing. Every entity's inputs, recomputed now, agree with the rows being served
+              ({elem(@stale, 1).served} rows, {elem(@stale, 1).served_edges} edges).
             </p>
-            <p :if={not oracle_clean?(@stale)} class="text-sm text-error">
-              The oracle differs — rows missing {elem(@stale, 1).missing}, extra {elem(@stale, 1).extra}, disagreeing {elem(
+            <p :if={not recomputed_clean?(@stale)} class="text-sm text-error">
+              Recomputed now, the graph differs from what is served — rows not served {elem(@stale, 1).missing}, served but not recomputed {elem(
                 @stale,
                 1
-              ).disagree}; edges missing {elem(@stale, 1).edges_missing}, extra {elem(@stale, 1).edges_extra}.
+              ).extra},
+              disagreeing {elem(@stale, 1).disagree}; edges not served {elem(@stale, 1).edges_missing}, served but not recomputed {elem(
+                @stale,
+                1
+              ).edges_extra}.
             </p>
             <p class="text-xs opacity-70">
               The event path serves this project. It settles rows from observations and
-              stamps no fingerprint, so the fingerprint diff cannot judge it; the oracle
-              can. A difference that does not clear on the next drain is an observation
-              nothing applied — or the pass behind on an idle checkout, which a settled
-              read there clears.
+              stamps no fingerprint, so the rows are judged by recomputing every entity from
+              its inputs, in memory, and comparing; nothing is written. A difference that
+              does not clear on the next drain is an observation nothing applied.
             </p>
             <ul class="text-xs font-mono space-y-0.5">
-              <li :for={line <- Enum.take(elem(@stale, 1).sample ++ elem(@stale, 1).edge_sample, 30)}>
-                {line}
-              </li>
+              <li :for={line <- Enum.take(elem(@stale, 1).sample, 30)}>{line}</li>
             </ul>
           </div>
 
@@ -734,7 +735,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp stale_list({:partial, entities}), do: entities
   defp stale_list(_other), do: []
 
-  defp oracle_clean?({:oracle, report}) do
+  defp recomputed_clean?({:recomputed, report}) do
     report.missing == 0 and report.disagree == 0 and report.edges_missing == 0 and
       report.edges_extra == 0
   end

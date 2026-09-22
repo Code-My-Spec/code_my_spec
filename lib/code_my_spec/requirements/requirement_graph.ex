@@ -1689,6 +1689,74 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def stale_read_logging?,
     do: Application.get_env(:code_my_spec, :graph_stale_read_log, false) == true
 
+  @doc """
+  What is served, against every entity recomputed from its inputs now.
+
+  The instrument for the event path. It settles rows from observations and
+  stamps no fingerprint, so `stale_entities_report/1` — which judges a row by
+  the stamp the pass wrote on it — reads every row the event path has touched
+  as stale, for good: 447 of 1,134 components on dev, every one of them
+  right. This asks the only question that outlives the pass: recomputed from
+  the domain this minute, does every requirement and every edge agree with
+  what is being served? Nothing is written. Expensive on purpose — one whole
+  computation, on demand, by one reader.
+  """
+  @spec served_vs_recomputed(Scope.t()) :: map()
+  def served_vs_recomputed(%Scope{} = scope) do
+    scope = scope |> normalize_vantage() |> with_project()
+    {:ok, ctx} = Preloader.load(scope)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {served, served_edges} = Projection.load(scope, ctx)
+    {computed, computed_edges} = compute_topology(scope, ctx, config)
+
+    served_by_key = Map.new(served, &{node_key(&1), &1.satisfied})
+    computed_by_key = Map.new(computed, &{node_key(&1), &1.satisfied})
+    served_keys = MapSet.new(Map.keys(served_by_key))
+    computed_keys = MapSet.new(Map.keys(computed_by_key))
+
+    missing = MapSet.difference(computed_keys, served_keys)
+    extra = MapSet.difference(served_keys, computed_keys)
+
+    disagree =
+      served_keys
+      |> MapSet.intersection(computed_keys)
+      |> Enum.filter(&(Map.fetch!(served_by_key, &1) != Map.fetch!(computed_by_key, &1)))
+
+    served_edge_set = MapSet.new(served_edges, &{&1.from, &1.to})
+    computed_edge_set = MapSet.new(computed_edges, &{&1.from, &1.to})
+    edges_missing = MapSet.difference(computed_edge_set, served_edge_set)
+    edges_extra = MapSet.difference(served_edge_set, computed_edge_set)
+
+    %{
+      served: map_size(served_by_key),
+      computed: map_size(computed_by_key),
+      missing: MapSet.size(missing),
+      extra: MapSet.size(extra),
+      disagree: length(disagree),
+      served_edges: MapSet.size(served_edge_set),
+      computed_edges: MapSet.size(computed_edge_set),
+      edges_missing: MapSet.size(edges_missing),
+      edges_extra: MapSet.size(edges_extra),
+      sample:
+        Enum.map(missing, &"not served: #{audit_label(&1)}") ++
+          Enum.map(extra, &"served, not recomputed: #{audit_label(&1)}") ++
+          Enum.map(disagree, &"disagrees: #{audit_label(&1)}") ++
+          Enum.map(edges_missing, &"edge not served: #{audit_edge(&1)}") ++
+          Enum.map(edges_extra, &"edge served, not recomputed: #{audit_edge(&1)}")
+    }
+  end
+
+  # The project's own chain is instantiated from `scope.active_project`, which a
+  # reader that named only the id — the dev page — does not carry.
+  defp with_project(%Scope{active_project: %{id: _}} = scope), do: scope
+
+  defp with_project(%Scope{active_project_id: id} = scope),
+    do: %{scope | active_project: Repo.get!(CodeMySpec.Projects.Project, id)}
+
+  defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
+  defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"
+  defp audit_edge({from, to}), do: "#{audit_label(from)} -> #{audit_label(to)}"
+
   # No guard for "nothing stored", though the first version had one on the
   # grounds that a cold project is not a stale one. It is the same state as the
   # failure this exists to catch: rows that were written and then lost read
