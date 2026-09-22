@@ -15,6 +15,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
 
   alias CodeMySpec.{Mail, Projects}
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Workspaces.PreviewAddress
 
   @impl true
   def render(assigns) do
@@ -92,6 +93,30 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
           type="text"
           label="Google Analytics Property ID"
         />
+        <div class="fieldset mb-2">
+          <label>
+            <span class="label mb-1">Additional preview sign-in origins</span>
+          </label>
+          <input
+            type="text"
+            id={@form[:preview_extra_frame_origins].id}
+            name={@form[:preview_extra_frame_origins].name}
+            value={
+              Enum.join(
+                @form[:preview_extra_frame_origins].value ||
+                  PreviewAddress.extra_frame_origins(@project),
+                ", "
+              )
+            }
+            class="input input-bordered w-full"
+            placeholder="accounts.google.com, github.com"
+            data-test="preview-extra-frame-origins"
+          />
+          <p class="text-xs opacity-70 mt-1">
+            Comma-separated domains the previewed app's own sign-in may send the preview frame to,
+            beyond accounts.google.com and github.com (allowed by default).
+          </p>
+        </div>
         <div class="fieldset mb-2">
           <label>
             <span class="label mb-1">Deploy Key</span>

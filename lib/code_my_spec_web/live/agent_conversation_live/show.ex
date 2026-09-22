@@ -63,6 +63,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Utils
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
@@ -367,6 +368,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:preview_src, src)
     |> assign(:preview_state, preview_state(src))
+    |> assign(
+      :preview_extra_frame_origins,
+      PreviewAddress.extra_frame_origins(scope.active_project)
+    )
   end
 
   # No address is `:absent` — nothing was asked for, so the pane promises
@@ -1386,6 +1391,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           conversation_id={@conversation && @conversation.id}
           preview_src={@preview_src}
           preview_state={@preview_state}
+          extra_frame_origins={@preview_extra_frame_origins}
         />
 
         <.conversation_column
@@ -1483,6 +1489,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               conversation_id={@conversation && @conversation.id}
               preview_src={@preview_src}
               preview_state={@preview_state}
+              extra_frame_origins={@preview_extra_frame_origins}
             />
           </LivePane.pane>
         </LivePane.group>
