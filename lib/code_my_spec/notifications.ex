@@ -9,6 +9,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Agents,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
+      CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users,
@@ -23,7 +24,7 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Issues.Issue
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -499,7 +500,7 @@ defmodule CodeMySpec.Notifications do
   # 200, and which attempt to invalidate. None of it reached the agent, which
   # went on reporting the app unreachable — an outage that had ended four
   # minutes earlier — until it was stopped by hand.
-  defp tap_out_denied_notice(answer, request \\ nil) do
+  defp tap_out_denied_notice(answer, request) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there
     is work for your role — that is why it was declined rather than granted.
@@ -554,18 +555,18 @@ defmodule CodeMySpec.Notifications do
 
   # Ids the agent wrote into its own reason, that are now resolved issues.
   #
-  # Queried by project_id rather than through `Issues.list_issues/1`, which
-  # reads `scope.active_project.id` — the loaded association, not the id — so a
-  # scope assembled from an agent row raises there and the rescue below would
-  # quietly answer "nothing has changed", which is the exact failure this
-  # function exists to prevent.
+  # By project_id rather than through `Issues.list_issues/1`, which reads
+  # `scope.active_project.id` — the loaded association, not the id — so a scope
+  # assembled from an agent row raises inside the repository and the rescue
+  # below would quietly answer "nothing has changed", which is the exact
+  # failure this function exists to prevent.
   defp settled_blockers(%{agent_id: agent_id, tool_input: input}) when is_binary(agent_id) do
     reason = MapAccess.get(input, :reason) || ""
 
     with true <- is_binary(reason) and reason != "",
          %{project_id: project_id} <- Repo.get(Agent, agent_id) do
-      from(i in Issue, where: i.project_id == ^project_id and i.status == :resolved)
-      |> Repo.all()
+      project_id
+      |> Issues.resolved_in_project()
       |> Enum.filter(&String.contains?(reason, &1.id))
     else
       _ -> []
