@@ -116,7 +116,7 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
     test "and the harness gets a node name unique to this workspace", %{prepared: p} do
       script = File.read!(p.script_path)
 
-      assert script =~ ~s(CMS_NODE_NAME="#{name(p)}" CMS_HARNESS_PORT=), """
+      assert script =~ ~s(export CMS_NODE_NAME="#{name(p)}"), """
       Without CMS_NODE_NAME, every workspace's `cms start` claims the same
       default sname (`codemyspec`) as this machine's own persistent harness —
       the second one to start always loses, silently: the app comes up fine
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
     test "and the harness is told which project to serve, at boot", %{prepared: p} do
       script = File.read!(p.script_path)
 
-      assert script =~ ~s(CMS_PROJECT_DIR="#{p.app_dir}"), """
+      assert script =~ ~s(export CMS_PROJECT_DIR="#{p.app_dir}"), """
       Without CMS_PROJECT_DIR the harness starts and sits idle forever: it
       only serves a project because CMS_PROJECT_DIR named it at boot, or
       because a hook from an already-running session picked it up — and
@@ -149,7 +149,28 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
     # PATH, is the only thing that can be right there. Unconfigured is this
     # case, not an oversight: HarnessSource.Installed is the default.
     test "and it runs the installed release, by default", %{prepared: p} do
-      assert File.read!(p.script_path) =~ ~s(CMS_PROJECT_DIR="#{p.app_dir}" cms start &)
+      assert File.read!(p.script_path) =~ ~s(export CMS_PROJECT_DIR="#{p.app_dir}"\ncms start &)
+    end
+
+    # `VAR=val cmd1 && cmd2` sets VAR only for cmd1 in bash — a real gap this
+    # story shipped with, caught live 2026-09-21 against a real customer
+    # project: every workspace booted under HarnessSource.Checkout (a
+    # compound `cd DIR && mix run` command) silently never received
+    # CMS_NODE_NAME, CMS_HARNESS_PORT or CMS_PROJECT_DIR at all — they were
+    # prefixed onto `cd`, a builtin that ignores them and does not pass them
+    # to what follows `&&`. The harness came up under the default node name
+    # and the default port and served nothing, and the failure read exactly
+    # like the original node-name and CMS_PROJECT_DIR bugs this story already
+    # fixed once. `export` on its own line applies to every later command in
+    # the same shell regardless of shape, simple or compound.
+    test "the identity variables survive into a compound harness command", %{prepared: p} do
+      script = File.read!(p.script_path)
+
+      refute script =~ ~r/CMS_NODE_NAME="[^"]*"\s+cd\s/, """
+      An identity variable prefixed directly onto `cd` only sets it for `cd`
+      itself — bash does not carry an inline assignment across `&&` into the
+      command that follows. Got: #{script}
+      """
     end
   end
 
@@ -182,7 +203,7 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
       script = File.read!(p.script_path)
 
       assert script =~
-               ~s(CMS_PROJECT_DIR="#{p.app_dir}" cd #{File.cwd!()} && MIX_ENV=dev_sprite mix run --no-halt &),
+               ~s(export CMS_PROJECT_DIR="#{p.app_dir}"\ncd #{File.cwd!()} && MIX_ENV=dev_sprite mix run --no-halt &),
              """
              Left on the default, this dev box's own harness-side fixes never reach a
              bare-metal boot — `promote_sync` updates the server this config lives on,
