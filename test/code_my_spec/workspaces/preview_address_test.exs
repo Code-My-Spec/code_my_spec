@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Workspaces.PreviewAddressTest do
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Workspaces.PreviewAddress
 
   describe "the address itself" do
@@ -45,6 +46,35 @@ defmodule CodeMySpec.Workspaces.PreviewAddressTest do
       on_exit(fn -> Application.put_env(:code_my_spec, PreviewAddress, previous) end)
 
       assert PreviewAddress.csp_extra_frame_origins() == ["https://gitlab.com"]
+    end
+  end
+
+  describe "extra_frame_origins/1 and csp_extra_frame_origins/1, per project" do
+    test "no project falls back to the config/built-in default, same as arity 0" do
+      assert PreviewAddress.extra_frame_origins(nil) == ["accounts.google.com", "github.com"]
+
+      assert PreviewAddress.csp_extra_frame_origins(nil) ==
+               PreviewAddress.csp_extra_frame_origins()
+    end
+
+    test "a project that never customized it also falls back to the default" do
+      project = %Project{preview_extra_frame_origins: nil}
+
+      assert PreviewAddress.extra_frame_origins(project) == ["accounts.google.com", "github.com"]
+    end
+
+    test "a project's own list is used exactly, in place of the default" do
+      project = %Project{preview_extra_frame_origins: ["gitlab.com"]}
+
+      assert PreviewAddress.extra_frame_origins(project) == ["gitlab.com"]
+      assert PreviewAddress.csp_extra_frame_origins(project) == ["https://gitlab.com"]
+    end
+
+    test "a project that explicitly cleared it allows nothing extra" do
+      project = %Project{preview_extra_frame_origins: []}
+
+      assert PreviewAddress.extra_frame_origins(project) == []
+      assert PreviewAddress.csp_extra_frame_origins(project) == []
     end
   end
 end
