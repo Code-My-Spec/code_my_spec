@@ -169,29 +169,24 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       """
     end
 
-    test "an agent on claude-code is told where its tools arrive" do
-      # `claude-code` runs the CLI with `--tools ""` and emulates tool calling
-      # by serialising the definitions into the request as `available_tools`.
-      # Nothing told the agent that, so when the model doubted, it reported its
-      # tools missing and stopped — measured on criterion 3539 at roughly one
-      # first turn in four, with `No such tool available` in its own words: a
-      # string that appears nowhere in this codebase or any dependency.
+    test "a provider brief reads after the index it is about" do
+      # `claude-code` emulates tool calling: the definitions are serialised into
+      # the request as `available_tools` rather than offered natively. An agent
+      # that is wrong about that does not fail loudly — it reports its tools
+      # missing and stops, which reads as declining work.
+      #
+      # Agents are taught that shape by demonstration now rather than in prose:
+      # `LaunchRequest` seeds a direct call and a nested one into their history,
+      # and `ProviderBrief.for/1` answers nil unless `CMS_PROVIDER_BRIEF=1` puts
+      # the text back. What is asserted here is the ordering contract that holds
+      # whenever a brief is given at all — it explains the list, so it reads
+      # after it.
       prompt =
         SystemPrompt.compose(
           tool_index: "## Tools you can reach\n\n**Called directly:** run_script",
-          provider_brief: ProviderBrief.for("claude-code"),
+          provider_brief: "Your tools arrive as `available_tools`.",
           role_brief: RoleBrief.for(:main)
         )
-
-      assert prompt =~ "available_tools"
-
-      assert prompt =~ "has not failed", """
-      The brief must say that a tool you did not call has not failed. Refusing
-      to improvise is what `OperatingRules` asks for, so an agent that believes
-      a tool is gone stops correctly on a false premise — and that reads as the
-      agent declining work rather than as a prompt that never told it where its
-      tools were.
-      """
 
       assert :binary.match(prompt, "Tools you can reach") <
                :binary.match(prompt, "available_tools"),
@@ -202,7 +197,8 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       assert ProviderBrief.for("anthropic") == nil
       assert ProviderBrief.for(nil) == nil
 
-      prompt = SystemPrompt.compose(provider_brief: ProviderBrief.for("zai"), role_brief: "You are QA.")
+      prompt =
+        SystemPrompt.compose(provider_brief: ProviderBrief.for("zai"), role_brief: "You are QA.")
 
       assert prompt == "You are QA."
     end

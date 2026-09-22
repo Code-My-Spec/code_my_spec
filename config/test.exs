@@ -24,6 +24,9 @@ config :bcrypt_elixir, :log_rounds, 1
 # the ordinary suite.
 e2e? = System.get_env("CMS_E2E") in ~w(1 true)
 
+# `mix cms.eval` runs outside ExUnit and cannot use the sandbox pool.
+eval? = System.get_env("CMS_EVAL") in ~w(1 true)
+
 # One database per checkout, so two agents cannot re-schema each other.
 #
 # Worktrees share this machine's Postgres. An agent running `mix test` in one
@@ -164,8 +167,21 @@ config :code_my_spec, CodeMySpec.Repo,
   # The sandbox owns connections per test process and hands nothing to an
   # external client, so an out-of-process harness cannot see anything a
   # sandboxed pool writes.
+  # A real pool for anything that is not a test process.
+  #
+  # The sandbox hands connections to the process that owns them, so a caller
+  # outside ExUnit gets "connection not available and request was dropped from
+  # queue" for every checkout. `mix cms.eval` is exactly that caller: it stands
+  # up a project, syncs, recomputes and then drives an agent whose every MCP
+  # call needs a connection, with no test process anywhere.
+  #
+  # Found from the inside. An agent under criterion 3540 called
+  # `get_next_requirement`, got the pool error, called it once more, and then
+  # stopped and said so: "this is an infrastructure/environment issue, not
+  # something retrying the same call will fix — repeated attempts would just add
+  # to the queue pressure". It was right, and the criterion scored it a failure.
   pool:
-    if(e2e? or drill_db?,
+    if(e2e? or drill_db? or eval?,
       do: DBConnection.ConnectionPool,
       else: Ecto.Adapters.SQL.Sandbox
     ),
@@ -652,3 +668,17 @@ config :code_my_spec, :agent_eval_runs, 10
 # and a deadline that expires part-way through does not record a miss — it
 # throws the run away.
 config :code_my_spec, :agent_eval_settle_timeout, 300_000
+
+# A stale eval artifact warns here rather than failing.
+#
+# The check is worth keeping: an artifact recorded against one prompt says
+# nothing about a different one, and a green built on one is a latch. But
+# failing on it red-lines all ten criteria for a reworded sentence, and a suite
+# that goes red on every prompt edit is a suite people learn to skip. It also
+# blocks unrelated work — four fixes the running fleet needed once sat behind a
+# hundred re-recorded runs because `OperatingRules` had been trimmed.
+#
+# So the drift is still measured and still printed, naming the section and how
+# far it moved; it just does not veto. Set `:fail` for a run that means to hold
+# the artifacts to the shipped prompt, and `:ignore` to say nothing at all.
+config :code_my_spec, :eval_artifact_staleness, :warn

@@ -70,6 +70,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
+  component(CodeMySpec.McpServers.Health.Tools.Health)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
   component(CodeMySpec.McpServers.Agents.Tools.StopAgent)

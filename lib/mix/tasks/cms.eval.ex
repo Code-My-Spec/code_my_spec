@@ -46,10 +46,70 @@ defmodule Mix.Tasks.Cms.Eval do
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  @requirements ["app.start"]
-
+  # The pool flag has to be in the environment before `mix` boots, and nothing
+  # arranged inside this file can put it there.
+  #
+  # Two attempts failed for the same reason while looking like different bugs.
+  # `System.put_env("CMS_EVAL", "1")` at the module's top level runs when the
+  # module is *compiled*, so the flag was set on whichever invocation happened
+  # to recompile this file and on no other. Moving it into `run/1` and starting
+  # the app by hand looked like the fix and was not: `config/test.exs` is
+  # evaluated when the project is loaded, which is before any task runs at all.
+  #
+  # So every eval so far had run on `Ecto.Adapters.SQL.Sandbox`. That appears to
+  # work — without `Sandbox.mode/2` the sandbox serves anybody — but it keeps
+  # ownership semantics, and under those a process that runs one query owns that
+  # connection until it *exits*. An agent turn is a long-lived process. Twenty
+  # of them squat twenty connections, `pool_size` is `schedulers_online() * 2`,
+  # and everything else starves until the 120-second `:ownership_timeout`
+  # force-disconnects the squatters. That is the whole of why run 1 failed and
+  # runs 2 and 3 of the same batch passed in 73 seconds on the recovered pool.
+  # `DBConnection.ConnectionPool` has no such notion — a connection goes back
+  # when the query ends.
+  #
+  # Re-executing is the only order that holds, so the task puts the flag in the
+  # environment and runs itself again rather than asking to be invoked a
+  # particular way and failing quietly when it is not.
   @impl Mix.Task
   def run(args) do
+    if System.get_env("CMS_EVAL") in ~w(1 true) do
+      Mix.Task.run("app.start")
+      refuse_sandbox!()
+      measure(args)
+    else
+      relaunch(args)
+    end
+  end
+
+  defp relaunch(args) do
+    {_, status} =
+      System.cmd("mix", ["cms.eval" | args],
+        env: [{"CMS_EVAL", "1"}, {"MIX_ENV", "test"}],
+        into: IO.stream(:stdio, :line),
+        stderr_to_stdout: true
+      )
+
+    if status != 0, do: exit({:shutdown, status})
+  end
+
+  # Loudly, because the sandbox does not refuse this caller. It serves it and
+  # then starves it, and that surfaces minutes later as an agent reporting the
+  # database is down — a measurement of the pool wearing an agent's words.
+  defp refuse_sandbox! do
+    pool = Application.get_env(:code_my_spec, CodeMySpec.Repo)[:pool]
+
+    if pool == Ecto.Adapters.SQL.Sandbox do
+      Mix.raise("""
+      The Repo booted on #{inspect(pool)}, so this run would measure the pool
+      rather than the agent. `CMS_EVAL=1` has to be in the environment before
+      `mix` loads `config/test.exs`:
+
+          CMS_EVAL=1 MIX_ENV=test mix cms.eval
+      """)
+    end
+  end
+
+  defp measure(args) do
     {runs, args} = take_flag(args, "--runs")
     {pattern, _args} = take_flag(args, "--pattern")
 

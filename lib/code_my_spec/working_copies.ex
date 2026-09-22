@@ -309,6 +309,7 @@ defmodule CodeMySpec.WorkingCopies do
 
         if is_nil(copy), do: Repo.rollback(:not_found)
 
+        release_backlog(scope, copy)
         selected_id = select_story(scope, copy, story_id)
 
         case save(copy, %{active_story_id: selected_id}) do
@@ -328,6 +329,28 @@ defmodule CodeMySpec.WorkingCopies do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # A copy holds the story it is pointed at, and no others.
+  #
+  # `select_story/3` assigned on the way in and nothing ever released, so a copy
+  # accumulated every story it had ever been pointed at and each one was pinned
+  # there: `story_assigned_elsewhere` refuses to move an assigned story, and
+  # clearing the active story left the assignment behind. Pointing a copy at a
+  # second story stranded the first with no tool able to free it — measured on
+  # 2026-09-21, where story 1027 was pinned to a main checkout within ten
+  # minutes of the project being set up and could not be handed to the copy
+  # that was staffed to build it.
+  #
+  # Released before the new one is selected and inside the same transaction, so
+  # a refusal rolls the release back with it: a copy pointed at something
+  # invalid keeps exactly what it had.
+  defp release_backlog(scope, copy) do
+    Story
+    |> where([s], s.working_copy_id == ^copy.id)
+    |> where([s], s.project_id == ^scope.active_project_id)
+    |> where([s], s.account_id == ^scope.active_account_id)
+    |> Repo.update_all(set: [working_copy_id: nil])
   end
 
   defp select_story(_scope, _copy, nil), do: nil
