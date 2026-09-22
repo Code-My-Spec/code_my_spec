@@ -93,8 +93,26 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   # What the turn-ended path does: clears the turn, then records that nothing
   # was claimed. No task is ever added, which is the whole premise.
   defp ended_turn_without_claiming(scope, agent) do
+    started = DateTime.add(DateTime.utc_now(), -30, :second)
     {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
-    {:ok, agent} = Work.record_decline(scope, agent)
+    {:ok, agent} = Work.record_decline(scope, agent, started)
+    agent
+  end
+
+  # A turn that closed a task: the agent holds nothing when it ends, exactly
+  # like a refusal, and is the case that must NOT be damped.
+  defp ended_turn_having_finished_a_task(scope, agent) do
+    started = DateTime.add(DateTime.utc_now(), -30, :second)
+
+    task = %CodeMySpec.Sessions.Task{
+      id: Ecto.UUID.generate(),
+      status: :complete,
+      requirement_name: "bdd_specs_passing",
+      started_at: started,
+      completed_at: DateTime.utc_now()
+    }
+
+    {:ok, agent} = Work.record_decline(scope, %{agent | tasks: [task]}, started)
     agent
   end
 
@@ -112,6 +130,23 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            without a record of the refusal the next observation re-offers it —
            and a turn ending is itself an observation. That is the 197-turn
            spin this exists to stop.
+           """
+  end
+
+  test "finishing a task is not declining the next one", ctx do
+    finished = ended_turn_having_finished_a_task(ctx.scope, reload(ctx.scope, ctx.agent))
+
+    assert admitted?(ctx.scope, finished),
+           """
+           An agent that closed a task was damped on the next one.
+
+           A turn that completes a task ends with the agent holding nothing,
+           which is indistinguishable from a refusal by state alone — and the
+           offer it would be charged with refusing is the next piece of work,
+           handed over by `consider_copy(:task_completed)` moments later. Read
+           that way the damper fires at exactly the point the pipeline is meant
+           to advance, and every finished task costs a ten-minute wait for the
+           next.
            """
   end
 

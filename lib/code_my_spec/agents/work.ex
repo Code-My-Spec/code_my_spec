@@ -106,17 +106,52 @@ defmodule CodeMySpec.Agents.Work do
   An agent that *did* claim something has not declined anything, so its mark is
   cleared — the next offer after a completed task is a genuinely new one.
   """
-  def record_decline(scope, %Agent{} = agent) do
-    attrs =
-      case {Agent.active_task(agent), offer(scope, agent)} do
-        {nil, {:work, fingerprint}} ->
+  def record_decline(scope, %Agent{} = agent, turn_started_at \\ nil) do
+    AgentsRepository.update_agent(scope, agent, decline_attrs(scope, agent, turn_started_at))
+  end
+
+  defp decline_attrs(scope, agent, turn_started_at) do
+    if declined?(scope, agent, turn_started_at) do
+      case offer(scope, agent) do
+        {:work, fingerprint} ->
           %{declined_offer: fingerprint, declined_offer_at: DateTime.utc_now()}
 
-        _ ->
+        :none ->
           %{declined_offer: nil, declined_offer_at: nil}
       end
+    else
+      %{declined_offer: nil, declined_offer_at: nil}
+    end
+  end
 
-    AgentsRepository.update_agent(scope, agent, attrs)
+  # A turn that did nothing, as distinct from one that did something and left
+  # more behind.
+  #
+  # Holding a task is the obvious case. The subtle one is a turn that *closed*
+  # a task: the agent no longer holds anything, so the naive reading is that it
+  # declined — and the offer it would be charged with declining is the next
+  # piece of work, handed to it by `consider_copy(:task_completed)` moments
+  # later. That would damp the pipeline at exactly the point it is supposed to
+  # advance, turning every completed task into a ten-minute wait for the next
+  # one.
+  #
+  # So work done during the turn counts as work, whether or not it is still
+  # open when the turn ends.
+  defp declined?(_scope, agent, turn_started_at) do
+    is_nil(Agent.active_task(agent)) and not closed_a_task?(agent, turn_started_at)
+  end
+
+  # No start time to compare against — an interrupted turn, or a caller that
+  # does not track one. Treated as having done something, because charging an
+  # agent with a refusal it cannot be shown to have made is the error that
+  # costs work rather than the one that costs a turn.
+  defp closed_a_task?(_agent, nil), do: true
+
+  defp closed_a_task?(%Agent{tasks: tasks}, %DateTime{} = turn_started_at) do
+    Enum.any?(tasks || [], fn task ->
+      not is_nil(task.completed_at) and
+        DateTime.compare(task.completed_at, turn_started_at) != :lt
+    end)
   end
 
   def release(scope, agent_id, ref) do
