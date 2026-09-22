@@ -41,7 +41,12 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # related. Without this the app is willing to be framed and we refuse to
       # frame it, which looks identical to the app refusing: a blank pane, no
       # server-side error, and an iframe element that inspects perfectly.
-      "frame-src 'self' #{PreviewAddress.csp_origin()} https://js.stripe.com https://hooks.stripe.com",
+      #
+      # The extra origins are for the previewed app's own OAuth flows —
+      # "Sign in with Google/GitHub" sends the frame to the provider's own
+      # domain, which is neither `'self'` nor the preview's origin. See
+      # `PreviewAddress.csp_extra_frame_origins/0`.
+      "frame-src 'self' #{PreviewAddress.csp_origin()} #{Enum.join(PreviewAddress.csp_extra_frame_origins(), " ")} https://js.stripe.com https://hooks.stripe.com",
       # Clarity's data collection rotates across regional subdomains
       # (https://*.clarity.ms), not just www — a single hostname here silently
       # drops session data with no visible error, the exact failure mode this

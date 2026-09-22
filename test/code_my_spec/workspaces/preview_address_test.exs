@@ -24,4 +24,27 @@ defmodule CodeMySpec.Workspaces.PreviewAddressTest do
                PreviewAddress.host(Ecto.UUID.generate())
     end
   end
+
+  describe "csp_extra_frame_origins/0" do
+    test "defaults to the two OAuth providers a generated app is likely to offer" do
+      assert PreviewAddress.csp_extra_frame_origins() == [
+               "https://accounts.google.com",
+               "https://github.com"
+             ]
+    end
+
+    test "an added provider does not need a code change" do
+      previous = Application.get_env(:code_my_spec, PreviewAddress, [])
+
+      Application.put_env(
+        :code_my_spec,
+        PreviewAddress,
+        Keyword.put(previous, :extra_frame_origins, ["gitlab.com"])
+      )
+
+      on_exit(fn -> Application.put_env(:code_my_spec, PreviewAddress, previous) end)
+
+      assert PreviewAddress.csp_extra_frame_origins() == ["https://gitlab.com"]
+    end
+  end
 end
