@@ -46,7 +46,8 @@ defmodule CodeMySpec.Agents.Work do
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          true <- runnable_state?(current),
-         true <- eligible_work?(scope, current),
+         {:work, offer} <- offer(scope, current),
+         false <- already_declined?(current, offer),
          {:ok, {reserved, ref}} <- reserve(scope, current.id) do
       turn_prompt = prompt(reserved)
 
@@ -79,9 +80,43 @@ defmodule CodeMySpec.Agents.Work do
       end
     else
       false -> {:ok, :not_runnable}
+      :none -> {:ok, :not_runnable}
+      true -> {:ok, :offer_declined}
       {:ok, :not_runnable} = result -> result
       error -> error
     end
+  end
+
+  @doc """
+  Record that this agent ended a turn without taking the work it was offered.
+
+  Called from the turn-ended path, which is the only place that knows a turn
+  finished with nothing claimed. Until this existed the agent was re-offered
+  the same work immediately and forever: ending a turn clears `turn_started_at`
+  and the reservation, and declining leaves `active_task` nil, so every
+  condition `runnable_state?/1` tests is satisfied again the instant the turn
+  ends. The next observation — and a turn ending is itself enough to produce
+  one — fires `consider_project/2` and hands the agent the offer it just
+  refused.
+
+  Measured on the math project 2026-09-22, QA agent 85118c1a: 197 turns in
+  3m29s, each one reading "not re-claiming it; ending the turn", at a steady
+  60 a minute. Nothing in the system damped it and nothing would have.
+
+  An agent that *did* claim something has not declined anything, so its mark is
+  cleared — the next offer after a completed task is a genuinely new one.
+  """
+  def record_decline(scope, %Agent{} = agent) do
+    attrs =
+      case {Agent.active_task(agent), offer(scope, agent)} do
+        {nil, {:work, fingerprint}} ->
+          %{declined_offer: fingerprint, declined_offer_at: DateTime.utc_now()}
+
+        _ ->
+          %{declined_offer: nil, declined_offer_at: nil}
+      end
+
+    AgentsRepository.update_agent(scope, agent, attrs)
   end
 
   def release(scope, agent_id, ref) do
@@ -163,9 +198,68 @@ defmodule CodeMySpec.Agents.Work do
   defp reservation_open?(%{work_requested_at: at}),
     do: DateTime.diff(DateTime.utc_now(), at) < @reservation_ttl_seconds
 
-  defp eligible_work?(scope, agent) do
-    question_work?(scope, agent) or graph_work?(scope, agent)
+  @doc """
+  Forget what this agent last refused.
+
+  A person answering a gate overrides the damper. Denying a tap-out means "no,
+  there is work, go and do it" — it is the one input that is explicitly about
+  this agent's refusal, and letting the fingerprint suppress the wake would
+  make the deny silently do nothing, which is the stall the deny-wake was added
+  to fix in the first place.
+  """
+  def clear_decline(scope, %Agent{} = agent) do
+    AgentsRepository.update_agent(scope, agent, %{declined_offer: nil, declined_offer_at: nil})
   end
+
+  # What this agent is being offered, as a value that can be compared to what it
+  # last refused. `eligible_work?/2` answered only "is there any", which cannot
+  # tell a new offer from a repeat of the one just declined.
+  defp offer(scope, agent) do
+    questions = question_work?(scope, agent)
+    nodes = graph_work(scope, agent)
+
+    if questions or nodes != [] do
+      {:work, fingerprint(questions, nodes)}
+    else
+      :none
+    end
+  end
+
+  # Hashed rather than stored whole: the comparison is equality and nothing
+  # reads the parts, so the column stays a fixed width no matter how much work
+  # a role has. Sorted first — `actionable_for_role/2` makes no ordering
+  # promise, and an unstable order would read as a changed offer every pass and
+  # defeat the whole guard.
+  defp fingerprint(questions, nodes) do
+    :crypto.hash(:sha256, :erlang.term_to_binary({questions, Enum.sort(nodes)}))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 32)
+  end
+
+  # The window after which an unchanged offer is made again anyway.
+  #
+  # Without it the fingerprint is a wedge: work whose *set* does not change but
+  # whose claimability does — a blocker cleared, a dependency finished
+  # elsewhere, a tool granted — would leave the agent asleep with no edge left
+  # to wake it, which is the failure this system already knows well from an
+  # agent holding a task nothing can interrupt.
+  #
+  # Ten minutes turns a 60-turn-per-minute spin into six turns an hour while
+  # still guaranteeing the agent gets another look. A human `message_agent`
+  # bypasses this entirely and always did.
+  @decline_ttl_seconds 600
+
+  defp already_declined?(%{declined_offer: nil}, _offer), do: false
+
+  defp already_declined?(%{declined_offer: declined}, offer) when declined != offer, do: false
+
+  # Recorded by a build that did not stamp the time. Treated as expired rather
+  # than open — the same reasoning as `reservation_open?/1` in reverse: here the
+  # conservative reading is the one that keeps the agent reachable.
+  defp already_declined?(%{declined_offer_at: nil}, _offer), do: false
+
+  defp already_declined?(%{declined_offer_at: at}, _offer),
+    do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
 
   defp question_work?(scope, %{role: :main}) do
     Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
@@ -184,13 +278,15 @@ defmodule CodeMySpec.Agents.Work do
 
   defp prompt(_agent), do: @prompt
 
-  defp graph_work?(scope, agent) do
+  # The nodes themselves rather than a boolean, so the offer can be fingerprinted.
+  defp graph_work(scope, agent) do
     scope = %{scope | active_working_copy_id: agent.working_copy_id}
     owners = AgentsRepository.list_agents(scope)
 
     scope
     |> Requirements.actionable_for_role(agent.role)
-    |> Enum.any?(fn node -> not held?(owners, agent, node) end)
+    |> Enum.reject(&held?(owners, agent, &1))
+    |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
 
   defp held?(owners, agent, node) do

@@ -462,6 +462,13 @@ defmodule CodeMySpec.Notifications do
         # separate fix.
         Conversations.record_sent_to_agent(agent, tap_out_denied_notice())
 
+        # A person saying "go and work" outranks the agent's own last refusal.
+        # `Work` refuses to re-offer work an agent has already declined, which
+        # is what stops it spinning — but this deny IS the answer to that
+        # refusal, so without clearing the mark the wake below would be
+        # suppressed and the deny would do nothing at all.
+        {:ok, _cleared} = Work.clear_decline(scope, agent)
+
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
           Work.consider_copy(scope, copy_id, :tap_out_denied)
         end)

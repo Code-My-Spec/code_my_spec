@@ -1663,6 +1663,13 @@ defmodule CodeMySpec.Agents do
         # graph, problems — and an agent read during it would show a turn that
         # ended as still running.
         {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+        # Before the stop menu, because `deliver/3` is what produces the
+        # observation that fires `Work.consider_project/2` — recording the
+        # decline afterwards would lose the race with the wake it is meant to
+        # damp.
+        {:ok, agent} = Work.record_decline(scope, agent)
+
         StopDecision.deliver(scope, agent, opts)
 
       _ ->
