@@ -21,6 +21,7 @@ defmodule CodeMySpec.Notifications do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -447,6 +448,20 @@ defmodule CodeMySpec.Notifications do
           active_working_copy_id: copy_id
         }
 
+        # Told before woken, and that ordering is the whole of it.
+        #
+        # The decision clears the gate on this side; the agent only knows what
+        # is in its own transcript, and the last thing there is its own "I have
+        # asked to leave and am waiting". Woken without being told, it reads
+        # that, concludes it is still waiting, and stops — then the next wake
+        # does it again. Measured on the math project 2026-09-22: the deny
+        # landed, and coding answered "No change. Tap-out request af0dddfd still
+        # pending. Stopping." every three seconds until it was taken out of the
+        # loop by hand. The wake added in this same function is what turned a
+        # silent stall into a spin, so this is its other half rather than a
+        # separate fix.
+        Conversations.record_sent_to_agent(agent, tap_out_denied_notice())
+
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
           Work.consider_copy(scope, copy_id, :tap_out_denied)
         end)
@@ -459,6 +474,17 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp wake_if_still_in_the_loop(_request), do: :ok
+
+  defp tap_out_denied_notice do
+    """
+    Your request to leave the loop was declined. You are still in it, and there
+    is work for your role — that is why it was declined rather than granted.
+
+    Do not wait on this any longer: it is answered. Carry on from
+    `get_next_requirement`. If what you were blocked on has not changed, say so
+    against the thing that is blocking you rather than asking to leave again.
+    """
+  end
 
   defp apply_tap_out_decision(request) do
     owner =

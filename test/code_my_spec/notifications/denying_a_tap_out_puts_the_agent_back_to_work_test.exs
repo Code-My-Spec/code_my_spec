@@ -58,6 +58,12 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     {agent, conversation, request}
   end
 
+  defp told?(conversation) do
+    conversation
+    |> Conversations.list_messages()
+    |> Enum.any?(&(inspect(&1.content) =~ "was declined"))
+  end
+
   defp admitted?(conversation) do
     conversation
     |> Conversations.list_messages()
@@ -71,7 +77,19 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
 
     {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
 
+    # Two messages land: the notice, written before the wake, and the work
+    # prompt the wake produces. Waiting for one would race whichever is second.
     assert_receive {:new_message, _}, 5_000
+    assert_receive {:new_message, _}, 5_000
+
+    assert told?(conversation),
+           """
+           The agent was woken without being told its request was answered.
+
+           It reads its own transcript, where the last thing it said is that it
+           is waiting — so it concludes it still is, stops, and does the same on
+           the next wake. That is a spin, and the wake is what causes it.
+           """
 
     assert admitted?(conversation),
            """
@@ -90,6 +108,9 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     {:ok, _} = Notifications.resolve_permission_request(request.id, "allow")
 
     refute_receive {:new_message, _}, 1_000
+
+    refute told?(conversation),
+           "an allowed tap-out was told its request was declined"
 
     refute admitted?(conversation),
            """
