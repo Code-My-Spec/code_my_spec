@@ -95,6 +95,14 @@ defmodule CodeMySpec.Projects.Project do
     # provider; used to fetch DNS records and trigger verification.
     field :resend_domain_id, :string
 
+    # Extra origins the previewed app's own OAuth flows may send the preview
+    # iframe to, beyond the built-in accounts.google.com/github.com pair — see
+    # `CodeMySpec.Workspaces.PreviewAddress.extra_frame_origins/1`. Same
+    # nil-vs-[] shape as `setup_options` below: nil is "never customized" and
+    # resolves to the built-in pair, [] is "explicitly cleared, allow nothing
+    # extra", and any other list is exactly what is allowed.
+    field :preview_extra_frame_origins, {:array, :string}
+
     # Which parts of setup this project runs. Stored as strings and read back
     # through `setup_options/1`, which is where the default lives — a project
     # that has never chosen gets everything, because setup's job is a working
@@ -156,7 +164,7 @@ defmodule CodeMySpec.Projects.Project do
   @doc false
   def changeset(project, attrs, user_scope) do
     project
-    |> cast(attrs, [
+    |> cast(normalize_preview_extra_frame_origins(attrs), [
       :name,
       :description,
       :module_name,
@@ -183,6 +191,7 @@ defmodule CodeMySpec.Projects.Project do
       :domain,
       :domain_verified_at,
       :resend_domain_id,
+      :preview_extra_frame_origins,
       :setup_options,
       :default_working_copy_id
     ])
@@ -233,6 +242,31 @@ defmodule CodeMySpec.Projects.Project do
   """
   def domain_registered?(%__MODULE__{resend_domain_id: id}), do: not is_nil(id)
   def domain_registered?(_), do: false
+
+  # The form field is one text box, comma-separated — an add/remove row per
+  # domain is more control than a handful of OAuth provider domains needs.
+  # `cast/3` on an `{:array, :string}` rejects a bare string outright rather
+  # than splitting it, so the split has to happen before `cast` ever sees it.
+  # Left alone for programmatic callers (tests, the bootstrap path) that
+  # already pass a list.
+  defp normalize_preview_extra_frame_origins(%{"preview_extra_frame_origins" => value} = attrs)
+       when is_binary(value) do
+    Map.put(attrs, "preview_extra_frame_origins", split_origins(value))
+  end
+
+  defp normalize_preview_extra_frame_origins(%{preview_extra_frame_origins: value} = attrs)
+       when is_binary(value) do
+    Map.put(attrs, :preview_extra_frame_origins, split_origins(value))
+  end
+
+  defp normalize_preview_extra_frame_origins(attrs), do: attrs
+
+  defp split_origins(value) do
+    value
+    |> String.split(~r/[,\n]/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
 
   defp put_deploy_key_hash(changeset) do
     case fetch_change(changeset, :deploy_key) do
