@@ -24,6 +24,11 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
 
   @prefix "preview-"
 
+  # The two OAuth providers a generated app is most likely to offer out of
+  # the box. Not an exhaustive list — `:extra_frame_origins` config extends
+  # it per deploy without needing a code change for the next provider.
+  @default_extra_frame_origins ["accounts.google.com", "github.com"]
+
   @doc """
   The address for this project, guaranteed to resolve, or a reason it does not.
 
@@ -103,6 +108,27 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   """
   @spec csp_origin() :: String.t()
   def csp_origin, do: scheme() <> "://*." <> base_domain() <> port_suffix()
+
+  @doc """
+  CSP `frame-src` origins a previewed app is allowed to navigate the iframe
+  to, beyond its own preview origin.
+
+  A previewed app's own "Sign in with Google"/"Sign in with GitHub" sends the
+  top frame of the iframe to the provider's own domain for the OAuth
+  redirect — `frame-src` only ever covered the preview's own origin, so the
+  provider's page was refused by CSP and the flow died with no server-side
+  error, reading as a broken app rather than a policy that never expected the
+  frame to leave its own domain.
+
+  Configured rather than hardcoded so a project needing a provider outside
+  the default set does not need a deploy to add it.
+  """
+  @spec csp_extra_frame_origins() :: [String.t()]
+  def csp_extra_frame_origins do
+    config()
+    |> Keyword.get(:extra_frame_origins, @default_extra_frame_origins)
+    |> Enum.map(&("https://" <> &1))
+  end
 
   # Off unless a real zone is configured. A machine that reaches previews some
   # other way should not be writing records into a zone it does not own.
