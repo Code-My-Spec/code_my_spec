@@ -127,9 +127,41 @@ defmodule CodeMySpec.Agents.Work do
 
   defp runnable_state?(agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
-      is_nil(agent.work_request_id) and is_nil(Agent.active_task(agent)) and
+      not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
       not is_nil(agent.working_copy_id)
   end
+
+  # A reservation is the gap between stamping a turn and the agent reporting it
+  # started — seconds. The turn itself is guarded by `turn_started_at`, so
+  # nothing legitimate sits in this window for minutes, and five is generous.
+  #
+  # It has to expire because every path that clears it needs a live process:
+  # `release/3` on a failed dispatch, and the agent's own completion. The case
+  # that strands one is the process going away after the transport accepted it.
+  # `record_stopped/2` clears it when the reap notices — but a harness restart
+  # re-reports the agent as running without passing through there, and
+  # `record_running_on_copy/3` leaves an already-`:running` row alone. That row
+  # is exactly the one holding the stale reservation.
+  #
+  # Measured on the math project 2026-09-22: coding stamped a reservation at
+  # 01:53, the harness restarted three times, and the row carried it through
+  # every one. `runnable_state?/1` requires no open reservation, so the agent
+  # was un-admittable for two hours while its own `spex_boundary_ready` sat
+  # ready and the other three roles waited behind it.
+  #
+  # Expiring rather than clearing on sight: `reserve/1` stamps a fresh ref over
+  # the top, and `release/3` matches on the ref it was given, so a late releaser
+  # for the dead reservation cannot clobber the live one.
+  @reservation_ttl_seconds 300
+
+  defp reservation_open?(%{work_request_id: nil}), do: false
+
+  # Stamped by a build that did not record the time. Treated as open rather than
+  # expired, because "no timestamp" is not evidence of age.
+  defp reservation_open?(%{work_requested_at: nil}), do: true
+
+  defp reservation_open?(%{work_requested_at: at}),
+    do: DateTime.diff(DateTime.utc_now(), at) < @reservation_ttl_seconds
 
   defp eligible_work?(scope, agent) do
     question_work?(scope, agent) or graph_work?(scope, agent)

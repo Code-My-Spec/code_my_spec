@@ -24,6 +24,11 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
 
   @prefix "preview-"
 
+  # The two OAuth providers a generated app is most likely to offer out of
+  # the box. Not an exhaustive list — `:extra_frame_origins` config extends
+  # it per deploy without needing a code change for the next provider.
+  @default_extra_frame_origins ["accounts.google.com", "github.com"]
+
   @doc """
   The address for this project, guaranteed to resolve, or a reason it does not.
 
@@ -103,6 +108,51 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   """
   @spec csp_origin() :: String.t()
   def csp_origin, do: scheme() <> "://*." <> base_domain() <> port_suffix()
+
+  @doc """
+  Bare domains a previewed app's own OAuth flows may send the iframe to,
+  beyond its own preview origin — for display (the project form, the preview
+  panel) rather than the CSP header itself. See `csp_extra_frame_origins/1`
+  for the header value these become.
+
+  Per project (story 886's rule) rather than only per deploy: `nil` on the
+  project — never customized — falls back to the `:extra_frame_origins` config
+  (itself defaulting to the built-in accounts.google.com/github.com pair), so
+  a project that has never touched this setting still gets the two providers
+  a generated app is most likely to offer. A project with its own list
+  (possibly `[]`, explicitly cleared) uses exactly that, config included.
+  """
+  @spec extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
+  def extra_frame_origins(project \\ nil)
+
+  def extra_frame_origins(%{preview_extra_frame_origins: origins}) when is_list(origins),
+    do: origins
+
+  def extra_frame_origins(_project) do
+    config()
+    |> Keyword.get(:extra_frame_origins, @default_extra_frame_origins)
+  end
+
+  @doc """
+  CSP `frame-src` origins a previewed app is allowed to navigate the iframe
+  to, beyond its own preview origin.
+
+  A previewed app's own "Sign in with Google"/"Sign in with GitHub" sends the
+  top frame of the iframe to the provider's own domain for the OAuth
+  redirect — `frame-src` only ever covered the preview's own origin, so the
+  provider's page was refused by CSP and the flow died with no server-side
+  error, reading as a broken app rather than a policy that never expected the
+  frame to leave its own domain.
+
+  Takes the project so the CSP header can reflect what that project's own
+  form configured — see `extra_frame_origins/1`.
+  """
+  @spec csp_extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
+  def csp_extra_frame_origins(project \\ nil) do
+    project
+    |> extra_frame_origins()
+    |> Enum.map(&("https://" <> &1))
+  end
 
   # Off unless a real zone is configured. A machine that reaches previews some
   # other way should not be writing records into a zone it does not own.

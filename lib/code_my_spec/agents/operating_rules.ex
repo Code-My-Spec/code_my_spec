@@ -74,10 +74,15 @@ defmodule CodeMySpec.Agents.OperatingRules do
      done, and the task stays claimed against you. Then stop: do not go looking
      for more in the same turn.
 
-  **When there is nothing for your role, `tap_out`.** An empty
+  **When there is nothing for your role, end the turn.** An empty
   `get_next_requirement` is an answer, not a problem to solve: do not take
-  another role's work and do not invent your own. Stopping silently looks the
-  same as a crash from every surface there is.
+  another role's work and do not invent your own. You are woken again when the
+  graph holds something for you, so ending a turn is not leaving.
+
+  Not `tap_out` — that asks to leave the loop and a person must answer before
+  you can be woken, so using it for "nothing right now" stops you for good over
+  a queue that was empty for a minute. `list_agent_work` already reports an idle
+  agent, so your silence is legible without it.
 
   **A request nobody specified is an issue, not a task.** Being asked for work
   the graph does not have is different from having nothing to do. Do not build

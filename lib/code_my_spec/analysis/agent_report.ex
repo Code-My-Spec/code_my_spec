@@ -28,11 +28,26 @@ defmodule CodeMySpec.Analysis.AgentReport do
   difference between "something is failing" and something the agent can act on
   without a round trip.
 
-  ## Silence is a result
+  ## Silence is a result, except to whoever asked
 
   A clean run says nothing (criterion 3046). A message wakes a process and
   costs it a turn, and an agent woken to be told its tree is fine has been
   charged for no information — the same rule `StopDecision` keeps everywhere.
+
+  That holds for an agent that did not ask. For the agent that *requested* the
+  run, silence is not the absence of information, it is the answer it is
+  blocked on — and `runs.requested_by` already records who that is.
+
+  Measured on the math project 2026-09-22: a coding agent called
+  `start_analysis(spex)`, said "not polling; will act when it lands", and its
+  run came back green. `digest/2` answers `nil` for a clean tree, so nothing was
+  sent. The agent held an open `bdd_specs_passing` task for 25 minutes, and
+  `Work.runnable_state?/1` skips an agent with an open task — so no wake path in
+  the system could reach it. A human had to tell it the run was green. Three
+  times in one session, 22 to 26 minutes each.
+
+  So `deliver/4` takes the requester\'s id: everyone else keeps the silence,
+  and the one who asked gets an answer either way.
 
   Delivery is dispatched, never called: `message_agent/4` runs the whole turn
   inside a `GenServer.call`, and this runs inside the reconciler, which must not
@@ -59,21 +74,37 @@ defmodule CodeMySpec.Analysis.AgentReport do
   where the run has already been recorded — a delivery that fails must not make
   a completed run look incomplete.
   """
-  @spec deliver(Scope.t(), atom() | String.t(), [struct()]) :: :ok
-  def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems)
-      when is_binary(copy_id) do
-    case digest(source, problems) do
-      nil ->
-        :ok
+  @spec deliver(Scope.t(), atom() | String.t(), [struct()], String.t() | nil) :: :ok
+  def deliver(scope, source, problems, requester_id \\ nil)
 
-      message ->
-        scope
-        |> internal_agents(copy_id)
-        |> Enum.each(&tell(&1, message))
-    end
+  def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
+      when is_binary(copy_id) do
+    findings = digest(source, problems)
+
+    scope
+    |> internal_agents(copy_id)
+    |> Enum.each(&tell_one(&1, findings, source, requester_id))
   end
 
-  def deliver(_scope, _source, _problems), do: :ok
+  def deliver(_scope, _source, _problems, _requester_id), do: :ok
+
+  # The asker is answered whatever the run found; everyone else keeps the
+  # silence a clean tree earns them.
+  defp tell_one(%{id: id} = agent, findings, source, id),
+    do: tell(agent, findings || clean(source))
+
+  defp tell_one(_agent, nil, _source, _requester_id), do: :ok
+  defp tell_one(agent, findings, _source, _requester_id), do: tell(agent, findings)
+
+  defp clean(source) do
+    """
+    Your #{source} run finished: no problems in this working copy.
+
+    This is the answer to the run you started, not a nudge — nothing here needs
+    fixing. If a task was waiting on it, dispose of that task now rather than
+    waiting further.
+    """
+  end
 
   # Alloy only. A Claude Code session in the same copy has its own path and
   # would be told twice — once here and once on its next tool call — which is
