@@ -103,6 +103,15 @@ defmodule CodeMySpecWeb.IntakeComponents do
   conversation has got to, and nothing else does. A visitor who has been typing
   into the same box since the first question should not be handed a different
   one because the state machine moved.
+
+  `phx-disable-with` on the button, same as `AgentConversationLive`'s own
+  composer: `Conversation.said/2` is a `GenServer.call` and the visible
+  reply is a separate async broadcast, so the gap between clicking Send and
+  anything changing on screen was silent — no state change at all on the one
+  element the visitor had just touched. That silence is what read as "a
+  form", not the bubble styling; disabling the button live is what makes a
+  fast turn feel like a chat and a slow one feel like it is still working
+  rather than stuck.
   """
   attr :event, :string, required: true
   attr :field, :string, required: true
@@ -144,7 +153,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
         class="textarea textarea-bordered w-full"
         placeholder={@placeholder}
       >{@draft}</textarea>
-      <.button class="btn-primary">Send</.button>
+      <.button class="btn-primary" phx-disable-with="Sending…">Send</.button>
     </form>
     """
   end
