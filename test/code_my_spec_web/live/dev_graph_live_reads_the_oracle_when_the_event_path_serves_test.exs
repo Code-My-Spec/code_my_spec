@@ -53,7 +53,7 @@ defmodule CodeMySpecWeb.DevGraphLiveReadsTheOracleWhenTheEventPathServesTest do
     assert html =~ ~s(data-test="oracle"),
            "the event path serves and the page still judges it by the pass's fingerprints"
 
-    assert html =~ "agrees with every row and edge being served",
+    assert html =~ "agree with the rows being served",
            """
            The oracle panel rendered, but not as agreeing on a freshly seeded
            project. Either the seed and the pass really differ here — which

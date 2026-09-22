@@ -68,8 +68,8 @@ defmodule CodeMySpecWeb.DevGraphLive do
   alias CodeMySpec.DevState
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Users.Scope
 
   # Long, because events do the work. This only catches what has no
@@ -328,11 +328,8 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
           <div :if={match?({:oracle, _}, @stale)} data-test="oracle" class="space-y-1">
             <p :if={oracle_clean?(@stale)} class="text-sm text-success">
-              Nothing. The batched pass, computing this vantage beside the event path,
-              agrees with every row and edge being served ({elem(@stale, 1).live} rows, {elem(
-                @stale,
-                1
-              ).live_edges} edges).
+              Nothing. The pass's rows and edges, computed beside the event path, agree
+              with the rows being served ({elem(@stale, 1).live} rows, {elem(@stale, 1).live_edges} edges).
             </p>
             <p :if={not oracle_clean?(@stale)} class="text-sm text-error">
               The oracle differs — rows missing {elem(@stale, 1).missing}, extra {elem(@stale, 1).extra}, disagreeing {elem(
