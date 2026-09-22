@@ -90,6 +90,28 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   defp put_preview(payload, :error), do: payload
 
   @doc """
+  Have the checkout report whether its own app is answering, the way a real
+  sync does.
+
+  A separate event from the join: `preview_url` is minted (or reported)
+  there, but whether anything is actually serving it is told later, on every
+  sync, over the same socket the join kept open. A criterion whose `given_`
+  only sets `preview_url` is describing the gap between those two moments,
+  not the settled state a founder actually looks at — push this afterward
+  for the ordinary case of "and the checkout already confirmed it is up."
+  """
+  @spec report_preview_status(Phoenix.Socket.t(), String.t()) :: :ok
+  def report_preview_status(socket, status) when status in ~w(serving erroring down) do
+    ref = Phoenix.ChannelTest.push(socket, "preview_status", %{"status" => status})
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^ref} -> :ok
+    after
+      1_000 -> flunk("the harness channel never acknowledged preview_status")
+    end
+  end
+
+  @doc """
   Report the set of agents a harness is running.
 
   The whole set every time, because that is the contract: anything absent from a
