@@ -92,11 +92,29 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
 
   # What the turn-ended path does: clears the turn, then records that nothing
   # was claimed. No task is ever added, which is the whole premise.
+  # A whole turn, as the real events drive it: `turn_started` clears the
+  # reservation that admitting the turn stamped, `turn_ended` clears the turn
+  # and records what it did. Leaving the reservation in place is what made an
+  # earlier version of this test pass for the wrong reason — `runnable_state?/1`
+  # refuses an agent holding one, so the refusal under test was never reached.
   defp ended_turn_without_claiming(scope, agent) do
     started = DateTime.add(DateTime.utc_now(), -30, :second)
-    {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+    {:ok, agent} =
+      AgentsRepository.update_agent(scope, agent, %{
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil
+      })
+
     {:ok, agent} = Work.record_decline(scope, agent, started)
     agent
+  end
+
+  defp refused_repeatedly(scope, agent, times) do
+    Enum.reduce(1..times, agent, fn _, acc ->
+      ended_turn_without_claiming(scope, reload(scope, acc))
+    end)
   end
 
   # A turn that closed a task: the agent holds nothing when it ends, exactly
@@ -112,24 +130,54 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
       completed_at: DateTime.utc_now()
     }
 
+    {:ok, agent} =
+      AgentsRepository.update_agent(scope, agent, %{
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil
+      })
+
     {:ok, agent} = Work.record_decline(scope, %{agent | tasks: [task]}, started)
     agent
   end
 
-  test "the offer an agent just refused is not made again", ctx do
+  test "one refusal still permits another look", ctx do
     assert admitted?(ctx.scope, ctx.agent),
            "the premise is an agent with work waiting; it was not admitted even once"
 
     declined = ended_turn_without_claiming(ctx.scope, reload(ctx.scope, ctx.agent))
 
-    refute admitted?(ctx.scope, declined),
+    assert admitted?(ctx.scope, declined),
            """
-           The same offer was handed straight back.
+           An agent was shut out after refusing once.
+
+           Story 1048 criterion 3570 lets a graph-admitted turn end without
+           claiming and then requires the turn-end event alone to reconsider
+           the unchanged work — "previously observed eligible work permits a
+           later turn" — and 3572 says the same from the other side, "without
+           suppressing later turns". An agent that looks again and takes it the
+           second time is the system working.
+
+           The defect is the 197th look, not the 2nd.
+           """
+  end
+
+  test "the same offer refused over and over goes quiet", ctx do
+    agent = reload(ctx.scope, ctx.agent)
+
+    refused = refused_repeatedly(ctx.scope, agent, 5)
+
+    refute admitted?(ctx.scope, refused),
+           """
+           The same offer was still being handed back after five refusals.
 
            Ending a turn without claiming clears every mark admission tests, so
-           without a record of the refusal the next observation re-offers it —
-           and a turn ending is itself an observation. That is the 197-turn
-           spin this exists to stop.
+           without a record of the refusals the next observation re-offers it —
+           and a turn ending is itself an observation. Measured: 197 turns in
+           3m29s, 60 a minute, until it was killed by hand.
+
+           Five matches `StopDecision.stuck?/3`, which already goes quiet after
+           five repeats on the sibling path.
            """
   end
 
@@ -138,9 +186,17 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
     # unreachable machine fails.
     Application.put_env(:code_my_spec, :agent_transport, CodeMySpec.Agents.Transport.Harness)
 
-    _ = Work.request_turn_if_runnable(ctx.scope, ctx.agent, :test)
+    agent =
+      Enum.reduce(1..5, ctx.agent, fn _, acc ->
+        acc = reload(ctx.scope, acc)
+        {:ok, acc} = AgentsRepository.update_agent(ctx.scope, acc, %{work_request_id: nil})
+        _ = Work.request_turn_if_runnable(ctx.scope, acc, :test)
+        acc
+      end)
 
-    refute admitted?(ctx.scope, reload(ctx.scope, ctx.agent)),
+    {:ok, agent} = AgentsRepository.update_agent(ctx.scope, agent, %{work_request_id: nil})
+
+    refute admitted?(ctx.scope, reload(ctx.scope, agent)),
            """
            An undeliverable turn was offered again immediately.
 
@@ -154,9 +210,17 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   end
 
   test "finishing a task is not declining the next one", ctx do
-    finished = ended_turn_having_finished_a_task(ctx.scope, reload(ctx.scope, ctx.agent))
+    # Well past the repeat cap: a productive agent must never accumulate a
+    # streak at all, however many turns it takes.
+    finished =
+      Enum.reduce(1..8, ctx.agent, fn _, acc ->
+        ended_turn_having_finished_a_task(ctx.scope, reload(ctx.scope, acc))
+      end)
 
-    assert admitted?(ctx.scope, finished),
+    assert is_nil(reload(ctx.scope, finished).declined_offer_count),
+           "an agent that closed a task on every turn still accumulated refusals"
+
+    assert admitted?(ctx.scope, reload(ctx.scope, finished)),
            """
            An agent that closed a task was damped on the next one.
 
@@ -171,7 +235,8 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   end
 
   test "work that changed since the refusal wakes it immediately", ctx do
-    declined = ended_turn_without_claiming(ctx.scope, reload(ctx.scope, ctx.agent))
+    declined = refused_repeatedly(ctx.scope, ctx.agent, 5)
+
     refute admitted?(ctx.scope, declined)
 
     # The offer moved on: what it refused is no longer what is on the table.
@@ -189,7 +254,8 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   end
 
   test "an unchanged offer is put back on the table after the window", ctx do
-    declined = ended_turn_without_claiming(ctx.scope, reload(ctx.scope, ctx.agent))
+    declined = refused_repeatedly(ctx.scope, ctx.agent, 5)
+
     refute admitted?(ctx.scope, declined)
 
     {:ok, stale} =

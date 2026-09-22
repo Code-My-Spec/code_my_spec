@@ -174,6 +174,7 @@ defmodule CodeMySpec.Agents.Agent do
     # what keeps that from becoming a wedge when it never does.
     field :declined_offer, :string
     field :declined_offer_at, :utc_datetime_usec
+    field :declined_offer_count, :integer
 
     # The work this agent has claimed.
     #
@@ -274,6 +275,7 @@ defmodule CodeMySpec.Agents.Agent do
       :work_requested_at,
       :declined_offer,
       :declined_offer_at,
+      :declined_offer_count,
       :working_copy_id,
       :project_id,
       :account_id

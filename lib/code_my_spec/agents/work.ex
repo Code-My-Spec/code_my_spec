@@ -131,23 +131,32 @@ defmodule CodeMySpec.Agents.Work do
   service against our own database.
   """
   def suppress_offer(scope, %Agent{} = agent, fingerprint) do
-    AgentsRepository.update_agent(scope, agent, %{
-      declined_offer: fingerprint,
-      declined_offer_at: DateTime.utc_now()
-    })
+    AgentsRepository.update_agent(scope, agent, streak(agent, fingerprint))
   end
+
+  # One more repeat of the same offer, or the start of a new streak.
+  defp streak(%{declined_offer: same, declined_offer_count: n}, same) when is_integer(n),
+    do: %{
+      declined_offer: same,
+      declined_offer_at: DateTime.utc_now(),
+      declined_offer_count: n + 1
+    }
+
+  defp streak(_agent, fingerprint),
+    do: %{
+      declined_offer: fingerprint,
+      declined_offer_at: DateTime.utc_now(),
+      declined_offer_count: 1
+    }
 
   defp decline_attrs(scope, agent, turn_started_at) do
     if declined?(scope, agent, turn_started_at) do
       case offer(scope, agent) do
-        {:work, fingerprint} ->
-          %{declined_offer: fingerprint, declined_offer_at: DateTime.utc_now()}
-
-        :none ->
-          %{declined_offer: nil, declined_offer_at: nil}
+        {:work, fingerprint} -> streak(agent, fingerprint)
+        :none -> cleared()
       end
     else
-      %{declined_offer: nil, declined_offer_at: nil}
+      cleared()
     end
   end
 
@@ -270,8 +279,10 @@ defmodule CodeMySpec.Agents.Work do
   to fix in the first place.
   """
   def clear_decline(scope, %Agent{} = agent) do
-    AgentsRepository.update_agent(scope, agent, %{declined_offer: nil, declined_offer_at: nil})
+    AgentsRepository.update_agent(scope, agent, cleared())
   end
+
+  defp cleared, do: %{declined_offer: nil, declined_offer_at: nil, declined_offer_count: nil}
 
   # What this agent is being offered, as a value that can be compared to what it
   # last refused. `eligible_work?/2` answered only "is there any", which cannot
@@ -298,6 +309,22 @@ defmodule CodeMySpec.Agents.Work do
     |> binary_part(0, 32)
   end
 
+  # How many times the *same* offer may be re-made before it goes quiet.
+  #
+  # Not zero, which is what this guard first did and what story 1048 refuses:
+  # criterion 3570 — "previously observed eligible work permits a later turn" —
+  # lets a graph-admitted turn end without claiming and then requires the
+  # turn-end event alone to reconsider the unchanged work. Criterion 3572 says
+  # the same from the other side, "without suppressing later turns". An agent
+  # that looks again and takes it the second time is the system working; the
+  # defect is the 197th look, not the 2nd.
+  #
+  # Five, matching `StopDecision.stuck?/3`, which already solved this for the
+  # sibling path — a repeated message goes quiet after the same five repeats.
+  # Two throttles on two paths disagreeing about what "repeated" means is how
+  # an operator ends up unable to predict either.
+  @max_repeats 5
+
   # The window after which an unchanged offer is made again anyway.
   #
   # Without it the fingerprint is a wedge: work whose *set* does not change but
@@ -306,7 +333,7 @@ defmodule CodeMySpec.Agents.Work do
   # to wake it, which is the failure this system already knows well from an
   # agent holding a task nothing can interrupt.
   #
-  # Ten minutes turns a 60-turn-per-minute spin into six turns an hour while
+  # Ten minutes caps a spin at thirty turns an hour rather than 3,600, while
   # still guaranteeing the agent gets another look. A human `message_agent`
   # bypasses this entirely and always did.
   @decline_ttl_seconds 600
@@ -319,6 +346,10 @@ defmodule CodeMySpec.Agents.Work do
   # than open — the same reasoning as `reservation_open?/1` in reverse: here the
   # conservative reading is the one that keeps the agent reachable.
   defp already_declined?(%{declined_offer_at: nil}, _offer), do: false
+
+  defp already_declined?(%{declined_offer_count: n}, _offer)
+       when not is_integer(n) or n < @max_repeats,
+       do: false
 
   defp already_declined?(%{declined_offer_at: at}, _offer),
     do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
