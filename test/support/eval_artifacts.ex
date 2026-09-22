@@ -14,13 +14,22 @@ defmodule CodeMySpecSpex.EvalArtifacts do
   yet — and sending somebody to debug an agent that was never measured is the
   expensive mistake.
 
-  ## Why staleness fails rather than warns
+  ## Staleness is measured always and fatal by setting
 
   An artifact recorded against one prompt says nothing about a different one. A
-  green built on one is a latch: it stays green because nothing re-ran, which
-  is the failure mode the artifact split exists to avoid. Failing means a prompt
-  edit red-lights its criteria until somebody re-records, which is the intended
-  pressure.
+  green built on one is a latch: it stays green because nothing re-ran, which is
+  the failure mode the artifact split exists to avoid. So the drift is always
+  computed and always reported, naming the section that moved and by how much.
+
+  Whether it *vetoes* is `:eval_artifact_staleness`. Failing on it red-lights
+  all ten criteria for a reworded sentence, and a suite that goes red on every
+  prompt edit is a suite people learn to skip — the latch again, by a different
+  road. It also blocks unrelated work: four fixes a running fleet needed once
+  sat behind a hundred re-recorded runs because `OperatingRules` had been
+  trimmed.
+
+  This project runs `:warn`. `:fail` is for a run that means to hold artifacts
+  to the shipped prompt, and `:ignore` says nothing at all.
 
   ## Similarity, not identity
 
@@ -168,22 +177,50 @@ defmodule CodeMySpecSpex.EvalArtifacts do
   that differs between two criteria measured on the same machine.
   """
   @spec assert_current!([map()], String.t()) :: :ok
-  def assert_current!(runs, role) do
+  def assert_current!(runs, role), do: check_current(runs, role, staleness())
+
+  # What a stale artifact costs, which is a setting rather than a law.
+  #
+  # `:fail` was the only behaviour and it made every prompt edit red-line all
+  # ten criteria at once — a whole suite going red for a reworded sentence
+  # teaches people to skip the suite, which is worse than not checking. It also
+  # blocks unrelated work: on 2026-09-22 four fixes the running fleet needed sat
+  # behind a hundred re-recorded runs because `OperatingRules` had been trimmed.
+  #
+  # `:warn` keeps the signal and drops the veto: the criterion still reports
+  # which section moved and by how much, and the rate is still asserted against
+  # whatever was recorded. That is what this project runs today.
+  #
+  # `:fail` remains for a run that means to hold artifacts to the shipped
+  # prompt — a release check, or re-recording deliberately.
+  defp staleness, do: Application.get_env(:code_my_spec, :eval_artifact_staleness, :fail)
+
+  defp check_current(_runs, _role, :ignore), do: :ok
+
+  defp check_current(runs, role, mode) do
     case recorded_prompt(runs) do
       nil ->
-        raise """
+        report(mode, """
         These artifacts predate prompt recording, so nothing can say whether
         they describe the prompt we ship today.
 
         Re-record: MIX_ENV=test mix cms.eval
-        """
+        """)
 
       recorded ->
-        compare(recorded, current(role))
+        compare(recorded, current(role), mode)
     end
   end
 
-  defp compare(recorded, current) do
+  # Loud either way, and fatal only when asked to be.
+  defp report(:fail, message), do: raise(message)
+
+  defp report(_warn, message) do
+    IO.warn("STALE eval artifacts (not failing — :eval_artifact_staleness)\n\n" <> message)
+    :ok
+  end
+
+  defp compare(recorded, current, mode) do
     drifted =
       for {section, now} <- current,
           was = Map.get(recorded, section),
@@ -193,7 +230,7 @@ defmodule CodeMySpecSpex.EvalArtifacts do
     if drifted == [] do
       :ok
     else
-      raise """
+      report(mode, """
       STALE — these artifacts were recorded against a different prompt, so they
       are not evidence about the one we ship. This is not a statement about the
       agent: it has not been measured against today's prompt.
@@ -202,7 +239,7 @@ defmodule CodeMySpecSpex.EvalArtifacts do
       #{Enum.map_join(drifted, "\n", fn {section, score} -> "  #{section}: #{round(score * 100)}% of the recorded text" end)}
 
       Re-record: MIX_ENV=test mix cms.eval
-      """
+      """)
     end
   end
 

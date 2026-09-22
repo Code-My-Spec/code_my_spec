@@ -668,3 +668,17 @@ config :code_my_spec, :agent_eval_runs, 10
 # and a deadline that expires part-way through does not record a miss — it
 # throws the run away.
 config :code_my_spec, :agent_eval_settle_timeout, 300_000
+
+# A stale eval artifact warns here rather than failing.
+#
+# The check is worth keeping: an artifact recorded against one prompt says
+# nothing about a different one, and a green built on one is a latch. But
+# failing on it red-lines all ten criteria for a reworded sentence, and a suite
+# that goes red on every prompt edit is a suite people learn to skip. It also
+# blocks unrelated work — four fixes the running fleet needed once sat behind a
+# hundred re-recorded runs because `OperatingRules` had been trimmed.
+#
+# So the drift is still measured and still printed, naming the section and how
+# far it moved; it just does not veto. Set `:fail` for a run that means to hold
+# the artifacts to the shipped prompt, and `:ignore` to say nothing at all.
+config :code_my_spec, :eval_artifact_staleness, :warn
