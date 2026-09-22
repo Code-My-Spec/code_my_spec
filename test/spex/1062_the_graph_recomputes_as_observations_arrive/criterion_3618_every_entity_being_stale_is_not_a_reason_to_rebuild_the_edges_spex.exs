@@ -15,10 +15,15 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
   falls through to `compute_and_publish/3` — which computes every node *and*
   every edge, whatever the shape did.
 
-  Every entity being stale says nothing about the shape. A file edited in each
-  of four components moves all four fingerprints and leaves the component set,
-  the parents and the dependencies exactly as they were, so the edges the pass
-  rebuilds are the edges it already had.
+  Every entity being stale says nothing about the shape. A file going away in
+  each of four components moves all four `implementation_file` verdicts and
+  leaves the component set, the parents and the dependencies exactly as they
+  were, so the edges a rebuild would produce are the edges already stored.
+
+  The event path settles a row only when its answer moves, so "every entity
+  recomputed" is observable only as every verdict moving — which is why the
+  files that go are the implementation files, the one thing a component in
+  this fixture is asked about, and the fixture ships one per component.
 
   ## Why that is worth a criterion rather than a note
 
@@ -63,20 +68,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
 
   @moduletag timeout: 60_000
 
-  @edit "Edited after the graph had been computed, without moving the shape."
-
-  # The fixture's own four, rewritten exactly as it wrote them. `Stories`
-  # declares `Users`, and that dependency has to survive the rewrite or the
-  # shape genuinely moved and the scenario is measuring a rebuild that was owed.
-  @topology [
-    {"Users", :context, []},
-    {"Users.Account", :schema, []},
-    {"Stories", :context, ["Users"]},
-    {"Stories.Story", :schema, []}
-  ]
+  # The fixture's own four. Their specs — types, parents, `Stories` declaring
+  # `Users` — are not touched, or the shape genuinely moved and the scenario is
+  # measuring a rebuild that was owed.
+  @modules ~w(Users Users.Account Stories Stories.Story)
 
   spex "A pass rebuilds the edges when the shape moved, not when everything is stale" do
-    scenario "every component's file is edited and none of them moves" do
+    scenario "every component loses a file and the shape does not move" do
       given_ :cross_context_dependency
 
       given_ "a settled graph", context do
@@ -108,19 +106,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
         {:ok, Map.put(context, :before, graph)}
       end
 
-      when_ "every one of their spec files is edited", context do
-        # Different content, same shape. The description changes and the
-        # `## Dependencies` section does not, so all four fingerprints move —
-        # `Freshness.component/2` hashes the files — while
-        # `Freshness.topology_parts/2`, which hashes ids, types, parents and
-        # dependencies, holds still.
-        for {module_name, type, deps} <- @topology do
-          :ok =
-            Fixtures.write_env_file(
-              context.environment,
-              Content.spec_path(module_name),
-              spec_for(module_name, type, deps)
-            )
+      when_ "every one of their implementation files goes away", context do
+        # Four verdicts move and the shape does not: `Freshness.topology/2`
+        # hashes ids, types, parents and dependencies, and a file going away
+        # touches none of them.
+        for module_name <- @modules do
+          :ok = Fixtures.delete_env_file(context.environment, Content.impl_path(module_name))
         end
 
         :ok = Fixtures.scan_working_copy(context.scope)
@@ -137,7 +128,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
 
         assert moved != [],
                """
-               Four spec files were edited and no requirement was recomputed.
+               Four implementation files went away and no verdict moved.
 
                This criterion is about what that pass should *not* also do. If
                it did nothing at all, the saving below is an absence rather than
@@ -190,17 +181,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
     end
   end
 
-  defp spec_for(module_name, :context, deps),
-    do: Content.context_spec(module_name, type: "context", dependencies: deps, description: @edit)
-
-  defp spec_for(module_name, type, deps) do
-    Content.child_spec(module_name,
-      type: Atom.to_string(type),
-      dependencies: deps,
-      description: @edit
-    )
-  end
-
   defp stamps(graph) do
     (graph["nodes"] || [])
     |> Map.new(&{{&1["entity_type"], to_string(&1["entity_id"]), &1["name"]}, &1["checked_at"]})
@@ -208,8 +188,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
 
   defp edge_set(graph), do: MapSet.new(graph["edges"] || [], &{&1["from"], &1["to"]})
 
-  # How many times the last pass rebuilt the edge set. `nil` rather than 0 when
-  # the drain reported nothing, so "no reading" cannot be read as "no rebuild".
-  defp rebuilds(%{"kind" => "pass"} = drain), do: Map.get(drain, "edges_rebuilt")
+  # How many times the last drain rebuilt the edge set — the drain of whichever
+  # writer serves the graph, which is what `last_drain` reports. `nil` rather
+  # than 0 when the drain reported nothing, so "no reading" cannot be read as
+  # "no rebuild".
+  defp rebuilds(%{"edges_rebuilt" => rebuilt}), do: rebuilt
   defp rebuilds(_other), do: nil
 end

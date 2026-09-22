@@ -16,14 +16,16 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
   highest-frequency observation this system takes — every keystroke an agent
   commits — so if any input has to be narrow, it is this one.
 
-  ## Content, not the row
+  ## The file has to answer something
 
-  `Freshness.component/2` keys files as `{path, fingerprint, valid}`. It has to
-  be the content: `Files.upsert_files/2` replaces rows on conflict, so a sync
-  that found nothing changed still writes every row and bumps every timestamp.
-  Keyed on `updated_at` this criterion could never pass — every scan would
-  reconsider every component, which is the whole-project recompute the story
-  exists to remove, arriving through the input that fires most often.
+  The event path settles a requirement only when its answer moves — a sweep
+  writes nothing for a row whose verdict and details it would leave as they
+  are — so "reconsidered" is observable only as a verdict moving. A component
+  here carries `implementation_file` and nothing about its spec, so editing the
+  spec is, to the graph, an edit to a file that answers nothing. The change
+  that moves is the implementation file — the fixture ships one per component,
+  so the change is the file going away, which answers exactly one requirement
+  of exactly one component.
 
   ## Two families, not two siblings
 
@@ -45,8 +47,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
   import CodeMySpecSpex.GraphReadHelpers
 
   alias CodeMySpecSpex.Fixtures
-
-  @touched_spec ".code_my_spec/spec/users/account.spec.md"
+  alias CodeMySpecSpex.GraphContentFixtures, as: Content
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -68,6 +69,18 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
         before = read_settled_graph(context)
         cutoff = NaiveDateTime.add(NaiveDateTime.utc_now(), -60, :second)
 
+        # Loudly, because `Enum.all?/2` over an empty list is true and a read
+        # that served nothing for the component would otherwise pass the
+        # baseline and fail later as "not reconsidered".
+        assert freshness(before, context.users_child.id) != [],
+               """
+               The baseline read serves no requirement for the component whose
+               file is about to go away.
+
+               vantage: #{inspect(before["vantage"])}  served_from: #{inspect(before["served_from"])}
+               nodes: #{length(before["nodes"] || [])}  watcher: #{inspect(before["watcher"])}
+               """
+
         assert Enum.all?(freshness(before, context.users_child.id), fn {_name, at} ->
                  NaiveDateTime.compare(NaiveDateTime.from_iso8601!(at), cutoff) == :lt
                end),
@@ -82,20 +95,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
         {:ok, Map.put(context, :before, before)}
       end
 
-      when_ "one component's spec file is edited and the project scans", context do
-        # Rewritten to different content that is still *valid*, using the same
-        # fixture the given wrote it with. A spec edited into invalidity would
-        # move `spec_valid`'s verdict as well, and then "the requirements were
-        # reconsidered" could be read off a changed answer rather than off the
-        # file having changed — which is the claim.
+      when_ "one component's implementation file goes away and the project scans", context do
         :ok =
-          Fixtures.write_env_file(
+          Fixtures.delete_env_file(
             context.environment,
-            @touched_spec,
-            CodeMySpecSpex.GraphContentFixtures.child_spec("Users.Account",
-              type: "schema",
-              description: "Edited after the graph had been computed and served."
-            )
+            Content.impl_path(context.users_child.module_name)
           )
 
         :ok = Fixtures.scan_working_copy(context.scope)
@@ -103,18 +107,18 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
         {:ok, Map.put(context, :after, read_settled_graph(context))}
       end
 
-      then_ "the component whose spec it is gets reconsidered", context do
+      then_ "the component whose file it is gets reconsidered", context do
         refute freshness(context.after, context.users_child.id) ==
                  freshness(context.before, context.users_child.id),
                """
-               A component's spec file changed and its requirements were not
-               reconsidered.
+               A component's implementation file went away and its
+               `implementation_file` verdict did not move.
 
-               `spec_valid` is computed from that file's content. If the graph
-               does not notice the edit, it goes on serving a verdict about a
-               version of the file that no longer exists — and files are the
+               That requirement is computed from that file's presence. If the
+               graph does not notice the file is gone, it goes on serving a
+               verdict about a tree that no longer exists — and files are the
                observation this system takes most often, so it goes on doing so
-               for every edit after it too.
+               for every change after it too.
 
                before: #{inspect(freshness(context.before, context.users_child.id))}
                after:  #{inspect(freshness(context.after, context.users_child.id))}
@@ -129,7 +133,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
 
         assert after_other == before_other,
                """
-               Editing one component's spec reconsidered a component in a
+               One component's file going away reconsidered a component in a
                different context.
 
                That file answers nothing about this component — different

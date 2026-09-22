@@ -17,11 +17,21 @@ defmodule CodeMySpecWeb.DevGraphLive do
   visible.
 
   **The answer is then right.** That is the stale panel, and it is the only one
-  that can be trusted on its own. It runs the full per-entity fingerprint diff
-  — every entity's inputs rebuilt and compared against what its rows are
-  stamped with — and reports what is being served stale, changing nothing. It
-  re-runs whenever a pass lands, so the useful thing to watch is the set
-  emptying as the recompute consumes what was announced.
+  that can be trusted on its own. While the batched pass serves, it runs the
+  full per-entity fingerprint diff — every entity's inputs rebuilt and compared
+  against what its rows are stamped with — and reports what is being served
+  stale, changing nothing. It re-runs whenever a pass lands, so the useful
+  thing to watch is the set emptying as the recompute consumes what was
+  announced.
+
+  While the event path serves (`Shadow.inverted?/0`), the fingerprint cannot
+  judge it: handlers settle a row from the observation and stamp no
+  fingerprint, so every row the pass wrote before the flip reads as "moved
+  past" the moment any input moves, whether or not the verdict did — 447 of
+  1,134 components on dev the first time this panel was read after the flip,
+  every one of them right. So the panel then recomputes every entity from its
+  inputs, in memory, and compares that with what is served, row for row and
+  edge for edge. Nothing here reads the shadow.
 
   A set that does not empty is the finding. It means an input moved and nothing
   said so, and it names the entities rather than leaving it to be inferred.
@@ -54,11 +64,12 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.DevState
-  alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Users.Scope
 
   # Long, because events do the work. This only catches what has no
@@ -182,39 +193,42 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp assign_report(%{assigns: %{selected: project}} = socket),
     do: assign(socket, report: Requirements.incremental_report(scope_of(project)))
 
-  # Whether this project's checkouts are on the file watcher at all.
+  # Whether each of this project's checkouts has a harness joined to this
+  # server.
   #
   # The end state this design is aimed at is "scan the filesystem at boot, let
-  # events carry it after" — which is only true while the events are arriving.
-  # A watcher that is not watching a root, or a stream that has gone quiet,
-  # turns into a project that stops moving and says nothing, which is the exact
-  # failure `GraphWatcher` exists to end arriving through a different door.
+  # events carry it after" — which is only true while the events are arriving,
+  # and it is the harness that carries them: it watches the checkout, sends the
+  # manifest, and the reconcile announces `files_synced`. A checkout whose
+  # harness has not joined since this server started turns into a project that
+  # stops moving and says nothing, which is the exact failure `GraphWatcher`
+  # exists to end arriving through a different door.
   #
-  # Server-side this can only answer "is the root registered". Whether the OS
-  # is still delivering events is known to the harness process and not here —
-  # `CmsHarness.Project.Watcher` is what notices a stream going silent. So this
-  # is the cheaper half of the question, and it is worth having because the
-  # expensive half is invisible from this side and the cheap half is often the
-  # answer.
+  # This asked `ProjectSync.FileWatcherServer` — the server's own filesystem
+  # watcher — and nothing starts that server any more, so every root read
+  # "NOT watched" on a dev box whose every checkout was announcing fine.
+  # `HarnessRegistry` is the same answer `Analysis.write_file/3` acts on.
+  #
+  # Server-side this can only answer "is a harness joined for the copy".
+  # Whether the OS is still delivering events to it is known to the harness
+  # process and not here — `CmsHarness.Project.Watcher` is what notices a
+  # stream going silent. So this is the cheaper half of the question, and it
+  # is worth having because the expensive half is invisible from this side and
+  # the cheap half is often the answer.
   defp assign_watched(%{assigns: %{selected: nil}} = socket), do: assign(socket, watched: [])
 
   defp assign_watched(%{assigns: %{selected: project}} = socket) do
-    roots = CodeMySpec.WorkingCopies.list_harnesses(scope_of(project)) |> Enum.map(& &1.root)
-    watched = safe_watched_dirs()
-
     assign(socket,
       watched:
-        Enum.map(roots, fn root ->
-          %{root: root, watched?: root != nil and Enum.any?(watched, &(&1 == root))}
-        end)
+        project
+        |> scope_of()
+        |> CodeMySpec.WorkingCopies.list_harnesses()
+        |> Enum.map(&%{root: &1.root, watched?: joined?(&1.id)})
     )
   end
 
-  defp safe_watched_dirs do
-    FileWatcherServer.watched_dirs()
-  catch
-    :exit, _ -> []
-  end
+  defp joined?(working_copy_id),
+    do: Registry.lookup(HarnessRegistry, to_string(working_copy_id)) != []
 
   # The two questions that needed `psql` to answer, and that both of the
   # 2026-09-17 routing bugs hid behind.
@@ -258,11 +272,19 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   defp assign_stale(%{assigns: %{selected: nil}} = socket), do: assign(socket, stale: nil)
 
+  # The instrument follows the writer. The fingerprint diff judges the pass's
+  # rows, which it stamps on every recompute; the event path stamps nothing,
+  # so under it the rows are judged by recomputing them from the domain now —
+  # see the moduledoc.
   defp assign_stale(%{assigns: %{selected: project}} = socket) do
-    assign(socket,
-      stale: Requirements.stale_entities_report(scope_of(project)),
-      stale_at: DateTime.utc_now()
-    )
+    scope = scope_of(project)
+
+    stale =
+      if Shadow.inverted?(),
+        do: {:recomputed, Requirements.served_vs_recomputed(scope)},
+        else: Requirements.stale_entities_report(scope)
+
+    assign(socket, stale: stale, stale_at: DateTime.utc_now())
   end
 
   @impl true
@@ -302,6 +324,32 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
           <div :if={@stale == {:partial, []}} class="text-sm text-success">
             Nothing. Every entity's inputs agree with the rows being served.
+          </div>
+
+          <div :if={match?({:recomputed, _}, @stale)} data-test="recomputed" class="space-y-1">
+            <p :if={recomputed_clean?(@stale)} class="text-sm text-success">
+              Nothing. Every entity's inputs, recomputed now, agree with the rows being served
+              ({elem(@stale, 1).served} rows, {elem(@stale, 1).served_edges} edges).
+            </p>
+            <p :if={not recomputed_clean?(@stale)} class="text-sm text-error">
+              Recomputed now, the graph differs from what is served — rows not served {elem(@stale, 1).missing}, served but not recomputed {elem(
+                @stale,
+                1
+              ).extra},
+              disagreeing {elem(@stale, 1).disagree}; edges not served {elem(@stale, 1).edges_missing}, served but not recomputed {elem(
+                @stale,
+                1
+              ).edges_extra}.
+            </p>
+            <p class="text-xs opacity-70">
+              The event path serves this project. It settles rows from observations and
+              stamps no fingerprint, so the rows are judged by recomputing every entity from
+              its inputs, in memory, and comparing; nothing is written. A difference that
+              does not clear on the next drain is an observation nothing applied.
+            </p>
+            <ul class="text-xs font-mono space-y-0.5">
+              <li :for={line <- Enum.take(elem(@stale, 1).sample, 30)}>{line}</li>
+            </ul>
           </div>
 
           <div :if={match?({:all, _}, @stale)} class="space-y-1">
@@ -488,6 +536,13 @@ defmodule CodeMySpecWeb.DevGraphLive do
             <span class="font-mono w-14 opacity-70">{d.kind}</span>
             <span data-test="drain-queries">{d.queries} queries</span>
             <span data-test="drain-rows-written">{d.rows_written} rows written</span>
+            <span data-test="drain-edges-rebuilt">{d[:edges_rebuilt] || 0} edge rebuilds</span>
+            <span data-test="drain-project-preloads">
+              {d[:project_preloads] || 0} project preloads
+            </span>
+            <span data-test="drain-projection-writes">
+              {d[:projection_writes] || 0} projection writes
+            </span>
             <span data-test="drain-vantages">{d.vantages || "—"} checkouts</span>
             <span data-test="drain-observations" class="opacity-60">
               {d.observations || 0} observations
@@ -499,7 +554,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
             >
               recomputed {d.recomputed || 0}
             </span>
-            <span class="opacity-40">{d.duration_ms}ms</span>
+            <span class="opacity-40">
+              {d.duration_ms}ms (db {d[:db_ms] || 0}, queued {d[:queued_ms] || 0})
+            </span>
           </div>
           <p class="text-xs opacity-60">
             Queries and rows are the cost; milliseconds measure the machine. The same
@@ -573,18 +630,20 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
         <section class="space-y-2">
           <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-            File watcher
+            Harness
           </h2>
           <p class="text-xs opacity-60">
-            Events are what carry filesystem changes after boot. A root that is not
-            watched cannot announce, and this page would then show a quiet feed and a
-            stale set that never empties. Whether the OS is still delivering events is
-            known to the harness, not here.
+            Each checkout's harness is what carries filesystem changes after boot: it
+            watches, sends the manifest, and the reconcile announces. A checkout whose
+            harness has not joined since this server started cannot announce, and this
+            page would then show a quiet feed and a stale set that never empties.
+            Whether the OS is still delivering events to it is known to the harness,
+            not here.
           </p>
           <ul class="text-xs font-mono space-y-0.5">
             <li :for={w <- @watched} class="flex gap-3">
               <span class={if w.watched?, do: "text-success", else: "text-error"}>
-                {if w.watched?, do: "watched", else: "NOT watched"}
+                {if w.watched?, do: "joined", else: "NOT joined"}
               </span>
               <span class="opacity-70">{w.root || "(no root reported)"}</span>
             </li>
@@ -675,6 +734,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   defp stale_list({:partial, entities}), do: entities
   defp stale_list(_other), do: []
+
+  defp recomputed_clean?({:recomputed, report}) do
+    report.missing == 0 and report.disagree == 0 and report.edges_missing == 0 and
+      report.edges_extra == 0
+  end
 
   defp event_label(:announced), do: "announced"
   defp event_label(:recomputed), do: "recomputed"

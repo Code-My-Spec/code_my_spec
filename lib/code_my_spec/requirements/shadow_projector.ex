@@ -52,9 +52,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   require Logger
 
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Handlers
@@ -100,6 +103,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   @doc """
+  Whether a projector is running for this project, and therefore whether
+  anything is going to consume the marks besides the pass.
+
+  `Invalidations.consume/1` is a delete, so the pass and a projector draining
+  the same queue is a destructive read: whichever wins takes the marks and the
+  other never sees them. The pass defers to a projector that exists — and only
+  to one that exists, because deferring to an absent projector is how
+  `e0729ea9` comes back: every writer inserting a mark and nothing deleting one.
+  """
+  @spec running?(Ecto.UUID.t() | nil) :: boolean()
+  def running?(project_id) when is_binary(project_id) do
+    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) != []
+  end
+
+  def running?(_no_project), do: false
+
+  @doc """
   Handle everything pending now, before the caller compares.
 
   The diff reads both projections, so it has to be asked at a moment when the
@@ -107,38 +127,66 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   reports as a difference and the number says more about timing than about
   coverage.
   """
-  @spec settle(Ecto.UUID.t() | nil) :: :ok
-  def settle(project_id) when is_binary(project_id) do
+  @spec settle(Ecto.UUID.t() | nil, Enumerable.t()) :: :ok
+  def settle(project_id, requested \\ [])
+
+  def settle(project_id, requested) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
-      [{pid, _}] -> GenServer.call(pid, :drain, 30_000)
+      [{pid, _}] -> GenServer.call(pid, {:drain, requested}, 30_000)
       [] -> :ok
     end
   catch
     :exit, _ -> :ok
   end
 
-  def settle(_no_project), do: :ok
+  def settle(_no_project, _requested), do: :ok
+
+  @doc """
+  What this projector last did, in the shape `GraphWatcher.status/1` answers,
+  so a reader served from its rows is told about the writer it is served from.
+  """
+  @spec status(Ecto.UUID.t() | nil) :: map() | nil
+  def status(project_id) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+      [{pid, _}] -> GenServer.call(pid, :status, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+  def status(_no_project), do: nil
 
   # -- Server --
 
   @impl true
   def init({project_id, scope}) do
+    # So a supervisor's `:shutdown` waits for the drain in flight, as
+    # `GraphWatcher` does. This process drains the moment a mark lands, off a
+    # PubSub message, so it is the writer most often mid-transaction when a
+    # spex scenario's teardown stops the supervisor's children — and a
+    # GenServer that does not trap exits dies on the spot, taking the shared
+    # sandbox connection down with it: `Postgrex.Protocol … client exited`,
+    # then `cannot find ownership process` in whichever scenario runs next.
+    # Reproduced in the whole-suite run and never alone.
+    Process.flag(:trap_exit, true)
+
     GraphInputs.subscribe(project_id)
 
-    # One whole-project computation on arrival, then maintain from events.
+    # Establish every vantage on arrival, then maintain from events.
     #
-    # Not an exception to "no batching" — it is the thing that makes the rest of
-    # it possible. An accumulated projection has to start from a known state,
-    # and a consumer that only ever applied deltas would hold a shadow that is
-    # missing every entity nothing has touched since it started, permanently,
-    # while reporting the gap as a coverage failure it cannot fix.
-    #
-    # It is also the shape the design called for: build the state of the graph
-    # with one query up front, and the event handlers after it stay simple
-    # because they never have to reconstruct what they did not see.
+    # A vantage with rows is trusted as it stands: the rows are durable, the
+    # mark queue is durable, so everything that happened while this process
+    # was down is still queued and applied by the first drain — and the files,
+    # the one input with no row of its own, are rescanned by the harness when
+    # it reconnects and arrive as `files_synced`. A vantage with no rows is
+    # seeded whole, which is the one case a delta has nothing to be relative
+    # to. This used to reseed every vantage on every start: 10.3s on the big
+    # project at every promote, recomputing rows the diff had just agreed with.
+    # John, 2026-09-21: "we can trust our domain".
     #
     # Sent rather than done in `init/1`, because this blocks the supervisor and
-    # a cold project is a whole graph.
+    # a vantage with no rows is a whole graph.
     send(self(), :seed)
 
     {:ok,
@@ -146,6 +194,15 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        project_id: project_id,
        scope: scope,
        seeded: false,
+       # The vantage this projector was started for is asked about from the
+       # first drain, as `GraphWatcher` does: a checkout whose reader started
+       # the writers is established in the same drain as `nil`, not one drain
+       # later when something reads it.
+       requested_vantages: MapSet.new([scope.active_working_copy_id]),
+       # The vantages this process has seen rows for — its own writes, or rows
+       # found already there. `settle_vantage/6` asks the table once per vantage
+       # and remembers the answer here.
+       established_vantages: MapSet.new(),
        # The four analyzer-freshness booleans, kept between drains. Project-wide
        # and computed from the whole checkout's files, so recomputing it per
        # narrow drain would reintroduce the read the narrow path exists to
@@ -157,13 +214,31 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # all — `Freshness.topology/2` is the same hash the pass records, over
        # component ids, types, parents, dependencies and the story population.
        last_topology: %{},
+       # The vantage-invariant half of the edges, keyed by the project-wide
+       # shape it was generated for. See `edge_plan/2`.
+       edge_plan: nil,
        last_drain: nil,
        last_error: nil
      }}
   end
 
   @impl true
-  def handle_call(:drain, _from, state), do: {:reply, :ok, drain(state)}
+  def handle_call({:drain, requested}, _from, state) do
+    {:reply, :ok, state |> remember(requested) |> drain()}
+  end
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    {:reply,
+     %{
+       # No debounce and no timer: a mark is handled when it arrives, so
+       # nothing is pending between drains.
+       pending: false,
+       last_recompute: state.last_drain,
+       last_error: state.last_error,
+       seeded: state.seeded
+     }, state}
+  end
 
   @impl true
   def handle_info(:seed, state), do: {:noreply, drain(state)}
@@ -180,10 +255,24 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Nothing pending and *not* seeded still computes: the marks say what has
   # moved since this process started, and on the first pass that is the wrong
   # question. It has to establish what is true before deltas mean anything.
+  #
+  # Nothing pending and a checkout a reader asked about that this process has
+  # never seen still computes: `requested_vantages` is the reader's half, and a
+  # checkout no mark names is otherwise never written — the read that asked is
+  # served nothing, forever.
   defp drain(state) do
-    case {state.seeded, Invalidations.pending(state.project_id)} do
-      {true, []} -> state
-      {_seeded, marks} -> apply_marks(state, marks)
+    # The same dev fault the pass honours (`POST /dev/faults`,
+    # `graph_recompute_fails`), so "the graph says so when its last recompute
+    # failed" is a statement about whichever writer serves the reader.
+    refuse_if_faulted(state.project_id)
+
+    case {state.seeded, Invalidations.pending(state.project_id), unestablished(state)} do
+      # Nothing pending and every checkout asked about already has rows: the
+      # requests are served as they stand, so they are forgotten here as they
+      # are after a drain — or the next drain about some other checkout's
+      # files settles them too (criterion 3518).
+      {true, [], []} -> %{state | requested_vantages: MapSet.new()}
+      {_seeded, marks, _asked} -> apply_marks(state, marks)
     end
   rescue
     error ->
@@ -240,15 +329,20 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
           # statement about one checkout, so summing the lists first lets a hit
           # in one worktree cover a miss in another — which is the class of bug
           # the whole shadow exists to catch.
-          {state, handled, recomputed} =
+          {state, handled, recomputed, kinds} =
             Enum.reduce(
               vantages,
-              {state, 0, 0},
+              {state, 0, 0, %{}},
               &settle_vantage(&1, &2, marks, base_scope, config)
             )
 
           {%{state | scope: base_scope},
-           %{handled: handled, recomputed: recomputed, vantages: length(vantages)}}
+           %{
+             handled: handled,
+             recomputed: recomputed,
+             vantages: length(vantages),
+             kinds: kinds_line(kinds)
+           }}
         end
       )
 
@@ -256,8 +350,47 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # for is a mark that a crash turns into a permanently stale entity, which
     # is the failure the durable set exists to rule out.
     Invalidations.consume(marks)
+    announce(state, marks)
 
-    %{state | seeded: true, last_drain: DateTime.utc_now(), last_error: nil}
+    # Served, so forgotten — what `GraphWatcher` does after a pass. A checkout
+    # a reader asked about has rows now, and the marks that name it or the
+    # project keep it current from here; remembering it would settle it on
+    # every drain about some other checkout's files (criterion 3518).
+    %{
+      state
+      | seeded: true,
+        requested_vantages: MapSet.new(),
+        last_drain: DateTime.utc_now(),
+        last_error: nil
+    }
+  end
+
+  # What the pass does after it writes, done here when this is the writer that
+  # counts. `GraphWatcher` broadcasts `{:graph_updated, project_id}` and asks
+  # `Work.consider_project/2` whether anyone should be woken, both gated on
+  # having consumed something — a pass that ran for nothing announces nothing.
+  # The projector did neither, so a flip of `graph_event_is_source` would have
+  # left every reader current and every agent asleep.
+  #
+  # Only while inverted. With both writers on and the pass the source, the pass
+  # already does this for every observation; doing it here too would wake each
+  # agent twice per event.
+  defp announce(_state, []), do: :ok
+
+  defp announce(state, _marks) do
+    if Shadow.inverted?() do
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        GraphInputs.topic(state.project_id),
+        {:graph_updated, state.project_id}
+      )
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Work.consider_project(state.scope, :graph_changed)
+      end)
+    end
+
+    :ok
   end
 
   # What the marks say, widened to everything only when one of them cannot say.
@@ -285,21 +418,50 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Measured on dev, 2026-09-17 — nine verdicts wrong at three vantages, last
   # settled before two fixes that would have corrected them, surviving four
   # restarts of the process whose arrival was supposed to correct them.
-  defp vantages(%{seeded: false} = state, _marks),
-    do: Projection.live_vantages(state.scope, Projection.vantages(state.scope))
+  defp vantages(%{seeded: false} = state, _marks) do
+    stored = Projection.vantages(state.scope)
+    Projection.live_vantages(state.scope, stored ++ MapSet.to_list(state.requested_vantages))
+  end
 
   defp vantages(state, marks) do
+    requested = MapSet.to_list(state.requested_vantages)
     named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
 
     if Enum.any?(named, &is_nil/1) do
       Projection.live_vantages(state.scope, Projection.vantages(state.scope))
     else
-      keep_nil? = Preloader.files_vantage(state.scope) in named
+      # `nil` reads the default checkout's files, or every checkout's when the
+      # project has none — so a checkout's own sync moves it in the second case
+      # whichever checkout it was. The pass reads `nil` the same way.
+      keep_nil? =
+        case Preloader.files_vantage(state.scope) do
+          nil -> true
+          default -> default in named
+        end
 
       state.scope
-      |> Projection.live_vantages(named)
-      |> Enum.filter(&(keep_nil? or not is_nil(&1)))
+      |> Projection.live_vantages(Enum.concat(named, requested))
+      |> Enum.filter(&(keep_nil? or not is_nil(&1) or &1 in requested))
     end
+  end
+
+  # The vantages a reader has asked about, which is the half the pass had and
+  # this did not.
+  #
+  # `GraphWatcher` folds `requested_vantages` into every pass, so a checkout
+  # somebody read is considered even when no mark names it. Nothing told the
+  # projector, so it settled only what marks named — and the two drifted for as
+  # long as reads and writes pointed at different checkouts. Measured on dev
+  # 2026-09-21: the `Harness` vantage was current on the pass side at 11:19:47
+  # and 6h36m behind on this one, because a reader had asked the pass for it and
+  # nothing had asked here.
+  #
+  # Not a recompute-on-read, which is what criterion 3423 forbids and what the
+  # 348-computes/2.6s measurement was. The vantage is *considered*; a pass over
+  # it recomputes only entities whose own inputs moved, which is nothing at all
+  # when nothing moved.
+  defp remember(state, requested) do
+    %{state | requested_vantages: Enum.into(requested, state.requested_vantages)}
   end
 
   # Each event offered to its handler; anything without one handed back.
@@ -315,7 +477,10 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # fallback, and it has been superseded. Dropping it by observation id is
     # what stops a handled event *also* recomputing the entities it named —
     # which would have made the handler pure overhead rather than a saving.
-    answered = MapSet.new(handled, fn {mark, _c, _w} -> mark.observation_id end)
+    answered =
+      handled
+      |> Enum.reject(fn {mark, _c, _w} -> mark.kind in Handlers.partial_kinds() end)
+      |> MapSet.new(fn {mark, _c, _w} -> mark.observation_id end)
 
     {handled,
      Enum.reject(rest, fn mark ->
@@ -405,18 +570,73 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # seeding: `plan/2` still answers `:everything` for an unseeded projector, and
   # nothing ever asked it. So the guard is "no work to do", and a projector that
   # has not established what is true has work to do whatever its marks say.
-  defp settle_vantage(vantage, {state, handled, recomputed}, marks, base_scope, config) do
+  defp settle_vantage(vantage, {state, handled, recomputed, kinds}, marks, base_scope, config) do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
     {applied, unhandled} = apply_handlers(state, marks)
 
-    state =
-      if unhandled == [] and state.seeded,
-        do: state,
-        else: run(plan(state, unhandled), state, config)
+    shape_moved? =
+      Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
 
+    # Trusted only when every mark was a verdict. A mark still pending when
+    # this process meets a vantage is one the previous process never finished
+    # with, so its edges were drawn over the shape before it; anything that
+    # can move the shape goes to `reproject_topology/3`, which redraws when it
+    # has no baseline to compare against.
+    state =
+      cond do
+        # A vantage with no rows has nothing to be partial against, whatever
+        # the marks say — the pass's `no_stored_rows`, asked per checkout.
+        not established?(state, vantage) -> run(:everything, state, config)
+        unhandled == [] and not shape_moved? -> trust(state, config)
+        unhandled == [] -> reproject_topology(state, config, false)
+        true -> run_plan(state, unhandled, config)
+      end
+
+    state = %{state | established_vantages: MapSet.put(state.established_vantages, vantage)}
     log_handled(state, applied)
 
-    {state, handled + length(applied), recomputed + length(unhandled)}
+    {state, handled + length(applied), recomputed + length(unhandled),
+     tally(kinds, applied, unhandled)}
+  end
+
+  defp refuse_if_faulted(project_id) do
+    if Faults.active?(project_id, :graph_recompute_fails) do
+      raise RuntimeError, "graph recompute failed (fault injected for this project)"
+    end
+  end
+
+  # Whether this vantage has rows to be partial against: seen by this process,
+  # or found in the table. One query per vantage per process — a vantage that
+  # has rows was projected by this process or the one before it, and every
+  # mark that arrived in between is still in the queue.
+  defp established?(state, vantage),
+    do: MapSet.member?(state.established_vantages, vantage) or Shadow.projected?(state.scope)
+
+  # The checkouts readers asked about that nothing here has written or seen.
+  defp unestablished(state),
+    do:
+      state.requested_vantages
+      |> MapSet.difference(state.established_vantages)
+      |> MapSet.to_list()
+
+  # Which kinds this drain handled and which it fell back on, by mark count,
+  # for the cost line. Queries are attributable to a kind only if the line
+  # names the kinds; without this every 37-query drain read alike, and the
+  # question "which event costs three profile loads" had no answer in the log.
+  defp tally(kinds, applied, unhandled) do
+    applied
+    |> Enum.frequencies_by(fn {mark, _changes, _written} -> {:handled, kind_of(mark)} end)
+    |> Map.merge(Enum.frequencies_by(unhandled, &{:recomputed, kind_of(&1)}))
+    |> Map.merge(kinds, fn _key, a, b -> a + b end)
+  end
+
+  defp kind_of(%Invalidation{kind: kind}) when kind in [nil, "invalidate"], do: "invalidation"
+  defp kind_of(%Invalidation{kind: kind}), do: kind
+
+  defp kinds_line(kinds) when map_size(kinds) == 0, do: "none"
+
+  defp kinds_line(kinds) do
+    Enum.map_join(Enum.sort(kinds), " ", fn {{side, kind}, n} -> "#{side}:#{kind}×#{n}" end)
   end
 
   defp log_handled(state, []), do: state
@@ -434,12 +654,24 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     state
   end
 
-  # What this drain has to load, which is decided before anything is loaded.
-  #
-  # An unseeded projector reads every mark the same way: it has no prior state
-  # for a delta to be relative to.
-  defp plan(%{seeded: false}, _marks), do: :everything
+  defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
+  # A vantage this process meets with rows already there and only verdicts
+  # pending. Its edges were written with those rows, so the shape they were
+  # drawn over is taken as the baseline rather than the edges redrawn to find
+  # that out: four queries, once per vantage per process. Nothing to do once
+  # this process has been here.
+  defp trust(state, config) do
+    if MapSet.member?(state.established_vantages, vantage(state)) or
+         Map.has_key?(state.last_topology, vantage(state)) do
+      state
+    else
+      shape = Preloader.topology_context(state.scope)
+      remember_topology(state, Freshness.topology(shape, config))
+    end
+  end
+
+  # What this drain has to load, which is decided before anything is loaded.
   # Three claims, three costs.
   #
   # `unknown?` — some writer could not say what it moved, so the entity set is
@@ -453,7 +685,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   #
   # Anything else narrow. `Preloader.load/1` is reached only when a writer
   # could not say what it moved.
-  defp plan(%{seeded: true}, marks) do
+  defp plan(_state, marks) do
     {named, flags} = Invalidations.entities(marks)
 
     cond do
@@ -466,17 +698,39 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp run(:everything, state, config) do
     {:ok, ctx} = Preloader.load(state.scope)
 
-    ctx
-    |> all_entities()
-    |> MapSet.put({"project", nil})
-    |> Enum.to_list()
-    |> write_each(state.scope, ctx, config)
+    # Computed once and written once. This used to compute every entity on its
+    # own — `write_each/4`, one `compute_entity/4` and one `Shadow.write/3`
+    # transaction per entity — and then call `reproject_topology/3`, which
+    # computed every node a second time to get the edges. Measured on dev: the
+    # seed after every restart was **17.9-19.9s, 26,395 queries, 14,945 rows**
+    # across nine vantages, with `observations: 0`. Nothing had happened; the
+    # process had merely started.
+    #
+    # `compute_topology/3` is one `compute_all_from_ctx/3` and one
+    # `compute_edges/3`, which is exactly what the pass does on a cold vantage.
+    {nodes_us, {nodes, enriched}} =
+      :timer.tc(fn -> RequirementGraph.compute_nodes(state.scope, ctx, config) end)
 
-    state = reproject_topology(state, ctx, config)
+    topology = Freshness.topology(ctx, config)
+    covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
-    # The whole context was just read, so the cached freshness is current by
-    # construction — for *this* checkout. Keyed by vantage because it is
-    # computed from one checkout's own files.
+    {write_us, {:ok, _moved}} = :timer.tc(fn -> Shadow.write(state.scope, covered, nodes) end)
+
+    # Drawn over the rows just written, the way every later drain draws them.
+    # Per vantage, and it has to be: every checkout sees its own stories, so
+    # no two vantages of the big project share a node set (2,109 nodes at
+    # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21). What this log
+    # line is for: nodes, edges and writes, per vantage, so the seed's cost
+    # has a shape.
+    {state, drawn} = redraw(state, enriched, config)
+
+    Logger.info(
+      "[ShadowProjector] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
+        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms; " <>
+        "#{drawn.edges} edges in #{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
+    )
+
+    state = remember_topology(state, topology)
     cache_analysis(state, ctx.analysis_fresh)
   end
 
@@ -497,71 +751,128 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     analysis_fresh =
       Map.get(state.analysis_fresh, vantage(state)) ||
         Preloader.analysis_freshness(state.scope)
-    narrow_each(entities, state.scope, config, analysis_fresh)
-    state = reproject_topology(state, nil, config)
+
+    {_done, node_set_moved?} = narrow_each(entities, state.scope, config, analysis_fresh)
+    state = reproject_topology(state, config, node_set_moved?)
     cache_analysis(state, analysis_fresh)
   end
 
-  @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
+  # Answers whether any write added or reaped a row, beside what it covered.
+  @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) ::
+          {MapSet.t(Shadow.entity()), boolean()}
   defp narrow_each(entities, scope, config, analysis_fresh) do
-    Enum.reduce(entities, MapSet.new(), fn entity, done ->
+    Enum.reduce(entities, {MapSet.new(), false}, fn entity, {done, moved?} ->
       if MapSet.member?(done, entity) do
-        done
+        {done, moved?}
       else
         {:ok, ctx} = narrow_load(scope, entity, analysis_fresh)
         {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-        Shadow.write(scope, covered, nodes)
-        MapSet.union(done, covered)
+        {:ok, %{inserted: inserted, reaped: reaped}} = Shadow.write(scope, covered, nodes)
+        {MapSet.union(done, covered), moved? or inserted > 0 or reaped > 0}
       end
     end)
   end
 
-  # Topology, whenever this drain wrote nodes — and only then.
+  # Whether the edges have to be redrawn, asked of the shape and of the node
+  # set — and if so, redrawn over the rows already written rather than by
+  # recomputing every node.
   #
-  # Edges are a function of the node set: a sweep settles verdicts with
-  # `UPDATE`s and cannot add or remove a node, so a drain that only swept cannot
-  # have moved topology. Sweeps never reach `run/3` at all — `apply_marks/2`
-  # calls it only for the marks no handler answered — so putting this here is
-  # what confines a full topology computation to the fallback path.
+  # Two questions, because they move at different times. The shape —
+  # `Freshness.topology/2` over component ids, types, parents, dependencies and
+  # the story population — moves the moment a story or component row does. Its
+  # nodes arrive when the drain carrying that entity's mark computes them, and
+  # that can be a later drain. Measured on criterion 3428: a story showed in
+  # the shape one drain before its rows existed, the rebuild drew over a node
+  # set without it and remembered the shape, and when its seven rows landed
+  # the shape had not moved since — eleven edges never written, and the
+  # story's `bdd_specs_passing` offered with nothing gating it. So a write that
+  # inserted or reaped a row redraws whatever the shape says.
   #
-  # And it has to be the whole topology. `Topology.transitive_reduction/1` is
-  # global: an edge here disappears because of a path through a node somewhere
-  # else, so there is no subset of edges one entity's change is confined to.
-  # `RequirementGraph.compute_topology/3` carries the long version.
+  # This called `Preloader.load/2` — the whole project — on every narrow drain
+  # to compare one fingerprint, and on a move called `compute_topology/3`,
+  # which computes every node to get the edges. `topology_context/1` is four
+  # queries and holds exactly what `Freshness.topology/2` and `Edges.over/4`
+  # read.
   #
-  # The `:everything` branch already holds a context; the narrow one has to read
-  # one, which is the honest price of a global question. It is paid on entity
-  # arrival and departure — a component created, retyped or deleted, a story
-  # released or parked — and on nothing else.
-  defp reproject_topology(state, ctx, config) do
-    ctx = ctx || elem(Preloader.load(state.scope), 1)
+  # No baseline is a reason to redraw, not to trust: `last` is `nil` when this
+  # process has never settled the vantage, and it is here rather than in
+  # `trust/2` because a mark was pending — see `settle_vantage/6`.
+  defp reproject_topology(state, config, node_set_moved?) do
+    shape = Preloader.topology_context(state.scope)
+    last = Map.get(state.last_topology, vantage(state))
+    topology = Freshness.topology(shape, config)
 
-    # Writing edges costs a whole-topology computation and a full replace —
-    # measured at 8s and 57,000 rows on this project — so the first thing to ask
-    # is whether topology can have moved at all. This hash is over component
-    # ids, types, parents and dependencies plus the story population: exactly
-    # the inputs edges are built from, and nothing a verdict touches.
-    #
-    # A fallback drain is usually one entity being recomputed for a reason that
-    # has nothing to do with shape, so the common answer is no.
-    # Keyed by vantage, and that is not tidiness. Read as a single slot, each
-    # checkout compared its topology against whichever checkout was settled
-    # before it, never matched, and replaced the whole edge set — measured on
-    # this project at 123,236 edges deleted and reinserted, 246,472 row writes
-    # and ~16s, repeating for every observation that fell back. The comment
-    # above `apply_marks/2` has said these are per-vantage facts since the
-    # vantage loop was written; the reads and writes never followed.
-    vantage = vantage(state)
-    last = Map.get(state.last_topology, vantage)
+    if topology == last and not node_set_moved? do
+      state
+    else
+      {state, drawn} = redraw(state, shape, config)
 
-    case Freshness.topology(ctx, config) do
-      ^last ->
-        state
+      Logger.info(
+        "[ShadowProjector] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
+          "#{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
+      )
 
-      topology ->
-        {_nodes, edges} = RequirementGraph.compute_topology(state.scope, ctx, config)
-        {:ok, _count} = Shadow.write_edges(state.scope, edges)
-        %{state | last_topology: Map.put(state.last_topology, vantage, topology)}
+      remember_topology(state, topology)
+    end
+  end
+
+  # The edge set at this vantage, drawn over the rows it holds and written as
+  # a difference.
+  #
+  # `Edges.over/3` derives it one entity at a time against the component side,
+  # so a component appearing costs its own edges and the stories drawn through
+  # it — not a reduction of every edge in the project at every vantage, which
+  # is what `edges_over/4` cost: 355ms of a 430ms edge phase per vantage, ten
+  # vantages, for one event (2026-09-21).
+  #
+  # Announced as an edge rebuild for `last_drain`, so criterion 3618 can go on
+  # saying that a drain of verdicts drew nothing.
+  defp redraw(state, shape, config) do
+    {state, plan} = edge_plan(state, config)
+    ids = Shadow.node_ids(state.scope)
+    story_ids = Enum.map(shape.stories, & &1.id)
+
+    {draw_us, edges} = :timer.tc(fn -> Edges.over(plan, story_ids, Shadow.present?(ids)) end)
+    {write_us, {:ok, moved}} = :timer.tc(fn -> Shadow.write_edges(state.scope, edges, ids) end)
+
+    :telemetry.execute(
+      DrainCost.edges_rebuilt(),
+      %{count: 1, nodes: map_size(ids)},
+      %{project_id: state.project_id}
+    )
+
+    {state,
+     %{
+       edges: length(edges),
+       moved: moved,
+       draw_ms: div(draw_us, 1000),
+       write_ms: div(write_us, 1000)
+     }}
+  end
+
+  # The generated half of the edges, once per shape rather than once per
+  # vantage. Keyed by the project-wide shape — every ready story, whichever
+  # checkout holds it — so a drain settling ten vantages generates once, and
+  # a later drain that finds the shape unmoved generates nothing. Measured on
+  # dev before this: generating was ~65% of a 452ms redraw, and none of it
+  # read the vantage.
+  defp edge_plan(state, config) do
+    wide = Preloader.topology_context(%{state.scope | active_working_copy_id: nil})
+    key = Freshness.topology(wide, config)
+
+    case state.edge_plan do
+      {^key, plan} ->
+        {state, plan}
+
+      _stale_or_none ->
+        {plan_us, plan} = :timer.tc(fn -> Edges.plan(state.scope, wide, config) end)
+
+        Logger.info(
+          "[ShadowProjector] planned edges for #{map_size(plan.stories)} stories over " <>
+            "#{length(plan.component_side)} component-side edges in #{div(plan_us, 1000)}ms"
+        )
+
+        {%{state | edge_plan: {key, plan}}, plan}
     end
   end
 
@@ -569,6 +880,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # rather than the raw field, so the unscoped reader keys the same way it
   # reads.
   defp vantage(state), do: Projection.vantage(state.scope)
+
+  defp remember_topology(state, topology),
+    do: %{state | last_topology: Map.put(state.last_topology, vantage(state), topology)}
 
   defp cache_analysis(state, freshness),
     do: %{state | analysis_fresh: Map.put(state.analysis_fresh, vantage(state), freshness)}
@@ -592,45 +906,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Each entity in turn, skipping what an earlier one in this drain already
   # answered for.
   #
-  # A component's unit is its family, so asking about a nested component answers
-  # for its parent and siblings too. Without this, seeding recomputes each
-  # family once per member — 549 of this project's 1138 components are nested —
-  # and spends most of its time rewriting rows it just wrote.
-  #
-  # Not batching: nothing is deferred and no window is waited on. This declines
-  # to redo work whose answer is already on disk.
-  @spec write_each([Shadow.entity()], Scope.t(), map(), map()) :: MapSet.t(Shadow.entity())
-  defp write_each(entities, scope, ctx, config) do
-    Enum.reduce(entities, MapSet.new(), fn entity, done ->
-      if MapSet.member?(done, entity),
-        do: done,
-        else: MapSet.union(done, compute_and_write(scope, ctx, config, entity))
-    end)
-  end
-
-  # Answers with everything it covered, so the drain can skip those.
-  defp compute_and_write(scope, ctx, config, {"project", _} = requested) do
-    entity = {"project", scope.active_project_id}
-    {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-    Shadow.write(scope, covered, nodes)
-    MapSet.put(covered, requested)
-  end
-
-  defp compute_and_write(scope, ctx, config, entity) do
-    if present?(ctx, entity) do
-      {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-      Shadow.write(scope, covered, nodes)
-      covered
-    else
-      Shadow.write(scope, [entity], [])
-      MapSet.new([entity])
-    end
-  end
-
-  defp present?(ctx, {"component", id}), do: Enum.any?(ctx.components, &(&1.id == id))
-  defp present?(ctx, {"story", id}), do: Enum.any?(ctx.stories, &(&1.id == id))
-  defp present?(_ctx, _entity), do: false
-
   @doc false
   def entity_of(%Invalidation{} = mark), do: Invalidation.entity(mark)
 end

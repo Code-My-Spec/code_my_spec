@@ -31,9 +31,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
         end
 
         :ok = Fixtures.scan_working_copy(context.scope)
-        _warm = read_settled_graph(context)
+        warm = read_settled_graph(context)
 
-        {:ok, Map.put(context, :before, Fixtures.next_actionable_requirements(context.scope))}
+        {:ok,
+         context
+         |> Map.put(:before_graph, warm)
+         |> Map.put(:before, Fixtures.next_actionable_requirements(context.scope))}
       end
 
       when_ "each child gets its implementation file and the project scans", context do
@@ -58,6 +61,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
                """
                The premise did not hold: the story's `bdd_specs_passing` was
                already available before the components finished.
+
+               edges before: #{length(context.before_graph["edges"] || [])}
+               story edges before: #{inspect(story_edges(context.before_graph))}
+               children's implementation_file before: #{inspect(children_verdicts(context.before_graph))}
 
                Then nothing below is about a prerequisite moving — the
                requirement was never blocked, and a graph that ignores
@@ -88,6 +95,16 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
         {:ok, context}
       end
     end
+  end
+
+  defp story_edges(graph) do
+    Enum.filter(graph["edges"] || [], fn e -> String.contains?(inspect(e), "story") end)
+  end
+
+  defp children_verdicts(graph) do
+    (graph["nodes"] || [])
+    |> Enum.filter(&(&1["name"] == "implementation_file"))
+    |> Enum.map(&{&1["entity_name"], &1["satisfied"]})
   end
 
   defp offered?(requirements, entity_name, name) do

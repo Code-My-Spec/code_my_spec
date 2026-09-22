@@ -23,9 +23,36 @@ defmodule CodeMySpec.Requirements.ShadowTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup ctx do
+    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
     Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.delete_env(:code_my_spec, :graph_shadow_projection) end)
+    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
+
+    # This project's pass, stopped, so the projector is the only thing draining.
+    #
+    # `Invalidations.consume/1` is a delete, so the pass and the projector on
+    # one queue is a destructive read — whichever drains first takes the marks
+    # and the other never sees them. `GraphWatcher` defers to a running
+    # projector, but the flag it reads is global `Application` state that every
+    # concurrent test flips, so a watcher waking in the window where it reads
+    # false consumes marks this file's projector needed.
+    #
+    # It presents as the projector keeping the verdict it had and `Shadow.diff/1`
+    # reporting a disagreement that is really a missed delivery. Measured at
+    # roughly one run in nine, and caught by the analyzer after nine clean local
+    # runs had already called it settled.
+    #
+    # Every test here drives the pass by hand through `project_live/1`, so
+    # nothing needs the watcher.
+    stop_watcher(ctx.scope.active_project_id)
+
+    :ok
+  end
+
+  defp stop_watcher(project_id) do
+    for {pid, _} <- Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+      DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
+    end
 
     :ok
   end
@@ -335,7 +362,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       assert flags[:project?], "a story moving must invalidate the project requirements"
     end
 
-    test "Components names the component and its parent", ctx do
+    test "Components names the component; its parent follows from the family", ctx do
       parent = ComponentsFixtures.component_fixture(ctx.scope)
       Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
 
@@ -353,14 +380,22 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       refute flags[:unknown?], "Components could not say what it moved"
       assert MapSet.member?(named, {"component", child.id})
 
-      # `architecture_designed` reads the component set.
+      # `architecture_designed` reads the component set. The event is
+      # project-wide, and the kind is handled for `[:architecture]` — settled
+      # from the profile rather than by a `:project` entity recomputing the
+      # project's nodes at every vantage.
       assert flags[:project?], "a component moving must invalidate the project requirements"
 
-      # `Freshness.component/2` hashes `children_by_parent`, so a child
-      # appearing moves the parent's requirements too. A writer that named only
-      # the child would leave the parent stale with nothing to say so.
-      assert MapSet.member?(named, {"component", parent.id}),
-             "a child appearing must invalidate its parent"
+      # The parent is reconsidered through the child's family, not through a
+      # mark of its own: `Preloader.load_component_family/3` roots at the
+      # parent and instantiates its template over parent and siblings, which
+      # is where the child's nodes come from. A mark naming the parent named
+      # the *parent's* family instead — rooted at the grandparent — and a child
+      # created under `CodeMySpec.Workspaces` recomputed `CodeMySpec` and its
+      # 101 children at every vantage: 7.1s across ten checkouts, measured
+      # 2026-09-21.
+      refute MapSet.member?(named, {"component", parent.id}),
+             "a child appearing must not name its parent — the family already covers it"
     end
 
     test "AcceptanceCriteria names the story its criterion hangs off", ctx do

@@ -76,8 +76,12 @@ defmodule CodeMySpec.Requirements.TopologyTest do
       {story_nodes, _} = Map.fetch!(result, "story")
       {comp_nodes, _} = Map.fetch!(result, "component")
 
-      assert MapSet.new(project_nodes, & &1.name) == MapSet.new(["project_setup", "all_bdd_specs_passing"])
-      assert MapSet.new(story_nodes, & &1.name) == MapSet.new(["bdd_specs_exist", "bdd_specs_passing"])
+      assert MapSet.new(project_nodes, & &1.name) ==
+               MapSet.new(["project_setup", "all_bdd_specs_passing"])
+
+      assert MapSet.new(story_nodes, & &1.name) ==
+               MapSet.new(["bdd_specs_exist", "bdd_specs_passing"])
+
       assert MapSet.new(comp_nodes, & &1.name) == MapSet.new(["spec_file", "implementation_file"])
     end
 
@@ -127,9 +131,14 @@ defmodule CodeMySpec.Requirements.TopologyTest do
 
   describe "partition_by_parent_entity/2" do
     test "groups by parent_entity_id, with nil bucket for unorchestrated" do
-      orchestrated_a = req(entity_type: "component", entity_id: 200, parent_entity_id: 50, name: "spec_file")
-      orchestrated_b = req(entity_type: "component", entity_id: 201, parent_entity_id: 50, name: "spec_file")
-      unorchestrated = req(entity_type: "component", entity_id: 300, parent_entity_id: nil, name: "spec_file")
+      orchestrated_a =
+        req(entity_type: "component", entity_id: 200, parent_entity_id: 50, name: "spec_file")
+
+      orchestrated_b =
+        req(entity_type: "component", entity_id: 201, parent_entity_id: 50, name: "spec_file")
+
+      unorchestrated =
+        req(entity_type: "component", entity_id: 300, parent_entity_id: nil, name: "spec_file")
 
       nodes = [orchestrated_a, orchestrated_b, unorchestrated]
       edges = [edge(k(orchestrated_a), k(orchestrated_b))]
@@ -303,6 +312,87 @@ defmodule CodeMySpec.Requirements.TopologyTest do
 
   # ── transitive_reduction/1 ────────────────────────────────────────
 
+  describe "reduce_with/2" do
+    test "a virtual path makes a local edge redundant" do
+      x = req(entity_type: "p", entity_id: 1, name: "x")
+      y = req(entity_type: "p", entity_id: 1, name: "y")
+      z = req(entity_type: "p", entity_id: 1, name: "z")
+
+      local = [edge(k(x), k(y)), edge(k(x), k(z))]
+      virtual = [edge(k(y), k(z))]
+
+      assert Topology.reduce_with(local, virtual) == [edge(k(x), k(y))]
+    end
+
+    test "a local edge that is itself virtual is redundant by the virtual's claim" do
+      x = req(entity_type: "p", entity_id: 1, name: "x")
+      z = req(entity_type: "p", entity_id: 1, name: "z")
+
+      assert Topology.reduce_with([edge(k(x), k(z))], [edge(k(x), k(z))]) == []
+    end
+
+    test "virtual edges are never returned" do
+      x = req(entity_type: "p", entity_id: 1, name: "x")
+      y = req(entity_type: "p", entity_id: 1, name: "y")
+      z = req(entity_type: "p", entity_id: 1, name: "z")
+
+      assert Topology.reduce_with([edge(k(x), k(y))], [edge(k(y), k(z))]) == [edge(k(x), k(y))]
+    end
+
+    test "with nothing virtual it is the plain reduction" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+
+      edges = [edge(k(a), k(b)), edge(k(b), k(c)), edge(k(a), k(c))]
+      assert Topology.reduce_with(edges, []) == Topology.transitive_reduction(edges)
+    end
+  end
+
+  describe "minimal/2" do
+    # What a whole-graph reduction keeps of a fan-out to `keys`: the property
+    # `Edges` relies on, checked against the reduction itself.
+    defp kept_by_reduction(edges, source, keys) do
+      fan_out = Enum.map(keys, &edge(source, &1))
+
+      (edges ++ fan_out)
+      |> Topology.transitive_reduction()
+      |> Enum.filter(&(&1.from == source))
+      |> Enum.map(& &1.to)
+      |> Enum.sort()
+    end
+
+    test "keeps the members no other member reaches" do
+      [a, b, c, d, e, s] =
+        for name <- ~w(a b c d e s), do: k(req(entity_type: "p", entity_id: 1, name: name))
+
+      edges = [edge(a, b), edge(b, c), edge(d, e)]
+      keys = [a, b, c, d, e]
+
+      assert Enum.sort(Topology.minimal(Topology.reach(edges), keys)) == [a, d]
+      assert kept_by_reduction(edges, s, keys) == [a, d]
+    end
+
+    test "a member outside the graph is kept" do
+      [a, b, lone] =
+        for name <- ~w(a b lone), do: k(req(entity_type: "p", entity_id: 1, name: name))
+
+      reach = Topology.reach([edge(a, b)])
+      assert Enum.sort(Topology.minimal(reach, [a, b, lone])) == Enum.sort([a, lone])
+    end
+
+    test "agrees with the reduction on a cycle" do
+      [a, b, c, s] =
+        for name <- ~w(a b c s), do: k(req(entity_type: "p", entity_id: 1, name: name))
+
+      edges = [edge(a, b), edge(b, a), edge(b, c)]
+      keys = [a, b, c]
+
+      assert Enum.sort(Topology.minimal(Topology.reach(edges), keys)) ==
+               kept_by_reduction(edges, s, keys)
+    end
+  end
+
   describe "transitive_reduction/1" do
     test "drops a direct edge when a longer path exists" do
       a = req(entity_type: "p", entity_id: 1, name: "a")
@@ -419,9 +509,14 @@ defmodule CodeMySpec.Requirements.TopologyTest do
 
   describe "fans_out_to_children?/3" do
     test "true when a parent-scope node has outgoing edges to nodes of the same type with different entity_id" do
-      parent = req(entity_type: "component", entity_id: 1, name: "spec_valid", parent_entity_id: 1)
-      child_a = req(entity_type: "component", entity_id: 2, name: "spec_file", parent_entity_id: 1)
-      child_b = req(entity_type: "component", entity_id: 3, name: "spec_file", parent_entity_id: 1)
+      parent =
+        req(entity_type: "component", entity_id: 1, name: "spec_valid", parent_entity_id: 1)
+
+      child_a =
+        req(entity_type: "component", entity_id: 2, name: "spec_file", parent_entity_id: 1)
+
+      child_b =
+        req(entity_type: "component", entity_id: 3, name: "spec_file", parent_entity_id: 1)
 
       edges = [edge(k(parent), k(child_a)), edge(k(parent), k(child_b))]
 
@@ -439,7 +534,9 @@ defmodule CodeMySpec.Requirements.TopologyTest do
 
     test "false when outgoing edges cross entity_type" do
       story_node = req(entity_type: "story", entity_id: 10, name: "bdd_specs_exist")
-      comp_node = req(entity_type: "component", entity_id: 1, name: "spec_file", parent_entity_id: 1)
+
+      comp_node =
+        req(entity_type: "component", entity_id: 1, name: "spec_file", parent_entity_id: 1)
 
       edges = [edge(k(story_node), k(comp_node))]
 

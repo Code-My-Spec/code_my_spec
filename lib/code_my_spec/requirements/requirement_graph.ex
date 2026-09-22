@@ -34,6 +34,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
@@ -438,6 +439,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
+  @doc """
+  The edge set over a node set, without computing a verdict.
+
+  `compute_topology/3` answers the same question by computing every node first
+  and is the right call on a cold vantage, where the nodes have to be computed
+  anyway. It is the wrong call when the nodes are already stored: the event
+  path was recomputing every node in the project to rebuild edges after a
+  shape change, which is the one cost the pass no longer pays.
+
+  `ctx` needs the shape — `Preloader.topology_context/1` is enough — and
+  `nodes` are whatever the caller holds for the vantage.
+  """
+  @spec edges_over(Scope.t(), [Requirement.t()], map(), map()) :: [edge()]
+  def edges_over(scope, nodes, ctx, config) do
+    ctx =
+      ctx
+      |> Freshness.with_config(config)
+      |> Map.put(:template_edges, template_edges(scope, ctx, config))
+
+    compute_edges(nodes, ctx, config)
+  end
+
   # The edge set for a partial pass, and what it is entitled to rewrite.
   #
   # Returns `{edges, edge_nodes}`. `edge_nodes` is the node set those edges were
@@ -479,6 +502,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # `Projection.load/2`, which drops any row it cannot rehydrate, so a short
       # read would delete the edges it failed to read.
       {stored_edges, nil}
+    end
+  end
+
+  # Settle whichever writer owns the rows this read is about to serve.
+  #
+  # A read calls this before it answers, and it used to name `GraphWatcher`
+  # outright. That is right while the pass writes `requirements` and wrong the
+  # moment `graph_event_is_source` flips: the projector then owns the table
+  # being read, and a read would settle the pass — now writing the shadow — and
+  # be served from rows nothing had settled. It also reaches the projector with
+  # the vantage the reader named, which `GraphWatcher` has always folded into
+  # its next pass as `requested_vantages` and the projector never heard about.
+  defp settle_owner(%Scope{active_project_id: project_id} = scope) do
+    # Settled if it is running and started by nobody here, exactly as the pass
+    # side: `GraphWatcher.settle/1` answers `:ok` for a project nothing watches,
+    # and `ensure_watching/1` is what starts both writers. A read that started
+    # the projector resurrected it after a scenario's teardown had stopped it —
+    # a wake task's read, drained after `stop_graph_watchers/0` — and the
+    # projector then ran its seed on a sandbox whose owner was gone.
+    if Shadow.inverted?() do
+      ShadowProjector.settle(project_id, [scope.active_working_copy_id])
+    else
+      GraphWatcher.settle(scope)
     end
   end
 
@@ -551,27 +597,89 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # the same fact `Freshness.topology/2` is built on, applied to the other side
   # of the question.
   defp template_edges(scope, ctx, config) do
+    component_template_edges(ctx, config) ++
+      Enum.flat_map(ctx.stories, &story_template_edges(&1, config)) ++
+      project_template_edges(scope, config)
+  end
+
+  defp component_template_edges(ctx, config) do
     {top_level, children_by_parent} = component_families(ctx)
 
-    component_edges =
-      Enum.flat_map(top_level, fn component ->
-        children = Map.get(children_by_parent, component.id, [])
-        original = RequirementDefinitionData.graph_for_type(component.type)
-        filtered = filter_definitions_by_config(original, config)
+    Enum.flat_map(top_level, fn component ->
+      children = Map.get(children_by_parent, component.id, [])
+      original = RequirementDefinitionData.graph_for_type(component.type)
+      filtered = filter_definitions_by_config(original, config)
 
-        build_template_edges(filtered, build_id_map(filtered, component, children), original)
-      end)
-
-    story_template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
-
-    story_edges =
-      Enum.flat_map(ctx.stories, fn story ->
-        id_map = Map.new(story_template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
-        build_template_edges(story_template, id_map)
-      end)
-
-    component_edges ++ story_edges ++ project_template_edges(scope, config)
+      build_template_edges(filtered, build_id_map(filtered, component, children), original)
+    end)
   end
+
+  defp story_template_edges(story, config) do
+    template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
+    id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
+    build_template_edges(template, id_map)
+  end
+
+  # The generators one side at a time, for `Edges`.
+  #
+  # `compute_edges/3` runs every generator and reduces the union. `Edges.over/4`
+  # runs the same generators and reduces each entity's edges against the
+  # component side, so the two can differ only in the reduction — which is
+  # what `edges_derived_per_entity_match_the_pass_test` holds them to.
+
+  @doc """
+  The shape with what the story generators read off it — children by parent
+  and each type's first requirement — built once per drawing rather than once
+  per story.
+  """
+  @spec edge_context(map(), map()) :: map()
+  def edge_context(ctx, config) do
+    ctx
+    |> Map.put(:children_by_parent, children_by_parent(ctx))
+    |> Map.put(:first_def_by_type, first_def_by_type(ctx, config))
+  end
+
+  @doc """
+  The component side of the edge set as generated: every component's template
+  edges and the cross-context edges its dependencies declare. Unreduced;
+  `Edges.component_side/3` reduces it.
+  """
+  @spec component_side_edges(map(), map()) :: [edge()]
+  def component_side_edges(ctx, config),
+    do: component_template_edges(ctx, config) ++ cross_context_dependency_edges(ctx, config)
+
+  @doc """
+  One story's edges as generated, by kind: its own chain, its kickoff into
+  the components, the exits back from them, and the pair joining it to the
+  project. Unreduced; `Edges.story_side/5` reduces each against the component
+  side.
+  """
+  @spec story_side_edges(map(), map(), map()) :: %{
+          template: [edge()],
+          kickoff: [edge()],
+          exit: [edge()],
+          project: [edge()]
+        }
+  def story_side_edges(story, ctx, config) do
+    timing = %{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}
+    {chain, _timing} = story_chain_edges(story, ctx, config, timing)
+    {kickoff, exit} = Enum.split_with(chain, &match?(%{from: {"story", _, _}}, &1))
+    one = %{stories: [story]}
+
+    %{
+      template: story_template_edges(story, config),
+      kickoff: kickoff,
+      exit: exit,
+      project: project_to_story_edges(one) ++ story_to_project_edges(one)
+    }
+  end
+
+  @doc """
+  The project's own chain as generated. Unreduced; `Edges.project_side/4`
+  reduces it against the stories that bridge it.
+  """
+  @spec project_side_edges(Scope.t(), map()) :: [edge()]
+  def project_side_edges(scope, config), do: project_template_edges(scope, config)
 
   # The project's own chain. Node-free like the other two, and for the same
   # reason: `compute_project_nodes/3` builds this `id_map` from the project id
@@ -1018,9 +1126,22 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_topology(Scope.t(), map(), map()) ::
           {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
   def compute_topology(scope, ctx, config) do
-    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, enriched_ctx} = compute_nodes(scope, ctx, config)
     {nodes, compute_edges(nodes, enriched_ctx, config)}
   end
+
+  @doc """
+  The project's whole node set, computed and not written, with the context
+  the computation enriched — what `compute_topology/3` does before the edges.
+
+  On its own so a caller settling several vantages can decide about the edges
+  itself: they are a function of the node set and the shape, and every vantage
+  of a project shares the shape, so a seed that computed them ten times was
+  computing the same set ten times. `edges_over/4` draws them when the caller
+  has no set to reuse.
+  """
+  @spec compute_nodes(Scope.t(), map(), map()) :: {[Requirement.t()], map()}
+  def compute_nodes(scope, ctx, config), do: compute_all_from_ctx(scope, ctx, config)
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     stamp_project(scope)
@@ -1336,7 +1457,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     scope = normalize_vantage(scope)
 
     if Keyword.get(opts, :settle, true) do
-      GraphWatcher.settle(scope)
+      settle_owner(scope)
     end
 
     with {:ok, ctx} <- Preloader.load(scope) do
@@ -1424,7 +1545,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # than as the page being early. Ten of story 562's spex caught it: a child
     # implementation deleted, the sync announcing it, and the page still
     # rendering the node satisfied.
-    GraphWatcher.settle(scope)
+    settle_owner(scope)
 
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
 
@@ -1567,6 +1688,74 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec stale_read_logging?() :: boolean()
   def stale_read_logging?,
     do: Application.get_env(:code_my_spec, :graph_stale_read_log, false) == true
+
+  @doc """
+  What is served, against every entity recomputed from its inputs now.
+
+  The instrument for the event path. It settles rows from observations and
+  stamps no fingerprint, so `stale_entities_report/1` — which judges a row by
+  the stamp the pass wrote on it — reads every row the event path has touched
+  as stale, for good: 447 of 1,134 components on dev, every one of them
+  right. This asks the only question that outlives the pass: recomputed from
+  the domain this minute, does every requirement and every edge agree with
+  what is being served? Nothing is written. Expensive on purpose — one whole
+  computation, on demand, by one reader.
+  """
+  @spec served_vs_recomputed(Scope.t()) :: map()
+  def served_vs_recomputed(%Scope{} = scope) do
+    scope = scope |> normalize_vantage() |> with_project()
+    {:ok, ctx} = Preloader.load(scope)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {served, served_edges} = Projection.load(scope, ctx)
+    {computed, computed_edges} = compute_topology(scope, ctx, config)
+
+    served_by_key = Map.new(served, &{node_key(&1), &1.satisfied})
+    computed_by_key = Map.new(computed, &{node_key(&1), &1.satisfied})
+    served_keys = MapSet.new(Map.keys(served_by_key))
+    computed_keys = MapSet.new(Map.keys(computed_by_key))
+
+    missing = MapSet.difference(computed_keys, served_keys)
+    extra = MapSet.difference(served_keys, computed_keys)
+
+    disagree =
+      served_keys
+      |> MapSet.intersection(computed_keys)
+      |> Enum.filter(&(Map.fetch!(served_by_key, &1) != Map.fetch!(computed_by_key, &1)))
+
+    served_edge_set = MapSet.new(served_edges, &{&1.from, &1.to})
+    computed_edge_set = MapSet.new(computed_edges, &{&1.from, &1.to})
+    edges_missing = MapSet.difference(computed_edge_set, served_edge_set)
+    edges_extra = MapSet.difference(served_edge_set, computed_edge_set)
+
+    %{
+      served: map_size(served_by_key),
+      computed: map_size(computed_by_key),
+      missing: MapSet.size(missing),
+      extra: MapSet.size(extra),
+      disagree: length(disagree),
+      served_edges: MapSet.size(served_edge_set),
+      computed_edges: MapSet.size(computed_edge_set),
+      edges_missing: MapSet.size(edges_missing),
+      edges_extra: MapSet.size(edges_extra),
+      sample:
+        Enum.map(missing, &"not served: #{audit_label(&1)}") ++
+          Enum.map(extra, &"served, not recomputed: #{audit_label(&1)}") ++
+          Enum.map(disagree, &"disagrees: #{audit_label(&1)}") ++
+          Enum.map(edges_missing, &"edge not served: #{audit_edge(&1)}") ++
+          Enum.map(edges_extra, &"edge served, not recomputed: #{audit_edge(&1)}")
+    }
+  end
+
+  # The project's own chain is instantiated from `scope.active_project`, which a
+  # reader that named only the id — the dev page — does not carry.
+  defp with_project(%Scope{active_project: %{id: _}} = scope), do: scope
+
+  defp with_project(%Scope{active_project_id: id} = scope),
+    do: %{scope | active_project: Repo.get!(CodeMySpec.Projects.Project, id)}
+
+  defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
+  defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"
+  defp audit_edge({from, to}), do: "#{audit_label(from)} -> #{audit_label(to)}"
 
   # No guard for "nothing stored", though the first version had one on the
   # grounds that a cold project is not a stale one. It is the same state as the

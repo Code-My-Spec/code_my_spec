@@ -152,8 +152,10 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.Story
@@ -1447,12 +1449,27 @@ defmodule CodeMySpecSpex.Fixtures do
     drain_until_settled(project_id)
   end
 
-  defp drain_until_settled(project_id) do
+  defp drain_until_settled(project_id, attempts \\ 50)
+
+  # Loudly, not forever. A watcher whose pass keeps failing keeps its timer
+  # set, so `pending` stays true and this spun until ExUnit's timeout — sixty
+  # seconds of a settle retried five hundred times a second, with the watcher's
+  # own reason in `last_error` the whole time. Measured at 31,058 log lines in
+  # one run, behind a sandbox connection that a process killed mid-query had
+  # taken down.
+  defp drain_until_settled(project_id, 0) do
+    raise "the graph for #{project_id} would not settle; the watcher says: " <>
+            inspect(
+              GraphWatcher.status(project_id) && GraphWatcher.status(project_id)[:last_error]
+            )
+  end
+
+  defp drain_until_settled(project_id, attempts) do
     GraphWatcher.settle(project_id)
     drain_bootstrap_announcements(project_id)
 
     case GraphWatcher.status(project_id) do
-      %{pending: true} -> drain_until_settled(project_id)
+      %{pending: true} -> drain_until_settled(project_id, attempts - 1)
       _ -> :ok
     end
   end
@@ -1600,6 +1617,21 @@ defmodule CodeMySpecSpex.Fixtures do
   watchers alive at the end of one are that one's, and a watcher belonging to
   nothing is what a straggler is.
   """
+  @doc """
+  Forget everything the event path has projected for this project, at every
+  vantage, so the next projector to arrive meets it for the first time.
+
+  A projector arriving trusts rows it finds and seeds only a vantage that has
+  none, so a criterion about the seed has to take the rows away first — a
+  restart alone measures a trust. Oracle tooling, like `watch_graph/1`.
+  """
+  @spec forget_projection(Scope.t()) :: :ok
+  def forget_projection(%Scope{} = scope) do
+    scope
+    |> Projection.vantages()
+    |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
+  end
+
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do
     CodeMySpec.Requirements.WatcherSupervisor
@@ -3137,6 +3169,8 @@ defmodule CodeMySpecSpex.Fixtures do
       Keyword.merge([runner: FakeWorkspaceRunner], config)
     )
 
+    stub_no_preview_by_default()
+
     # Idempotent, because a caller means "the workspace behaves like this now"
     # rather than "start a second one". Scenarios inside one `spex` block share
     # a test process — they read as sibling blocks and are not — so adding a
@@ -3155,6 +3189,24 @@ defmodule CodeMySpecSpex.Fixtures do
     end
 
     :ok
+  end
+
+  # `Workspaces.instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of
+  # a main copy, so booting the fake now reaches a real `Req.Test` client
+  # (`config/test.exs` pins one for every test). A caller here wants a
+  # workspace to come up, not a tunnel — same reasoning as `stub_stripe_by_default/0`
+  # in `CodeMySpecSpexCase`: nobody installing this fixture should also have to
+  # stand up a fake Cloudflare. Answering with `success: false` is enough:
+  # `PreviewTunnel.create/2` reads it as `{:error, {:cloudflare, body}}`, which
+  # `preview_env/1` already treats as best-effort and drops. A scenario whose
+  # subject is the preview itself stubs `PreviewTunnel` again afterward, in its
+  # own test process, which simply replaces this one.
+  defp stub_no_preview_by_default do
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      conn
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
   end
 
   @doc """

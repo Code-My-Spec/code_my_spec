@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.93",
+      version: "2.0.118",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -49,6 +49,25 @@ defmodule CodeMySpec.MixProject do
 
   # Specifies which paths to compile per environment.
   # Release modules (Burrito steps) only compile in prod_cli.
+  # The spex assert against the event-based graph.
+  #
+  # `graph_event_is_source` decides which writer fills the tables readers read.
+  # Inverted, `Requirements.ShadowProjector` writes `requirements` and the
+  # batched pass writes `shadow_requirements`; a read settles the projector and
+  # is served from its rows, and the graph JSON's `last_drain` is the event
+  # drain. Every criterion that reads the graph is then a statement about the
+  # event path, and a red one is a gap in the event path, not in the spex.
+  #
+  # Here and not in `config/test.exs`, because `mix test` is the other suite:
+  # `NodeRepository`, `Projection` and `Predicates` tests are the pass writer's
+  # own white-box tests and read the table it writes. Inverting the whole env
+  # sent forty of them to the wrong table by construction. The pass keeps
+  # running under the spex as the oracle — `Shadow.diff/1` compares the two.
+  defp spex_read_the_event_graph(_args) do
+    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
+    Application.put_env(:code_my_spec, :graph_event_is_source, true)
+  end
+
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
   defp elixirc_paths(:dev_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(:dev_sprite), do: ["lib", "lib_cli"]
@@ -323,6 +342,7 @@ defmodule CodeMySpec.MixProject do
         # path becomes `--quiet`'s own inferred value, `files` comes back
         # empty, and `mix spex <path>` silently ran the whole suite instead
         # of the one file named (f600a617).
+        &spex_read_the_event_graph/1,
         "spex"
       ],
       # Same shape as `spex` above: a refusal in front of a task that was already

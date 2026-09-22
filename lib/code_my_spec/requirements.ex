@@ -98,6 +98,14 @@ defmodule CodeMySpec.Requirements do
   def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
 
   @doc """
+  What is served against every entity recomputed from its inputs now — the
+  instrument for the event path, which stamps no fingerprint. See
+  `RequirementGraph.served_vs_recomputed/1`. Reports; changes nothing.
+  """
+  @spec served_vs_recomputed(Scope.t()) :: map()
+  def served_vs_recomputed(%Scope{} = scope), do: RequirementGraph.served_vs_recomputed(scope)
+
+  @doc """
   What the rows say about whether the graph recomputes incrementally.
 
   Read-only, and from the rows rather than from a log: every pass stamps

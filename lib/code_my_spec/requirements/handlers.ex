@@ -121,8 +121,44 @@ defmodule CodeMySpec.Requirements.Handlers do
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
     "story_changed" => [:stories, :links, :specs, :issues],
-    "qa_attempt_submitted" => [:qa]
+    "qa_attempt_submitted" => [:qa],
+    # A component appearing, going or changing moves `architecture_designed`
+    # — the orphan rule reads the component set — and that is settled here
+    # from the `:architecture` profile. The component's *own* rows are not:
+    # a template can add or remove nodes, and handlers settle rows rather
+    # than create them, so these three are `@partial` and their fallback
+    # marks stay for the narrow recompute of the component itself.
+    "component_created" => [:architecture],
+    "component_changed" => [:architecture],
+    "component_deleted" => [:architecture],
+    # A dependency moves edges and no verdict: the cross-context edge between
+    # the two components and every kickoff drawn through them. Handled so its
+    # marks do not send the source's family through a recompute nothing reads,
+    # and `@shape` so the projector redraws the edges for it.
+    "dependency_changed" => []
   }
+
+  # Handled kinds whose handler answers only part of what the event moved.
+  # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
+  # event as answered; for these it keeps it, so the entities the event named
+  # still go through `compute_entity/4`.
+  @partial ~w(component_created component_changed component_deleted)
+
+  @doc "The handled kinds whose fallback marks still apply."
+  @spec partial_kinds() :: [String.t()]
+  def partial_kinds, do: @partial
+
+  # Handled kinds that can move the shape the edges are drawn from — a
+  # dependency declared, a story relinked to another component — without
+  # moving a row a handler creates. Their verdicts are settled here; the
+  # projector asks the shape whether the edges have to be redrawn. Component
+  # kinds are not listed because `@partial` already sends them down the path
+  # that asks.
+  @shape ~w(dependency_changed story_changed)
+
+  @doc "The handled kinds after which the projector checks the shape."
+  @spec shape_kinds() :: [String.t()]
+  def shape_kinds, do: @shape
 
   @doc """
   The event kinds this module can apply.
@@ -190,7 +226,12 @@ defmodule CodeMySpec.Requirements.Handlers do
     # `@delegate_requirements`.
     "qa_integration_plan" => [:files],
     "spex_boundary_ready" => [:files],
-    "personas_complete" => [:personas],
+    # Moved by files as well: a persona's artifacts — `summary.md`,
+    # `sources.md` in its folder — are files, and the `:personas` profile loads
+    # them by role. Profiled as `[:personas]` alone, a sync that wrote them
+    # settled nothing here, and the story-560 criteria read "personas_complete
+    # is still the blocking requirement" after every artifact existed.
+    "personas_complete" => {[:files, :personas], [:personas]},
     # Reads all three now. It used to read nothing and query for itself —
     # four fresh reads per drain, one of them every component with two
     # preloads.

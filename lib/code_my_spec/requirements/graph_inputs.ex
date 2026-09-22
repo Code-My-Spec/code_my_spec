@@ -91,6 +91,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
     component_created
     component_changed
     component_deleted
+    dependency_changed
     files_synced
     analysis_completed
     problems_changed

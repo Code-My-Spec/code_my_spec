@@ -1264,6 +1264,20 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  Point every live agent of one working copy at its current root.
+
+  For `HarnessProjectChannel` to call right after a join corrects
+  `working_copies.root` — see `AgentsRepository.sync_working_copy_root/3` for
+  why an agent's own `working_copy` snapshot needs the same correction rather
+  than trusting `report_root/2` alone to fix a restore.
+  """
+  @spec sync_working_copy_root(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def sync_working_copy_root(%Scope{} = scope, copy_id, root) when is_binary(root) do
+    AgentsRepository.sync_working_copy_root(scope, copy_id, root)
+  end
+
+  @doc """
   Set continuous intent without starting, restarting, or stopping a process.
 
   Enabling requests a turn only when the existing agent is runnable. Disabling

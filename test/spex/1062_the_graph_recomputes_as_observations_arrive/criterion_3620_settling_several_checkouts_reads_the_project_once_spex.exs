@@ -141,7 +141,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3620Spex do
       then_ "and it read the project once, not once per checkout", context do
         preloads = preloads(context.more)
 
-        assert preloads == 1,
+        # At most once, not exactly once. The event path settles an issue by
+        # sweeping the rows it already holds and reads the project zero
+        # times; the claim here is that the shared half is not re-read per
+        # checkout, and zero reads satisfies it more thoroughly than one.
+        assert is_integer(preloads) and preloads <= 1,
                """
                A drain covering #{vantages(context.more)} checkouts read the
                project's vantage-invariant half #{inspect(preloads)} time(s).

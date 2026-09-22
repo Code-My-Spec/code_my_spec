@@ -633,8 +633,7 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_read_model_refresh()
     schedule_preview_check()
     schedule_machine_load_check()
-    schedule_agents_running()
-    socket = report_agents_running(socket)
+    schedule_agents_running_after_join()
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -762,6 +761,31 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_agents_running,
     do: Process.send_after(self(), :report_agents_running, @agents_running_ms)
+
+  # Matches `Agents.start_agent/2`'s own @start_timeout_ms — how long the
+  # server already gives a fresh start to confirm, so a restore gets no less
+  # runway than an ordinary one.
+  #
+  # `handle_join` used to report immediately and unconditionally, which reads
+  # as "what is running right now" at the one moment that answer is always
+  # empty — nothing has been asked to start yet, restoring included, since
+  # `ask_what_to_restore/2` below fires its push and returns without waiting
+  # for any of the agents it asked for to actually come up. The server read
+  # that empty report as "none of this copy's :starting agents are really
+  # running" and reaped every one of them — `settle_against/3` has no grace
+  # period — before the restore reply had a chance to land, let alone launch
+  # anything. `34e03128`: measured live against a Docker boot where an agent
+  # created 600ms before the harness joined was marked :stopped forever,
+  # though nothing had ever tried, and failed, to start it — the request
+  # simply arrived after the one report that would ever ask about it.
+  #
+  # The ordinary 60s cadence is not the fix for the same reason: it is armed
+  # from this same instant, so its first firing sits in exactly the window
+  # this delay exists to skip.
+  @join_agents_running_delay_ms 15_000
+
+  defp schedule_agents_running_after_join,
+    do: Process.send_after(self(), :report_agents_running, @join_agents_running_delay_ms)
 
   # What is actually alive here, read from the registry rather than from
   # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
