@@ -479,7 +479,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       ids
     )
 
-    {:reply, :ok, socket}
+    {:reply, :ok, consider_once(socket)}
   end
 
   # What the box is carrying, from the box.
@@ -803,6 +803,46 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # The one moment we know what is running on this copy, which is the moment to
+  # ask whether any of it should be working.
+  #
+  # `Work.consider_*` is edge-triggered — a graph change, a finished task,
+  # continuous being switched on — and a restart is none of those. So a promote
+  # parked the whole fleet until the main agent's cadence came round, twenty
+  # minutes by default, at exactly the point a restart has just stranded
+  # reservations and discarded turns. Measured on the math project 2026-09-22:
+  # three promotes, and after each one every role sat idle over work that was
+  # ready the whole time.
+  #
+  # Here rather than at application boot, which is where this was tried first
+  # and did not work. The boot task runs while the agent rows still say what the
+  # last shutdown left them saying; the harness reconnects and re-registers them
+  # a moment later, so the sweep asked an empty board and woke nobody. This
+  # message *is* the re-registration, so by the time it returns there is
+  # something to ask about.
+  #
+  # Once per join, not per report. `agents_running` arrives with every manifest,
+  # and admission is guarded but not free — `graph_work?/2` is a graph read per
+  # idle agent. A join is a harness that has just (re)connected, which is the
+  # case with something to catch.
+  #
+  # In a Task because `Transport.Harness` resolves this copy's holder and calls
+  # it, and the holder is this channel: calling from here is `:calling_self`,
+  # which kills the channel and cancels every agent's turn on the copy. That is
+  # the outage this session started with.
+  defp consider_once(%{assigns: %{considered_agents?: true}} = socket), do: socket
+
+  defp consider_once(socket) do
+    scope = socket.assigns.scope
+    copy_id = scope.active_working_copy_id
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
+    end)
+
+    assign(socket, :considered_agents?, true)
   end
 
   # Unknown copy answers false. A correction we cannot attribute to the main
