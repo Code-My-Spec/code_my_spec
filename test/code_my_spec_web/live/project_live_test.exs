@@ -176,6 +176,38 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
     end
   end
 
+  describe "Form - preview extra frame origins" do
+    setup [:create_project]
+
+    test "pre-fills the built-in default for a project that never customized it", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, _form_live, html} = live(conn, ~p"/app/projects/#{project}/edit")
+
+      assert html =~ ~s(value="accounts.google.com, github.com")
+    end
+
+    test "a comma-separated edit is stored and re-shown as the project's own list", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
+
+      assert {:ok, _index_live, _html} =
+               form_live
+               |> form("#project-form",
+                 project: %{preview_extra_frame_origins: "accounts.google.com, gitlab.com"}
+               )
+               |> render_submit()
+               |> follow_redirect(conn, ~p"/app/projects")
+
+      updated = CodeMySpec.Projects.get_project!(scope, project.id)
+      assert updated.preview_extra_frame_origins == ["accounts.google.com", "gitlab.com"]
+    end
+  end
+
   describe "Form - GitHub Repository Creation on existing project" do
     setup [:create_project]
 

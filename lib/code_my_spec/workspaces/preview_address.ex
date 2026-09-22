@@ -110,6 +110,30 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   def csp_origin, do: scheme() <> "://*." <> base_domain() <> port_suffix()
 
   @doc """
+  Bare domains a previewed app's own OAuth flows may send the iframe to,
+  beyond its own preview origin — for display (the project form, the preview
+  panel) rather than the CSP header itself. See `csp_extra_frame_origins/1`
+  for the header value these become.
+
+  Per project (story 886's rule) rather than only per deploy: `nil` on the
+  project — never customized — falls back to the `:extra_frame_origins` config
+  (itself defaulting to the built-in accounts.google.com/github.com pair), so
+  a project that has never touched this setting still gets the two providers
+  a generated app is most likely to offer. A project with its own list
+  (possibly `[]`, explicitly cleared) uses exactly that, config included.
+  """
+  @spec extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
+  def extra_frame_origins(project \\ nil)
+
+  def extra_frame_origins(%{preview_extra_frame_origins: origins}) when is_list(origins),
+    do: origins
+
+  def extra_frame_origins(_project) do
+    config()
+    |> Keyword.get(:extra_frame_origins, @default_extra_frame_origins)
+  end
+
+  @doc """
   CSP `frame-src` origins a previewed app is allowed to navigate the iframe
   to, beyond its own preview origin.
 
@@ -120,13 +144,13 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   error, reading as a broken app rather than a policy that never expected the
   frame to leave its own domain.
 
-  Configured rather than hardcoded so a project needing a provider outside
-  the default set does not need a deploy to add it.
+  Takes the project so the CSP header can reflect what that project's own
+  form configured — see `extra_frame_origins/1`.
   """
-  @spec csp_extra_frame_origins() :: [String.t()]
-  def csp_extra_frame_origins do
-    config()
-    |> Keyword.get(:extra_frame_origins, @default_extra_frame_origins)
+  @spec csp_extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
+  def csp_extra_frame_origins(project \\ nil) do
+    project
+    |> extra_frame_origins()
     |> Enum.map(&("https://" <> &1))
   end
 
