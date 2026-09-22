@@ -648,16 +648,18 @@ defmodule CodeMySpec.Requirements.Shadow do
   a different requirement in each table — not missing, *wrong*, and a diff
   comparing ids would be comparing noise.
   """
-  @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}]) :: {:ok, non_neg_integer()}
-  def write_edges(%Scope{active_project_id: project_id} = scope, edges) do
+  @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}], map() | nil) ::
+          {:ok, non_neg_integer()}
+  def write_edges(%Scope{active_project_id: project_id} = scope, edges, ids \\ nil) do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     # An edge references rows in its own node table, and the two projections
     # number their rows differently, so the ids are only meaningful beside the
     # nodes this same drain just wrote — which is why they are resolved here
-    # rather than carried in by the caller.
-    ids = ids_by_owner_key(project_id, working_copy_id)
+    # rather than carried in by the caller, unless the caller holds the map
+    # this drain already resolved (`node_ids/1`) for the same vantage.
+    ids = ids || ids_by_owner_key(project_id, working_copy_id)
 
     # An endpoint with no row is not an edge.
     #
@@ -708,6 +710,24 @@ defmodule CodeMySpec.Requirements.Shadow do
 
     {:ok, count}
   end
+
+  @doc """
+  Every node this vantage holds, by the key an edge names it with, to its row
+  id. What `write_edges/3` resolves edges through and what `present?/1` admits
+  endpoints against — loaded once per redraw and handed to both.
+  """
+  @spec node_ids(Scope.t()) :: %{tuple() => integer()}
+  def node_ids(%Scope{active_project_id: project_id} = scope),
+    do: ids_by_owner_key(project_id, Projection.vantage(scope))
+
+  @doc """
+  Whether an edge endpoint has a row in `ids`, keyed the way `node_ids/1`
+  keys them: the entity id as text, since a story's is an integer and the
+  table stores the pair rather than pointing at a row.
+  """
+  @spec present?(map()) :: (tuple() -> boolean())
+  def present?(ids),
+    do: fn {type, id, name} -> Map.has_key?(ids, {type, to_string(id), name}) end
 
   # What this vantage already holds, by identity. Compared in memory rather than
   # as a `NOT IN`, because the set runs to tens of thousands and the bind limit

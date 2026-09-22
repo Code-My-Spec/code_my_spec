@@ -597,27 +597,89 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # the same fact `Freshness.topology/2` is built on, applied to the other side
   # of the question.
   defp template_edges(scope, ctx, config) do
+    component_template_edges(ctx, config) ++
+      Enum.flat_map(ctx.stories, &story_template_edges(&1, config)) ++
+      project_template_edges(scope, config)
+  end
+
+  defp component_template_edges(ctx, config) do
     {top_level, children_by_parent} = component_families(ctx)
 
-    component_edges =
-      Enum.flat_map(top_level, fn component ->
-        children = Map.get(children_by_parent, component.id, [])
-        original = RequirementDefinitionData.graph_for_type(component.type)
-        filtered = filter_definitions_by_config(original, config)
+    Enum.flat_map(top_level, fn component ->
+      children = Map.get(children_by_parent, component.id, [])
+      original = RequirementDefinitionData.graph_for_type(component.type)
+      filtered = filter_definitions_by_config(original, config)
 
-        build_template_edges(filtered, build_id_map(filtered, component, children), original)
-      end)
-
-    story_template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
-
-    story_edges =
-      Enum.flat_map(ctx.stories, fn story ->
-        id_map = Map.new(story_template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
-        build_template_edges(story_template, id_map)
-      end)
-
-    component_edges ++ story_edges ++ project_template_edges(scope, config)
+      build_template_edges(filtered, build_id_map(filtered, component, children), original)
+    end)
   end
+
+  defp story_template_edges(story, config) do
+    template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
+    id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
+    build_template_edges(template, id_map)
+  end
+
+  # The generators one side at a time, for `Edges`.
+  #
+  # `compute_edges/3` runs every generator and reduces the union. `Edges.over/4`
+  # runs the same generators and reduces each entity's edges against the
+  # component side, so the two can differ only in the reduction — which is
+  # what `edges_derived_per_entity_match_the_pass_test` holds them to.
+
+  @doc """
+  The shape with what the story generators read off it — children by parent
+  and each type's first requirement — built once per drawing rather than once
+  per story.
+  """
+  @spec edge_context(map(), map()) :: map()
+  def edge_context(ctx, config) do
+    ctx
+    |> Map.put(:children_by_parent, children_by_parent(ctx))
+    |> Map.put(:first_def_by_type, first_def_by_type(ctx, config))
+  end
+
+  @doc """
+  The component side of the edge set as generated: every component's template
+  edges and the cross-context edges its dependencies declare. Unreduced;
+  `Edges.component_side/3` reduces it.
+  """
+  @spec component_side_edges(map(), map()) :: [edge()]
+  def component_side_edges(ctx, config),
+    do: component_template_edges(ctx, config) ++ cross_context_dependency_edges(ctx, config)
+
+  @doc """
+  One story's edges as generated, by kind: its own chain, its kickoff into
+  the components, the exits back from them, and the pair joining it to the
+  project. Unreduced; `Edges.story_side/5` reduces each against the component
+  side.
+  """
+  @spec story_side_edges(map(), map(), map()) :: %{
+          template: [edge()],
+          kickoff: [edge()],
+          exit: [edge()],
+          project: [edge()]
+        }
+  def story_side_edges(story, ctx, config) do
+    timing = %{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}
+    {chain, _timing} = story_chain_edges(story, ctx, config, timing)
+    {kickoff, exit} = Enum.split_with(chain, &match?(%{from: {"story", _, _}}, &1))
+    one = %{stories: [story]}
+
+    %{
+      template: story_template_edges(story, config),
+      kickoff: kickoff,
+      exit: exit,
+      project: project_to_story_edges(one) ++ story_to_project_edges(one)
+    }
+  end
+
+  @doc """
+  The project's own chain as generated. Unreduced; `Edges.project_side/4`
+  reduces it against the stories that bridge it.
+  """
+  @spec project_side_edges(Scope.t(), map()) :: [edge()]
+  def project_side_edges(scope, config), do: project_template_edges(scope, config)
 
   # The project's own chain. Node-free like the other two, and for the same
   # reason: `compute_project_nodes/3` builds this `id_map` from the project id
