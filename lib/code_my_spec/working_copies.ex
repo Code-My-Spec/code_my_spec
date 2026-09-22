@@ -714,6 +714,27 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
+  @doc """
+  Whether this project's preview is actually answering, or nothing.
+
+  `record_preview_status/2`'s own words: reported by the machine that holds
+  the disk, on every sync — so `nil` means not "down", it means the checkout
+  has never reported at all. A URL is minted the moment a copy is issued one,
+  which can be well before the checkout that will answer it has even booted
+  — `PreviewTunnel.ensure/1` runs at instance-boot time, `cloudflared` comes
+  up inside the app it is tunneling for, and there is a real gap between the
+  two. Conflating "never reported" with "down" is how a preview that is
+  still coming up read as broken, for as long as it took the first sync to
+  land (`reference_cloudflare_tunnel_530_is_down`).
+  """
+  @spec preview_status(Scope.t()) :: String.t() | nil
+  def preview_status(%Scope{} = scope) do
+    case main(scope) do
+      %WorkingCopy{preview_status: status} -> status
+      _ -> nil
+    end
+  end
+
   @doc "The id `ensure_default/1` resolves to, without touching the database."
   @spec default_id(Ecto.UUID.t()) :: Ecto.UUID.t()
   def default_id(project_id) when is_binary(project_id) do
