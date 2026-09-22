@@ -15,6 +15,7 @@ what finishes each step. The per-task playbooks assume it.
 | Testing a story                           | `process/qa.md`         |
 | Getting work onto the running dev copy    | `process/devops.md`     |
 | Taking a new arrival from nothing to a project | `process/onboarding.md` |
+| Keeping the fleet unblocked            | `process/main_agent.md` |
 
 ## When to read what
 
