@@ -25,6 +25,21 @@ defmodule CodeMySpec.MainAgent.Cadence do
   reaches a stood-down main agent, because the alternative has no symptom on
   either side — it is not woken, which is what it asked for, and the question
   simply never arrives.
+
+  ## A restart does not cost an interval
+
+  `init/1` schedules the first tick one full interval out, so until this existed
+  a boot parked every continuous agent for twenty minutes. That is the worst
+  moment to be blind: a restart is when turns get interrupted and reservations
+  get stranded, and the fleet comes back with work waiting and nothing to notice
+  it. Measured 2026-09-22 — two promotes, each followed by four idle roles over
+  a ready requirement.
+
+  So the sweep runs once on the way up. It is `Work.consider_project/2` alone,
+  not `check_in/1`: no digest is built and no model call is made to look at a
+  finished fleet, which is the cost the tap-out above exists to avoid. Admission
+  is guarded on eligibility either way, so a boot with nothing to do wakes
+  nobody.
   """
 
   use GenServer
@@ -32,6 +47,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
   require Logger
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
@@ -239,6 +255,9 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def init(%Scope{} = scope) do
+    # Sent to self rather than run here: `init/1` blocks the caller, and
+    # `wake_active_projects/0` starts one of these per project at boot.
+    send(self(), :consider_on_boot)
     {:ok, schedule(%{scope: scope, last_check: nil})}
   end
 
@@ -257,6 +276,11 @@ defmodule CodeMySpec.MainAgent.Cadence do
     )
 
     {:noreply, schedule(%{state | last_check: checked_at})}
+  end
+
+  def handle_info(:consider_on_boot, state) do
+    :ok = Work.consider_project(state.scope, :boot)
+    {:noreply, state}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
