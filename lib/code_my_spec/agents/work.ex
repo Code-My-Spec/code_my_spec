@@ -76,6 +76,7 @@ defmodule CodeMySpec.Agents.Work do
 
         error ->
           release(scope, reserved.id, ref)
+          suppress_offer(scope, reserved, offer)
           error
       end
     else
@@ -108,6 +109,32 @@ defmodule CodeMySpec.Agents.Work do
   """
   def record_decline(scope, %Agent{} = agent, turn_started_at \\ nil) do
     AgentsRepository.update_agent(scope, agent, decline_attrs(scope, agent, turn_started_at))
+  end
+
+  @doc """
+  Hold off on re-offering work whose dispatch did not land.
+
+  A turn that cannot be delivered never becomes a turn, so the agent never ends
+  one and `record_decline/3` — which fires on the turn-ended path — never runs.
+  Nothing else damps it either: `release/3` clears the reservation, which puts
+  the agent straight back into `runnable_state?/1`, and the next observation
+  offers it the same work again.
+
+  So an agent whose machine is unreachable spins on the *server* side, with no
+  agent involved at all. Measured 2026-09-22: main agent `d632ee86` on a
+  checkout whose harness was not connected recorded 130 undelivered prompts a
+  minute for nine minutes, each one logging "nothing registered for working
+  copy", while the transcript filled with turns that never happened.
+
+  Same window as a refusal, for the same reason: retrying an unreachable
+  machine six times an hour is diagnosis, twice a second is a denial of
+  service against our own database.
+  """
+  def suppress_offer(scope, %Agent{} = agent, fingerprint) do
+    AgentsRepository.update_agent(scope, agent, %{
+      declined_offer: fingerprint,
+      declined_offer_at: DateTime.utc_now()
+    })
   end
 
   defp decline_attrs(scope, agent, turn_started_at) do

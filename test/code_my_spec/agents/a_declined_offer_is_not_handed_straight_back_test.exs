@@ -133,6 +133,26 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            """
   end
 
+  test "a turn that could not be delivered is not retried twice a second", ctx do
+    # No transport registered for this copy, so the dispatch fails the way an
+    # unreachable machine fails.
+    Application.put_env(:code_my_spec, :agent_transport, CodeMySpec.Agents.Transport.Harness)
+
+    _ = Work.request_turn_if_runnable(ctx.scope, ctx.agent, :test)
+
+    refute admitted?(ctx.scope, reload(ctx.scope, ctx.agent)),
+           """
+           An undeliverable turn was offered again immediately.
+
+           A turn that cannot be delivered never becomes a turn, so the agent
+           never ends one and the turn-ended damper never runs. `release/3`
+           puts it straight back into `runnable_state?/1` and the next
+           observation offers the same work again — a spin on the server side
+           with no agent involved at all, filling the transcript with turns
+           that never happened.
+           """
+  end
+
   test "finishing a task is not declining the next one", ctx do
     finished = ended_turn_having_finished_a_task(ctx.scope, reload(ctx.scope, ctx.agent))
 
