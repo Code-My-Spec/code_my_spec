@@ -34,7 +34,16 @@ defmodule CodeMySpec.Workspaces do
 
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.Workspaces.{Boot, BootSteps, Runner, Tracking, Workspace, WorkspacesRepository}
+
+  alias CodeMySpec.Workspaces.{
+    Boot,
+    BootSteps,
+    PreviewTunnel,
+    Runner,
+    Tracking,
+    Workspace,
+    WorkspacesRepository
+  }
 
   @doc """
   Subscribes to a project's workspace.
@@ -190,7 +199,7 @@ defmodule CodeMySpec.Workspaces do
          # one.
          {:ok, copy} <- WorkingCopies.report_root(copy, instance_root(project)) do
       [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
-        deploy_key_env(project) ++ server_url_env()
+        deploy_key_env(project) ++ server_url_env() ++ preview_env(copy)
     else
       {:error, reason} ->
         # Not fatal. An instance that comes up un-onboarded still runs the
@@ -326,6 +335,45 @@ defmodule CodeMySpec.Workspaces do
     |> case do
       url when is_binary(url) and url != "" -> [{"CMS_SERVER_URL", url}]
       _ -> []
+    end
+  end
+
+  # This is what `mix harness.onboard`'s own flow already does for Docker:
+  # `entrypoint.sh` runs that task (client_utils'), which calls
+  # `ClientUtils.Harness.Preview.ensure/4` — one HTTP POST to this same
+  # server, landing on `HarnessLookupController.preview/2`, which calls the
+  # very `PreviewTunnel.ensure/1` this function calls — and writes the
+  # `preview_*` keys into `.cms_harness.json` itself. Docker was never the
+  # gap.
+  #
+  # `Runner.Local` never runs `mix harness.onboard` at all: its identity is
+  # written directly by this module's `write_identity/2`, not minted by any
+  # onboarding task, so nothing ever asked for a tunnel on a bare-metal
+  # instance's behalf. That left every such instance boot into
+  # `enabled: false` in `ClientUtils.CloudflareTunnel` — the visitor's app
+  # ran, and nothing was ever wrong loudly enough to say why the frame stayed
+  # empty. Measured live, 2026-09-21: an agent told to "deploy" a project had
+  # no tool that could ever make this true, because the credentials it would
+  # need were never something this boot path handed the checkout.
+  #
+  # Best-effort, like the other three: a checkout that is not yet the
+  # project's main one, or an account with no Cloudflare zone configured,
+  # still gets an application. It just does not get a preview, which is the
+  # answer `PreviewLive` already gives for that case everywhere else.
+  defp preview_env(copy) do
+    case PreviewTunnel.ensure(copy) do
+      {:ok, %{tunnel_id: id, tunnel_secret: secret, hostname: host, account_tag: tag} = tunnel} ->
+        [
+          {"CMS_PREVIEW_URL", "https://#{host}"},
+          {"CMS_PREVIEW_TUNNEL_ID", id},
+          {"CMS_PREVIEW_TUNNEL_SECRET", secret},
+          {"CMS_PREVIEW_ACCOUNT_TAG", tag},
+          {"CMS_PREVIEW_EMBEDDER", Map.get(tunnel, :embedder)}
+        ]
+
+      {:error, reason} ->
+        Logger.info("[Workspaces] no preview provisioned for this instance: #{inspect(reason)}")
+        []
     end
   end
 

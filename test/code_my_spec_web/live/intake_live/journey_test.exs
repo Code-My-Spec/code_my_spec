@@ -34,8 +34,21 @@ defmodule CodeMySpecWeb.IntakeLive.JourneyTest do
 
     CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
     stub_stripe()
+    stub_no_preview()
 
     %{conn: log_in_user(conn, user_fixture())}
+  end
+
+  # `instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of a main
+  # copy, reaching the `Req.Test`-pinned Cloudflare client the same way
+  # `stub_stripe/0` reaches the pinned Stripe one. Nothing in this file is
+  # testing preview provisioning, so answer with a plain refusal —
+  # `preview_env/1` already treats that as best-effort and drops it.
+  defp stub_no_preview do
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      Plug.Conn.put_resp_content_type(conn, "application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
   end
 
   # Same shape `IntakeLive.WorkspaceTest` records by hand. `config/test.exs`
