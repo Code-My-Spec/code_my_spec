@@ -40,6 +40,21 @@ defmodule CodeMySpec.Agents.ToolSets do
   # list once per story and tested each tool's own dispatch rather than the
   # surface it is mounted on. Granting the client tests the surface as a caller.
   # John's call, 2026-09-15.
+  #
+  # `read_project_file`/`write_project_file` because all four of QA's own
+  # project requirements are `path_exists` checks on files QA writes:
+  # `qa_setup` wants `.code_my_spec/qa/plan.md`, `qa_journey_plan` and
+  # `qa_journey_execute` want their two docs beside it, and
+  # `qa_journey_wallaby` wants tests under `test/journeys/`. The role carried
+  # no file tool of any kind, so it could not satisfy a single one of them —
+  # `submit_qa_result` files a verdict on a story and writes nothing to disk.
+  #
+  # Found the same day and the same way as `install_credo_checks` above: the
+  # chain reached `qa_setup`, and the only thing standing between the agent and
+  # its own requirement was a tool nobody had given it. Two roles, one bug —
+  # which is the argument for checking every role's set against the
+  # requirements that name it rather than against the last agent that
+  # complained.
   @qa ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -48,6 +63,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_qa_attempts submit_qa_result invalidate_qa_attempt
     call_mcp_server
     list_knowledge read_knowledge semantic_search
+    read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
     web_search web_fetch
     browser
