@@ -164,7 +164,7 @@ defmodule CodeMySpec.Projects.Project do
   @doc false
   def changeset(project, attrs, user_scope) do
     project
-    |> cast(normalize_preview_extra_frame_origins(attrs), [
+    |> cast(attrs, [
       :name,
       :description,
       :module_name,
@@ -242,31 +242,6 @@ defmodule CodeMySpec.Projects.Project do
   """
   def domain_registered?(%__MODULE__{resend_domain_id: id}), do: not is_nil(id)
   def domain_registered?(_), do: false
-
-  # The form field is one text box, comma-separated — an add/remove row per
-  # domain is more control than a handful of OAuth provider domains needs.
-  # `cast/3` on an `{:array, :string}` rejects a bare string outright rather
-  # than splitting it, so the split has to happen before `cast` ever sees it.
-  # Left alone for programmatic callers (tests, the bootstrap path) that
-  # already pass a list.
-  defp normalize_preview_extra_frame_origins(%{"preview_extra_frame_origins" => value} = attrs)
-       when is_binary(value) do
-    Map.put(attrs, "preview_extra_frame_origins", split_origins(value))
-  end
-
-  defp normalize_preview_extra_frame_origins(%{preview_extra_frame_origins: value} = attrs)
-       when is_binary(value) do
-    Map.put(attrs, :preview_extra_frame_origins, split_origins(value))
-  end
-
-  defp normalize_preview_extra_frame_origins(attrs), do: attrs
-
-  defp split_origins(value) do
-    value
-    |> String.split(~r/[,\n]/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-  end
 
   defp put_deploy_key_hash(changeset) do
     case fetch_change(changeset, :deploy_key) do
