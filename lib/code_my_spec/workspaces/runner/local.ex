@@ -211,7 +211,10 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     fi
 
     log "Starting the cms harness server on :#{harness_port}"
-    CMS_NODE_NAME="#{container_name}" CMS_HARNESS_PORT="#{harness_port}" CMS_PROJECT_DIR="#{app_dir}" #{harness_source().command()} &
+    export CMS_NODE_NAME="#{container_name}"
+    export CMS_HARNESS_PORT="#{harness_port}"
+    export CMS_PROJECT_DIR="#{app_dir}"
+    #{harness_source().command()} &
 
     log "Starting #{app_name} on :4000"
     exec env PORT=#{port} mix phx.server
