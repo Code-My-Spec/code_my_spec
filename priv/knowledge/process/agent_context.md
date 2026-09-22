@@ -78,13 +78,24 @@ So a tool that resolved `story_id` from context says so in its own response:
 
     Issue 4f9c2a11 filed against story 1053 ("Clearing the calculator starts a
     fresh calculation"), taken from the task you are working. Pass `story_id`
-    explicitly if it belongs to a different story, or `story_id: null` for none.
+    explicitly if it belongs to a different story, or `story_id: null` for an
+    issue that is not story-specific.
 
-This is the rule the rest of the system already learned the hard way. A default
-that does not announce itself is the `devops_status` failure in another costume:
-the caller reads a confident answer, has no reason to doubt it, and acts on
-something that is not true. Three of this session's longest detours were exactly
-that.
+**Text, not JSON, and this is not a style preference.** `structured_content` on
+an MCP response makes Claude latch onto the JSON and stop reading the text —
+found the hard way here: an agent saw `{"status": "init_required"}` and never
+read the init checklist, and `start_task` returned a `task_id` in structured
+content while the work prompt went unread. The announcement's entire job is to
+be read and acted on. Returning the story as JSON is the one shape guaranteed
+to make the agent skip the sentence telling it how to override.
+
+So: `Response.text/1`, with the story id and title in the prose, like every
+other mapper here.
+
+A default that does not announce itself is the `devops_status` failure in
+another costume: the caller reads a confident answer, has no reason to doubt it,
+and acts on something that is not true. Three of this session's longest detours
+were exactly that.
 
 ## What changes at the call sites
 
@@ -98,11 +109,24 @@ Tools stop treating `story_id` as something the caller must remember:
 `list_qa_attempts` and their neighbours all stop being able to disagree about
 which story they are on.
 
-## Open questions
+## `null` means deliberately none
 
-- Should `story_id: null` be expressible as "deliberately no story", distinct
-  from "did not say"? A project-level issue filed by an agent mid-story is a
-  real case, and the implicit default would currently capture it.
-- `set_active_story` writes the copy-level value for every agent on that
-  checkout. With the task grain winning, is the copy-level value still worth
-  keeping, or does it only serve agents holding no task?
+An explicit `story_id: null` is "this is not about a story", and is honoured —
+distinct from omitting it, which means "you work it out". A project-level issue
+raised by an agent that happens to be mid-story is a real case, and without the
+distinction the implicit default would capture it.
+
+So three states, not two:
+
+| caller passes | means |
+|---|---|
+| a story id | that story, no announcement, never overridden |
+| nothing | resolve from context, and say so |
+| `null` | deliberately not story-specific, resolve nothing |
+
+## Open question, deliberately left
+
+`set_active_story` writes the copy-level value for every agent on that checkout.
+With the task grain winning, it may now only serve agents holding no task.
+Worth revisiting once the task grain is in and it is clear what still reads it —
+not worth deciding in advance.
