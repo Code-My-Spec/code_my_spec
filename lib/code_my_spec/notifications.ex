@@ -20,6 +20,7 @@ defmodule CodeMySpec.Notifications do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -417,9 +418,47 @@ defmodule CodeMySpec.Notifications do
       )
 
       broadcast_notifications_changed(updated.user_id)
+      wake_if_still_in_the_loop(updated)
       {:ok, updated}
     end
   end
+
+  # Denying a tap-out puts the agent back in the loop, and nothing else was
+  # going to notice. `Work.consider_*` is edge-triggered on a graph change, a
+  # finished task, or continuous being switched on — a person answering a gate
+  # is none of those, so an agent that had work the whole time goes on waiting
+  # for a change that is not coming. Measured on the math project 2026-09-22:
+  # coding sat eligible and idle for eight minutes after its tap-out was denied,
+  # and the four roles behind it waited with it.
+  #
+  # Only on `deny`. `allow` takes the agent out of the loop, which is what it
+  # asked for, and waking it would be answering the opposite question.
+  #
+  # In a Task because this is reachable from inside the harness project channel,
+  # and `Transport.Harness` dispatches by calling that channel's own process —
+  # `:calling_self` kills it and cancels every turn on the copy.
+  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id})
+       when is_binary(agent_id) do
+    case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
+      %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
+        scope = %Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: copy_id
+        }
+
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Work.consider_copy(scope, copy_id, :tap_out_denied)
+        end)
+
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp wake_if_still_in_the_loop(_request), do: :ok
 
   defp apply_tap_out_decision(request) do
     owner =
