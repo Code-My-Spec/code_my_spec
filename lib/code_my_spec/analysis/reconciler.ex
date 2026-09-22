@@ -27,7 +27,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Requirements.SpecsReadyLatch
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.TaskEvaluator
@@ -109,10 +108,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
         RunsRepository.prune(scope, run.source)
         evaluate_sessions(scope)
         maybe_notify(scope, finished, problems, opts)
-
-        # Before the graph event below, so the recompute this triggers reads the
-        # latch this run just earned rather than the one it had on the way in.
-        latch_green_stories(scope, run)
 
         # A run finishing is what can newly satisfy `bdd_specs_passing` /
         # `tests_passing` — nothing else does, since those gates read the run
@@ -257,15 +252,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
       :ok
     end
   end
-
-  # `specs_ready` is how `bdd_specs_passing` is decided, and until this existed
-  # the only writer of `true` was a toggle in the project UI — so a story whose
-  # specs went green stayed false until somebody clicked it, which is the last
-  # human step in an otherwise unattended run. `Stories.set_specs_ready/4` has
-  # always documented this as the gate's job. See `SpecsReadyLatch` for why it
-  # can be automatic now when the previous attempts could not.
-  defp latch_green_stories(scope, %{source: "spex"}), do: SpecsReadyLatch.settle(scope)
-  defp latch_green_stories(_scope, _run), do: :ok
 
   defp requested_by_agent?(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: true
   defp requested_by_agent?(_run), do: false
