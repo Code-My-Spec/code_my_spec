@@ -3169,6 +3169,8 @@ defmodule CodeMySpecSpex.Fixtures do
       Keyword.merge([runner: FakeWorkspaceRunner], config)
     )
 
+    stub_no_preview_by_default()
+
     # Idempotent, because a caller means "the workspace behaves like this now"
     # rather than "start a second one". Scenarios inside one `spex` block share
     # a test process — they read as sibling blocks and are not — so adding a
@@ -3187,6 +3189,24 @@ defmodule CodeMySpecSpex.Fixtures do
     end
 
     :ok
+  end
+
+  # `Workspaces.instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of
+  # a main copy, so booting the fake now reaches a real `Req.Test` client
+  # (`config/test.exs` pins one for every test). A caller here wants a
+  # workspace to come up, not a tunnel — same reasoning as `stub_stripe_by_default/0`
+  # in `CodeMySpecSpexCase`: nobody installing this fixture should also have to
+  # stand up a fake Cloudflare. Answering with `success: false` is enough:
+  # `PreviewTunnel.create/2` reads it as `{:error, {:cloudflare, body}}`, which
+  # `preview_env/1` already treats as best-effort and drops. A scenario whose
+  # subject is the preview itself stubs `PreviewTunnel` again afterward, in its
+  # own test process, which simply replaces this one.
+  defp stub_no_preview_by_default do
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      conn
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
   end
 
   @doc """

@@ -26,6 +26,16 @@ defmodule CodeMySpec.WorkspacesTest do
     # which is the real Docker one — and polls it for fifteen minutes.
     CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
 
+    # `instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of a main
+    # copy, which reaches the `Req.Test`-pinned Cloudflare client. Nothing
+    # here is testing preview provisioning, so answer with a plain refusal —
+    # `preview_env/1` already treats that as best-effort and drops it.
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
+
     :ok
   end
 

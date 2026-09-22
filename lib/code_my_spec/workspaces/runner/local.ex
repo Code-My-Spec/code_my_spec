@@ -277,11 +277,23 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   def write_identity(dir, env) do
     # `instance_env/1` hands back string-keyed 2-tuples, not a keyword list, so
     # `env[:KEY]` finds nothing and finds it silently.
+    #
+    # The five `preview_*` keys are exactly what `ClientUtils.Harness.
+    # Preview.config/2` reads out of this same file to decide whether
+    # `ClientUtils.CloudflareTunnel` has anything to dial — absent, it reads
+    # `enabled: false` and the generated app's preview stays a permanently
+    # empty frame, which is what every instance did before `preview_env/1`
+    # existed to provision one at all.
     fields = %{
       "working_copy_id" => value(env, "CMS_WORKING_COPY_ID"),
       "project_id" => value(env, "CMS_PROJECT_ID"),
       "deploy_key" => value(env, "CMS_DEPLOY_KEY"),
-      "server_url" => value(env, "CMS_SERVER_URL")
+      "server_url" => value(env, "CMS_SERVER_URL"),
+      "preview_url" => value(env, "CMS_PREVIEW_URL"),
+      "preview_tunnel_id" => value(env, "CMS_PREVIEW_TUNNEL_ID"),
+      "preview_tunnel_secret" => value(env, "CMS_PREVIEW_TUNNEL_SECRET"),
+      "preview_account_tag" => value(env, "CMS_PREVIEW_ACCOUNT_TAG"),
+      "preview_embedder" => value(env, "CMS_PREVIEW_EMBEDDER")
     }
 
     fields

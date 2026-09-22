@@ -73,6 +73,44 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
              "copy-2"
   end
 
+  @preview_env @env ++
+                 [
+                   {"CMS_PREVIEW_URL", "https://preview-copy-1.codemyspec.com"},
+                   {"CMS_PREVIEW_TUNNEL_ID", "tun-1"},
+                   {"CMS_PREVIEW_TUNNEL_SECRET", "shh"},
+                   {"CMS_PREVIEW_ACCOUNT_TAG", "acct-1"},
+                   {"CMS_PREVIEW_EMBEDDER", "https://dev.codemyspec.com"}
+                 ]
+
+  # `mix harness.onboard`'s own `put_preview/2` writes these same five keys
+  # for a checkout onboarded by hand. Nothing played that part for an
+  # instance the server boots itself, so a bare-metal instance never carried
+  # them — `enabled: false` in `ClientUtils.CloudflareTunnel`, forever,
+  # regardless of anything an agent did. Measured live, 2026-09-21.
+  test "and the preview credentials are written when the host minted one", %{dir: dir} do
+    :ok = Local.write_identity(dir, @preview_env)
+
+    config = dir |> written() |> File.read!() |> Jason.decode!()
+
+    assert config["preview_url"] == "https://preview-copy-1.codemyspec.com"
+    assert config["preview_tunnel_id"] == "tun-1"
+    assert config["preview_tunnel_secret"] == "shh"
+    assert config["preview_account_tag"] == "acct-1"
+    assert config["preview_embedder"] == "https://dev.codemyspec.com"
+  end
+
+  test "and no preview keys are written when the host minted no preview", %{dir: dir} do
+    :ok = Local.write_identity(dir, @env)
+
+    config = dir |> written() |> File.read!() |> Jason.decode!()
+
+    refute Map.has_key?(config, "preview_url"), """
+    An absent preview reads as "not yet provisioned" everywhere else
+    (`PreviewLive`, the onboarding task). A blank string here would instead
+    read as a checkout that tried and failed.
+    """
+  end
+
   # The wiring, not the function. Blinding `write_identity/2`'s call site left
   # every test above green — `prepare/4` is what `start/4` does before it
   # launches anything, so it can be driven without spawning a real workspace.
