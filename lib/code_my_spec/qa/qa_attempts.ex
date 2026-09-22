@@ -11,12 +11,14 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -52,6 +54,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
           # project reached triage with none. Only `:app` findings are
           # attributed; see `Issues.attribute_to_story/3`.
           Issues.attribute_to_story(scope, attempt.issue_ids || [], story_id)
+          wait_on_filed_issues(scope, attempt, agent_id)
           attempt
         else
           {:error, reason} -> Repo.rollback(reason)
@@ -60,6 +63,44 @@ defmodule CodeMySpec.Qa.QaAttempts do
       |> tap(&announce_graph_change(scope, &1))
     end
   end
+
+  # An attempt that did not pass and named issues is waiting on those issues.
+  #
+  # Without this the story is handed straight back. `qa_complete` stays
+  # unsatisfied and actionable, so the graph re-offers the same story against
+  # the same code the moment QA finishes failing it — and QA, correctly, says
+  # "this needs a coding fix, not another QA pass". The only way it had to say
+  # so was a tap-out, which is a human gate.
+  #
+  # Measured on story 1053, 2026-09-22: three rounds of QA finding a real
+  # regression, filing it, tapping out, a human denying the tap-out once coding
+  # had landed the fix. Every technical step either side was autonomous and
+  # correct; the three denials were mechanical.
+  #
+  # Blocking on the issue lets the system make the handoff itself — resolving it
+  # releases the block and offers QA a turn (`TaskOwner.release_issue_block/2`).
+  #
+  # Here rather than in the tool, because this is where `story_id` and
+  # `agent_id` are already resolved and where attribution already happens; the
+  # tool layer would have to look the owner up again to do the same thing.
+  #
+  # The obvious alternative does not exist: `qa_complete` (id 4) cannot take
+  # `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
+  # on 4 and the graph would cycle.
+  defp wait_on_filed_issues(_scope, %{status: :pass}, _agent_id), do: :ok
+
+  defp wait_on_filed_issues(scope, %{issue_ids: [issue_id | _], task_id: task_id}, agent_id)
+       when is_binary(issue_id) and is_binary(task_id) and is_binary(agent_id) do
+    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
+      TaskOwner.block_task(scope, agent, task_id, :issue, issue_id,
+        reason: "waiting on issue #{issue_id}"
+      )
+    end
+
+    :ok
+  end
+
+  defp wait_on_filed_issues(_scope, _attempt, _agent_id), do: :ok
 
   # A submitted attempt is what `qa_complete` is computed from, so the graph
   # moved — and a pass is the case that matters most, because it unblocks
