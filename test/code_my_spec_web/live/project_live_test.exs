@@ -176,35 +176,82 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
     end
   end
 
-  describe "Form - preview extra frame origins" do
+  describe "Form - preview origins modal" do
     setup [:create_project]
 
-    test "pre-fills the built-in default for a project that never customized it", %{
-      conn: conn,
-      project: project
-    } do
+    test "the manage button counts the built-in default for a project that never customized it",
+         %{conn: conn, project: project} do
       {:ok, _form_live, html} = live(conn, ~p"/app/projects/#{project}/edit")
 
-      assert html =~ ~s(value="accounts.google.com, github.com")
+      assert html =~ "Manage (2)"
     end
 
-    test "a comma-separated edit is stored and re-shown as the project's own list", %{
+    test "opening it lists the built-in default origins", %{conn: conn, project: project} do
+      {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
+
+      html =
+        form_live
+        |> element("[data-test=open-preview-origins-modal]")
+        |> render_click()
+
+      assert html =~ "preview-origin-accounts.google.com"
+      assert html =~ "preview-origin-github.com"
+    end
+
+    test "adding an origin persists it and shows it in the list", %{
       conn: conn,
       scope: scope,
       project: project
     } do
       {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
 
-      assert {:ok, _index_live, _html} =
-               form_live
-               |> form("#project-form",
-                 project: %{preview_extra_frame_origins: "accounts.google.com, gitlab.com"}
-               )
-               |> render_submit()
-               |> follow_redirect(conn, ~p"/app/projects")
+      form_live |> element("[data-test=open-preview-origins-modal]") |> render_click()
+
+      html =
+        form_live
+        |> form("[data-test=add-preview-origin-form]", origin: "gitlab.com")
+        |> render_submit()
+
+      assert html =~ "preview-origin-gitlab.com"
 
       updated = CodeMySpec.Projects.get_project!(scope, project.id)
-      assert updated.preview_extra_frame_origins == ["accounts.google.com", "gitlab.com"]
+      assert "gitlab.com" in updated.preview_extra_frame_origins
+    end
+
+    test "adding a domain already on the list shows an error instead of duplicating it", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
+
+      form_live |> element("[data-test=open-preview-origins-modal]") |> render_click()
+
+      html =
+        form_live
+        |> form("[data-test=add-preview-origin-form]", origin: "github.com")
+        |> render_submit()
+
+      assert html =~ "already allowed"
+    end
+
+    test "removing an origin persists the change", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
+
+      form_live |> element("[data-test=open-preview-origins-modal]") |> render_click()
+
+      html =
+        form_live
+        |> element(~s([data-test="preview-origin-github.com"] button))
+        |> render_click()
+
+      refute html =~ "preview-origin-github.com"
+
+      updated = CodeMySpec.Projects.get_project!(scope, project.id)
+      refute "github.com" in updated.preview_extra_frame_origins
     end
   end
 
