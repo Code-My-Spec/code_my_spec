@@ -206,6 +206,40 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
            """
   end
 
+  test "the correction arrives in the turn, not only in the transcript", ctx do
+    {_agent, conversation, request} = staffed_with_work(ctx, "blocked and waiting")
+
+    :ok = Conversations.subscribe_conversation(conversation.id)
+
+    {:ok, _} =
+      Notifications.resolve_permission_request(request.id, "deny", "The blocker is fixed.")
+
+    assert_receive {:new_message, _}, 5_000
+
+    # The prompt the agent is answering has to carry the correction. Recorded
+    # beside the work prompt it is history, and history loses to the agent's own
+    # last conclusion — measured twice, with a resolved issue named by id nine
+    # seconds before the agent called that id unresolved.
+    turn_carries_it =
+      conversation
+      |> Conversations.list_messages()
+      |> Enum.any?(fn message ->
+        text = inspect(message.content)
+        text =~ "was declined" and text =~ "Eligible work is available"
+      end)
+
+    assert turn_carries_it,
+           """
+           The denial was recorded separately from the turn prompt.
+
+           An agent answers its turn prompt; a recorded notice is something it
+           reads alongside whatever it last concluded, and its own conclusion
+           wins. Two shipped fixes changed nothing for exactly this reason —
+           the words were right and arrived in the wrong place. The same words
+           delivered through the turn worked three times out of three.
+           """
+  end
+
   test "allowing it does not", ctx do
     {_agent, conversation, request} = staffed_with_work(ctx)
 

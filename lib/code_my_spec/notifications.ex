@@ -465,7 +465,7 @@ defmodule CodeMySpec.Notifications do
         # loop by hand. The wake added in this same function is what turned a
         # silent stall into a spin, so this is its other half rather than a
         # separate fix.
-        Conversations.record_sent_to_agent(agent, tap_out_denied_notice(answer, request))
+        notice = tap_out_denied_notice(answer, request)
 
         # A person saying "go and work" outranks the agent's own last refusal.
         # `Work` refuses to re-offer work an agent has already declined, which
@@ -474,8 +474,15 @@ defmodule CodeMySpec.Notifications do
         # suppressed and the deny would do nothing at all.
         {:ok, _cleared} = Work.clear_decline(scope, agent)
 
+        # The notice goes in the turn rather than into the transcript ahead of
+        # it. Recorded separately it is history the agent reads beside its own
+        # last conclusion, and its own conclusion wins — measured twice, with
+        # the resolved issue named by id nine seconds before the agent called
+        # that same id unresolved. `offer_turn_with/3` makes the correction the
+        # thing the agent is answering. It records the prompt itself, so the
+        # notice still appears in the transcript exactly once.
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.consider_copy(scope, copy_id, :tap_out_denied)
+          deliver_denial(scope, agent, copy_id, notice)
         end)
 
         :ok
@@ -486,6 +493,22 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp wake_if_still_in_the_loop(_request, _answer), do: :ok
+
+  # In the turn when the agent can take one; recorded when it cannot.
+  #
+  # An agent mid-turn, reserved, or holding a task is not admissible, and it
+  # still has to be told — so that case falls back to the old shape rather than
+  # dropping the notice.
+  defp deliver_denial(scope, agent, copy_id, notice) do
+    case Work.offer_turn_with(scope, agent, notice) do
+      {:ok, ref} when is_binary(ref) ->
+        :ok
+
+      _not_admissible ->
+        Conversations.record_sent_to_agent(agent, notice)
+        Work.consider_copy(scope, copy_id, :tap_out_denied)
+    end
+  end
 
   # The reason carries, when the decider gave one.
   #

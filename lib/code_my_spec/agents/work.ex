@@ -120,6 +120,54 @@ defmodule CodeMySpec.Agents.Work do
     end)
   end
 
+  @doc """
+  Offer one agent a turn whose prompt opens with `preface`.
+
+  The difference between this and recording a message then calling
+  `consider_copy/4` is where the text lands, and that difference is the whole
+  point. A recorded message is history: the agent reads it as something that
+  was said earlier, alongside its own last conclusion, and its own conclusion
+  wins. The turn prompt is the input the agent is answering.
+
+  Measured 2026-09-22, and it is why two shipped fixes changed nothing. A
+  denial notice naming the agent's now-resolved blocker by id was recorded at
+  21:37:20.317; the agent's turn — driven by the generic work prompt — said at
+  21:37:29.079 that the same issue id was unresolved and the tap-out still
+  pending. Nine seconds, same id. Delivering the same words through
+  `message_agent`, which puts them in the turn, worked three times out of three
+  across two agents.
+
+  So the correction has to be what the agent is answering, not something it
+  could answer past.
+  """
+  def offer_turn_with(scope, %Agent{} = agent, preface) when is_binary(preface) do
+    with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
+         true <- runnable_state?(current),
+         {:ok, {reserved, ref}} <- reserve(scope, current.id) do
+      turn_prompt = preface <> "\n\n" <> prompt(reserved)
+      Conversations.record_sent_to_agent(reserved, turn_prompt)
+
+      case Transport.impl().request_work_turn(
+             reserved.working_copy_id,
+             reserved,
+             ref,
+             turn_prompt,
+             5_000
+           ) do
+        {:ok, :started} ->
+          {:ok, ref}
+
+        error ->
+          release(scope, reserved.id, ref)
+          error
+      end
+    else
+      false -> {:ok, :not_runnable}
+      {:ok, :not_runnable} = result -> result
+      error -> error
+    end
+  end
+
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          true <- runnable_state?(current),
