@@ -346,13 +346,15 @@ defmodule CodeMySpec.Notifications do
 
   Broadcasts the decision on PubSub so the waiting SSE connection receives it.
   """
-  def resolve_permission_request(id, decision) when decision in ~w(allow deny) do
+  def resolve_permission_request(id, decision, answer \\ nil)
+
+  def resolve_permission_request(id, decision, answer) when decision in ~w(allow deny) do
     case Repo.get(PermissionRequest, id) do
       nil ->
         {:error, :not_found}
 
       %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
-        resolve_agent_tap_out(id, decision)
+        resolve_agent_tap_out(id, decision, answer)
 
       %{status: "pending"} = request ->
         request
@@ -383,7 +385,7 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp resolve_agent_tap_out(id, decision) do
+  defp resolve_agent_tap_out(id, decision, answer) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
@@ -419,7 +421,7 @@ defmodule CodeMySpec.Notifications do
       )
 
       broadcast_notifications_changed(updated.user_id)
-      wake_if_still_in_the_loop(updated)
+      wake_if_still_in_the_loop(updated, answer)
       {:ok, updated}
     end
   end
@@ -438,7 +440,7 @@ defmodule CodeMySpec.Notifications do
   # In a Task because this is reachable from inside the harness project channel,
   # and `Transport.Harness` dispatches by calling that channel's own process —
   # `:calling_self` kills it and cancels every turn on the copy.
-  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id})
+  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id}, answer)
        when is_binary(agent_id) do
     case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
       %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
@@ -460,7 +462,7 @@ defmodule CodeMySpec.Notifications do
         # loop by hand. The wake added in this same function is what turned a
         # silent stall into a spin, so this is its other half rather than a
         # separate fix.
-        Conversations.record_sent_to_agent(agent, tap_out_denied_notice())
+        Conversations.record_sent_to_agent(agent, tap_out_denied_notice(answer))
 
         # A person saying "go and work" outranks the agent's own last refusal.
         # `Work` refuses to re-offer work an agent has already declined, which
@@ -480,10 +482,23 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp wake_if_still_in_the_loop(_request), do: :ok
+  defp wake_if_still_in_the_loop(_request, _answer), do: :ok
 
-  defp tap_out_denied_notice do
-    """
+  # The reason carries, when the decider gave one.
+  #
+  # `answer_notification` has always accepted an `answer`, and for a permission
+  # it went nowhere — the agent got this notice and nothing else. That is the
+  # difference between "you are wrong that there is nothing to do" and telling
+  # it *why*, and an agent with only the former re-reads its own transcript,
+  # finds whatever it last concluded, and concludes it again.
+  #
+  # Measured on the math project 2026-09-22: QA's tap-out on a preview outage
+  # was denied with an answer saying the outage was fixed, the URL was back to
+  # 200, and which attempt to invalidate. None of it reached the agent, which
+  # went on reporting the app unreachable — an outage that had ended four
+  # minutes earlier — until it was stopped by hand.
+  defp tap_out_denied_notice(answer) do
+    base = """
     Your request to leave the loop was declined. You are still in it, and there
     is work for your role — that is why it was declined rather than granted.
 
@@ -491,6 +506,24 @@ defmodule CodeMySpec.Notifications do
     `get_next_requirement`. If what you were blocked on has not changed, say so
     against the thing that is blocking you rather than asking to leave again.
     """
+
+    append_reason(base, answer)
+  end
+
+  defp append_reason(base, nil), do: base
+  defp append_reason(base, ""), do: base
+
+  defp append_reason(base, answer) do
+    base <>
+      """
+
+      Why it was declined:
+
+      #{answer}
+
+      This is new information from whoever answered you. Treat it as current and
+      check it against what you last concluded before repeating that conclusion.
+      """
   end
 
   defp apply_tap_out_decision(request) do

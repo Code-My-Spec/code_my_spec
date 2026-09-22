@@ -130,6 +130,38 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
            """
   end
 
+  test "the reason for the denial reaches the agent", ctx do
+    {_agent, conversation, request} = staffed_with_work(ctx)
+
+    :ok = Conversations.subscribe_conversation(conversation.id)
+
+    {:ok, _} =
+      Notifications.resolve_permission_request(
+        request.id,
+        "deny",
+        "The preview is back up and returning 200."
+      )
+
+    assert_receive {:new_message, _}, 5_000
+    assert_receive {:new_message, _}, 5_000
+
+    told =
+      conversation
+      |> Conversations.list_messages()
+      |> Enum.any?(&(inspect(&1.content) =~ "preview is back up"))
+
+    assert told,
+           """
+           The agent was denied and never told why.
+
+           `answer_notification` takes an `answer` and for a permission it went
+           nowhere. An agent that hears only "declined" re-reads its own
+           transcript, finds the conclusion it recorded last time, and reaches
+           it again — which is how a QA agent went on reporting an outage that
+           had been fixed four minutes earlier.
+           """
+  end
+
   test "allowing it does not", ctx do
     {_agent, conversation, request} = staffed_with_work(ctx)
 
