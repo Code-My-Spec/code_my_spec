@@ -108,6 +108,26 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # can conjure those.
         validation_type: :automatic
       }),
+      # 56cf5697: sealing is a one-way latch on the conversation and correctly
+      # ignores a question raised afterward (see the comment above), which
+      # left a sealed story's post-seal open questions nothing's problem —
+      # not blocking sealing (already past that), not offered to anyone
+      # either, permanently. Gated on the seal itself (id 5) rather than
+      # duplicating its pre-seal question gate: a story that has not sealed
+      # yet already blocks sealing on the same open questions, so there is
+      # nothing here for this node to do before that gate has cleared.
+      new!(%{
+        id: 8,
+        name: "questions_answered",
+        role: :product,
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :questions_answered?},
+        satisfied_by: AgentTasks.ResolveQuestions,
+        artifact_type: :specification,
+        description: "Every question raised against this story, before or after sealing, is resolved or escalated",
+        prerequisites: [5]
+      }),
       new!(%{
         id: 2,
         name: "bdd_specs_exist",

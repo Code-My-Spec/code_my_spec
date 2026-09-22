@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   alias CodeMySpec.Requirements.{GraphWatcher, Preloader, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
-  @completion_names ~w(component_linked three_amigos_complete bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved)
+  @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved)
 
   def read(scope, role \\ nil, requested_story_id \\ nil) do
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
@@ -112,7 +112,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     context = Map.merge(ctx, %{stories: [story], execution_component_ids: ids})
 
     cond do
-      questions != [] ->
+      blocks_on_questions?(questions, role) ->
         result(
           :blocked,
           story,
@@ -166,6 +166,16 @@ defmodule CodeMySpec.Requirements.StoryExecution do
         end
     end
   end
+
+  # 56cf5697: this used to block every role unconditionally, which is right
+  # for coding/QA — a story with a red card open is not ready to build or
+  # test — and wrong for product, the one role that owns questions: it left
+  # the block naming no actor, so nothing ever offered the work of clearing
+  # it. Product still blocks here when the seal itself
+  # (`three_amigos_complete`) is not yet satisfied — pre-seal questions
+  # already block sealing via `BddRulesChecker`'s own gate, and there is
+  # nothing product-specific to offer ahead of that.
+  defp blocks_on_questions?(questions, role), do: questions != [] and role != :product
 
   defp member?(%{entity_type: "story", entity_id: id, name: name}, story_id, _ids),
     do: to_string(id) == to_string(story_id) and name in @completion_names

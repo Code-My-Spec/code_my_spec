@@ -147,7 +147,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
         raise Lua.RuntimeException,
               "#{name} is not a tool #{describe(kind)} carries. It exists, and this " <>
                 "kind of agent is not given it — asking again with a different " <>
-                "spelling will not help."
+                "spelling will not help." <> substitute_hint(name)
       end)
     end)
   end
@@ -157,6 +157,21 @@ defmodule CodeMySpec.CodeMode.Bindings do
   # about the type, the project, or the moment.
   defp describe(nil), do: "this agent"
   defp describe(kind), do: "a #{kind} agent"
+
+  # b69743db: product correctly declines a question that isn't its call to
+  # make, reaches for `escalate_question`, and the plain refusal above leaves
+  # it with nowhere to go — which is worse than a missing tool, because the
+  # pressure to unblock a story pushes toward answering wrong rather than
+  # leaving it open. `escalate_question` itself is not the fix: it writes to
+  # `MainAgent.OpenQuestion`/`QuestionRequest`, a different table than the
+  # `Questions.Question` rows product's own `add_question`/`resolve_question`
+  # already work with, so granting it would pass this check and then fail
+  # against the wrong schema. `ask_user_question` is the tool that already
+  # reaches a human from here — confirmed live, not assumed.
+  defp substitute_hint("escalate_question"),
+    do: " Use `ask_user_question` instead — it reaches a human the same way."
+
+  defp substitute_hint(_name), do: ""
 
   defp callback(tool) do
     fn args, state ->

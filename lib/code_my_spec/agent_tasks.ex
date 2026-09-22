@@ -25,6 +25,7 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Promotion,
       CodeMySpec.PublicUrl,
       CodeMySpec.Qa,
+      CodeMySpec.Questions,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Resources,

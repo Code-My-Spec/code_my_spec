@@ -228,6 +228,45 @@ defmodule CodeMySpec.CodeModeTest do
     end
   end
 
+  describe "a tool the role does not carry" do
+    test "names the role and says asking differently will not help" do
+      result =
+        CodeMode.eval(%{}, "return escalate_question({})",
+          out_of_scope: ["escalate_question"],
+          agent_kind: "product"
+        )
+
+      assert Result.failed?(result)
+      assert result.error.message =~ "escalate_question is not a tool a product agent carries"
+      assert result.error.message =~ "asking again with a different spelling will not help"
+    end
+
+    # b69743db: escalate_question itself is not the fix here — it writes to a
+    # different table than product's own question tools — so the refusal
+    # names the tool that already reaches a human instead of leaving product
+    # with nowhere to go.
+    test "escalate_question points at the working substitute" do
+      result =
+        CodeMode.eval(%{}, "return escalate_question({})",
+          out_of_scope: ["escalate_question"],
+          agent_kind: "product"
+        )
+
+      assert result.error.message =~ "Use `ask_user_question` instead"
+    end
+
+    test "an out-of-scope tool with no known substitute stays silent about one" do
+      result =
+        CodeMode.eval(%{}, "return delete_story({})",
+          out_of_scope: ["delete_story"],
+          agent_kind: "qa"
+        )
+
+      assert result.error.message =~ "delete_story is not a tool a qa agent carries"
+      refute result.error.message =~ "Use `"
+    end
+  end
+
   describe "what comes back" do
     test "a script that will not compile says so without calling anything" do
       result = CodeMode.eval(stories_catalog(), "local a = 1\nthis is not lua\n")
