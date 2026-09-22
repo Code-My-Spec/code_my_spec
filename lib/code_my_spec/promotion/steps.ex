@@ -238,8 +238,60 @@ defmodule CodeMySpec.Promotion.Steps do
          }}
 
       {out, _} ->
-        not_fast_forward(root, branch, out)
+        merge_refused(root, branch, out)
     end
+  end
+
+  # `git merge --ff-only` fails for more than one reason, and the refusal used
+  # to assert the same one every time.
+  #
+  # A dirty tree is the other common one: git aborts with "would be overwritten
+  # by merge" and names the files, *while printing the fast-forward it was about
+  # to make*. Reporting that as "behind main" sends the reader to
+  # `git merge --ff-only main`, which is a no-op for it — so the remedy confirms
+  # the diagnosis by changing nothing, and the next attempt fails identically.
+  #
+  # Measured on the math project 2026-09-22: one untracked `mix.lock` in the
+  # target. The coding agent verified `git merge-base --is-ancestor main sum`
+  # twice, ran the suggested merge twice, and filed a framework issue saying
+  # promote "looks like it is comparing against a stale or wrong reference
+  # rather than the actual git ancestry". It was reading the only evidence it
+  # had, and the evidence was wrong.
+  #
+  # `out` was already being carried on the error; now it decides what the error
+  # says.
+  @doc false
+  def merge_refusal(root, branch, out), do: merge_refused(root, branch, out)
+
+  defp merge_refused(root, branch, out) do
+    case dirty_tree_refusal(out) do
+      nil -> not_fast_forward(root, branch, out)
+      files -> would_be_overwritten(root, files, out)
+    end
+  end
+
+  defp dirty_tree_refusal(out) do
+    case Regex.run(~r/would be overwritten by merge:\s*\n(.+?)\n\s*(?:Please|Aborting)/s, out) do
+      [_, block] ->
+        block |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+      nil ->
+        nil
+    end
+  end
+
+  defp would_be_overwritten(root, files, out) do
+    {:error,
+     %{
+       reason:
+         "the merge is a clean fast-forward, but #{root} has local files it " <>
+           "would overwrite: #{Enum.join(files, ", ")}. Nothing was merged. " <>
+           "This is not a divergence — the branch is ahead, and git says so in " <>
+           "the output below. Remove or commit those files in that checkout, " <>
+           "then promote again. Merging main into the copy you are promoting " <>
+           "from will not help.",
+       output: String.trim(out)
+     }}
   end
 
   # `git merge --ff-only` exits 0 for "Already up to date." too — the branch
