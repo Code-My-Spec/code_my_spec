@@ -49,15 +49,65 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   #
   # The story still wins wherever it has work, so selecting one still steers
   # who does what. It stops being a blindfold, not a preference.
+  #
+  # The fallback is `project_level/5`, not `from_copy/4`, and the difference is
+  # the whole of story 561. Widening to the copy offers *other stories'* work,
+  # which is what "completion is local to the active story" forbids: a finished
+  # story has to answer "complete" rather than quietly pulling its copy onto the
+  # next one. Eight of 561's criteria say so, and they caught this within the
+  # hour. Project-level requirements belong to no story at all, so offering them
+  # takes nothing away from the active one.
+  #
+  # And only when a role asked. `my_role/2` answers a role for an agent and
+  # `nil` for anyone else, so a role-less ask is a person asking about this
+  # copy — that answer stays on the copy's story, which is criterion 3609: QA
+  # fails, an issue is filed against the story, and the reply has to be "your
+  # story is blocked on this" rather than "go triage issues". The issue needing
+  # triage is that story's own. An agent asking what *it* should do is the case
+  # that was broken, and it always names a role.
+  defp story_or_project(story, nodes, edges, ctx, nil, nil),
+    do: from_graph(story, nodes, edges, ctx, nil)
+
   defp story_or_project(story, nodes, edges, ctx, role, nil) do
     case from_graph(story, nodes, edges, ctx, role) do
-      %{actionable: []} -> from_copy(nodes, edges, ctx, role)
+      %{actionable: []} = story_scoped -> project_level(nodes, edges, ctx, role, story_scoped)
       story_scoped -> story_scoped
     end
   end
 
   defp story_or_project(story, nodes, edges, ctx, role, _requested),
     do: from_graph(story, nodes, edges, ctx, role)
+
+  # Project-scope work, and nothing else, for a copy whose story holds none.
+  #
+  # `entity_type == "project"` is the filter that makes this safe to reach from
+  # a story-scoped ask: those fourteen requirements — `architecture_designed`,
+  # `spex_boundary_ready`, `issues_triaged`, `work_dispatched`, QA's journey
+  # chain — are not in any story, so surfacing them cannot move a copy off the
+  # one it is on. A story node or another story's component never passes it.
+  #
+  # With nothing at project level either, the story's own answer stands. It
+  # already says complete, or blocked and why, and replacing that with a
+  # project-shaped "nothing to do" would lose which story the copy is on.
+  defp project_level(nodes, edges, ctx, role, story_scoped) do
+    nodes
+    |> actionable_nodes(edges, ctx, role)
+    |> Enum.filter(&(&1.entity_type == "project"))
+    |> project_result(story_scoped)
+  end
+
+  defp project_result([], story_scoped), do: story_scoped
+
+  defp project_result(actionable, _story_scoped) do
+    wave = next_wave(actionable)
+
+    %{
+      result(:ready, nil, "")
+      | actionable: actionable,
+        wave: wave,
+        remaining: length(actionable) - length(wave)
+    }
+  end
 
   # The story this copy has selected, if it has selected one that is still
   # eligible.
