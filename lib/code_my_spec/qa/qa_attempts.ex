@@ -158,6 +158,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
       issue_ids: MapAccess.get(params, :issue_ids, []),
       agent_id: agent_id,
       task_id: task_id,
+      tools_used: MapAccess.get(params, :tools_used),
       parent_attempt_id: parent_attempt_id,
       submitted_at: DateTime.utc_now()
     }
