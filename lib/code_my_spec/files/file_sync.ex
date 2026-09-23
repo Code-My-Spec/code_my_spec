@@ -961,6 +961,7 @@ defmodule CodeMySpec.Files.FileSync do
         Files.delete_by_paths(scope, [path])
         removed_records = if existing, do: [existing], else: []
         sync_embeddings(scope, env, [], removed_records)
+        clear_specs_ready_for_rewritten_specs(scope, [], removed_records)
         announce_watched_change(scope, existing != nil)
         {:ok, %{changed_path: path}}
 
@@ -1008,6 +1009,33 @@ defmodule CodeMySpec.Files.FileSync do
 
         Files.upsert_file_metadata(scope, entry)
         sync_embeddings(scope, env, embedding_changed_entries, [])
+
+        # Here, not only in the stop hook's pass, because this is the pass that
+        # can still see the change.
+        #
+        # `clear_specs_ready_for_rewritten_specs/3` is keyed on the
+        # fingerprint-changed set rather than the mtime-changed one, and that is
+        # right: a byte-identical rewrite is not a contract change. But this
+        # function updates the fingerprint eagerly (see the comment above the
+        # upsert), so by the time `finish_sync_changed/4` runs, the stored
+        # fingerprint already matches the file. The entry is in that pass's
+        # mtime-changed set and absent from its fingerprint-changed set, so the
+        # clear there never sees a spec the watcher already handled.
+        #
+        # The watcher is what an agent rewriting a story's BDD specs actually
+        # fires, so that was every real rewrite. Measured 2026-09-23:
+        # `grep '[FileSync] Story' ~/.codemyspec/web.log*` returned nothing on
+        # this machine — the clear had never fired once, for any story, since it
+        # was written.
+        #
+        # What that cost: story 947's specs were rewritten to a new contract and
+        # its `specs_ready` latch stayed on, so criterion 3159 — deliberately
+        # red, because product had decided the feature was to be spec'd before
+        # it was built — stayed *enforced*. `Promotion.gate/1` is per-copy, so
+        # one enforced red stopped every other story promoting from that
+        # checkout, and nothing an agent could call would clear it.
+        clear_specs_ready_for_rewritten_specs(scope, embedding_changed_entries, [])
+
         announce_watched_change(scope, embedding_changed_entries != [])
         {:ok, %{changed_path: path}}
     end
