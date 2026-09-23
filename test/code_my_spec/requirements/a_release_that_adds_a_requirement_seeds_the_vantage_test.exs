@@ -114,6 +114,57 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
     end
   end
 
+  describe "a projector arriving on edges drawn under an older template" do
+    # A release that moves a prerequisite moves the edges and not one row, so
+    # names cover and the rows are rightly trusted; the edges are redrawn once.
+    test "redraws them", %{scope: %Scope{} = project_scope} do
+      scope = %{project_scope | active_working_copy_id: nil}
+      StoriesFixtures.story_fixture(scope)
+      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
+      :ok = ShadowProjector.settle(scope.active_project_id)
+
+      drawn = story_edge_count(scope)
+      assert drawn > 0, "the premise did not hold: no story edges were drawn"
+
+      # One edge as an older template would have drawn it: absent.
+      [edge_id] =
+        scope
+        |> story_edges()
+        |> Ecto.Query.select([e], e.id)
+        |> Ecto.Query.limit(1)
+        |> Repo.all()
+
+      {1, _} = from(e in "shadow_requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
+      assert story_edge_count(scope) == drawn - 1
+
+      restart_projector(scope)
+
+      assert story_edge_count(scope) == drawn,
+             """
+             A projector arrived on a vantage whose edges did not match the
+             templates it loaded, took the shape as its baseline, and left the
+             edges as they were.
+
+             Rows are trusted on arrival because the next observation about an
+             entity corrects them. No observation moves an edge a release moved;
+             only a redraw does, and it costs a plan and a diffed write.
+             """
+    end
+  end
+
+  defp story_edge_count(%Scope{} = scope), do: scope |> story_edges() |> Repo.aggregate(:count)
+
+  defp story_edges(%Scope{active_project_id: project_id, active_working_copy_id: copy}) do
+    from(e in "shadow_requirement_edges",
+      join: n in "shadow_requirements",
+      on: n.id == e.from_requirement_id,
+      join: s in "stories",
+      on: s.id == n.story_id,
+      where: s.project_id == type(^project_id, :binary_id),
+      where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
+    )
+  end
+
   defp restart_projector(%Scope{} = scope) do
     pid = GenServer.whereis(ShadowProjector.via(scope.active_project_id))
     ref = Process.monitor(pid)

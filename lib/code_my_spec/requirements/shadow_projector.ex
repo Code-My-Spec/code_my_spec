@@ -577,17 +577,16 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     shape_moved? =
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
 
-    # Trusted only when every mark was a verdict. A mark still pending when
-    # this process meets a vantage is one the previous process never finished
-    # with, so its edges were drawn over the shape before it; anything that
-    # can move the shape goes to `reproject_topology/3`, which redraws when it
-    # has no baseline to compare against.
+    # Rows are trusted; edges are redrawn once per vantage per process, by
+    # `baseline/2` when every mark was a verdict and by `reproject_topology/3`
+    # when one could have moved the shape. A mark still pending when this
+    # process meets a vantage is one the previous process never finished with.
     state =
       cond do
         # A vantage with no rows has nothing to be partial against, whatever
         # the marks say — the pass's `no_stored_rows`, asked per checkout.
         not established?(state, vantage, config) -> run(:everything, state, config)
-        unhandled == [] and not shape_moved? -> trust(state, config)
+        unhandled == [] and not shape_moved? -> baseline(state, config)
         unhandled == [] -> reproject_topology(state, config, false)
         true -> run_plan(state, unhandled, config)
       end
@@ -667,18 +666,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
   # A vantage this process meets with rows already there and only verdicts
-  # pending. Its edges were written with those rows, so the shape they were
-  # drawn over is taken as the baseline rather than the edges redrawn to find
-  # that out: four queries, once per vantage per process. Nothing to do once
-  # this process has been here.
-  defp trust(state, config) do
-    if MapSet.member?(state.established_vantages, vantage(state)) or
-         Map.has_key?(state.last_topology, vantage(state)) do
-      state
-    else
-      shape = Preloader.topology_context(state.scope)
-      remember_topology(state, Freshness.topology(shape, config))
-    end
+  # pending is redrawn once, then left alone.
+  #
+  # Its rows are trusted — `established?/3` — but its edges were drawn by
+  # whichever process wrote them last, under whatever templates that process
+  # had loaded, and a release that moves a prerequisite moves the edges and not
+  # one row. This used to take the shape's hash as the baseline instead of
+  # redrawing: the hash taken after a restart already carries the new
+  # templates, so the old edges read as current at every vantage — 17 of 20
+  # on dev after `story_issues_resolved` moved ahead of `qa_complete`
+  # (v2.0.152). A redraw is a plan and a diffed write now, ~50ms per vantage
+  # and 0 rows written when nothing moved, where the baseline was four
+  # queries; `reproject_topology/3` redraws when it has no baseline and
+  # remembers one. Nothing to do once this process has been here.
+  defp baseline(state, config) do
+    if Map.has_key?(state.last_topology, vantage(state)),
+      do: state,
+      else: reproject_topology(state, config, false)
   end
 
   # What this drain has to load, which is decided before anything is loaded.
