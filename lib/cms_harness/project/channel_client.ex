@@ -620,12 +620,36 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_join(topic, reply, socket) do
     Logger.info("[CmsHarness] holding #{socket.assigns.project.root} — joined #{topic}")
 
+    # `attempts` is deliberately NOT reset here, and that is the whole of this
+    # comment. Joining is not evidence the connection works — it is evidence the
+    # server accepted a join, which is a weaker claim and, for a channel whose
+    # very next push is refused, a false one.
+    #
+    # Measured 2026-09-23: four harness instances ran this loop — join, push
+    # `read_model`, get `{:error, %{"reason" => "unmatched topic"}}`, disconnect,
+    # `backoff(0)` = 1000ms, join again — roughly once a second, indefinitely.
+    # One instance logged 2,777 read-model refusals against 1,130 disconnects.
+    # Together they wrote ~370 lines a minute into `harness.log`, rotating a
+    # 10MB file every ~35 minutes, so the entire retained harness history was
+    # under two hours old and the previous day's was gone. That history is the
+    # only place harness symptoms live — a refused hook, a manifest sent and
+    # never accepted, a dropped analyzer result — so the loop was destroying the
+    # evidence for the next harness bug faster than anyone could look at it.
+    #
+    # The backoff table only ever reached its first entry, because every cycle
+    # passed through here and zeroed it.
+    #
+    # So the reset moves to the read-model reply, which is what the join exists
+    # to obtain — the comment below says so: "a scan without one resolves no
+    # owners and validates no specs". A connection that has handed over a read
+    # model has proved it works. One that has not is still a candidate for
+    # backing off, which is the correct behaviour for a harness that cannot
+    # resolve owners and is therefore not scanning anyway.
     socket =
       socket
       |> persist_issued_identity(reply)
       |> assign(:joined, true)
       |> assign(:joined_at, System.monotonic_time(:second))
-      |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
       |> assign(:silences, 0)
@@ -907,7 +931,14 @@ defmodule CmsHarness.Project.ChannelClient do
         previous = Map.get(socket.assigns, :read_model)
         read_model = deserialize_read_model(payload)
 
-        socket = socket |> assign(:read_model, read_model) |> resume_watcher()
+        # The connection has now done the thing the join exists for, so this is
+        # where the reconnect backoff is allowed to forget its history. See the
+        # note in `handle_join/3` for what resetting it there cost.
+        socket =
+          socket
+          |> assign(:read_model, read_model)
+          |> assign(:attempts, 0)
+          |> resume_watcher()
 
         maybe_sync(socket, previous, read_model)
         {:ok, socket}
