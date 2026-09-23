@@ -416,15 +416,19 @@ defmodule CodeMySpec.Promotion do
          {:ok, swept} <- gate(scope),
          {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id) do
       version = Map.get(merge_result, :version)
+      stamp_version = Map.get(merge_result, :stamp_version)
 
       Logger.info(
         "[Promotion] merged #{branch} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
-          "version #{version || "none"}, certified by #{describe_certifications(swept)}, " <>
-          "dispatching restart"
+          "version #{version || "none"}, stamping #{stamp_version || "none"}, " <>
+          "certified by #{describe_certifications(swept)}, dispatching restart"
       )
 
-      stamp_promoted_stories(scope, version)
+      # Not `version`. A no-op merge originates nothing and still has stories to
+      # stamp — see `Steps.current_version/2` for why those are different
+      # questions and what it cost to find out.
+      stamp_promoted_stories(scope, stamp_version)
 
       scope
       |> restart(running, refresh_harness?(scope, merge_result), opts)
