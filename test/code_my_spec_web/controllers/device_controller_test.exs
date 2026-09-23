@@ -99,6 +99,7 @@ defmodule CodeMySpecWeb.DeviceControllerTest do
       assert %{"pending_local_projects" => [pending]} = json_response(conn, 200)
       assert pending["id"] == plan.project_id
       assert pending["name"] == "Widget Tracker"
+      assert pending["app_name"] == "widget_tracker"
       assert is_binary(pending["deploy_key"])
     end
 

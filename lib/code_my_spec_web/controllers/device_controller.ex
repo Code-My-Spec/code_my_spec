@@ -129,6 +129,7 @@ defmodule CodeMySpecWeb.DeviceController do
       %{
         "id" => project.id,
         "name" => project.name,
+        "app_name" => Projects.app_name(project),
         "deploy_key" => project.deploy_key
       }
     end
