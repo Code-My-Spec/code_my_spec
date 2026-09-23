@@ -53,6 +53,15 @@ defmodule CodeMySpec.Agents.Agent do
   alias CodeMySpec.Projects.Project
 
   @statuses [:starting, :running, :stopped, :failed]
+
+  # 73d0d505: `record_stopped/2` in `Agents` is the single path for both a
+  # deliberate stop and a harness/machine reaping an agent it lost contact
+  # with, and until this field existed nothing on the row said which had
+  # happened. `:reaped` is written when nothing confirms the process ended on
+  # purpose (no report, or a machine that could not be asked); `:stopped` is
+  # written when something explicitly asked for it to end. Nil is a row from
+  # before this distinction existed -- not a third state, just unknown.
+  @stopped_reasons [:reaped, :stopped]
   # `:alloy` — renamed from `:pi`, John's call: "I completely backed out of
   # that. We're not doing that." The value stayed `:pi` in the schema and the
   # column after the product decision moved on, so "Pi" kept showing up
@@ -81,6 +90,7 @@ defmodule CodeMySpec.Agents.Agent do
           os_pid: integer() | nil,
           os_boot_id: String.t() | nil,
           status: atom() | nil,
+          stopped_reason: atom() | nil,
           continuous: boolean() | nil,
           tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
@@ -127,6 +137,7 @@ defmodule CodeMySpec.Agents.Agent do
     field :os_pid, :integer
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting
+    field :stopped_reason, Ecto.Enum, values: @stopped_reasons
 
     # Whether this agent keeps working when its turn ends.
     #
@@ -199,6 +210,9 @@ defmodule CodeMySpec.Agents.Agent do
   @spec statuses() :: [atom()]
   def statuses, do: @statuses
 
+  @spec stopped_reasons() :: [atom()]
+  def stopped_reasons, do: @stopped_reasons
+
   @doc "The agent types. Fixed here so nothing can invent a fifth by typing it."
   @spec roles() :: [atom()]
   def roles, do: @roles
@@ -269,6 +283,7 @@ defmodule CodeMySpec.Agents.Agent do
       :os_pid,
       :os_boot_id,
       :status,
+      :stopped_reason,
       :continuous,
       :turn_started_at,
       :work_request_id,
