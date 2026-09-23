@@ -82,7 +82,7 @@ defmodule CodeMySpec.Analysis.AgentReport do
     findings = digest(source, problems)
 
     scope
-    |> internal_agents(copy_id)
+    |> internal_agents(copy_id, requester_id)
     |> Enum.each(&tell_one(&1, findings, source, requester_id))
   end
 
@@ -122,7 +122,40 @@ defmodule CodeMySpec.Analysis.AgentReport do
   # refusal it cannot cause is worse than two lists that drift visibly.
   @report_roles [:coding, :main]
 
-  defp internal_agents(%Scope{active_project_id: project_id}, copy_id) do
+  # Two questions, and this used to answer both with the role list.
+  #
+  # "Who should hear about findings nobody asked for" is a broadcast, and the
+  # roles above are the right answer to it. "Who asked for this run and is
+  # waiting on it" is a reply, and the asker's role has nothing to do with it —
+  # `tell_one/4` already knows the difference and answers the requester whatever
+  # the run found, including a clean one. That clause could never fire for a role
+  # outside the list, because this query removed the asker before it ran.
+  #
+  # Measured 2026-09-23. A QA agent on Broken Oaths story 947 started credo and
+  # spex through `start_analysis`, both rows carrying
+  # `requested_by: {"agent_id" => "b55ec59c-..."}`. Both completed at 16:02. It
+  # held its task waiting for them, correctly, and was never told: `:qa` is not
+  # in `@report_roles`, so it was filtered out of its own answer. Fifty minutes,
+  # and the only thing that moved it was a person noticing.
+  #
+  # The broadcast filter is unchanged and still right — the comment above it
+  # describes a real cost, and a QA agent still does not get told about 47 spex
+  # errors it cannot read. It just no longer decides who may be answered.
+  defp internal_agents(scope, copy_id, requester_id \\ nil)
+
+  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, requester_id)
+       when is_binary(requester_id) do
+    Agent
+    |> where(
+      [a],
+      a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+        a.status != :stopped and a.engine == :alloy and
+        (a.role in ^@report_roles or a.id == ^requester_id)
+    )
+    |> Repo.all()
+  end
+
+  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, _requester_id) do
     Agent
     |> where(
       [a],
