@@ -26,6 +26,14 @@ defmodule CodeMySpec.Repo.Migrations.AgentsBelongToAWorkingCopy do
   unambiguous. The column stays nullable in the database and required in the
   changeset, which is how `harnesses` treats `root`: old rows keep whatever they
   have, and nothing new can be written without one.
+
+  ## Why this is not the Postgres copy
+
+  Two statements in the twin are Postgres-only. `UPDATE agents a SET ... FROM
+  harnesses h` is not SQLite's spelling, and `modify :harness_id,
+  references(...)` is an `ALTER COLUMN`, which SQLite does not have — so the
+  constraint is written into a rebuilt table instead. The backfill is the same
+  rule expressed as a correlated subquery.
   """
 
   use Ecto.Migration
@@ -44,19 +52,57 @@ defmodule CodeMySpec.Repo.Migrations.AgentsBelongToAWorkingCopy do
     # answer. Where it names several, no guess is better than another and the
     # row keeps a null.
     execute("""
-    UPDATE agents a SET harness_id = h.id
-    FROM harnesses h
-    WHERE a.harness_id IS NULL
-      AND h.project_id = a.project_id
-      AND h.root = a.working_copy
+    UPDATE agents
+    SET harness_id = (
+      SELECT h.id FROM harnesses h
+      WHERE h.project_id = agents.project_id
+        AND h.root = agents.working_copy
+    )
+    WHERE harness_id IS NULL
       AND (SELECT count(*) FROM harnesses x
-           WHERE x.project_id = a.project_id AND x.root = a.working_copy) = 1
+           WHERE x.project_id = agents.project_id
+             AND x.root = agents.working_copy) = 1
     """)
 
-    alter table(:agents) do
-      modify :harness_id, references(:harnesses, type: :binary_id, on_delete: :nilify_all),
-        from: :binary_id
+    rename table(:agents), to: table(:agents_old)
+
+    create table(:agents, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :engine, :string, null: false
+      add :provider, :string, null: false
+      add :working_copy, :string, null: false
+      add :config_dir, :string
+      add :os_pid, :integer
+      add :status, :string, null: false
+      add :role, :string, null: false
+
+      add :harness_id, references(:harnesses, type: :binary_id, on_delete: :nilify_all)
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
+
+      add :account_id, :binary_id, null: false
+
+      timestamps(type: :utc_datetime)
     end
+
+    execute("""
+    INSERT INTO agents (id, engine, provider, working_copy, config_dir, os_pid,
+                        status, role, harness_id, project_id, account_id,
+                        inserted_at, updated_at)
+    SELECT id, engine, provider, working_copy, config_dir, os_pid,
+           status, role, harness_id, project_id, account_id,
+           inserted_at, updated_at
+    FROM agents_old
+    """)
+
+    drop table(:agents_old)
+
+    create index(:agents, [:project_id])
+    create index(:agents, [:account_id])
+    create index(:agents, [:working_copy])
+    create index(:agents, [:project_id, :status])
+    create index(:agents, [:project_id, :working_copy, :role])
 
     # The join the page makes on every render, and the lookup the reconcile
     # makes per reported lane.
@@ -65,10 +111,5 @@ defmodule CodeMySpec.Repo.Migrations.AgentsBelongToAWorkingCopy do
 
   def down do
     drop index(:agents, [:harness_id, :role])
-
-    alter table(:agents) do
-      modify :harness_id, :binary_id,
-        from: references(:harnesses, type: :binary_id, on_delete: :nilify_all)
-    end
   end
 end

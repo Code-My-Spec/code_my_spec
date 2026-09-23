@@ -68,44 +68,55 @@ defmodule CodeMySpec.Repo.Migrations.RequirementsBelongToTheCopyThatComputedThem
            name: :requirements_project_id_name_index
          )
 
-    execute """
-    CREATE UNIQUE INDEX requirements_component_id_name_index
-      ON requirements (component_id, name, working_copy_id) NULLS NOT DISTINCT
-      WHERE component_id IS NOT NULL
-    """
+    # SQLite has no `NULLS NOT DISTINCT`, so each identity becomes two partial
+    # unique indexes that together say the same thing: with a working copy, the
+    # copy is part of the key; without one, "no working copy" is itself the
+    # single value the Postgres clause makes it.
+    for {owner, base} <- [
+          {"component_id", "requirements_component_id_name"},
+          {"story_id", "requirements_story_id_name"},
+          {"project_id", "requirements_project_id_name"}
+        ] do
+      execute """
+      CREATE UNIQUE INDEX #{base}_index
+        ON requirements (#{owner}, name, working_copy_id)
+        WHERE #{owner} IS NOT NULL AND working_copy_id IS NOT NULL
+      """
 
-    execute """
-    CREATE UNIQUE INDEX requirements_story_id_name_index
-      ON requirements (story_id, name, working_copy_id) NULLS NOT DISTINCT
-      WHERE story_id IS NOT NULL
-    """
-
-    execute """
-    CREATE UNIQUE INDEX requirements_project_id_name_index
-      ON requirements (project_id, name, working_copy_id) NULLS NOT DISTINCT
-      WHERE project_id IS NOT NULL
-    """
+      execute """
+      CREATE UNIQUE INDEX #{base}_no_copy_index
+        ON requirements (#{owner}, name)
+        WHERE #{owner} IS NOT NULL AND working_copy_id IS NULL
+      """
+    end
   end
 
   def down do
-    execute "DROP INDEX requirements_component_id_name_index"
-    execute "DROP INDEX requirements_story_id_name_index"
-    execute "DROP INDEX requirements_project_id_name_index"
+    for base <- [
+          "requirements_component_id_name",
+          "requirements_story_id_name",
+          "requirements_project_id_name"
+        ] do
+      execute "DROP INDEX #{base}_index"
+      execute "DROP INDEX #{base}_no_copy_index"
+    end
 
     # Every existing row would collide on the way back, because losing the
     # working copy from the key is exactly what makes them duplicates. Keeping
     # one per (owner, name) is the only thing the old shape can hold, and which
     # one survives is arbitrary — the same arbitrariness this migration removes.
     execute """
-    DELETE FROM requirements r
-    USING requirements keep
-    WHERE keep.name = r.name
-      AND r.id > keep.id
-      AND (
-        (r.component_id IS NOT NULL AND r.component_id = keep.component_id) OR
-        (r.story_id IS NOT NULL AND r.story_id = keep.story_id) OR
-        (r.project_id IS NOT NULL AND r.project_id = keep.project_id)
-      )
+    DELETE FROM requirements
+    WHERE id IN (
+      SELECT r.id
+      FROM requirements r
+      JOIN requirements keep
+        ON keep.name = r.name
+       AND r.id > keep.id
+      WHERE (r.component_id IS NOT NULL AND r.component_id = keep.component_id)
+         OR (r.story_id IS NOT NULL AND r.story_id = keep.story_id)
+         OR (r.project_id IS NOT NULL AND r.project_id = keep.project_id)
+    )
     """
 
     create unique_index(:requirements, [:component_id, :name],
