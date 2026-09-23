@@ -350,6 +350,25 @@ defmodule CodeMySpec.Resources do
     for project <- deployable(scope), entry <- project_checklist(scope, project), do: entry
   end
 
+  # 3f9bb7b7: `step.state` records the *last run's* verdict, not what exists —
+  # this module's own moduledoc already says so ("Never from stored step
+  # state"), and this function was the one place still reading it that way.
+  # `:done` is one way a step ends up holding resources and not the only one:
+  # `:running`, `:errored` and `:paused` can all follow a step that already
+  # created something real (a server, a domain, a database) before the run
+  # stopped making progress. Measured on Broken Oaths: five of six
+  # non-`:done` steps held real, checkable resources — reported "nothing
+  # behind them" anyway, on the strength of `state` alone.
+  #
+  # `step.resources` is what setup itself populates when it creates or adopts
+  # something (`entry/3` in `Provisioning`, from the persisted row's
+  # `resources` column) — the same field `project_scope/2`'s eventual reader
+  # would use to find the thing in its provider's own console. Reading it
+  # here is asking the actual side, not the stored one.
+  #
+  # A step correctly stays `:missing` when it has never produced anything,
+  # `:not_started` or `:errored` before creating a resource alike — nothing
+  # here changes for those.
   defp project_checklist(scope, project) do
     for step <-
           Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
@@ -358,7 +377,7 @@ defmodule CodeMySpec.Resources do
         project_name: project.name,
         key: step.key,
         environment: step.environment,
-        state: if(step.state == :done, do: :present, else: :missing),
+        state: if(step.resources != [], do: :present, else: :missing),
         detail: step.provider_error
       }
     end
