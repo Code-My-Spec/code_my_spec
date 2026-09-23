@@ -141,8 +141,6 @@ defmodule CodeMySpec.Analysis.AgentReport do
   # The broadcast filter is unchanged and still right — the comment above it
   # describes a real cost, and a QA agent still does not get told about 47 spex
   # errors it cannot read. It just no longer decides who may be answered.
-  defp internal_agents(scope, copy_id, requester_id \\ nil)
-
   defp internal_agents(%Scope{active_project_id: project_id}, copy_id, requester_id)
        when is_binary(requester_id) do
     Agent
