@@ -112,7 +112,11 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   def update_rule(%Scope{}, _rule, _attrs), do: {:error, :missing_active_account}
 
   @spec delete_rule(Scope.t(), Rule.t()) ::
-          {:ok, Rule.t()} | {:error, :missing_active_account | :cross_account}
+          {:ok, Rule.t()}
+          | {:error,
+             :missing_active_account
+             | :cross_account
+             | {:criteria_verified_or_specced, [String.t()]}}
   def delete_rule(%Scope{active_account_id: account_id}, %Rule{} = rule)
       when not is_nil(account_id) do
     if rule.account_id == account_id do
@@ -130,15 +134,46 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   # acceptance-criteria count. Delete them with the rule in one transaction
   # so the cascade the API advertises actually happens. DB-agnostic
   # (`delete_all` works on both SQLite and Postgres), so no FK migration.
+  #
+  # 146c01a6: refused when any linked criterion is `verified: true` or
+  # already has a `spec_path` — the single-criterion delete path
+  # (`AcceptanceCriteria.delete_criterion/2`'s `check_not_verified/1`) already
+  # refuses the smaller version of this, and this cascade had no equivalent.
+  # Measured on Broken Oaths: 23 verified criteria with real, passing spec
+  # files deleted in one call, their descriptions immediately recreated under
+  # new ids with `spec_path = nil` — the specs on disk, named for the deleted
+  # ids, became unclaimable by anything. Recreating criteria under a rule
+  # that already proved its scenarios is not what "PM-side cleanup of bogus
+  # or superseded rules" (this tool's own doc) means; a rule that still has
+  # verified work belongs to `update_rule`, not this.
   defp cascade_delete_rule(%Rule{id: rule_id} = rule) do
+    case verified_or_specced(rule_id) do
+      [] -> do_cascade_delete_rule(rule, rule_id)
+      criteria -> {:error, {:criteria_verified_or_specced, Enum.map(criteria, & &1.description)}}
+    end
+  end
+
+  defp do_cascade_delete_rule(rule, rule_id) do
     Repo.transaction(fn ->
       Repo.delete_all(from c in Criterion, where: c.rule_id == ^rule_id)
-
-      case Repo.delete(rule) do
-        {:ok, deleted} -> deleted
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
+      delete_or_rollback(rule)
     end)
+  end
+
+  defp delete_or_rollback(rule) do
+    case Repo.delete(rule) do
+      {:ok, deleted} -> deleted
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp verified_or_specced(rule_id) do
+    Criterion
+    |> where(
+      [c],
+      c.rule_id == ^rule_id and (c.verified == true or not is_nil(c.spec_path))
+    )
+    |> Repo.all()
   end
 
   defp coerce_story_id(id) when is_integer(id), do: id

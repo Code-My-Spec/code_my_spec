@@ -277,7 +277,7 @@ defmodule CodeMySpec.Validation do
   end
 
   defp do_remote_validate_stop(scope, task, opts) do
-    changed_files = remote_changed_files(scope, task, opts)
+    {changed_files, consume_ledger} = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
 
@@ -291,6 +291,12 @@ defmodule CodeMySpec.Validation do
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
+      # d726cfda: only now, once both reads of the ledger this stop makes —
+      # here, and inside `check_blocking_problems` above — have happened and
+      # been acted on. Consuming any earlier would risk a demotion decision
+      # made against a ledger already cleared for a different purpose; not
+      # consuming at all is the bug this fixes.
+      consume_ledger.()
       {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
     end
   end
@@ -322,9 +328,14 @@ defmodule CodeMySpec.Validation do
   # disk is on the other end of a channel. The harness sends its edit paths
   # project-relative, so `relativize/2` has nothing to strip and passes them
   # through.
+  # A task has its own window (`started_at`), so nothing here is the ledger's
+  # sole answer for it — `changed_files_for_task/3` intersects it with
+  # `Files.changed_since/2`, and consuming rows out from under that
+  # intersection would starve it for the rest of the task's lifetime rather
+  # than for one stop. No cleanup for this branch, on purpose.
   defp remote_changed_files(scope, %{started_at: started_at} = task, opts)
        when not is_nil(started_at) do
-    changed_files_for_task(scope, task, opts)
+    {changed_files_for_task(scope, task, opts), fn -> :ok end}
   end
 
   # Without a task, the local path uses the paths its own scan found dirty.
@@ -336,17 +347,37 @@ defmodule CodeMySpec.Validation do
   # is treated as one. It does not mean "could not tell": a session that edited
   # something has those edits recorded, and a project with no harness never
   # reaches this function at all.
+  #
+  # d726cfda: that was the documented contract and it was never actually true,
+  # because nothing ever forgot a path once `attributed_paths/2` reported it —
+  # a session that wrote once stayed non-empty for as long as it lived, up to
+  # 314 rows over 16 days measured on one session, re-enqueuing analysis on
+  # every stop forever. The second element is how the caller makes the
+  # contract true: call it once the paths this call returned have actually
+  # been used, and the next stop with nothing new sees an empty ledger instead
+  # of this one's leftovers.
   defp remote_changed_files(scope, _task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
-        session_id
-        |> attributed_paths(Keyword.get(opts, :agent_id))
-        |> then(&Files.get_by_paths(scope, &1))
+        agent_id = Keyword.get(opts, :agent_id)
+        paths = attributed_paths(session_id, agent_id)
+        files = Files.get_by_paths(scope, paths)
+        {files, fn -> consume_attributed_paths(session_id, agent_id, paths) end}
 
       _ ->
-        agent_changed_files(scope, opts)
+        {agent_changed_files(scope, opts), fn -> :ok end}
     end
   end
+
+  defp consume_attributed_paths(session_id, nil, paths),
+    do: FileEdits.consume_edits(session_id, paths)
+
+  defp consume_attributed_paths(session_id, agent_id, paths) when is_binary(agent_id),
+    do: FileEdits.consume_edits_by_agent(session_id, agent_id, paths)
+
+  @doc false
+  def remote_changed_files_for_test(scope, task, opts),
+    do: remote_changed_files(scope, task, opts)
 
   # The same answer, for an agent that has no session to record against.
   #
@@ -360,6 +391,14 @@ defmodule CodeMySpec.Validation do
   # `FileEdits.track_agent_edit/2` records it now, on every `write` and `edit`
   # the agent makes, so this path answers exactly what the session path answers:
   # the files this agent touched, resolved to their rows.
+  #
+  # Not given a cleanup thunk. `get_edited_files_for_agent/1` has the identical
+  # no-window shape `get_edited_files/1` had (d726cfda) and nothing here
+  # consumes it either, so a continuous in-BEAM agent with no session could in
+  # principle hit the same livelock this fix closes for external sessions.
+  # Unmeasured — the issue this fixes was reproduced on a session, not an
+  # agent — so left as a comment rather than a guess at behavior nobody has
+  # watched happen.
   defp agent_changed_files(scope, opts) do
     case Keyword.get(opts, :agent_id) do
       agent_id when is_binary(agent_id) ->

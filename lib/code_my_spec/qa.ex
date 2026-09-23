@@ -41,6 +41,7 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
       CodeMySpec.Users,
       CodeMySpec.Utils
     ],
@@ -129,8 +130,11 @@ defmodule CodeMySpec.Qa do
   """
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
-      latest when is_map(latest) -> latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
-      _ -> complete_check(scope, story)
+      latest when is_map(latest) ->
+        latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
+
+      _ ->
+        complete_check(scope, story)
     end
   end
 

@@ -357,6 +357,62 @@ defmodule CodeMySpec.PromotionTest do
       {tags, 0} = git.(["tag", "--list"])
       assert tags == "", "a no-op promote must not mint a tag for nothing"
     end
+
+    test "an already-up-to-date merge still says which version carries the work",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.0.0",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, stamp_version: "1.0.0"}} = Steps.merge(env, root, "side"),
+             "the merge originated nothing, so `version` is nil — but the work " <>
+               "on this branch is on main, carried there by 1.0.0, and that is " <>
+               "the version a story on it should be stamped with. Before this " <>
+               "split, a story whose specs went green after the promotion that " <>
+               "carried its code could never be stamped by anything: only a " <>
+               "merge that moves the sha stamped, and for that story there was " <>
+               "nothing left to move (Broken Oaths story 937, 2026-09-22)"
+
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.0.0"),
+             "stamping reads the version, it does not mint one"
+
+      {tags, 0} = git.(["tag", "--list"])
+      assert tags == "", "and it does not tag one either"
+    end
+
+    test "a no-op merge with no mix.exs has no version to stamp with",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, stamp_version: nil}} = Steps.merge(env, root, "side"),
+             "nothing to read and nothing to mint stamps nothing, which is the " <>
+               "behaviour a checkout with no mix.exs had before this existed"
+    end
+
+    test "a merge that moves stamps with the version it just minted",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: "1.2.4", stamp_version: "1.2.4"}} = Steps.merge(env, root, "side"),
+             "when the merge does originate a version the two agree, so this " <>
+               "split changes nothing on the path that already worked"
+    end
   end
 
   # The checkout's live git state can no longer be set here at all, and that is

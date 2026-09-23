@@ -24,6 +24,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
           issue_ids: [Ecto.UUID.t()],
           agent_id: String.t() | nil,
           task_id: String.t() | nil,
+          tools_used: [String.t()] | nil,
           parent_attempt_id: Ecto.UUID.t() | nil,
           submitted_at: DateTime.t() | nil,
           invalidations: [Invalidation.t()] | Ecto.Association.NotLoaded.t(),
@@ -37,6 +38,11 @@ defmodule CodeMySpec.Qa.QaAttempt do
     field :issue_ids, {:array, :binary_id}, default: []
     field :agent_id, :string
     field :task_id, :string
+    # 257a6a15: self-reported, not independently verified — same trust level
+    # as the scenario prose beside it. Nil for attempts that predate the
+    # field, not an empty list, so "reported nothing" and "never asked" stay
+    # distinguishable.
+    field :tools_used, {:array, :string}
     field :submitted_at, :utc_datetime_usec
 
     embeds_many :scenarios, Scenario, on_replace: :delete
@@ -52,8 +58,16 @@ defmodule CodeMySpec.Qa.QaAttempt do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(attempt \\ %__MODULE__{}, attrs) do
     attempt
-    |> cast(attrs, [:story_id, :status, :issue_ids, :agent_id, :task_id, :parent_attempt_id,
-                    :submitted_at])
+    |> cast(attrs, [
+      :story_id,
+      :status,
+      :issue_ids,
+      :agent_id,
+      :task_id,
+      :tools_used,
+      :parent_attempt_id,
+      :submitted_at
+    ])
     |> cast_embed(:scenarios, required: true)
     |> validate_required([:story_id, :status, :submitted_at])
     |> validate_scenarios_non_empty()

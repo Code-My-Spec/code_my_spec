@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
 
   alias CodeMySpec.Requirements.{Requirement, StoryExecution}
 
-  @story_names ~w(component_linked three_amigos_complete bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved)
+  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved)
 
   defp fixture do
     story = %{
@@ -79,6 +79,34 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
     assert result.status == :blocked
     assert result.reason =~ "Which customer?"
     assert result.actionable == []
+  end
+
+  # 56cf5697: a sealed story's post-seal open questions used to block every
+  # role including product, the one role that owns questions — so nothing
+  # was ever offered the work of clearing them. `questions_answered` is the
+  # node that names product as the actor; `role != :product` is what lets it
+  # through to be offered instead of hitting the blanket block below.
+  test "a sealed story's open questions are offered to product, not blocked" do
+    {story, ctx, nodes} = fixture()
+    ctx = %{ctx | questions_by_story: %{1 => [%{status: :open, text: "Which customer?"}]}}
+    nodes = Enum.map(nodes, &unsatisfy(&1, "questions_answered"))
+
+    result = StoryExecution.from_graph(story, nodes, [], ctx, :product)
+
+    assert result.status == :ready
+    assert Enum.any?(result.actionable, &(&1.name == "questions_answered"))
+  end
+
+  test "the same open question still blocks every other role" do
+    {story, ctx, nodes} = fixture()
+    ctx = %{ctx | questions_by_story: %{1 => [%{status: :open, text: "Which customer?"}]}}
+    nodes = Enum.map(nodes, &unsatisfy(&1, "questions_answered"))
+
+    for role <- [:coding, :qa, nil] do
+      result = StoryExecution.from_graph(story, nodes, [], ctx, role)
+      assert result.status == :blocked, "expected #{inspect(role)} to stay blocked"
+      assert result.reason =~ "Which customer?"
+    end
   end
 
   test "role filtering cannot turn QA work into story completion" do

@@ -914,6 +914,68 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   def projected?(%Scope{}), do: false
 
+  @doc """
+  Whether the rows at this vantage carry every requirement the templates
+  define for the entities they cover, and nothing the templates no longer do.
+
+  A projector meeting a vantage with rows trusts them. That is right for what
+  observations move and wrong for what a release moves: `questions_answered`
+  shipped in v2.0.147 and on dev the next morning not one of the big
+  project's 138 stories had the row at any of its eleven vantages, because a
+  handler settles rows and never creates them, and nothing seeds a vantage
+  that has rows. So arrival compares names as well as presence, per entity
+  type, and a vantage whose rows predate a definition is seeded like one that
+  has none. One query per vantage per process.
+
+  `defined` is `RequirementGraph.defined_names/2`. Component names are
+  compared per owning type over parent- and self-scoped rows only, for the
+  reason given there.
+  """
+  @spec definitions_covered?(Scope.t(), map()) :: boolean()
+  def definitions_covered?(%Scope{active_project_id: project_id} = scope, defined)
+      when is_binary(project_id) do
+    {component_ids, story_ids} = entity_ids(project_id)
+
+    held =
+      event_target()
+      |> scoped(project_id, component_ids, story_ids)
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> select([n], {n.component_id, n.story_id, n.owner_component_type, n.node_scope, n.name})
+      |> Repo.all()
+      |> Enum.uniq()
+
+    story_held =
+      for {nil, story, _t, _s, name} <- held, not is_nil(story), into: MapSet.new(), do: name
+
+    project_held = for {nil, nil, _t, _s, name} <- held, into: MapSet.new(), do: name
+
+    component_held =
+      held
+      |> Enum.filter(fn {component, _story, _type, node_scope, _name} ->
+        not is_nil(component) and node_scope in ["parent", "self"]
+      end)
+      |> Enum.group_by(fn {_c, _s, type, _scope, _name} -> type end, fn {_c, _s, _t, _scope, name} ->
+        name
+      end)
+      |> Map.new(fn {type, names} -> {type, MapSet.new(names)} end)
+
+    covered?(story_held, defined.story) and covered?(project_held, defined.project) and
+      Enum.all?(component_held, fn {type, names} ->
+        case Map.fetch(defined.component, type) do
+          {:ok, expected} -> covered?(names, expected)
+          :error -> true
+        end
+      end)
+  end
+
+  def definitions_covered?(%Scope{}, _defined), do: true
+
+  # No rows of the type is not a mismatch: the vantage may hold no such
+  # entity. Rows of the type carry exactly the defined names, or a release
+  # moved between them and the rows.
+  defp covered?(held, expected),
+    do: MapSet.size(held) == 0 or MapSet.equal?(held, expected)
+
   @doc "Forget the shadow projection for this vantage, so it rebuilds from scratch."
   @spec clear(Scope.t()) :: :ok
   def clear(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do

@@ -228,13 +228,15 @@ defmodule CodeMySpec.Promotion.Steps do
     case git(env, root, ["merge", "--ff-only", branch]) do
       {out, 0} ->
         after_sha = head(env, root)
+        originated = version_if_moved(env, root, before, after_sha)
 
         {:ok,
          %{
            output: String.trim(out),
            before: before,
            after: after_sha,
-           version: version_if_moved(env, root, before, after_sha)
+           version: originated,
+           stamp_version: originated || current_version(env, root)
          }}
 
       {out, _} ->
@@ -304,6 +306,55 @@ defmodule CodeMySpec.Promotion.Steps do
   # patch bump on every call, with no corresponding change to anything.
   defp version_if_moved(_env, _root, same, same), do: nil
   defp version_if_moved(env, root, _before, _after), do: bump_version(env, root)
+
+  # The version a story carried onto main should be stamped with, which is not
+  # the same question as the version this promotion originated.
+  #
+  # `version_if_moved/4` above answers "did this merge mint a version," and nil
+  # is the right answer for an "Already up to date" merge — a promotion that
+  # landed no commits does not get to mint a patch bump, and the guard above
+  # exists because repeated promotes used to do exactly that. `Promotion` was
+  # then reusing that same nil to decide whether to stamp any story, and those
+  # two questions come apart precisely where it matters.
+  #
+  # A story whose code is already on main is the story a no-op merge is looking
+  # at. Refusing to stamp it means nothing ever can: the only thing that stamps
+  # is a merge that moves the sha, and for that story there is nothing left to
+  # move. The gate it feeds never becomes satisfiable again by any sequence of
+  # actions an agent can take.
+  #
+  # Measured on Broken Oaths 2026-09-22. Story 937's code reached main on the
+  # 23:30 promote that minted 0.3.3; its `specs_ready` latch — which is what
+  # `mark_ready_stories_promoted/2` selects on — was written at 23:38:07, eight
+  # minutes after that stamp set was taken. The three promotes that followed
+  # were all no-ops (05d5453 -> 05d5453, "version none"), so the story sat at
+  # 23 of 24 requirements permanently while the graph went on offering its
+  # promote to every role. Three agents declined it nineteen times between them
+  # before the damper capped them.
+  #
+  # So a no-op stamps with the version main already carries, which is the
+  # honest answer to "which promotion put this on main" — for 937 that is
+  # 0.3.3, the merge that did carry it. Nothing is minted and nothing is
+  # committed: `mix.exs` is not rewritten, no tag moves, `version` stays nil,
+  # and the log line still reads "version none".
+  #
+  # This widens an exposure that already exists rather than adding a new one.
+  # `mark_ready_stories_promoted/2` stamps every qualifying story in the
+  # project, not only those on the merged branch — deliberately, per its own
+  # docstring — so a story whose specs are green while its code sits unmerged
+  # on a *different* copy can be stamped early. That was already true of every
+  # real promotion; this makes it true of no-op promotions too. The narrower
+  # predicate is a story's code actually being on main, which this module
+  # deliberately stopped asking git about; changing that is a larger decision
+  # than this fix and is tracked separately.
+  defp current_version(env, root) do
+    with {contents, 0} <- git(env, root, ["show", "HEAD:mix.exs"]),
+         {:ok, current, _next} <- next_version(contents) do
+      current
+    else
+      _ -> nil
+    end
+  end
 
   # The version this promotion originates, or nil.
   #

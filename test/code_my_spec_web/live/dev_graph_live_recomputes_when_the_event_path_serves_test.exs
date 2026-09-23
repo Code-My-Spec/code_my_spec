@@ -66,6 +66,30 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
            "the fingerprint verdict must not be shown beside the oracle"
   end
 
+  # The checkers read through the account — a scope with none is answered
+  # nothing by `Questions.list_questions_for_story/2` — so an audit run from
+  # the page's bare project id has to be given the account, or it reports a
+  # story with an open question as disagreeing with a row that is right.
+  # Measured on dev the first time the panel ran: 19 such stories.
+  test "a story with an open question is not a disagreement", %{conn: conn, scope: scope} do
+    story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
+
+    {:ok, _question} =
+      CodeMySpec.Questions.create_question(scope, story.id, %{text: "Which account?"})
+
+    :ok = GraphWatcher.settle(scope)
+    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+
+    {:ok, _view, html} = live(conn, ~p"/dev/graph")
+
+    assert html =~ "agree with the rows being served",
+           """
+           A story with an open question reads as a disagreement between the
+           rows and a recompute of them. The rows say the question is open;
+           the recompute was run from a scope with no account and saw none.
+           """
+  end
+
   test "the harness panel reports whether a harness has joined, not a watcher nothing starts", %{
     conn: conn
   } do

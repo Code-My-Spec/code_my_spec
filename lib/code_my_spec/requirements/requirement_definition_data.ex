@@ -108,6 +108,27 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # can conjure those.
         validation_type: :automatic
       }),
+      # 56cf5697: sealing is a one-way latch on the conversation and correctly
+      # ignores a question raised afterward (see the comment above), which
+      # left a sealed story's post-seal open questions nothing's problem —
+      # not blocking sealing (already past that), not offered to anyone
+      # either, permanently. Gated on the seal itself (id 5) rather than
+      # duplicating its pre-seal question gate: a story that has not sealed
+      # yet already blocks sealing on the same open questions, so there is
+      # nothing here for this node to do before that gate has cleared.
+      new!(%{
+        id: 8,
+        name: "questions_answered",
+        role: :product,
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :questions_answered?},
+        satisfied_by: AgentTasks.ResolveQuestions,
+        artifact_type: :specification,
+        description:
+          "Every question raised against this story, before or after sealing, is resolved or escalated",
+        prerequisites: [5]
+      }),
       new!(%{
         id: 2,
         name: "bdd_specs_exist",
@@ -161,7 +182,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         # Named for the state QA depends on rather than for the merge, because
         # the merge is one way to reach it and not the only one.
-        description: "Story's code is on the checkout the application runs from",
+        #
+        # f4786ba1: the name still reads as a git fact, and `Promotion.promoted/2`
+        # reads one column (`stories.promoted_version`) — a stamp written by a
+        # promote sweep, not a live ancestry check. The two usually agree because
+        # a promote runs the sweep right after merging, but they can miss each
+        # other: a story whose specs went fresh-green moments after a promote's
+        # stamp sweep already ran has its code on main and no stamp yet. An agent
+        # that verifies git ancestry directly, sees the code is there, and reads
+        # this as unsatisfied has correctly found a stamp that hasn't caught up —
+        # not a lying gate. The description says so because the name does not,
+        # and cannot without a rename wide enough (cache-invalidation profiles,
+        # `@completion_names`, a story titled after this exact name) to be its
+        # own change.
+        description:
+          "Story's code is on the checkout the application runs from — reads " <>
+            "the promotion stamp (a story is marked promoted once a promote " <>
+            "sweep runs), not a live git-ancestry check. The two can briefly " <>
+            "disagree with what `git log` shows on the running checkout.",
         prerequisites: [3],
         execution_type: :main_agent
       }),
@@ -178,7 +216,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # Was [3] — straight off `bdd_specs_passing`. That is what let nine
         # stories reach QA on 2026-09-09 whose code had never left the coding
         # agent's worktree; QA failed all nine for code that was never there.
-        prerequisites: [18],
+        #
+        # Now [6] rather than [18]: known issues on the story are cleared before
+        # QA spends a pass. John: "we have to move story issues resolved before
+        # qa because that's the logical progression." The deadlock that forced
+        # it is on `story_issues_resolved` below.
+        prerequisites: [6],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
@@ -229,8 +272,30 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.FixStoryIssues,
         artifact_type: :review,
         description:
-          "Accepted issues QA filed against this story are resolved at the project's blocking severity",
-        prerequisites: [4],
+          "Accepted issues against this story are resolved at the project's blocking severity",
+        # Was [4] — after `qa_complete`, on the reasoning that this gate is about
+        # what a story's own QA pass raised. `IssuesChecker.story_resolved?/2`
+        # does not read it that way: it counts *any* accepted issue carrying this
+        # `story_id` at or above the threshold, whoever filed it and whenever.
+        # Product files them, coding files them, and `Issues.attribute_to_story/3`
+        # sweeps unattributed `:app` issues onto whichever story's QA attempt is
+        # being submitted.
+        #
+        # So an issue could sit on a story before QA ever ran, block the QA
+        # agent's task, and be unreachable — the node that clears it was gated
+        # behind the QA it was preventing. Measured 2026-09-23 on Broken Oaths
+        # story 947: QA's `qa_complete` task blocked on issue 71869489, and
+        # `FixStoryIssues` could not be offered because `qa_complete` was its
+        # prerequisite. Nothing in the graph broke the circle.
+        #
+        # The property the old order was protecting is not lost. "A story does
+        # not release carrying a blocker its own QA pass raised" is enforced by
+        # the checker, not by the ordering: this node is in
+        # `StoryExecution.@completion_names`, so an issue QA files afterwards
+        # takes the story back out of completion whenever it arrives. Ordering
+        # only decides when the work is *offered*, and offering it before QA
+        # spends a pass on a story with known blockers is the better trade.
+        prerequisites: [18],
         execution_type: :main_agent
       }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
@@ -270,7 +335,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.Deploy,
         artifact_type: :deployment,
         description: "Story is deployed to UAT and its health check passed",
-        prerequisites: [6],
+        # Follows `qa_complete` rather than `story_issues_resolved`, which it
+        # used to, because those two swapped places above. Deploy still comes
+        # last in the story chain; the node it waits on is now the QA pass.
+        prerequisites: [4],
         execution_type: :main_agent
       })
     ]

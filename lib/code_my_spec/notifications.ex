@@ -9,6 +9,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Agents,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
+      CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users,
@@ -20,8 +21,10 @@ defmodule CodeMySpec.Notifications do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -440,7 +443,7 @@ defmodule CodeMySpec.Notifications do
   # In a Task because this is reachable from inside the harness project channel,
   # and `Transport.Harness` dispatches by calling that channel's own process —
   # `:calling_self` kills it and cancels every turn on the copy.
-  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id}, answer)
+  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id} = request, answer)
        when is_binary(agent_id) do
     case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
       %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
@@ -462,7 +465,7 @@ defmodule CodeMySpec.Notifications do
         # loop by hand. The wake added in this same function is what turned a
         # silent stall into a spin, so this is its other half rather than a
         # separate fix.
-        Conversations.record_sent_to_agent(agent, tap_out_denied_notice(answer))
+        notice = tap_out_denied_notice(answer, request)
 
         # A person saying "go and work" outranks the agent's own last refusal.
         # `Work` refuses to re-offer work an agent has already declined, which
@@ -471,8 +474,15 @@ defmodule CodeMySpec.Notifications do
         # suppressed and the deny would do nothing at all.
         {:ok, _cleared} = Work.clear_decline(scope, agent)
 
+        # The notice goes in the turn rather than into the transcript ahead of
+        # it. Recorded separately it is history the agent reads beside its own
+        # last conclusion, and its own conclusion wins — measured twice, with
+        # the resolved issue named by id nine seconds before the agent called
+        # that same id unresolved. `offer_turn_with/3` makes the correction the
+        # thing the agent is answering. It records the prompt itself, so the
+        # notice still appears in the transcript exactly once.
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.consider_copy(scope, copy_id, :tap_out_denied)
+          deliver_denial(scope, agent, copy_id, notice)
         end)
 
         :ok
@@ -483,6 +493,22 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp wake_if_still_in_the_loop(_request, _answer), do: :ok
+
+  # In the turn when the agent can take one; recorded when it cannot.
+  #
+  # An agent mid-turn, reserved, or holding a task is not admissible, and it
+  # still has to be told — so that case falls back to the old shape rather than
+  # dropping the notice.
+  defp deliver_denial(scope, agent, copy_id, notice) do
+    case Work.offer_turn_with(scope, agent, notice) do
+      {:ok, ref} when is_binary(ref) ->
+        :ok
+
+      _not_admissible ->
+        Conversations.record_sent_to_agent(agent, notice)
+        Work.consider_copy(scope, copy_id, :tap_out_denied)
+    end
+  end
 
   # The reason carries, when the decider gave one.
   #
@@ -497,7 +523,7 @@ defmodule CodeMySpec.Notifications do
   # 200, and which attempt to invalidate. None of it reached the agent, which
   # went on reporting the app unreachable — an outage that had ended four
   # minutes earlier — until it was stopped by hand.
-  defp tap_out_denied_notice(answer) do
+  defp tap_out_denied_notice(answer, request) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there
     is work for your role — that is why it was declined rather than granted.
@@ -507,8 +533,72 @@ defmodule CodeMySpec.Notifications do
     against the thing that is blocking you rather than asking to leave again.
     """
 
-    append_reason(base, answer)
+    base
+    |> append_reason(answer)
+    |> append_settled_blockers(request)
   end
+
+  # Name the agent's own claim back to it when that claim has stopped being true.
+  #
+  # A reason is not enough on its own. Measured three times in one session: an
+  # agent was denied with the fixing commit named in the message, and its next
+  # turns still said "nothing has changed" — it re-reads its transcript, finds
+  # its own last conclusion, and reaches it again, because a generic paragraph
+  # does not contradict anything in particular.
+  #
+  # What broke the loop by hand, every time, was naming the specific statement:
+  # "issue X, which your own request named, is now resolved". So the notice does
+  # that itself when it can — the ids are in the reason the agent wrote, and
+  # their status is a lookup.
+  #
+  # Silent when nothing the request named has moved, which is the honest answer:
+  # in that case the agent's conclusion may well still hold, and the notice
+  # should not imply otherwise.
+  defp append_settled_blockers(notice, nil), do: notice
+
+  defp append_settled_blockers(notice, request) do
+    case settled_blockers(request) do
+      [] ->
+        notice
+
+      settled ->
+        notice <>
+          """
+
+          Specifically, these were named in your own request and have since been
+          resolved:
+
+          #{Enum.map_join(settled, "\n", &"  - #{&1.id} — #{&1.title}")}
+
+          If your last conclusion rested on any of those, it no longer holds.
+          Check before repeating it.
+          """
+    end
+  end
+
+  # Ids the agent wrote into its own reason, that are now resolved issues.
+  #
+  # By project_id rather than through `Issues.list_issues/1`, which reads
+  # `scope.active_project.id` — the loaded association, not the id — so a scope
+  # assembled from an agent row raises inside the repository and the rescue
+  # below would quietly answer "nothing has changed", which is the exact
+  # failure this function exists to prevent.
+  defp settled_blockers(%{agent_id: agent_id, tool_input: input}) when is_binary(agent_id) do
+    reason = MapAccess.get(input, :reason) || ""
+
+    with true <- is_binary(reason) and reason != "",
+         %{project_id: project_id} <- Repo.get(Agent, agent_id) do
+      project_id
+      |> Issues.resolved_in_project()
+      |> Enum.filter(&String.contains?(reason, &1.id))
+    else
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp settled_blockers(_request), do: []
 
   defp append_reason(base, nil), do: base
   defp append_reason(base, ""), do: base
@@ -865,9 +955,71 @@ defmodule CodeMySpec.Notifications do
 
       broadcast_notifications_changed(updated.user_id)
       deliver_answer_content(updated, released?)
+      wake_after_answer(updated, released?)
       {:ok, updated}
     end
   end
+
+  # The other half of `wake_if_still_in_the_loop/2`, for the other kind of gate.
+  #
+  # That function's own comment already states this defect: "`Work.consider_*`
+  # is edge-triggered on a graph change, a finished task, or continuous being
+  # switched on — a person answering a gate is none of those, so an agent that
+  # had work the whole time goes on waiting for a change that is not coming."
+  # It was fixed for a denied tap-out and left unfixed for an answered question,
+  # which is the same shape with the same cause.
+  #
+  # `deliver_answer_content/2` deliberately says nothing to an idle agent, and
+  # that is right: criterion 3219 exists because content pushed at an idle
+  # machine *starts* a turn, and the answer's own text tells the agent "this does
+  # not resume the task it blocked." The design assumes the agent comes back and
+  # collects it. Nothing brought it back. For an agent whose only work IS the
+  # blocked task, there is no other observation coming.
+  #
+  # So this offers a turn through the work channel rather than pushing the
+  # answer as content — `consider_copy/4` runs the same admissibility and
+  # decline checks every other wake does, so it cannot start a turn for an agent
+  # that should not have one, and it does not put the answer anywhere criterion
+  # 3219 objects to.
+  #
+  # Measured 2026-09-23 on Broken Oaths: three questions answered at 03:25:35
+  # released coding b01a95bb's blocker on story 950's promote. The task stayed
+  # `blocked`, `get_next_requirement` went on answering "ready", and the agent
+  # took no turn for five minutes while the copy's other four roles waited with
+  # it.
+  #
+  # Only when the answer released a blocker — `released?` is already the
+  # question of whether anything was waiting on this. An answer to a question
+  # blocking nothing has nobody to wake.
+  #
+  # In a Task for the same reason the denial path is: this is reachable from
+  # inside the harness project channel, and `Transport.Harness` dispatches by
+  # calling that channel's own process, where `:calling_self` would kill it and
+  # cancel every turn on the copy.
+  defp wake_after_answer(_request, false), do: :ok
+
+  defp wake_after_answer(%{agent_id: agent_id}, true) when is_binary(agent_id) do
+    case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
+      # Mid-turn agents already had the answer handed to them as content.
+      %{turn_started_at: %DateTime{}} ->
+        :ok
+
+      %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
+        scope = %Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: copy_id
+        }
+
+        _ = Task.start(fn -> Work.consider_copy(scope, copy_id, :question_answered) end)
+        :ok
+
+      _idle_or_gone ->
+        :ok
+    end
+  end
+
+  defp wake_after_answer(_request, true), do: :ok
 
   # The answer as content, for an agent that is in the middle of a turn.
   #

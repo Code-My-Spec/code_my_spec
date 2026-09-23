@@ -57,6 +57,16 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
           "REQUIRED when `status` is `partial` or `fail` — submissions with a non-pass " <>
           "status and an empty `issue_ids` list are rejected at the tool boundary. " <>
           "May be empty when `status` is `pass`."
+
+    field :tools_used, {:list, :string},
+      doc:
+        "Which tools you actually called while gathering this evidence — e.g. " <>
+          "['browser_navigate', 'browser_click', 'browser_get_text']. Self-reported " <>
+          "and not independently checked, same as the scenario observations beside " <>
+          "it: this exists so 'did this pass drive a browser' is a query afterward " <>
+          "instead of an inference from adjectives. Report what you called, not what " <>
+          "the story required — an empty list on a browser-required story is itself " <>
+          "the finding, not something to round up."
   end
 
   @impl true
@@ -147,11 +157,16 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
 
       Scenarios recorded: #{length(attempt.scenarios)}
       #{issue_line}
+      #{tools_used_line(attempt.tools_used)}
 
       #{satisfaction_note(attempt.status)}#{evidence_note(attempt, evidence)}
       """
     )
   end
+
+  defp tools_used_line(nil), do: "tools_used: (not reported)"
+  defp tools_used_line([]), do: "tools_used: (none — reported explicitly)"
+  defp tools_used_line(tools), do: "tools_used: #{Enum.join(tools, ", ")}"
 
   # The pass is recorded; whether it is *auditable* is a separate sentence.
   #

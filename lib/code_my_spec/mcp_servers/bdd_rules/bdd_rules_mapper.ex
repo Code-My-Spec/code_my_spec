@@ -107,8 +107,9 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     )
   end
 
-  defp resolution_suffix(%{resolution: resolution}) when is_binary(resolution) and resolution != "",
-    do: " — #{resolution}"
+  defp resolution_suffix(%{resolution: resolution})
+       when is_binary(resolution) and resolution != "",
+       do: " — #{resolution}"
 
   defp resolution_suffix(_question), do: ""
 
@@ -160,6 +161,21 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     Response.tool()
     |> Response.error(
       "Cannot update a verified scenario. Verified criteria are locked and protected from changes."
+    )
+  end
+
+  def error({:criteria_verified_or_specced, descriptions}) do
+    list = Enum.map_join(descriptions, "\n", &"  - #{&1}")
+
+    Response.tool()
+    |> Response.error(
+      "Cannot delete this rule: #{length(descriptions)} of its scenario(s) are verified " <>
+        "or already have a spec file written for them, and deleting the rule would delete " <>
+        "them with it — orphaning any spec file already claimed by one, unclaimable by " <>
+        "anything afterward.\n\n#{list}\n\n" <>
+        "If the rule is genuinely superseded, resolve or remove the spec files for these " <>
+        "scenarios first (or unverify them), then delete the rule. `delete_criterion` still " <>
+        "refuses a verified one individually for the same reason."
     )
   end
 
