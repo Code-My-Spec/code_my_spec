@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -847,6 +848,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # just created, and it is the one case this sweep used to walk straight
       # past.
       Agents.Work.resume_held_tasks(scope, copy_id)
+
+      # 1b450fc3: every existing caller of `ensure_cadence/1` (`agents.ex`
+      # watch_over/2, set_copy_continuous/3, set_agent_continuous/3) fires on a
+      # state *transition* — an agent starting, continuous flipping on. None of
+      # them fire on a bare reconnect, because nothing transitions: an agent
+      # that was already running and already continuous before the crash is
+      # still running and still continuous after it, from the server's own
+      # row's point of view. The cadence GenServer that watched it lived in the
+      # BEAM process that died, and nothing about "the harness came back" looks
+      # like a transition to any of the three triggers above. Measured: no
+      # `[Cadence]` check-in in web.log for six hours across two projects both
+      # configured at 1200s, `:4000` having restarted five times in that
+      # window.
+      #
+      # A reconnect is the shape already established for restart-survival here
+      # (`consider_copy/4`, `resume_held_tasks/2` above), so this copies it
+      # rather than adding a fourth transition-shaped trigger: idempotent
+      # (`DynamicSupervisor.start_child` treats `:already_started` as success),
+      # and it re-arms on every harness that comes back regardless of which one
+      # crashed. Not a redesign of the trigger — John is weighing replacing or
+      # supplementing polling cadence with event-based wakes, and this reaches
+      # for the existing one rather than pre-empting that; the liveness
+      # property (a restart doesn't leave the watcher dead) is what has to
+      # survive, not this particular call site.
+      MainAgent.ensure_cadence(scope)
     end)
 
     assign(socket, :considered_agents?, true)
