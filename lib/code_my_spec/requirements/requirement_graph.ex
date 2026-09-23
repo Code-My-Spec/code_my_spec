@@ -1746,12 +1746,27 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     }
   end
 
-  # The project's own chain is instantiated from `scope.active_project`, which a
-  # reader that named only the id — the dev page — does not carry.
-  defp with_project(%Scope{active_project: %{id: _}} = scope), do: scope
+  # A reader that named only the project id — the dev page — carries neither
+  # the project nor its account, and both are read: the project's own chain is
+  # instantiated from `scope.active_project`, and the checkers read through
+  # the account (`Questions.list_questions_for_story/2` answers nothing to a
+  # scope with none). The first cut carried only the project and reported 19
+  # stories' `questions_answered` as disagreeing with rows that were right.
+  defp with_project(%Scope{active_project: %{id: _}, active_account_id: account} = scope)
+       when not is_nil(account),
+       do: scope
 
-  defp with_project(%Scope{active_project_id: id} = scope),
-    do: %{scope | active_project: Repo.get!(CodeMySpec.Projects.Project, id)}
+  defp with_project(%Scope{active_project_id: id} = scope) do
+    project = Repo.get!(CodeMySpec.Projects.Project, id)
+    account = Repo.get!(CodeMySpec.Accounts.Account, project.account_id)
+
+    %{
+      scope
+      | active_project: project,
+        active_account: account,
+        active_account_id: account.id
+    }
+  end
 
   defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
   defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"
