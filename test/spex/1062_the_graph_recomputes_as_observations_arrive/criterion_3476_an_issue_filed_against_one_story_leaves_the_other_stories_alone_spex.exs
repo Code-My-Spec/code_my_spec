@@ -45,21 +45,27 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
   not the work was necessary, so the reading that separates "recomputed what it
   touched" from "recomputed everything" does not exist at graph grain.
 
-  ## Why the issue is only attributed, not accepted
+  ## Why the issue is accepted, at a severity that counts
 
-  `story_resolved?/2` counts **accepted** issues at or above the threshold, and
-  a filed issue is `incoming`. So this observation deliberately does not change
-  any story's *answer* — it changes one story's *inputs*. That is the sharper
-  version of the claim: the story it was filed against is reconsidered because
-  its inputs moved, and no other story is, because theirs did not.
+  `story_resolved?/2` counts **accepted** issues at or above the threshold. A
+  filed issue is `incoming`, and the event path settles a requirement only
+  when its answer moves — a sweep writes nothing for a row it would leave as
+  it is — so an issue that changes one story's *inputs* and no story's
+  *answer* is, to the graph, nothing. The observation here is one that moves
+  the verdict: `story_issues_resolved` on the story it was filed against goes
+  true → false, and stays true on the other. That is the claim at its
+  sharpest — one story reconsidered because its answer moved, the other left
+  alone because its did not.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [extract_issue_id!: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
 
@@ -91,7 +97,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
          |> Map.put(:before, before)}
       end
 
-      when_ "an issue is filed and attributed to the first story", context do
+      when_ "an issue is filed against the first story and accepted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, filed, _frame} =
@@ -99,13 +105,21 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
             %{
               title: "something is wrong on this story",
               description: "filed against one story and not the other",
-              severity: "medium",
+              severity: "high",
               story_id: context.touched_id
             },
             frame
           )
 
         refute filed.isError, inspect(filed)
+
+        {:reply, accepted, _frame} =
+          AcceptIssue.execute(
+            %{issue_id: extract_issue_id!(filed), story_id: context.touched_id},
+            frame
+          )
+
+        refute accepted.isError, inspect(accepted)
 
         {:ok, Map.put(context, :after, read_settled_graph(context))}
       end
@@ -114,8 +128,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
         refute freshness(context.after, context.touched_id) ==
                  freshness(context.before, context.touched_id),
                """
-               An issue was attributed to this story and its requirements were
-               not reconsidered.
+               An issue was accepted against this story and its requirements
+               were not reconsidered.
 
                `story_issues_resolved` reads the issues attributed to this
                story. If filing one does not move its requirements, the graph

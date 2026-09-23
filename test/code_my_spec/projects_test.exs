@@ -19,6 +19,27 @@ defmodule CodeMySpec.ProjectsTest do
       setup_error: nil
     }
 
+    test "preview_extra_frame_origins is stored as an array of strings" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, preview_extra_frame_origins: ["gitlab.com"])
+
+      assert project.preview_extra_frame_origins == ["gitlab.com"]
+    end
+
+    test "an empty preview_extra_frame_origins list clears it to [], not back to nil" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, preview_extra_frame_origins: ["gitlab.com"])
+
+      {:ok, updated} =
+        Projects.update_project(scope, project, %{preview_extra_frame_origins: []})
+
+      assert updated.preview_extra_frame_origins == []
+    end
+
     test "resolve_local_project/1 matches on working dir when no project is configured" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
@@ -140,7 +161,8 @@ defmodule CodeMySpec.ProjectsTest do
       project_fixture(scope, %{deploy_key: shared_key})
       other = project_fixture(scope, %{deploy_key: "a-different-key"})
 
-      assert {:error, changeset} = Projects.update_project(scope, other, %{deploy_key: shared_key})
+      assert {:error, changeset} =
+               Projects.update_project(scope, other, %{deploy_key: shared_key})
 
       assert "is already in use by another project" in errors_on(changeset).deploy_key
     end

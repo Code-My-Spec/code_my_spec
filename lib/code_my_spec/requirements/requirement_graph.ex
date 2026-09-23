@@ -20,6 +20,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
+  alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
@@ -31,6 +33,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
@@ -295,38 +299,82 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # none of it, though it is now the path that serves every pass.
     started = System.monotonic_time(:millisecond)
     stamp_project(scope)
-    {projection_ms, {stored_nodes, stored_edges}} = timed(fn -> Projection.load(scope, ctx) end)
+
+    # Every fingerprint taken below covers the configured definition set. That
+    # is what lets `topology_moved` stop meaning "recompute everything": config
+    # was the only thing on that gate which decided *nodes*, and it now decides
+    # them where the narrowing can see it. See `Freshness.with_config/2`.
+    ctx = Freshness.with_config(ctx, config)
+
+    {projection_ms, {stored_nodes, stored_edges}} =
+      timed(fn -> Projection.load(scope, ctx, source: pass_tables()) end)
 
     {topology_ms, topology} = timed(fn -> Freshness.topology(ctx, config) end)
 
-    with {_, true} <- {:no_stored_rows, stored_nodes != []},
-         {_, true} <- {:topology_moved, topology == GraphCache.topology_fingerprint(scope)},
-         {_, {:partial, stale}} <-
-           {:everything_stale, stale_entities(stored_nodes, ctx, config)} do
-      reduced = reduce_to(ctx, stale)
+    # A statement about the **edge set**, not about any verdict, so it no longer
+    # sits in the guard below. `edges_for/7` pays it and the per-entity
+    # fingerprints go on narrowing the nodes.
+    topology_moved? = topology != GraphCache.topology_fingerprint(scope)
+
+    if stored_nodes == [] do
+      # The one thing left that genuinely cannot be partial. Everything else a
+      # pass might find — every entity stale, the shape moved, a whole family
+      # expanded — is now a reason rather than a route, and goes through the
+      # machinery below with a larger stale set. A vantage with no rows has
+      # nothing to be partial *against*.
+      #
+      # Said out loud for the reason the old fallback was: the only observable
+      # difference between "reuse is working" and "reuse never fires" is a log
+      # line that does not appear, and on this project it did not appear once.
+      Logger.info("[Requirements] full recompute — no_stored_rows")
+      publish_timed(scope, ctx, config, started)
+    else
+      {covered, written} = stale_set(stored_nodes, ctx, config)
+
+      # `covered` here, because instantiation has to see whole families or
+      # `component_families/1` classifies a narrowed child as top-level and
+      # invents nodes for it. `written` decides whose rows are rewritten, a few
+      # lines down.
+      reduced = reduce_to(ctx, covered)
 
       {component_nodes, _} = instantiate_component_graphs(scope, reduced, config)
       {story_nodes, _} = compute_story_nodes(scope, reduced, config)
-      # `ctx`, not `reduced`, and that is the measurement this exists to take.
-      # Project nodes are rebuilt on every pass whatever the stale set says —
-      # ten delegate checkers, several of which query the whole project — while
-      # the component and story computations above are narrowed to what actually
-      # moved. On a pass that found nothing stale those two do nothing and this
-      # does everything.
-      {project_ms, {project_nodes, _}} =
-        timed(fn -> compute_project_nodes(scope, ctx, config) end)
+      # `ctx`, not `reduced`, because a project requirement reads the whole
+      # project by construction — `issues_triaged` counts every untriaged issue,
+      # `personas_complete` every persona. Narrowing the context would not make
+      # them cheaper, it would make them wrong.
+      #
+      # What it is now narrowed on is *whether to run them at all*. These were
+      # rebuilt on every pass whatever the stale set said — ten delegate
+      # checkers, several querying the whole project — so a pass that found one
+      # story stale still paid for them, and a pass that found nothing stale did
+      # nothing else. That is a fixed cost per observation, and a fixed cost is
+      # the one shape "work in proportion to what changed" cannot absorb: it
+      # grows with how often anything moves, and this feature exists to make
+      # things move more often.
+      {project_ms, project_nodes} =
+        timed(fn -> project_nodes(scope, ctx, config, stored_nodes) end)
 
-      fresh = project_nodes ++ story_nodes ++ component_nodes
+      # Only what actually moved, plus the project's own. A sibling pulled into
+      # `covered` so its family could be instantiated correctly has had nothing
+      # happen to it — `upsert_all/3` stamps `checked_at` on every row it is
+      # handed, so handing it one is how a requirement nothing touched comes to
+      # claim it was reconsidered. Criterion 3619.
+      fresh =
+        (project_nodes ++ story_nodes ++ component_nodes)
+        |> Enum.filter(&(&1.entity_type == "project" or entity_key(&1) in written))
 
       # Departed as well as stale: a row for an entity the context no longer has
       # is not refreshed by this pass and must not be carried into the served
       # graph on the strength of having been true once.
       gone = departed(stored_nodes, ctx)
 
+      # `written`, matching `fresh`: a row this pass did not rewrite is kept and
+      # served as it stands, which is the claim the fingerprint makes about it.
       kept =
         Enum.reject(
           stored_nodes,
-          &(entity_key(&1) in stale or entity_key(&1) in gone or &1.entity_type == "project")
+          &(entity_key(&1) in written or entity_key(&1) in gone or &1.entity_type == "project")
         )
 
       nodes = kept ++ fresh
@@ -340,11 +388,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # is the running copy moving, and a partial count of each is genuine file
       # change. Guessing between those three cost most of a day.
       {stale_stories, stale_comps} =
-        Enum.split_with(stale, fn {type, _id} -> type == "story" end)
+        Enum.split_with(written, fn {type, _id} -> type == "story" end)
 
       Logger.info(
         "[Requirements] recomputed #{length(fresh)} of #{length(nodes)} requirements — " <>
-          "#{MapSet.size(stale)} entity(ies) stale " <>
+          "#{MapSet.size(written)} entity(ies) stale " <>
+          "(#{MapSet.size(covered)} covered) " <>
           "(#{length(stale_stories)}/#{length(ctx.stories)} stories, " <>
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
           "in #{elapsed_ms(started)}ms " <>
@@ -362,9 +411,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # behaviour this function exists to remove, arriving as a reap.
       {fingerprint_ms, fingerprint} = timed(fn -> GraphFingerprint.compute(ctx, config) end)
 
+      {edges_ms, {edges, edge_nodes}} =
+        timed(fn ->
+          edges_for(scope, ctx, config, nodes, stored_nodes, stored_edges, topology_moved?)
+        end)
+
       scope
-      |> GraphCache.publish(fingerprint, {nodes, stored_edges}, topology)
-      |> persist_projection(scope, reduced, fresh, stored_edges, {ctx, nodes})
+      |> GraphCache.publish(fingerprint, {nodes, edges}, topology)
+      |> persist_projection(scope, reduce_to(ctx, written), fresh, edges,
+        verify: {ctx, nodes},
+        edge_nodes: edge_nodes
+      )
 
       {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
 
@@ -374,56 +431,265 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         topology: topology_ms,
         project: project_ms,
         fingerprint: fingerprint_ms,
+        edges: edges_ms,
         serve: serve_ms
       })
 
-      {served, stored_edges}
-    else
-      # Which guard sent it to the whole computation, because without this the
-      # only observable difference between "reuse is working" and "reuse never
-      # fires" is a log line that does not appear — and on this project it did
-      # not appear once. Reuse is the point of the function; a fallback nobody
-      # can see the reason for is the function quietly not doing it.
-      {:topology_moved, _} ->
-        # Which of the three, because "the shape moved" is as unanswerable as
-        # "the entity set moved" was, and that one turned out to be a guard that
-        # could never hold. Printed as the parts themselves so two consecutive
-        # lines name the mover by the digest that differs between them.
-        # Flat and short, because a logfmt value is truncated at 500 bytes and an
-        # `inspect/1` of a map wraps: the first attempt logged `%{config:` and
-        # nothing else, which is a diagnostic that reports only that it ran.
-        parts =
-          ctx
-          |> Freshness.topology_parts(config)
-          |> Enum.sort()
-          |> Enum.map_join(" ", fn {part, digest} ->
-            "#{part}=#{binary_part(digest, 0, 8)}"
-          end)
-
-        Logger.info("[Requirements] full recompute — topology_moved #{parts}")
-
-        publish_timed(scope, ctx, config, started)
-
-      # The counts that decided it, for the same reason `topology_moved` prints
-      # its parts one clause up: `everything_stale` on its own says a full
-      # recompute happened and nothing about why, and "why" here is a
-      # comparison between two numbers that are not otherwise recoverable.
-      #
-      # Cost of not having them: three wrong hypotheses in one sitting, each
-      # plausible and each taking a database query to rule out — entities that
-      # never produce rows counting as new forever, a component family
-      # expanding to the whole project, a vantage small enough that an ordinary
-      # stale set clears its bar. The line below distinguishes all three, and
-      # the last one is not a fault at all: a copy holding twenty entities has
-      # nothing to reuse, and recomputing it whole is both correct and cheap.
-      {:everything_stale, {:all, why}} ->
-        Logger.info("[Requirements] full recompute — everything_stale #{why}")
-        publish_timed(scope, ctx, config, started)
-
-      {why, _} ->
-        Logger.info("[Requirements] full recompute — #{why}")
-        publish_timed(scope, ctx, config, started)
+      {served, edges}
     end
+  end
+
+  @doc """
+  The edge set over a node set, without computing a verdict.
+
+  `compute_topology/3` answers the same question by computing every node first
+  and is the right call on a cold vantage, where the nodes have to be computed
+  anyway. It is the wrong call when the nodes are already stored: the event
+  path was recomputing every node in the project to rebuild edges after a
+  shape change, which is the one cost the pass no longer pays.
+
+  `ctx` needs the shape — `Preloader.topology_context/1` is enough — and
+  `nodes` are whatever the caller holds for the vantage.
+  """
+  @spec edges_over(Scope.t(), [Requirement.t()], map(), map()) :: [edge()]
+  def edges_over(scope, nodes, ctx, config) do
+    ctx =
+      ctx
+      |> Freshness.with_config(config)
+      |> Map.put(:template_edges, template_edges(scope, ctx, config))
+
+    compute_edges(nodes, ctx, config)
+  end
+
+  # The edge set for a partial pass, and what it is entitled to rewrite.
+  #
+  # Returns `{edges, edge_nodes}`. `edge_nodes` is the node set those edges were
+  # drawn over, and it decides what `replace_edges/3` may delete — a write owns
+  # what it can rewrite, and nothing more.
+  #
+  # ## Reuse is the common case and has to stay cheap
+  #
+  # An edge is a function of the **node set** and the shape inputs, and of
+  # nothing else: not a verdict, not a file's contents, not whether an analyzer
+  # ran. So a pass that changed neither cannot have changed an edge, and the
+  # stored set is exactly right. That covers nearly every pass — a finding
+  # recorded, a spec saved, a QA attempt landing — which is why this is checked
+  # before anything is rebuilt.
+  #
+  # ## And rebuilding has to be whole
+  #
+  # There is no narrow version. `compute_edges/3` ends in
+  # `Topology.transitive_reduction/1`, and a reduction is global by definition:
+  # dropping `A → C` requires knowing `A → B → C` exists, so a node instantiated
+  # for one entity can remove an edge belonging to another. A story arriving
+  # brings `project → story → project` edges with it, which is precisely a new
+  # path between two nodes that were already there.
+  #
+  # So: the whole edge set, over the whole node set, with the stored nodes
+  # reused rather than recomputed. That is the trade this function exists to
+  # make — the expensive half of a topology change was never the edges, it was
+  # re-deriving two thousand verdicts to find out that none of them had moved.
+  defp edges_for(scope, ctx, config, nodes, stored_nodes, stored_edges, topology_moved?) do
+    if topology_moved? or not same_node_set?(nodes, stored_nodes) do
+      log_edge_rebuild(ctx, config, nodes, stored_nodes, topology_moved?)
+      announce_edge_rebuild(scope, nodes)
+      ctx = Map.put(ctx, :template_edges, template_edges(scope, ctx, config))
+      {compute_edges(nodes, ctx, config), nodes}
+    else
+      # `nil`, not `nodes`: reuse has nothing to rewrite, and handing
+      # `replace_edges/3` the full node set would make it authoritative over a
+      # set it did not compute. `stored_edges` came back through
+      # `Projection.load/2`, which drops any row it cannot rehydrate, so a short
+      # read would delete the edges it failed to read.
+      {stored_edges, nil}
+    end
+  end
+
+  # Settle whichever writer owns the rows this read is about to serve.
+  #
+  # A read calls this before it answers, and it used to name `GraphWatcher`
+  # outright. That is right while the pass writes `requirements` and wrong the
+  # moment `graph_event_is_source` flips: the projector then owns the table
+  # being read, and a read would settle the pass — now writing the shadow — and
+  # be served from rows nothing had settled. It also reaches the projector with
+  # the vantage the reader named, which `GraphWatcher` has always folded into
+  # its next pass as `requested_vantages` and the projector never heard about.
+  defp settle_owner(%Scope{active_project_id: project_id} = scope) do
+    # Settled if it is running and started by nobody here, exactly as the pass
+    # side: `GraphWatcher.settle/1` answers `:ok` for a project nothing watches,
+    # and `ensure_watching/1` is what starts both writers. A read that started
+    # the projector resurrected it after a scenario's teardown had stopped it —
+    # a wake task's read, drained after `stop_graph_watchers/0` — and the
+    # projector then ran its seed on a sandbox whose owner was gone.
+    if Shadow.inverted?() do
+      ShadowProjector.settle(project_id, [scope.active_working_copy_id])
+    else
+      GraphWatcher.settle(scope)
+    end
+  end
+
+  # The pass's own rows, for the two questions that are about the pass rather
+  # than about the graph: what did I last write, and did my write land.
+  #
+  # `NodeRepository` has always written through these; the reads had not. So
+  # inverted, the pass read the event path's table and wrote its own — a graph
+  # loaded from one place, judged current against it, and reported without a row
+  # of it ever being written. Identical to the default until
+  # `graph_event_is_source` moves.
+  #
+  # `{table, Edge}` rather than the bare name `pass_edges/0` answers with: a
+  # named source has no schema behind it, so Ecto has nothing to cast a uuid
+  # against and the query refuses — "expected a binary of 16 bytes". Inside the
+  # pass that is not an error anyone sees. `GraphWatcher` catches it, logs, and
+  # tries again, which is a recompute loop at full tilt.
+  defp pass_tables, do: {Shadow.pass_target(), {Shadow.pass_edges(), Edge}}
+
+  # Said out loud, because a rebuild is the largest thing a pass does and the
+  # only one a reading taken at the database cannot see. `DrainCost.measure/2`
+  # counts this alongside the queries, so `last_drain` reports it and criterion
+  # 3618 can assert on it.
+  defp announce_edge_rebuild(scope, nodes) do
+    :telemetry.execute(
+      DrainCost.edges_rebuilt(),
+      %{count: 1, nodes: length(nodes)},
+      %{project_id: scope.active_project_id}
+    )
+  end
+
+  defp same_node_set?(nodes, stored_nodes) do
+    MapSet.new(nodes, &node_key/1) == MapSet.new(stored_nodes, &node_key/1)
+  end
+
+  # Which of the three parts moved, printed as the digests themselves so two
+  # consecutive lines name the mover by the one that differs between them. This
+  # used to sit on the `topology_moved` fallback and is the same diagnostic: the
+  # shape moving is still the news, it just no longer costs a whole recompute.
+  #
+  # Flat and short, because a logfmt value is truncated at 500 bytes and an
+  # `inspect/1` of a map wraps — the first attempt logged `%{config:` and
+  # nothing else, which is a diagnostic that reports only that it ran.
+  #
+  # The node counts too, because a rebuild has two causes and they are not the
+  # same news: the shape changed under a fixed node set (a dependency declared,
+  # a story relinked, a switch flipped), or the node set itself moved.
+  defp log_edge_rebuild(ctx, config, nodes, stored_nodes, topology_moved?) do
+    parts =
+      ctx
+      |> Freshness.topology_parts(config)
+      |> Enum.sort()
+      |> Enum.map_join(" ", fn {part, digest} -> "#{part}=#{binary_part(digest, 0, 8)}" end)
+
+    Logger.info(
+      "[Requirements] edges rebuilt — topology_moved=#{topology_moved?} " <>
+        "nodes #{length(stored_nodes)}->#{length(nodes)}; #{parts}"
+    )
+  end
+
+  # Every template edge in the project, without computing a single node.
+  #
+  # `compute_all_from_ctx/3` produces these as a by-product of instantiation,
+  # and that is the whole reason reusing stored nodes used to mean reusing
+  # stored edges: the only way to learn the shape was to redo the work.
+  #
+  # It never had to be. `build_id_map/3` reads a component's id and its
+  # children's ids; `build_template_edges/3` reads the template and that map.
+  # Neither opens a file, consults a verdict or takes a fingerprint — which is
+  # the same fact `Freshness.topology/2` is built on, applied to the other side
+  # of the question.
+  defp template_edges(scope, ctx, config) do
+    component_template_edges(ctx, config) ++
+      Enum.flat_map(ctx.stories, &story_template_edges(&1, config)) ++
+      project_template_edges(scope, config)
+  end
+
+  defp component_template_edges(ctx, config) do
+    {top_level, children_by_parent} = component_families(ctx)
+
+    Enum.flat_map(top_level, fn component ->
+      children = Map.get(children_by_parent, component.id, [])
+      original = RequirementDefinitionData.graph_for_type(component.type)
+      filtered = filter_definitions_by_config(original, config)
+
+      build_template_edges(filtered, build_id_map(filtered, component, children), original)
+    end)
+  end
+
+  defp story_template_edges(story, config) do
+    template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
+    id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
+    build_template_edges(template, id_map)
+  end
+
+  # The generators one side at a time, for `Edges`.
+  #
+  # `compute_edges/3` runs every generator and reduces the union. `Edges.over/4`
+  # runs the same generators and reduces each entity's edges against the
+  # component side, so the two can differ only in the reduction — which is
+  # what `edges_derived_per_entity_match_the_pass_test` holds them to.
+
+  @doc """
+  The shape with what the story generators read off it — children by parent
+  and each type's first requirement — built once per drawing rather than once
+  per story.
+  """
+  @spec edge_context(map(), map()) :: map()
+  def edge_context(ctx, config) do
+    ctx
+    |> Map.put(:children_by_parent, children_by_parent(ctx))
+    |> Map.put(:first_def_by_type, first_def_by_type(ctx, config))
+  end
+
+  @doc """
+  The component side of the edge set as generated: every component's template
+  edges and the cross-context edges its dependencies declare. Unreduced;
+  `Edges.component_side/3` reduces it.
+  """
+  @spec component_side_edges(map(), map()) :: [edge()]
+  def component_side_edges(ctx, config),
+    do: component_template_edges(ctx, config) ++ cross_context_dependency_edges(ctx, config)
+
+  @doc """
+  One story's edges as generated, by kind: its own chain, its kickoff into
+  the components, the exits back from them, and the pair joining it to the
+  project. Unreduced; `Edges.story_side/5` reduces each against the component
+  side.
+  """
+  @spec story_side_edges(map(), map(), map()) :: %{
+          template: [edge()],
+          kickoff: [edge()],
+          exit: [edge()],
+          project: [edge()]
+        }
+  def story_side_edges(story, ctx, config) do
+    timing = %{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}
+    {chain, _timing} = story_chain_edges(story, ctx, config, timing)
+    {kickoff, exit} = Enum.split_with(chain, &match?(%{from: {"story", _, _}}, &1))
+    one = %{stories: [story]}
+
+    %{
+      template: story_template_edges(story, config),
+      kickoff: kickoff,
+      exit: exit,
+      project: project_to_story_edges(one) ++ story_to_project_edges(one)
+    }
+  end
+
+  @doc """
+  The project's own chain as generated. Unreduced; `Edges.project_side/4`
+  reduces it against the stories that bridge it.
+  """
+  @spec project_side_edges(Scope.t(), map()) :: [edge()]
+  def project_side_edges(scope, config), do: project_template_edges(scope, config)
+
+  # The project's own chain. Node-free like the other two, and for the same
+  # reason: `compute_project_nodes/3` builds this `id_map` from the project id
+  # and the template, then runs ten delegate checkers it does not need.
+  defp project_template_edges(scope, config) do
+    project = scope.active_project
+    template = maybe_filter_devops(RequirementDefinitionData.project_graph(), config)
+    id_map = Map.new(template, fn d -> {d.id, [{"project", project.id, d.name}]} end)
+
+    build_template_edges(template, id_map)
   end
 
   # The full paths log their reason before doing the work, because the reason is
@@ -506,6 +772,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # `:all` when every entity is stale — reusing nothing is the whole
   # computation, and the simpler path is the honest way to spend it.
   defp stale_entities(stored_nodes, ctx, config) do
+    # Stamped here rather than by the caller: this is a function that *hashes*
+    # an entity, and the comparison and the write have to agree exactly or
+    # every row reads stale forever. `Freshness.with_config/2` is idempotent,
+    # so a caller that already stamped pays a map write.
+    ctx = Freshness.with_config(ctx, config)
+
     current = current_fingerprints(ctx)
 
     recorded =
@@ -526,7 +798,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       end)
       |> MapSet.new(fn {key, _} -> key end)
 
-    stale = expand_component_families(mismatched, ctx)
+    # Two sets from here on, because they answer different questions and were
+    # the same value.
+    #
+    # `covered` is what must be *in the context* for instantiation to be right.
+    # `component_families/1` decides top-level from nested by asking whether a
+    # component's parent is in the set it was given, so a child narrowed to
+    # itself is classified top-level, runs its own template, and invents an
+    # `implementation_file` node the whole-project pass never produces. 549 of
+    # this project's components are nested.
+    #
+    # `mismatched` is whose *answers* moved, and it is a strictly smaller claim.
+    # A sibling's file did not change, so its verdict did not, and rewriting its
+    # row stamps `checked_at` on a requirement nothing touched. Criterion 3619,
+    # measured on dev: one child edited under `CodeMySpec`, which has 101
+    # children, and 105 components recomputed for it on a sync that reported
+    # `0 changed`.
+    covered = expand_component_families(mismatched, ctx)
 
     # An entity the context has and the rows do not is stale by definition:
     # nothing has ever computed it.
@@ -552,24 +840,63 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> MapSet.reject(&Map.has_key?(recorded, &1))
       |> MapSet.difference(barren_components(ctx, config))
 
-    moved = stale
-    stale = MapSet.union(stale, appeared)
+    expanded = covered
+    covered = MapSet.union(covered, appeared)
+    written = MapSet.union(mismatched, appeared)
     entities = MapSet.new(Map.keys(recorded))
 
-    verdict(stale, entities, {mismatched, moved}, appeared, ctx)
+    verdict(covered, written, entities, {mismatched, expanded}, appeared, ctx)
   end
 
-  # `{:partial, set}` or `{:all, why}`, rather than a set or the bare atom the
+  # The entities this pass has to recompute, whether that is some of them or all
+  # of them.
+  #
+  # Everything being stale is still reported — it has three causes and they are
+  # not the same news, and guessing between them once cost three wrong
+  # hypotheses in a sitting: entities that never produce rows counting as new
+  # forever, a component family expanding to the whole project, and a vantage
+  # small enough that an ordinary stale set clears its bar. `why_all/5`
+  # distinguishes all three, and the last is not a fault at all.
+  #
+  # What no longer follows from it is a whole rebuild. The stale set goes to the
+  # machinery a partial pass uses, so every verdict is recomputed — they are all
+  # genuinely stale — and `edges_for/7` reuses the edge set unless the shape
+  # actually moved. Criterion 3618 is that claim; the measurement behind it is
+  # 1341ms of edges against 2220ms of nodes on this project, and an edge rebuild
+  # costing more than every verdict in the project on a narrower checkout.
+  defp stale_set(stored_nodes, ctx, config) do
+    case stale_entities(stored_nodes, ctx, config) do
+      {:partial, covered, written} ->
+        {covered, written}
+
+      {:all, why, covered, written} ->
+        Logger.info("[Requirements] every entity is stale — #{why}")
+        {covered, written}
+    end
+  end
+
+  # `{:partial, set}` or `{:all, why, set}`, rather than a set or the bare atom the
   # guard used to compare against. The reason travels with the verdict because
   # the caller logs it and cannot reconstruct it: by then `recorded` and
   # `appeared` are out of scope, and the two numbers being compared are the
   # whole of the decision.
-  defp verdict(stale, entities, moved, appeared, ctx) do
-    all? = MapSet.size(stale) >= MapSet.size(entities) and MapSet.size(entities) > 0
+  # `{:all, why, stale}` rather than `{:all, why}`, and the third element is the
+  # whole of the change. "Everything is stale" used to be a *route* — it sent
+  # the pass to `compute_and_publish/3`, which recomputes every node and every
+  # edge — and the set was dropped on the way because nothing downstream needed
+  # it.
+  #
+  # It is a *reason* now. Everything being stale is a statement about verdicts,
+  # and the edges come from the component and dependency rows, so the pass takes
+  # the road it always takes with the whole project in its stale set and lets
+  # `edges_for/7` decide whether the shape moved. That decision cannot be made
+  # without knowing which entities are stale, so the set travels.
+  defp verdict(covered, written, entities, moved, appeared, ctx) do
+    all? = MapSet.size(covered) >= MapSet.size(entities) and MapSet.size(entities) > 0
 
     if all?,
-      do: {:all, why_all(stale, entities, moved, appeared, ctx)},
-      else: {:partial, stale}
+      do: {:all, why_all(covered, entities, moved, appeared, ctx), covered, written},
+      else: {:partial, covered, written}
   end
 
   # Flat and short: a logfmt value is truncated at 500 bytes, and the `%{...}`
@@ -610,6 +937,45 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     components = Map.new(ctx.components, &{{"component", &1.id}, Freshness.component(ctx, &1)})
 
     Map.merge(stories, components)
+  end
+
+  # The project's requirements, recomputed only when the project's own inputs
+  # moved.
+  #
+  # `Freshness.project/1` is the comparison, and it is deliberately coarse in
+  # the direction that is safe: it hashes the story and component id sets, the
+  # project's files, and the whole `delegated_inputs` map — so every table a
+  # project requirement delegates to is in it. An input that moves and is not
+  # covered would leave a project requirement frozen; there is no such input,
+  # because the delegated map is the same one the checkers read through.
+  #
+  # Reuse takes the stored rows rather than rebuilding them, which is the point:
+  # a `Requirement` rehydrated by `Projection.load/2` is already what the last
+  # pass computed, and re-deriving it to get the same answer is exactly the work
+  # being avoided.
+  defp project_nodes(scope, ctx, config, stored_nodes) do
+    current = Freshness.project(ctx)
+    stored = Enum.filter(stored_nodes, &(&1.entity_type == "project"))
+    expected = length(maybe_filter_devops(RequirementDefinitionData.project_graph(), config))
+
+    # Complete *and* current, and the first half is not belt-and-braces.
+    #
+    # Reuse compares the fingerprints of the rows that are there, so a row that
+    # has gone missing is not noticed by it: the survivors agree, the pass
+    # reuses them, and the missing one is never rebuilt. `GraphCacheTest`'s
+    # "a read that comes back short is served as it is, not repaired" is exactly
+    # that case — it deletes a row behind the graph's back and requires the next
+    # pass to restore it, which is the only self-healing left now that reads no
+    # longer recompute.
+    #
+    # The template's own size is what "complete" means, filtered the same way
+    # `compute_project_nodes/3` filters it, so a config that drops
+    # `devops_setup` does not read as a permanent shortfall.
+    if length(stored) == expected and Enum.all?(stored, &(&1.inputs_fingerprint == current)) do
+      stored
+    else
+      scope |> compute_project_nodes(ctx, config) |> elem(0)
+    end
   end
 
   # A component and its parent recompute together, or not at all.
@@ -760,9 +1126,22 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_topology(Scope.t(), map(), map()) ::
           {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
   def compute_topology(scope, ctx, config) do
-    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, enriched_ctx} = compute_nodes(scope, ctx, config)
     {nodes, compute_edges(nodes, enriched_ctx, config)}
   end
+
+  @doc """
+  The project's whole node set, computed and not written, with the context
+  the computation enriched — what `compute_topology/3` does before the edges.
+
+  On its own so a caller settling several vantages can decide about the edges
+  itself: they are a function of the node set and the shape, and every vantage
+  of a project shares the shape, so a seed that computed them ten times was
+  computing the same set ten times. `edges_over/4` draws them when the caller
+  has no set to reuse.
+  """
+  @spec compute_nodes(Scope.t(), map(), map()) :: {[Requirement.t()], map()}
+  def compute_nodes(scope, ctx, config), do: compute_all_from_ctx(scope, ctx, config)
 
   defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
     stamp_project(scope)
@@ -770,6 +1149,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes_us, {nodes, enriched_ctx}} =
       :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
 
+    # This path rebuilds the edge set unconditionally, so it announces
+    # unconditionally. Without this the reading is a false negative on exactly
+    # the case worth watching: `edges_for/7` is the partial path's decision and
+    # never runs here, so a whole recompute — the most expensive thing that
+    # happens — reported no rebuild at all.
+    announce_edge_rebuild(scope, nodes)
     {edges_us, edges} = :timer.tc(fn -> compute_edges(nodes, enriched_ctx, config) end)
 
     log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges)
@@ -852,39 +1237,44 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # `projection is empty for a payload`. So the rows are the graph, and the
   # payload was a second copy of them that could disagree.
   #
-  # What is kept from it is the one thing rows cannot say about themselves:
-  # `node_count`, recorded by the publish that wrote them. Rows that are empty
-  # where the publish counted nodes are rows that were never written, and that
-  # is a miss — recompute — rather than an empty graph served as current. An
-  # empty graph tells an agent it has no work, which is the wrong answer to give
-  # for a write that failed.
+  # `node_count` outlived it and no longer guards anything, which is worth
+  # saying because the guard is what most of this comment used to describe.
   #
-  # Short counts are the same failure, and were served as current until QA found
-  # them. `Projection.load/2` rebuilds each row against the preloaded context and
-  # drops whatever it cannot — `rehydrate/2` answers nil when `entity_for/2`
-  # cannot place the row's entity or `definition_for/2` cannot find its
-  # definition — so a hit could return a strict subset of what the publish
-  # counted, with nothing amiss in either the write or the read.
+  # It was a distrust mechanism: the publish recorded how many nodes it wrote,
+  # a read compared that against what it had loaded, and a short count meant
+  # refuse and recompute. It was earned — `Projection.load/3` rebuilds each row
+  # against the preloaded context and drops whatever `rehydrate/2` cannot place,
+  # so a hit could return a strict subset with nothing amiss in either the write
+  # or the read. Measured on story 1062: 2009 nodes computed, 1844 served,
+  # stable across reads, back to 2009 on the next recompute, all under one
+  # `computed_at` (7a6b92e3) — two graphs wearing one timestamp, which criterion
+  # 3246 forbids and 3358 states directly.
   #
-  # Measured on story 1062: 2009 nodes computed, 1844 served from cache, stable
-  # across reads, back to 2009 on the next recompute, all under one `computed_at`
-  # (7a6b92e3). Two graphs wearing one timestamp, which is precisely what
-  # criterion 3246 says must not happen and what criterion 3358 now states
-  # directly.
+  # Reads stopped recomputing, and the comparison went with them. `published_at/2`
+  # is the only thing that still reads the cache row and it takes the timestamp
+  # and discards the count (`{:ok, _nodes, at}`), so nothing anywhere counts the
+  # rows in order to doubt them. Criterion 3422 — "stored requirements are
+  # trusted rather than counted" — is therefore a description of this code
+  # rather than an argument with it, which is how issue `34b3ce00` resolved:
+  # not by choosing a side, but because the vantage alignment that caused the
+  # short reads removed the reason for the guard.
   #
-  # Refusing the short read rather than repairing the projection, deliberately.
-  # The count is the publish's own claim about itself and is therefore the one
-  # number a read cannot argue with; whatever makes rehydration fail is worth
-  # finding, but until it is found a recompute is a correct answer and a subset
-  # is not. The cost is a recompute on a project that reproduces it, which is
-  # loud in the log and better than quiet wrong numbers.
+  # The measurement that settled it, taken 2026-09-21 across every rotation of
+  # `web.log` and `server.log`: **212 publishes, zero** `the projection does not
+  # round-trip`. The drop the guard existed to catch does not happen any more.
+  #
+  # The count is still written. `GraphCache`'s own doc says why — a reader
+  # finding no rows can tell "nothing to do" from "the write did not land" —
+  # and no reader does that today. Left in place rather than migrated out,
+  # because a column that costs a integer per publish is cheaper than being
+  # wrong about who might want it.
 
   # Written behind the same fingerprint check that gates the cache row. Readers
   # reach here on every render, so an unconditional upsert of every node per
   # page view is exactly what `publish/3` already refuses to do for one row.
-  defp persist_projection(publish, scope, ctx, nodes, edges, verify \\ nil)
+  defp persist_projection(publish, scope, ctx, nodes, edges, opts \\ [])
 
-  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges, _verify), do: :ok
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges, _opts), do: :ok
 
   # Writes the read model. Atomically, and loudly.
   #
@@ -918,11 +1308,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The transaction stays for the reason it was added: `upsert_all/2` and
   # `replace_edges/3` were two independent statements, so a failure between them
   # left nodes without their edges and the next read served that as the graph.
-  defp persist_projection(:published, scope, ctx, nodes, edges, verify) do
+  defp persist_projection(:published, scope, ctx, nodes, edges, opts) do
     {:ok, _} =
       Repo.transaction(fn ->
-        ids_by_key = NodeRepository.upsert_all(scope, nodes, visited(ctx))
-        NodeRepository.replace_edges(scope, edges, ids_by_key)
+        written = NodeRepository.upsert_all(scope, nodes, visited(ctx))
+        NodeRepository.replace_edges(scope, edges, edge_ids(scope, written, opts))
       end)
 
     # Outside the transaction on purpose. Verification is a check *about* the
@@ -943,12 +1333,34 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # ids it is given, so edges touching kept nodes are left alone — but a
     # warning that cries wolf 70 times is worse than no warning at all, because
     # the next real one is invisible.
-    case verify do
+    case Keyword.get(opts, :verify) do
       {verify_ctx, verify_nodes} -> verify_round_trip(scope, verify_ctx, verify_nodes, edges)
       nil -> verify_round_trip(scope, ctx, nodes, edges)
     end
 
     :ok
+  end
+
+  # Which node ids the edges may be resolved and rewritten against.
+  #
+  # `upsert_all/3` answers for the nodes it wrote, and on a partial pass that is
+  # the stale ones alone. `replace_edges/3` drops any edge whose endpoints it
+  # cannot resolve and deletes only among the ids it was given, so handing it
+  # that map with a whole-graph edge set would silently discard every edge that
+  # touches a reused node — which is most of them.
+  #
+  # So a pass that rebuilt the edge set says what set it drew it over, and one
+  # query answers for the rows it kept. That query is the entire cost of the
+  # widening: `ids_by_key/3` selects id, name and owner by the nodes' own names
+  # and entity ids, and reads nothing else.
+  #
+  # `written` last in the merge, because those ids came from the write itself
+  # and a row inserted in this transaction is not in the other query's result.
+  defp edge_ids(scope, written, opts) do
+    case Keyword.get(opts, :edge_nodes) do
+      nil -> written
+      nodes -> scope |> NodeRepository.ids_for(nodes) |> Map.merge(written)
+    end
   end
 
   # What this computation looked at, which is the preloaded context rather than
@@ -978,7 +1390,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # nothing verifies today and which matters more after the swap than this ever
   # did.
   defp verify_round_trip(scope, ctx, nodes, edges) do
-    {read_nodes, read_edges} = Projection.load(scope, ctx)
+    {read_nodes, read_edges} = Projection.load(scope, ctx, source: pass_tables())
 
     case Difference.describe(read_nodes, read_edges, nodes, edges) do
       :none ->
@@ -1010,8 +1422,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   the file sync does not track. `compute_and_publish/3` lists them.
   """
   @spec cached_graph(Scope.t()) :: {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
-  def cached_graph(%Scope{} = scope) do
-    {graph, _actionable, computed_at} = cached_graph_with_actionable(scope)
+  def cached_graph(%Scope{} = scope, opts \\ []) do
+    {graph, _actionable, computed_at} = cached_graph_with_actionable(scope, opts)
     {graph, computed_at}
   end
 
@@ -1045,7 +1457,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     scope = normalize_vantage(scope)
 
     if Keyword.get(opts, :settle, true) do
-      GraphWatcher.settle(scope)
+      settle_owner(scope)
     end
 
     with {:ok, ctx} <- Preloader.load(scope) do
@@ -1070,14 +1482,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec recompute(Scope.t()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], NaiveDateTime.t() | nil}
           | {:error, term()}
-  def recompute(%Scope{} = scope) do
+  def recompute(%Scope{} = scope, opts \\ []) do
     scope = normalize_vantage(scope)
 
     # Timed here because here is where it is paid. `recompute_stale/4` starts
     # its own clock after this returns, so every duration this path has ever
     # reported excluded the preload — and the preload is the half that runs
     # whether or not the pass finds anything to do.
-    {preload_ms, loaded} = timed(fn -> Preloader.load(scope) end)
+    {preload_ms, loaded} = timed(fn -> Preloader.load(scope, opts) end)
 
     with {:ok, ctx} <- loaded do
       {nodes, edges} =
@@ -1133,7 +1545,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # than as the page being early. Ten of story 562's spex caught it: a child
     # implementation deleted, the sync announcing it, and the page still
     # rendering the node satisfied.
-    GraphWatcher.settle(scope)
+    settle_owner(scope)
 
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
 
@@ -1240,8 +1652,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       config = CodeMySpec.Configurations.get_or_create(scope)
 
       case stale_entities(stored, ctx, config) do
-        {:partial, stale} -> {:partial, Enum.sort(MapSet.to_list(stale))}
-        {:all, why} -> {:all, why}
+        {:partial, covered, _written} -> {:partial, Enum.sort(MapSet.to_list(covered))}
+        {:all, why, _covered, _written} -> {:all, why}
       end
     end
   end
@@ -1277,6 +1689,74 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def stale_read_logging?,
     do: Application.get_env(:code_my_spec, :graph_stale_read_log, false) == true
 
+  @doc """
+  What is served, against every entity recomputed from its inputs now.
+
+  The instrument for the event path. It settles rows from observations and
+  stamps no fingerprint, so `stale_entities_report/1` — which judges a row by
+  the stamp the pass wrote on it — reads every row the event path has touched
+  as stale, for good: 447 of 1,134 components on dev, every one of them
+  right. This asks the only question that outlives the pass: recomputed from
+  the domain this minute, does every requirement and every edge agree with
+  what is being served? Nothing is written. Expensive on purpose — one whole
+  computation, on demand, by one reader.
+  """
+  @spec served_vs_recomputed(Scope.t()) :: map()
+  def served_vs_recomputed(%Scope{} = scope) do
+    scope = scope |> normalize_vantage() |> with_project()
+    {:ok, ctx} = Preloader.load(scope)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {served, served_edges} = Projection.load(scope, ctx)
+    {computed, computed_edges} = compute_topology(scope, ctx, config)
+
+    served_by_key = Map.new(served, &{node_key(&1), &1.satisfied})
+    computed_by_key = Map.new(computed, &{node_key(&1), &1.satisfied})
+    served_keys = MapSet.new(Map.keys(served_by_key))
+    computed_keys = MapSet.new(Map.keys(computed_by_key))
+
+    missing = MapSet.difference(computed_keys, served_keys)
+    extra = MapSet.difference(served_keys, computed_keys)
+
+    disagree =
+      served_keys
+      |> MapSet.intersection(computed_keys)
+      |> Enum.filter(&(Map.fetch!(served_by_key, &1) != Map.fetch!(computed_by_key, &1)))
+
+    served_edge_set = MapSet.new(served_edges, &{&1.from, &1.to})
+    computed_edge_set = MapSet.new(computed_edges, &{&1.from, &1.to})
+    edges_missing = MapSet.difference(computed_edge_set, served_edge_set)
+    edges_extra = MapSet.difference(served_edge_set, computed_edge_set)
+
+    %{
+      served: map_size(served_by_key),
+      computed: map_size(computed_by_key),
+      missing: MapSet.size(missing),
+      extra: MapSet.size(extra),
+      disagree: length(disagree),
+      served_edges: MapSet.size(served_edge_set),
+      computed_edges: MapSet.size(computed_edge_set),
+      edges_missing: MapSet.size(edges_missing),
+      edges_extra: MapSet.size(edges_extra),
+      sample:
+        Enum.map(missing, &"not served: #{audit_label(&1)}") ++
+          Enum.map(extra, &"served, not recomputed: #{audit_label(&1)}") ++
+          Enum.map(disagree, &"disagrees: #{audit_label(&1)}") ++
+          Enum.map(edges_missing, &"edge not served: #{audit_edge(&1)}") ++
+          Enum.map(edges_extra, &"edge served, not recomputed: #{audit_edge(&1)}")
+    }
+  end
+
+  # The project's own chain is instantiated from `scope.active_project`, which a
+  # reader that named only the id — the dev page — does not carry.
+  defp with_project(%Scope{active_project: %{id: _}} = scope), do: scope
+
+  defp with_project(%Scope{active_project_id: id} = scope),
+    do: %{scope | active_project: Repo.get!(CodeMySpec.Projects.Project, id)}
+
+  defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
+  defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"
+  defp audit_edge({from, to}), do: "#{audit_label(from)} -> #{audit_label(to)}"
+
   # No guard for "nothing stored", though the first version had one on the
   # grounds that a cold project is not a stale one. It is the same state as the
   # failure this exists to catch: rows that were written and then lost read
@@ -1294,10 +1774,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp do_log_stale_read(scope, ctx, stored) do
     case stale_entities(stored, ctx, CodeMySpec.Configurations.get_or_create(scope)) do
-      {:partial, stale} ->
-        if MapSet.size(stale) > 0, do: warn_stale(scope, stale, ctx)
+      {:partial, covered, _written} ->
+        if MapSet.size(covered) > 0, do: warn_stale(scope, covered, ctx)
 
-      {:all, why} ->
+      {:all, why, _covered, _written} ->
         Logger.warning(
           "[Requirements] STALE READ — every entity reads stale (#{why}). " <>
             "Served anyway; reads do not recompute. " <>
@@ -1752,7 +2232,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc "Component membership shared by story execution and the story kickoff topology."
   def story_component_ids(story, ctx) do
     case Map.get(ctx.components_by_id, story.component_id) do
-      nil -> MapSet.new()
+      nil ->
+        MapSet.new()
+
       surface ->
         surface
         |> transitive_dep_closure(ctx)
@@ -2223,6 +2705,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The template is filtered by the project configuration up front so disabled
   # artifact types (specs, reviews, tests) are stripped from both nodes and edges.
   defp instantiate_component_graphs(scope, ctx, config) do
+    # Stamped here rather than by the caller: this is a function that *hashes*
+    # an entity, and the comparison and the write have to agree exactly or
+    # every row reads stale forever. `Freshness.with_config/2` is idempotent,
+    # so a caller that already stamped pays a map write.
+    ctx = Freshness.with_config(ctx, config)
+
     {top_level, children_by_parent} = component_families(ctx)
 
     top_level
@@ -2359,7 +2847,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     accounted = parts |> Map.values() |> Enum.map(&(&1 || 0)) |> Enum.sum()
 
     named =
-      ~w(preload projection topology project fingerprint serve)a
+      ~w(preload projection topology project fingerprint edges serve)a
       |> Enum.map_join(", ", fn key -> "#{key} #{ms_or_na(parts[key])}" end)
 
     Logger.info(
@@ -2618,6 +3106,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp compute_story_nodes(scope, ctx, config) do
+    # Stamped here rather than by the caller: this is a function that *hashes*
+    # an entity, and the comparison and the write have to agree exactly or
+    # every row reads stale forever. `Freshness.with_config/2` is idempotent,
+    # so a caller that already stamped pays a map write.
+    ctx = Freshness.with_config(ctx, config)
+
     # Only the devops filter applies to story templates — the
     # specs/reviews/tests filters are component-scoped by design
     # Component and story requirements have distinct templates.
@@ -2714,7 +3208,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           render_command_always?: definition.render_command_always? || false,
           role: definition.role,
           prerequisites: [],
-          details: Requirement.normalize_details(result.details)
+          details: Requirement.normalize_details(result.details),
+          # Stamped like every other entity, so a pass can tell whether the
+          # project's own inputs moved instead of assuming they did. Without
+          # this there is nothing stored to compare and project nodes are
+          # rebuilt unconditionally — ten delegate checkers on every pass,
+          # which is the floor cost of observing anything at all.
+          inputs_fingerprint: Freshness.project(ctx)
         }
       end)
 

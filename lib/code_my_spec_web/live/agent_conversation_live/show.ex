@@ -64,6 +64,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
@@ -364,19 +365,32 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # that as `:starting` makes a broken app read as a slow one.
   defp assign_preview(socket, scope) do
     src = WorkingCopies.preview_url(scope)
+    status = WorkingCopies.preview_status(scope)
 
     socket
     |> assign(:preview_src, src)
-    |> assign(:preview_state, preview_state(src))
+    |> assign(:preview_state, preview_state(src, status))
+    |> assign(
+      :preview_extra_frame_origins,
+      PreviewAddress.extra_frame_origins(scope.active_project)
+    )
   end
 
   # No address is `:absent` — nothing was asked for, so the pane promises
-  # nothing. An address we have not probed is `:starting` rather than
-  # `:running`: framing it before anything answers renders a blank rectangle
-  # indistinguishable from an app that rendered nothing, which lands on the
-  # person as "my app is broken".
-  defp preview_state(nil), do: :absent
-  defp preview_state(_src), do: :running
+  # nothing. An address the checkout has never reported against is
+  # `:starting` rather than `:running`: framing it before anything answers
+  # renders a blank rectangle indistinguishable from an app that rendered
+  # nothing, which lands on the person as "my app is broken" — and, worse,
+  # framing a tunnel before `cloudflared` has connected doesn't even render
+  # blank, it renders Cloudflare's own error page inside the pane. Measured
+  # live, 2026-09-22: a preview minted at instance-boot time and probed
+  # before its first health check read as broken for the whole gap between
+  # the URL existing and the app actually answering it.
+  defp preview_state(nil, _status), do: :absent
+  defp preview_state(_src, "serving"), do: :running
+  defp preview_state(_src, "erroring"), do: :broken
+  defp preview_state(_src, "down"), do: :down
+  defp preview_state(_src, _never_reported), do: :starting
 
   # What the dynamic tab is showing, loaded once per change rather than per
   # render. The tab is one tab whose contents swap — this is the swap.
@@ -1413,6 +1427,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           conversation_id={@conversation && @conversation.id}
           preview_src={@preview_src}
           preview_state={@preview_state}
+          extra_frame_origins={@preview_extra_frame_origins}
         />
 
         <.conversation_column
@@ -1510,6 +1525,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               conversation_id={@conversation && @conversation.id}
               preview_src={@preview_src}
               preview_state={@preview_state}
+              extra_frame_origins={@preview_extra_frame_origins}
             />
           </LivePane.pane>
         </LivePane.group>

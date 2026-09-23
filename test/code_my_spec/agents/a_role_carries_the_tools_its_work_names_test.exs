@@ -29,6 +29,13 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
 
   `:main` carries everything (`for_role/1` answers `nil`), so it cannot fail
   this and is skipped rather than special-cased into a pass.
+
+  One check here does not read prompts at all. A `path_exists` requirement is
+  satisfied by a file appearing on disk, and its prompt usually names the file
+  rather than the tool — so the role that owns it must carry
+  `write_project_file` whether or not anything says so in backticks. That is
+  derived from the requirement's own check type, and a prompt rewrite cannot
+  quiet it.
   """
   use ExUnit.Case, async: true
 
@@ -166,6 +173,47 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
 
     for tool <- ~w(list_issues get_issue create_issue), do: assert(tool in carried)
   end
+
+  # The gap the prose check cannot see.
+  #
+  # Everything above reads backticked names out of a task's source, so it only
+  # fires when a prompt names the tool. A `path_exists` requirement often does
+  # not: `qa_setup` says to write `.code_my_spec/qa/plan.md` and never says with
+  # what. QA owned four such requirements and carried no file tool of any kind —
+  # invisible here until the chain reached it on the math project, 2026-09-22.
+  #
+  # Derived from the check rather than the wording, so a prompt rewrite cannot
+  # switch it off.
+  test "a role whose requirement is a file it writes can write a file" do
+    gaps =
+      for definition <- definitions(),
+          definition.check_type == :path_exists,
+          role = definition.role,
+          not is_nil(role),
+          role != :main,
+          carried = ToolSets.for_role(role),
+          is_list(carried),
+          "write_project_file" not in carried do
+        "#{definition.name} (#{role}) is satisfied by #{path_of(definition)}"
+      end
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    assert gaps == [],
+           """
+           A role is measured on a file it has no tool to write.
+
+           #{Enum.map_join(gaps, "\n", &("  " <> &1))}
+
+           `path_exists` means the requirement is satisfied by a file appearing on
+           disk. The role that owns it needs `write_project_file`, whether or not
+           the task prompt happens to say so in backticks.
+           """
+  end
+
+  defp path_of(%{config: %{path: path}}), do: path
+  defp path_of(%{config: %{path_prefix: prefix}}), do: prefix <> "*"
+  defp path_of(_definition), do: "a path"
 
   # An exception that stopped being one is worse than no list: it reads as a
   # decision somebody made and is really a line nobody deleted.

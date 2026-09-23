@@ -58,6 +58,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
+  attr :extra_frame_origins, :list, default: []
 
   # Three tabs on a phone, an accordion on a desk.
   #
@@ -125,6 +126,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           conversation_id={@conversation_id}
           preview_src={@preview_src}
           preview_state={@preview_state}
+          extra_frame_origins={@extra_frame_origins}
         />
       </div>
     </div>
@@ -218,6 +220,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
               conversation_id={@conversation_id}
               preview_src={@preview_src}
               preview_state={@preview_state}
+              extra_frame_origins={@extra_frame_origins}
             />
           </div>
         </LivePane.pane>
@@ -298,6 +301,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
   attr :preview_state, :atom, default: :absent
+  attr :extra_frame_origins, :list, default: []
 
   # 886's pane, not a second one. It already renders every state a preview can
   # be in and refuses `:running` with no address, and a copy of it here would
@@ -305,6 +309,13 @@ defmodule CodeMySpecWeb.ConversationPanels do
   defp panel_body(%{which: :preview} = assigns) do
     ~H"""
     <div :if={@preview_src} data-test="panel-preview-frame" class="h-full">
+      <p
+        :if={@extra_frame_origins != []}
+        data-test="panel-preview-extra-origins"
+        class="mb-2 text-xs opacity-60"
+      >
+        Also allowed to open: <span class="font-mono">{Enum.join(@extra_frame_origins, ", ")}</span>
+      </p>
       <.pane src={@preview_src} state={@preview_state} title="Your app" />
     </div>
     <div :if={!@preview_src}>

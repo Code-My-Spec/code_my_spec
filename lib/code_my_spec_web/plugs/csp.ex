@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.Plugs.CSP do
   """
   import Plug.Conn
 
+  alias CodeMySpec.Projects
   alias CodeMySpec.Workspaces.PreviewAddress
 
   @spec init(keyword()) :: keyword()
@@ -25,10 +26,24 @@ defmodule CodeMySpecWeb.Plugs.CSP do
 
     conn
     |> assign(:csp_nonce, nonce)
-    |> put_resp_header("content-security-policy", policy(nonce))
+    |> put_resp_header("content-security-policy", policy(nonce, project(conn)))
   end
 
-  defp policy(nonce) do
+  # Route matching sets path params before the pipeline (this plug included)
+  # runs, so a project-scoped route's `:project_id` is already here — no
+  # separate lookup plug needed just to answer "which project is this policy
+  # for". Routes with no project in the path (marketing pages, the guided
+  # intake's own preview) get `nil` and fall back to
+  # `PreviewAddress.extra_frame_origins/1`'s config/built-in default.
+  #
+  # `get_project_by_id/1` is the one built for exactly this — a web-side
+  # lookup with no scope, safe against a malformed or unknown id.
+  defp project(%{path_params: %{"project_id" => id}}) when is_binary(id),
+    do: Projects.get_project_by_id(id)
+
+  defp project(_conn), do: nil
+
+  defp policy(nonce, project) do
     [
       "default-src 'self'",
       # js.stripe.com must be loadable and framed: the Payment Element is
@@ -41,7 +56,14 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # related. Without this the app is willing to be framed and we refuse to
       # frame it, which looks identical to the app refusing: a blank pane, no
       # server-side error, and an iframe element that inspects perfectly.
-      "frame-src 'self' #{PreviewAddress.csp_origin()} https://js.stripe.com https://hooks.stripe.com",
+      #
+      # The extra origins are for the previewed app's own OAuth flows —
+      # "Sign in with Google/GitHub" sends the frame to the provider's own
+      # domain, which is neither `'self'` nor the preview's origin. Per
+      # project (see `PreviewAddress.csp_extra_frame_origins/1`) — `project`
+      # is `nil` off a route with no `:project_id`, which falls back to the
+      # config/built-in default there.
+      "frame-src 'self' #{PreviewAddress.csp_origin()} #{Enum.join(PreviewAddress.csp_extra_frame_origins(project), " ")} https://js.stripe.com https://hooks.stripe.com",
       # Clarity's data collection rotates across regional subdomains
       # (https://*.clarity.ms), not just www — a single hostname here silently
       # drops session data with no visible error, the exact failure mode this

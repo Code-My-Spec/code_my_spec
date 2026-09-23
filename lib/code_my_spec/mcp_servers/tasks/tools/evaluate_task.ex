@@ -33,6 +33,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       doc: "Task ID to evaluate"
 
     field :session_id, :string, doc: "Injected by hook — do not set manually"
+
+    field :agent_id, :string,
+      doc: "Whose task to close. An agent we run carries it on the connection and omits this."
   end
 
   @impl true
@@ -41,7 +44,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     # `Plugs.AgentScope`. An agent we run has no session to name and no way to
     # get one, so without this it could start a task and never close it, which
     # is the half of the loop that tells the other roles work is done.
-    caller_agent_id = frame.assigns[:agent_id]
+    # The connection first, then the argument.
+    #
+    # `start_task` takes an `agent_id` and this did not, so a task could be
+    # opened on an agent's behalf and never closed on it — the orchestrator
+    # that hands work out could not take it back, and an agent holding an
+    # active task is not runnable, so the agent was stranded rather than
+    # merely blocked.
+    #
+    # The connection wins where it has one: an agent we run cannot spoof
+    # another by naming it, because `Plugs.AgentScope` has already said who it
+    # is and the argument is never consulted.
+    caller_agent_id = frame.assigns[:agent_id] || Map.get(params, :agent_id)
     session_id = Map.get(params, :session_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
@@ -103,7 +117,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     if is_nil(task_module) do
       {:reply, TasksMapper.error("No task module configured for this task"), frame}
     else
-      result = dispatch_evaluate(task_module, scope, task)
+      result = dispatch_evaluate(task_module, scope, task, owner)
 
       case result do
         {:ok, :valid} ->
@@ -152,11 +166,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   # Modules with custom evaluate logic bypass the unified Evaluator.
   # Everything else goes through the Evaluator (FileSync + RequirementCalculator).
-  defp dispatch_evaluate(module, scope, task) do
-    if Evaluator.has_custom_evaluate?(module) do
-      module.evaluate(scope, task)
-    else
-      Evaluator.evaluate(scope, task)
+  # `owner` is offered to any module that wants it, because some answers depend
+  # on *who* is asking rather than on what the task says.
+  #
+  # `Task.agent_id` cannot carry that: `Agent.add_task/2` deliberately leaves it
+  # nil — "the list a task is in says who owns it" — and on a session's task the
+  # field means the Claude Code sub-agent it was assigned to. A module reading it
+  # as "is this one of ours" is wrong in both directions, which is how an agent
+  # in our own BEAM came to be told to `curl` a harness id this machine does not
+  # serve (it should have been told to stop and wait to be notified).
+  defp dispatch_evaluate(module, scope, task, owner) do
+    cond do
+      function_exported?(module, :evaluate, 3) -> module.evaluate(scope, task, owner)
+      Evaluator.has_custom_evaluate?(module) -> module.evaluate(scope, task)
+      true -> Evaluator.evaluate(scope, task)
     end
   rescue
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}

@@ -309,6 +309,7 @@ defmodule CodeMySpec.WorkingCopies do
 
         if is_nil(copy), do: Repo.rollback(:not_found)
 
+        release_backlog(scope, copy)
         selected_id = select_story(scope, copy, story_id)
 
         case save(copy, %{active_story_id: selected_id}) do
@@ -328,6 +329,28 @@ defmodule CodeMySpec.WorkingCopies do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # A copy holds the story it is pointed at, and no others.
+  #
+  # `select_story/3` assigned on the way in and nothing ever released, so a copy
+  # accumulated every story it had ever been pointed at and each one was pinned
+  # there: `story_assigned_elsewhere` refuses to move an assigned story, and
+  # clearing the active story left the assignment behind. Pointing a copy at a
+  # second story stranded the first with no tool able to free it — measured on
+  # 2026-09-21, where story 1027 was pinned to a main checkout within ten
+  # minutes of the project being set up and could not be handed to the copy
+  # that was staffed to build it.
+  #
+  # Released before the new one is selected and inside the same transaction, so
+  # a refusal rolls the release back with it: a copy pointed at something
+  # invalid keeps exactly what it had.
+  defp release_backlog(scope, copy) do
+    Story
+    |> where([s], s.working_copy_id == ^copy.id)
+    |> where([s], s.project_id == ^scope.active_project_id)
+    |> where([s], s.account_id == ^scope.active_account_id)
+    |> Repo.update_all(set: [working_copy_id: nil])
   end
 
   defp select_story(_scope, _copy, nil), do: nil
@@ -687,6 +710,27 @@ defmodule CodeMySpec.WorkingCopies do
   def preview_url(%Scope{} = scope) do
     case main(scope) do
       %WorkingCopy{preview_url: url} when is_binary(url) and url != "" -> url
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Whether this project's preview is actually answering, or nothing.
+
+  `record_preview_status/2`'s own words: reported by the machine that holds
+  the disk, on every sync — so `nil` means not "down", it means the checkout
+  has never reported at all. A URL is minted the moment a copy is issued one,
+  which can be well before the checkout that will answer it has even booted
+  — `PreviewTunnel.ensure/1` runs at instance-boot time, `cloudflared` comes
+  up inside the app it is tunneling for, and there is a real gap between the
+  two. Conflating "never reported" with "down" is how a preview that is
+  still coming up read as broken, for as long as it took the first sync to
+  land (`reference_cloudflare_tunnel_530_is_down`).
+  """
+  @spec preview_status(Scope.t()) :: String.t() | nil
+  def preview_status(%Scope{} = scope) do
+    case main(scope) do
+      %WorkingCopy{preview_status: status} -> status
       _ -> nil
     end
   end

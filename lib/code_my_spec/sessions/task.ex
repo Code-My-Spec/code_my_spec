@@ -17,7 +17,12 @@ defmodule CodeMySpec.Sessions.Task do
   alias CodeMySpec.Sessions.SessionType
 
   @statuses [:prepared, :active, :blocked, :completed, :failed, :cancelled]
-  @blocker_types [:question, :tap_out, :manual]
+  # `:issue` is the machine-resolvable one. A question or a tap_out waits on a
+  # person; an issue waits on another role finishing work, and resolving it is
+  # something the system can see. Without it QA had to raise a tap_out — a
+  # human gate — to express "I am waiting on the bug I just filed", which is
+  # how one story took three mechanical denials to get through QA (af9e52c6).
+  @blocker_types [:question, :tap_out, :manual, :issue]
   @validation_types [:automatic, :manual]
   @execution_types [:main_agent, :sub_agent]
 

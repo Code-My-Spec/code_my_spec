@@ -63,6 +63,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion2963Spex do
       given_ "a project whose main checkout reports where its preview answers", context do
         context = given_a_main_checkout(context, "spex_2963", preview_url: @url)
 
+        :ok =
+          CodeMySpecSpex.WorkingCopyHelpers.report_preview_status(
+            context.harness_socket,
+            "serving"
+          )
+
         {:ok, Map.put(context, :path, say_to_main_agent(context, "how is it going"))}
       end
 

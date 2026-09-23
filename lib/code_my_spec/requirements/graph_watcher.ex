@@ -65,6 +65,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Invalidations
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Shadow
@@ -123,7 +125,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # projects. Started here rather than anywhere else because this is what
     # decides a project is being worked on; `ensure_projecting/1` refuses when
     # the flag is off, so this costs a function call in the normal case.
-    ShadowProjector.ensure_projecting(watcher_scope(scope))
+    # Allowed on the caller's sandbox like the watcher below, so a spex that
+    # runs on its own connection (`async: true`, manual mode) has a projector
+    # that can read it.
+    case ShadowProjector.ensure_projecting(watcher_scope(scope)) do
+      {:ok, projector} -> allow_sandbox(projector)
+      _disabled -> :ok
+    end
 
     case DynamicSupervisor.start_child(
            CodeMySpec.Requirements.WatcherSupervisor,
@@ -491,11 +499,33 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   #
   # Once per vantage, because a projection is per row-space and comparing
   # across them would mix two populations.
-  defp report_shadow(%{scope: %Scope{} = scope} = state, computed) do
-    if Shadow.enabled?() do
-      ShadowProjector.settle(state.project_id)
+  defp report_shadow(%{scope: %Scope{} = scope} = state, _computed) do
+    # Settling is the event path doing its work and is cheap by construction —
+    # narrow loads, never `Preloader.load/1`. It runs whenever the projection is
+    # on, because a projection that stops being driven stops being a candidate
+    # to swap to.
+    # The vantages readers asked this watcher about travel with the settle. The
+    # projector narrows to what marks name, exactly as the pass does, and had no
+    # way to hear about a checkout somebody merely read — which is the whole of
+    # the drift between the two projections.
+    if Shadow.enabled?(),
+      do: ShadowProjector.settle(state.project_id, state.requested_vantages)
 
-      Enum.each(computed, fn vantage ->
+    # Diffing is the measurement, and it is the expensive half: a full preload
+    # per computed vantage, on every pass. 814 preloads for 157 passes on dev.
+    # On when you are validating, off when you are not.
+    # Every live vantage, not just the ones this pass computed. `computed` is
+    # what something named, so diffing it compares the two projections exactly
+    # where they were both just settled and stays silent about the checkouts
+    # nothing named — which is where they actually drift. A clean run over
+    # `computed` cannot certify the swap; that is how 157 consecutive
+    # `shadow agrees` coexisted with a vantage 6h36m behind.
+    #
+    # Affordable because the diff is off unless you are validating.
+    if Shadow.enabled?() and Shadow.diffing?() do
+      scope
+      |> Projection.live_vantages(Projection.vantages(scope))
+      |> Enum.each(fn vantage ->
         %Scope{scope | active_working_copy_id: vantage}
         |> Shadow.diff()
         |> Shadow.log()
@@ -533,6 +563,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # reader can name a checkout that is offboarded before the next pass runs.
   # Computing for a copy that no longer exists raises on the `requirement_graphs`
   # foreign key, and the watcher reports that as a fault forever after.
+  # Every vantage that has ever been read, plus any a reader asked for. The
+  # unnarrowed answer, and the right one when the pass cannot tell what its
+  # observations were about.
   defp vantages(state) do
     Projection.live_vantages(
       state.scope,
@@ -540,9 +573,81 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     )
   end
 
-  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage) do
+  # The vantages this pass's observations actually named.
+  #
+  # A verdict is a statement about one checkout, so an observation recorded from
+  # one says nothing about the others — and recomputing them anyway costs the
+  # project's size times the number of checkouts. Criterion 3518 measured three
+  # vantages, 154 queries and 48 rows written for one finding recorded in one
+  # checkout, on a box serving eleven.
+  #
+  # `Invalidations.record/5` stamps each mark with the checkout it came from,
+  # and `nil` for a writer whose change is not about one — a story renamed, an
+  # issue filed. A single un-narrowed mark therefore widens the whole pass,
+  # deliberately: fanning out too far costs work, narrowing too far costs
+  # correctness.
+  #
+  # ## The `nil` row-space is three cases, not two
+  #
+  # `nil` is not a checkout. It is what every reader that is not an agent is
+  # answered from, and `Preloader.files_vantage/1` decides what it is computed
+  # *from*:
+  #
+  #   * a project with a default checkout — `nil`'s files are that checkout's,
+  #     so an observation from it moves `nil` and one from any other does not;
+  #   * a project with no default — `files_vantage/1` answers `nil`, and
+  #     `Projection.vantage/1` calls that row "the blended computation" over
+  #     every checkout. Anything moves it, so it is always kept.
+  #
+  # Collapsing those two is what broke six criteria on the first attempt: in a
+  # fixture with no designated main copy, `nil in named` is false for every
+  # observation, so the most-read row-space stopped being settled at all.
+  # `ShadowProjector.vantages/2` has the same shape and has not hit it, because
+  # nothing reads the shadow.
+  # No marks is not "no information" — it is "nothing announced". The only
+  # vantages such a pass owes work to are the ones a reader has explicitly asked
+  # for and not yet been given, which is what `requested_vantages` is.
+  #
+  # Falling back to `vantages/1` here undid the narrowing entirely, and quietly:
+  # `settle/2` retries, so one settle runs several passes, and the retry found
+  # an empty mark set — every one having been consumed by the pass before it —
+  # and recomputed every checkout. The first drain reported two vantages and the
+  # second reported all of them, so the cost reading looked correct while the
+  # work was not. Criterion 3507 caught it as a checkout restamped exactly one
+  # hour after being backdated.
+  defp vantages(state, []),
+    do: Projection.live_vantages(state.scope, MapSet.to_list(state.requested_vantages))
+
+  defp vantages(state, marks) do
+    named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
+
+    if Enum.any?(named, &is_nil/1) do
+      vantages(state)
+    else
+      keep_nil? = blended_nil?(state) or Preloader.files_vantage(state.scope) in named
+
+      state.scope
+      |> Projection.live_vantages(Enum.concat(named, state.requested_vantages))
+      |> Enum.filter(&(keep_nil? or not is_nil(&1)))
+    end
+  end
+
+  defp blended_nil?(state), do: is_nil(Preloader.files_vantage(state.scope))
+
+  # Whether something else is going to take these marks.
+  #
+  # Both conditions, and the second is the one the first version missed. The
+  # flag alone says the shadow is *configured*; it says nothing about whether a
+  # projector exists for this project. Deferring to one that does not run leaves
+  # every mark undeleted, which is `e0729ea9` exactly — the defect the pass
+  # started consuming in order to fix.
+  defp shadow_will_consume?(%{project_id: project_id}) do
+    Shadow.enabled?() and ShadowProjector.running?(project_id)
+  end
+
+  defp recompute_vantage(%{scope: %Scope{} = scope}, vantage, shared) do
     {_graph, actionable, _computed_at} =
-      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage})
+      RequirementGraph.recompute(%Scope{scope | active_working_copy_id: vantage}, shared: shared)
 
     actionable
   end
@@ -625,6 +730,10 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     consumed = Enum.reverse(state.pending_observations)
     Logger.metadata(obs: observation_tag(consumed))
 
+    # The durable marks behind those ids, read for the one thing the ids do not
+    # carry: which checkout each observation was recorded from.
+    marks = Invalidations.pending(state.project_id)
+
     # Recompute, then read. These were one call until the read stopped
     # recomputing — a reader repairing the graph is what made a silent writer
     # indistinguishable from a working one. The watcher is the write path, so
@@ -641,7 +750,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # "did mine". `Work.consider_project/2` is guarded on eligibility, so a role
     # with nothing to do is not charged a turn — asking too often costs a query
     # and asking too rarely is the ninety minutes of silence this exists to end.
-    computed = vantages(state)
+    computed = vantages(state, marks)
 
     # Measured here rather than around the whole clause, because the clause also
     # broadcasts, considers agents for a turn and reports the shadow — work this
@@ -657,10 +766,43 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
           observations: length(consumed),
           vantages: length(computed)
         },
-        fn -> {Enum.flat_map(computed, &recompute_vantage(state, &1)), %{}} end
+        fn ->
+          # Loaded once for the whole drain, not once per checkout. Every vantage
+          # settled below shares these rows exactly — the same components with
+          # the same dependencies and children, the same rules, questions, issue
+          # stamps and deploys — and only the files differ, which is the reason a
+          # vantage exists at all. Criterion 3620.
+          shared = Preloader.shared(state.project_id)
+
+          {Enum.flat_map(computed, &recompute_vantage(state, &1, shared)), %{}}
+        end
       )
 
     account_for(consumed)
+
+    # After the writes, never before — a mark consumed on the strength of having
+    # been started is one a crash turns into a permanently stale entity
+    # (criterion 3521). Consumed by the pass as well as the projector now: only
+    # `ShadowProjector` did, and it is off outside dev, so on the default
+    # configuration every writer inserted a mark and nothing deleted one
+    # (`e0729ea9`).
+    #
+    # Unless the shadow is running, and then it consumes instead. `consume/1` is
+    # a delete, so two consumers on one queue is a destructive read: whichever
+    # drains first takes the marks and the other never sees them. With the
+    # shadow on, a background pass winning that race leaves the projector
+    # nothing to apply, it keeps the verdict it had, and `Shadow.diff/1` reports
+    # a disagreement that is really a missed delivery. Caught as a one-in-nine
+    # failure in `ShadowTest`, "accepting an issue on a story moves that story's
+    # verdict", disagreeing on the one requirement that test drives.
+    #
+    # So ownership follows who needs them: outside dev the shadow is off and the
+    # pass consumes, which is what `e0729ea9` was about; in dev the projector
+    # consumes after it has applied, which is what it did before. Neither
+    # configuration leaves a mark undeleted, and the oracle stops missing
+    # observations — which matters more than it sounds, because an oracle that
+    # silently misses one reports agreement it has not checked.
+    unless shadow_will_consume?(state), do: Invalidations.consume(marks)
     report_shadow(state, computed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a
@@ -796,6 +938,21 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     {:ok, schedule(state)}
   end
 
+  # Not transient: an ownership error exists only under the sandbox and means
+  # the process that owned this watcher's connection is gone — a scenario has
+  # ended and this watcher outlived it. Retried, it kept its timer set, so a
+  # fixture waiting on `pending` spun at ~500 settles a second until ExUnit's
+  # timeout: 31,058 log lines in one run. There is nothing to wait for; the
+  # next scenario starts its own.
+  defp handle_failure(false, state, %DBConnection.OwnershipError{} = error) do
+    Logger.warning(
+      "[GraphWatcher] stopping: the sandbox owner for #{state.project_id} is gone " <>
+        "(#{Exception.message(error)})"
+    )
+
+    {:gone, state}
+  end
+
   defp handle_failure(false, state, error) do
     transient?(error)
     |> handle_transient(state, error)
@@ -829,7 +986,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # Contention, not a defect: the pool refusing a checkout, or a query giving
   # up waiting for one.
   defp transient?(%DBConnection.ConnectionError{}), do: true
-  defp transient?(%DBConnection.OwnershipError{}), do: true
   defp transient?(_error), do: false
 
   defp real_failure(state, error) do

@@ -92,6 +92,18 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   matters more here: a criterion comparing two checkouts reads one it has never
   read before.
   """
+  @doc """
+  What one checkout currently holds, without reconciling first.
+
+  An ordinary read settles, and a settle remembers the vantage the reader named
+  — so asking what a checkout holds queues a computation for it. That is right
+  for a reader about to act and wrong for one *observing* whether some other
+  observation left this checkout alone: the question causes the answer. Criterion
+  3507 is that case.
+  """
+  def peek_graph(context, working_copy_id),
+    do: dispatch(context, "?working_copy=#{working_copy_id}&settle=false")
+
   def read_settled_graph(context, working_copy_id) do
     _first = read_graph(context, working_copy_id)
     read_graph(context, working_copy_id)

@@ -449,7 +449,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   def settle(state, result) do
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
-    announce_turn_end(state)
+    announce_turn_end(state, result)
 
     case State.finish(state) do
       {:idle, state} ->
@@ -532,14 +532,34 @@ defmodule CmsHarness.Agents.Engine.Impl do
     :ok
   end
 
-  defp announce_turn_end(%{on_event: nil}), do: :ok
+  defp announce_turn_end(%{on_event: nil}, _result), do: :ok
 
-  defp announce_turn_end(%{queue: [_ | _]}), do: :ok
+  defp announce_turn_end(%{queue: [_ | _]}, _result), do: :ok
 
-  defp announce_turn_end(state) do
-    state.on_event.(state.agent_id, %{event: :turn_ended})
+  defp announce_turn_end(state, result) do
+    state.on_event.(state.agent_id, %{event: :turn_ended, usage: usage_of(result)})
     :ok
   end
+
+  # What the turn cost, carried on the event that says it is over.
+  #
+  # `Alloy.Result` accumulates `%Alloy.Usage{}` across the turn and the
+  # `claude-code` provider fills it from the CLI's own `--output-format json`
+  # envelope, so the numbers are the provider's rather than an estimate here.
+  #
+  # On the event rather than read back afterwards, because afterwards is too
+  # late: `Alloy.Server.usage/1` is a call into the loop and the loop answers
+  # busy while a turn is running — the same guard `history/1` has, and for the
+  # same reason. An agent that claims a requirement and goes off to do it is
+  # busy for minutes, so anything measuring a turn's spend by asking for it
+  # got `nil` every time. Measured on story 1039's eval: 0 of 10 runs captured
+  # usage, against a provider that reports it on every response.
+  #
+  # Nil when a turn failed before a provider answered — no spend is different
+  # from zero spend, and only one of those is worth recording as a number.
+  defp usage_of({:ok, %{usage: %Alloy.Usage{} = usage}}), do: Map.from_struct(usage)
+  defp usage_of(%{usage: %Alloy.Usage{} = usage}), do: Map.from_struct(usage)
+  defp usage_of(_result), do: nil
 
   # A turn that failed, said out loud.
   #
@@ -873,16 +893,25 @@ defmodule CmsHarness.Agents.Engine.Impl do
        provider_opts
        |> Keyword.put(:tools, tools(opts))
        |> Keyword.put(:working_directory, working_copy)
-       # What this agent is for. Nothing set this before, so every agent came up
-       # with `system_prompt: nil` and knew only whatever message arrived next —
-       # its role chose its tools and told it nothing. Issue `0f022a10`.
+       # What this agent is for, what the project is, and the loop it runs.
+       # Nothing set this before, so every agent came up with
+       # `system_prompt: nil` and knew only whatever message arrived next — its
+       # role chose its tools and told it nothing. Issue `0f022a10`.
+       #
+       # Passed general to specific; `SystemPrompt` orders and joins, and every
+       # piece of it was resolved by the server. `working_copy` is no longer
+       # among them: the prompt used to be completed by reading the checkout's
+       # own `AGENTS.md`, and a checkout without one shipped an agent that had
+       # never been told to claim its work.
        |> Keyword.put(
          :system_prompt,
          SystemPrompt.compose(
-           Keyword.get(opts, :role_brief),
-           working_copy,
-           Keyword.get(opts, :app_url),
-           Keyword.get(opts, :tool_index)
+           universal: Keyword.get(opts, :universal),
+           project_brief: Keyword.get(opts, :project_brief),
+           provider_brief: Keyword.get(opts, :provider_brief),
+           app_url: Keyword.get(opts, :app_url),
+           tool_index: Keyword.get(opts, :tool_index),
+           role_brief: Keyword.get(opts, :role_brief)
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
@@ -942,10 +971,33 @@ defmodule CmsHarness.Agents.Engine.Impl do
   defp to_message(%{"role" => "user", "content" => content}) when is_binary(content),
     do: [Alloy.Message.user(content)]
 
+  # Content blocks, not just text. A seeded turn carries `tool_use` and
+  # `tool_result` blocks so an agent's transcript opens having already made a
+  # call of each shape — `Alloy.Message.text/1` drops them and
+  # `Conversations.as_turn/1` never produced them, so without this clause they
+  # arrive and are silently discarded.
+  defp to_message(%{"role" => "assistant", "content" => blocks}) when is_list(blocks),
+    do: [Alloy.Message.assistant_blocks(Enum.map(blocks, &atomise_block/1))]
+
+  defp to_message(%{"role" => "user", "content" => blocks}) when is_list(blocks),
+    do: [Alloy.Message.tool_results(Enum.map(blocks, &atomise_block/1))]
+
   defp to_message(%{role: role, content: content}),
     do: to_message(%{"role" => to_string(role), "content" => content})
 
   defp to_message(_other), do: []
+
+  # Blocks cross the wire with string keys and the provider serialiser matches
+  # on atoms, so a block that survived the trip would be dropped at the last
+  # step instead of the first.
+  defp atomise_block(block) when is_map(block) do
+    Map.new(block, fn
+      {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+      {k, v} -> {k, v}
+    end)
+  rescue
+    ArgumentError -> block
+  end
 
   # A compaction, on its way to whoever keeps this agent's transcript.
   #

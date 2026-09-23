@@ -122,4 +122,36 @@ defmodule CmsHarness.ConfigTest do
       assert Config.default_server_url() == "http://localhost:4000"
     end
   end
+
+  # `CmsHarness.Device`'s own file, `device.json`, lives here. Getting this
+  # wrong for a `Runner.Local`-booted workspace is what let it silently
+  # inherit the box's own persistent harness's device identity — and with
+  # it every working copy the server believed that device served. Measured
+  # live, 2026-09-21: a fresh workspace's harness retrying against a dozen
+  # unrelated worktrees it had never touched, because its device.json was
+  # the same file its box's real, long-running harness already held.
+  describe "local_state_dir/0" do
+    setup do
+      previous = System.get_env("CMS_PROJECT_DIR")
+      on_exit(fn -> restore_env("CMS_PROJECT_DIR", previous) end)
+      :ok
+    end
+
+    test "a laptop with no project dir named gets the shared install directory" do
+      System.delete_env("CMS_PROJECT_DIR")
+
+      assert Config.local_state_dir() == Path.expand("~/.codemyspec")
+    end
+
+    test "a workspace named by CMS_PROJECT_DIR gets its own directory instead" do
+      System.put_env("CMS_PROJECT_DIR", "/tmp/cms-workspace-abc123/widget_tracker")
+
+      assert Config.local_state_dir() == "/tmp/cms-workspace-abc123",
+             """
+             One directory up from CMS_PROJECT_DIR, which Workspaces.instance_env/1
+             already minted uniquely per instance — not the shared ~/.codemyspec every
+             other harness on this box also reads and writes.
+             """
+    end
+  end
 end

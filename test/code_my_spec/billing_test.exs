@@ -71,6 +71,44 @@ defmodule CodeMySpec.BillingTest do
   defp respond_no_confirmation_secret(%{request_path: "/v1/subscriptions"} = conn),
     do: json(conn, %{"id" => "sub_1", "latest_invoice" => %{}})
 
+  defp respond_to_trial(%{request_path: "/v1/customers"} = conn),
+    do: json(conn, %{"id" => "cus_1"})
+
+  defp respond_to_trial(%{request_path: "/v1/subscriptions"} = conn) do
+    json(conn, %{
+      "id" => "sub_1",
+      "status" => "trialing",
+      "latest_invoice" => nil,
+      "pending_setup_intent" => %{"client_secret" => "seti_1_secret"}
+    })
+  end
+
+  # A visitor reloading before confirming the setup intent: `billing_subscription/1`
+  # finds the still-`trialing` subscription and goes through `change_tier`
+  # (a GET, then a POST to the same subscription) rather than `create_subscription` —
+  # the same pending setup intent has to come back either way, or a reload would
+  # silently drop straight into "paid, nothing to collect" with no card on file.
+  defp respond_to_trialing_reload(
+         %{request_path: "/v1/subscriptions/sub_1", method: "GET"} = conn
+       ) do
+    json(conn, %{
+      "id" => "sub_1",
+      "status" => "trialing",
+      "items" => %{"data" => [%{"id" => "si_1"}]},
+      "pending_setup_intent" => %{"client_secret" => "seti_1_secret"}
+    })
+  end
+
+  defp respond_to_trialing_reload(
+         %{request_path: "/v1/subscriptions/sub_1", method: "POST"} = conn
+       ) do
+    json(conn, %{
+      "id" => "sub_1",
+      "latest_invoice" => nil,
+      "pending_setup_intent" => %{"client_secret" => "seti_1_secret"}
+    })
+  end
+
   defp respond_tracking_customer_creation(%{request_path: "/v1/customers"} = conn, test_pid) do
     send(test_pid, :customer_created)
     json(conn, %{"id" => "cus_1"})
@@ -114,6 +152,36 @@ defmodule CodeMySpec.BillingTest do
       assert {:error, :no_client_secret} = Billing.start_subscription(scope, :light)
     end
 
+    test "a trial returns the pending setup intent's secret, not a payment one" do
+      scope = owner_scope()
+
+      stub(&respond_to_trial/1)
+
+      assert {:ok, %{client_secret: "seti_1_secret", intent_type: :setup}} =
+               Billing.start_subscription(scope, :light, trial_days: 7)
+
+      # Same as any other subscription — the trial itself grants nothing here.
+      assert reload(scope.active_account).plan == :free
+    end
+
+    test "reloading before the setup intent is confirmed returns the same secret" do
+      scope = owner_scope()
+      account = scope.active_account
+
+      {:ok, _} =
+        Accounts.update_account(scope, account, %{
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: "sub_1"
+        })
+
+      scope = %{scope | active_account: reload(account)}
+
+      stub(&respond_to_trialing_reload/1)
+
+      assert {:ok, %{client_secret: "seti_1_secret", intent_type: :setup}} =
+               Billing.start_subscription(scope, :light, trial_days: 7)
+    end
+
     test "the customer is created once and reused" do
       scope = owner_scope()
       test_pid = self()
@@ -127,6 +195,35 @@ defmodule CodeMySpec.BillingTest do
       {:ok, _} = Billing.start_subscription(scope, :pro)
 
       refute_received :customer_created
+    end
+  end
+
+  describe "start_subscription/3 with no Stripe secret key configured" do
+    setup do
+      Application.put_env(:code_my_spec, CodeMySpec.Billing.StripeClient,
+        plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+      )
+
+      :ok
+    end
+
+    test "grants the tier directly rather than reaching Stripe at all" do
+      scope = owner_scope()
+
+      assert {:ok, %{client_secret: nil, subscription_id: nil}} =
+               Billing.start_subscription(scope, :light, trial_days: 7)
+
+      assert reload(scope.active_account).plan == :light
+    end
+
+    test "never touches stripe_customer_id or stripe_subscription_id" do
+      scope = owner_scope()
+
+      {:ok, _} = Billing.start_subscription(scope, :pro)
+
+      account = reload(scope.active_account)
+      assert account.stripe_customer_id == nil
+      assert account.stripe_subscription_id == nil
     end
   end
 
@@ -221,6 +318,42 @@ defmodule CodeMySpec.BillingTest do
     test "an event for an unknown account changes nothing" do
       assert {:error, :unknown_account} =
                Billing.apply_event(event("invoice.payment_succeeded", Ecto.UUID.generate()))
+    end
+
+    test "a subscription created trialing grants the tier immediately, before any charge" do
+      scope = owner_scope()
+      account = scope.active_account
+
+      :ok =
+        Billing.apply_event(
+          event("customer.subscription.created", account.id, %{
+            "object" => "subscription",
+            "id" => "sub_1",
+            "status" => "trialing",
+            "metadata" => %{"account_id" => account.id, "tier" => "light"}
+          })
+        )
+
+      reloaded = reload(account)
+      assert reloaded.plan == :light
+      assert reloaded.stripe_subscription_id == "sub_1"
+    end
+
+    test "a subscription created without a trial grants nothing" do
+      scope = owner_scope()
+      account = scope.active_account
+
+      :ok =
+        Billing.apply_event(
+          event("customer.subscription.created", account.id, %{
+            "object" => "subscription",
+            "id" => "sub_1",
+            "status" => "incomplete",
+            "metadata" => %{"account_id" => account.id, "tier" => "light"}
+          })
+        )
+
+      assert reload(account).plan == :free
     end
 
     test "an event carrying no account reference is refused" do

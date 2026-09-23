@@ -178,7 +178,13 @@ defmodule CodeMySpec.CodeMode.Catalog do
 
   def out_of_scope(registered, allowed) do
     registered
-    |> Enum.map(& &1.name())
+    # A registered component is a map, the same shape `describe/2` reads, not a
+    # module: `&1.name()` called it as a function and raised. The clause above
+    # answers `[]` for `nil`, so this only ran for an agent with a scoped tools
+    # list — which is every agent `Agents.start_agent/2` creates, and none of
+    # the ones the evals were creating until they started writing the column.
+    # `run_script` crashed there rather than naming the tools out of scope.
+    |> Enum.map(&to_string(Map.fetch!(&1, :name)))
     |> Enum.reject(&(Map.has_key?(@excluded, &1) or &1 in allowed))
     |> Enum.sort()
   end

@@ -77,6 +77,15 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     "lib/code_my_spec_local_web/live/projects/form.ex" => "local desktop UI",
     "lib/code_my_spec/project_sync/file_watcher_server.ex" => "watches a local checkout",
 
+    # The same case as `boot_version.ex` above: not resolving a caller's
+    # project, but naming this server process's own checkout — so a
+    # `Runner.Local`-booted workspace's harness can be told to run straight
+    # from it instead of a separately-released install. A request handler
+    # reads this at script-generation time, but the directory it names is
+    # never the request's; it is wherever this server itself was started.
+    "lib/code_my_spec/workspaces/harness_source/checkout.ex" =>
+      "names this server's own checkout for a booted workspace's harness to run from, not a caller's project",
+
     # Path arithmetic, not file access.
     "lib/code_my_spec/utils/paths.ex" => "Path.relative_to/2, touches no file"
   }

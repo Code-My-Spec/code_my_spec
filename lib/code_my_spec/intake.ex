@@ -16,7 +16,9 @@ defmodule CodeMySpec.Intake do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Agents.Phase,
       CodeMySpec.Analytics,
+      CodeMySpec.Conversations,
       CodeMySpec.Events,
       CodeMySpec.Faults,
       CodeMySpec.Personas,
@@ -31,6 +33,7 @@ defmodule CodeMySpec.Intake do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Intake.{Plan, Planner, PlansRepository}
   alias CodeMySpec.Personas
   alias CodeMySpec.Projects
@@ -267,6 +270,53 @@ defmodule CodeMySpec.Intake do
   def change_names(%Plan{} = plan, attrs \\ %{}), do: Plan.names_changeset(plan, attrs)
 
   @doc """
+  Fills a plan in directly from one form, no conversation involved.
+
+  For a visitor who wants `/build/procedural` instead of the chat. Lands on
+  `:planned` in one write, same as a model call finishing would — signup,
+  payment and boot all read the plan row alone and cannot tell which door
+  produced it.
+  """
+  @spec plan_procedurally(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def plan_procedurally(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.procedural_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc "A form-backing changeset for the procedural form."
+  @spec change_procedural(Plan.t(), map()) :: Ecto.Changeset.t()
+  def change_procedural(%Plan{} = plan, attrs \\ %{}), do: Plan.procedural_changeset(plan, attrs)
+
+  @doc """
+  The tier suggested for this visitor, before they have confirmed one.
+
+  Not a decision — `confirm_tier/2` still requires an explicit choice, and
+  this is only what the form pre-selects. A visitor who said they are not
+  technical could never act on the free, self-hosted option regardless of
+  what it costs, so cloud is what they are shown first; a technical visitor
+  is offered the choice on equal footing, cloud still first because it is
+  what most people actually want.
+  """
+  @spec suggested_location(Plan.t()) :: Plan.location()
+  def suggested_location(%Plan{technical: true}), do: :local
+  def suggested_location(%Plan{}), do: :cloud
+
+  @doc "Confirms which tier the visitor is actually buying."
+  @spec confirm_tier(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def confirm_tier(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.confirm_tier_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc "A form-backing changeset for the tier confirmation, defaulted to the suggested one."
+  @spec change_tier(Plan.t()) :: Ecto.Changeset.t()
+  def change_tier(%Plan{} = plan) do
+    Plan.confirm_tier_changeset(plan, %{location: plan.location || suggested_location(plan)})
+  end
+
+  @doc """
   Whether a visitor has already confirmed the account/project names.
 
   The same signal `confirmed_names/2` in `transcript/3` uses: `location` is
@@ -399,12 +449,41 @@ defmodule CodeMySpec.Intake do
     with {:ok, scope} <- ensure_account(scope, plan),
          {:ok, project} <- Projects.create_project(scope, %{name: plan.project_name}) do
       record_persona(scope, project, plan)
+      carry_conversation(scope, project, plan)
 
       plan
       |> Plan.conversion_changeset(scope.active_account, project)
       |> PlansRepository.update()
     end
   end
+
+  # The interview borrows `conversations`' shape before any agent exists to
+  # have it — `find_or_create_session_conversation/3`'s own moduledoc says so.
+  # Copied here rather than left for the agent's own conversation to somehow
+  # discover it later, because the plan and the project's agent conversation
+  # answer different questions forever after this: one is a stranger talking
+  # before anything was built, the other is a record of what got built.
+  # `find_or_create_agent_conversation/3` adopts this same row once a real
+  # agent starts (matched on the `"intake:"` prefix), so the visitor's history
+  # and the agent's own turns end up as one scroll rather than two.
+  #
+  # Deliberately not part of the `with` above, same reasoning as
+  # `record_persona/3` beside it: a visitor who cannot get a project at all
+  # because this write failed is worse than one whose history starts empty.
+  defp carry_conversation(%Scope{active_account: %Account{} = account}, project, %Plan{} = plan) do
+    session_id = "intake:#{plan.id}"
+
+    {:ok, conversation} =
+      Conversations.find_or_create_session_conversation(account.id, project.id, session_id)
+
+    plan |> transcript() |> Enum.each(&echo_turn(conversation, &1))
+  end
+
+  defp echo_turn(conversation, %{from: :agent, text: text}),
+    do: Conversations.add_message(conversation, :assistant, text)
+
+  defp echo_turn(conversation, %{from: :visitor, text: text}),
+    do: Conversations.add_message(conversation, :user, text)
 
   # Who the visitor said they are building for, as a persona on the project.
   #

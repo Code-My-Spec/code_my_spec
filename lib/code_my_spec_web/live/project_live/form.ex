@@ -15,6 +15,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
 
   alias CodeMySpec.{Mail, Projects}
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Workspaces.PreviewAddress
 
   @impl true
   def render(assigns) do
@@ -92,6 +93,25 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
           type="text"
           label="Google Analytics Property ID"
         />
+        <div :if={@live_action == :edit} class="fieldset mb-2">
+          <label>
+            <span class="label mb-1">Preview sign-in origins</span>
+          </label>
+          <div>
+            <button
+              type="button"
+              phx-click="open_origins_modal"
+              class="btn btn-sm"
+              data-test="open-preview-origins-modal"
+            >
+              Manage ({length(@preview_origins)})
+            </button>
+          </div>
+          <p class="text-xs opacity-70 mt-1">
+            Domains the previewed app's own sign-in may send the preview frame to, beyond its own
+            preview origin.
+          </p>
+        </div>
         <div class="fieldset mb-2">
           <label>
             <span class="label mb-1">Deploy Key</span>
@@ -227,6 +247,80 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
           </button>
         </div>
       </section>
+
+      <dialog
+        :if={@origins_modal_open}
+        id="preview-origins-modal"
+        class="modal modal-open"
+        data-test="preview-origins-modal"
+      >
+        <div class="modal-box">
+          <h3 class="text-lg font-semibold">Preview sign-in origins</h3>
+          <p class="text-sm opacity-70 mb-4">
+            Domains the previewed app's own sign-in may send the preview frame to, beyond its own
+            preview origin.
+          </p>
+
+          <ul class="mb-4 space-y-1">
+            <li
+              :for={origin <- @preview_origins}
+              data-test={"preview-origin-#{origin}"}
+              class="flex items-center justify-between gap-2 rounded bg-base-200 px-3 py-1.5"
+            >
+              <span class="font-mono text-sm">{origin}</span>
+              <button
+                type="button"
+                phx-click="remove_preview_origin"
+                phx-value-origin={origin}
+                aria-label={"Remove #{origin}"}
+                class="btn btn-ghost btn-xs"
+              >
+                <.icon name="hero-x-mark" class="size-4" />
+              </button>
+            </li>
+            <li
+              :if={@preview_origins == []}
+              data-test="preview-origins-empty"
+              class="text-sm opacity-60"
+            >
+              No extra origins allowed.
+            </li>
+          </ul>
+
+          <.form
+            for={%{}}
+            phx-submit="add_preview_origin"
+            data-test="add-preview-origin-form"
+            class="flex gap-2"
+          >
+            <input
+              type="text"
+              name="origin"
+              placeholder="example.com"
+              class="input input-bordered input-sm flex-1"
+              data-test="new-preview-origin"
+            />
+            <button type="submit" class="btn btn-sm btn-primary">Add</button>
+          </.form>
+          <p :if={@origin_error} data-test="origin-error" class="text-error text-sm mt-2">
+            {@origin_error}
+          </p>
+
+          <div class="modal-action">
+            <button
+              type="button"
+              phx-click="close_origins_modal"
+              data-test="close-preview-origins-modal"
+              class="btn"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button type="button" phx-click="close_origins_modal">close</button>
+        </form>
+      </dialog>
     </Layouts.app>
     """
   end
@@ -252,6 +346,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     |> assign(:form, to_form(Projects.change_project(socket.assigns.current_scope, project)))
     |> assign_domain_state(project)
     |> maybe_load_domain_state()
+    |> assign_origins_state(project)
   end
 
   defp apply_action(socket, :new, _params) do
@@ -263,6 +358,17 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     |> assign(:deploy_key_value, nil)
     |> assign(:form, to_form(Projects.change_project(socket.assigns.current_scope, project)))
     |> assign_domain_state(nil)
+    |> assign_origins_state(nil)
+  end
+
+  # A new project has nothing to manage yet — the modal control only shows
+  # for `:edit` — but the assigns are still set so the template can reference
+  # them unconditionally.
+  defp assign_origins_state(socket, project) do
+    socket
+    |> assign(:origins_modal_open, false)
+    |> assign(:preview_origins, PreviewAddress.extra_frame_origins(project))
+    |> assign(:origin_error, nil)
   end
 
   defp assign_domain_state(socket, project) do
@@ -286,6 +392,34 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
       )
 
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
+  end
+
+  def handle_event("open_origins_modal", _params, socket) do
+    {:noreply, assign(socket, :origins_modal_open, true)}
+  end
+
+  def handle_event("close_origins_modal", _params, socket) do
+    {:noreply, assign(socket, :origins_modal_open, false)}
+  end
+
+  def handle_event("add_preview_origin", %{"origin" => origin}, socket) do
+    origin = String.trim(origin)
+    origins = socket.assigns.preview_origins
+
+    cond do
+      origin == "" ->
+        {:noreply, socket}
+
+      origin in origins ->
+        {:noreply, assign(socket, :origin_error, "#{origin} is already allowed.")}
+
+      true ->
+        save_preview_origins(socket, origins ++ [origin])
+    end
+  end
+
+  def handle_event("remove_preview_origin", %{"origin" => origin}, socket) do
+    save_preview_origins(socket, List.delete(socket.assigns.preview_origins, origin))
   end
 
   def handle_event("generate_deploy_key", _params, socket) do
@@ -388,6 +522,26 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  # Applied immediately rather than staged for the main form's own "Save" —
+  # each add/remove is a complete, independent change, and holding it in
+  # `@form` until the unrelated project fields are also submitted would lose
+  # it on a page navigated away from mid-edit.
+  defp save_preview_origins(socket, origins) do
+    case Projects.update_project(socket.assigns.current_scope, socket.assigns.project, %{
+           preview_extra_frame_origins: origins
+         }) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:preview_origins, origins)
+         |> assign(:origin_error, nil)}
+
+      {:error, _changeset} ->
+        {:noreply, assign(socket, :origin_error, "Could not save that change.")}
     end
   end
 

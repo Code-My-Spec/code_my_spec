@@ -9,6 +9,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Agents,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
+      CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users,
@@ -20,6 +21,10 @@ defmodule CodeMySpec.Notifications do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
@@ -344,13 +349,15 @@ defmodule CodeMySpec.Notifications do
 
   Broadcasts the decision on PubSub so the waiting SSE connection receives it.
   """
-  def resolve_permission_request(id, decision) when decision in ~w(allow deny) do
+  def resolve_permission_request(id, decision, answer \\ nil)
+
+  def resolve_permission_request(id, decision, answer) when decision in ~w(allow deny) do
     case Repo.get(PermissionRequest, id) do
       nil ->
         {:error, :not_found}
 
       %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
-        resolve_agent_tap_out(id, decision)
+        resolve_agent_tap_out(id, decision, answer)
 
       %{status: "pending"} = request ->
         request
@@ -381,7 +388,7 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp resolve_agent_tap_out(id, decision) do
+  defp resolve_agent_tap_out(id, decision, answer) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
@@ -417,8 +424,196 @@ defmodule CodeMySpec.Notifications do
       )
 
       broadcast_notifications_changed(updated.user_id)
+      wake_if_still_in_the_loop(updated, answer)
       {:ok, updated}
     end
+  end
+
+  # Denying a tap-out puts the agent back in the loop, and nothing else was
+  # going to notice. `Work.consider_*` is edge-triggered on a graph change, a
+  # finished task, or continuous being switched on — a person answering a gate
+  # is none of those, so an agent that had work the whole time goes on waiting
+  # for a change that is not coming. Measured on the math project 2026-09-22:
+  # coding sat eligible and idle for eight minutes after its tap-out was denied,
+  # and the four roles behind it waited with it.
+  #
+  # Only on `deny`. `allow` takes the agent out of the loop, which is what it
+  # asked for, and waking it would be answering the opposite question.
+  #
+  # In a Task because this is reachable from inside the harness project channel,
+  # and `Transport.Harness` dispatches by calling that channel's own process —
+  # `:calling_self` kills it and cancels every turn on the copy.
+  defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id} = request, answer)
+       when is_binary(agent_id) do
+    case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
+      %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
+        scope = %Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: copy_id
+        }
+
+        # Told before woken, and that ordering is the whole of it.
+        #
+        # The decision clears the gate on this side; the agent only knows what
+        # is in its own transcript, and the last thing there is its own "I have
+        # asked to leave and am waiting". Woken without being told, it reads
+        # that, concludes it is still waiting, and stops — then the next wake
+        # does it again. Measured on the math project 2026-09-22: the deny
+        # landed, and coding answered "No change. Tap-out request af0dddfd still
+        # pending. Stopping." every three seconds until it was taken out of the
+        # loop by hand. The wake added in this same function is what turned a
+        # silent stall into a spin, so this is its other half rather than a
+        # separate fix.
+        notice = tap_out_denied_notice(answer, request)
+
+        # A person saying "go and work" outranks the agent's own last refusal.
+        # `Work` refuses to re-offer work an agent has already declined, which
+        # is what stops it spinning — but this deny IS the answer to that
+        # refusal, so without clearing the mark the wake below would be
+        # suppressed and the deny would do nothing at all.
+        {:ok, _cleared} = Work.clear_decline(scope, agent)
+
+        # The notice goes in the turn rather than into the transcript ahead of
+        # it. Recorded separately it is history the agent reads beside its own
+        # last conclusion, and its own conclusion wins — measured twice, with
+        # the resolved issue named by id nine seconds before the agent called
+        # that same id unresolved. `offer_turn_with/3` makes the correction the
+        # thing the agent is answering. It records the prompt itself, so the
+        # notice still appears in the transcript exactly once.
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          deliver_denial(scope, agent, copy_id, notice)
+        end)
+
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp wake_if_still_in_the_loop(_request, _answer), do: :ok
+
+  # In the turn when the agent can take one; recorded when it cannot.
+  #
+  # An agent mid-turn, reserved, or holding a task is not admissible, and it
+  # still has to be told — so that case falls back to the old shape rather than
+  # dropping the notice.
+  defp deliver_denial(scope, agent, copy_id, notice) do
+    case Work.offer_turn_with(scope, agent, notice) do
+      {:ok, ref} when is_binary(ref) ->
+        :ok
+
+      _not_admissible ->
+        Conversations.record_sent_to_agent(agent, notice)
+        Work.consider_copy(scope, copy_id, :tap_out_denied)
+    end
+  end
+
+  # The reason carries, when the decider gave one.
+  #
+  # `answer_notification` has always accepted an `answer`, and for a permission
+  # it went nowhere — the agent got this notice and nothing else. That is the
+  # difference between "you are wrong that there is nothing to do" and telling
+  # it *why*, and an agent with only the former re-reads its own transcript,
+  # finds whatever it last concluded, and concludes it again.
+  #
+  # Measured on the math project 2026-09-22: QA's tap-out on a preview outage
+  # was denied with an answer saying the outage was fixed, the URL was back to
+  # 200, and which attempt to invalidate. None of it reached the agent, which
+  # went on reporting the app unreachable — an outage that had ended four
+  # minutes earlier — until it was stopped by hand.
+  defp tap_out_denied_notice(answer, request) do
+    base = """
+    Your request to leave the loop was declined. You are still in it, and there
+    is work for your role — that is why it was declined rather than granted.
+
+    Do not wait on this any longer: it is answered. Carry on from
+    `get_next_requirement`. If what you were blocked on has not changed, say so
+    against the thing that is blocking you rather than asking to leave again.
+    """
+
+    base
+    |> append_reason(answer)
+    |> append_settled_blockers(request)
+  end
+
+  # Name the agent's own claim back to it when that claim has stopped being true.
+  #
+  # A reason is not enough on its own. Measured three times in one session: an
+  # agent was denied with the fixing commit named in the message, and its next
+  # turns still said "nothing has changed" — it re-reads its transcript, finds
+  # its own last conclusion, and reaches it again, because a generic paragraph
+  # does not contradict anything in particular.
+  #
+  # What broke the loop by hand, every time, was naming the specific statement:
+  # "issue X, which your own request named, is now resolved". So the notice does
+  # that itself when it can — the ids are in the reason the agent wrote, and
+  # their status is a lookup.
+  #
+  # Silent when nothing the request named has moved, which is the honest answer:
+  # in that case the agent's conclusion may well still hold, and the notice
+  # should not imply otherwise.
+  defp append_settled_blockers(notice, nil), do: notice
+
+  defp append_settled_blockers(notice, request) do
+    case settled_blockers(request) do
+      [] ->
+        notice
+
+      settled ->
+        notice <>
+          """
+
+          Specifically, these were named in your own request and have since been
+          resolved:
+
+          #{Enum.map_join(settled, "\n", &"  - #{&1.id} — #{&1.title}")}
+
+          If your last conclusion rested on any of those, it no longer holds.
+          Check before repeating it.
+          """
+    end
+  end
+
+  # Ids the agent wrote into its own reason, that are now resolved issues.
+  #
+  # By project_id rather than through `Issues.list_issues/1`, which reads
+  # `scope.active_project.id` — the loaded association, not the id — so a scope
+  # assembled from an agent row raises inside the repository and the rescue
+  # below would quietly answer "nothing has changed", which is the exact
+  # failure this function exists to prevent.
+  defp settled_blockers(%{agent_id: agent_id, tool_input: input}) when is_binary(agent_id) do
+    reason = MapAccess.get(input, :reason) || ""
+
+    with true <- is_binary(reason) and reason != "",
+         %{project_id: project_id} <- Repo.get(Agent, agent_id) do
+      project_id
+      |> Issues.resolved_in_project()
+      |> Enum.filter(&String.contains?(reason, &1.id))
+    else
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp settled_blockers(_request), do: []
+
+  defp append_reason(base, nil), do: base
+  defp append_reason(base, ""), do: base
+
+  defp append_reason(base, answer) do
+    base <>
+      """
+
+      Why it was declined:
+
+      #{answer}
+
+      This is new information from whoever answered you. Treat it as current and
+      check it against what you last concluded before repeating that conclusion.
+      """
   end
 
   defp apply_tap_out_decision(request) do

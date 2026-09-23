@@ -84,7 +84,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
              device: device,
              root: payload["root"]
            ),
-         {:ok, harness} <- report_root(harness, payload["root"]),
+         {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
          :ok <-
@@ -479,7 +479,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       ids
     )
 
-    {:reply, :ok, socket}
+    {:reply, :ok, consider_once(socket)}
   end
 
   # What the box is carrying, from the box.
@@ -803,6 +803,53 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # The one moment we know what is running on this copy, which is the moment to
+  # ask whether any of it should be working.
+  #
+  # `Work.consider_*` is edge-triggered — a graph change, a finished task,
+  # continuous being switched on — and a restart is none of those. So a promote
+  # parked the whole fleet until the main agent's cadence came round, twenty
+  # minutes by default, at exactly the point a restart has just stranded
+  # reservations and discarded turns. Measured on the math project 2026-09-22:
+  # three promotes, and after each one every role sat idle over work that was
+  # ready the whole time.
+  #
+  # Here rather than at application boot, which is where this was tried first
+  # and did not work. The boot task runs while the agent rows still say what the
+  # last shutdown left them saying; the harness reconnects and re-registers them
+  # a moment later, so the sweep asked an empty board and woke nobody. This
+  # message *is* the re-registration, so by the time it returns there is
+  # something to ask about.
+  #
+  # Once per join, not per report. `agents_running` arrives with every manifest,
+  # and admission is guarded but not free — `graph_work?/2` is a graph read per
+  # idle agent. A join is a harness that has just (re)connected, which is the
+  # case with something to catch.
+  #
+  # In a Task because `Transport.Harness` resolves this copy's holder and calls
+  # it, and the holder is this channel: calling from here is `:calling_self`,
+  # which kills the channel and cancels every agent's turn on the copy. That is
+  # the outage this session started with.
+  defp consider_once(%{assigns: %{considered_agents?: true}} = socket), do: socket
+
+  defp consider_once(socket) do
+    scope = socket.assigns.scope
+    copy_id = scope.active_working_copy_id
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
+
+      # And the agents `consider_copy/4` cannot reach: a restart discards the
+      # turn but leaves the task held, and admission refuses an agent holding
+      # one. That combination is the thing a reconnect is most likely to have
+      # just created, and it is the one case this sweep used to walk straight
+      # past.
+      Agents.Work.resume_held_tasks(scope, copy_id)
+    end)
+
+    assign(socket, :considered_agents?, true)
   end
 
   # Unknown copy answers false. A correction we cannot attribute to the main
@@ -2035,10 +2082,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the field existed does not send one, and its identity is unaffected either
   # way, because the root is recorded about the harness rather than used to
   # find it.
-  defp report_root(harness, root) when is_binary(root) and root != "",
-    do: WorkingCopies.report_root(harness, root)
+  #
+  # Corrects any agent's stale `working_copy` snapshot in the same beat as
+  # the working copy's own root, not just at read time — `LaunchRequest.for/1`
+  # sends `agent.working_copy` verbatim on a restore, so a row started against
+  # the old path would otherwise keep offering it forever, and restore fails
+  # with `:working_copy_missing` against a checkout that just joined correctly.
+  defp report_root(scope, harness, root) when is_binary(root) and root != "" do
+    with {:ok, harness} <- WorkingCopies.report_root(harness, root) do
+      {:ok, _count} = Agents.sync_working_copy_root(scope, harness.id, harness.root)
+      {:ok, harness}
+    end
+  end
 
-  defp report_root(harness, _), do: {:ok, harness}
+  defp report_root(_scope, harness, _), do: {:ok, harness}
 
   # Story 968. The checkout's config is the source; this is the server's copy of
   # it, kept the way `root` is, so the web app can render a frame at an address

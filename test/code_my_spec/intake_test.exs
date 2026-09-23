@@ -5,6 +5,8 @@ defmodule CodeMySpec.IntakeTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Plan
   alias CodeMySpec.Personas
@@ -107,6 +109,157 @@ defmodule CodeMySpec.IntakeTest do
     end
   end
 
+  describe "plan_procedurally/2" do
+    defp procedural_attrs(overrides \\ %{}) do
+      Map.merge(
+        %{
+          account_name: "Acme",
+          project_name: "Widget Tracker",
+          who_uses: "warehouse staff",
+          needs_sign_in: true,
+          separate_copies: false,
+          technical: false
+        },
+        overrides
+      )
+    end
+
+    # Both steps: the details form, then the tier a real visitor would have
+    # to confirm separately once `location` is nil. Tests that need a plan
+    # ready to hand to `convert/2` go through both rather than reaching into
+    # `confirm_tier/2` directly, so they exercise the same order a browser
+    # would.
+    defp planned_procedurally(overrides \\ %{}) do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(overrides))
+      {:ok, plan} = Intake.confirm_tier(plan, %{location: "cloud"})
+      plan
+    end
+
+    test "fills the plan in and lands on :planned, location still unanswered" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:ok, filled} = Intake.plan_procedurally(plan, procedural_attrs())
+
+      assert filled.status == :planned
+      assert filled.procedural == true
+      assert filled.account_name == "Acme"
+      assert filled.project_name == "Widget Tracker"
+      assert filled.who_uses == "warehouse staff"
+      assert filled.needs_sign_in == true
+      assert filled.separate_copies == false
+      assert filled.technical == false
+      assert filled.location == nil, "the tier is a separate question — see confirm_tier/2"
+      assert filled.shaping_turns == [], "no chat happened, so nothing shaped this plan"
+    end
+
+    test "a plan filled in this way is not marked procedural until it is" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      refute plan.procedural
+    end
+
+    test "still requires what the plan card requires" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:error, changeset} =
+               Intake.plan_procedurally(plan, procedural_attrs(%{account_name: ""}))
+
+      assert %{account_name: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "requires an answer to whether the visitor is technical" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert {:error, changeset} =
+               Intake.plan_procedurally(plan, procedural_attrs() |> Map.delete(:technical))
+
+      assert %{technical: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    # The whole point: nothing downstream of this — signup, `convert/2`,
+    # `IntakeLive.Workspace`'s payment and boot — reads `plan.status` for
+    # anything but the `:converted` short-circuit, so a plan that skipped the
+    # chat has to be indistinguishable from one that didn't by the time it
+    # gets here.
+    test "converts exactly like a plan the conversation produced" do
+      scope = user_scope_fixture()
+      plan = planned_procedurally()
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+      assert converted.status == :converted
+      assert converted.project_id
+      assert converted.account_id
+    end
+
+    # Same funnel, same downstream effect — a persona from who_uses, exactly
+    # as `convert/2`'s "the project gets a persona" test proves for the chat.
+    test "creates a persona for who_uses, same as the chat pipe" do
+      scope = user_scope_fixture()
+      plan = planned_procedurally()
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+
+      project_scope = %{scope | active_project_id: converted.project_id}
+
+      assert [persona] = Personas.list_personas(project_scope)
+      assert persona.name == "warehouse staff"
+    end
+  end
+
+  describe "suggested_location/1" do
+    test "suggests cloud for a visitor who is not technical" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: false}))
+
+      assert Intake.suggested_location(plan) == :cloud
+    end
+
+    test "suggests local for a visitor who is technical — the free tier they could act on" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      assert Intake.suggested_location(plan) == :local
+    end
+
+    test "suggests cloud before the visitor has answered at all" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+
+      assert Intake.suggested_location(plan) == :cloud
+    end
+  end
+
+  describe "confirm_tier/2" do
+    test "sets the tier the visitor actually confirmed, not just the suggestion" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      assert Intake.suggested_location(plan) == :local
+
+      assert {:ok, confirmed} = Intake.confirm_tier(plan, %{location: "cloud"})
+      assert confirmed.location == :cloud
+    end
+
+    test "requires a tier — this is a choice, not a default" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs())
+
+      assert {:error, changeset} = Intake.confirm_tier(plan, %{})
+      assert %{location: ["can't be blank"]} = errors_on(changeset)
+    end
+  end
+
+  describe "change_tier/2" do
+    test "pre-selects the suggested tier for the form" do
+      {:ok, plan} = Intake.start_plan(Intake.new_session_token())
+      {:ok, plan} = Intake.plan_procedurally(plan, procedural_attrs(%{technical: true}))
+
+      changeset = Intake.change_tier(plan)
+
+      assert Ecto.Changeset.get_field(changeset, :location) == :local
+    end
+  end
+
   describe "convert/2" do
     # `who_uses` was collected from the first conversation and used only to
     # write a summary. The project was created without a persona, and that is
@@ -131,6 +284,37 @@ defmodule CodeMySpec.IntakeTest do
 
       assert persona.name == "salon owners"
       assert persona.persona_type == :proto
+    end
+
+    # The `agent-conversation` page reads `Conversations`, not `Plan`/`Turn` —
+    # before this, a project born from guided intake landed there with no
+    # sign the visitor had ever said anything, even though the whole plan is
+    # a conversation. `find_or_create_session_conversation/3` already existed
+    # for exactly this ("the story interview... only borrowed the shape");
+    # nothing ever called it from here.
+    test "carries the shaping conversation into a conversation the agent page can show" do
+      scope = user_scope_fixture()
+      plan = planned_plan("a booking tool for hair salons")
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+
+      {:ok, conversation} =
+        Conversations.find_or_create_session_conversation(
+          converted.account_id,
+          converted.project_id,
+          "intake:#{converted.id}"
+        )
+
+      texts = conversation |> Conversations.list_messages() |> Enum.map(&Message.text/1)
+
+      assert "a booking tool for hair salons" in texts,
+             "the visitor's own first message never reached the agent's own conversation"
+
+      assert Enum.any?(texts, &(&1 =~ "Widget Tracker")),
+             "confirming the plan is part of the record everywhere else in the transcript"
     end
 
     test "a plan that never said who it is for still converts" do

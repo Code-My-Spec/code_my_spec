@@ -45,6 +45,8 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
+  alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
@@ -96,6 +98,14 @@ defmodule CodeMySpec.Requirements do
   def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
 
   @doc """
+  What is served against every entity recomputed from its inputs now — the
+  instrument for the event path, which stamps no fingerprint. See
+  `RequirementGraph.served_vs_recomputed/1`. Reports; changes nothing.
+  """
+  @spec served_vs_recomputed(Scope.t()) :: map()
+  def served_vs_recomputed(%Scope{} = scope), do: RequirementGraph.served_vs_recomputed(scope)
+
+  @doc """
   What the rows say about whether the graph recomputes incrementally.
 
   Read-only, and from the rows rather than from a log: every pass stamps
@@ -124,6 +134,65 @@ defmodule CodeMySpec.Requirements do
   """
   @spec backlog_report(Scope.t()) :: map()
   def backlog_report(%Scope{} = scope), do: BacklogReport.build(scope)
+
+  @doc """
+  Every declared event kind, and whether anything can apply it.
+
+  The vocabulary is a closed list on purpose — `GraphInputs.event/6` refuses a
+  kind that is not in it — so "what can move the graph" is answerable, and this
+  is the answer plus what each kind currently costs.
+
+  A kind that falls back is not a defect. Handlers arrive one at a time and the
+  projection is correct in the meantime, only slower: an unhandled event still
+  names its entities and is recomputed from them. What would be a defect is a
+  kind falling back and nobody knowing, because that is a full recompute on
+  every occurrence wearing the same label as an applied one.
+
+  So the debt is a list rather than a silence, and it is published rather than
+  living only in a test, because the thing it describes changes whenever a
+  writer or a handler is added.
+  """
+
+  @spec event_vocabulary() :: [%{kind: String.t(), applied: boolean()}]
+  def event_vocabulary do
+    handled = MapSet.new(Handlers.handled_kinds())
+
+    Enum.map(GraphInputs.kinds(), fn kind ->
+      %{kind: kind, applied: MapSet.member?(handled, kind)}
+    end)
+  end
+
+  @doc """
+  The refusals the writer API makes, asked rather than triggered.
+
+  Two guarantees hold the vocabulary closed and the routing honest: a kind that
+  was never declared cannot be emitted, and a writer that does not say whose
+  answers it moves is refused rather than given a default. Both were enforced
+  only by raising, which made them demonstrable only by attempting the thing
+  they exist to prevent — so neither was visible anywhere.
+
+  `GraphInputs.check/2` is the same check `event/6` applies, so this reports the
+  live rule rather than a description of it. Each entry is `refused?` plus the
+  explanation a writer would have been given.
+  """
+  @spec emit_guarantees() :: [
+          %{claim: String.t(), probe: String.t(), refused?: boolean(), because: String.t() | nil}
+        ]
+  def emit_guarantees do
+    [
+      {"An event the graph has no vocabulary for is refused", "a kind nobody declared",
+       GraphInputs.check("a_kind_nobody_declared", :project_wide)},
+      {"A writer that does not say whose answers it moves is refused",
+       "a declared kind, with no vantage",
+       GraphInputs.check(List.first(GraphInputs.kinds()), nil)}
+    ]
+    |> Enum.map(fn {claim, probe, result} ->
+      %{claim: claim, probe: probe, refused?: result != :ok, because: because(result)}
+    end)
+  end
+
+  defp because({:error, message}), do: message |> String.split("\n") |> List.first()
+  defp because(:ok), do: nil
 
   @doc """
   Which row-space answered this scope, and whose tree those rows are about.
@@ -239,8 +308,8 @@ defmodule CodeMySpec.Requirements do
   is never stale — `computed_at` says when, and `nil` means just now.
   """
   @spec cached_all(Scope.t()) :: {[map()], DateTime.t() | nil}
-  def cached_all(%Scope{} = scope) do
-    {{nodes, _edges}, computed_at} = RequirementGraph.cached_graph(scope)
+  def cached_all(%Scope{} = scope, opts \\ []) do
+    {{nodes, _edges}, computed_at} = RequirementGraph.cached_graph(scope, opts)
     {nodes, computed_at}
   end
 

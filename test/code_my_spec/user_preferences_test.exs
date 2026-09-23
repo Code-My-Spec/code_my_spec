@@ -6,8 +6,10 @@ defmodule CodeMySpec.UserPreferencesTest do
   describe "user_preferences" do
     alias CodeMySpec.UserPreferences.UserPreference
 
-    import CodeMySpec.UsersFixtures, only: [user_scope_fixture: 0]
+    import CodeMySpec.UsersFixtures, only: [user_scope_fixture: 0, user_scope_fixture: 2]
     import CodeMySpec.UserPreferencesFixtures
+    import CodeMySpec.AccountsFixtures, only: [account_with_owner_fixture: 1]
+    import CodeMySpec.ProjectsFixtures, only: [project_fixture: 1]
 
     @invalid_attrs %{token: nil, active_account_id: nil, active_project_id: nil}
 
@@ -123,48 +125,68 @@ defmodule CodeMySpec.UserPreferencesTest do
 
     test "select_active_account/2 creates preference with account when none exists" do
       scope = user_scope_fixture()
-      account_id = Ecto.UUID.generate()
+      account = account_with_owner_fixture(scope.user)
 
       assert {:ok, %UserPreference{} = user_preference} =
-               UserPreferences.select_active_account(scope, account_id)
+               UserPreferences.select_active_account(scope, account.id)
 
-      assert user_preference.active_account_id == account_id
+      assert user_preference.active_account_id == account.id
       assert user_preference.user_id == scope.user.id
     end
 
     test "select_active_account/2 updates existing preference" do
       scope = user_scope_fixture()
       user_preference_fixture(scope)
-      account_id = Ecto.UUID.generate()
+      account = account_with_owner_fixture(scope.user)
 
       assert {:ok, %UserPreference{} = user_preference} =
-               UserPreferences.select_active_account(scope, account_id)
+               UserPreferences.select_active_account(scope, account.id)
 
-      assert user_preference.active_account_id == account_id
+      assert user_preference.active_account_id == account.id
       assert user_preference.user_id == scope.user.id
+    end
+
+    test "select_active_account/2 refuses an account the user is not a member of" do
+      scope = user_scope_fixture()
+      other_account = account_with_owner_fixture(user_scope_fixture().user)
+
+      assert {:error, :not_a_member} =
+               UserPreferences.select_active_account(scope, other_account.id)
     end
 
     test "select_active_project/2 creates preference with project when none exists" do
       scope = user_scope_fixture()
-      project_id = Ecto.UUID.generate()
+      account = account_with_owner_fixture(scope.user)
+      project = project_fixture(user_scope_fixture(scope.user, account))
 
       assert {:ok, %UserPreference{} = user_preference} =
-               UserPreferences.select_active_project(scope, project_id)
+               UserPreferences.select_active_project(scope, project.id)
 
-      assert user_preference.active_project_id == project_id
+      assert user_preference.active_project_id == project.id
       assert user_preference.user_id == scope.user.id
     end
 
     test "select_active_project/2 updates existing preference" do
       scope = user_scope_fixture()
       user_preference_fixture(scope)
-      project_id = Ecto.UUID.generate()
+      account = account_with_owner_fixture(scope.user)
+      project = project_fixture(user_scope_fixture(scope.user, account))
 
       assert {:ok, %UserPreference{} = user_preference} =
-               UserPreferences.select_active_project(scope, project_id)
+               UserPreferences.select_active_project(scope, project.id)
 
-      assert user_preference.active_project_id == project_id
+      assert user_preference.active_project_id == project.id
       assert user_preference.user_id == scope.user.id
+    end
+
+    test "select_active_project/2 refuses a project on an account the user is not a member of" do
+      scope = user_scope_fixture()
+      other_user_scope = user_scope_fixture()
+      other_account = account_with_owner_fixture(other_user_scope.user)
+      project = project_fixture(user_scope_fixture(other_user_scope.user, other_account))
+
+      assert {:error, :not_a_member} =
+               UserPreferences.select_active_project(scope, project.id)
     end
 
     test "generate_token/1 creates preference with token when none exists" do

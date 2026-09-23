@@ -136,14 +136,42 @@ defmodule CodeMySpec.Requirements.Projection do
 
   @doc """
   The graph as `{nodes, edges}`, in the same shape `compute_graph/1` returns.
+
+  ## Options
+
+    * `:source` — `{nodes_source, edges_source}` to read instead of the tables
+      readers read. The pass passes `Shadow.pass_target/0` and
+      `Shadow.pass_edges/0`; everybody else takes the default.
+
+  The default is `requirements` and it is correct in both directions of
+  `graph_event_is_source`, because that flag decides *which writer fills those
+  tables*, not which tables readers read. `Shadow.event_target/0` resolves to
+  `requirements` precisely when the event path owns them.
+
+  The pass is the one caller that means something else. `recompute_stale/4`
+  asks "what did I last write" to decide what to recompute, and
+  `verify_round_trip/4` asks "did my write land" — both questions about the
+  pass's own rows, which inverted are not the ones readers read. Reading the
+  wrong table there is silent and total: inverted, the pass loaded the event
+  path's complete projection, found every entity current against it — they were
+  — and wrote nothing into its own empty table, then reported a graph it had
+  never written. Nothing raised, and the round-trip check compared a fresh
+  computation against somebody else's rows.
+
+  It stayed hidden while a moved topology sent every pass down the whole-graph
+  path: that path rewrites every row it read into whichever table it writes, so
+  both tables filled whatever the read had been. A pass that recomputes only
+  what moved has nothing to rewrite, and the mismatch surfaces immediately.
   """
-  @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
-  def load(%Scope{active_project_id: project_id} = scope, ctx) do
-    rows = project_rows(project_id, vantage(scope), ctx)
+  @spec load(Scope.t(), map(), keyword()) :: {[Requirement.t()], [map()]}
+  def load(%Scope{active_project_id: project_id} = scope, ctx, opts \\ []) do
+    {node_source, edge_source} = Keyword.get(opts, :source, {Node, Edge})
+
+    rows = project_rows(node_source, project_id, vantage(scope), ctx)
     nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
 
     by_id = Map.new(rows, &{&1.id, &1})
-    {nodes, edges_for(rows, by_id, ctx)}
+    {nodes, edges_for(edge_source, rows, by_id, ctx)}
   end
 
   @doc """
@@ -251,11 +279,11 @@ defmodule CodeMySpec.Requirements.Projection do
   # deleted without its rows going with it would otherwise reappear as a node,
   # and `on_delete: :delete_all` covers the referential half but not a row whose
   # component id was nulled.
-  defp project_rows(project_id, working_copy_id, ctx) do
+  defp project_rows(source, project_id, working_copy_id, ctx) do
     component_ids = Enum.map(ctx.components, & &1.id)
     story_ids = Enum.map(ctx.stories, & &1.id)
 
-    Node
+    source
     |> where(
       [n],
       n.component_id in ^component_ids or n.story_id in ^story_ids or
@@ -396,11 +424,11 @@ defmodule CodeMySpec.Requirements.Projection do
   # An edge is only in the graph if both its nodes rehydrated. One that lost an
   # end is an edge to a node the definitions no longer describe, and keeping it
   # would gate a node on something unreachable.
-  defp edges_for(rows, by_id, ctx) do
+  defp edges_for(source, rows, by_id, ctx) do
     keys = Map.new(rows, &{&1.id, node_key(&1, ctx)})
     ids = Map.keys(by_id)
 
-    Edge
+    source
     |> where([e], e.from_requirement_id in ^ids and e.to_requirement_id in ^ids)
     |> Repo.all()
     |> Enum.flat_map(fn edge ->

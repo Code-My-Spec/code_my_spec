@@ -13,18 +13,39 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Agents.{OperatingRules, RoleBrief, ToolSets}
+  alias CodeMySpec.Agents.{Agent, LaunchRequest, OperatingRules, RoleBrief, ToolSets}
 
   describe "every role carries them" do
-    test "all four roles get the rules, not just the one that needed them" do
+    test "the rules travel once, ahead of every role's own brief" do
+      # They used to be appended inside `RoleBrief.for/1`, which put the
+      # universal half *inside* the role section. Now `LaunchRequest` sends them
+      # as their own field and `SystemPrompt.compose/1` puts them first, so the
+      # check is that they are on the wire for every role rather than inside it.
       for role <- RoleBrief.roles() do
-        brief = RoleBrief.for(role)
+        request = LaunchRequest.for(%Agent{role: to_string(role), id: Ecto.UUID.generate()})
 
-        assert brief =~ "How this system works",
+        assert request["universal"] =~ "How this system works",
                "#{role} was left to infer the machinery. Every role runs against the " <>
                  "same harness, and the one that guesses wrong is whichever one " <>
                  "happens to meet it first."
+
+        refute RoleBrief.for(role) =~ "How this system works",
+               "#{role}'s brief carries the universal rules inside it, which puts them " <>
+                 "after what the agent is for instead of before it."
       end
+    end
+
+    test "the loop is in the rules, so it ships without any file on disk" do
+      rules = OperatingRules.text()
+
+      assert rules =~ "get_next_requirement"
+      assert rules =~ "start_task"
+
+      assert :binary.match(rules, "get_next_requirement") < :binary.match(rules, "start_task"),
+             "asking has to be named before claiming — that is the order the eval asserts"
+
+      assert :binary.match(rules, "## The loop") < :binary.match(rules, "## How this system works"),
+             "the loop is the first thing an agent needs and belongs at the top"
     end
 
     test "a role we have no brief for is still told nothing" do

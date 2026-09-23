@@ -40,6 +40,21 @@ defmodule CodeMySpec.Agents.ToolSets do
   # list once per story and tested each tool's own dispatch rather than the
   # surface it is mounted on. Granting the client tests the surface as a caller.
   # John's call, 2026-09-15.
+  #
+  # `read_project_file`/`write_project_file` because all four of QA's own
+  # project requirements are `path_exists` checks on files QA writes:
+  # `qa_setup` wants `.code_my_spec/qa/plan.md`, `qa_journey_plan` and
+  # `qa_journey_execute` want their two docs beside it, and
+  # `qa_journey_wallaby` wants tests under `test/journeys/`. The role carried
+  # no file tool of any kind, so it could not satisfy a single one of them —
+  # `submit_qa_result` files a verdict on a story and writes nothing to disk.
+  #
+  # Found the same day and the same way as `install_credo_checks` above: the
+  # chain reached `qa_setup`, and the only thing standing between the agent and
+  # its own requirement was a tool nobody had given it. Two roles, one bug —
+  # which is the argument for checking every role's set against the
+  # requirements that name it rather than against the last agent that
+  # complained.
   @qa ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -48,6 +63,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_qa_attempts submit_qa_result invalidate_qa_attempt
     call_mcp_server
     list_knowledge read_knowledge semantic_search
+    read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
     web_search web_fetch
     browser
@@ -92,6 +108,18 @@ defmodule CodeMySpec.Agents.ToolSets do
   # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
   # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
   # between the grant that did nothing and the one that worked.
+  # `install_credo_checks` is coding's because `spex_boundary_ready` is coding's.
+  #
+  # The requirement asks for framework Credo checks on disk and the tool that
+  # installs them was in no role's set at all — registered, reachable by
+  # nobody. A coding agent worked the task properly, read the workflow and the
+  # spex philosophy, called it, and was told "it exists, and this kind of agent
+  # is not given it". It cancelled the task and stopped, which is exactly what
+  # the rules ask of an agent facing a missing tool, and the chain stopped with
+  # it. Measured 2026-09-22 on the math project's first autonomous run.
+  #
+  # The same shape as the `triage_issues` case below: a task prompt naming a
+  # tool the role that receives it cannot call.
   @coding ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -102,6 +130,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     list_knowledge read_knowledge semantic_search refresh_embeddings
     read_project_file write_project_file
     list_tasks clear_problems list_problems
+    install_credo_checks
     web_search web_fetch
     browser
     promote

@@ -262,13 +262,34 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   # Never the reason an evaluation fails. The task is complete either way, and a
   # nudge that could take that down would be worse than a nudge that is missed —
   # the next completion sends it again.
+  # Off this process, and that is the whole of `d7f466a1`'s outage.
+  #
+  # An in-BEAM agent finishing a task is running inside the harness project
+  # channel, so this ran there too — and `Transport.Harness.request_work_turn/5`
+  # resolves the copy's holder and `GenServer.call`s it. The holder *is* that
+  # channel. The BEAM names it exactly: `channel DIED reason={:calling_self,
+  # {GenServer, :call, [#PID<..>, {:request_work_turn, ..`.
+  #
+  # The channel then died, the harness rejoined, and
+  # `account_for_interrupted_turns/2` told every agent on the copy that its turn
+  # was discarded — so one agent completing its work cancelled everybody else's.
+  # Measured on the math project 2026-09-22: product satisfied `issues_triaged`,
+  # and coding and qa both lost turns they were part-way through.
+  #
+  # The `rescue` below never stood a chance: `:calling_self` is an exit, not an
+  # exception.
+  #
+  # `GraphWatcher.maybe_request_work/2` has always done it this way. Async also
+  # suits what this is: the comment above already says a missed nudge is the
+  # acceptable failure and the next completion sends it again — so nothing here
+  # wants the answer, only the attempt.
   defp reconsider_other_agents(scope, task) do
     case scope.active_working_copy_id do
       nil ->
         :ok
 
       copy_id ->
-        Agents.Work.consider_copy(scope, copy_id, :task_completed, Map.get(task, :agent_id))
+        nudge(scope, copy_id, Map.get(task, :agent_id))
     end
   rescue
     error ->
@@ -277,6 +298,14 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       )
 
       :ok
+  end
+
+  defp nudge(scope, copy_id, except_agent_id) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.Work.consider_copy(scope, copy_id, :task_completed, except_agent_id)
+    end)
+
+    :ok
   end
 
   defp dispatch_evaluate(module, scope, task, opts) do

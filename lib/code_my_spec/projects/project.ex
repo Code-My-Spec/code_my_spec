@@ -95,6 +95,14 @@ defmodule CodeMySpec.Projects.Project do
     # provider; used to fetch DNS records and trigger verification.
     field :resend_domain_id, :string
 
+    # Extra origins the previewed app's own OAuth flows may send the preview
+    # iframe to, beyond the built-in accounts.google.com/github.com pair — see
+    # `CodeMySpec.Workspaces.PreviewAddress.extra_frame_origins/1`. Same
+    # nil-vs-[] shape as `setup_options` below: nil is "never customized" and
+    # resolves to the built-in pair, [] is "explicitly cleared, allow nothing
+    # extra", and any other list is exactly what is allowed.
+    field :preview_extra_frame_origins, {:array, :string}
+
     # Which parts of setup this project runs. Stored as strings and read back
     # through `setup_options/1`, which is where the default lives — a project
     # that has never chosen gets everything, because setup's job is a working
@@ -183,6 +191,7 @@ defmodule CodeMySpec.Projects.Project do
       :domain,
       :domain_verified_at,
       :resend_domain_id,
+      :preview_extra_frame_origins,
       :setup_options,
       :default_working_copy_id
     ])

@@ -11,6 +11,7 @@ defmodule CodeMySpec.Intake.Plan do
   @foreign_key_type :binary_id
 
   @type status :: :describing | :answering | :planned | :converted
+  @type location :: :local | :cloud
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
@@ -24,6 +25,9 @@ defmodule CodeMySpec.Intake.Plan do
           first_build: String.t() | nil,
           account_name: String.t() | nil,
           project_name: String.t() | nil,
+          location: location() | nil,
+          technical: boolean() | nil,
+          procedural: boolean(),
           account_id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -62,6 +66,18 @@ defmodule CodeMySpec.Intake.Plan do
     # that has not reached the confirmation card has not been asked, and that is
     # a different state from either answer.
     field :location, Ecto.Enum, values: [:local, :cloud]
+
+    # "Where should it run" is not a question a non-technical visitor can
+    # answer — self-hosting is not a thing they could act on either way. This
+    # is the question underneath it: whether they could ever act on the free,
+    # self-hosted option at all. Answering it does not set `location` by
+    # itself — see `Intake.suggested_location/1` and `confirm_tier_changeset/2`.
+    field :technical, :boolean
+
+    # Set only by `procedural_changeset/2`. Nullable rather than defaulted at
+    # the column so an existing row's silence stays silence — every row this
+    # matters for is written by that changeset, which always sets it.
+    field :procedural, :boolean, default: false
 
     belongs_to :account, Account
     belongs_to :project, Project
@@ -155,6 +171,62 @@ defmodule CodeMySpec.Intake.Plan do
     ])
     |> validate_length(:account_name, min: 1, max: 100)
     |> validate_length(:project_name, min: 1, max: 100)
+  end
+
+  @doc """
+  Everything the conversation would have inferred, given directly instead —
+  for a visitor who wants the plain form rather than the chat. Lands on
+  `:planned`, the same status `plan_changeset/2` reaches after a model call:
+  same arrival, a different door, and everything past this page (signup,
+  payment, boot) reads `plan.status`/`plan.location`/names alone and cannot
+  tell which door was used.
+
+  Asks the same four generator inputs the shaping conversation asks — who
+  uses it, sign-in, separate copies — plus the names the plan card asks for.
+  This page exists to be audited against the chat pipe, not to be a shorter
+  version of it: dropping a field here would mean the audit was never
+  actually looking at what a visitor is asked.
+
+  `location` is deliberately not here — see `confirm_tier_changeset/2`. This
+  changeset asks whether the visitor is technical instead, which is the
+  question a person can actually answer; where it runs is a conclusion from
+  that, confirmed as its own step once they have seen what it costs.
+  """
+  def procedural_changeset(%__MODULE__{} = plan, attrs) do
+    plan
+    |> cast(attrs, [
+      :account_name,
+      :project_name,
+      :who_uses,
+      :needs_sign_in,
+      :separate_copies,
+      :technical
+    ])
+    |> validate_required([
+      :account_name,
+      :project_name,
+      :needs_sign_in,
+      :separate_copies,
+      :technical
+    ])
+    |> validate_length(:account_name, min: 1, max: 100)
+    |> validate_length(:project_name, min: 1, max: 100)
+    |> validate_length(:who_uses, max: 500)
+    |> put_change(:status, :planned)
+    |> put_change(:procedural, true)
+  end
+
+  @doc """
+  Confirms the tier the visitor is actually buying, once they have seen what
+  each one costs. Separate from `procedural_changeset/2` on purpose: "are you
+  technical" and "which of these two priced things do you want" are two
+  different questions, asked one after the other rather than folded into a
+  single guess the visitor never sees priced.
+  """
+  def confirm_tier_changeset(%__MODULE__{} = plan, attrs) do
+    plan
+    |> cast(attrs, [:location])
+    |> validate_required([:location])
   end
 
   # Cloud unless they say otherwise. Not a default column — a plan abandoned
