@@ -76,16 +76,17 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
 
     [task] = agent.tasks
 
-    {:ok, agent} =
-      case task_status do
-        :active -> TaskOwner.activate_task(scope, agent, task.id)
-        :completed -> TaskOwner.complete_task(scope, agent, task.id)
-      end
-
+    {:ok, agent} = settle(scope, agent, task, task_status)
     {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{status: :stopped})
 
     {agent, task}
   end
+
+  defp settle(scope, agent, task, :active),
+    do: TaskOwner.activate_task(scope, agent, task.id)
+
+  defp settle(scope, agent, task, :completed),
+    do: TaskOwner.complete_task(scope, agent, task.id)
 
   test "starting the role resumes the stopped agent that still holds the task", ctx do
     {stopped, task} = stopped_agent_with(ctx.scope, ctx.copy, :active)
