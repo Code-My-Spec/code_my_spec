@@ -19,7 +19,22 @@ defmodule CodeMySpec.FileEdits do
   truth: for an agent with no session, the agent *is* the unit of attribution,
   and using its id keeps one row per agent per file, exactly what the unique
   index is for. It also keeps these rows trivially separable from real session
-  rows, which matters because `clear_edits/1` is keyed on that column.
+  rows, which matters because `consume_edits/2` and `consume_edits_by_agent/3`
+  are keyed on that column.
+
+  ## The ledger has no window, and reading it is not the same as consuming it
+
+  `get_edited_files/1` answers every path a session has ever recorded, with no
+  expiry — d726cfda: a session open 16 days accumulated 314 rows, and a
+  no-task stop that reads this ledger as "what changed" saw all of them,
+  every time, forever. `Validation.remote_changed_files/3`'s own contract
+  ("empty means the agent wrote nothing this session, which is a quiet stop")
+  was never true on its own — nothing here ever forgets. `consume_edits/2` and
+  `consume_edits_by_agent/3` are what make it true: a caller that has acted on
+  a read (enqueued analysis against it, decided which findings are its own)
+  deletes exactly the rows it read, so the next stop with nothing new written
+  sees an empty ledger rather than the same 16 days. Deleting before acting on
+  a read would lose edits a failed stop never got to use.
   """
 
   use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
@@ -103,5 +118,44 @@ defmodule CodeMySpec.FileEdits do
     |> where([e], e.external_session_id == ^external_session_id and e.agent_id == ^agent_id)
     |> select([e], e.file_path)
     |> Repo.all()
+  end
+
+  @doc """
+  Forget that a session wrote these paths — call only once a caller has acted
+  on `get_edited_files/1`'s answer for them.
+
+  Scoped to the exact paths handed back by the read it is consuming, not to
+  every row under the session, so a write that lands between the read and
+  this call (a subagent editing while the stop that read the ledger is still
+  running) is never deleted unread. See the moduledoc for why this exists.
+  """
+  @spec consume_edits(String.t(), [String.t()]) :: :ok
+  def consume_edits(_external_session_id, []), do: :ok
+
+  def consume_edits(external_session_id, paths) when is_list(paths) do
+    FileEdit
+    |> where([e], e.external_session_id == ^external_session_id and e.file_path in ^paths)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  @doc """
+  The same, scoped to a specific agent within a session — what
+  `get_edited_files_by_agent/2` reads.
+  """
+  @spec consume_edits_by_agent(String.t(), String.t(), [String.t()]) :: :ok
+  def consume_edits_by_agent(_external_session_id, _agent_id, []), do: :ok
+
+  def consume_edits_by_agent(external_session_id, agent_id, paths) when is_list(paths) do
+    FileEdit
+    |> where(
+      [e],
+      e.external_session_id == ^external_session_id and e.agent_id == ^agent_id and
+        e.file_path in ^paths
+    )
+    |> Repo.delete_all()
+
+    :ok
   end
 end
