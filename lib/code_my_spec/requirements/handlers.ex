@@ -219,6 +219,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "component_linked" => [:links],
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
+    "questions_answered" => [:stories],
     "code_on_running_copy" => [:stories],
     "qa_complete" => [:qa],
     # The rollups. `qa_integration_plan` is handed the file profile it would
@@ -271,6 +272,18 @@ defmodule CodeMySpec.Requirements.Handlers do
     "work_dispatched" => {DispatchChecker, :dispatched?},
     "qa_integration_plan" => {QaIntegrationPlan, :delegate}
   }
+
+  @doc """
+  Every requirement name this module knows how to settle from an event —
+  `@requirement_profiles` and `@delegate_requirements` both, since a name in
+  either is reachable without the silent-skip gap dfb8ef8f found: a
+  requirement definition added to the graph and to
+  `story_graph()`/`project_graph()` but not to either of these is never
+  settled by any event handled here, for as long as it exists.
+  """
+  @spec settleable_requirement_names() :: [String.t()]
+  def settleable_requirement_names,
+    do: Map.keys(@requirement_profiles) ++ Map.keys(@delegate_requirements)
 
   # Component work is the presence of its implementation file.
   @file_requirements %{
@@ -519,6 +532,32 @@ defmodule CodeMySpec.Requirements.Handlers do
       default: true,
       default_details: details(%{status: "Three Amigos sealed"}),
       except: unsealed_verdicts(profile, scope)
+    }
+  end
+
+  # dfb8ef8f / 56cf5697: `"story_changed"` is a handled event kind
+  # (`@dirties`), which discards the fallback safe-recompute for everything
+  # it can move — a requirement with no `settle/3` clause here is not marked
+  # stale by that path, it is silently skipped and keeps whatever verdict it
+  # already had, forever. `questions_answered` shipped with a definition and
+  # a `@requirement_profiles` entry but no clause, so any story whose
+  # questions changed after its initial computation (answering one,
+  # releasing a story that gets fresh Three Amigos) never had this
+  # requirement re-settled again. Measured on Broken Oaths: three stories
+  # stuck `STALE READ` forever, two of them with `questions_answered` as
+  # their only unsatisfied requirement.
+  #
+  # From the same preloaded profile `unsealed_verdicts/2` above reads
+  # (`profile.amigos.questions_by_story`), not a fresh query per story — the
+  # whole reason this profile exists is one read per event instead of one
+  # per story.
+  defp settle("questions_answered", %{stories: profile}, _scope) do
+    %{
+      entity_type: "story",
+      name: "questions_answered",
+      default: true,
+      default_details: details(%{status: "No open questions"}),
+      except: open_question_verdicts(profile)
     }
   end
 
@@ -815,6 +854,28 @@ defmodule CodeMySpec.Requirements.Handlers do
       {false, detail} = BddRulesChecker.unsealed_reason(scope, story, profile.amigos)
       change("story", story.id, "three_amigos_complete", false, detail)
     end
+  end
+
+  # The stories with at least one open question, each naming them — mirrors
+  # `unsealed_verdicts/2`'s shape exactly, reading the same preloaded map
+  # rather than querying per story.
+  defp open_question_verdicts(profile) do
+    for story <- profile.stories,
+        open = open_questions(profile.amigos.questions_by_story, story.id),
+        open != [] do
+      detail =
+        details(%{
+          reason: "#{length(open)} open question(s): " <> Enum.map_join(open, "; ", & &1.text)
+        })
+
+      change("story", story.id, "questions_answered", false, detail)
+    end
+  end
+
+  defp open_questions(questions_by_story, story_id) do
+    questions_by_story
+    |> Map.get(story_id, [])
+    |> Enum.filter(&(&1.status == :open))
   end
 
   # A promoted story keeps `Promotion`'s answer, which is not always satisfied:
