@@ -165,4 +165,90 @@ defmodule CodeMySpec.Notifications.InboxTest do
       assert_receive {:pending_notifications_changed}
     end
   end
+
+  describe "a request whose asker has stopped" do
+    # Measured 2026-09-23: 41 pending questions held by one user and not one had
+    # a live asking agent — 35 stopped, 6 with no agent at all. Two that day
+    # genuinely blocked the Broken Oaths fleet and both sat in that list.
+    # John: "I cant get them they are hard to find."
+    defp agent!(scope, status) do
+      {:ok, agent} =
+        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+          provider: "anthropic",
+          engine: :alloy,
+          role: "coding",
+          status: status,
+          working_copy: "/tmp/inbox-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      agent
+    end
+
+    defp question_from!(user_id, agent_id) do
+      {:ok, req} =
+        Notifications.create_question_request(user_id, %{
+          "questions" => [%{"question" => "Which database?", "options" => []}],
+          "agent_id" => agent_id
+        })
+
+      req
+    end
+
+    test "is not pending, because answering it resumes nothing", ctx do
+      scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+      stopped = agent!(scope, :stopped)
+      req = question_from!(scope.user.id, stopped.id)
+
+      ids = Notifications.list_pending_notifications(scope.user.id) |> Enum.map(& &1.id)
+
+      refute req.id in ids,
+             """
+             A question whose named asker has stopped has no process to answer.
+             It is history, and presenting it as outstanding work is what buries
+             the ones that are.
+             """
+
+      _ = ctx
+    end
+
+    test "is still pending while its asker is running", ctx do
+      scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+      running = agent!(scope, :running)
+      req = question_from!(scope.user.id, running.id)
+
+      ids = Notifications.list_pending_notifications(scope.user.id) |> Enum.map(& &1.id)
+
+      assert req.id in ids
+      _ = ctx
+    end
+
+    test "a question with no agent at all stays pending", %{user_id: user_id} do
+      req = question!(user_id)
+
+      ids = Notifications.list_pending_notifications(user_id) |> Enum.map(& &1.id)
+
+      assert req.id in ids,
+             """
+             `MainAgent.holder_for/2` sends an agentless question to the user by
+             design — it came from Claude Code, which talks to the person
+             directly. Absent asker and departed asker are different states and
+             only the second is stale.
+             """
+    end
+
+    test "the badge agrees with the list", ctx do
+      scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+      stopped = agent!(scope, :stopped)
+      _hidden = question_from!(scope.user.id, stopped.id)
+      running = agent!(scope, :running)
+      _shown = question_from!(scope.user.id, running.id)
+
+      assert Notifications.count_pending_notifications(scope.user.id) ==
+               length(Notifications.list_pending_notifications(scope.user.id)),
+             "a badge of 41 over an inbox of 6 is worse than either number alone"
+
+      _ = ctx
+    end
+  end
 end
