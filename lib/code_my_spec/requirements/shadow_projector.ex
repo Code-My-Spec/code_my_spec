@@ -586,7 +586,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       cond do
         # A vantage with no rows has nothing to be partial against, whatever
         # the marks say — the pass's `no_stored_rows`, asked per checkout.
-        not established?(state, vantage) -> run(:everything, state, config)
+        not established?(state, vantage, config) -> run(:everything, state, config)
         unhandled == [] and not shape_moved? -> trust(state, config)
         unhandled == [] -> reproject_topology(state, config, false)
         true -> run_plan(state, unhandled, config)
@@ -609,8 +609,18 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # or found in the table. One query per vantage per process — a vantage that
   # has rows was projected by this process or the one before it, and every
   # mark that arrived in between is still in the queue.
-  defp established?(state, vantage),
-    do: MapSet.member?(state.established_vantages, vantage) or Shadow.projected?(state.scope)
+  #
+  # Rows that predate a definition are not rows to be partial against either.
+  # A release that adds or removes a requirement changes what every entity
+  # should have, and no observation says so — see `Shadow.definitions_covered?/2`.
+  defp established?(state, vantage, config) do
+    MapSet.member?(state.established_vantages, vantage) or
+      (Shadow.projected?(state.scope) and
+         Shadow.definitions_covered?(
+           state.scope,
+           RequirementGraph.defined_names(Preloader.topology_context(state.scope), config)
+         ))
+  end
 
   # The checkouts readers asked about that nothing here has written or seen.
   defp unestablished(state),

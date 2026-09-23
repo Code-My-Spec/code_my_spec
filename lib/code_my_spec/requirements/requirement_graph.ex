@@ -1757,6 +1757,51 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"
   defp audit_edge({from, to}), do: "#{audit_label(from)} -> #{audit_label(to)}"
 
+  @doc """
+  The requirement names the templates define for the entities in `ctx`, by
+  entity type — for stories and the project the whole filtered template, for
+  each top-level component type its parent- and self-scoped definitions.
+
+  What `Shadow.definitions_covered?/2` compares a vantage's rows against: a
+  release that adds or removes a definition leaves rows that no handler can
+  bring in line, since handlers settle rows and never create them. Child-scoped
+  definitions are left out because whether a child carries one depends on the
+  child's type, and a comparison that can be wrong is worse than a narrower one
+  that cannot.
+  """
+  @spec defined_names(map(), map()) :: %{
+          story: MapSet.t(String.t()),
+          project: MapSet.t(String.t()),
+          component: %{String.t() => MapSet.t(String.t())}
+        }
+  def defined_names(ctx, config) do
+    {top_level, _children_by_parent} = component_families(ctx)
+
+    component =
+      top_level
+      |> Enum.map(& &1.type)
+      |> Enum.uniq()
+      |> Map.new(fn type ->
+        names =
+          type
+          |> RequirementDefinitionData.graph_for_type()
+          |> filter_definitions_by_config(config)
+          |> Enum.filter(&(&1.node_scope in [:parent, :self]))
+          |> MapSet.new(& &1.name)
+
+        {type, names}
+      end)
+
+    %{
+      story: template_names(RequirementDefinitionData.story_graph(), config),
+      project: template_names(RequirementDefinitionData.project_graph(), config),
+      component: component
+    }
+  end
+
+  defp template_names(template, config),
+    do: template |> maybe_filter_devops(config) |> MapSet.new(& &1.name)
+
   # No guard for "nothing stored", though the first version had one on the
   # grounds that a cold project is not a stale one. It is the same state as the
   # failure this exists to catch: rows that were written and then lost read
@@ -1767,8 +1812,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # with entities counts every one of them as `appeared` and reports; zero rows
   # on a project with no stories and no components reports nothing, because
   # there is genuinely nothing to compute.
+  # The fingerprint is the pass's instrument. The event path stamps none, so
+  # under it every row it has touched reads as stale for good — 528 warnings
+  # in one morning on dev, none of them a wrong verdict. `served_vs_recomputed/1`
+  # is what judges those rows.
   defp log_stale_read(scope, ctx, stored) do
-    if stale_read_logging?(), do: do_log_stale_read(scope, ctx, stored)
+    if stale_read_logging?() and not Shadow.inverted?(),
+      do: do_log_stale_read(scope, ctx, stored)
+
     :ok
   end
 
