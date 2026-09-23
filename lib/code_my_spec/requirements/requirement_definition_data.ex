@@ -181,7 +181,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         # Named for the state QA depends on rather than for the merge, because
         # the merge is one way to reach it and not the only one.
-        description: "Story's code is on the checkout the application runs from",
+        #
+        # f4786ba1: the name still reads as a git fact, and `Promotion.promoted/2`
+        # reads one column (`stories.promoted_version`) — a stamp written by a
+        # promote sweep, not a live ancestry check. The two usually agree because
+        # a promote runs the sweep right after merging, but they can miss each
+        # other: a story whose specs went fresh-green moments after a promote's
+        # stamp sweep already ran has its code on main and no stamp yet. An agent
+        # that verifies git ancestry directly, sees the code is there, and reads
+        # this as unsatisfied has correctly found a stamp that hasn't caught up —
+        # not a lying gate. The description says so because the name does not,
+        # and cannot without a rename wide enough (cache-invalidation profiles,
+        # `@completion_names`, a story titled after this exact name) to be its
+        # own change.
+        description:
+          "Story's code is on the checkout the application runs from — reads " <>
+            "the promotion stamp (a story is marked promoted once a promote " <>
+            "sweep runs), not a live git-ancestry check. The two can briefly " <>
+            "disagree with what `git log` shows on the running checkout.",
         prerequisites: [3],
         execution_type: :main_agent
       }),
