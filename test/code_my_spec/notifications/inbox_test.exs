@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Notifications.InboxTest do
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Notifications
 
   import CodeMySpec.UsersFixtures
@@ -173,7 +174,7 @@ defmodule CodeMySpec.Notifications.InboxTest do
     # John: "I cant get them they are hard to find."
     defp agent!(scope, status) do
       {:ok, agent} =
-        CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        AgentsRepository.create_agent(scope, %{
           provider: "anthropic",
           engine: :alloy,
           role: "coding",
