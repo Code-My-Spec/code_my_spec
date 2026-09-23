@@ -125,7 +125,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :questions_answered?},
         satisfied_by: AgentTasks.ResolveQuestions,
         artifact_type: :specification,
-        description: "Every question raised against this story, before or after sealing, is resolved or escalated",
+        description:
+          "Every question raised against this story, before or after sealing, is resolved or escalated",
         prerequisites: [5]
       }),
       new!(%{
@@ -215,7 +216,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # Was [3] — straight off `bdd_specs_passing`. That is what let nine
         # stories reach QA on 2026-09-09 whose code had never left the coding
         # agent's worktree; QA failed all nine for code that was never there.
-        prerequisites: [18],
+        #
+        # Now [6] rather than [18]: known issues on the story are cleared before
+        # QA spends a pass. John: "we have to move story issues resolved before
+        # qa because that's the logical progression." The deadlock that forced
+        # it is on `story_issues_resolved` below.
+        prerequisites: [6],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
@@ -266,8 +272,30 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.FixStoryIssues,
         artifact_type: :review,
         description:
-          "Accepted issues QA filed against this story are resolved at the project's blocking severity",
-        prerequisites: [4],
+          "Accepted issues against this story are resolved at the project's blocking severity",
+        # Was [4] — after `qa_complete`, on the reasoning that this gate is about
+        # what a story's own QA pass raised. `IssuesChecker.story_resolved?/2`
+        # does not read it that way: it counts *any* accepted issue carrying this
+        # `story_id` at or above the threshold, whoever filed it and whenever.
+        # Product files them, coding files them, and `Issues.attribute_to_story/3`
+        # sweeps unattributed `:app` issues onto whichever story's QA attempt is
+        # being submitted.
+        #
+        # So an issue could sit on a story before QA ever ran, block the QA
+        # agent's task, and be unreachable — the node that clears it was gated
+        # behind the QA it was preventing. Measured 2026-09-23 on Broken Oaths
+        # story 947: QA's `qa_complete` task blocked on issue 71869489, and
+        # `FixStoryIssues` could not be offered because `qa_complete` was its
+        # prerequisite. Nothing in the graph broke the circle.
+        #
+        # The property the old order was protecting is not lost. "A story does
+        # not release carrying a blocker its own QA pass raised" is enforced by
+        # the checker, not by the ordering: this node is in
+        # `StoryExecution.@completion_names`, so an issue QA files afterwards
+        # takes the story back out of completion whenever it arrives. Ordering
+        # only decides when the work is *offered*, and offering it before QA
+        # spends a pass on a story with known blockers is the better trade.
+        prerequisites: [18],
         execution_type: :main_agent
       }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
@@ -307,7 +335,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.Deploy,
         artifact_type: :deployment,
         description: "Story is deployed to UAT and its health check passed",
-        prerequisites: [6],
+        # Follows `qa_complete` rather than `story_issues_resolved`, which it
+        # used to, because those two swapped places above. Deploy still comes
+        # last in the story chain; the node it waits on is now the QA pass.
+        prerequisites: [4],
         execution_type: :main_agent
       })
     ]

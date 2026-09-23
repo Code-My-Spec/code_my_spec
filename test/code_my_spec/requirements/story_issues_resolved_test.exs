@@ -3,11 +3,24 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
   The per-story issue gate, and the template-id collision that placing it
   exposed.
 
-  `story_issues_resolved` sits between `qa_complete` and `deploy` so a story
-  does not release carrying a blocker its own QA pass raised. It reads only
-  issues attributed to that story — the project queue is the end-of-cycle
-  `issues_resolved` node's business, and a gate that waited on it could not
-  be passed by whoever owns the story.
+  `story_issues_resolved` sits between `code_on_running_copy` and `qa_complete`
+  so known blockers on a story are cleared before QA spends a pass on it. It
+  reads only issues attributed to that story — the project queue is the
+  end-of-cycle `issues_resolved` node's business, and a gate that waited on it
+  could not be passed by whoever owns the story.
+
+  It used to sit after `qa_complete`, on the reasoning that it is about what a
+  story's own QA pass raised. The checker never read it that way —
+  `IssuesChecker.story_resolved?/2` counts any accepted issue carrying the
+  `story_id`, whoever filed it — so an issue could land before QA ran, block the
+  QA agent's task, and be unreachable, because the node that clears it was gated
+  behind the QA it was preventing. Broken Oaths story 947, 2026-09-23.
+
+  The old order's stated property survives the move: a story still cannot
+  release carrying a blocker its own QA pass raised, because this node is in
+  `StoryExecution.@completion_names` and an issue filed afterwards takes the
+  story back out of completion whenever it arrives. Ordering decides when work
+  is offered, not what counts as done.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -37,13 +50,21 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs qa_complete → story_issues_resolved → deploy" do
+    test "the chain runs story_issues_resolved → qa_complete → deploy" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
 
-      assert by_name["story_issues_resolved"].prerequisites == [id_of.("qa_complete")]
-      assert by_name["deploy"].prerequisites == [id_of.("story_issues_resolved")]
+      assert by_name["story_issues_resolved"].prerequisites ==
+               [id_of.("code_on_running_copy")],
+             """
+             Known issues have to be clearable before QA runs. Gated behind
+             qa_complete, an issue that blocked the QA task made the node that
+             would clear it unreachable — the circle that stalled story 947.
+             """
+
+      assert by_name["qa_complete"].prerequisites == [id_of.("story_issues_resolved")]
+      assert by_name["deploy"].prerequisites == [id_of.("qa_complete")]
     end
 
     test "bdd_specs_exist gates on three_amigos_complete, not on deploy" do
@@ -190,7 +211,10 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       {:ok, other} = Stories.create_story(scope, story_attrs("The story it belongs to"))
 
       {:ok, issue} =
-        Issues.create_issue(scope, %{app_issue("Filed against another story") | story_id: other.id})
+        Issues.create_issue(scope, %{
+          app_issue("Filed against another story")
+          | story_id: other.id
+        })
 
       assert 0 == Issues.attribute_to_story(scope, [issue.id], story.id)
       assert Issues.get_issue!(scope, issue.id).story_id == other.id

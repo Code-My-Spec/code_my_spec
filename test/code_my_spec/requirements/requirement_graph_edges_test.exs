@@ -453,6 +453,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # tested in a build that never contained it — which is what happened to nine
     # stories on 2026-09-09, all of them failed for code that was never there.
     test "qa_complete waits on code_on_running_copy, which waits on bdd_specs_passing" do
+      # Now reached through `story_issues_resolved`, which moved in front of
+      # `qa_complete` so a known blocker on the story can be cleared before QA
+      # spends a pass. The property this test exists for is unchanged and still
+      # transitive: nothing lets QA start before the code reaches the running
+      # copy.
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -477,12 +482,19 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert edge?.("bdd_specs_passing", "code_on_running_copy"),
              "code_on_running_copy should follow bdd_specs_passing"
 
-      assert edge?.("code_on_running_copy", "qa_complete"),
-             "qa_complete should wait on the story's code reaching the running copy"
+      assert edge?.("code_on_running_copy", "story_issues_resolved"),
+             "clearing a story's issues should wait on its code reaching the running copy"
+
+      assert edge?.("story_issues_resolved", "qa_complete"),
+             "qa_complete should wait on the story's known issues being resolved"
 
       refute edge?.("bdd_specs_passing", "qa_complete"),
              "the direct edge would let QA start on a story whose code has not " <>
                "left the coding agent's worktree"
+
+      refute edge?.("code_on_running_copy", "qa_complete"),
+             "code_on_running_copy now reaches qa_complete through " <>
+               "story_issues_resolved, not directly"
     end
 
     test "qa_complete is not actionable when bdd_specs_exist is unsatisfied" do
