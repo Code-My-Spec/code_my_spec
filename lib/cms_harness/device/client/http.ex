@@ -42,7 +42,13 @@ defmodule CmsHarness.Device.Client.Http do
   end
 
   defp issued({:ok, %{status: 200, body: %{"device_id" => id} = body}}) when is_binary(id),
-    do: {:ok, %{device_id: id, working_copies: copies(body["working_copies"])}}
+    do:
+      {:ok,
+       %{
+         device_id: id,
+         working_copies: copies(body["working_copies"]),
+         pending_local_projects: pending_local_projects(body["pending_local_projects"])
+       }}
 
   defp issued({:ok, %{status: status, body: body}}), do: {:error, {status, body}}
   defp issued({:error, reason}), do: {:error, reason}
@@ -55,6 +61,19 @@ defmodule CmsHarness.Device.Client.Http do
   end
 
   defp copies(_other), do: %{}
+
+  # Same reasoning as `copies/1`: a server that predates this field, or a
+  # malformed entry within it, reads as "nothing pending" rather than as an
+  # error. A harness that never generates anything today is exactly as safe as
+  # one that generates nothing because there was genuinely nothing offered.
+  defp pending_local_projects(list) when is_list(list) do
+    for %{"id" => id, "name" => name, "app_name" => app_name, "deploy_key" => key} <- list,
+        is_binary(id) and is_binary(name) and is_binary(app_name) and is_binary(key) do
+      %{id: id, name: name, app_name: app_name, deploy_key: key}
+    end
+  end
+
+  defp pending_local_projects(_other), do: []
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)

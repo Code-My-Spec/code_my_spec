@@ -312,6 +312,13 @@ config :code_my_spec, :harness_server_url, "http://127.0.0.1:1"
 # to remember.
 config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 
+# `CmsHarness.Projects.Generator`'s own subprocess calls, pinned for the same
+# reason: the default shells out through several `mix` tasks that take real
+# minutes and need a correctly-versioned `mix cms.new` archive installed on
+# whatever machine runs the suite. Scripted per test via
+# `CodeMySpecTest.ScriptedGeneratorRunner.script/1` instead.
+config :code_my_spec, :generator_runner, CodeMySpecTest.ScriptedGeneratorRunner
+
 # The machine an agent's process is on, without a socket in between.
 #
 # Pinned here because the default reaches `HarnessRegistry` for a channel to a

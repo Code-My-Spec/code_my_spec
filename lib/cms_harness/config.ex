@@ -100,6 +100,19 @@ defmodule CmsHarness.Config do
   end
 
   @doc """
+  Where this harness generates a project nobody chose a directory for.
+
+  `CmsHarness.Projects.Generator`'s only caller: a heartbeat, not a human at a
+  prompt, so there is nobody to ask "where should this go" the way
+  `IntakeLive.Workspace.local_commands/1`'s three lines assume for a person
+  typing `mix cms.new` themselves. `local_state_dir/0`'s own directory —
+  harness-owned space outside any checkout, on the same reasoning that keeps
+  `device.json` there rather than inside one.
+  """
+  @spec projects_root() :: String.t()
+  def projects_root, do: Path.join(local_state_dir(), "projects")
+
+  @doc """
   The credential the socket authenticates with, for a given project.
 
   A user token when someone is signed in on this machine, otherwise a deploy
