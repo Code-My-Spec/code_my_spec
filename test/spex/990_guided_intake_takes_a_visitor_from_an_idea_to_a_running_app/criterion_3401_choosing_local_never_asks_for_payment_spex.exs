@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story990.Criterion3401Spex do
   that decision was made; what still has to hold is that nothing is *charged*
   today, and nothing on our infrastructure is provisioned either way, since
   `local` still never reaches `Workspaces.boot/1`
-  (`IntakeLive.Workspace.mount_workspace/3` still branches to `assign_local/1`
-  once the trial's card is confirmed).
+  (`IntakeLive.Workspace.mount_workspace/3` still branches to
+  `assign_local_status/2` once the trial's card is confirmed, which shows a
+  waiting card rather than booting anything).
   """
 
   use CodeMySpecSpex.Case
