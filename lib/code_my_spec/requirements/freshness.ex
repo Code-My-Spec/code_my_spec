@@ -64,6 +64,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   """
 
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.RequirementDefinitionData
 
   @doc """
   One story's inputs, as a fingerprint.
@@ -299,8 +300,43 @@ defmodule CodeMySpec.Requirements.Freshness do
     %{
       components: hash(components),
       stories: hash(stories),
-      config: hash(config_shape(config))
+      config: hash(config_shape(config)),
+      definitions: hash(definition_shape(ctx))
     }
+  end
+
+  # The edges come from the requirement templates, so a template change is an
+  # edge change and has to move this hash.
+  #
+  # It did not, and the comment on `CachedGraph.topology_fingerprint` said why
+  # without noticing: "it moves when a dependency, a parent or the config moves,
+  # and those are the only things that change an edge". The templates were the
+  # unlisted fourth thing. `config_shape/1` hashes what *filters* the definition
+  # set; nothing hashed the set itself.
+  #
+  # So changing a prerequisite produced an identical topology fingerprint,
+  # `topology_moved?` stayed false, and every partial recompute kept the stale
+  # stored edges. Measured 2026-09-23: `story_issues_resolved` was moved ahead of
+  # `qa_complete` and shipped in v2.0.152. The new module loaded — the rendered
+  # description changed in the same breath — and the served graph went on
+  # offering `qa_complete` whose prerequisite was now unsatisfied, across 17
+  # vantages on two projects. Only the vantage that happened to get an entity
+  # write picked the new shape up. A definition change was inert until unrelated
+  # activity invalidated the cache, which on a quiet project is never.
+  #
+  # Names and prerequisites only. Descriptions, roles and checker config change
+  # what a node *says* or *asks*, never which nodes connect to which, and hashing
+  # them here would recompute every edge on every copy edit.
+  defp definition_shape(ctx) do
+    types = ctx.components |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.sort()
+
+    graphs =
+      [RequirementDefinitionData.story_graph(), RequirementDefinitionData.project_graph()] ++
+        Enum.map(types, &RequirementDefinitionData.graph_for_type/1)
+
+    graphs
+    |> Enum.map(fn graph -> Enum.map(graph, &{&1.id, &1.name, &1.prerequisites}) end)
+    |> Enum.sort()
   end
 
   # An unloaded association is not an empty one. Answering `[]` for it would
