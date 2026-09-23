@@ -955,9 +955,71 @@ defmodule CodeMySpec.Notifications do
 
       broadcast_notifications_changed(updated.user_id)
       deliver_answer_content(updated, released?)
+      wake_after_answer(updated, released?)
       {:ok, updated}
     end
   end
+
+  # The other half of `wake_if_still_in_the_loop/2`, for the other kind of gate.
+  #
+  # That function's own comment already states this defect: "`Work.consider_*`
+  # is edge-triggered on a graph change, a finished task, or continuous being
+  # switched on — a person answering a gate is none of those, so an agent that
+  # had work the whole time goes on waiting for a change that is not coming."
+  # It was fixed for a denied tap-out and left unfixed for an answered question,
+  # which is the same shape with the same cause.
+  #
+  # `deliver_answer_content/2` deliberately says nothing to an idle agent, and
+  # that is right: criterion 3219 exists because content pushed at an idle
+  # machine *starts* a turn, and the answer's own text tells the agent "this does
+  # not resume the task it blocked." The design assumes the agent comes back and
+  # collects it. Nothing brought it back. For an agent whose only work IS the
+  # blocked task, there is no other observation coming.
+  #
+  # So this offers a turn through the work channel rather than pushing the
+  # answer as content — `consider_copy/4` runs the same admissibility and
+  # decline checks every other wake does, so it cannot start a turn for an agent
+  # that should not have one, and it does not put the answer anywhere criterion
+  # 3219 objects to.
+  #
+  # Measured 2026-09-23 on Broken Oaths: three questions answered at 03:25:35
+  # released coding b01a95bb's blocker on story 950's promote. The task stayed
+  # `blocked`, `get_next_requirement` went on answering "ready", and the agent
+  # took no turn for five minutes while the copy's other four roles waited with
+  # it.
+  #
+  # Only when the answer released a blocker — `released?` is already the
+  # question of whether anything was waiting on this. An answer to a question
+  # blocking nothing has nobody to wake.
+  #
+  # In a Task for the same reason the denial path is: this is reachable from
+  # inside the harness project channel, and `Transport.Harness` dispatches by
+  # calling that channel's own process, where `:calling_self` would kill it and
+  # cancel every turn on the copy.
+  defp wake_after_answer(_request, false), do: :ok
+
+  defp wake_after_answer(%{agent_id: agent_id}, true) when is_binary(agent_id) do
+    case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
+      # Mid-turn agents already had the answer handed to them as content.
+      %{turn_started_at: %DateTime{}} ->
+        :ok
+
+      %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
+        scope = %Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: copy_id
+        }
+
+        _ = Task.start(fn -> Work.consider_copy(scope, copy_id, :question_answered) end)
+        :ok
+
+      _idle_or_gone ->
+        :ok
+    end
+  end
+
+  defp wake_after_answer(_request, true), do: :ok
 
   # The answer as content, for an agent that is in the middle of a turn.
   #
