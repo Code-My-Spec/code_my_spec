@@ -849,6 +849,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # past.
       Agents.Work.resume_held_tasks(scope, copy_id)
 
+      # 73d0d505: neither call above reaches a role a restart killed outright
+      # rather than merely interrupted -- both require `status == :running`,
+      # and an agent the harness never reported back in is `:stopped`. Gated
+      # on `stopped_reason == :reaped` so a role a person deliberately stopped
+      # stays stopped; see `Agents.restart_reaped_agents/2`.
+      Agents.restart_reaped_agents(scope, copy_id)
+
       # 1b450fc3: every existing caller of `ensure_cadence/1` (`agents.ex`
       # watch_over/2, set_copy_continuous/3, set_agent_continuous/3) fires on a
       # state *transition* — an agent starting, continuous flipping on. None of
