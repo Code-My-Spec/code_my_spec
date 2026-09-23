@@ -166,6 +166,7 @@ defmodule CodeMySpec.Agents do
          :ok <- main_copy_is_free(scope, attrs),
          :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
+         :start <- resume_holder(scope, attrs),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
       # Carried on the struct rather than stored: the machine needs both, and
@@ -184,6 +185,62 @@ defmodule CodeMySpec.Agents do
       end
     end
   end
+
+  # A stopped agent still holding work is resumed, not replaced.
+  #
+  # `start_agent/2` always created a new row, and a task's ownership *is* which
+  # agent's list it sits in (`Agent`'s own note). So an agent killed mid-task —
+  # which every promote does, because promoting restarts the shared dev server
+  # every working copy on the box is using — left its claims behind on a row
+  # nothing would run again. Starting a replacement produced a second agent for
+  # the same role and copy that could not claim what the first still held.
+  #
+  # Measured 2026-09-23 on Broken Oaths: a promote stopped coding `b01a95bb` at
+  # 01:50:04 while it held `code_on_running_copy` active on story 950 and a
+  # blocked `bdd_specs_passing`. The replacement reported "get_next_requirement's
+  # only offering — story 950's code_on_running_copy — is already claimed by
+  # another agent" and had nothing else to do. Four other stopped agents on that
+  # copy held active tasks the same way. The role was stalled with a live agent
+  # sitting next to its own orphaned work.
+  #
+  # Resuming rather than moving the tasks across is deliberate. Task ids are
+  # referenced from outside the row — `question_requests.task_id` is what a
+  # blocker is keyed on — and `embeds_many ... on_replace: :delete` means
+  # lifting a task out of one list and putting it in another mints a new id and
+  # orphans every blocker pointing at the old one. The row already knows how to
+  # come back: `restart_agent/2` keeps the tasks, the conversation and the
+  # blockers exactly where they are.
+  #
+  # Only for a holder. A stopped agent with nothing unfinished is genuinely
+  # finished, and reviving it instead of starting a clean one would make
+  # `start_agent` unable to ever give a role a fresh start.
+  defp resume_holder(%Scope{} = scope, attrs) do
+    with copy_id when is_binary(copy_id) <- Map.get(attrs, :working_copy_id),
+         role when not is_nil(role) <- Map.get(attrs, :role),
+         %Agent{} = holder <- stopped_holder(scope, copy_id, role) do
+      Logger.info(
+        "[Agents] #{role} on #{copy_id} is resuming stopped agent #{holder.id}, which still " <>
+          "holds #{length(unfinished(holder))} unfinished task(s), rather than starting beside it"
+      )
+
+      restart_agent(scope, holder.id)
+    else
+      _ -> :start
+    end
+  end
+
+  defp stopped_holder(%Scope{} = scope, copy_id, role) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(fn agent ->
+      agent.status == :stopped and agent.working_copy_id == copy_id and
+        to_string(agent.role) == to_string(role) and unfinished(agent) != []
+    end)
+    |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
+  end
+
+  defp unfinished(%Agent{} = agent),
+    do: Enum.filter(agent.tasks || [], &(&1.status in [:active, :blocked]))
 
   # A machine that answered, and answered with nothing.
   #
