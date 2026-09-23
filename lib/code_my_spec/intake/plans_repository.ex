@@ -8,6 +8,7 @@ defmodule CodeMySpec.Intake.PlansRepository do
 
   alias CodeMySpec.Intake.Plan
   alias CodeMySpec.Repo
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @spec get_by_token(String.t()) :: Plan.t() | nil
   def get_by_token(session_token) when is_binary(session_token) do
@@ -38,5 +39,29 @@ defmodule CodeMySpec.Intake.PlansRepository do
   @spec recent(pos_integer()) :: [Plan.t()]
   def recent(limit) when is_integer(limit) and limit > 0 do
     Repo.all(from p in Plan, order_by: [desc: p.inserted_at, desc: p.id], limit: ^limit)
+  end
+
+  @doc """
+  Converted plans, chosen `location: :local`, whose project has no checkout
+  yet.
+
+  "No checkout yet" is derived rather than flagged — a plan needs no
+  `claimed`/`pending` column of its own, because the instant a harness mints
+  this project a working copy (`mix harness.onboard`), it stops matching this
+  query on its own. Nothing has to mark it done.
+  """
+  @spec pending_local(Ecto.UUID.t()) :: [Plan.t()]
+  def pending_local(account_id) when is_binary(account_id) do
+    Repo.all(
+      from p in Plan,
+        as: :plan,
+        where: p.account_id == ^account_id,
+        where: p.status == :converted,
+        where: p.location == :local,
+        where: not is_nil(p.project_id),
+        where:
+          not exists(from wc in WorkingCopy, where: wc.project_id == parent_as(:plan).project_id),
+        preload: [:project]
+    )
   end
 end

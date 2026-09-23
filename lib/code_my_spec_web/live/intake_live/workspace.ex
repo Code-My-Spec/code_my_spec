@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   alias CodeMySpec.Intake.Interview
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.Workspace
 
@@ -153,28 +154,31 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     ~H"""
     <.single_panel>
       <%!--
-        What to run, for a visitor who chose their own machine. There is no
-        container to watch, so the ambient strip is replaced by the one thing
-        they need — and it is the same command a generated application
-        onboards itself with, not a special path for this case.
+        For a visitor who chose their own machine. There is no container to
+        watch, so the ambient strip is replaced by the one thing that
+        actually tells them something: whether their own already-running
+        harness has picked this project up yet. It generates and onboards
+        the project itself once it does — see
+        `CmsHarness.Projects.Generator` — so there is no walkthrough to type
+        any more, only prerequisites and a wait.
       --%>
-      <div :if={@workspace.status == :local} data-test="local-instructions">
-        <p class="text-sm font-medium mb-2">Run it on your machine</p>
+      <div :if={@workspace.status == :awaiting_harness} data-test="local-instructions">
+        <p class="text-sm font-medium mb-2">Waiting for your harness</p>
         <p class="text-sm opacity-70 mb-3">
-          Your project is ready. This runs on your own computer rather than
-          ours, so it assumes a terminal and a few developer tools are already
-          there. If that's not you, the cloud option above needs nothing
-          installed.
+          Your project is ready. Install and start the CodeMySpec harness on
+          your own machine and it will set this project up there
+          automatically — nothing to type once it's running. If that's not
+          you, the cloud option above needs nothing installed.
         </p>
 
         <%!--
-          Named and linked, not assumed. A visitor with none of this installed
-          used to get three shell commands and no way to know why the first
-          one failed — no mention of what a terminal even is, nothing to click
-          (e2a1d37b). This doesn't detect what's actually on their machine —
-          a server-rendered page can't reach into their terminal — so it's
-          guidance, not a guarantee; a real prerequisite-check flow is a
-          bigger, separate piece of work.
+          Named and linked, not assumed. A visitor with none of this
+          installed used to get three shell commands and no way to know why
+          the first one failed — no mention of what a terminal even is,
+          nothing to click (e2a1d37b). This doesn't detect what's actually on
+          their machine — a server-rendered page can't reach into their
+          terminal — so it's guidance, not a guarantee; a real
+          prerequisite-check flow is a bigger, separate piece of work.
         --%>
         <p class="text-xs font-medium uppercase tracking-[0.14em] text-base-content/50 mb-1">
           You'll need
@@ -205,13 +209,32 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
               git
             </a>
           </li>
+          <li>
+            <.link navigate={~p"/install"} class="link">
+              The CodeMySpec harness
+            </.link>
+            , installed and running
+          </li>
         </ul>
 
+        <div class="flex items-center gap-3">
+          <span class="loading loading-spinner loading-xs text-primary"></span>
+          <span class="text-sm opacity-70">Checking for your harness…</span>
+        </div>
+      </div>
+
+      <div :if={@workspace.status == :onboarded} data-test="local-onboarded">
+        <p class="text-sm font-medium mb-2">Your harness has it.</p>
         <p class="text-sm opacity-70 mb-3">
-          Once those are installed, open a terminal in the folder where you
-          keep your code and run:
+          It's set up and running on your own machine.
         </p>
-        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{local_commands(@plan)}</code></pre>
+        <.link
+          navigate={~p"/app/projects/#{@project_id}/agent-conversation"}
+          data-test="open-project-dashboard"
+          class="btn btn-sm btn-primary"
+        >
+          Talk to your agent
+        </.link>
       </div>
 
       <.payment_card
@@ -224,7 +247,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       />
 
       <.boot_status
-        :if={@workspace.status not in [:failed, :local, :awaiting_payment]}
+        :if={@workspace.status not in [:failed, :awaiting_harness, :onboarded, :awaiting_payment]}
         workspace={@workspace}
         app_state={@app_state}
         project_id={@project_id}
@@ -479,9 +502,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   defp workspace_title(_plan), do: "Your workspace"
 
   defp gate_on_payment(socket, scope, %{location: :local}) do
-    gate_new_workspace(socket, scope, :light, [trial_days: 7], fn socket, _scope ->
-      assign_local(socket)
-    end)
+    gate_new_workspace(socket, scope, :light, [trial_days: 7], &assign_local_status/2)
   end
 
   # The real cost of a cloud copy is not the compute — it is the operational
@@ -582,26 +603,50 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
     end
   end
 
-  # A workspace-shaped nothing. The page reads `@workspace.status` in several
-  # places and a nil here would crash the render rather than show the local
-  # path — and `:local` is a real status, not a failure, so it must not fall
-  # into the `:failed` branch either.
-  # Built here rather than inline, because a heredoc indented inside markup is
-  # a compiler warning and a heredoc outdented to satisfy the compiler is
-  # unreadable markup.
-  defp local_commands(plan) do
-    """
-    mix cms.new #{plan.project_name}
-    cd #{plan.project_name}
-    mix harness.onboard
-    """
+  # Once paid, and on every later mount of the same plan — a manual refresh
+  # or a reconnect both land here too, on the same reasoning
+  # `gate_on_payment/3`'s cloud clause already gives for re-subscribing
+  # rather than assuming the first mount is the only one that matters.
+  #
+  # There is no container to watch, so "has this been onboarded" is read
+  # from the one place that would know: a working copy exists for this
+  # project the moment some harness has run `mix harness.onboard` against
+  # it, whether that harness is `CmsHarness.Projects.Generator` picking up
+  # `Intake.pending_local_projects/1` on its own or a visitor who typed the
+  # commands by hand before this existed. `most_recent/1` rather than
+  # `main/1`: nothing designates a first checkout `main` automatically, so a
+  # project with exactly one working copy and no human having visited the
+  # working-copies page yet would read as still-pending forever.
+  defp assign_local_status(socket, scope) do
+    case WorkingCopies.most_recent(scope) do
+      nil ->
+        if connected?(socket), do: schedule_local_poll()
+
+        socket
+        |> assign(:workspace, %{status: :awaiting_harness})
+        |> assign(:app_state, :awaiting_harness)
+
+      _working_copy ->
+        # The agent is what "Talk to your agent" needs to already exist —
+        # started here rather than left for that click, the same reasoning
+        # `assign_workspace/2` already gives for the cloud path, and just as
+        # idempotent to call again on a later mount.
+        start_the_conversation(scope)
+
+        socket
+        |> assign(:workspace, %{status: :onboarded})
+        |> assign(:app_state, :onboarded)
+    end
   end
 
-  defp assign_local(socket) do
-    socket
-    |> assign(:workspace, %{status: :local})
-    |> assign(:app_state, :local)
-  end
+  # A harness announces on its own heartbeat (`CmsHarness.WorkingCopyReporter`,
+  # every 2 minutes) and generation itself can run for real minutes once it
+  # does, so this waits rather than expecting either sooner. Cheap either
+  # way — one query against a column already indexed by `project_id` — and
+  # stopped the moment `assign_local_status/2` finds a working copy, since
+  # that branch never reschedules.
+  @local_poll :timer.seconds(5)
+  defp schedule_local_poll, do: Process.send_after(self(), :poll_local_harness, @local_poll)
 
   defp failed_to_start(socket, scope, plan, reason) do
     Logger.error("[IntakeLive.Workspace] could not start a workspace: #{inspect(reason)}")
@@ -735,8 +780,11 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   # has nothing to provision, so it just shows the run-it-yourself card.
   def handle_event("payment_confirmed", _params, socket) do
     case socket.assigns.plan do
-      %{location: :local} -> {:noreply, assign_local(socket)}
-      _ -> {:noreply, boot_workspace(socket, socket.assigns.scope)}
+      %{location: :local} ->
+        {:noreply, assign_local_status(socket, socket.assigns.scope)}
+
+      _ ->
+        {:noreply, boot_workspace(socket, socket.assigns.scope)}
     end
   end
 
@@ -749,6 +797,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   def handle_info({event, workspace}, socket)
       when event in [:booting, :progress, :running, :failed] do
     {:noreply, assign_workspace(socket, workspace)}
+  end
+
+  # A harness announces on its own schedule, not this page's — see
+  # `schedule_local_poll/0` for why polling is what asks in between.
+  def handle_info(:poll_local_harness, socket) do
+    {:noreply, assign_local_status(socket, socket.assigns.scope)}
   end
 
   # Leaving while it is still coming up is the signal that decides whether

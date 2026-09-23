@@ -195,10 +195,10 @@ defmodule CodeMySpecWeb.IntakeLive.JourneyTest do
 
       # Gated on the trial's card before anything about "run it yourself" shows.
       assert render(view) =~ "7 days free"
-      refute render(view) =~ "mix cms.new"
+      refute render(view) =~ "Waiting for your harness"
 
       html = confirm_payment(view)
-      assert html =~ "mix cms.new"
+      assert html =~ "Waiting for your harness"
 
       assert Workspaces.get_workspace(:sys.get_state(view.pid).socket.assigns.scope) == nil,
              "local never provisions a container on the shared host, trial or not"

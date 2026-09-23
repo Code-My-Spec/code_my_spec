@@ -453,7 +453,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
       html = pay(view)
 
-      assert html =~ "mix cms.new",
+      assert html =~ "Waiting for your harness",
              "the premise failed: this test needs the local branch, which provisions " <>
                "nothing and so never has a workspace row even once trialing is confirmed"
 
@@ -470,7 +470,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       {:ok, _view, html} = live(conn, ~p"/build/workspace")
 
       assert html =~ "7 days free"
-      refute html =~ "mix cms.new"
+      refute html =~ "Waiting for your harness"
     end
 
     test "confirming the trial's card shows the instructions, with no workspace booted",
@@ -481,7 +481,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       {:ok, view, _html} = live(conn, ~p"/build/workspace")
       html = pay(view)
 
-      assert html =~ "mix cms.new"
+      assert html =~ "Waiting for your harness"
       scope = :sys.get_state(view.pid).socket.assigns.scope
       assert Workspaces.get_workspace(scope) == nil
     end
@@ -512,8 +512,73 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       {:ok, _view2, html} = live(conn, ~p"/build/workspace")
 
-      assert html =~ "mix cms.new"
+      assert html =~ "Waiting for your harness"
       refute html =~ "7 days free"
+    end
+
+    test "once some harness has onboarded the project, it shows ready rather than waiting",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+
+      {:ok, _copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "onboarded by a harness",
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      send(view.pid, :poll_local_harness)
+      html = render(view)
+
+      assert html =~ "Your harness has it"
+      assert has_element?(view, "[data-test='local-onboarded']")
+      refute has_element?(view, "[data-test='local-instructions']")
+    end
+
+    test "a reload after the harness already onboarded skips straight to ready",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+      account = scope.active_account
+
+      # The trial has to have actually started — reached the same way the
+      # neighbouring "reload after the trial already started" test does it —
+      # or `paid?/1` reads `:free` on the reload and shows the payment card
+      # again rather than either local state.
+      :ok =
+        CodeMySpec.Billing.apply_event(%{
+          "id" => "evt_trial_started_onboarded",
+          "type" => "customer.subscription.created",
+          "data" => %{
+            "object" => %{
+              "object" => "subscription",
+              "id" => "sub_workspace",
+              "status" => "trialing",
+              "metadata" => %{"account_id" => account.id, "tier" => "light"}
+            }
+          }
+        })
+
+      {:ok, _copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "onboarded by a harness",
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      {:ok, _view2, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Your harness has it"
+      refute html =~ "Waiting for your harness"
     end
   end
 
