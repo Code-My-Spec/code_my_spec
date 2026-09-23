@@ -25,7 +25,8 @@ defmodule CodeMySpec.Intake do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Users,
-      CodeMySpec.Utils
+      CodeMySpec.Utils,
+      CodeMySpec.WorkingCopies
     ],
     exports: :all
 
@@ -67,6 +68,19 @@ defmodule CodeMySpec.Intake do
   """
   @spec recent_plans(pos_integer()) :: [Plan.t()]
   def recent_plans(limit \\ 20), do: PlansRepository.recent(limit)
+
+  @doc """
+  Projects this account chose to run locally and confirmed, that no harness
+  has claimed with a checkout yet.
+
+  What a device's own announce answers so an already-running harness can pick
+  a fresh one up itself — see `CodeMySpecWeb.DeviceController`. Chosen over a
+  push: the harness already polls on a heartbeat, and a device is
+  account-scoped exactly the way this question is.
+  """
+  @spec pending_local_projects(Ecto.UUID.t()) :: [Plan.t()]
+  def pending_local_projects(account_id) when is_binary(account_id),
+    do: PlansRepository.pending_local(account_id)
 
   @doc """
   The plan with this id, or nil.
