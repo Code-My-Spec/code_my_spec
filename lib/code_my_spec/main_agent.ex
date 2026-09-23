@@ -1111,11 +1111,48 @@ defmodule CodeMySpec.MainAgent do
 
   defp note_gap(_scope, _question, nil), do: :ok
 
+  # Bookkeeping about the answer, never part of it.
+  #
+  # The answer is already committed by the time this runs and is not in its
+  # transaction, so anything raised here used to surface as the whole call
+  # failing while the question was, in fact, answered. Measured 2026-09-23 on
+  # question 8526d23e: `answer_notification` replied
+  # `crashed: ERROR 22001 (string_data_right_truncation)` after
+  # `question_requests` said `answered` and the `capability_gaps` row was
+  # already written — only the issue insert had blown up. Two of three writes
+  # had landed and the caller was told none had.
+  #
+  # A main agent that believes that error answers again: it re-answers an
+  # answered question, bumps `occurrences` a second time, and re-runs the same
+  # doomed insert. The gap row never acquires an `issue_id`, so
+  # `file_gap_once/2`'s `%{issue_id: nil}` clause goes on matching and goes on
+  # failing, forever.
+  #
+  # So this is logged and swallowed, the same shape and for the same reason as
+  # `Promotion.stamp_promoted_stories/2` — reporting a bookkeeping failure as
+  # the operation's failure sends an agent to redo the operation, and the
+  # operation is the part that already worked.
   defp note_gap(scope, question, capability) do
     with {:ok, gap} <-
            GapRepository.record(scope.active_project_id, question.agent_role, capability) do
       file_gap_once(scope, gap)
     end
+  rescue
+    error ->
+      Logger.warning(
+        "[MainAgent] answered #{question.id} but could not record the capability gap: " <>
+          Exception.message(error)
+      )
+
+      :ok
+  catch
+    :exit, reason ->
+      Logger.warning(
+        "[MainAgent] answered #{question.id} but could not record the capability gap: " <>
+          inspect(reason)
+      )
+
+      :ok
   end
 
   # Filed once, and the count carried on the issue that exists.
@@ -1157,7 +1194,42 @@ defmodule CodeMySpec.MainAgent do
   # touch and `title` is not among them, deliberately, so a count written at
   # filing time would say "1" forever. A number that is wrong from the second
   # recurrence onwards is worse than one that needs `get_issue` to read.
-  defp gap_title(gap), do: "The #{gap.role} role cannot: #{gap.capability}"
+  #
+  # `capability` is `text` on `capability_gaps` and unbounded, `issues.title` is
+  # `varchar(255)`, and `answer_notification`'s own documentation asks the
+  # caller for prose ("say what you had to supply"). So the natural input
+  # overflows the column: a ~300-character `worked_around` raised 22001 and took
+  # the whole call down on 2026-09-23. Truncate here rather than widening the
+  # column — a title is a label, the full capability is on the gap row and
+  # repeated verbatim in `gap_description/1` below, so nothing is lost.
+  # Public only so the length guarantee can be asserted directly — the overflow
+  # it exists to stop reached production, and a test that has to build a whole
+  # question request to reach it is a test nobody writes.
+  @doc false
+  def gap_title(gap) do
+    prefix = "The #{gap.role} role cannot: "
+    prefix <> fit(gap.capability, 255 - byte_size(prefix))
+  end
+
+  # Bytes, not graphemes — the column's limit is bytes and `String.slice/3`
+  # counts graphemes, so slicing a capability with any non-ASCII in it can still
+  # overflow. Cut on grapheme boundaries so the result stays valid UTF-8, and
+  # measure what that costs in bytes.
+  defp fit(text, budget) when byte_size(text) <= budget, do: text
+
+  defp fit(text, budget) do
+    ellipsis = "…"
+    room = budget - byte_size(ellipsis)
+
+    text
+    |> String.graphemes()
+    |> Enum.reduce_while({[], 0}, fn g, {acc, used} ->
+      size = used + byte_size(g)
+      if size > room, do: {:halt, {acc, used}}, else: {:cont, {[g | acc], size}}
+    end)
+    |> then(fn {acc, _} -> acc |> Enum.reverse() |> Enum.join() end)
+    |> Kernel.<>(ellipsis)
+  end
 
   defp gap_description(gap) do
     """
