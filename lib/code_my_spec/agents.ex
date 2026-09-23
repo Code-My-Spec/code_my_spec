@@ -453,6 +453,47 @@ defmodule CodeMySpec.Agents do
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
         broadcast(scope, {:agent_started, agent})
+
+        # A restarted agent is admissible again, and nothing else is going to
+        # say so. `Work.consider_project/2` is edge-triggered — a turn ending, a
+        # graph change, a harness joining — and a restart is none of those from
+        # its point of view: the row simply went from stopped to running with
+        # no observation attached. So an agent came back holding work and sat
+        # there, which reads exactly like the wake bug it is not.
+        #
+        # `set_agent_continuous/3` already does this and its own doc says why:
+        # "an agent is a supervised process that acts when messaged, and nothing
+        # polls. So this rings its bell too." A restart needs the same bell, and
+        # needs it more now that `start_agent/2` resumes a stopped holder —
+        # the whole point of resuming is that the agent continues, and a row
+        # marked running that never takes a turn has not continued.
+        #
+        # Measured 2026-09-23: coding b01a95bb was resumed at 02:34:29 holding
+        # `code_on_running_copy` on story 950, with `get_next_requirement`
+        # answering "Status: ready — PromoteWork" the whole time. Eleven minutes,
+        # zero turns, nothing in flight, decline damper long expired.
+        #
+        # Two bells, because a restarted agent is in one of two states and they
+        # need opposite things.
+        #
+        # `runnable_state?/1` requires `is_nil(active_task)` — an agent already
+        # holding work is not a candidate for being offered more, which is
+        # right. But that is exactly the agent a resume produces: it comes back
+        # holding the task the restart interrupted, so the offer path skips it
+        # and nothing else speaks to it. `resume_held_tasks/2`'s `stranded?/1`
+        # is the predicate for precisely that shape — running, continuous, no
+        # turn open, no reservation, and holding an active task — and it tells
+        # the agent to carry on with what it has rather than offering it
+        # something new. Scoped to the copy rather than the agent on purpose:
+        # one restart usually stranded every agent on that checkout.
+        #
+        # An agent that came back holding nothing takes the second call
+        # instead, and `request_turn_if_runnable/3` decides admissibility
+        # itself, so neither can start a turn for an agent that should not have
+        # one.
+        Work.resume_held_tasks(scope, agent.working_copy_id)
+        Work.request_turn_if_runnable(scope, agent, :restarted)
+
         {:ok, agent}
       end
     end

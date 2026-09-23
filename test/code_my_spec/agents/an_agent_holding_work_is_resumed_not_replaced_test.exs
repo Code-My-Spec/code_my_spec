@@ -62,7 +62,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
         provider: "anthropic",
         engine: :alloy,
         role: "coding",
-        continuous: false,
+        continuous: true,
         status: :running,
         working_copy: "/tmp/resume-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
@@ -136,5 +136,30 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
 
     refute started.id == stopped.id
     assert to_string(started.role) == "qa"
+  end
+
+  test "the resumed agent is asked for a turn, not merely marked running", ctx do
+    {stopped, _task} = stopped_agent_with(ctx.scope, ctx.copy, :active)
+
+    RecordingAgentTransport.listen()
+
+    {:ok, started} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert started.id == stopped.id
+
+    # `Work.consider_project/2` is edge-triggered and a restart is not one of
+    # its edges, so without an explicit ask the agent comes back running,
+    # holding work, and sits there. Measured 2026-09-23: b01a95bb resumed at
+    # 02:34:29 holding story 950's promote with get_next_requirement answering
+    # "ready", and took zero turns in eleven minutes.
+    assert_receive {:work_turn_requested, agent_id, _ref, _message}, 2_000
+
+    assert agent_id == stopped.id,
+           "a row marked running that is never asked for a turn has not continued"
   end
 end
