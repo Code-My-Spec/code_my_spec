@@ -64,6 +64,47 @@ defmodule CodeMySpec.MainAgent.Digest do
   # Working or idle as expected, which is criterion 3320's own phrasing. An
   # agent holding a task it has not spoken about for hours is neither.
   defp settled?(%AgentWork{} = entry) do
-    entry.blocked_reasons == [] and entry.problems == [] and not AgentWork.toolless?(entry)
+    entry.blocked_reasons == [] and entry.problems == [] and
+      not AgentWork.toolless?(entry) and not stalled?(entry)
   end
+
+  # An agent with nothing in hand and a queue that is not empty is the one state
+  # this module existed to catch and did not.
+  #
+  # `idle?` is "no task AND the graph's queue for this role is empty" — genuinely
+  # nothing to do, and settled. The inverse pairing is the interesting one: no
+  # task and a queue that DOES hold work means the agent should be working and
+  # is not. `CheckInReport` already renders exactly that ("no task claimed, and
+  # the graph does hold work for its role"), so the report could say it while
+  # `quiet?/1` suppressed the check-in that would have carried it.
+  #
+  # Why that matters more than one stuck agent. `Cadence`'s own docs call it "a
+  # floor, not a schedule ... the longest anything can go unseen", and the design
+  # it belongs to is: every wake is edge-triggered, and the cadence is the safety
+  # net under all of them. `Work.consider_*` fires on a graph change, a finished
+  # task, continuous being switched on, a harness joining — and a missed edge is
+  # therefore a permanent stall, because nothing polls. The net could not catch
+  # any of it while an idle-but-eligible agent counted as settled.
+  #
+  # Measured 2026-09-23 on Broken Oaths. Four distinct missed edges were found
+  # and fixed individually in one night — a restarted agent, a resumed agent, an
+  # answered question, a denied tap-out — and after all four, QA sat running,
+  # continuous, zero declines, no turn open, with `get_next_requirement`
+  # answering "ready — QaStory story 950" and no edge coming. Each individual fix
+  # is still right; this is the thing that would have made any of them survivable
+  # before it was found.
+  #
+  # Deliberately not `tapped_out?`: that agent asked to stop and being left alone
+  # is the answer to its own request. Nor an agent mid-turn — a turn in flight is
+  # working, whatever its queue says.
+  defp stalled?(%AgentWork{
+         agent_status: :running,
+         task_status: nil,
+         idle?: false,
+         turn_started_at: nil,
+         tapped_out?: false
+       }),
+       do: true
+
+  defp stalled?(%AgentWork{}), do: false
 end
