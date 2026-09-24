@@ -24,13 +24,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
   # path and it stays the ordinary path. This is for the case the external
   # directive already named — the wait returns straight away and nothing is
   # running, so there is nothing to wait for.
-  #
-  # `await_run/4` is the only entry point and it blocks by construction: the run
-  # is opened here, executed on the machine with the disk, and closed when the
-  # result comes back, so the caller waits on a broadcast rather than a return
-  # value. Run in a task, that becomes a start — the completion still flows
-  # through `Reconciler.reconcile/4`, which is where `Analysis.AgentReport`
-  # tells the agent.
 
   use Anubis.Server.Component, type: :tool
 
@@ -48,19 +41,39 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
     scope = frame.assigns[:current_scope]
     agent_id = frame.assigns[:agent_id]
 
-    # Captured here, not read back inside the task: `Logger.metadata` and
-    # `frame.assigns` are both tied to this process, and the task below is
-    # unlinked and separate — by the time it calls `start_run`, neither would
-    # still say who asked.
     requested_by = %{kind: "mcp_tool", tool: "start_analysis", agent_id: agent_id}
 
-    # Unlinked on purpose. The caller is answered as soon as the run is opened,
-    # and a tool call that ends must not take a sweep with it.
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Analysis.await_run(scope, source, [], requested_by: requested_by)
-    end)
+    response =
+      case Analysis.start_run(scope, source, [], requested_by: requested_by) do
+        {:ok, :skipped, run_id} ->
+          Response.tool()
+          |> Response.error("#{source} run #{run_id} skipped because of compiler errors.")
 
-    {:reply, Response.tool() |> Response.text(started(source, frame.assigns[:agent_id])), frame}
+        {:ok, _admission, run_id} ->
+          Response.tool()
+          |> Response.text("Run #{run_id} admitted.\n\n" <> started(source, agent_id))
+
+        {:error, :no_executor} ->
+          Response.tool()
+          |> Response.error(
+            "Cannot request #{source}: no harness is connected for this working copy " <>
+              "and this server has no local analysis executor. Reconnect its harness and retry."
+          )
+
+        {:error, reason} ->
+          Response.tool() |> Response.error("Could not admit #{source}: #{inspect(reason)}")
+      end
+
+    {:reply, response, frame}
+  rescue
+    error ->
+      {:reply,
+       Response.tool()
+       |> Response.error("Could not admit #{source}: #{Exception.message(error)}"), frame}
+  catch
+    :exit, reason ->
+      {:reply, Response.tool() |> Response.error("Could not admit #{source}: #{inspect(reason)}"),
+       frame}
   end
 
   def execute(%{source: source}, frame) do
@@ -110,7 +123,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
 
   defp started(source, _agent_id) do
     """
-    Started #{source}. It runs for several minutes.
+    Requested #{source}. It may be queued and usually takes several minutes.
 
     The digest reaches you on your next tool call once it lands. To block until
     it finishes instead, `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait`.
