@@ -18,6 +18,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   require Logger
 
+  import Ecto.Query, only: [from: 2]
+
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.DrainCost
@@ -515,16 +517,56 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # the vantage the reader named, which `GraphWatcher` has always folded into
   # its next pass as `requested_vantages` and the projector never heard about.
   defp settle_owner(%Scope{active_project_id: project_id} = scope) do
-    # Settled if it is running and started by nobody here, exactly as the pass
-    # side: `GraphWatcher.settle/1` answers `:ok` for a project nothing watches,
-    # and `ensure_watching/1` is what starts both writers. A read that started
-    # the projector resurrected it after a scenario's teardown had stopped it —
-    # a wake task's read, drained after `stop_graph_watchers/0` — and the
-    # projector then ran its seed on a sandbox whose owner was gone.
+    # Settled if it is running, exactly as the pass side: `GraphWatcher.settle/1`
+    # answers `:ok` for a project nothing watches, and `ensure_watching/1` is
+    # what starts both writers. A read that started the projector resurrected
+    # it after a scenario's teardown had stopped it — a wake task's read,
+    # drained after `stop_graph_watchers/0` — and the projector then ran its
+    # seed on a sandbox whose owner was gone. So a read starts the writers in
+    # one case only: a project with no rows at all (`start_writers/1`).
     if Shadow.inverted?() do
+      if never_projected?(project_id), do: start_writers(scope)
       ShadowProjector.settle(project_id, [scope.active_working_copy_id])
     else
       GraphWatcher.settle(scope)
+    end
+  end
+
+  # A project nothing has ever projected has no writer to settle, and a read
+  # served from its rows is served nothing — which `StoryExecution` reported
+  # as "All requirements satisfied" on Metric Flow (182 components, 53 stories,
+  # 3,480 marks queued, 0 rows) until an agent was started there, and none
+  # was, because the answer read as a finished project.
+  #
+  # Writers start with an agent (`Agents`) or at boot for continuous projects
+  # (`GraphWatcher.watch_active_projects/0`); a reader is the third door, and
+  # only for a project with no rows at all. That bound is what keeps this from
+  # resurrecting a writer a scenario's teardown stopped: a scenario that read
+  # after computing has rows. Project rows are written by every seed, so their
+  # absence is "never projected" at any vantage.
+  @doc "Whether any vantage of this project has ever been projected: its project rows exist."
+  @spec projected?(Scope.t()) :: boolean()
+  def projected?(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: not never_projected?(project_id)
+
+  def projected?(%Scope{}), do: false
+
+  defp never_projected?(project_id),
+    do:
+      not Repo.exists?(
+        from(n in CodeMySpec.Requirements.Node, where: n.project_id == ^project_id)
+      )
+
+  defp start_writers(scope) do
+    case GraphWatcher.ensure_watching(scope) do
+      {:ok, _pid} ->
+        Logger.info("[Requirements] a read started the writers for #{scope.active_project_id}")
+
+      other ->
+        Logger.warning(
+          "[Requirements] a read could not start the writers for #{scope.active_project_id}: " <>
+            inspect(other)
+        )
     end
   end
 

@@ -212,6 +212,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # an unfinished project would make the terminal state unreachable — story
   # 1015's criterion 2393 is the one that says an agent with nothing to do is
   # allowed to stop.
+  #
+  # And whether there is a graph at all. Zero requirements means zero
+  # unsatisfied, and `Enum.all?/2` over nothing is true: Metric Flow, with 182
+  # components, 53 stories and 27 failing tests, answered "All requirements
+  # satisfied" because nothing had ever projected it. That sentence is what
+  # decides whether an agent is started, so the empty graph gets its own.
+  defp empty_reason([], _edges, _ctx), do: no_graph_reason()
+
   defp empty_reason(nodes, edges, ctx) do
     case actionable_nodes(nodes, edges, ctx, nil) do
       [] ->
@@ -222,6 +230,22 @@ defmodule CodeMySpec.Requirements.StoryExecution do
           "this project belong to other roles — this is not a finished project. Select a " <>
           "story with set_active_story when one is ready."
     end
+  end
+
+  @doc """
+  What a read is told when the graph holds no rows at all — not a finished
+  project, and not a queue that belongs to someone else.
+  """
+  @spec no_graph_reason() :: String.t()
+  def no_graph_reason do
+    """
+    # No requirement graph yet
+
+    Nothing has been projected for this project: no requirement is satisfied or \
+    unsatisfied, so this is not a finished project. The writers start on this read; \
+    call `get_next_requirement` again. If this persists, the graph's writer is not \
+    running — see `/dev/graph`.\
+    """
   end
 
   defp actionable_nodes(nodes, edges, context, nil),

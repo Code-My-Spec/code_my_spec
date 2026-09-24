@@ -105,6 +105,10 @@ defmodule CodeMySpec.Requirements do
   @spec served_vs_recomputed(Scope.t()) :: map()
   def served_vs_recomputed(%Scope{} = scope), do: RequirementGraph.served_vs_recomputed(scope)
 
+  @doc "Whether any vantage of this project has ever been projected: its project rows exist."
+  @spec projected?(Scope.t()) :: boolean()
+  def projected?(%Scope{} = scope), do: RequirementGraph.projected?(scope)
+
   @doc """
   What the rows say about whether the graph recomputes incrementally.
 
