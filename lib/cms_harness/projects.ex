@@ -12,11 +12,11 @@ defmodule CmsHarness.Projects do
   discovery step on the critical path of every agent turn, whose failure mode
   is a hook that silently posts nowhere.
 
-  Nothing is configured here. Subtrees start on demand, when a hook names a
+  Subtrees start on demand, when a hook names a
   harness id and `CmsHarness.WorkingCopies` asks the server where that copy is.
-  There is no list of directories to keep — a list would put the operator back
-  in the business of telling the harness about paths, and it would be a second
-  record of something the server already holds.
+  Previously served roots are remembered automatically for restart. The hints
+  bootstrap per-copy credentials before the server returns its current roster;
+  they never replace the checkout identity or the server's authorization.
 
   A sprite is simply N=1 here. Same code, same lifecycle, one child in the
   tree — which is the point, because a drill on a sprite is then a drill on the
@@ -27,6 +27,7 @@ defmodule CmsHarness.Projects do
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.ProjectIdentity
+  alias CmsHarness.ServedRoots
 
   @doc """
   Serve the project rooted at `dir`, starting its subtree if it is not already
@@ -46,6 +47,7 @@ defmodule CmsHarness.Projects do
              {CmsHarness.Project.Supervisor, project: project}
            ) do
         {:ok, _pid} ->
+          ServedRoots.remember(project.root)
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
           {:ok, project}
 
@@ -57,6 +59,7 @@ defmodule CmsHarness.Projects do
         # health endpoint said served, and every file event belonged to a tree
         # nobody asked about. Issue 8b83ba20.
         {:error, {:already_started, _pid}} ->
+          ServedRoots.remember(project.root)
           {:ok, project}
 
         {:error, reason} ->
@@ -67,14 +70,12 @@ defmodule CmsHarness.Projects do
   end
 
   @doc """
-  Start the working copy named by the environment, if there is one.
+  Restore previously served working copies, then start CMS_PROJECT_DIR if set.
 
-  The sprite's path, and the one thing this module deliberately did not do.
-
-  Everything else here starts on demand: a hook names a harness id, and the
-  subtree comes up to answer it. That is right on a laptop, where an agent
-  session fires a hook within seconds of starting, and it is why the moduledoc
-  above says nothing is configured.
+  An agent-only copy sends no hook after restart. Its durable hint lets boot
+  re-read the checkout's current identity and credential before device announce
+  asks the server for the complete roster. Missing or changed copies are skipped;
+  the server still authorizes every channel join.
 
   A sprite is the opposite shape. Its agent has not started yet — `drill.sh`
   waits for "accepted the manifest" *before* running `devbox-agent` — so a
@@ -95,6 +96,15 @@ defmodule CmsHarness.Projects do
   """
   @spec start_configured() :: :ok
   def start_configured do
+    # Restore before Device.announce: its credential may live in one of these
+    # copies, and an agent-only copy will never send a hook to bootstrap it.
+    for root <- ServedRoots.list() do
+      case ensure_started(root) do
+        {:ok, _project} -> :ok
+        {:error, _reason} -> Logger.warning("[CmsHarness] could not restore served root #{root}")
+      end
+    end
+
     case System.get_env("CMS_PROJECT_DIR") do
       dir when is_binary(dir) and dir != "" ->
         serve_configured(dir)
@@ -170,6 +180,8 @@ defmodule CmsHarness.Projects do
   """
   @spec stop_serving(String.t()) :: :ok | {:error, :not_serving}
   def stop_serving(root) when is_binary(root) do
+    ServedRoots.forget(root)
+
     case Registry.lookup(CmsHarness.Registry, {:project, Path.expand(root)}) do
       [{pid, _}] ->
         Logger.info("[CmsHarness] no longer serving #{root} — offboarded on the server")

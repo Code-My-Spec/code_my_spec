@@ -18,6 +18,7 @@ defmodule CmsHarness.StartConfiguredTest do
   the standalone harness has read it since extraction — so the sprite switches
   over without changing how it is launched.
   """
+
   # Sync: this mutates OS environment variables, which belong to the BEAM node
   # rather than to a test process. Saving and restoring them is careful and
   # still leaves a window every concurrent test can see.
@@ -36,12 +37,25 @@ defmodule CmsHarness.StartConfiguredTest do
   # error log that never arrived for exactly that reason. Same ambient leak that
   # sent drill 16 at the wrong project (ca5bf8b6).
   setup do
+    hints =
+      Path.join(System.tmp_dir!(), "start_configured_hints_#{System.unique_integer([:positive])}")
+
+    previous_hints = Application.get_env(:code_my_spec, :harness_served_roots_dir)
+    Application.put_env(:code_my_spec, :harness_served_roots_dir, hints)
+
     saved = %{
       dir: System.get_env("CMS_PROJECT_DIR"),
       id: System.get_env("CMS_PROJECT_ID")
     }
 
     on_exit(fn ->
+      if previous_hints do
+        Application.put_env(:code_my_spec, :harness_served_roots_dir, previous_hints)
+      else
+        Application.delete_env(:code_my_spec, :harness_served_roots_dir)
+      end
+
+      File.rm_rf(hints)
       restore("CMS_PROJECT_DIR", saved.dir)
       restore("CMS_PROJECT_ID", saved.id)
     end)
@@ -53,7 +67,7 @@ defmodule CmsHarness.StartConfiguredTest do
   defp restore(var, value), do: System.put_env(var, value)
 
   describe "when nothing is configured" do
-    test "it does nothing, which is every laptop" do
+    test "it does nothing when no roots were previously served" do
       System.delete_env("CMS_PROJECT_DIR")
 
       assert capture_log(fn -> assert :ok = Projects.start_configured() end) == ""
