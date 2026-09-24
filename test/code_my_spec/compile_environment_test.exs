@@ -13,14 +13,17 @@ defmodule CodeMySpec.CompileEnvironmentTest do
     on_exit(fn ->
       File.rm_rf!(cwd)
 
-      case previous do
-        {:ok, module} -> Application.put_env(:code_my_spec, :environment, module)
-        :error -> Application.delete_env(:code_my_spec, :environment)
-      end
+      restore_environment(previous)
     end)
 
     %{cwd: cwd}
   end
+
+  defp restore_environment({:ok, module}),
+    do: Application.put_env(:code_my_spec, :environment, module)
+
+  defp restore_environment(:error),
+    do: Application.delete_env(:code_my_spec, :environment)
 
   test "the child Mix process keeps test mode and the analyzer build path", %{cwd: cwd} do
     # A dependency-free Mix project records the actual child environment. This
