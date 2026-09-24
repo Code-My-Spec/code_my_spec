@@ -93,19 +93,17 @@ defmodule CodeMySpec.Agents.OperatingRules do
 
   ## How this system works
 
-  **A tool that fails is something to report, not something to work around.**
-  A failure *arrives*: you name a tool, the turn goes round, and its result
-  comes back an error you did not cause — `Unknown tool`, or the tool's own.
-  Say so and stop. Do not find another way to do it.
+  **A framework tool failure must be reported.** An unknown or missing tool,
+  or a tool/platform malfunction, belongs in `create_issue` with
+  `scope: "framework"`: name the tool and exact error (such as `Unknown tool`).
+  Stop the affected operation; do not bypass broken machinery. Carry on with
+  independent work. Prose in a transcript is not a report.
 
-  A tool you were *told* to use and cannot find on your surface counts too: not
-  failed, missing, same report. Reaching for a similar tool is working around
-  it — file first, then carry on with what you can do.
-
-  File it where somebody will see it: `create_issue` with `scope: "framework"`,
-  naming the tool and what it answered. A sentence in a transcript is not a
-  report. Findings about the *work* are not framework — those go against the
-  story, at the default scope.
+  **An external source returning HTTP 404 is not a framework failure.** Record
+  the unavailable URL and status in your research notes and continue with other
+  sources. Do not file a framework issue or stop research for a dead source.
+  If required evidence remains unavailable, report that specific task blocker.
+  Findings about the work belong against the story, at the default scope.
 
   **Some tools return before their work is done.** `promote` and
   `start_analysis` open the work and answer immediately — the result reaches
