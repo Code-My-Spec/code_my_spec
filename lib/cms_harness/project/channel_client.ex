@@ -1198,8 +1198,9 @@ defmodule CmsHarness.Project.ChannelClient do
     Logger.error("""
     [CmsHarness] the server REJECTED the #{source} result for #{socket.assigns.project.root}: #{inspect(other)}
 
-    That analyzer ran, but nothing was recorded from it. The run is still open on
-    the server, so the next stop will report analysis pending rather than clean.
+    No findings were recorded from this result. Rejected analyzer payloads mark
+    their run failed; a missing or otherwise unrecognized run cannot establish
+    its status. Consult the rejection reason and server run ledger before retrying.
     """)
 
     socket
