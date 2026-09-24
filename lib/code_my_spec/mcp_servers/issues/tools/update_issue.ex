@@ -46,13 +46,20 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
   schema do
     field :issue_id, :string, required: true, doc: "Issue ID to update"
 
-    field :severity, :string,
-      doc: "New severity: critical, high, medium, low, or info"
+    field :severity, :string, doc: "New severity: critical, high, medium, low, or info"
 
     field :story_id, :integer, doc: "Re-link the issue to this story id"
 
+    field :detach_from_story, :boolean,
+      doc:
+        "Detach the issue from whatever story it is on, leaving it unattributed. " <>
+          "For a report that reached the wrong story — `Issues.attribute_to_story/3` " <>
+          "sweeps unattributed :app issues onto whichever story's QA attempt is " <>
+          "being submitted, so an infrastructure failure can end up gating a " <>
+          "feature story. Sometimes the right story is none."
+
     field :category, :string,
-      doc: "Re-categorize: 'bug' or 'requirements_change'"
+      doc: "Re-categorize: 'bug' or 'requirements_change' (those two only)"
 
     field :source_path, :string, doc: "Update the source file path"
 
@@ -65,9 +72,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
   @impl true
   def execute(params, frame) do
-    attrs = build_attrs(params)
-
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+    with {:ok, attrs} <- build_attrs(params),
+         {:ok, scope} <- Validators.validate_local_scope(frame, params),
          :ok <- ensure_some_field(attrs, params[:append]),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          attrs = maybe_append(attrs, issue, params[:append]),
@@ -78,7 +84,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
         {:reply,
          IssuesMapper.error(
            "No updatable fields provided. Pass at least one of: severity, story_id, " <>
-             "category, source_path, append."
+             "detach_from_story, category, source_path, append."
          ), frame}
 
       nil ->
@@ -92,13 +98,48 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
     end
   end
 
+  # Refusing an unrecognised value rather than dropping it.
+  #
+  # `parse_severity/1` and `parse_category/1` both answered `nil` for anything
+  # they did not recognise, `maybe_put/3` then dropped the key, and the call
+  # replied "updated" having changed nothing. Measured 2026-09-23:
+  # `update_issue({category: "devops"})` returned success twice while the row was
+  # untouched, and it took reading `parse_category/1` to find out why. The
+  # vocabulary being small is fine; a write that reports success without writing
+  # is not.
   defp build_attrs(params) do
-    %{}
-    |> maybe_put(:severity, parse_severity(params[:severity]))
-    |> maybe_put(:story_id, params[:story_id])
-    |> maybe_put(:category, parse_category(params[:category]))
-    |> maybe_put(:source_path, params[:source_path])
+    with {:ok, attrs} <- put_parsed(%{}, :severity, params[:severity], &parse_severity/1),
+         {:ok, attrs} <- put_parsed(attrs, :category, params[:category], &parse_category/1) do
+      attrs =
+        attrs
+        |> maybe_put(:story_id, params[:story_id])
+        |> maybe_put(:source_path, params[:source_path])
+        |> maybe_detach(params[:detach_from_story])
+
+      {:ok, attrs}
+    end
   end
+
+  defp put_parsed(attrs, _key, nil, _parse), do: {:ok, attrs}
+
+  defp put_parsed(attrs, key, raw, parse) do
+    case parse.(raw) do
+      nil -> {:error, refusal(key, raw)}
+      parsed -> {:ok, Map.put(attrs, key, parsed)}
+    end
+  end
+
+  defp refusal(:severity, raw),
+    do: "#{inspect(raw)} is not a severity. Use one of: critical, high, medium, low, info."
+
+  defp refusal(:category, raw),
+    do: "#{inspect(raw)} is not a category. Use one of: bug, requirements_change."
+
+  # Explicit rather than `story_id: null`, which is not expressible from a Lua
+  # table — `story_id = nil` removes the key and reads as "not provided", so the
+  # call reported success and left the attribution alone.
+  defp maybe_detach(attrs, true), do: Map.put(attrs, :story_id, nil)
+  defp maybe_detach(attrs, _not_true), do: attrs
 
   defp ensure_some_field(attrs, append) do
     if map_size(attrs) > 0 or present?(append), do: :ok, else: :empty

@@ -64,6 +64,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   """
 
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.RequirementDefinitionData
 
   @doc """
   One story's inputs, as a fingerprint.
@@ -299,8 +300,65 @@ defmodule CodeMySpec.Requirements.Freshness do
     %{
       components: hash(components),
       stories: hash(stories),
-      config: hash(config_shape(config))
+      config: hash(config_shape(config)),
+      definitions: hash(definition_shape(ctx))
     }
+  end
+
+  # The edges come from the requirement templates, so a template change is an
+  # edge change and has to move this hash.
+  #
+  # It did not, and the comment on `CachedGraph.topology_fingerprint` said why
+  # without noticing: "it moves when a dependency, a parent or the config moves,
+  # and those are the only things that change an edge". The templates were the
+  # unlisted fourth thing. `config_shape/1` hashes what *filters* the definition
+  # set; nothing hashed the set itself.
+  #
+  # So changing a prerequisite produced an identical topology fingerprint,
+  # `topology_moved?` stayed false, and every partial recompute kept the stale
+  # stored edges. Measured 2026-09-23: `story_issues_resolved` was moved ahead of
+  # `qa_complete` and shipped in v2.0.152. The new module loaded — the rendered
+  # description changed in the same breath — and the served graph went on
+  # offering `qa_complete` whose prerequisite was now unsatisfied, across 17
+  # vantages on two projects. Only the vantage that happened to get an entity
+  # write picked the new shape up. A definition change was inert until unrelated
+  # activity invalidated the cache, which on a quiet project is never.
+  #
+  # Names and prerequisites only. Descriptions, roles and checker config change
+  # what a node *says* or *asks*, never which nodes connect to which, and hashing
+  # them here would recompute every edge on every copy edit.
+  # Two constraints on this function, from the Sync session that owns the
+  # projector, recorded because breaking either is expensive and neither is
+  # visible from here.
+  #
+  # Sorted, both levels. "The distinct types present in ctx" in encounter order
+  # flaps when the component list order changes, and a flapping part is the
+  # ongoing churn this whole change is trying not to cause. Every other part of
+  # `topology_parts/2` sorts for the same reason.
+  #
+  # `topology_parts/2` ONLY. If this ever reaches the entity fingerprints —
+  # `story/2`, `component/2`, `delegated_inputs` — every entity reads stale at
+  # once, `verdict/5` answers `{:all, …}`, and that is a whole-project recompute
+  # on every vantage fired by every template edit. The edge set is the only thing
+  # a definition change moves, so this is the only place it belongs.
+  #
+  # Cost, measured by Sync on the 138-story project: the read path redraws rather
+  # than recomputes — `Edges.plan` once per shape (~300ms) then `Edges.over` per
+  # vantage (~25-55ms), so ~1s across eleven vantages, once. The batched oracle
+  # pass does a full `compute_edges` per vantage on a topology move, ~7s across
+  # that project's vantages, once per template change, and reuses stored nodes
+  # rather than re-deriving verdicts. A release stamp would have fired that on
+  # every promote instead — there were thirty yesterday.
+  defp definition_shape(ctx) do
+    types = ctx.components |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.sort()
+
+    graphs =
+      [RequirementDefinitionData.story_graph(), RequirementDefinitionData.project_graph()] ++
+        Enum.map(types, &RequirementDefinitionData.graph_for_type/1)
+
+    graphs
+    |> Enum.map(fn graph -> Enum.map(graph, &{&1.id, &1.name, &1.prerequisites}) end)
+    |> Enum.sort()
   end
 
   # An unloaded association is not an empty one. Answering `[]` for it would

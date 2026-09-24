@@ -44,12 +44,12 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     %{scope: scope, copy: copy}
   end
 
-  defp agent(scope, copy, engine) do
+  defp agent(scope, copy, engine, role \\ "coding") do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: engine,
-        role: "coding",
+        role: role,
         working_copy: "/tmp/report-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
@@ -120,5 +120,52 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     scope = %{ctx.scope | active_working_copy_id: nil}
 
     assert AgentReport.deliver(scope, "spex", [problem(:error)]) == :ok
+  end
+
+  describe "the agent that asked for the run" do
+    # `@report_roles` answers "who should hear about findings nobody asked for".
+    # It was also deciding "who may be answered about a run they started", which
+    # is a different question — `tell_one/4` already distinguishes them, and its
+    # requester clause could never fire for a role outside the list because the
+    # query removed the asker first.
+    #
+    # Measured 2026-09-23: a QA agent on Broken Oaths story 947 started credo and
+    # spex, both rows carrying its agent_id, both completed at 16:02. It held its
+    # task waiting and was never told, because :qa is not a report role. Fifty
+    # minutes, ended by a person noticing.
+    test "is answered even when its role is not a report role", ctx do
+      qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], qa.id)
+
+      assert_receive {:agent_dispatch, id, _ref, _message}
+
+      assert id == qa.id,
+             """
+             The asker was filtered out of its own answer by the broadcast role
+             list, so an agent that started a run and waited on it was never
+             told the run had finished.
+             """
+    end
+
+    test "is answered on a clean run, which is the case it most needs", ctx do
+      qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AgentReport.deliver(ctx.scope, "spex", [], qa.id)
+
+      assert_receive {:agent_dispatch, id, _ref, message}
+      assert id == qa.id
+
+      assert message =~ "no problems in this working copy",
+             "a green run is still an answer to whoever asked for it"
+    end
+
+    test "a non-asking agent outside the report roles still hears nothing", ctx do
+      _qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], nil)
+
+      refute_receive {:agent_dispatch, _id, _ref, _message}, 500
+    end
   end
 end

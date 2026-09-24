@@ -179,4 +179,96 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
   end
+
+  describe "UpdateIssue refuses what it cannot apply" do
+    # Both parsers answered nil for anything unrecognised, `maybe_put/3` dropped
+    # the key, and the call replied "updated" having changed nothing. Measured
+    # 2026-09-23: `update_issue({category: "devops"})` reported success twice
+    # while the row was untouched, and finding out why meant reading
+    # `parse_category/1`. A write that reports success without writing is the
+    # defect; the small vocabulary is not.
+    test "an unrecognised category is refused by name, not dropped" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(%{issue_id: issue.id, category: "devops"}, frame)
+
+      assert response.isError == true
+      text = response_text(response)
+      assert text =~ "not a category"
+      assert text =~ "bug"
+
+      assert Issues.get_issue(scope, issue.id).category == issue.category,
+             "the row must be untouched when the call is refused"
+    end
+
+    test "an unrecognised severity is refused by name too" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(%{issue_id: issue.id, severity: "urgent"}, frame)
+
+      assert response.isError == true
+      assert response_text(response) =~ "not a severity"
+    end
+
+    test "a recognised category still applies" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(%{issue_id: issue.id, category: "bug"}, frame)
+
+      assert response.isError == false
+      assert Issues.get_issue(scope, issue.id).category == :bug
+    end
+  end
+
+  describe "UpdateIssue detach_from_story" do
+    # `story_id` could be re-pointed at another story but never cleared, and
+    # `story_id: null` is not expressible from a Lua table — `story_id = nil`
+    # removes the key and reads as "not provided", so the call reported success
+    # and left the attribution alone. Measured on Broken Oaths issue 93259261, a
+    # UAT infrastructure failure that `Issues.attribute_to_story/3` had swept onto
+    # story 950 and which then gated that story's completion, and through the
+    # per-copy wave the whole fleet's only reachable work.
+    test "clears the story a report was wrongly attributed to" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, story_id: 950}, frame)
+      assert Issues.get_issue(scope, issue.id).story_id == 950
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(%{issue_id: issue.id, detach_from_story: true}, frame)
+
+      assert response.isError == false
+
+      assert Issues.get_issue(scope, issue.id).story_id == nil,
+             "sometimes the right story is none, and that has to be sayable"
+    end
+
+    test "false leaves the attribution alone" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, story_id: 950}, frame)
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(
+                 %{issue_id: issue.id, detach_from_story: false, append: "note"},
+                 frame
+               )
+
+      assert response.isError == false
+      assert Issues.get_issue(scope, issue.id).story_id == 950
+    end
+  end
 end

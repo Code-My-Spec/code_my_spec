@@ -192,11 +192,42 @@ defmodule CodeMySpec.Notifications do
     |> Enum.take(@resolved_limit)
   end
 
+  # A request whose named asker has stopped is not waiting on anybody.
+  #
+  # Answering one resumes nothing: `TaskOwner.resume_task/3` has no live agent to
+  # resume and the answer reaches no process. It is history, and the inbox was
+  # presenting it as work outstanding.
+  #
+  # Measured 2026-09-23: 41 pending questions held by one user, and NOT ONE had a
+  # live asking agent — 35 stopped, 6 with no agent at all. Two questions that
+  # day genuinely blocked the Broken Oaths fleet (the grace-window scope on story
+  # 947, and story 942 released while marked deferred) and both sat in that list.
+  # John: "I cant get them they are hard to find." A queue where nothing is
+  # urgent teaches its reader that nothing is urgent, which is the failure that
+  # costs time when a real one arrives.
+  #
+  # `is_nil(agent_id)` is kept, deliberately. `MainAgent.holder_for/2` sends an
+  # agentless question to the user by design — "a question with no agent came
+  # from Claude Code, which talks to the person directly" — and those are real:
+  # among the six were "Story 1020 has 21 rules — how should we cut it" and a
+  # dark-mode decision. Absent asker and *departed* asker are different states
+  # and only the second one is stale.
+  #
+  # Hidden from the pending list only. `list_notifications/1` still returns these
+  # through `resolved_notifications/1`'s half of the inbox, so nothing is lost —
+  # and a stopped agent can come back, since `start_agent/2` now resumes one that
+  # still holds work. This is a statement about what is waiting, not about what
+  # happened.
   defp pending_query(schema, user_id) do
     from(r in schema,
       where: r.user_id == ^user_id and r.status == "pending",
+      where: is_nil(r.agent_id) or r.agent_id not in subquery(stopped_agent_ids()),
       order_by: [desc: r.inserted_at]
     )
+  end
+
+  defp stopped_agent_ids do
+    from(a in Agent, where: a.status == :stopped, select: a.id)
   end
 
   defp resolved_query(schema, user_id) do
@@ -239,8 +270,13 @@ defmodule CodeMySpec.Notifications do
     )
   end
 
+  # The badge counts what the list shows. Counting every pending row while
+  # `pending_query/2` hides the ones whose asker has stopped would put 41 on the
+  # badge and six in the inbox, which is worse than either number alone.
   defp count_pending(schema, user_id) do
-    from(r in schema, where: r.user_id == ^user_id and r.status == "pending")
+    schema
+    |> pending_query(user_id)
+    |> exclude(:order_by)
     |> Repo.aggregate(:count)
   end
 
