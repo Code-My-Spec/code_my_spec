@@ -1,7 +1,21 @@
 defmodule CmsHarness.ServedRootsTest do
   use ExUnit.Case, async: false
 
-  alias CmsHarness.{HarnessConfig, Projects, ServedRoots}
+  alias CmsHarness.{Credentials, HarnessConfig, Projects, ServedRoots, WorkingCopyReporter}
+
+  defmodule Server do
+    @behaviour CmsHarness.Device.Client
+    @impl true
+    def announce(device_id, _token, _attrs) do
+      send(Application.fetch_env!(:code_my_spec, :root_test_owner), :announced)
+
+      {:ok,
+       %{
+         device_id: device_id,
+         working_copies: Application.fetch_env!(:code_my_spec, :root_test_roster)
+       }}
+    end
+  end
 
   setup do
     dir = Path.join(System.tmp_dir!(), "served_roots_#{System.unique_integer([:positive])}")
@@ -11,7 +25,11 @@ defmodule CmsHarness.ServedRootsTest do
       :harness_served_roots_dir,
       :harness_server_url_override,
       :harness_token,
-      :harness_deploy_key
+      :harness_deploy_key,
+      :device_client,
+      :device_config_path,
+      :root_test_owner,
+      :root_test_roster
     ]
 
     previous = Map.new(keys, &{&1, Application.get_env(:code_my_spec, &1)})
@@ -21,91 +39,81 @@ defmodule CmsHarness.ServedRootsTest do
     Enum.each(keys, &Application.delete_env(:code_my_spec, &1))
     Application.put_env(:code_my_spec, :harness_served_roots_dir, Path.join(dir, "hints"))
     Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:1")
+    Application.put_env(:code_my_spec, :device_client, Server)
+    Application.put_env(:code_my_spec, :device_config_path, Path.join(dir, "device.json"))
+    Application.put_env(:code_my_spec, :root_test_owner, self())
 
-    # These are the actual registry and project subtree used by the boot seam.
-    # No endpoint or server application is started; the test URL cannot reach
-    # any of the developer's servers and the fixture credential is invented.
-    if is_nil(Process.whereis(CmsHarness.Registry)) do
-      start_supervised!({Registry, keys: :unique, name: CmsHarness.Registry})
-    end
+    ensure_child(
+      Process.whereis(CmsHarness.Registry),
+      {Registry, keys: :unique, name: CmsHarness.Registry}
+    )
 
-    if is_nil(Process.whereis(CmsHarness.ProjectSupervisor)) do
-      start_supervised!(
-        {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one}
-      )
-    end
+    ensure_child(
+      Process.whereis(CmsHarness.ProjectSupervisor),
+      {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one}
+    )
 
     on_exit(fn ->
-      for root <- Projects.list(), String.starts_with?(root, dir) do
-        Projects.stop_serving(root)
-      end
-
-      Enum.each(previous, fn
-        {key, nil} -> Application.delete_env(:code_my_spec, key)
-        {key, value} -> Application.put_env(:code_my_spec, key, value)
-      end)
-
-      Enum.each(environment, fn
-        {key, nil} -> System.delete_env(key)
-        {key, value} -> System.put_env(key, value)
-      end)
-
+      for root <- Projects.list(), String.starts_with?(root, dir), do: Projects.stop_serving(root)
+      Enum.each(previous, &restore_config/1)
+      Enum.each(environment, &restore_environment/1)
       File.rm_rf!(dir)
     end)
 
     %{dir: dir}
   end
 
-  test "boot restores an agent-only root after the project tree was lost", %{dir: dir} do
-    root = copy(dir, "agent-only")
-    assert {:ok, _} = Projects.ensure_started(root)
-    [{pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
-    # A process restart, not offboarding: terminating the child bypasses the
-    # deliberate stop_serving operation, just as an application shutdown does.
-    assert :ok = DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
-    refute root in Projects.list()
-    rewrite(root, "deploy_key", "rotated-key")
-    [hint] = Path.wildcard(Path.join(dir, "hints/**/*.json"))
-    File.write!(Path.join(Path.dirname(hint), "corrupt.json"), "invalid JSON")
-
-    assert :ok = Projects.start_configured()
-    assert root in Projects.list()
-    assert {:ok, "rotated-key", :working_copy_key} = CmsHarness.Credentials.for_working_copy(root)
-
-    assert :ok = Projects.stop_serving(root)
-    assert :ok = Projects.start_configured()
-    refute root in Projects.list()
-  end
-
-  test "boot ignores missing paths, changed identities, other servers and removed credentials", %{
+  test "boot uses a remembered credential but restores only the current server roster", %{
     dir: dir
   } do
-    roots =
-      for name <- ~w(missing identity server credential) do
-        root = copy(dir, name)
-        assert {:ok, _} = Projects.ensure_started(root)
-        [{pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
-        DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
-        root
-      end
+    root = copy(dir, "agent-only")
+    retired = copy(dir, "offboarded-while-offline")
+    roster = Map.new([root, retired], &serve_then_lose/1)
+    refute root in Projects.list()
+    refute retired in Projects.list()
+    rewrite(root, "deploy_key", "rotated-key")
+    [hint | _] = Path.wildcard(Path.join(dir, "hints/**/*.json"))
+    File.write!(Path.join(Path.dirname(hint), "corrupt.json"), "invalid JSON")
 
-    [missing, identity, server, credential] = roots
+    # No served roots supply this credential: hints break the announce cycle.
+    assert {:ok, _key, :working_copy_key} = Credentials.any()
+    assert {:ok, "rotated-key", :working_copy_key} = Credentials.for_working_copy(root)
+
+    # The server removed retired while the daemon was offline. Its valid hint
+    # must never cause a channel join that would recreate the deleted row.
+    roster = Map.reject(roster, fn {_id, path} -> path == retired end)
+    boot_reporter(roster)
+    assert root in Projects.list()
+    refute retired in Projects.list()
+
+    assert :ok = Projects.stop_serving(root)
+    refute root in ServedRoots.list()
+  end
+
+  test "boot skips missing paths and changed identities or servers", %{dir: dir} do
+    roots = Enum.map(~w(missing identity server), &copy(dir, &1))
+    roster = Map.new(roots, &serve_then_lose/1)
+    [missing, identity, server] = roots
     File.rm_rf!(missing)
     rewrite(identity, "working_copy_id", "re-onboarded")
     rewrite(server, "server_url", "https://another-server.invalid")
-    rewrite(credential, "deploy_key", nil)
 
-    assert :ok = Projects.start_configured()
+    boot_reporter(roster)
     assert Enum.all?(roots, &(&1 not in Projects.list()))
   end
 
-  test "hints contain no credentials and are isolated by server", %{dir: dir} do
+  test "hints contain no credentials and are isolated by server and current credentials", %{
+    dir: dir
+  } do
     root = copy(dir, "one")
-    assert {:ok, _} = Projects.ensure_started(root)
+    serve_then_lose(root)
     [path] = Path.wildcard(Path.join(dir, "hints/**/*.json"))
     refute File.read!(path) =~ "fixture-key"
     assert File.stat!(path).mode |> Bitwise.band(0o777) == 0o600
     assert ServedRoots.list() == [root]
+    rewrite(root, "deploy_key", nil)
+    assert ServedRoots.list() == []
+    rewrite(root, "deploy_key", "rotated-key")
 
     Application.put_env(
       :code_my_spec,
@@ -115,6 +123,32 @@ defmodule CmsHarness.ServedRootsTest do
 
     assert ServedRoots.list() == []
   end
+
+  defp boot_reporter(roster) do
+    # Token exchange is outside this test. Credential bootstrap is asserted
+    # before setting this synthetic token, then the real reporter boot timer
+    # drives the stubbed authoritative server response and actual subtrees.
+    Application.put_env(:code_my_spec, :harness_token, "fixture-user-token")
+    Application.put_env(:code_my_spec, :root_test_roster, roster)
+    pid = start_supervised!({WorkingCopyReporter, name: :served_roots_boot_test})
+    assert_receive :announced, 1_000
+    :sys.get_state(pid)
+  end
+
+  defp serve_then_lose(root) do
+    assert {:ok, project} = Projects.ensure_started(root)
+    [{pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
+    # Application shutdown, not deliberate offboarding.
+    assert :ok = DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+    {project.working_copy_id, root}
+  end
+
+  defp ensure_child(nil, spec), do: start_supervised!(spec)
+  defp ensure_child(pid, _spec), do: pid
+  defp restore_config({key, nil}), do: Application.delete_env(:code_my_spec, key)
+  defp restore_config({key, value}), do: Application.put_env(:code_my_spec, key, value)
+  defp restore_environment({key, nil}), do: System.delete_env(key)
+  defp restore_environment({key, value}), do: System.put_env(key, value)
 
   defp copy(dir, name) do
     root = Path.join(dir, name)

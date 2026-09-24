@@ -53,17 +53,28 @@ defmodule CmsHarness.ServedRoots do
     |> Enum.uniq()
   end
 
+  # A server roster entry must still name the copy currently on disk. This
+  # also protects against stale paths now holding a different onboarded copy.
+  def matches?(root, id) do
+    with true <- File.dir?(root),
+         {:ok, config} <- HarnessConfig.read_file(root),
+         true <- config.working_copy_id == id and matching_server?(config.server_url),
+         {:ok, resolved} <- ProjectIdentity.resolve(root),
+         true <- resolved.id == config.project_id and resolved.working_copy_id == id do
+      true
+    else
+      _ -> false
+    end
+  end
+
   defp restorable(path) do
     with {:ok, contents} <- File.read(path),
          {:ok,
           %{"root" => root, "working_copy_id" => id, "project_id" => project, "server_url" => url}} <-
            Jason.decode(contents),
-         true <- is_binary(root) and File.dir?(root) and url == server(),
+         true <- is_binary(root) and url == server() and matches?(root, id),
          {:ok, config} <- HarnessConfig.read_file(root),
-         true <- config.working_copy_id == id and config.project_id == project,
-         true <- matching_server?(config.server_url),
-         {:ok, resolved} <- ProjectIdentity.resolve(root),
-         true <- resolved.id == project and resolved.working_copy_id == id,
+         true <- config.project_id == project,
          {:ok, _credential, _source} <- Credentials.for_working_copy(root) do
       [root]
     else

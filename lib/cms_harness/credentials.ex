@@ -55,6 +55,7 @@ defmodule CmsHarness.Credentials do
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Projects
+  alias CmsHarness.ServedRoots
 
   @type source :: :user_token | :working_copy_key | :configured_deploy_key
   @type result :: {:ok, String.t(), source()} | {:error, :no_credential}
@@ -115,11 +116,12 @@ defmodule CmsHarness.Credentials do
   # a real credential, read off disk, in a test that had configured none.
   # Ambient cwd is the same trap `server_url/0` fell into.
   #
-  # The served set is the honest one. A daemon asking "where is this harness"
-  # is a daemon already serving something, which is the state the failing calls
-  # were in.
+  # At boot there are no served roots yet. Durable hints supply only a
+  # credential for the announce; the server's roster, not a hint, decides what
+  # may be served. Otherwise an offline offboard would be undone on restart.
   defp from_any_working_copy do
-    Projects.list()
+    (Projects.list() ++ ServedRoots.list())
+    |> Enum.uniq()
     |> Enum.find_value({:error, :no_credential}, fn root ->
       case from_working_copy(root) do
         {:ok, _key, _source} = found -> found

@@ -68,6 +68,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   alias CmsHarness.Device
   alias CmsHarness.Projects
   alias CmsHarness.Projects.Generator
+  alias CmsHarness.ServedRoots
 
   # Slower than `LaneReporter`'s 30s, deliberately. Lanes come and go inside a
   # single sitting and the page renders them live; a checkout is removed rarely,
@@ -76,13 +77,10 @@ defmodule CmsHarness.WorkingCopyReporter do
   # somebody's laptop.
   @heartbeat :timer.minutes(2)
 
-  # The first one comes sooner, because the first exchange is mostly a question.
-  # A fresh harness knows only what it has been asked to serve, so its opening
-  # report is thin and its value is the answer — the copies the server says are
-  # on this machine. Waiting a full heartbeat to ask, and another to report on
-  # what came back, would put four minutes between a harness starting and it
-  # looking at the checkout somebody deleted yesterday.
-  @first_report :timer.seconds(20)
+  # Start the authoritative roster exchange as soon as the supervision tree
+  # exists. Credentials can bootstrap from durable served-root hints without
+  # first starting channels, so an offline offboard stays offboarded.
+  @first_report 0
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: name(opts))
 
@@ -210,7 +208,7 @@ defmodule CmsHarness.WorkingCopyReporter do
         :ok
 
       _pid ->
-        for {_id, root} <- from_server, is_binary(root), File.dir?(root) do
+        for {id, root} <- from_server, is_binary(root), ServedRoots.matches?(root, id) do
           case Projects.ensure_started(root) do
             {:ok, _project} ->
               :ok
