@@ -1,5 +1,6 @@
 defmodule CodeMySpec.McpServers.IssuesServerTest do
   use ExUnit.Case, async: true
+  alias CodeMySpec.CodeMode.{Catalog, Docs}
   alias CodeMySpec.McpServers.IssuesServer
 
   describe "server capabilities" do
@@ -47,8 +48,8 @@ defmodule CodeMySpec.McpServers.IssuesServerTest do
         assert description =~ Atom.to_string(severity)
       end
 
-      catalog = CodeMySpec.CodeMode.Catalog.from([tool], fn _ -> fn _ -> :ok end end)
-      docs = CodeMySpec.CodeMode.Docs.render(catalog, name: "create_issue")
+      catalog = Catalog.from([tool], fn _ -> fn _ -> :ok end end)
+      docs = Docs.render(catalog, name: "create_issue")
       assert docs =~ description
       assert docs =~ "not issue severities"
     end
