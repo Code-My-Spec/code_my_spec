@@ -155,7 +155,13 @@ defmodule CmsHarness.WorkingCopyReporter do
         say(observations, last)
         serve(from_server)
         state = generate(Map.get(reply, :pending_local_projects, []), state)
-        {observations, %{state | known: Map.merge(known, from_server), last: observations}}
+        # `known` wins. A root from the server says where a copy is *recorded*,
+        # which is not a claim about this machine — so it fills in copies we do
+        # not know yet and never replaces one we were handed or read off this
+        # disk. Merged the other way, a copy recorded at a root this machine
+        # does not have got stat'ed at that root and reported missing by the
+        # very machine it was sitting on.
+        {observations, %{state | known: Map.merge(from_server, known), last: observations}}
 
       {:error, reason} ->
         # Debug, not warning. `Device.announce/1` already logs at warning; a box
