@@ -274,9 +274,16 @@ defmodule CodeMySpec.MainAgent.Cadence do
   # In a task because delivery waits on a turn that can outlast any interval.
   # `message_agent/4` queues for an agent that is mid-turn, so busy needs no
   # handling here.
+  #
+  # Only when main is **not** continuous. A continuous main is already offered a
+  # turn by `Work.consider_project/2` above, and criterion 3331 pins that to
+  # exactly one provider request carrying `start_task` — so delivering the digest
+  # as well would be the second, unconditional turn its title rules out. The gap
+  # `2c34da87` reported is the other case: a non-continuous main, which the work
+  # path never reaches and which nothing else wakes.
   defp deliver({:ok, report}, scope) do
     with true <- running?(scope),
-         %{id: id} <- Agents.main_agent(scope) do
+         %{continuous: false, id: id} <- Agents.main_agent(scope) do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Agents.message_agent(scope, id, report)
       end)

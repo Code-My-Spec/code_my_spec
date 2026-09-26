@@ -1129,12 +1129,18 @@ defmodule CodeMySpec.Agents do
   def main_agent(%Scope{} = scope) do
     case WorkingCopies.main(scope) do
       nil -> nil
-      copy -> AgentsRepository.list_running(scope) |> Enum.find(&on_copy?(&1, copy))
+      copy -> AgentsRepository.list_running(scope) |> Enum.find(&main_on_copy?(&1, copy))
     end
   end
 
-  defp on_copy?(%Agent{working_copy_id: id}, %{id: id}), do: true
-  defp on_copy?(_agent, _copy), do: false
+  # Role as well as copy. This matched on the working copy alone, so "the main
+  # agent" was whichever agent happened to be running on the main checkout —
+  # and the main copy holds one agent only by convention, not by constraint.
+  # Story 1059's criterion 3331 puts a continuous main and a continuous coding
+  # agent on one checkout, and anything addressed to "the main agent" there
+  # reached whichever the query returned first.
+  defp main_on_copy?(%Agent{role: :main, working_copy_id: id}, %{id: id}), do: true
+  defp main_on_copy?(_agent, _copy), do: false
 
   @doc """
   The project's own agent, started if it does not exist yet.
