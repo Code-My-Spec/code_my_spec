@@ -57,7 +57,6 @@ defmodule CodeMySpec.Promotion do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
-      CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Problems,
       CodeMySpec.Stories,
@@ -73,7 +72,6 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.BootVersion
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
@@ -378,16 +376,11 @@ defmodule CodeMySpec.Promotion do
          %WorkingCopy{id: id} = running,
          opts
        ) do
-    # No merge crossed here, so there is no range to ask `contract_changed?/2`
-    # about — the current commit could still differ from what the harness
-    # booted, same as any ordinary push. Always refresh: the only caller that
-    # gets to skip it is the one that has already checked.
-    #
-    # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
+    # `restart/2` always answers `{:error, %{reason: ...}}` now — dispatched,
     # not awaited, for every promotion (54aa534c) — so this wraps it as the
     # success it is rather than pattern-matching for a confirmation that no
     # longer arrives.
-    {:error, reason} = restart(scope, running, true, opts)
+    {:error, reason} = restart(scope, running, opts)
     {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
   end
 
@@ -430,7 +423,7 @@ defmodule CodeMySpec.Promotion do
       stamp_promoted_stories(scope, stamp_version)
 
       scope
-      |> restart(running, refresh_harness?(scope, merge_result), opts)
+      |> restart(running, opts)
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
     else
       {:error, reason} = error ->
@@ -448,44 +441,6 @@ defmodule CodeMySpec.Promotion do
         error
     end
   end
-
-  # Whether the restart that follows this merge needs to rebuild the harness
-  # too — the other half of `just refresh` that `just restart` always ran
-  # unconditionally, on every promotion, whether or not the merge touched
-  # anything the harness cares about (376e3356).
-  #
-  # Answered from the merge's own `before`/`after` — the checkout's HEAD on
-  # either side of exactly the commits this promotion just brought in — rather
-  # than the harness's general drift, which would also be true for commits
-  # this promotion had nothing to do with.
-  #
-  # `false` is the only answer that changes anything: `:unknown` (the range
-  # could not be read) and `true` both keep today's behavior. That asymmetry
-  # is deliberate. A refresh this promotion did not need costs a shared
-  # harness bounce and some seconds; a refresh it did need and skipped is
-  # d00a3272 again — every stop hook on the machine wrong until someone
-  # notices and restarts it by hand. Only a merge whose range is *provably*
-  # silent on `lib/cms_harness` and the channel modules gets to skip it.
-  #
-  # Scoped to a local promotion on purpose. `BootVersion.contract_changed?/2`
-  # reads the diff against *this process's own* booted root — correct only
-  # when that root is the same checkout the merge just landed in, which is
-  # true for this project's own self-hosted setup but not guaranteed for a
-  # `:harness`-environment promotion, whose checkout lives on a different
-  # machine than the server answering this question. Rather than guess, a
-  # harness-environment promotion always refreshes, unchanged from before.
-  defp refresh_harness?(%Scope{environment: %Environment{type: :harness}}, _merge_result),
-    do: true
-
-  defp refresh_harness?(%Scope{}, %{before: before, after: after_})
-       when is_binary(before) and is_binary(after_) do
-    case BootVersion.contract_changed?(before, after_) do
-      false -> false
-      _ -> true
-    end
-  end
-
-  defp refresh_harness?(%Scope{}, _merge_result), do: true
 
   # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
   # never awaited, for every promotion (54aa534c, phase two) — so there is
@@ -909,8 +864,8 @@ defmodule CodeMySpec.Promotion do
   # rather than an observation, deliberately: over-claiming costs one QA
   # attempt that meets a real failure and reports it; under-claiming costs an
   # agent that cannot get out of the gate at all.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?, opts) do
-    dispatch_restart(scope, root, running.id, refresh_harness?, opts)
+  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, opts) do
+    dispatch_restart(scope, root, running.id, opts)
     {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
     {:error, %{reason: deployment_dispatched_reason()}}
   end
@@ -927,11 +882,11 @@ defmodule CodeMySpec.Promotion do
   # here that wasn't already gated — had nowhere to go. The caller had already
   # been told "merged, restart unconfirmed" and moved on; this is the one
   # place that outcome is ever actually resolved one way or the other.
-  defp dispatch_restart(scope, root, working_copy_id, refresh_harness?, opts) do
+  defp dispatch_restart(scope, root, working_copy_id, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         scope
-        |> Runner.restart(root, working_copy_id, refresh_harness?)
+        |> Runner.restart(root, working_copy_id)
         |> classify_restart()
         |> log_restart_outcome(root)
         |> correct_the_agent(scope, root, Keyword.get(opts, :notify))

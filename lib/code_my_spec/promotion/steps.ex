@@ -146,11 +146,7 @@ defmodule CodeMySpec.Promotion.Steps do
   outside a promotion.
 
   A successful merge's result also carries `before`/`after` — the checkout's
-  HEAD on either side of it. `Promotion` needs that range to ask
-  `BootVersion.contract_changed?/2` whether the merge touched the code that
-  decides whether a harness and a server can talk to each other (376e3356);
-  reading it here, where the git access to `root` already is, is cheaper than
-  a fourth round trip to ask again.
+  HEAD on either side of it, which `Promotion` logs.
 
   It also carries `version` — the version this promotion originated by
   bumping and tagging `root`'s own `mix.exs`, or `nil` for a checkout that has
@@ -485,31 +481,20 @@ defmodule CodeMySpec.Promotion.Steps do
   Through the project's own `just restart`, which is the seam. A promotion does
   not know how to start a Phoenix app, and should not learn.
 
-  `refresh_harness?` (default `true`) is whether `restart` should also rebuild
-  the harness at its tail. `Promotion` passes `false` only when it has already
-  established, from the merge that just landed, that the range could not have
-  touched the channel contract (376e3356) — skipping is a cost-saving
-  optimization for that one caller, not a new default.
-
-  Signaled through an environment variable, not a `just` CLI argument. This
-  function calls `root`'s *own* `just restart` — a promoted project's own
-  recipe, or the synthetic one criterion 3175's spex writes to prove the
-  restart always runs — and neither is guaranteed to declare a parameter for
-  this. An env var a recipe never reads is invisible to it; an extra
-  positional argument to a recipe that does not declare it is not silently
-  ignored — `just` reads the next token as the name of a *second* recipe to
-  also run and fails with "justfile does not contain recipe <value>"
-  (confirmed empirically before this shipped, against exactly the zero-
-  parameter shape criterion 3175's fixture uses).
+  Always the whole of it, harness included. Skipping the harness refresh when
+  a merge provably left the channel contract alone (376e3356) was removed:
+  the harness hot-reloads its own code from this checkout, so any merge can
+  swap its modules under live processes, and a promote that did not restart it
+  left it crashed (08744186).
   """
-  @spec restart(Environments.Environment.t(), String.t(), boolean()) :: result()
-  def restart(env, root, refresh_harness? \\ true) do
+  @spec restart(Environments.Environment.t(), String.t()) :: result()
+  def restart(env, root) do
     env
     |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(env, root, refresh_harness?)
+    |> run_restart(env, root)
   end
 
-  defp run_restart(false, _env, root, _refresh_harness?) do
+  defp run_restart(false, _env, root) do
     {:error,
      %{
        reason:
@@ -527,17 +512,14 @@ defmodule CodeMySpec.Promotion.Steps do
   # nothing merged onward — and then reported "`just restart` failed (1):" with
   # an empty body, telling the agent its promotion failed and not one word about
   # what broke.
-  defp run_restart(true, env, root, refresh_harness?) do
-    opts = [cd: root, stderr_to_stdout: true, env: skip_harness_env(refresh_harness?)]
+  defp run_restart(true, env, root) do
+    opts = [cd: root, stderr_to_stdout: true]
 
     case normalize(Environments.cmd(env, "just", ["restart"], opts)) do
       {out, 0} -> serving(env, root, out)
       {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
     end
   end
-
-  defp skip_harness_env(true), do: []
-  defp skip_harness_env(false), do: [{"CMS_SKIP_HARNESS_REFRESH", "true"}]
 
   defp serving(env, root, out) do
     case git(env, root, ["rev-parse", "--short", "HEAD"]) do
