@@ -177,9 +177,9 @@ defmodule CodeMySpec.Agents do
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
          {:ok, attrs} <- put_destination(scope, attrs),
-         :ok <- copy_is_free(scope, attrs),
          :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
+         :ok <- copy_is_free(scope, attrs),
          :start <- resume_holder(scope, attrs),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
@@ -726,11 +726,11 @@ defmodule CodeMySpec.Agents do
       else: :ok
   end
 
-  defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, role: role})
+  defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, working_copy: root, role: role})
        when is_binary(copy_id) do
     scope
     |> AgentsRepository.list_running()
-    |> Enum.find(&(&1.working_copy_id == copy_id and to_string(&1.role) == to_string(role)))
+    |> Enum.find(&same_seat?(&1, copy_id, root, role))
     |> case do
       nil -> :ok
       agent -> {:error, {:role_taken, agent.role, agent.id, agent.working_copy}}
@@ -738,6 +738,13 @@ defmodule CodeMySpec.Agents do
   end
 
   defp refuse_if_role_taken(_scope, _attrs), do: :ok
+
+  # Root as well as id: a root with no row of its own is recorded under the
+  # caller's copy id (`id_for/2`), and is still a different tree.
+  defp same_seat?(agent, copy_id, root, role) do
+    agent.working_copy_id == copy_id and agent.working_copy == root and
+      to_string(agent.role) == to_string(role)
+  end
 
   # Ask the machine to bring it up, and record what it reports.
   #
