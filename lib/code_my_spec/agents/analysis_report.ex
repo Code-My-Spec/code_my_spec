@@ -283,7 +283,15 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     |> Repo.all()
   end
 
+  # Off the caller's process: a run failed on channel death or join is announced
+  # from inside the harness channel, and dispatch is a call back into it,
+  # refused as :would_deadlock (same class as 104bcb23).
   defp tell(%Agent{} = agent, message) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> dispatch(agent, message) end)
+    :ok
+  end
+
+  defp dispatch(%Agent{} = agent, message) do
     ref = "analysis-" <> Ecto.UUID.generate()
 
     case Transport.impl().dispatch_message(agent.working_copy_id, agent, ref, message, 10_000) do
