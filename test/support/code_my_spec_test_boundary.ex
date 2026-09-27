@@ -36,6 +36,7 @@ defmodule CodeMySpecTest do
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Workspaces
     ],
     # `TurnEventRelay` is exported for the same reason the other two are:

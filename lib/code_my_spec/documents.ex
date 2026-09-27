@@ -7,7 +7,6 @@ defmodule CodeMySpec.Documents do
     top_level?: true,
     deps: [
       CodeMySpec.Environments,
-      CodeMySpec.Issues,
       CodeMySpec.Paths
     ],
     exports: :all

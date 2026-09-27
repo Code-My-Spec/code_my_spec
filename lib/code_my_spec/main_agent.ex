@@ -44,7 +44,7 @@ defmodule CodeMySpec.MainAgent do
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],

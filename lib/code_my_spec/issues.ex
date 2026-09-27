@@ -21,8 +21,7 @@ defmodule CodeMySpec.Issues do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

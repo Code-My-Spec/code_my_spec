@@ -6,13 +6,10 @@ defmodule CodeMySpec.Components do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Accounts,
       CodeMySpec.Paths,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

@@ -14,10 +14,9 @@ defmodule CodeMySpec.Epics do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

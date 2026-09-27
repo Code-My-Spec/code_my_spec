@@ -69,7 +69,7 @@ defmodule CodeMySpec.Devices do
     top_level?: true,
     deps: [
       CodeMySpec.Repo,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

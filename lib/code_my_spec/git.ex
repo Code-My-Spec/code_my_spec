@@ -21,7 +21,12 @@ defmodule CodeMySpec.Git do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Integrations, CodeMySpec.Users],
+    deps: [
+      CodeMySpec.Environments,
+      CodeMySpec.Integrations,
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
+    ],
     exports: :all
 
   @behaviour CodeMySpec.Git.Behaviour

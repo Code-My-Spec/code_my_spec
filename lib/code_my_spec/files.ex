@@ -18,12 +18,10 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Environments,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

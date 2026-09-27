@@ -29,7 +29,7 @@ defmodule CodeMySpec.Billing do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec.Accounts, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   import Ecto.Query

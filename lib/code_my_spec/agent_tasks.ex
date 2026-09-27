@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Rules,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

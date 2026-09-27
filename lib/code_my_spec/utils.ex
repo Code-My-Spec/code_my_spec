@@ -3,21 +3,12 @@ defmodule CodeMySpec.Utils do
 
   use Boundary,
     top_level?: true,
-    deps: [
-      CodeMySpec.Components,
-      CodeMySpec.Paths,
-      CodeMySpec.Projects,
-      CodeMySpec.Repo,
-      CodeMySpec.Stories,
-      CodeMySpec.Users
-    ],
+    deps: [CodeMySpec.Paths, CodeMySpec.Repo],
     exports: :all
 
   require Logger
 
-  alias CodeMySpec.Components.Component
   alias CodeMySpec.Paths
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Utils.Paths, as: UtilPaths
 
   @doc """
@@ -98,10 +89,11 @@ defmodule CodeMySpec.Utils do
     ArgumentError -> attrs
   end
 
-  def component_files(
-        %Component{module_name: module_name, type: type},
-        %Project{}
-      ) do
+  # Plain map patterns, not `%Component{}`/`%Project{}`: those struct
+  # expansions were `Utils`' only calls into `Components` and `Projects`, and
+  # they put a leaf helper module inside the context dependency cycle. The
+  # project argument was never read.
+  def component_files(%{module_name: module_name, type: type}, _project) do
     module_path = UtilPaths.module_to_path(module_name)
 
     # Phoenix convention: LiveViews/LiveComponents live in `live/`, controllers in `controllers/`

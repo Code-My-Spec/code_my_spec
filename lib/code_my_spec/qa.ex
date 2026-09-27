@@ -38,10 +38,8 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

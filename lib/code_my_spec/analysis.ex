@@ -45,13 +45,12 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Files,
       CodeMySpec.Notifications,
       CodeMySpec.Problems,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Validation
     ],
     exports: :all

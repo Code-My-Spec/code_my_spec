@@ -32,13 +32,12 @@ defmodule CodeMySpec.Resources do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Accounts,
       CodeMySpec.Configurations,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],

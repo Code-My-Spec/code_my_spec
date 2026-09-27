@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Interview
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces
@@ -749,7 +750,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   defp select_plan_scope(%Scope{} = scope, plan) do
     with {:ok, _} <- UserPreferences.select_active_account(scope, plan.account_id),
          {:ok, _} <- UserPreferences.select_active_project(scope, plan.project_id) do
-      {:ok, Scope.for_user(scope.user)}
+      {:ok, Users.scope_for(scope.user)}
     end
   end
 

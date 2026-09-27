@@ -39,7 +39,7 @@ defmodule CodeMySpec.Generators do
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Provisioning,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

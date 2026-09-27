@@ -46,12 +46,10 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.MainAgent,
-      CodeMySpec.Notifications,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies

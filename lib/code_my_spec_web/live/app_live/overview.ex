@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
 
   def mount(_params, _session, socket) do
@@ -46,7 +47,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         [first | _] = Accounts.list_accounts(scope)
 
         case UserPreferences.select_active_account(scope, first.id) do
-          {:ok, _} -> {:ok, Scope.for_user(scope.user)}
+          {:ok, _} -> {:ok, Users.scope_for(scope.user)}
           {:error, _} -> {:redirect, ~p"/app/accounts/picker"}
         end
     end

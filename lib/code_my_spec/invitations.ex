@@ -14,7 +14,8 @@ defmodule CodeMySpec.Invitations do
       CodeMySpec.Mailer,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

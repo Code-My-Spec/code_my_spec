@@ -92,6 +92,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Uploads,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces

@@ -33,7 +33,8 @@ defmodule CodeMySpec.Permissions do
       CodeMySpec.Auth,
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

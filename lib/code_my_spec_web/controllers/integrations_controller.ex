@@ -133,7 +133,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
            Integrations.handle_login_callback(provider, params, session_params),
          {:ok, user, status} <-
            Users.find_or_register_oauth_user(provider, normalized_user, ga_opts) do
-      scope = Scope.for_user(user)
+      scope = Users.scope_for(user)
 
       Integrations.save_integration(scope, provider, token, normalized_user)
 

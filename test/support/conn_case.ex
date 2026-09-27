@@ -46,7 +46,7 @@ defmodule CodeMySpecTest.ConnCase do
   """
   def register_and_log_in_user(%{conn: conn} = context) do
     user = CodeMySpec.UsersFixtures.user_fixture()
-    scope = Users.Scope.for_user(user)
+    scope = Users.scope_for(user)
 
     opts =
       context

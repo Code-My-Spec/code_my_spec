@@ -22,13 +22,11 @@ defmodule CodeMySpec.BddRules do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.Accounts,
       CodeMySpec.Personas,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

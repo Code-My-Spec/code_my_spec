@@ -36,12 +36,11 @@ defmodule CodeMySpec.Servers do
     top_level?: true,
     deps: [
       CodeMySpec.AccountSecrets,
-      CodeMySpec.Accounts,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

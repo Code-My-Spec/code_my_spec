@@ -58,6 +58,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Tags,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],

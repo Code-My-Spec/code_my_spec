@@ -29,7 +29,12 @@ defmodule CodeMySpec.Integrations do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Encrypted.Binary, CodeMySpec.PublicUrl, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [
+      CodeMySpec.Encrypted.Binary,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Repo,
+      CodeMySpec.Users.Scope
+    ],
     exports: :all
 
   alias Assent.Strategy.OAuth2

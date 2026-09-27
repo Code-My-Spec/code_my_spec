@@ -12,7 +12,7 @@ defmodule CodeMySpec.Projects do
       CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

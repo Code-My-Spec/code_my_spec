@@ -45,7 +45,7 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

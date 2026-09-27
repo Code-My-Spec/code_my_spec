@@ -6,11 +6,10 @@ defmodule CodeMySpec.UserPreferences do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Accounts,
       CodeMySpec.Authorization,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

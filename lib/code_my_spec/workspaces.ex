@@ -23,6 +23,7 @@ defmodule CodeMySpec.Workspaces do
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

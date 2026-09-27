@@ -66,6 +66,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies,

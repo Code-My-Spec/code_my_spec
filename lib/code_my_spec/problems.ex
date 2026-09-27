@@ -10,13 +10,11 @@ defmodule CodeMySpec.Problems do
     top_level?: true,
     deps: [
       CodeMySpec.Analysis,
-      CodeMySpec.Components,
       CodeMySpec.Files,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Tests,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],

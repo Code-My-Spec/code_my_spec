@@ -5,7 +5,7 @@ defmodule CodeMySpec.Accounts do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Authorization, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec.Authorization, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Accounts.{Account, AccountsRepository, MembersRepository}

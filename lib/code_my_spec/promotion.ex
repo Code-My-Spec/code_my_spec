@@ -60,9 +60,8 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Problems,
-      CodeMySpec.Requirements,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies
@@ -847,7 +846,8 @@ defmodule CodeMySpec.Promotion do
      %{
        reason:
          "#{named} is carrying #{length(problems)} problem(s), so it promotes " <>
-           "nothing:\n" <> describe(problems) <>
+           "nothing:\n" <>
+           describe(problems) <>
            "\n\nIf #{named} is not this session's own working copy, the gate " <>
            "resolved to a different checkout than the one calling it — fix on " <>
            "that copy, or say so if this looks wrong; a sweep run from here " <>

@@ -17,7 +17,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

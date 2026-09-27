@@ -17,7 +17,7 @@ defmodule CodeMySpec.GitHub do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Integrations, CodeMySpec.Users],
+    deps: [CodeMySpec.Integrations, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Integrations

@@ -74,10 +74,10 @@ defmodule CodeMySpecWeb.UserAuth do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Users.get_user_by_session_token(token) do
       conn
-      |> assign(:current_scope, Scope.for_user(user))
+      |> assign(:current_scope, Users.scope_for(user))
       |> maybe_reissue_user_session_token(user, token_inserted_at)
     else
-      nil -> assign(conn, :current_scope, Scope.for_user(nil))
+      nil -> assign(conn, :current_scope, Users.scope_for(nil))
     end
   end
 
@@ -302,7 +302,7 @@ defmodule CodeMySpecWeb.UserAuth do
 
       case UserPreferences.select_active_account(scope, first.id) do
         {:ok, _} ->
-          new_scope = Scope.for_user(scope.user)
+          new_scope = Users.scope_for(scope.user)
           {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
 
         {:error, _} ->
@@ -331,7 +331,7 @@ defmodule CodeMySpecWeb.UserAuth do
           Users.get_user_by_session_token(user_token)
         end || {nil, nil}
 
-      Scope.for_user(user)
+      Users.scope_for(user)
     end)
   end
 
@@ -346,7 +346,7 @@ defmodule CodeMySpecWeb.UserAuth do
   `/app` for a user with no project yet, which is the onboarding it renders.
   """
   # Called with a User struct directly (e.g. from log_in_user/3 before the scope plug runs)
-  def signed_in_path(%Users.User{} = user), do: user |> Scope.for_user() |> signed_in_path()
+  def signed_in_path(%Users.User{} = user), do: user |> Users.scope_for() |> signed_in_path()
 
   # Called with a Conn that already has current_scope populated (legacy callers)
   def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{} = scope}}),
@@ -405,7 +405,7 @@ defmodule CodeMySpecWeb.UserAuth do
   defp maybe_assign_scope_for_token(conn, token) do
     if AccessTokens.is_accessible?(token) do
       user = Users.get_user!(token.resource_owner_id)
-      assign(conn, :current_scope, Scope.for_user(user))
+      assign(conn, :current_scope, Users.scope_for(user))
     else
       send_unauthorized_response(
         conn,

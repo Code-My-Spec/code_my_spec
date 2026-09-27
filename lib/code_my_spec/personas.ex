@@ -11,11 +11,10 @@ defmodule CodeMySpec.Personas do
     top_level?: true,
     deps: [
       CodeMySpec.Paths,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

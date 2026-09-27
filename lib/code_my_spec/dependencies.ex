@@ -32,7 +32,7 @@ defmodule CodeMySpec.Dependencies do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   import Ecto.Query, warn: false

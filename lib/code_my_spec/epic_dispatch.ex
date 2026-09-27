@@ -46,7 +46,7 @@ defmodule CodeMySpec.EpicDispatch do
       CodeMySpec.Epics,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

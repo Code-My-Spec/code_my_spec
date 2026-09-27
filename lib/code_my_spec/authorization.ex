@@ -10,7 +10,7 @@ defmodule CodeMySpec.Authorization do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Users],
+    deps: [CodeMySpec.Accounts, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Accounts.MembersRepository

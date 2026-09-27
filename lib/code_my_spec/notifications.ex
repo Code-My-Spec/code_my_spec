@@ -12,7 +12,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.TaskOwner,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

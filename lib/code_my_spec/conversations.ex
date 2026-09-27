@@ -26,10 +26,9 @@ defmodule CodeMySpec.Conversations do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.Mail,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

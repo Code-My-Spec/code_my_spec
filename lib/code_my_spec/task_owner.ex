@@ -5,7 +5,7 @@ defmodule CodeMySpec.TaskOwner do
       CodeMySpec.Agents,
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

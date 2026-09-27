@@ -15,9 +15,8 @@ defmodule CodeMySpec.ProjectSync do
       CodeMySpec.Embeddings,
       CodeMySpec.Environments,
       CodeMySpec.Files,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 end
