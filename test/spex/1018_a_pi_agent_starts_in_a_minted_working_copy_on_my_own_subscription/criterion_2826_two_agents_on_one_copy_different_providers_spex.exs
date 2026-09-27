@@ -46,10 +46,13 @@ defmodule CodeMySpecSpex.Story1018.Criterion2826Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, first, _frame} =
-          StartAgent.execute(%{"engine" => "alloy", "provider" => "openai-codex"}, frame)
+          StartAgent.execute(
+            %{"engine" => "alloy", "provider" => "openai-codex", "role" => "coding"},
+            frame
+          )
 
         {:reply, second, _frame} =
-          StartAgent.execute(%{"engine" => "alloy", "provider" => "zai"}, frame)
+          StartAgent.execute(%{"engine" => "alloy", "provider" => "zai", "role" => "qa"}, frame)
 
         {:ok, context |> Map.put(:first, first) |> Map.put(:second, second)}
       end

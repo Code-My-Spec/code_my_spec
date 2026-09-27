@@ -17,9 +17,10 @@ defmodule CodeMySpecSpex.Story1039.Criterion3006Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -65,6 +66,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3006Spex do
       then_ "and pointing QA elsewhere moves it", context do
         :ok = set_model(context, "qa", "anthropic", "claude-expensive")
 
+        stop(context.qa, context.frame)
         {:reply, qa, _} = StartAgent.execute(%{role: "qa"}, context.frame)
 
         assert response_text(qa) =~ "anthropic",
@@ -85,5 +87,12 @@ defmodule CodeMySpecSpex.Story1039.Criterion3006Spex do
     |> render_submit()
 
     :ok
+  end
+
+  # A copy holds one agent per role, so the next one starts after this one stops.
+  defp stop(response, frame) do
+    agent_id = response_field(response, "Agent")
+    {:reply, reply, _} = StopAgent.execute(%{"agent_id" => agent_id}, frame)
+    refute reply.isError, response_text(reply)
   end
 end
