@@ -63,6 +63,13 @@ defmodule CmsHarness.TurnEventEncodingTest do
       assert encoded["kind"] == "message_delivered"
     end
 
+    test "a turn starting carries no text, not an inspected empty map" do
+      encoded = ChannelClient.encode_turn_event(%{event: :turn_started, seq: 1, turn: 3})
+
+      assert encoded["kind"] == "turn_started"
+      assert encoded["text"] == nil
+    end
+
     test "a shape nobody anticipated still travels rather than being dropped" do
       encoded = ChannelClient.encode_turn_event(%{event: :something_new, mystery: 42})
 
