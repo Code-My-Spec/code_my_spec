@@ -9,6 +9,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
@@ -36,8 +37,15 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         # here and only one of them should be asked about.
         requested = Map.new(params, fn {k, v} -> {to_string(k), v} end)
 
+        agent = my_agent(frame, scope)
+
         execution =
-          Requirements.story_execution(scope, my_role(frame, scope), requested["story_id"])
+          Requirements.story_execution(
+            scope,
+            agent && agent.role,
+            requested["story_id"],
+            withheld(scope, agent)
+          )
 
         {:reply, RequirementsMapper.story_execution_response(execution, active_subagents), frame}
 
@@ -70,13 +78,22 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # runs in the validation path. The Files page's Sync button remains the
   # deliberate full pass.
 
-  defp my_role(frame, scope) do
+  defp my_agent(frame, scope) do
     with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
-         {:ok, %{role: role}} <- Agents.fetch_agent(scope, agent_id) do
-      role
+         {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
+      agent
     else
       _ -> nil
     end
+  end
+
+  # What `start_task` would refuse this agent is not offered to it — its own
+  # task blocked on an unanswered tap_out was, and it spun (467310a7).
+  defp withheld(_scope, nil), do: fn _ -> false end
+
+  defp withheld(scope, agent) do
+    owners = Agents.list_agents(scope)
+    &Work.withheld?(owners, agent, &1)
   end
 
   # Resolves the currently-active sub-agents for the most recent session

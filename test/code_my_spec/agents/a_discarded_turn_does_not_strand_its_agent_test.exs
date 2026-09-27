@@ -151,4 +151,41 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
     refute Enum.any?(drain(), &String.contains?(&1, "harness restarted")),
            "an agent with no task was told its turn had been discarded"
   end
+
+  # 64299aef: the edges that fire on ordinary change — a graph change, the
+  # cadence, another agent finishing — skipped a holder, so an agent that
+  # stopped holding a task waiting on a result was never reached by the result.
+  test "an ordinary consider asks a holder to dispose of its task", ctx do
+    held = holding_a_task(ctx.scope, ctx.agent, nil)
+
+    :ok = Work.consider_copy(ctx.scope, held.working_copy_id, :graph_changed)
+
+    assert Enum.any?(drain(), &String.contains?(&1, "You still hold the task")),
+           """
+           An agent holding a task with no turn open was skipped by
+           `consider_copy/4`. Every edge that could tell it its result landed
+           goes through there, so skipping it leaves it idle until a human
+           messages it.
+           """
+  end
+
+  test "a holder is not resumed on every consider forever", ctx do
+    held = holding_a_task(ctx.scope, ctx.agent, nil)
+
+    sent =
+      for _ <- 1..8 do
+        :ok = Work.consider_copy(ctx.scope, held.working_copy_id, :graph_changed)
+        # What the turn would do: start (clearing the reservation) and end.
+        {:ok, _} =
+          AgentsRepository.update_agent(ctx.scope, Repo.get(Agent, held.id), %{
+            work_request_id: nil,
+            work_requested_at: nil
+          })
+
+        drain() |> Enum.count(&String.contains?(&1, "You still hold the task"))
+      end
+
+    assert Enum.sum(sent) == 5,
+           "a holder waiting on a result spent a turn on every consider: #{inspect(sent)}"
+  end
 end
