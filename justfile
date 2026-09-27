@@ -403,6 +403,35 @@ restart port="4000":
 # them for changes that needed none of it, three separate agent failures caused
 # by the bounce rather than by the code.
 
+# Story 1108: run *this* checkout's own app in the foreground, on the port
+# and database given to it.
+#
+# Deliberately not `restart` reworked: `restart` always resolves to the main
+# checkout (`--git-common-dir`) because :4000 is the one server everyone
+# shares, and it self-daemonizes because whoever calls it is not going to sit
+# there holding it. This one is the other case — a working copy's *own*
+# instance, and something (the harness) that already knows how to background
+# a process and track its pid. Doing that here too would mean two things
+# deciding when this process is allowed to die.
+#
+# `exec` rather than launching a child: no shell left holding a pid that
+# is not the one actually listening.
+serve port database_name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! mix loadpaths >/dev/null 2>&1; then
+        echo "→ deps do not satisfy mix.exs — fetching and recompiling" >&2
+        mix deps.get && mix deps.compile
+    fi
+
+    mix ecto.create
+    mix ecto.migrate
+
+    export PORT="{{port}}"
+    export DATABASE_NAME="{{database_name}}"
+    exec mix phx.server
+
 # Pull main into the running checkout without restarting — the code reloader takes it.
 pull:
     #!/usr/bin/env bash

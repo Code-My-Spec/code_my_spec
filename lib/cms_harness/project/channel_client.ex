@@ -1401,6 +1401,36 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # Story 1108: bring this copy's own app up, restart it, or stop it.
+  #
+  # Answered from a task, on the same reasoning as `create_working_copy`
+  # above: a first start can mean cloning a database, which takes real time,
+  # and holding this channel for it would stall every report and manifest
+  # this copy needs to send behind one app booting.
+  def handle_message(_topic, "ensure_app_running", %{"ref" => ref}, socket) do
+    dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
+      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root)
+    end)
+
+    {:ok, socket}
+  end
+
+  def handle_message(_topic, "restart_app", %{"ref" => ref}, socket) do
+    dispatch_app_call(socket, ref, "restart_app_result", fn ->
+      CmsHarness.AppInstance.restart(socket.assigns.project.root)
+    end)
+
+    {:ok, socket}
+  end
+
+  def handle_message(_topic, "stop_app", %{"ref" => ref}, socket) do
+    dispatch_app_call(socket, ref, "stop_app_result", fn ->
+      CmsHarness.AppInstance.stop_app(socket.assigns.project.root)
+    end)
+
+    {:ok, socket}
+  end
+
   # A script on the server asked for something that lives here. The browser is
   # the only such thing today, and it is on this machine because Chrome is.
   # Answered from a task, on the same reasoning as `message_agent` above and
@@ -1430,6 +1460,15 @@ defmodule CmsHarness.Project.ChannelClient do
     )
 
     {:ok, socket}
+  end
+
+  defp dispatch_app_call(socket, ref, event, fun) do
+    topic = socket.assigns.topic
+    parent = self()
+
+    Task.start(fn ->
+      send(parent, {:app_call_result, topic, ref, event, fun.()})
+    end)
   end
 
   # An error stays an error across the wire. A browser that refused and one that
@@ -1778,6 +1817,22 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_stop_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
+  # Story 1108. `url`/`commit` are omitted rather than sent as `nil` when a
+  # report has neither reason to name (a health-probe-only confirmation) —
+  # the server's `decode_app_result/1` reads their absence as "unchanged,"
+  # same as omitting them from `WorkingCopies.record_app_status/2`'s attrs.
+  defp encode_app_result({:ok, %{status: status} = info}) do
+    %{"status" => "ok", "app_status" => status}
+    |> maybe_put("app_url", Map.get(info, :url))
+    |> maybe_put("app_commit", Map.get(info, :commit))
+  end
+
+  defp encode_app_result({:error, reason}),
+    do: %{"status" => "error", "reason" => reason_text(reason)}
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
   defp encode_fs_result(:ok), do: %{"ok" => true}
   defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   # A refusal with structure keeps it.
@@ -1863,6 +1918,16 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info({:tool_call_result, topic, ref, result}, socket) do
     push(socket, topic, "tool_call_result", Map.put(encode_tool_result(result), "ref", ref))
 
+    {:noreply, socket}
+  end
+
+  def handle_info({:app_call_result, topic, ref, "stop_app_result" = event, result}, socket) do
+    push(socket, topic, event, Map.put(encode_stop_result(result), "ref", ref))
+    {:noreply, socket}
+  end
+
+  def handle_info({:app_call_result, topic, ref, event, result}, socket) do
+    push(socket, topic, event, Map.put(encode_app_result(result), "ref", ref))
     {:noreply, socket}
   end
 

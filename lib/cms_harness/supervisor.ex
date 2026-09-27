@@ -76,6 +76,14 @@ defmodule CmsHarness.Supervisor do
       # other.
       {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one},
 
+      # One per working copy running its own app (story 1108). A sibling
+      # here rather than a child of `Project.Supervisor`'s `rest_for_one`
+      # chain on purpose: that chain restarts everything together because
+      # each child answers to one join, and an app instance must survive a
+      # reconnect, a channel blip, a `mix test` run in the same copy —
+      # none of which the app it started should notice.
+      {DynamicSupervisor, name: CmsHarness.AppInstanceSupervisor, strategy: :one_for_one},
+
       # Holds the short-lived token the deploy key buys, and serialises buying
       # it: several hooks and an MCP call arrive at once on a cold start, and N
       # simultaneous exchanges for one key is N-1 tokens nobody uses.
