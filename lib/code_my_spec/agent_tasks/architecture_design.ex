@@ -193,10 +193,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # not to do anything — without rewriting the proposal end-to-end. Skip
   # auto-execution of the (now potentially stale) proposal and verify the
   # gate directly: every project story has a linked component.
+  # The same two conditions the `architecture_designed` requirement checks. This
+  # used to check only unlinked stories, so a task passed while an orphan kept
+  # the requirement unmet and every role was offered it again.
   defp evaluate_patch_mode(scope) do
-    case unlinked_story_ids(scope) do
-      [] -> {:ok, :valid}
-      ids -> {:ok, :invalid, unlinked_stories_feedback(ids)}
+    case {unlinked_story_ids(scope), ArchitectureChecker.orphans(scope)} do
+      {[], []} -> {:ok, :valid}
+      {[], orphans} -> {:ok, :invalid, format_orphans_section(orphans)}
+      {ids, _orphans} -> {:ok, :invalid, unlinked_stories_feedback(ids)}
     end
   end
 
