@@ -3,8 +3,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
   How often you are woken to look in on your agents, and whether you are being
   woken at all.
 
-  Called with no arguments it reports; called with `seconds` it sets the
-  interval. Twenty minutes is the starting default and it was a guess — it is
+  Called with no arguments it reports; `seconds` sets the interval and `woken`
+  turns the waking on or off. Twenty minutes is the starting default and it was a guess — it is
   the one number trading the feature's two costs against each other, and the
   right value is not knowable in advance. Too long and a stalled agent burns
   most of a window before anybody looks; too short and the check-ins cost more
@@ -39,19 +39,51 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
       required: false,
       description: "Set the interval to this many seconds. Omit to report without changing it."
     )
+
+    field(:woken, :boolean,
+      required: false,
+      description:
+        "false stands this project down so nothing wakes it; true resumes. Omit to leave it alone."
+    )
   end
 
   @impl true
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
-      {:ok, scope} -> {:reply, apply_and_report(scope, Map.get(params, :seconds)), frame}
-      {:error, reason} -> {:reply, refusal(reason), frame}
+      {:ok, scope} ->
+        {:reply, apply_and_report(scope, Map.get(params, :seconds), Map.get(params, :woken)),
+         frame}
+
+      {:error, reason} ->
+        {:reply, refusal(reason), frame}
     end
   end
 
-  defp apply_and_report(scope, nil), do: report(scope)
+  # `woken` is here rather than in its own tool because this already reports it,
+  # and because standing down had a door while resuming did not: `resume/1` was
+  # reachable only by starting a main agent (`Agents.watch_over/2`), so anything
+  # that stood a project down could not put it back without one.
+  defp apply_and_report(scope, seconds, woken) do
+    with :ok <- set_woken(scope, woken) do
+      apply_interval(scope, seconds)
+    end
+  end
 
-  defp apply_and_report(scope, seconds) when is_integer(seconds) and seconds > 0 do
+  defp set_woken(_scope, nil), do: :ok
+  defp set_woken(scope, false), do: MainAgent.stand_down(scope)
+
+  # Paired with the timer, the same order `Agents.watch_over/2` uses. Resuming
+  # the decision without starting one reports "woken: yes, running: no" — the
+  # disagreement this tool exists to make visible.
+  defp set_woken(scope, true) do
+    :ok = MainAgent.resume(scope)
+    _ = MainAgent.ensure_cadence(scope)
+    :ok
+  end
+
+  defp apply_interval(scope, nil), do: report(scope)
+
+  defp apply_interval(scope, seconds) when is_integer(seconds) and seconds > 0 do
     :ok = MainAgent.set_cadence_interval(scope, seconds)
     report(scope)
   end
@@ -59,7 +91,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
   # Refused rather than clamped. A zero or negative interval is a request whose
   # only sensible reading is "stop", and `tap_out` already says that — guessing
   # here would give two ways to stop and one of them silent.
-  defp apply_and_report(_scope, seconds) do
+  defp apply_interval(_scope, seconds) do
     Response.error(
       Response.tool(),
       "An interval has to be a positive number of seconds; got #{inspect(seconds)}. " <>

@@ -59,8 +59,8 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
   @doc """
   Block until this project's background analysis is idle, then report it.
 
-  The stop hook enqueues analyzers and decides from persisted problems, so an
-  agent that wants to stop against fresh results has to wait for them. This is
+  The stop hook decides from persisted problems, so an agent that started a run
+  and wants to stop against its results has to wait for them. This is
   where that waiting happens.
 
   It is an HTTP endpoint rather than an MCP tool on purpose. The same wait

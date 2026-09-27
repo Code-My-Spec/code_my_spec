@@ -13,6 +13,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Compactness policy for stop-hook responses. The agent's context window
   # is finite — the response must stay tight.
   @per_problem_cap 200
+  # Ten is story 554's answer and criterion 5094 pins it. Lowering it to three
+  # made the stop hook shorter, which is what was asked for, and broke 5094 and
+  # 5095 — the latter because the response then no longer reached the 4 KB cap it
+  # exists to exercise. Changing it is a story-554 decision, not a renderer one.
   @per_source_list_cap 10
   @total_response_cap 4096
 
@@ -137,7 +141,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     parts =
       if truncated_count > 0,
-        do: parts ++ ["", "(#{truncated_count} more problems not shown)"],
+        do:
+          parts ++
+            ["", "(#{truncated_count} more — `list_problems` has them, filter with `source`)"],
         else: parts
 
     parts = parts ++ ["", "Please fix these issues and try again."]
@@ -424,8 +430,12 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     overflow =
       case count - length(visible) do
-        0 -> ""
-        n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
+        0 ->
+          ""
+
+        n ->
+          "\n  ... #{n} more #{source} problems — `list_problems({source = \"#{source}\"})` " <>
+            "has them, page through with `page` and `per_page`"
       end
 
     marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)

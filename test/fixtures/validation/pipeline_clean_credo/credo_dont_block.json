@@ -1,0 +1,16 @@
+{
+  "issues": [
+    {
+      "category": "readability",
+      "check": "Credo.Check.Readability.FunctionNames",
+      "column": 7,
+      "column_end": 18,
+      "filename": "lib/example_context.ex",
+      "line_no": 4,
+      "message": "Function/macro/guard names should be written in snake_case.",
+      "priority": 12,
+      "scope": "ExampleContext.doSomething",
+      "trigger": "doSomething"
+    }
+  ]
+}

@@ -239,6 +239,49 @@ defmodule CodeMySpec.Analysis do
   defp skipped_for_compile_errors?(_run), do: false
 
   @doc """
+  Admit an analyzer run durably and return its id without waiting for execution.
+
+  A remote harness or local analysis supervisor must exist. The ledger row is
+  created before returning; admission failures reach the caller synchronously.
+  """
+  @spec start_run(Scope.t(), String.t(), [String.t()], keyword()) ::
+          {:ok, :started | :joined | :skipped, integer()} | {:error, term()}
+  def start_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
+    job = build_job(source, args, Fingerprint.current(scope, source), opts)
+
+    case remote_executor(scope) do
+      {:ok, channel} ->
+        dispatch_remote(scope, job, channel)
+
+      :none ->
+        start_local(scope, job, mode())
+    end
+  end
+
+  # `mode/0` decides, as it does for `await_local/2`. This always started a
+  # ProjectServer, so under `analysis_mode: :inline` — the test env — a run
+  # requested through `start_analysis` became an async server under the
+  # application supervisor that outlived the test, then ran its queued job
+  # against that test's `InMemoryEnvironment` after it was gone. The logged
+  # `:noproc` landed in whichever spex was running at the time; story 1052's
+  # criterion 3215 was the one that kept catching it.
+  # Admission, not outcome. The run is opened and executed here, and whatever
+  # the execution does is recorded on the run — the caller asked whether the run
+  # was accepted, which it was. Answering with the execution's error made a suite
+  # that failed to boot read as a refused request.
+  defp start_local(scope, job, :inline) do
+    run = open_run(scope, job)
+    _ = Execution.execute(scope, run, job.opts)
+    {:ok, :started, run.id}
+  end
+
+  defp start_local(scope, job, :async) do
+    with {:ok, server} <- ensure_server(scope) do
+      ProjectServer.ensure_run(server, scope, job)
+    end
+  end
+
+  @doc """
   Run one analyzer and block until it finishes (joining an identical
   in-flight run instead of double-executing). Never memo-skips: an explicit
   call always executes — it's the escape hatch for flaky tests.
@@ -1333,7 +1376,9 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp run_inline(scope, job) do
+  defp run_inline(scope, job), do: Execution.execute(scope, open_run(scope, job), job.opts)
+
+  defp open_run(scope, job) do
     {:ok, run} =
       RunsRepository.start_run(scope, %{
         source: job.source,
@@ -1343,7 +1388,7 @@ defmodule CodeMySpec.Analysis do
         requested_by: job.requested_by
       })
 
-    Execution.execute(scope, run, job.opts)
+    run
   end
 
   # The working copy, because that is what owns the build tree the queue exists
@@ -1363,13 +1408,19 @@ defmodule CodeMySpec.Analysis do
   def server_key(%Scope{active_project_id: project_id}), do: {:project, project_id}
 
   defp ensure_server(%Scope{active_project_id: project_id} = scope) do
-    case DynamicSupervisor.start_child(
-           CodeMySpec.Analysis.ServerSupervisor,
-           {ProjectServer, {server_key(scope), project_id}}
-         ) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
+    case Process.whereis(CodeMySpec.Analysis.ServerSupervisor) do
+      nil ->
+        {:error, :no_executor}
+
+      supervisor ->
+        case DynamicSupervisor.start_child(
+               supervisor,
+               {ProjectServer, {server_key(scope), project_id}}
+             ) do
+          {:ok, pid} -> {:ok, pid}
+          {:error, {:already_started, pid}} -> {:ok, pid}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

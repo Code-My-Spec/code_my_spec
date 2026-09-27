@@ -14,14 +14,51 @@ defmodule CodeMySpec.Repo.Migrations.ASharedBoxBelongsToNoAccount do
 
   Devices stay account-*scoped* where an account exists. This widens what may be
   stored, not who may read it.
+
+  ## Why this is not the Postgres copy
+
+  Relaxing a constraint is still `ALTER COLUMN`, which SQLite does not have, so
+  the table is rebuilt without it.
+
+  The order matters. `working_copies.device_id` references this table, and
+  SQLite rewrites a referencing FK to follow a `RENAME` — renaming `devices`
+  out of the way would silently repoint `working_copies` at the temporary
+  table. Building the replacement under its own name, copying, dropping, and
+  renaming *into* place leaves that FK naming `devices` throughout.
   """
 
   use Ecto.Migration
 
   def up do
-    alter table(:devices) do
-      modify :account_id, :binary_id, null: true, from: {:binary_id, null: false}
+    create table(:devices_new, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :hostname, :text
+      add :label, :text
+      add :kind, :string
+
+      # The whole point of this migration.
+      add :account_id, :binary_id
+
+      add :last_seen_at, :utc_datetime_usec
+
+      timestamps(type: :utc_datetime)
     end
+
+    execute("""
+    INSERT INTO devices_new (id, hostname, label, kind, account_id, last_seen_at,
+                             inserted_at, updated_at)
+    SELECT id, hostname, label, kind, account_id, last_seen_at,
+           inserted_at, updated_at
+    FROM devices
+    """)
+
+    # Empty at this point on any database that reaches here in one pass, so the
+    # implicit DELETE that a DROP runs against `working_copies`' foreign key
+    # touches nothing.
+    drop table(:devices)
+    rename table(:devices_new), to: table(:devices)
+
+    create index(:devices, [:account_id])
   end
 
   def down do
@@ -29,9 +66,5 @@ defmodule CodeMySpec.Repo.Migrations.ASharedBoxBelongsToNoAccount do
     # anything that announced without one would have to be invented or deleted.
     # Rolling back is a decision about that data, not a mechanical step.
     execute("DELETE FROM devices WHERE account_id IS NULL")
-
-    alter table(:devices) do
-      modify :account_id, :binary_id, null: false, from: {:binary_id, null: true}
-    end
   end
 end

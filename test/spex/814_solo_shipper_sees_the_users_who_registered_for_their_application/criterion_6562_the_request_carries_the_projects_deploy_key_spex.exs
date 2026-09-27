@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story814.Criterion6562Spex do
 
         # deploy_key is a generate-only hidden field — generate one and capture it.
         html = render_click(form_live, "generate_deploy_key", %{})
-        [_, deploy_key] = Regex.run(~r/project\[deploy_key\][^>]*value="([0-9a-f]+)"/, html)
+        [_, deploy_key] = Regex.run(~r/project\[deploy_key\][^>]*value="([^"]+)"/, html)
 
         form_live
         |> form("#project-form", project: %{client_api_url: @client_api_url})

@@ -1389,7 +1389,7 @@ defmodule CodeMySpec.WorkingCopies do
       "deploy_key" => opts[:deploy_key] || deploy_key(scope)
     }
 
-    with {:ok, %{root: root, working_copy_id: id}} <-
+    with {:ok, %{root: root, working_copy_id: id} = made} <-
            Transport.impl().create_working_copy(candidates, request, 60_000),
          {:ok, copy} <-
            issue(scope, id,
@@ -1402,7 +1402,18 @@ defmodule CodeMySpec.WorkingCopies do
              working_copy_id: id
            ),
          {:ok, copy} <- report_root(copy, root) do
-      {:ok, copy, Agents.ensure_copy_agents(scope, copy, opts[:roles] || Agents.copy_roles())}
+      # `:setup` rides along on the staffing map rather than widening the
+      # `{:ok, copy, staffed}` contract. It says whether the project set the copy
+      # up through its own `init-worktree` recipe or whether the harness fell back
+      # to a bare worktree — which the caller has to be told, because a bare copy
+      # has no deps, no `_build` and no untracked config, and every failure that
+      # follows looks like something else.
+      staffed =
+        scope
+        |> Agents.ensure_copy_agents(copy, opts[:roles] || Agents.copy_roles())
+        |> Map.put(:setup, Map.get(made, :setup))
+
+      {:ok, copy, staffed}
     end
   end
 

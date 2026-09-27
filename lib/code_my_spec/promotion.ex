@@ -820,10 +820,9 @@ defmodule CodeMySpec.Promotion do
       reason:
         "#{named} has not been swept clean at its current commit: #{sources} " <>
           "need a fresh run before this can promote. Nothing was started for " <>
-          "you — three ways to get one, and promote again once #{sources} lands:\n\n" <>
-          "  - do nothing: the next stop hook enqueues it automatically\n" <>
+          "you — two ways to get one, and promote again once #{sources} lands:\n\n" <>
           "  - `start_analysis` with the specific source (one call per name in " <>
-          "#{sources}) runs it directly, without waiting for a stop\n" <>
+          "#{sources})\n" <>
           "  - run `mix test` / `mix spex` / `mix credo` / `mix compile` yourself, " <>
           "same as you would to check your own work — the PreToolUse hook routes " <>
           "it through this project's own run ledger, so an ordinary invocation " <>

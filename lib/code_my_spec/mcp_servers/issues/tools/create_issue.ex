@@ -15,12 +15,15 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   - Confusing or contradictory prompts/instructions
   - Looping stop hooks or stuck workflows
-  - Errors from tools or MCP servers
+  - Tool or MCP server malfunctions (not an external source returning HTTP 404)
   - Missing, broken, or poorly documented tools
   - Suggestions for improvements to the system
 
   For project-side bugs and feature gaps (the app under development,
   not CodeMySpec), use `scope: app` (the default).
+
+  Severity must be critical, high, medium, low, or info. `error` and `warning`
+  are analyzer finding levels, not issue severities.
 
   Issues land as `incoming` and are triaged by the human operator. Be
   specific in your description — include the exact error message, what
@@ -35,21 +38,25 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   alias CodeMySpec.Utils
 
   schema do
-    field :title, :string, required: true, doc: "Short issue title"
+    field(:title, :string, required: true, description: "Short issue title")
 
-    field :severity, :string,
+    field(:severity, :string,
       required: true,
-      doc: "Issue severity: critical, high, medium, low, or info"
+      description: "Issue severity: critical, high, medium, low, or info"
+    )
 
-    field :description, :string,
+    field(:description, :string,
       required: true,
-      doc: "Detailed description of the issue including steps to reproduce if applicable"
+      description: "Detailed description of the issue including steps to reproduce if applicable"
+    )
 
-    field :scope, :string, doc: "Issue scope: app (default), qa, docs, or framework"
+    field(:scope, :string, description: "Issue scope: app (default), qa, docs, or framework")
 
-    field :story_id, :integer, doc: "Related user story ID, if applicable"
+    field(:story_id, :integer, description: "Related user story ID, if applicable")
 
-    field :source_path, :string, doc: "File path where the issue was found, if applicable"
+    field(:source_path, :string,
+      description: "File path where the issue was found, if applicable"
+    )
   end
 
   @impl true

@@ -1,0 +1,1 @@
+{"issues": [{"category": "readability", "check": "Credo.Check.Readability.ModuleDoc", "column": 1, "column_end": null, "filename": "lib/example_context.ex", "line_no": 1, "message": "Modules should have a @moduledoc tag.", "priority": 10, "scope": "ExampleContext", "trigger": "ExampleContext"}]}

@@ -31,6 +31,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
@@ -247,7 +248,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def handle_info(:check_in, state) do
-    MainAgent.check_in(state.scope)
+    state.scope |> MainAgent.check_in() |> deliver(state.scope)
     checked_at = DateTime.utc_now()
 
     Phoenix.PubSub.broadcast(
@@ -260,6 +261,40 @@ defmodule CodeMySpec.MainAgent.Cadence do
   end
 
   def handle_info(_other, state), do: {:noreply, state}
+
+  # The tick's whole point: hand the digest to main as a turn.
+  #
+  # `check_in/1` only ran `Work.consider_project(:recovery_check)` and returned
+  # the report to its caller. From the MCP tool that caller is the agent, so it
+  # reads it; from here the caller was this process and the text was dropped —
+  # so a non-continuous main was never woken, and making it continuous would have
+  # given it graph tasks rather than the fleet. Reported by a main agent that
+  # measured its own cadence firing with no turn arriving (`2c34da87`).
+  #
+  # In a task because delivery waits on a turn that can outlast any interval.
+  # `message_agent/4` queues for an agent that is mid-turn, so busy needs no
+  # handling here.
+  #
+  # Only when main is **not** continuous. A continuous main is already offered a
+  # turn by `Work.consider_project/2` above, and criterion 3331 pins that to
+  # exactly one provider request carrying `start_task` — so delivering the digest
+  # as well would be the second, unconditional turn its title rules out. The gap
+  # `2c34da87` reported is the other case: a non-continuous main, which the work
+  # path never reaches and which nothing else wakes.
+  defp deliver({:ok, report}, scope) do
+    with true <- running?(scope),
+         %{continuous: false, id: id} <- Agents.main_agent(scope) do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Agents.message_agent(scope, id, report)
+      end)
+    end
+
+    :ok
+  end
+
+  # A digest that could not be assembled already raised a fault; delivering an
+  # empty one would read as all-quiet.
+  defp deliver(_other, _scope), do: :ok
 
   @impl true
   def handle_cast(:reschedule, state) do

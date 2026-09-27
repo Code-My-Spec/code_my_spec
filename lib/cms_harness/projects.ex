@@ -12,11 +12,11 @@ defmodule CmsHarness.Projects do
   discovery step on the critical path of every agent turn, whose failure mode
   is a hook that silently posts nowhere.
 
-  Nothing is configured here. Subtrees start on demand, when a hook names a
+  Subtrees start on demand, when a hook names a
   harness id and `CmsHarness.WorkingCopies` asks the server where that copy is.
-  There is no list of directories to keep — a list would put the operator back
-  in the business of telling the harness about paths, and it would be a second
-  record of something the server already holds.
+  Previously served roots bootstrap credentials after restart. Only the
+  server's current device roster decides which roots the reporter serves;
+  remembering a path must not re-onboard a copy removed while we were offline.
 
   A sprite is simply N=1 here. Same code, same lifecycle, one child in the
   tree — which is the point, because a drill on a sprite is then a drill on the
@@ -27,6 +27,7 @@ defmodule CmsHarness.Projects do
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.ProjectIdentity
+  alias CmsHarness.ServedRoots
 
   @doc """
   Serve the project rooted at `dir`, starting its subtree if it is not already
@@ -46,6 +47,7 @@ defmodule CmsHarness.Projects do
              {CmsHarness.Project.Supervisor, project: project}
            ) do
         {:ok, _pid} ->
+          ServedRoots.remember(project.root)
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
           {:ok, project}
 
@@ -57,6 +59,7 @@ defmodule CmsHarness.Projects do
         # health endpoint said served, and every file event belonged to a tree
         # nobody asked about. Issue 8b83ba20.
         {:error, {:already_started, _pid}} ->
+          ServedRoots.remember(project.root)
           {:ok, project}
 
         {:error, reason} ->
@@ -170,6 +173,8 @@ defmodule CmsHarness.Projects do
   """
   @spec stop_serving(String.t()) :: :ok | {:error, :not_serving}
   def stop_serving(root) when is_binary(root) do
+    ServedRoots.forget(root)
+
     case Registry.lookup(CmsHarness.Registry, {:project, Path.expand(root)}) do
       [{pid, _}] ->
         Logger.info("[CmsHarness] no longer serving #{root} — offboarded on the server")

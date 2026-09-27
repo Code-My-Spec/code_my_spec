@@ -422,11 +422,19 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     save_preview_origins(socket, List.delete(socket.assigns.preview_origins, origin))
   end
 
+  # The third caller of "mint a deploy key", and the only one that used to roll
+  # its own: 128 hex characters with no `dk_` on the front, where both others
+  # mint `dk_` plus 32 url-encoded bytes. `Project.mint_deploy_key/0`'s own doc
+  # predicted this ("a credential generated two ways eventually gets generated
+  # two lengths") and was written when there were two.
+  #
+  # Nothing authenticates on the prefix, so a key from here worked. What it did
+  # not do is *say* what it was: `UserSocket.shape/1` reads `"dk_" <> _` to log
+  # `key=dk` on a refused join, so a key minted here came back as an unknown
+  # shape — the one line whose job is to tell an operator which credential was
+  # refused, made useless by the credential the UI hands out.
   def handle_event("generate_deploy_key", _params, socket) do
-    # Generate a secure random deploy key (64 bytes = 128 hex characters)
-    deploy_key = :crypto.strong_rand_bytes(64) |> Base.encode16(case: :lower)
-
-    {:noreply, assign(socket, deploy_key_value: deploy_key)}
+    {:noreply, assign(socket, deploy_key_value: Project.mint_deploy_key())}
   end
 
   def handle_event("create_code_repo", params, socket) do
