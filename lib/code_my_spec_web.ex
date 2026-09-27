@@ -83,6 +83,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Resources,
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,

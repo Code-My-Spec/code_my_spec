@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.SpexStoryAttributionTest do
 
   Both wrong answers are silent, because a number resolving to *a* story looks
   identical to one resolving to the right story. `criteria.spec_path` is the
-  recorded answer — written by `claim_spec_paths/2` when the file is created,
+  recorded answer — written by `claim_spec_paths/3` when the file is created,
   which is why it survives a rename — and is what these assert on.
 
   The directory number here is deliberately one that cannot be any story's id,

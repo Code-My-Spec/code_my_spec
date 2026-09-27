@@ -19,7 +19,7 @@ defmodule CodeMySpec.Deploys do
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
     ],
     exports: :all

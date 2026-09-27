@@ -20,7 +20,7 @@ defmodule CodeMySpec.Issues do
       CodeMySpec.Accounts,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],

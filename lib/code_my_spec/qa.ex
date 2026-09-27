@@ -37,7 +37,7 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils

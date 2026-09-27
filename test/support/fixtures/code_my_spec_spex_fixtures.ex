@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,

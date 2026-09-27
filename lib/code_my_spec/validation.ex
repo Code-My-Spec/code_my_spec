@@ -1443,7 +1443,7 @@ defmodule CodeMySpec.Validation do
   # looks exactly like one that resolves to the right story. A missing story
   # would have hit the `nil` branch and been loud.
   #
-  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/2` writes it
+  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/3` writes it
   # when a spex file is created, which is why it survives a rename. 22 of this
   # project's 25 spex problems join on it exactly.
   #

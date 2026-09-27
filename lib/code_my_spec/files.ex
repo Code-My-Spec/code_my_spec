@@ -19,7 +19,8 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Paths,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements.Invalidations,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies

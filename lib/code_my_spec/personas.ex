@@ -12,7 +12,7 @@ defmodule CodeMySpec.Personas do
     deps: [
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils

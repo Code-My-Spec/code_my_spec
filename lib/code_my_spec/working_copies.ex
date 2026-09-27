@@ -35,7 +35,7 @@ defmodule CodeMySpec.WorkingCopies do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope
     ],

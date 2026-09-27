@@ -29,6 +29,9 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
   # point: under the old check this alone decided the answer.
   @spec_path "test/spex/9999_a_story_from_another_worktree/criterion_4242_something_spex.exs"
 
+  # What `FileSync` passes: the files already recorded for this checkout.
+  defp recorded(scope), do: scope |> CodeMySpec.Files.list_files() |> Enum.map(& &1.path)
+
   defp criterion_with_path(scope, path) do
     {:ok, story} =
       Stories.create_story(scope, %{title: "A story", description: "d", status: :in_progress})
@@ -53,7 +56,7 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
     # The manifest reports the file — the harness has just seen it on that
     # checkout's disk, which is the only evidence that matters.
     {:ok, repaired} =
-      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path})
+      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path}, recorded(scope))
 
     assert repaired == 0, """
     A criterion whose recorded path is exactly what the manifest reported was
@@ -71,7 +74,8 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
 
     criterion = criterion_with_path(scope, old_path)
 
-    {:ok, repaired} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => new_path})
+    {:ok, repaired} =
+      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => new_path}, recorded(scope))
 
     assert repaired == 1,
            "a renamed spex must still be re-pointed — that is what the repair is for"
@@ -80,7 +84,8 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
 
     # And it settles: the second manifest reports the same file and changes
     # nothing. This is the half that was broken.
-    {:ok, again} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => new_path})
+    {:ok, again} =
+      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => new_path}, recorded(scope))
 
     assert again == 0, """
     The repair fired twice for one move. It has to converge, or every sync
@@ -120,7 +125,8 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
 
     intruder = "test/spex/#{theirs.number}_their_story/criterion_#{criterion.id}_probe_spex.exs"
 
-    {:ok, claimed} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => intruder})
+    {:ok, claimed} =
+      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => intruder}, recorded(scope))
 
     assert claimed == 0, """
     A spex in another story's directory claimed this criterion.
@@ -138,7 +144,8 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
     scope = full_scope_fixture()
     criterion = criterion_with_path(scope, nil)
 
-    {:ok, repaired} = AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path})
+    {:ok, repaired} =
+      AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path}, recorded(scope))
 
     assert repaired == 1, "an unclaimed criterion must still take the path it was found at"
     assert Repo.get!(Criterion, criterion.id).spec_path == @spec_path

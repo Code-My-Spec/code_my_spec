@@ -87,6 +87,7 @@ defmodule CodeMySpec do
       CodeMySpec.Release,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Research,
       CodeMySpec.Resources,
       CodeMySpec.Rules,

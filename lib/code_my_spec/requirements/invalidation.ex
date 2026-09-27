@@ -15,6 +15,8 @@ defmodule CodeMySpec.Requirements.Invalidation do
   remove, and it is counted rather than hidden.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
+
   use Ecto.Schema
 
   alias CodeMySpec.Components.Component

@@ -72,7 +72,6 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
