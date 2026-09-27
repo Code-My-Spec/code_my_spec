@@ -11,7 +11,6 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
 
   # Only tools the agent actually carries directly.
   #
@@ -31,7 +30,7 @@ defmodule CodeMySpec.Agents.Work do
   def consider_project(scope, reason) do
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.each(&consider(scope, &1, reason))
+    |> Enum.each(&request_turn_if_runnable(scope, &1, reason))
 
     :ok
   end
@@ -40,44 +39,9 @@ defmodule CodeMySpec.Agents.Work do
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(&(&1.working_copy_id == copy_id and &1.id != except_agent_id))
-    |> Enum.each(&consider(scope, &1, reason))
+    |> Enum.each(&request_turn_if_runnable(scope, &1, reason))
 
     :ok
-  end
-
-  # An agent holding a task is not offered new work, but it is not skipped
-  # either: it is asked to dispose of what it holds. Skipping it left an agent
-  # that stopped holding `bdd_specs_passing` idle for 50 minutes on 2026-09-22,
-  # through the fix for the result it was waiting on and a fleet restart
-  # (`64299aef`). Each path refuses the other's agent, so both are asked.
-  defp consider(scope, agent, reason) do
-    request_turn_if_runnable(scope, agent, reason)
-    resume_if_held(scope, agent)
-  end
-
-  @held_prompt "You still hold the task below and no turn of yours is running. " <>
-                 "Something may have changed since you stopped — a result you were " <>
-                 "waiting on may have landed. Check where it stands and dispose of it: " <>
-                 "evaluate_task when it is done, cancel_task or tap_out if it cannot be."
-
-  # Damped by the same streak as a declined offer, keyed on the held task: every
-  # graph change and cadence tick reaches this, and an agent legitimately
-  # waiting would otherwise spend a turn on each.
-  defp resume_if_held(scope, agent) do
-    with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
-         true <- stranded?(current) and not awaiting_tap_out?(current),
-         held = held_offer(current),
-         false <- already_declined?(current, held) do
-      suppress_offer(scope, current, held)
-      resume(scope, current, held_prompt(scope, current))
-    end
-  end
-
-  defp held_offer(agent), do: "held:" <> Agent.active_task(agent).id
-
-  defp held_prompt(scope, agent) do
-    scope = %{scope | active_working_copy_id: agent.working_copy_id}
-    @held_prompt <> Validation.Menu.render(scope, true, agent.role, agent)
   end
 
   @resume_prompt "Your last turn ended without finishing — the harness restarted " <>
@@ -111,7 +75,7 @@ defmodule CodeMySpec.Agents.Work do
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(&(&1.working_copy_id == copy_id and stranded?(&1)))
-    |> Enum.each(&resume(scope, &1, @resume_prompt))
+    |> Enum.each(&resume(scope, &1))
 
     :ok
   end
@@ -122,15 +86,15 @@ defmodule CodeMySpec.Agents.Work do
       not is_nil(agent.working_copy_id)
   end
 
-  defp resume(scope, agent, turn_prompt) do
+  defp resume(scope, agent) do
     with {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
-      Conversations.record_sent_to_agent(reserved, turn_prompt)
+      Conversations.record_sent_to_agent(reserved, @resume_prompt)
 
       case Transport.impl().request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,
-             turn_prompt,
+             @resume_prompt,
              5_000
            ) do
         {:ok, :started} -> {:ok, ref}
@@ -312,20 +276,13 @@ defmodule CodeMySpec.Agents.Work do
     }
 
   defp decline_attrs(scope, agent, turn_started_at) do
-    cond do
-      # A holder declined nothing, and its streak is the held task's — kept, so
-      # a turn ending does not reset the damper on `resume_if_held/2`.
-      Agent.active_task(agent) ->
-        %{}
-
-      declined?(scope, agent, turn_started_at) ->
-        case offer(scope, agent) do
-          {:work, fingerprint} -> streak(agent, fingerprint)
-          :none -> cleared()
-        end
-
-      true ->
-        cleared()
+    if declined?(scope, agent, turn_started_at) do
+      case offer(scope, agent) do
+        {:work, fingerprint} -> streak(agent, fingerprint)
+        :none -> cleared()
+      end
+    else
+      cleared()
     end
   end
 
