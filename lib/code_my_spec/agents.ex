@@ -702,11 +702,11 @@ defmodule CodeMySpec.Agents do
     id == copy.id or (is_binary(root) and root != "" and Path.expand(root) == copy.root)
   end
 
+  # Any agent, not just `main_agent/1`: the copy holds one agent whatever its role.
   defp refuse_if_occupied(scope, copy) do
-    case main_agent(scope) do
-      nil -> :ok
-      %Agent{} -> {:error, {:main_copy_occupied, copy.root}}
-    end
+    if scope |> AgentsRepository.list_running() |> Enum.any?(&(&1.working_copy_id == copy.id)),
+      do: {:error, {:main_copy_occupied, copy.root}},
+      else: :ok
   end
 
   # Ask the machine to bring it up, and record what it reports.
