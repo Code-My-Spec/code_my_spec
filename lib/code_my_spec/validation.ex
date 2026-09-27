@@ -1546,7 +1546,23 @@ defmodule CodeMySpec.Validation do
   defp story_id_for(file_path, by_path, by_spec_file, by_number) do
     Map.get(by_path, file_path) ||
       Map.get(by_spec_file, file_path) ||
-      story_id_from_path(file_path, by_number)
+      story_id_from_path(file_path, by_number) ||
+      story_id_from_directory(file_path, by_path)
+  end
+
+  # A legacy spex directory names no story number, and a file in it whose
+  # criterion was renumbered is recorded against nothing. Unattributed, its
+  # failure blocked regardless of the story's `specs_ready` — metric_flow's
+  # unbuilt white-label and auto-enrollment spex held every promote on
+  # 2026-09-27. The directory's story is the one every recorded spec in it
+  # belongs to; a mixed directory answers nothing.
+  defp story_id_from_directory(file_path, by_path) do
+    dir = Path.dirname(file_path)
+
+    case for({path, story_id} <- by_path, Path.dirname(path) == dir, uniq: true, do: story_id) do
+      [story_id] -> story_id
+      _ -> nil
+    end
   end
 
   defp story_id_from_path(file_path, by_number) do
