@@ -32,11 +32,14 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   renamed keeps pointing where it was recorded rather than being re-derived —
   which is the whole point.
   """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}, Enumerable.t()) ::
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
           {:ok, non_neg_integer()}
   def claim_spec_paths(_scope, paths, _recorded_paths) when map_size(paths) == 0, do: {:ok, 0}
 
   def claim_spec_paths(%Scope{active_project_id: project_id}, paths, recorded_paths) do
+    # Every file naming an id, not the last one: after a renumbering a legacy
+    # directory reuses ids that now belong to other stories.
+    paths = Map.new(paths, fn {id, found} -> {id, List.wrap(found)} end)
     ids = Map.keys(paths)
 
     # Which files this checkout actually has.
@@ -72,14 +75,19 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
         select: {c.id, c.spec_path, s.number, c.story_id}
       )
       |> Repo.all()
-      |> Enum.filter(fn {id, path, number, story_id} ->
-        observed = Map.fetch!(paths, id)
-
-        stale?(path, present) and
+      |> Enum.filter(fn {_id, path, _number, _story_id} -> stale?(path, present) end)
+      |> Enum.flat_map(fn {id, previous, number, story_id} ->
+        paths
+        |> Map.fetch!(id)
+        |> Enum.filter(fn observed ->
           names_this_story?(observed, number, story_numbers) and
-          not owned_by_another_story?(observed, story_id, dir_owners)
+            not owned_by_another_story?(observed, story_id, dir_owners)
+        end)
+        |> case do
+          [observed | _] -> [{id, previous, observed}]
+          [] -> []
+        end
       end)
-      |> Enum.map(fn {id, previous, _number, _story} -> {id, previous, Map.fetch!(paths, id)} end)
 
     # And the ones the filename cannot name.
     #
@@ -123,8 +131,8 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   defp repair_candidate({id, previous}, paths) do
     with embedded when not is_nil(embedded) <- embedded_id(previous),
-         found when not is_nil(found) <- Map.get(paths, embedded),
-         true <- same_dir?(previous, found) do
+         found when not is_nil(found) <-
+           paths |> Map.get(embedded, []) |> Enum.find(&same_dir?(previous, &1)) do
       [{id, previous, found}]
     else
       _ -> []
@@ -190,6 +198,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   defp present_paths(paths, recorded_paths) do
     paths
     |> Map.values()
+    |> List.flatten()
     |> MapSet.new()
     |> MapSet.union(MapSet.new(recorded_paths))
   end

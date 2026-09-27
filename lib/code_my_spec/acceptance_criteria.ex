@@ -118,7 +118,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   supplies them — it is `Files` that syncs files, and reading them back from
   here made the two contexts depend on each other.
   """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}, Enumerable.t()) ::
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
           {:ok, non_neg_integer()}
   def claim_spec_paths(%Scope{} = scope, paths, recorded_paths),
     do: impl().claim_spec_paths(scope, paths, recorded_paths)

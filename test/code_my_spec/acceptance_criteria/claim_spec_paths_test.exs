@@ -67,6 +67,31 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     assert AcceptanceCriteria.get_criterion(scope, newcomer.id).spec_path == nil
   end
 
+  # metric_flow story 1100, 2026-09-27: after a renumbering a legacy directory
+  # reused an id, and whichever file sorted last was the only one considered.
+  for order <- [:own_first, :legacy_first] do
+    test "the story's own file is claimed when another story's file shares its id (#{order})" do
+      scope = full_scope_fixture()
+      owner = story_fixture(scope)
+      story = story_fixture(scope)
+      legacy_dir = "test/spex/agency-white-label-configuration-781a555e"
+
+      criterion(scope, owner, %{spec_path: "#{legacy_dir}/criterion_1_owned_spex.exs"})
+      c = criterion(scope, story)
+      own = "test/spex/#{story.number}_stripe_connect/criterion_#{c.id}_a_thing_happens_spex.exs"
+      legacy = "#{legacy_dir}/criterion_#{c.id}_something_else_spex.exs"
+      found = in_order(unquote(order), own, legacy)
+
+      assert {:ok, 1} =
+               AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}, recorded(scope))
+
+      assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == own
+    end
+  end
+
+  defp in_order(:own_first, own, legacy), do: [own, legacy]
+  defp in_order(:legacy_first, own, legacy), do: [legacy, own]
+
   test "a file in a directory no story owns yet is still claimed" do
     scope = full_scope_fixture()
     story = story_fixture(scope)

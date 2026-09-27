@@ -618,7 +618,7 @@ defmodule CodeMySpec.Files.FileSync do
           id -> [{id, entry.path}]
         end
       end)
-      |> Map.new()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     recorded = scope |> Files.list_files() |> Enum.map(& &1.path)
 
