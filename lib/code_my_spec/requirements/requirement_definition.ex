@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Requirements.TaskModule
 
   @type artifact_type ::
           :specification
@@ -101,7 +101,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   embedded_schema do
     field :id, :integer
     field :name, :string
-    field :satisfied_by, SessionType
+    field :satisfied_by, TaskModule
     field :artifact_type, Ecto.Enum, values: @artifact_types
     field :check_type, Ecto.Enum, values: @check_types
     field :description, :string
