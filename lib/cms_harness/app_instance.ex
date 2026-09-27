@@ -32,8 +32,8 @@ defmodule CmsHarness.AppInstance do
 
   ## Idle timeout
 
-  Same shape as `CodeMySpec.Intake.Conversation`: every reply re-arms
-  `@idle_timeout` via the fourth element of the `{:reply, ..., state, timeout}`
+  Same shape as `CodeMySpec.Intake.Conversation`: every reply re-arms the
+  idle timeout via the fourth element of the `{:reply, ..., state, timeout}`
   tuple, and `handle_info(:timeout, ...)` stops the process — `restart:
   :temporary`, because an idle stop is a normal exit, not a crash to recover
   from. Requests count as activity via the app's own log file: whether its
@@ -53,8 +53,13 @@ defmodule CmsHarness.AppInstance do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
 
-  @idle_timeout to_timeout(minute: 30)
-  @idle_check_interval to_timeout(minute: 2)
+  # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
+  # test proving the idle-stop path fires should not have to wait 30 real
+  # minutes to do it.
+  defp idle_timeout, do: Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms, to_timeout(minute: 30))
+
+  defp idle_check_interval,
+    do: Application.get_env(:code_my_spec, :app_instance_idle_check_interval_ms, to_timeout(minute: 2))
 
   defstruct [
     :root,
@@ -173,7 +178,7 @@ defmodule CmsHarness.AppInstance do
       state_path: state_path(root)
     }
 
-    {:ok, restore_persisted(state), @idle_timeout}
+    {:ok, restore_persisted(state), idle_timeout()}
   end
 
   @impl true
@@ -182,11 +187,11 @@ defmodule CmsHarness.AppInstance do
 
     if running?(state) do
       new_state = probe(state)
-      {:reply, {:ok, result(new_state)}, new_state, @idle_timeout}
+      {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
     else
       case start_app(state) do
-        {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, @idle_timeout}
-        {:error, reason} -> {:reply, {:error, reason}, state, @idle_timeout}
+        {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+        {:error, reason} -> {:reply, {:error, reason}, state, idle_timeout()}
       end
     end
   end
@@ -197,15 +202,15 @@ defmodule CmsHarness.AppInstance do
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
-      {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, @idle_timeout}
-      {:error, reason} -> {:reply, {:error, reason}, stopped, @idle_timeout}
+      {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+      {:error, reason} -> {:reply, {:error, reason}, stopped, idle_timeout()}
     end
   end
 
   @impl true
   def handle_call(:stop, _from, state) do
     new_state = if running?(state), do: stop_process(state), else: state
-    {:reply, :ok, new_state, @idle_timeout}
+    {:reply, :ok, new_state, idle_timeout()}
   end
 
   @impl true
@@ -216,18 +221,18 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_cast(:touch, state), do: {:noreply, state, @idle_timeout}
+  def handle_cast(:touch, state), do: {:noreply, state, idle_timeout()}
 
   @impl true
   def handle_info(:timeout, %{main?: true} = state) do
     # Main's app is never stopped for idling — rule, not a longer timeout.
-    Process.send_after(self(), :timeout, @idle_check_interval)
+    Process.send_after(self(), :timeout, idle_check_interval())
     {:noreply, state, :infinity}
   end
 
   def handle_info(:timeout, state) do
     if running?(state) and recently_active?(state) do
-      Process.send_after(self(), :timeout, @idle_check_interval)
+      Process.send_after(self(), :timeout, idle_check_interval())
       {:noreply, state, :infinity}
     else
       new_state = if running?(state), do: stop_process(state), else: state
@@ -265,7 +270,7 @@ defmodule CmsHarness.AppInstance do
   defp recently_active?(%__MODULE__{log_path: log_path}) do
     case File.stat(log_path, time: :posix) do
       {:ok, %File.Stat{mtime: mtime}} ->
-        System.os_time(:second) - mtime < to_timeout(minute: 30) / 1000
+        System.os_time(:second) - mtime < idle_timeout() / 1000
 
       {:error, _} ->
         false
