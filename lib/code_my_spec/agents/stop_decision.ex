@@ -42,6 +42,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -183,6 +184,17 @@ defmodule CodeMySpec.Agents.StopDecision do
   # arriving for free rather than as a second emptiness check that could
   # disagree with the first.
   defp keep_working(%Scope{} = scope, %Agent{continuous: true} = agent) do
+    # Waiting on runs it started is not idling: `AnalysisReport` messages it
+    # when each lands or fails, so a continuation now only buys a "still
+    # waiting" turn. Watched on metric_flow 2026-09-27, 5-27 of those an hour.
+    if Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id),
+      do: {nil, nil},
+      else: continuation(scope, agent)
+  end
+
+  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
+
+  defp continuation(scope, agent) do
     # Narrowed to this agent's own role — R10. A coding agent asked whether the
     # *project* has work is held open by product's queue and QA's, neither of
     # which it can do anything about, and it would loop until somebody else
@@ -193,8 +205,6 @@ defmodule CodeMySpec.Agents.StopDecision do
       menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
     end
   end
-
-  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
 
   # `tag` separates the counters — `:decision`, `:continuing`, `:wake` — so one
   # slot per agent doesn't let them overwrite each other's count and reset a

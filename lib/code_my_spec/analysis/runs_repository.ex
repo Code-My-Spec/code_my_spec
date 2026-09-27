@@ -174,6 +174,22 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   @doc """
+  Whether `agent_id` has a run it requested still `:running` (queued runs
+  included) on `working_copy_id`. Keyed on `requested_by->>'agent_id'`, the
+  field `start_analysis` writes and `Agents.AnalysisReport` answers.
+  """
+  @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
+  def awaiting_runs?(%Scope{}, nil, _agent_id), do: false
+
+  def awaiting_runs?(%Scope{active_project_id: project_id}, working_copy_id, agent_id) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^working_copy_id)
+    |> where([r], r.status == :running)
+    |> where([r], fragment("?->>'agent_id'", r.requested_by) == ^agent_id)
+    |> Repo.exists?()
+  end
+
+  @doc """
   This working copy's still-`:running` full runs of `source`, newest first.
 
   Nil working copy answers nothing: the caller joins onto one of these, and a

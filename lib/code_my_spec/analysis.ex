@@ -622,6 +622,10 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc "Whether an agent has a run it requested still in flight on a working copy."
+  @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
+  defdelegate awaiting_runs?(scope, working_copy_id, agent_id), to: RunsRepository
+
   @doc """
   Whether anything is running, nothing is, or nobody is watching.
 
