@@ -818,6 +818,20 @@ defmodule CodeMySpec.Agents do
   # somewhere else, was a two-callers-one-function problem:
   # `find_or_create_session_conversation/3` now answers for a Claude Code lane
   # that has an external id and no agent row, and this answers for an agent.
+  @doc """
+  The conversation an agent's transcript goes to, for someone who has its id
+  and a scope it must belong to.
+  """
+  @spec conversation_id(Scope.t(), String.t()) :: {:ok, Ecto.UUID.t()} | :error
+  def conversation_id(%Scope{} = scope, agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      {:ok, conversation.id}
+    else
+      _ -> :error
+    end
+  end
+
   defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,

@@ -71,6 +71,65 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     })
   end
 
+  describe "agent drafts" do
+    alias CodeMySpec.Agents
+    alias CodeMySpec.Agents.AgentsRepository
+    alias CodeMySpec.Conversations.Drafts
+    alias CodeMySpec.Conversations.Message
+
+    test "held and broadcast without a row, and cleared when the turn says it",
+         %{scope: scope, topic: topic} do
+      {:ok, agent} =
+        AgentsRepository.create_agent(scope, %{
+          provider: "claude-code",
+          engine: :alloy,
+          role: "coding",
+          continuous: true,
+          working_copy: "/tmp/drafts-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      {:ok, conversation_id} = Agents.conversation_id(scope, agent.id)
+      Drafts.subscribe(conversation_id)
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      push(channel, "agent_draft", %{"agent_id" => agent.id, "turn" => 1, "text" => "Plums"})
+      assert_receive {:agent_draft, ^conversation_id, "Plums"}
+      assert Drafts.get(conversation_id) == "Plums"
+
+      assert CodeMySpec.Repo.aggregate(
+               from(m in Message, where: m.conversation_id == ^conversation_id),
+               :count
+             ) == 0
+
+      ref =
+        push(channel, "agent_turn_event", %{
+          "agent_id" => agent.id,
+          "event" => %{"kind" => "message", "text" => "Plums are stone fruits."}
+        })
+
+      assert_reply ref, :ok
+      assert_receive {:agent_draft, ^conversation_id, nil}
+      assert Drafts.get(conversation_id) == nil
+    end
+
+    test "a draft for an agent outside the scope is dropped and the channel carries on",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      stranger = Ecto.UUID.generate()
+
+      push(channel, "agent_draft", %{"agent_id" => stranger, "turn" => 1, "text" => "stranger"})
+
+      ref =
+        push(channel, "agent_turn_event", %{
+          "agent_id" => stranger,
+          "event" => %{"kind" => "turn_ended"}
+        })
+
+      assert_reply ref, :ok
+    end
+  end
+
   describe "sops keys on join" do
     alias CodeMySpec.ProjectSecrets
 

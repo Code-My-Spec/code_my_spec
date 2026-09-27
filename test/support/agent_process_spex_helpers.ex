@@ -45,7 +45,8 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
              Machine.start_agent(agent_id, copy,
                on_stop: Keyword.get(opts, :on_stop),
                base_url: Keyword.get(opts, :base_url),
-               on_event: Keyword.get(opts, :on_event)
+               on_event: Keyword.get(opts, :on_event),
+               on_draft: Keyword.get(opts, :on_draft)
              ),
            "the premise is an agent that is actually running; without one this " <>
              "criterion asserts nothing about spending"
@@ -71,21 +72,33 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   def start_agent_with_provider(agent_id, opts \\ []) do
     base_url = HeldProvider.start()
 
+    {on_event, on_draft} = report_to(Keyword.get(opts, :report_to))
+
     start_agent(
       agent_id,
       opts
       |> Keyword.put(:base_url, base_url)
-      |> Keyword.put(:on_event, report_to(Keyword.get(opts, :report_to)))
+      |> Keyword.put(:on_event, on_event)
+      |> Keyword.put(:on_draft, on_draft)
     )
   end
 
-  # Where an agent's steps go. Nowhere by default — most criteria here are
-  # about the process rather than the transcript, and the harness's own
-  # destination is a registry a spex run has no entries in.
-  defp report_to(nil), do: nil
+  # Where an agent's steps and drafts go. Nowhere by default — most criteria
+  # here are about the process rather than the transcript, and the harness's
+  # own destination is a registry a spex run has no entries in.
+  #
+  # Drafts go through the harness's own `DraftBuffer`, flushed on every
+  # fragment rather than on `ChannelClient`'s timer, and settled by the same
+  # turn events — so what reaches the channel is the payload the machine sends.
+  defp report_to(nil), do: {nil, nil}
 
   defp report_to(socket) do
-    fn agent_id, envelope ->
+    {:ok, buffer} = Agent.start(&Machine.new_draft_buffer/0)
+    ExUnit.Callbacks.on_exit(fn -> Process.exit(buffer, :kill) end)
+
+    on_event = fn agent_id, envelope ->
+      Agent.update(buffer, &Machine.settle_draft(&1, agent_id, Map.get(envelope, :event)))
+
       Phoenix.ChannelTest.push(socket, "agent_turn_event", %{
         "agent_id" => agent_id,
         "event" => Machine.encode_turn_event(envelope)
@@ -93,6 +106,20 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
 
       :ok
     end
+
+    on_draft = fn agent_id, %{payload: text} = envelope ->
+      payloads =
+        Agent.get_and_update(buffer, fn drafts ->
+          drafts
+          |> Machine.add_draft(agent_id, Map.get(envelope, :turn), text)
+          |> Machine.take_drafts()
+        end)
+
+      Enum.each(payloads, &Phoenix.ChannelTest.push(socket, "agent_draft", &1))
+      :ok
+    end
+
+    {on_event, on_draft}
   end
 
   @doc """
@@ -280,5 +307,65 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     dir = CodeMySpec.TempFile.dir("spex_1023_agent")
     File.mkdir_p!(dir)
     dir
+  end
+
+  @doc """
+  An agent on the held provider, reporting over `socket`, and its conversation.
+
+  The premise the draft criteria share. The criterion joins the channel and
+  opens the page itself — both are macros bound to its endpoint — and this
+  starts the agent between the two. Answers the context with `:agent`,
+  `:conversation` and `:conversation_path` added.
+  """
+  @spec agent_on_held_provider(map(), Phoenix.Socket.t(), String.t()) :: map()
+  def agent_on_held_provider(context, socket, copy) do
+    agent = CodeMySpecSpex.Fixtures.running_agent(context.scope, working_copy: copy)
+    start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
+    conversation = CodeMySpecSpex.Fixtures.agent_conversation(context.scope, agent)
+
+    path =
+      "/app/projects/#{context.project.id}/agent-conversation?" <>
+        URI.encode_query(conversation: conversation.id)
+
+    context
+    |> Map.put(:agent, agent)
+    |> Map.put(:conversation, conversation)
+    |> Map.put(:conversation_path, path)
+    |> Map.put(:harness_socket, socket)
+  end
+
+  @doc """
+  Wait until the agent is idle and the server has handled everything it sent.
+
+  `await_idle/1` is the machine's half. The turn's last events are already on
+  their way to the channel by then, and `turn_ended` sets off the stop menu —
+  database work that, left running, outlives the criterion and fails whichever
+  one runs next with a connection its owner took away. A call to the channel
+  process returns only after every message before it has been handled.
+  """
+  @spec await_quiet(map()) :: :ok
+  def await_quiet(context) do
+    await_idle(context.agent.id)
+    _ = :sys.get_state(context.harness_socket.channel_pid)
+    :ok
+  end
+
+  @doc """
+  Ask the agent something from the page, and catch its reply part-way.
+
+  Waits until the first half of the reply has left the provider, so "the agent
+  is part-way through a reply" is a fact rather than a race.
+  """
+  @spec reply_part_way(map()) :: :ok
+  def reply_part_way(context) do
+    HeldProvider.hold_mid_reply()
+
+    context.live
+    |> Phoenix.LiveViewTest.form("form[phx-submit=send_message]", %{
+      "message" => "tell me something"
+    })
+    |> Phoenix.LiveViewTest.render_submit()
+
+    HeldProvider.await_request()
   end
 end

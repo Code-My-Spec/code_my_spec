@@ -99,7 +99,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
           messages: [map()] | nil,
           req_options: keyword() | nil,
           on_stop: (-> any()) | nil,
-          on_event: (map() -> any()) | nil
+          on_event: (map() -> any()) | nil,
+          on_draft: (String.t(), map() -> any()) | nil
         ]
 
   # ---------------------------------------------------------------- public API
@@ -374,6 +375,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
            provider: Keyword.fetch!(opts, :provider),
            on_stop: Keyword.get(opts, :on_stop),
            on_event: Keyword.get(opts, :on_event),
+           on_draft: Keyword.get(opts, :on_draft),
            alloy: alloy,
            # The turn in flight, or nil. One at a time — an agent working two
            # turns at once in one checkout is two agents editing one tree.
@@ -734,6 +736,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   defp run_turn(state, message, timeout) do
     report = state.on_event
+    draft = state.on_draft
     agent_id = state.agent_id
 
     Server.stream_chat(
@@ -741,7 +744,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
       message,
       fn _chunk -> :ok end,
       timeout: timeout,
-      on_event: fn envelope -> report_step(report, agent_id, envelope) end
+      on_event: fn envelope -> report_step(report, draft, agent_id, envelope) end
     )
   end
 
@@ -758,11 +761,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # arriving; a turn with extended thinking on emits them at the same rate as
   # text, so the transcript would fill with reasoning fragments nobody asked to
   # see. Found by recording a real turn, which is what recording is for.
-  defp report_step(_report, _agent_id, %{event: event})
+  #
+  # Text still goes somewhere, just not here: `on_draft` carries it to the live
+  # view as a draft that is never stored.
+  defp report_step(_report, draft, agent_id, %{event: :text_delta} = envelope)
+       when is_function(draft, 2),
+       do: draft.(agent_id, envelope)
+
+  defp report_step(_report, _draft, _agent_id, %{event: event})
        when event in [:text_delta, :thinking_delta],
        do: :ok
 
-  defp report_step(report, agent_id, envelope), do: report.(agent_id, envelope)
+  defp report_step(report, _draft, agent_id, envelope), do: report.(agent_id, envelope)
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
 

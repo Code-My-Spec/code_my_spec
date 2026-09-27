@@ -89,6 +89,7 @@ defmodule CmsHarnessTest.Machine do
       # anything that actually runs a turn passes a local endpoint here.
       "base_url" => Keyword.get(opts, :base_url),
       "on_event" => Keyword.get(opts, :on_event),
+      "on_draft" => Keyword.get(opts, :on_draft),
       # In front of the provider's HTTP client, for the one test that records a
       # real turn. Everything else leaves it off and never reaches a provider.
       "req_options" => Keyword.get(opts, :req_options),
@@ -105,6 +106,23 @@ defmodule CmsHarnessTest.Machine do
   """
   @spec encode_turn_event(map()) :: map()
   defdelegate encode_turn_event(envelope), to: CmsHarness.Project.ChannelClient
+
+  @doc """
+  The harness's draft buffer, for a relay that has to produce the `agent_draft`
+  payloads a machine sends. Same reason as `encode_turn_event/1`: one wire
+  shape, not a second copy of it.
+  """
+  defdelegate new_draft_buffer(), to: CmsHarness.Project.DraftBuffer, as: :new
+
+  defdelegate add_draft(buffer, agent_id, turn, text),
+    to: CmsHarness.Project.DraftBuffer,
+    as: :add
+
+  defdelegate settle_draft(buffer, agent_id, event),
+    to: CmsHarness.Project.DraftBuffer,
+    as: :settle
+
+  defdelegate take_drafts(buffer), to: CmsHarness.Project.DraftBuffer, as: :take
 
   @doc """
   Give an agent something to do, without waiting for the turn.

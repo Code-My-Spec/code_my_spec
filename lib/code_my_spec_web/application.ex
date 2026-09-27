@@ -128,6 +128,9 @@ defmodule CodeMySpecWeb.Application do
         # once decide the surviving build by timing (db97272b) — the lock
         # that closes that belongs here for the same reason RunLock does.
         CodeMySpec.Promotion.Lock,
+        # What agents are writing before it becomes a message. Before the
+        # endpoint, which is where the drafts arrive from.
+        CodeMySpec.Conversations.Drafts,
         CodeMySpecWeb.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to

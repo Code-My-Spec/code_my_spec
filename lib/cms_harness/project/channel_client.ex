@@ -57,6 +57,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.AnalysisServer
+  alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
@@ -1593,6 +1594,22 @@ defmodule CmsHarness.Project.ChannelClient do
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
   @doc """
+  One fragment of the text an agent is writing, for the live view.
+
+  Never stored. Fragments are gathered per agent and pushed as the whole draft
+  so far, every 100ms at most — so a view that missed one push is corrected
+  by the next rather than showing a sentence with a hole in it.
+  """
+  def report_draft(root, agent_id, %{payload: text} = envelope) when is_binary(text) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:draft, agent_id, Map.get(envelope, :turn), text})
+      [] -> :ok
+    end
+  end
+
+  def report_draft(_root, _agent_id, _envelope), do: :ok
+
+  @doc """
   Tell the server about one step an agent took.
 
   Cast rather than called: the agent is mid-turn and waiting on nothing here,
@@ -1772,6 +1789,15 @@ defmodule CmsHarness.Project.ChannelClient do
   # `nil`, which the server already skips.
   defp inspect_rest(rest) when map_size(rest) == 0, do: nil
   defp inspect_rest(rest), do: inspect(rest)
+
+  @draft_flush_ms 100
+
+  defp schedule_draft_flush(%{assigns: %{draft_flush: ref}} = socket) when ref != nil, do: socket
+
+  defp schedule_draft_flush(socket),
+    do: assign(socket, :draft_flush, Process.send_after(self(), :flush_drafts, @draft_flush_ms))
+
+  defp drafts(socket), do: Map.get(socket.assigns, :drafts, DraftBuffer.new())
 
   # A tool call, as a person would say it: `read mix.exs`.
   #
@@ -2039,6 +2065,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  def handle_info(:flush_drafts, %{assigns: %{joined: true}} = socket) do
+    {payloads, drafts} = DraftBuffer.take(drafts(socket))
+    Enum.each(payloads, &push(socket, socket.assigns.topic, "agent_draft", &1))
+    {:noreply, socket |> assign(:drafts, drafts) |> assign(:draft_flush, nil)}
+  end
+
+  def handle_info(:flush_drafts, socket),
+    do: {:noreply, socket |> assign(:drafts, DraftBuffer.new()) |> assign(:draft_flush, nil)}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # Consecutive hook decisions the server never answered.
@@ -2240,13 +2275,28 @@ defmodule CmsHarness.Project.ChannelClient do
       "event" => encode_turn_event(envelope)
     })
 
-    {:noreply, socket}
+    # Dropped here so a flush still pending cannot push a draft after the
+    # message it became; the push for this event went out first, and the server
+    # clears its copy on it.
+    drafts = DraftBuffer.settle(drafts(socket), agent_id, Map.get(envelope, :event))
+    {:noreply, assign(socket, :drafts, drafts)}
   end
 
   # Not joined, so there is nowhere to send it. Dropped rather than queued, for
   # the same reason as `record_turn`: a backlog of steps replayed after a
   # reconnect reads as the agent doing them now.
   def handle_cast({:turn_event, _agent_id, _envelope}, socket), do: {:noreply, socket}
+
+  # A fragment of what an agent is writing, flushed on a timer: a push per
+  # fragment is a push every few characters.
+  def handle_cast({:draft, agent_id, turn, text}, %{assigns: %{joined: true}} = socket) do
+    socket
+    |> assign(:drafts, DraftBuffer.add(drafts(socket), agent_id, turn, text))
+    |> schedule_draft_flush()
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_cast({:draft, _agent_id, _turn, _text}, socket), do: {:noreply, socket}
 
   @impl Slipstream
   # Dropped rather than queued when the channel is not joined. A recording that

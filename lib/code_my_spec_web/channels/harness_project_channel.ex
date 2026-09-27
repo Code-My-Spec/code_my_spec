@@ -45,6 +45,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -747,7 +748,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # machine does not wait on it: it casts.
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
+    settle_draft(socket, agent_id, event)
     {:reply, :ok, socket}
+  end
+
+  # What an agent is writing, before it is a message. Held and broadcast, never
+  # written to the database — the message it becomes is the record. Arrives
+  # every 100ms while an agent writes, so the conversation it belongs to is
+  # looked up once and cached on the socket rather than read per draft.
+  def handle_in("agent_draft", %{"agent_id" => agent_id, "text" => text}, socket)
+      when is_binary(text) do
+    case draft_conversation(socket, agent_id) do
+      {:ok, conversation_id, socket} ->
+        Drafts.put(conversation_id, text)
+        {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_in("agent_start_result", %{"ref" => ref} = msg, socket) do
@@ -2189,4 +2207,36 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       _ -> Sessions.external_id_for_harness(scope.active_working_copy_id) || "sprite"
     end
   end
+
+  defp draft_conversation(socket, agent_id) do
+    cached = Map.get(socket.assigns, :draft_conversations, %{})
+
+    case cached do
+      %{^agent_id => conversation_id} ->
+        {:ok, conversation_id, socket}
+
+      _ ->
+        case Agents.conversation_id(socket.assigns.scope, agent_id) do
+          {:ok, conversation_id} ->
+            {:ok, conversation_id,
+             assign(socket, :draft_conversations, Map.put(cached, agent_id, conversation_id))}
+
+          _ ->
+            :error
+        end
+    end
+  end
+
+  # The draft has been said, or never will be. Only an agent this socket has
+  # drafted for can have one to clear.
+  @settling_kinds ~w(message turn_ended turn_failed turn_cut_off)
+
+  defp settle_draft(socket, agent_id, %{"kind" => kind}) when kind in @settling_kinds do
+    case socket.assigns do
+      %{draft_conversations: %{^agent_id => conversation_id}} -> Drafts.clear(conversation_id)
+      _ -> :ok
+    end
+  end
+
+  defp settle_draft(_socket, _agent_id, _event), do: :ok
 end
