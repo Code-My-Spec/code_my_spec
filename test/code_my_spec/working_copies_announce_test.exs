@@ -100,4 +100,61 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
              "designation changes `main` and therefore whose preview the graph reads"
     end
   end
+
+  describe "record_app_status/2 (story 1108)" do
+    test "persists status, url and commit together", %{copy: copy} do
+      {:ok, updated} =
+        WorkingCopies.record_app_status(copy, %{
+          status: "serving",
+          url: "http://127.0.0.1:51234",
+          commit: "abc123"
+        })
+
+      assert updated.app_status == "serving"
+      assert updated.app_url == "http://127.0.0.1:51234"
+      assert updated.app_commit == "abc123"
+      assert updated.app_checked_at
+    end
+
+    test "a health-probe-only report keeps the existing url and commit", %{copy: copy} do
+      {:ok, started} =
+        WorkingCopies.record_app_status(copy, %{
+          status: "serving",
+          url: "http://127.0.0.1:51234",
+          commit: "abc123"
+        })
+
+      {:ok, polled} = WorkingCopies.record_app_status(started, %{status: "serving"})
+
+      assert polled.app_url == "http://127.0.0.1:51234"
+      assert polled.app_commit == "abc123"
+    end
+
+    test "going down clears the url regardless of what's passed", %{copy: copy} do
+      {:ok, started} =
+        WorkingCopies.record_app_status(copy, %{
+          status: "serving",
+          url: "http://127.0.0.1:51234",
+          commit: "abc123"
+        })
+
+      {:ok, stopped} =
+        WorkingCopies.record_app_status(started, %{status: "down", url: "http://127.0.0.1:51234"})
+
+      assert stopped.app_status == "down"
+      assert stopped.app_url == nil, "a stale address on a stopped copy is the bug this story fixes"
+      assert stopped.app_commit == "abc123"
+    end
+
+    test "does not announce — this story hasn't wired the graph to read it yet", %{
+      scope: scope,
+      copy: copy
+    } do
+      {:ok, _} = WorkingCopies.record_app_status(copy, %{status: "serving", url: "http://x"})
+
+      refute announced?(scope),
+             "app_status/app_url are not in @graph_fields yet — phase 2 of story 1108 wires " <>
+               "them into the requirement graph, not this increment"
+    end
+  end
 end

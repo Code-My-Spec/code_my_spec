@@ -41,6 +41,10 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
           path_missing_since: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           active_story_id: integer() | nil,
+          app_status: String.t() | nil,
+          app_checked_at: DateTime.t() | nil,
+          app_url: String.t() | nil,
+          app_commit: String.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -146,6 +150,26 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :preview_tunnel_id, :string
     field :preview_tunnel_secret, CodeMySpec.Encrypted.Binary
 
+    # Story 1108: every copy runs its own instance of the app, not only the
+    # main checkout's preview above. `app_url` is this copy's own local
+    # address — never the tunnel `preview_url` answers for, and never
+    # refused on a non-main copy the way `record_preview_url/2` is, because
+    # every copy is expected to have one.
+    #
+    # `app_commit` is this copy's own answer to "which commit is running,"
+    # separate from `Project.head_commit` because that field is one value
+    # per project and cannot hold two copies' different answers at once.
+    #
+    # `app_status` follows `preview_status`'s three states for the same
+    # reason: a 500 is a QA finding, a refused connection is nothing to
+    # report yet. `down` always clears `app_url` — a stale address pointing
+    # at nothing running is the exact failure story 1108 exists to prevent
+    # (issue 2d612ae8: QA silently served main's code through a stale link).
+    field :app_status, :string
+    field :app_checked_at, :utc_datetime_usec
+    field :app_url, :string
+    field :app_commit, :string
+
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
     # says which machine it is announcing from. That is a real state — "we have
@@ -188,7 +212,11 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :preview_tunnel_id,
       :preview_tunnel_secret,
       :preview_status,
-      :preview_checked_at
+      :preview_checked_at,
+      :app_status,
+      :app_checked_at,
+      :app_url,
+      :app_commit
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)

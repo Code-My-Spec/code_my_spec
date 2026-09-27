@@ -589,6 +589,39 @@ defmodule CodeMySpec.WorkingCopies do
     |> announce_graph_change(harness)
   end
 
+  @doc """
+  Record whether *this copy's own* app is answering — story 1108.
+
+  Unlike `record_preview_status/2` (measured against the tunnel `preview_url`
+  answers for, and meaningful only on the main copy today), every copy is
+  expected to report this: each working copy runs its own instance, on its
+  own port and database, so QA can test a story's branch before it is
+  promoted instead of finding out main's app silently served pre-fix code
+  (issue 2d612ae8).
+
+  `attrs` may include `:url` and `:commit`; either is left as-is when
+  omitted, so a health-probe-only report (`%{status: "serving"}`) doesn't
+  need to know the current address or commit. `status: "down"` always clears
+  `app_url` regardless of what's passed — a stopped copy has no address to
+  serve, and a stale one pointing at nothing running is the exact failure
+  this story exists to prevent.
+  """
+  @spec record_app_status(WorkingCopy.t(), map()) ::
+          {:ok, WorkingCopy.t()} | {:error, term()}
+  def record_app_status(%WorkingCopy{} = harness, %{status: status} = attrs)
+      when status in ~w(serving erroring down) do
+    url = if status == "down", do: nil, else: Map.get(attrs, :url, harness.app_url)
+
+    harness
+    |> save(%{
+      app_status: status,
+      app_checked_at: DateTime.utc_now(),
+      app_url: url,
+      app_commit: Map.get(attrs, :commit, harness.app_commit)
+    })
+    |> announce_graph_change(harness)
+  end
+
   # `record_git_state/2` was here, storing the harness's `ahead`/`behind`/`dirty`
   # report and announcing a graph change for it. Both halves are gone.
   #
