@@ -59,7 +59,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "Status: ready"
       assert text =~ "Wave: 1 requirement(s)"
       assert text =~ "Remaining: 1"
-      assert text =~ "execution_type=sub_agent"
+      assert text =~ "runs_in=subagent"
       assert text =~ "orchestrated_by=develop_context"
       assert text =~ "validation_type=automatic"
       assert text =~ "start_task"
