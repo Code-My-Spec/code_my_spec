@@ -645,6 +645,8 @@ defmodule CmsHarness.Project.ChannelClient do
     # model has proved it works. One that has not is still a candidate for
     # backing off, which is the correct behaviour for a harness that cannot
     # resolve owners and is therefore not scanning anyway.
+    install_age_keys(reply)
+
     socket =
       socket
       |> persist_issued_identity(reply)
@@ -670,6 +672,22 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, ask_what_to_restore(socket, topic)}
     end
   end
+
+  # So `just init-worktree` can decrypt this project's `envs/*.enc.env`.
+  defp install_age_keys(%{"sops_age_keys" => [_ | _] = keys}) do
+    case CmsHarness.SopsKeyring.install(keys) do
+      {:ok, _added} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not write the sops keyring (#{inspect(reason)}); new working " <>
+            "copies of this project will not be able to decrypt their env files"
+        )
+    end
+  end
+
+  defp install_age_keys(_reply), do: :ok
 
   # The id the server issued for this working copy, written down so a restart
   # presents the same one rather than being issued a second.

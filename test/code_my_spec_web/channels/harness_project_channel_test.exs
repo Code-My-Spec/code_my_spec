@@ -71,6 +71,27 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     })
   end
 
+  describe "sops keys on join" do
+    alias CodeMySpec.ProjectSecrets
+
+    test "hands the harness the project's dev and test age keys and never a deploy key",
+         %{scope: scope, topic: topic} do
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_dev", "dev")
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_test", "test")
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_prod", "prod")
+
+      {:ok, reply, _channel} = join_as(scope, topic)
+
+      assert Enum.sort(reply.sops_age_keys) == ["dev", "test"]
+    end
+
+    test "a project with no local keys hands over none", %{scope: scope, topic: topic} do
+      {:ok, reply, _channel} = join_as(scope, topic)
+
+      assert reply.sops_age_keys == []
+    end
+  end
+
   describe "the identity a working copy is issued" do
     # Story 727. Files and problems are projections of a working copy but have
     # only ever been keyed by project, so two checkouts write the same rows and
