@@ -9,7 +9,9 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.StoryExecution
 
   @impl true
   def mount(_params, _session, socket) do
@@ -57,11 +59,18 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   defp recompute(%{assigns: %{scope: scope}} = socket) do
     markdown =
       case RequirementGraph.next_actionable(scope) do
-        [] -> "# All requirements satisfied\n\nNo actionable tasks remain."
+        [] -> nothing_left(scope)
         nodes -> RequirementsMapper.format_next_requirements(nodes)
       end
 
     assign(socket, markdown: markdown)
+  end
+
+  # Zero rows is not zero work left — see `StoryExecution.no_graph_reason/0`.
+  defp nothing_left(scope) do
+    if Requirements.projected?(scope),
+      do: "# All requirements satisfied\n\nNo actionable tasks remain.",
+      else: StoryExecution.no_graph_reason()
   end
 
   @impl true

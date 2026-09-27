@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.AnOrphanIsAComponentThisTreeHasTest do
     test "is not reported as an orphan to a reader that named no checkout",
          %{scope: %Scope{} = project_scope} do
       other = Fixtures.live_agent_scope(project_scope, label: "somebody else's worktree")
-      {:ok, _} = CodeMySpec.WorkingCopies.designate_main(project_scope, main_copy_id(other))
+      {:ok, _} = CodeMySpec.Staffing.designate_main(project_scope, main_copy_id(other))
 
       orphan = ComponentsFixtures.component_fixture(project_scope, %{type: "context"})
 
@@ -68,7 +68,7 @@ defmodule CodeMySpec.Requirements.AnOrphanIsAComponentThisTreeHasTest do
     test "is reported as an orphan to the checkout that has it",
          %{scope: %Scope{} = project_scope} do
       other = Fixtures.live_agent_scope(project_scope, label: "somebody else's worktree")
-      {:ok, _} = CodeMySpec.WorkingCopies.designate_main(project_scope, main_copy_id(other))
+      {:ok, _} = CodeMySpec.Staffing.designate_main(project_scope, main_copy_id(other))
 
       orphan = ComponentsFixtures.component_fixture(project_scope, %{type: "context"})
 

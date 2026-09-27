@@ -49,16 +49,15 @@ defmodule CodeMySpec.Compile do
 
     cmd_opts = [
       stderr_to_stdout: true,
-      # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_*
-      # so the child `mix`/`erl` boots from the user's installed OTP, not our
-      # extracted ERTS (which otherwise crashes with "cannot get bootfile").
+      # The environment adapter scrubs inherited OTP/release variables while
+      # preserving these explicit choices. Appending clean_otp_env here would
+      # clear MIX_ENV and the analyzer's MIX_BUILD_PATH after setting them.
       env:
         [
           {"MIX_ENV", "test"},
           {"DIAGNOSTICS_OUTPUT", output_file}
         ] ++
-          Keyword.get(opts, :extra_env, []) ++
-          CodeMySpec.Environments.clean_otp_env()
+          Keyword.get(opts, :extra_env, [])
     ]
 
     Logger.debug("[Compile] output_file=#{output_file}")

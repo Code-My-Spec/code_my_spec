@@ -48,8 +48,9 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
       refute html =~ "One more thing, and we can start building.",
              "location has not been confirmed yet — the tier is a separate step"
 
-      assert html =~ "$100/month"
-      assert html =~ "$25/month"
+      assert html =~ "$100"
+      assert html =~ "$25"
+      assert html =~ "7 days free"
     end
 
     test "a non-technical visitor is suggested cloud", %{conn: conn} do
@@ -93,6 +94,17 @@ defmodule CodeMySpecWeb.IntakeLive.ProceduralTest do
       assert plan.technical == false
       assert plan.location == :local
       assert plan.shaping_turns == [], "the form filled this in, not a model call"
+    end
+
+    test "each tier is a real card with what it includes, not a plain radio row",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/build/procedural")
+
+      html = submit_details(view)
+
+      assert html =~ "Nothing to install"
+      assert html =~ "Bring your own coding agent"
+      assert html =~ "7-day free trial"
     end
 
     test "a blank required field stays on the details form", %{conn: conn} do

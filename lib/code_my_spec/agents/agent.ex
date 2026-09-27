@@ -53,6 +53,15 @@ defmodule CodeMySpec.Agents.Agent do
   alias CodeMySpec.Projects.Project
 
   @statuses [:starting, :running, :stopped, :failed]
+
+  # 73d0d505: `record_stopped/2` in `Agents` is the single path for both a
+  # deliberate stop and a harness/machine reaping an agent it lost contact
+  # with, and until this field existed nothing on the row said which had
+  # happened. `:reaped` is written when nothing confirms the process ended on
+  # purpose (no report, or a machine that could not be asked); `:stopped` is
+  # written when something explicitly asked for it to end. Nil is a row from
+  # before this distinction existed -- not a third state, just unknown.
+  @stopped_reasons [:reaped, :stopped]
   # `:alloy` — renamed from `:pi`, John's call: "I completely backed out of
   # that. We're not doing that." The value stayed `:pi` in the schema and the
   # column after the product decision moved on, so "Pi" kept showing up
@@ -67,7 +76,7 @@ defmodule CodeMySpec.Agents.Agent do
   # `spec_writer` is deliberately absent. Specs are written by the agent that
   # writes the code — John's call in that session — so requirements that used
   # to carry `role: :spec_writer` are re-tagged `:coding`.
-  @roles [:main, :product, :coding, :qa]
+  @roles CodeMySpec.Agents.Roles.all()
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
@@ -81,6 +90,7 @@ defmodule CodeMySpec.Agents.Agent do
           os_pid: integer() | nil,
           os_boot_id: String.t() | nil,
           status: atom() | nil,
+          stopped_reason: atom() | nil,
           continuous: boolean() | nil,
           tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
@@ -127,6 +137,7 @@ defmodule CodeMySpec.Agents.Agent do
     field :os_pid, :integer
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting
+    field :stopped_reason, Ecto.Enum, values: @stopped_reasons
 
     # Whether this agent keeps working when its turn ends.
     #
@@ -157,6 +168,25 @@ defmodule CodeMySpec.Agents.Agent do
     field :work_request_id, :string
     field :work_requested_at, :utc_datetime_usec
 
+    # The offer this agent was last handed and did not take.
+    #
+    # An agent that ends a turn without claiming anything clears every other
+    # in-flight mark — no open turn, no reservation, no active task — so
+    # `Work.runnable_state?/1` finds it instantly eligible again and re-offers
+    # the same work. Nothing recorded that it had just refused, so nothing
+    # could tell the second offer from the first.
+    #
+    # Measured on the math project 2026-09-22: one QA agent declined the same
+    # blocked requirement 197 times in 3m29s — a turn every four seconds, and
+    # 4,500 server log lines a minute — until it was stopped by hand.
+    #
+    # A fingerprint of the offer rather than a flag, so the agent wakes the
+    # moment the work actually changes instead of on a timer; the timestamp is
+    # what keeps that from becoming a wedge when it never does.
+    field :declined_offer, :string
+    field :declined_offer_at, :utc_datetime_usec
+    field :declined_offer_count, :integer
+
     # The work this agent has claimed.
     #
     # Story 538's direction, and the end of an agent that could take turns and
@@ -179,6 +209,9 @@ defmodule CodeMySpec.Agents.Agent do
 
   @spec statuses() :: [atom()]
   def statuses, do: @statuses
+
+  @spec stopped_reasons() :: [atom()]
+  def stopped_reasons, do: @stopped_reasons
 
   @doc "The agent types. Fixed here so nothing can invent a fifth by typing it."
   @spec roles() :: [atom()]
@@ -250,10 +283,14 @@ defmodule CodeMySpec.Agents.Agent do
       :os_pid,
       :os_boot_id,
       :status,
+      :stopped_reason,
       :continuous,
       :turn_started_at,
       :work_request_id,
       :work_requested_at,
+      :declined_offer,
+      :declined_offer_at,
+      :declined_offer_count,
       :working_copy_id,
       :project_id,
       :account_id

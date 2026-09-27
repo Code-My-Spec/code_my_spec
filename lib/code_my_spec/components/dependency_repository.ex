@@ -6,6 +6,7 @@ defmodule CodeMySpec.Components.DependencyRepository do
   import Ecto.Query, warn: false
   alias CodeMySpec.Components.{Component, Dependency}
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -55,10 +56,11 @@ defmodule CodeMySpec.Components.DependencyRepository do
   """
   @spec create_dependency(Scope.t(), map()) ::
           {:ok, Dependency.t()} | {:error, Ecto.Changeset.t()}
-  def create_dependency(%Scope{} = _scope, attrs) do
+  def create_dependency(%Scope{} = scope, attrs) do
     %Dependency{}
     |> Dependency.changeset(attrs)
     |> Repo.insert()
+    |> announce(scope)
   end
 
   @doc """
@@ -66,8 +68,8 @@ defmodule CodeMySpec.Components.DependencyRepository do
   """
   @spec delete_dependency(Scope.t(), Dependency.t()) ::
           {:ok, Dependency.t()} | {:error, Ecto.Changeset.t()}
-  def delete_dependency(%Scope{}, %Dependency{} = dependency) do
-    Repo.delete(dependency)
+  def delete_dependency(%Scope{} = scope, %Dependency{} = dependency) do
+    dependency |> Repo.delete() |> announce(scope)
   end
 
   @doc """
@@ -76,8 +78,33 @@ defmodule CodeMySpec.Components.DependencyRepository do
   @spec delete_dependency(Dependency.t()) ::
           {:ok, Dependency.t()} | {:error, Ecto.Changeset.t()}
   def delete_dependency(%Dependency{} = dependency) do
-    Repo.delete(dependency)
+    dependency |> Repo.delete() |> announce(project_of(dependency))
   end
+
+  # A dependency moves edges: the cross-context edge between the two
+  # components, and every story kickoff drawn through them. No verdict reads
+  # it, so the kind is handled as moving nothing and the projector redraws the
+  # edges for it (`Handlers.shape_kinds/0`). Named after the source, which is
+  # the entity the edge hangs off. Project-wide as every component fact is:
+  # `dependencies` has no `working_copy_id`.
+  defp announce({:ok, %Dependency{} = dependency} = result, scope_or_project_id)
+       when not is_nil(scope_or_project_id) do
+    GraphInputs.event(
+      scope_or_project_id,
+      "Components",
+      "dependency_changed",
+      %{},
+      [{"component", dependency.source_component_id}],
+      :project_wide
+    )
+
+    result
+  end
+
+  defp announce(result, _scope_or_project_id), do: result
+
+  defp project_of(%Dependency{source_component_id: id}),
+    do: Repo.one(from(c in Component, where: c.id == ^id, select: c.project_id))
 
   @doc """
   Simple circular dependency check — looks for direct cycles between

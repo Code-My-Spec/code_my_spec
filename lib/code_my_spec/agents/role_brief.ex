@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Agents.RoleBrief do
   @moduledoc """
-  What an agent is for, in its own words, sent to it as the first half of its
-  system prompt.
+  What an agent is for, in its own words — the last section of its system
+  prompt, after the universal half and the project's own context.
 
   Until this existed no system prompt was sent at all. `Alloy.Agent.Config`
   accepts one and defaults it to nil, and nothing ever set it — so every agent
@@ -23,29 +23,26 @@ defmodule CodeMySpec.Agents.RoleBrief do
   So when a role's tools change, this changes with them, and the pair stays one
   decision.
 
-  ## Three things, not one
+  ## This is section three of three
 
-  The brief below says what a role is for. `OperatingRules` says how the
-  machinery behaves — which tools answer before their work is done, what
-  actually blocks a story, what an agent must not do by hand — and is the same
-  for every role, so it lives beside these rather than being repeated four
-  times and drifting. Both travel together as the framework's half of the
-  prompt.
+  `SystemPrompt.compose/1` orders the prompt general to specific: the universal
+  half first (`OperatingRules` — the loop and how the machinery behaves), then
+  what this project and checkout are, then this. A role brief is the most
+  specific thing an agent is told, so it reads last and nothing after it
+  qualifies it.
 
-  Every rule in that module was delivered by hand to a running agent after it
-  had already gone the wrong way. An agent told what it is for and left to infer
-  the rest from whatever codebase it is standing in will infer wrong, and the
-  most expensive hour of 2026-09-10 was a coding agent building a
-  `config/dev_cli.exs` for a game because it had seen that env in CodeMySpec's
-  own justfile.
+  `for/1` returns the role's own words and nothing else. It used to append
+  `OperatingRules.text()`, which made the universal half arrive *inside* the
+  role section — harmless while the prompt was two halves, wrong once the order
+  became deliberate, and it put the loop an agent runs behind the description of
+  what that agent is for.
 
   ## What is deliberately not here
 
-  Project context. `compose/2` on the harness appends the project's own
-  `.code_my_spec/AGENTS.md`, which is per-project, already written, and already
-  what an external agent is handed. John's call, and the reason is that these
-  two halves are maintained in different places by different people: the role is
-  the framework's, the workflow is the project's.
+  Project context — what the project is, where its application runs, which
+  tools this machine offers. That is section two, assembled by
+  `SystemPrompt.compose/1` from what the server sends, and it changes per
+  project and per checkout while this does not.
 
   ## Escalation lives here, not only on a pushed question
 
@@ -66,7 +63,6 @@ defmodule CodeMySpec.Agents.RoleBrief do
   against it.
   """
 
-  alias CodeMySpec.Agents.OperatingRules
   alias CodeMySpec.Utils
 
   @briefs %{
@@ -102,9 +98,9 @@ defmodule CodeMySpec.Agents.RoleBrief do
 
     Test it this way: if two answers would look or feel different to somebody
     using the product, the choice is theirs, regardless of what words the
-    question arrived in. Reframe it in those terms and put it to them —
-    `ask_user_question` when there are options to choose between,
-    `send_message` when it needs prose — rather than picking one yourself and
+    question arrived in. Reframe it in those terms and put it to them with
+    `ask_user_question` — options to choose between where there are any, one
+    open question where it needs prose — rather than picking one yourself and
     offering to build it. Do not answer a decision that is theirs with a
     recommendation of your own.
     """,
@@ -114,6 +110,11 @@ defmodule CodeMySpec.Agents.RoleBrief do
     Your job is shaping what gets built, and never building it: stories,
     acceptance criteria, rules, personas, epics. Run Three Amigos sessions,
     interview for stories, organise them into epics, and mark them ready.
+
+    Choosing which component implements a story is yours as well.
+    `component_linked` is a product requirement and `set_story_component`,
+    `create_component` and `validate_dependency_graph` are your tools: deciding
+    where a story lives in the architecture is shaping it, not building it.
 
     You do not write application code, and findings about code are not yours to
     fix. If analysis reports a failing test or a lint finding in a file you did
@@ -163,7 +164,7 @@ defmodule CodeMySpec.Agents.RoleBrief do
   def for(role) when is_atom(role) and not is_nil(role) do
     case Map.get(@briefs, role) do
       nil -> nil
-      brief -> String.trim(brief) <> "\n\n" <> OperatingRules.text()
+      brief -> String.trim(brief)
     end
   end
 

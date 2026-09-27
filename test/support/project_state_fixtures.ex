@@ -36,9 +36,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     fires.
   """
 
-  import Phoenix.ConnTest
-  import Phoenix.LiveViewTest
-
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
@@ -50,8 +47,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
-
-  @endpoint CodeMySpecLocalWeb.Endpoint
 
   @all_setup_steps [
     Setup.ApplicationInWeb,
@@ -67,6 +62,28 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     Setup.CredoChecks,
     Setup.ClaudeMd
   ]
+
+  @doc false
+  # Put what was just written in front of the graph.
+  #
+  # These fixtures exist to leave a requirement satisfied, and a file on disk
+  # that the graph has never seen satisfies nothing. In production
+  # `FileWatcherServer` drives `ProjectSync.Sync` per changed path; there is no
+  # watcher in a spex, so the fixture does it.
+  #
+  # It used to happen by accident. `GetNextRequirement` opened with a full
+  # `FileSync.sync/2`, so any file written before the agent asked was picked up
+  # on the way to the graph — which made a read path responsible for a write's
+  # visibility, and meant admission (`Agents.Work.graph_work?/2`, no sync) and
+  # the agent's own question answered from two different graphs. Issue
+  # c83c5b58. The sync is gone from there, so it belongs here.
+  @spec synced(map()) :: map()
+  def synced(%{scope: scope} = context) do
+    :ok = Fixtures.sync_files(scope)
+    context
+  end
+
+  def synced(context), do: context
 
   @doc """
   Bundle of every project-level satisfier in this module. Equivalent to
@@ -105,6 +122,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     |> maybe_apply_qa_setup(Keyword.get(opts, :qa_setup, true))
     |> apply_journey_artifacts()
     |> apply_persona()
+    |> synced()
   end
 
   defp maybe_apply_qa_setup(context, false), do: context
@@ -175,7 +193,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       - Uptime monitors: uat.example.test, example.test
       """)
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -197,7 +215,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         """
       )
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -227,7 +245,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         """
       )
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -284,7 +302,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   def apply_qa_setup(context) do
     env = context.environment
     :ok = Environments.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
-    context
+    synced(context)
   end
 
   @doc """
@@ -312,7 +330,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     # spex (criterion 6491).
     :ok = Environments.write_file(env, "test/journeys/sample_journey_test.exs", wallaby_content())
 
-    context
+    synced(context)
   end
 
   @doc """
@@ -503,10 +521,10 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         )
     end)
 
-    {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
-
-    sync_live |> element("button[phx-click='sync']") |> render_click()
+    # The sync, not the button — see `synced/1`. `live/2` raises outside a test
+    # process, which made every fixture that used it unusable from
+    # `mix cms.eval`.
+    synced(context)
 
     :ok
   end

@@ -48,7 +48,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Staffing
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
   @impl true
@@ -115,7 +115,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
 
     with row when not is_nil(row) <-
            Rows.get(scope, socket.assigns.project, id, DateTime.utc_now()),
-         {:ok, counts} <- WorkingCopies.offboard(scope, row.harness) do
+         {:ok, counts} <- Staffing.offboard(scope, row.harness) do
       {:noreply,
        socket
        |> put_flash(:info, offboarded(row, counts))
@@ -131,7 +131,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   # Lifted from `WorkingCopyLive.Show`, which still carries the same handler —
   # there was previously no way to do this without opening a copy first.
   def handle_event("designate_main", %{"id" => id}, socket) do
-    case WorkingCopies.designate_main(socket.assigns.current_scope, id) do
+    case Staffing.designate_main(socket.assigns.current_scope, id) do
       {:ok, _copy} ->
         {:noreply, load(socket)}
 

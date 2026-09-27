@@ -27,6 +27,8 @@ defmodule CodeMySpec.MintedCopyMatchesWhatWasWrittenTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Staffing
+
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -45,7 +47,7 @@ defmodule CodeMySpec.MintedCopyMatchesWhatWasWrittenTest do
   end
 
   test "the row and the checkout's own config name the same copy", %{scope: scope} do
-    {:ok, copy, _staffed} = WorkingCopies.mint(scope, label: "identity check")
+    {:ok, copy, _staffed} = Staffing.mint(scope, label: "identity check")
 
     written =
       copy.root
@@ -63,7 +65,7 @@ defmodule CodeMySpec.MintedCopyMatchesWhatWasWrittenTest do
   end
 
   test "the checkout can authenticate as its project", %{scope: scope} do
-    {:ok, copy, _staffed} = WorkingCopies.mint(scope, label: "key check")
+    {:ok, copy, _staffed} = Staffing.mint(scope, label: "key check")
 
     written =
       copy.root
@@ -79,7 +81,7 @@ defmodule CodeMySpec.MintedCopyMatchesWhatWasWrittenTest do
   end
 
   test "the checkout names the project it belongs to", %{scope: scope} do
-    {:ok, copy, _staffed} = WorkingCopies.mint(scope, label: "project check")
+    {:ok, copy, _staffed} = Staffing.mint(scope, label: "project check")
 
     written =
       copy.root

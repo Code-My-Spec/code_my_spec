@@ -125,50 +125,94 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
 
   # Priced, not a generic infra select — "are you technical" only decides
   # which of these two a visitor is shown first; either is a real choice.
+  # Cards borrow their shape from the marketing `/pricing` page's own
+  # `pricing_tiers/1` (bulleted feature lists) and `CheckoutLive`'s
+  # `tier_choice/1` (a real card per tier) rather than the plain radio rows
+  # this replaced — a CRO audit of the funnel has to see the same kind of
+  # pricing presentation a visitor buying anywhere else on the site sees.
+  @tiers [
+    %{
+      value: "cloud",
+      name: "Cloud",
+      price: "$100",
+      period: "/month + usage",
+      tagline: "We host it. Nothing to install.",
+      bullets: [
+        "Nothing to install — open a link and it's there",
+        "We run the agent and the infrastructure",
+        "Billed monthly, scales with usage"
+      ]
+    },
+    %{
+      value: "local",
+      name: "Dev local",
+      price: "$25",
+      period: "/month",
+      tagline: "Bring your own agent. You run it yourself.",
+      trial: "7 days free, then $25/month",
+      bullets: [
+        "Runs on your own machine",
+        "Bring your own coding agent",
+        "7-day free trial — cancel before it ends and pay nothing"
+      ]
+    }
+  ]
+
   attr :plan, :map, required: true
   attr :form, :any, required: true
 
   defp tier_card(assigns) do
+    assigns = assign(assigns, :tiers, @tiers)
+
     ~H"""
-    <.form
-      for={@form}
-      phx-submit="confirm_tier"
-      class="border border-base-300 rounded p-4 space-y-3"
-    >
+    <.form for={@form} phx-submit="confirm_tier" class="space-y-3">
       <p class="font-medium">Pick a plan.</p>
 
-      <label class="flex items-start gap-3 border border-base-300 rounded p-3 cursor-pointer">
-        <input
-          type="radio"
-          name={@form[:location].name}
-          value="cloud"
-          checked={to_string(@form[:location].value) == "cloud"}
-          class="radio mt-1"
-        />
-        <span>
-          <span class="font-medium">Cloud — $100/month + usage</span>
-          <br />
-          <span class="text-sm opacity-70">We host it. Nothing to install.</span>
-        </span>
-      </label>
-
-      <label class="flex items-start gap-3 border border-base-300 rounded p-3 cursor-pointer">
-        <input
-          type="radio"
-          name={@form[:location].name}
-          value="local"
-          checked={to_string(@form[:location].value) == "local"}
-          class="radio mt-1"
-        />
-        <span>
-          <span class="font-medium">Dev local — $25/month</span>
-          <br />
-          <span class="text-sm opacity-70">Bring your own agent. You run it yourself.</span>
-        </span>
-      </label>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <.tier_option :for={tier <- @tiers} tier={tier} form={@form} />
+      </div>
 
       <.button class="btn-primary w-full">Next</.button>
     </.form>
+    """
+  end
+
+  attr :tier, :map, required: true
+  attr :form, :any, required: true
+
+  defp tier_option(assigns) do
+    ~H"""
+    <label class={[
+      "flex flex-col gap-2 rounded border p-4 cursor-pointer",
+      if(to_string(@form[:location].value) == @tier.value,
+        do: "border-primary border-2",
+        else: "border-base-300"
+      )
+    ]}>
+      <input
+        type="radio"
+        name={@form[:location].name}
+        value={@tier.value}
+        checked={to_string(@form[:location].value) == @tier.value}
+        class="radio radio-sm self-start"
+      />
+      <span class="font-medium">{@tier.name}</span>
+      <span>
+        <span class="text-2xl font-bold">{@tier.price}</span>
+        <span class="text-sm opacity-70">{@tier.period}</span>
+      </span>
+      <span class="text-sm opacity-70">{@tier.tagline}</span>
+
+      <span :if={@tier[:trial]} class="badge badge-primary badge-sm w-fit">
+        {@tier.trial}
+      </span>
+
+      <ul class="mt-1 space-y-1 text-sm">
+        <li :for={bullet <- @tier.bullets} class="flex gap-2">
+          <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />{bullet}
+        </li>
+      </ul>
+    </label>
     """
   end
 
@@ -211,8 +255,11 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
   # Writes nothing. The plan already carries whatever was last confirmed on
   # each step — going back and forward again without changing an answer
   # re-submits the same values, which is a no-op write, not data loss.
-  def handle_event("back", %{"to" => "details"}, socket), do: {:noreply, assign(socket, :step, :details)}
-  def handle_event("back", %{"to" => "pricing"}, socket), do: {:noreply, assign(socket, :step, :pricing)}
+  def handle_event("back", %{"to" => "details"}, socket),
+    do: {:noreply, assign(socket, :step, :details)}
+
+  def handle_event("back", %{"to" => "pricing"}, socket),
+    do: {:noreply, assign(socket, :step, :pricing)}
 
   # Same gate `IntakeLive.Plan` uses: a stranger sees the signup card in this
   # same page, an already-signed-in visitor goes straight through.

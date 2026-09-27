@@ -5,14 +5,65 @@ defmodule CodeMySpec.UserPreferences do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
+    ],
     exports: :all
 
   import Ecto.Query, warn: false
+  alias CodeMySpec.Accounts.Authorization
+  alias CodeMySpec.Projects
   alias CodeMySpec.Repo
 
   alias CodeMySpec.UserPreferences.UserPreference
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Users.User
+
+  @doc """
+  The scope for a signed-in user, with their saved active account and project.
+
+  Returns nil if no user is given. Lives here, not on `Scope` or in `Users`:
+  it is these preferences that fill the scope in. On `Scope` it made every
+  context that takes a scope depend on preferences; in `Users` it closed a
+  cycle, since `Accounts` reads `Users` and preferences read `Accounts`.
+  """
+  @spec scope_for(User.t() | nil) :: Scope.t() | nil
+  def scope_for(%User{} = user) do
+    scope = %Scope{user: user, user_id: user.id}
+
+    case get_user_preference(scope) do
+      {:ok, preferences} ->
+        # The active project is a *fallback*, not the answer. Every LiveView
+        # under /app/projects/:project_id gets its project from the URL, put on
+        # the scope per-request by the PortableHosts, which overwrite whatever
+        # is here — so the bug this used to cause (a link landing on a page
+        # showing a different project than the one it named) stays fixed.
+        #
+        # It is still read because the REST API has no project in its URL:
+        # /api/issues is what `Issues.RemoteClient` calls from the shipped CLI,
+        # and IssuesRepository.resolve_project_id/1 has no other way to know
+        # which project a request means. Removing it 500s that endpoint.
+        # Deleting this for real means project-scoping the API routes, which
+        # is a breaking change for CLIs already in the field.
+        %Scope{
+          user: user,
+          user_id: user.id,
+          active_account: preferences.active_account,
+          active_account_id: preferences.active_account_id,
+          active_project: preferences.active_project,
+          active_project_id: preferences.active_project_id
+        }
+
+      {:error, :not_found} ->
+        scope
+    end
+  end
+
+  def scope_for(nil), do: nil
 
   @doc """
   Subscribes to scoped notifications about user_preference changes.
@@ -180,6 +231,13 @@ defmodule CodeMySpec.UserPreferences do
   @doc """
   Selects an active account for the user.
 
+  Refused for an account the user has no membership on — this is the one
+  place `active_account_id` is written, so it is the last line of defense
+  against a caller handing it an id that came from somewhere other than the
+  user's own account list (a stale token, a copy-pasted id). Without this
+  check, `Scope.for_user/1` preloads whatever `active_account_id` says with
+  no membership filter of its own, and the rest of the app trusts the scope.
+
   ## Examples
 
       iex> select_active_account(scope, 123)
@@ -188,21 +246,33 @@ defmodule CodeMySpec.UserPreferences do
       iex> select_active_account(scope, invalid_id)
       {:error, %Ecto.Changeset{}}
 
+      iex> select_active_account(scope, an_account_the_user_does_not_belong_to)
+      {:error, :not_a_member}
+
   """
   def select_active_account(%Scope{} = scope, account_id) do
-    attrs = %{active_account_id: account_id, active_project_id: nil}
+    if Authorization.authorize(:read_account, scope, account_id) do
+      attrs = %{active_account_id: account_id, active_project_id: nil}
 
-    case get_user_preference(scope) do
-      {:ok, _user_preference} ->
-        update_user_preferences(scope, attrs)
+      case get_user_preference(scope) do
+        {:ok, _user_preference} ->
+          update_user_preferences(scope, attrs)
 
-      {:error, :not_found} ->
-        create_user_preferences(scope, attrs)
+        {:error, :not_found} ->
+          create_user_preferences(scope, attrs)
+      end
+    else
+      {:error, :not_a_member}
     end
   end
 
   @doc """
   Selects an active project for the user.
+
+  Refused unless the project belongs to an account the user has membership
+  on — same reasoning as `select_active_account/2`. A project has no members
+  of its own, only its account does, so this is checked through the
+  project's `account_id` rather than the project directly.
 
   ## Examples
 
@@ -212,14 +282,22 @@ defmodule CodeMySpec.UserPreferences do
       iex> select_active_project(scope, invalid_id)
       {:error, %Ecto.Changeset{}}
 
+      iex> select_active_project(scope, a_project_on_an_account_the_user_does_not_belong_to)
+      {:error, :not_a_member}
+
   """
   def select_active_project(%Scope{} = scope, project_id) do
-    case get_user_preference(scope) do
-      {:ok, _user_preference} ->
-        update_user_preferences(scope, %{active_project_id: project_id})
+    with %{account_id: account_id} <- Projects.get_project_by_id(project_id),
+         true <- Authorization.authorize(:read_account, scope, account_id) do
+      case get_user_preference(scope) do
+        {:ok, _user_preference} ->
+          update_user_preferences(scope, %{active_project_id: project_id})
 
-      {:error, :not_found} ->
-        create_user_preferences(scope, %{active_project_id: project_id})
+        {:error, :not_found} ->
+          create_user_preferences(scope, %{active_project_id: project_id})
+      end
+    else
+      _ -> {:error, :not_a_member}
     end
   end
 

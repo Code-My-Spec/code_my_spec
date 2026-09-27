@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
 
   alias CodeMySpec.AgentTasks.PromoteWork
   alias CodeMySpec.Promotion
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -73,7 +74,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
         device: device_fixture(scope)
       )
 
-    {:ok, _} = WorkingCopies.designate_main(scope, running.id)
+    {:ok, _} = Staffing.designate_main(scope, running.id)
 
     %{scope: scope, socket: socket, running: running}
   end

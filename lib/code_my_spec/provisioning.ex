@@ -58,7 +58,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Repo,
       CodeMySpec.Servers,
       CodeMySpec.TempFile,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

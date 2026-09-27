@@ -18,13 +18,16 @@ defmodule CodeMySpec.Intake do
       CodeMySpec.Accounts,
       CodeMySpec.Agents.Phase,
       CodeMySpec.Analytics,
+      CodeMySpec.Conversations,
       CodeMySpec.Events,
       CodeMySpec.Faults,
       CodeMySpec.Personas,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Users,
-      CodeMySpec.Utils
+      CodeMySpec.Users.Scope,
+      CodeMySpec.Utils,
+      CodeMySpec.WorkingCopies
     ],
     exports: :all
 
@@ -32,6 +35,7 @@ defmodule CodeMySpec.Intake do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Intake.{Plan, Planner, PlansRepository}
   alias CodeMySpec.Personas
   alias CodeMySpec.Projects
@@ -65,6 +69,19 @@ defmodule CodeMySpec.Intake do
   """
   @spec recent_plans(pos_integer()) :: [Plan.t()]
   def recent_plans(limit \\ 20), do: PlansRepository.recent(limit)
+
+  @doc """
+  Projects this account chose to run locally and confirmed, that no harness
+  has claimed with a checkout yet.
+
+  What a device's own announce answers so an already-running harness can pick
+  a fresh one up itself — see `CodeMySpecWeb.DeviceController`. Chosen over a
+  push: the harness already polls on a heartbeat, and a device is
+  account-scoped exactly the way this question is.
+  """
+  @spec pending_local_projects(Ecto.UUID.t()) :: [Plan.t()]
+  def pending_local_projects(account_id) when is_binary(account_id),
+    do: PlansRepository.pending_local(account_id)
 
   @doc """
   The plan with this id, or nil.
@@ -447,12 +464,41 @@ defmodule CodeMySpec.Intake do
     with {:ok, scope} <- ensure_account(scope, plan),
          {:ok, project} <- Projects.create_project(scope, %{name: plan.project_name}) do
       record_persona(scope, project, plan)
+      carry_conversation(scope, project, plan)
 
       plan
       |> Plan.conversion_changeset(scope.active_account, project)
       |> PlansRepository.update()
     end
   end
+
+  # The interview borrows `conversations`' shape before any agent exists to
+  # have it — `find_or_create_session_conversation/3`'s own moduledoc says so.
+  # Copied here rather than left for the agent's own conversation to somehow
+  # discover it later, because the plan and the project's agent conversation
+  # answer different questions forever after this: one is a stranger talking
+  # before anything was built, the other is a record of what got built.
+  # `find_or_create_agent_conversation/3` adopts this same row once a real
+  # agent starts (matched on the `"intake:"` prefix), so the visitor's history
+  # and the agent's own turns end up as one scroll rather than two.
+  #
+  # Deliberately not part of the `with` above, same reasoning as
+  # `record_persona/3` beside it: a visitor who cannot get a project at all
+  # because this write failed is worse than one whose history starts empty.
+  defp carry_conversation(%Scope{active_account: %Account{} = account}, project, %Plan{} = plan) do
+    session_id = "intake:#{plan.id}"
+
+    {:ok, conversation} =
+      Conversations.find_or_create_session_conversation(account.id, project.id, session_id)
+
+    plan |> transcript() |> Enum.each(&echo_turn(conversation, &1))
+  end
+
+  defp echo_turn(conversation, %{from: :agent, text: text}),
+    do: Conversations.add_message(conversation, :assistant, text)
+
+  defp echo_turn(conversation, %{from: :visitor, text: text}),
+    do: Conversations.add_message(conversation, :user, text)
 
   # Who the visitor said they are building for, as a persona on the project.
   #

@@ -41,6 +41,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.QaSetup,
     AgentTasks.QaStory,
     AgentTasks.ResearchTopic,
+    AgentTasks.ResolveQuestions,
     AgentTasks.StartImplementation,
     AgentTasks.StoryInterview,
     AgentTasks.TechnicalStrategy,

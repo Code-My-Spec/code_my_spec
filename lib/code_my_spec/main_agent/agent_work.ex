@@ -73,4 +73,28 @@ defmodule CodeMySpec.MainAgent.AgentWork do
   @spec toolless?(t()) :: boolean()
   def toolless?(%AgentWork{machine_tools: []}), do: true
   def toolless?(%AgentWork{}), do: false
+
+  @doc """
+  What an agent with no task is doing while its role's queue holds work.
+
+  One phrase for both `check_in` and `list_agent_work`, and it names the
+  reason. A bare "no task claimed, and the graph does hold work" was printed
+  for a tapped-out, stopped or mid-turn agent too, so the line under a "Nothing
+  needs you" headline read as a stall the headline had missed (3f1fc39f). Only
+  the last clause is a stall, and it is exactly `Digest.stalled?/1`.
+  """
+  @spec unclaimed_work(t()) :: String.t()
+  def unclaimed_work(%AgentWork{tapped_out?: true}),
+    do: "tapped out, though the graph holds work for its role"
+
+  def unclaimed_work(%AgentWork{agent_status: status}) when status != :running,
+    do: "#{status}, though the graph holds work for its role"
+
+  def unclaimed_work(%AgentWork{turn_started_at: %DateTime{} = at}),
+    do: "mid-turn since #{DateTime.to_iso8601(at)}, no task claimed yet"
+
+  def unclaimed_work(%AgentWork{}),
+    do:
+      "STALLED: no task claimed while the graph holds work for its role, and no turn " <>
+        "open to claim it — message_agent it"
 end

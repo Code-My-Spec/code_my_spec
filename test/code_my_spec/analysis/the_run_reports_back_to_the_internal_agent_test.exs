@@ -21,7 +21,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Analysis.AgentReport
+  alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -44,12 +44,12 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     %{scope: scope, copy: copy}
   end
 
-  defp agent(scope, copy, engine) do
+  defp agent(scope, copy, engine, role \\ "coding") do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: engine,
-        role: "coding",
+        role: role,
         working_copy: "/tmp/report-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a run with errors reports back to the agent", ctx do
     agent = agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error), problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error), problem(:error)])
 
     assert_receive {:agent_dispatch, id, _ref, message}
     assert id == agent.id
@@ -76,7 +76,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a clean run says nothing", ctx do
     agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [])
+    AnalysisReport.deliver(ctx.scope, "spex", [])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -84,7 +84,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "warnings alone are not worth waking anyone for", ctx do
     agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:warning), problem(:warning)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:warning), problem(:warning)])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -94,7 +94,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a Claude Code agent in the same copy is not told here", ctx do
     agent(ctx.scope, ctx.copy, :claude_code)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     one = agent(ctx.scope, ctx.copy, :alloy)
     two = agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)])
 
     assert_receive {:agent_dispatch, first, _, _}
     assert_receive {:agent_dispatch, second, _, _}
@@ -113,12 +113,75 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   # It runs inside `Reconciler.reconcile/4`, after the run is recorded. A
   # delivery that cannot land must not make a completed run look incomplete.
   test "a copy with no agents is not an error", ctx do
-    assert AgentReport.deliver(ctx.scope, "spex", [problem(:error)]) == :ok
+    assert AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)]) == :ok
   end
 
   test "a scope with no working copy is not an error", ctx do
     scope = %{ctx.scope | active_working_copy_id: nil}
 
-    assert AgentReport.deliver(scope, "spex", [problem(:error)]) == :ok
+    assert AnalysisReport.deliver(scope, "spex", [problem(:error)]) == :ok
+  end
+
+  describe "the agent that asked for the run" do
+    # `@report_roles` answers "who should hear about findings nobody asked for".
+    # It was also deciding "who may be answered about a run they started", which
+    # is a different question — `tell_one/4` already distinguishes them, and its
+    # requester clause could never fire for a role outside the list because the
+    # query removed the asker first.
+    #
+    # Measured 2026-09-23: a QA agent on Broken Oaths story 947 started credo and
+    # spex, both rows carrying its agent_id, both completed at 16:02. It held its
+    # task waiting and was never told, because :qa is not a report role. Fifty
+    # minutes, ended by a person noticing.
+    test "is answered even when its role is not a report role", ctx do
+      qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], qa.id)
+
+      assert_receive {:agent_dispatch, id, _ref, _message}
+
+      assert id == qa.id,
+             """
+             The asker was filtered out of its own answer by the broadcast role
+             list, so an agent that started a run and waited on it was never
+             told the run had finished.
+             """
+    end
+
+    test "is answered on a clean run, which is the case it most needs", ctx do
+      qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AnalysisReport.deliver(ctx.scope, "spex", [], qa.id)
+
+      assert_receive {:agent_dispatch, id, _ref, message}
+      assert id == qa.id
+
+      assert message =~ "no problems in this working copy",
+             "a green run is still an answer to whoever asked for it"
+    end
+
+    test "a non-asking agent outside the report roles still hears nothing", ctx do
+      _qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
+
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], nil)
+
+      refute_receive {:agent_dispatch, _id, _ref, _message}, 500
+    end
+
+    # `f2ff4147`: a Claude Code session writes its own session id, not an
+    # `agents.id`, to `run.requested_by["agent_id"]`. `internal_agents/3`
+    # compared it against `a.id` (a `:binary_id` column) unconditionally,
+    # which raised trying to dump a non-UUID string and failed the whole run's
+    # report — every compiler and credo run a CLI session asked for. The
+    # requester is not one of this copy's alloy agents either way, so this
+    # must fall back to the ordinary broadcast rather than crash it.
+    test "a requester id that is not a real agent's id does not crash the report", ctx do
+      coding = agent(ctx.scope, ctx.copy, :alloy, "coding")
+
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], "not-a-uuid-session-id")
+
+      assert_receive {:agent_dispatch, id, _ref, _message}
+      assert id == coding.id
+    end
   end
 end

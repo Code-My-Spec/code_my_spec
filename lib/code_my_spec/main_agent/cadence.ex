@@ -31,11 +31,13 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.MainAgent.CadenceRegistry
@@ -239,6 +241,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def init(%Scope{} = scope) do
+    :ok =
+      Phoenix.PubSub.subscribe(
+        CodeMySpec.PubSub,
+        Notifications.blockers_topic(scope.active_project_id)
+      )
+
     {:ok, schedule(%{scope: scope, last_check: nil})}
   end
 
@@ -247,7 +255,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def handle_info(:check_in, state) do
-    MainAgent.check_in(state.scope)
+    state.scope |> MainAgent.check_in() |> deliver(state.scope)
     checked_at = DateTime.utc_now()
 
     Phoenix.PubSub.broadcast(
@@ -259,7 +267,56 @@ defmodule CodeMySpec.MainAgent.Cadence do
     {:noreply, schedule(%{state | last_check: checked_at})}
   end
 
+  # 3265: a blocker is pushed when raised, not left for the next tick. Main's
+  # own blockers are skipped, or answering its own question would wake it.
+  # Not gated on `running?/1`: 3335, a stood-down main still hears questions.
+  def handle_info({:blocker_raised, raised_by}, state) do
+    case Agents.main_agent(state.scope) do
+      nil -> :ok
+      %{id: ^raised_by} -> :ok
+      main -> state.scope |> MainAgent.check_in() |> push(state.scope, main)
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info(_other, state), do: {:noreply, state}
+
+  # The tick's whole point: hand the digest to main as a turn.
+  #
+  # `check_in/1` only ran `Work.consider_project(:recovery_check)` and returned
+  # the report to its caller. From the MCP tool that caller is the agent, so it
+  # reads it; from here the caller was this process and the text was dropped —
+  # so a non-continuous main was never woken, and making it continuous would have
+  # given it graph tasks rather than the fleet. Reported by a main agent that
+  # measured its own cadence firing with no turn arriving (`2c34da87`).
+  #
+  # In a task because delivery waits on a turn that can outlast any interval.
+  # `message_agent/4` queues for an agent that is mid-turn, so busy needs no
+  # handling here.
+  #
+  # Only when main is **not** continuous. A continuous main is already offered a
+  # turn by `Work.consider_project/2` above, and criterion 3331 pins that to
+  # exactly one provider request carrying `start_task` — so delivering the digest
+  # as well would be the second, unconditional turn its title rules out. The gap
+  # `2c34da87` reported is the other case: a non-continuous main, which the work
+  # path never reaches and which nothing else wakes.
+  defp deliver(result, scope) do
+    if running?(scope), do: push(result, scope, Agents.main_agent(scope))
+    :ok
+  end
+
+  defp push({:ok, report}, scope, %{continuous: false, id: id}) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.message_agent(scope, id, report)
+    end)
+
+    :ok
+  end
+
+  # A digest that could not be assembled already raised a fault; delivering an
+  # empty one would read as all-quiet.
+  defp push(_result, _scope, _main), do: :ok
 
   @impl true
   def handle_cast(:reschedule, state) do

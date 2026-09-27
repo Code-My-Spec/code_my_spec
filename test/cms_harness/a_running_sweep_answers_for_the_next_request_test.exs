@@ -167,4 +167,21 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
 
     next
   end
+
+  # 75acdb84: the server re-sends a run it joined rather than opening a row for
+  # each tied request. One the queue already holds is not a new request.
+  test "a run the queue already holds is not tied or queued again" do
+    queued = state("spex", []) |> enqueue("spex") |> enqueue_run_id(3, "spex")
+
+    assert queued |> enqueue_run_id(3, "spex") |> Map.get(:queue) == queued.queue
+    assert queued |> enqueue_run_id(2, "spex") |> Map.get(:queue) == queued.queue
+    assert queued |> enqueue_run_id(1, "spex") |> Map.get(:queue) == queued.queue
+  end
+
+  test "tied runs are declared in flight, so a reconnect does not close them" do
+    queued = state("spex", []) |> enqueue("spex") |> enqueue_run_id(3, "spex")
+
+    assert {:reply, ids, _} = AnalysisServer.handle_call(:in_flight, self(), queued)
+    assert Enum.sort(ids) == [1, 2, 3]
+  end
 end

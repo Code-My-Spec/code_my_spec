@@ -15,7 +15,7 @@ defmodule CodeMySpec.Architecture do
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

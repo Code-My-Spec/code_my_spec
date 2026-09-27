@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3215Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.QuestionRoutingHelpers
-  import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions

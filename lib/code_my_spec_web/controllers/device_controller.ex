@@ -71,6 +71,8 @@ defmodule CodeMySpecWeb.DeviceController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Devices
+  alias CodeMySpec.Intake
+  alias CodeMySpec.Projects
   alias CodeMySpec.WorkingCopies
 
   @doc """
@@ -80,13 +82,16 @@ defmodule CodeMySpecWeb.DeviceController do
   writes that down and presents it next time.
   """
   def create(conn, params) do
-    case Devices.announce(scope(conn), params["device_id"], attrs(params)) do
+    scope = scope(conn)
+
+    case Devices.announce(scope, params["device_id"], attrs(params)) do
       {:ok, device} ->
         WorkingCopies.observe_paths(device, observations(params["working_copies"]))
 
         json(conn, %{
           device_id: device.id,
-          working_copies: WorkingCopies.list_on_device(device)
+          working_copies: WorkingCopies.list_on_device(device),
+          pending_local_projects: pending_local_projects(scope, device)
         })
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -94,6 +99,46 @@ defmodule CodeMySpecWeb.DeviceController do
         |> put_status(:unprocessable_entity)
         |> json(%{error: inspect(changeset.errors)})
     end
+  end
+
+  # Local projects this account confirmed and no harness has a checkout for
+  # yet — so an already-running harness picks one up on its own next
+  # heartbeat rather than a human typing `mix cms.new` by hand. See
+  # `CodeMySpec.Intake.pending_local_projects/1`.
+  #
+  # A deploy key is minted here rather than left for the harness to ask for
+  # separately — `mix harness.onboard` takes one as a flag or an env var and
+  # has no other way to reach the server for it, so a project with none
+  # would onboard with no credential and every hook after would refuse.
+  #
+  # Nothing for a device with no account: a shared box's own persistent
+  # harness announces with none, and it must not be handed somebody's
+  # pending project to generate into a directory nobody there is expecting.
+  #
+  # And nothing for anything but a laptop (`kind: :local`). A sprite
+  # (`kind: :cloud`) is already tied to the one project `Runner.Local`/
+  # `Runner.Docker` provisioned it for via its deploy key — self-generating
+  # a *second* project onto a container built for the first is not a thing
+  # a sprite should ever be offered, regardless of what else its account has
+  # pending.
+  defp pending_local_projects(%{active_account_id: account_id}, %{kind: :local})
+       when is_binary(account_id) do
+    for plan <- Intake.pending_local_projects(account_id) do
+      {:ok, project} = Projects.ensure_deploy_key(scope_for(plan), plan.project)
+
+      %{
+        "id" => project.id,
+        "name" => project.name,
+        "app_name" => Projects.app_name(project),
+        "deploy_key" => project.deploy_key
+      }
+    end
+  end
+
+  defp pending_local_projects(_scope, _device), do: []
+
+  defp scope_for(%{account_id: account_id, project_id: project_id}) do
+    %CodeMySpec.Users.Scope{active_account_id: account_id, active_project_id: project_id}
   end
 
   # The account this machine belongs to, if it belongs to one.

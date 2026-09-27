@@ -27,8 +27,21 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
 
     stub_stripe()
+    stub_no_preview()
 
     %{conn: log_in_user(conn, user_fixture())}
+  end
+
+  # `instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of a main
+  # copy, reaching the `Req.Test`-pinned Cloudflare client the same way
+  # `stub_stripe/0` reaches the pinned Stripe one. Nothing in this file is
+  # testing preview provisioning, so answer with a plain refusal —
+  # `preview_env/1` already treats that as best-effort and drops it.
+  defp stub_no_preview do
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      Plug.Conn.put_resp_content_type(conn, "application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
   end
 
   # Cloud now pays before it provisions (990/3400). `with_confirmed_plan/1`
@@ -437,14 +450,135 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       fake(healthy?: true)
       conn = with_confirmed_plan(conn, %{location: "local"})
 
-      {:ok, view, html} = live(conn, ~p"/build/workspace")
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      html = pay(view)
 
-      assert html =~ "mix cms.new",
+      assert html =~ "Waiting for your harness",
              "the premise failed: this test needs the local branch, which provisions " <>
-               "nothing and so never has a workspace row"
+               "nothing and so never has a workspace row even once trialing is confirmed"
 
       assert :ok = GenServer.stop(view.pid, :normal)
       refute Events.exists?("workspace_abandoned")
+    end
+  end
+
+  describe "the local trial (990/3400 follow-up)" do
+    test "a local plan is gated on a card too, not shown instructions for free", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, _view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "7 days free"
+      refute html =~ "Waiting for your harness"
+    end
+
+    test "confirming the trial's card shows the instructions, with no workspace booted",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      html = pay(view)
+
+      assert html =~ "Waiting for your harness"
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+      assert Workspaces.get_workspace(scope) == nil
+    end
+
+    test "a reload after the trial already started skips straight to the instructions",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      account = :sys.get_state(view.pid).socket.assigns.scope.active_account
+
+      :ok =
+        CodeMySpec.Billing.apply_event(%{
+          "id" => "evt_trial_started",
+          "type" => "customer.subscription.created",
+          "data" => %{
+            "object" => %{
+              "object" => "subscription",
+              "id" => "sub_workspace",
+              "status" => "trialing",
+              "metadata" => %{"account_id" => account.id, "tier" => "light"}
+            }
+          }
+        })
+
+      {:ok, _view2, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Waiting for your harness"
+      refute html =~ "7 days free"
+    end
+
+    test "once some harness has onboarded the project, it shows ready rather than waiting",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+
+      {:ok, _copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "onboarded by a harness",
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      send(view.pid, :poll_local_harness)
+      html = render(view)
+
+      assert html =~ "Your harness has it"
+      assert has_element?(view, "[data-test='local-onboarded']")
+      refute has_element?(view, "[data-test='local-instructions']")
+    end
+
+    test "a reload after the harness already onboarded skips straight to ready",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn, %{location: "local"})
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+
+      scope = :sys.get_state(view.pid).socket.assigns.scope
+      account = scope.active_account
+
+      # The trial has to have actually started — reached the same way the
+      # neighbouring "reload after the trial already started" test does it —
+      # or `paid?/1` reads `:free` on the reload and shows the payment card
+      # again rather than either local state.
+      :ok =
+        CodeMySpec.Billing.apply_event(%{
+          "id" => "evt_trial_started_onboarded",
+          "type" => "customer.subscription.created",
+          "data" => %{
+            "object" => %{
+              "object" => "subscription",
+              "id" => "sub_workspace",
+              "status" => "trialing",
+              "metadata" => %{"account_id" => account.id, "tier" => "light"}
+            }
+          }
+        })
+
+      {:ok, _copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "onboarded by a harness",
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      {:ok, _view2, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Your harness has it"
+      refute html =~ "Waiting for your harness"
     end
   end
 
@@ -453,6 +587,42 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       fake(healthy?: true)
 
       assert {:error, {:live_redirect, %{to: "/build"}}} = live(conn, ~p"/build/workspace")
+    end
+  end
+
+  # `IntakeSession`'s token is deliberately carried across login/logout
+  # (`UserAuth`'s `restore_intake_token/2`) so a visitor who builds a plan
+  # anonymously does not lose it by signing up. That is safe for the visitor
+  # who converted it; it stops being safe the moment a *different* signed-in
+  # user's browser still carries the same token (a shared or kiosk browser,
+  # or a lingering cookie) and reaches this page — `Intake.convert/2`'s
+  # `:converted` clause used to hand back the plan with no ownership check at
+  # all, silently switching the second user's scope onto the first user's
+  # account and rendering the first user's own conversation transcript to a
+  # stranger.
+  describe "a stale intake token from someone else's converted plan" do
+    test "sends the second user to the front of the flow rather than into the first user's account",
+         %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      pay(view)
+      eventually(view, "It&#39;s running.")
+
+      token = get_session(conn, "intake_token")
+
+      stranger_conn =
+        build_conn()
+        |> log_in_user(user_fixture())
+        |> put_session("intake_token", token)
+
+      assert {:error, {:live_redirect, %{to: "/build"}}} =
+               live(stranger_conn, ~p"/build/workspace"),
+             "a second, unrelated signed-in user must never be scoped onto the " <>
+               "first user's account (or shown their conversation) just because " <>
+               "a stale token still resolves to that plan — this must fail the " <>
+               "exact same way as having no plan on the session at all"
     end
   end
 

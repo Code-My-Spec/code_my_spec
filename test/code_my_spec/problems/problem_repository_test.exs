@@ -204,6 +204,35 @@ defmodule CodeMySpec.Problems.ProblemRepositoryTest do
       # Verify transaction rollback - no problems should be inserted
       assert Repo.all(Problem) == []
     end
+
+    # `problems.file_path` was `varchar(255)`. A generated spex filename is as
+    # long as the criterion sentence that named it, and metric_flow's longest is
+    # 304 characters — so its credo leg died with `ERROR 22001
+    # (string_data_right_truncation)` and recorded *zero* findings, while the run
+    # stayed open and every later stop reported analysis pending. One over-long
+    # path discards the whole source, because the insert is deliberately one
+    # transaction.
+    #
+    # `Problem`'s changeset always said `validate_length(:file_path, min: 1)`
+    # with no max, so nothing above the column ever bounded a path; the column
+    # was alone in disagreeing, and no test held it to the schema's word.
+    test "accepts a generated spex path longer than 255 characters", %{scope: scope} do
+      long_path =
+        "test/spex/fetch-and-select-google-business-profile-locations-across-mu-d555b3dd/" <>
+          "criterion_4855_locations_are_fetched_using_the_google_business_profile_api_v1_" <>
+          "mybusinessbusinessinformation_or_mybusiness_v4_with_fields_name_title_storecode_" <>
+          "storefrontaddress_websiteuri_regularhours_primarycategory_spex.exs"
+
+      assert String.length(long_path) > 255
+
+      problems = [valid_problem_attrs(%{file_path: long_path, message: "Nesting is too deep"})]
+
+      assert {:ok, [inserted]} = ProblemRepository.create_problems(scope, problems)
+
+      # Read it back off the row rather than the struct the insert returned —
+      # a truncating column would hand back exactly what was passed in.
+      assert Repo.get!(Problem, inserted.id).file_path == long_path
+    end
   end
 
   describe "replace_project_problems/2" do

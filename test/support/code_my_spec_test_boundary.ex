@@ -34,8 +34,10 @@ defmodule CodeMySpecTest do
       CodeMySpec.McpServers,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Workspaces
     ],
     # `TurnEventRelay` is exported for the same reason the other two are:

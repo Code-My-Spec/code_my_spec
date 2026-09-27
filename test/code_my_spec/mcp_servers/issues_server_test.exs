@@ -1,5 +1,6 @@
 defmodule CodeMySpec.McpServers.IssuesServerTest do
   use ExUnit.Case, async: true
+  alias CodeMySpec.CodeMode.{Catalog, Docs}
   alias CodeMySpec.McpServers.IssuesServer
 
   describe "server capabilities" do
@@ -39,6 +40,18 @@ defmodule CodeMySpec.McpServers.IssuesServerTest do
       assert "title" in required
       assert "severity" in required
       assert "description" in required
+
+      # Anubis ignores `doc:`; verify what tool_docs actually receives.
+      description = schema["properties"]["severity"]["description"]
+
+      for severity <- Ecto.Enum.values(CodeMySpec.Issues.Issue, :severity) do
+        assert description =~ Atom.to_string(severity)
+      end
+
+      catalog = Catalog.from([tool], fn _ -> fn _ -> :ok end end)
+      docs = Docs.render(catalog, name: "create_issue")
+      assert docs =~ description
+      assert docs =~ "not issue severities"
     end
   end
 end

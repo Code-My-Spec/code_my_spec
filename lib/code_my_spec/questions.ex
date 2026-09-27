@@ -16,12 +16,10 @@ defmodule CodeMySpec.Questions do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Accounts,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all

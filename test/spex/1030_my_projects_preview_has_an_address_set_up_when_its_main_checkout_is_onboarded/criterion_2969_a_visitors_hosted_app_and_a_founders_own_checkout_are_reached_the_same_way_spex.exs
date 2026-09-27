@@ -71,6 +71,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion2969Spex do
       given_ "a founder whose app runs on their own machine", context do
         context = given_a_main_checkout(context, "spex_2969", preview_url: @self_run)
 
+        :ok =
+          CodeMySpecSpex.WorkingCopyHelpers.report_preview_status(
+            context.harness_socket,
+            "serving"
+          )
+
         {:ok, Map.put(context, :path, say_to_main_agent(context, "how is it going"))}
       end
 

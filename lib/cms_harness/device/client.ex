@@ -34,9 +34,27 @@ defmodule CmsHarness.Device.Client do
   server says which checkouts it thinks are on this machine. Only the second
   half lets a restarted harness answer for a copy nobody has worked in since —
   which is the copy most likely to have been deleted.
+
+  `pending_local_projects` is the third thing an announce can carry back: a
+  converted, `location: :local` plan whose project has no checkout on any
+  machine yet, each with a fresh deploy key and the OTP app name to generate it
+  under. Only a `kind: :local` device with an account is ever offered one — see
+  `CodeMySpecWeb.DeviceController`'s own reasoning for the gate.
   """
   @callback announce(device_id :: String.t() | nil, token :: String.t(), attrs :: map()) ::
-              {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
+              {:ok,
+               %{
+                 device_id: String.t(),
+                 working_copies: %{String.t() => String.t()},
+                 pending_local_projects: [
+                   %{
+                     id: String.t(),
+                     name: String.t(),
+                     app_name: String.t(),
+                     deploy_key: String.t()
+                   }
+                 ]
+               }}
               | {:error, term()}
 
   @doc "The configured client. Defaults to real HTTP."

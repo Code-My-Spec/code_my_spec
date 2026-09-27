@@ -14,6 +14,7 @@ defmodule CodeMySpec.Intake.Interview do
 
   import Ecto.Query
 
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Intake.{Interviewer, Plan, Turn}
   alias CodeMySpec.Repo
 
@@ -53,16 +54,52 @@ defmodule CodeMySpec.Intake.Interview do
 
   defp ask_next(%Plan{} = plan, turns) do
     with {:ok, question} <- Interviewer.ask(plan, turns) do
-      plan
-      |> Turn.ask_changeset(length(turns) + 1, question)
-      |> Repo.insert()
+      case plan |> Turn.ask_changeset(length(turns) + 1, question) |> Repo.insert() do
+        {:ok, _turn} = ok ->
+          echo(plan, :assistant, question)
+          ok
+
+        error ->
+          error
+      end
     end
   end
 
   @doc "Records an answer. Written immediately so a failing boot cannot take it."
   @spec answer(Turn.t(), String.t()) :: {:ok, Turn.t()} | {:error, Ecto.Changeset.t()}
   def answer(%Turn{} = turn, text) do
-    turn |> Turn.answer_changeset(text) |> Repo.update()
+    case turn |> Turn.answer_changeset(text) |> Repo.update() do
+      {:ok, updated} = ok ->
+        echo(Repo.get!(Plan, updated.plan_id), :user, text)
+        ok
+
+      error ->
+        error
+    end
+  end
+
+  # Mirrored into the project's own conversation as it happens, same reason
+  # every answer is written down immediately: `agent-conversation` reads this
+  # as it goes rather than from a single copy taken at signup, which would
+  # have left every question asked after conversion invisible there.
+  #
+  # `find_or_create_agent_conversation/3` adopts this row (by its `"intake:"`
+  # prefix) once a real agent starts, so this and `Intake.convert/2`'s own
+  # copy of the shaping half land in the same thread. `nil` before conversion
+  # is defensive rather than reachable — the interview only runs on
+  # `/build/workspace`, after `Intake.convert/2` has already set these.
+  defp echo(%Plan{account_id: nil}, _role, _text), do: :ok
+  defp echo(%Plan{project_id: nil}, _role, _text), do: :ok
+
+  defp echo(%Plan{} = plan, role, text) do
+    {:ok, conversation} =
+      Conversations.find_or_create_session_conversation(
+        plan.account_id,
+        plan.project_id,
+        "intake:#{plan.id}"
+      )
+
+    Conversations.add_message(conversation, role, text)
   end
 
   @doc """

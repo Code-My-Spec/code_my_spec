@@ -12,11 +12,15 @@ defmodule CodeMySpecSpex.Story839.Criterion3444Spex do
   use CodeMySpecSpex.Case
 
   import CmsHarnessTest.Projects,
-    only: [ensure_harness_supervisor_started: 0, project_dir: 0, stop_project: 1]
+    only: [
+      ensure_harness_supervisor_started: 0,
+      project_dir: 0,
+      stop_project: 1,
+      ensure_started: 1
+    ]
 
   import CmsHarnessTest.AnalysisResults
 
-  alias CmsHarness.Projects
   alias CmsHarnessTest.BlockingProject
   alias CmsHarnessTest.FakeServer
 
@@ -29,7 +33,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3444Spex do
         on_exit(fn -> stop_project(project.root) end)
 
         FakeServer.start()
-        {:ok, _pid} = Projects.ensure_started(project.root)
+        {:ok, _pid} = ensure_started(project.root)
         await_connected(project.root)
 
         {:ok, Map.merge(context, %{project: project, marker: marker})}

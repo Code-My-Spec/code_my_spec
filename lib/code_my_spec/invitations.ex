@@ -10,18 +10,18 @@ defmodule CodeMySpec.Invitations do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
-      CodeMySpec.Authorization,
       CodeMySpec.Mailer,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Accounts.MembersRepository
-  alias CodeMySpec.Authorization
   alias CodeMySpec.Invitations.{Invitation, InvitationNotifier, InvitationRepository}
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope

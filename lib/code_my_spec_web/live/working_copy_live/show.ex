@@ -40,7 +40,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Staffing
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -178,7 +178,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # is stale the moment this returns.
   @impl true
   def handle_event("designate_main", _params, socket) do
-    case WorkingCopies.designate_main(
+    case Staffing.designate_main(
            socket.assigns.current_scope,
            socket.assigns.working_copy_id
          ) do

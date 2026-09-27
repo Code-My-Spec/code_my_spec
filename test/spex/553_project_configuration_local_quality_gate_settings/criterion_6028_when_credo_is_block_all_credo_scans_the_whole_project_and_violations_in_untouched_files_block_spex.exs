@@ -101,6 +101,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
               "test_output_files" => %{
                 "compile" => fixture_path("compile.jsonl"),
                 "exunit" => fixture_path("exunit.json"),
+                "credo" => fixture_path("credo_block_all.json"),
                 "spex" => fixture_path("spex.jsonl")
               }
             })

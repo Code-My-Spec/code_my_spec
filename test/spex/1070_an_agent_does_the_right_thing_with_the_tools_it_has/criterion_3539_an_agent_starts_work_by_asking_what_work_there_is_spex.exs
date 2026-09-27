@@ -11,70 +11,48 @@ defmodule CodeMySpecSpex.Story1070.Criterion3539Spex do
   that picks its own work instead gets none of that — two agents land on the
   same requirement, and the one that finishes has nothing to close.
 
-  ## Why this is measured rather than asserted
+  ## Asserted from a recording
 
-  The agent is the user here and the chat is the surface, so the only honest
-  question is what a real agent, on a real first turn, actually calls. That is
-  non-deterministic, which is why the criterion states a rate: nine runs in ten.
+  This spex reads `test/fixtures/evals/criterion_3539/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
 
-  A single green run would say the behaviour is *possible*. The rate says
-  whether it is reliable, and a rate in the middle says the prompt is
-  ambiguous — see `CodeMySpecSpex.AgentEvalHelpers.assert_rate/2`, which
-  reports that as the finding rather than as a flake.
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
 
-  ## Why `:eval`
-
-  Ten fresh agents, each taking real turns against a real model. Minutes, not
-  milliseconds. Excluded from every ordinary run and from the promote gate;
-  `mix cms.eval` is the switch. Run it when a role brief, a system prompt or a
-  tool list changes, because that is when this answer can have moved.
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3539` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3539"
+  @role "coding"
+  @threshold 0.9
 
   spex "An agent claims work before it does the work" do
     scenario "An agent starts work by asking what work there is" do
-      # A satisfied project, deliberately. With the project chain outstanding
-      # every role is offered the same project-level work, which is a real
-      # answer and not the one this criterion is about — the question is what an
-      # agent does when there is component work waiting for its own role.
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3539")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "a fresh agent takes its first turn, ten times over", context do
-        measured =
-          measure("An agent starts work by asking what work there is", fn _run ->
-            observe(context, [role: "coding"], fn agent ->
-              called_in_order?(context, agent, "get_next_requirement", "start_task")
-            end)
-          end)
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "it asks what its work is, and claims it, before doing anything", context do
-        assert_rate(context.measured, 0.9)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result("An agent starts work by asking what work there is")
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end

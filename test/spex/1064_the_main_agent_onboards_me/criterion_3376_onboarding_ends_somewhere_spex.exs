@@ -42,6 +42,11 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
 
   setup :register_and_log_in_user
 
+  setup do
+    stub_local_trial()
+    :ok
+  end
+
   spex "the questions have been answered" do
     scenario "Onboarding ends somewhere" do
       given_ "the questions have been answered", context do
@@ -75,6 +80,7 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
                "confirming returned the visitor to the intake they had just completed"
 
         {:ok, live, _html} = live(context.conn, context.destination)
+        confirm_payment(live)
 
         assert has_element?(live, "[data-test='local-instructions']"),
                """

@@ -41,17 +41,16 @@ defmodule CodeMySpec.Agents do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.CodeMode,
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.MainAgent,
-      CodeMySpec.Notifications,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies
@@ -73,6 +72,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.MainAgent
@@ -129,6 +129,7 @@ defmodule CodeMySpec.Agents do
           | :reconnect_required
           | :unknown_provider
           | {:unknown_working_copy, String.t()}
+          | {:role_taken, atom(), Ecto.UUID.t(), String.t() | nil}
           | Ecto.Changeset.t()
           | term()
 
@@ -149,6 +150,19 @@ defmodule CodeMySpec.Agents do
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
+  What an agent may call: its role's grants as the code states them now, plus
+  what its machine reported.
+
+  Derived on each call rather than read off the row. The row's list was written
+  at start, so a grant added to a role never reached an agent already running —
+  `install_credo_checks` for coding and `read_project_file` for qa sat in
+  `ToolSets` while existing agents were refused them (`c5df88e7`).
+  """
+  @spec tools_of(Scope.t(), Agent.t()) :: [String.t()] | nil
+  def tools_of(%Scope{} = scope, %Agent{} = agent),
+    do: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+
+  @doc """
   Starts an agent on a working copy, on the provider the caller named.
 
   The provider is an argument rather than ambient state. A machine-wide default
@@ -163,9 +177,10 @@ defmodule CodeMySpec.Agents do
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
          {:ok, attrs} <- put_destination(scope, attrs),
-         :ok <- main_copy_is_free(scope, attrs),
          :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
+         :ok <- copy_is_free(scope, attrs),
+         :start <- resume_holder(scope, attrs),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
       # Carried on the struct rather than stored: the machine needs both, and
@@ -184,6 +199,62 @@ defmodule CodeMySpec.Agents do
       end
     end
   end
+
+  # A stopped agent still holding work is resumed, not replaced.
+  #
+  # `start_agent/2` always created a new row, and a task's ownership *is* which
+  # agent's list it sits in (`Agent`'s own note). So an agent killed mid-task —
+  # which every promote does, because promoting restarts the shared dev server
+  # every working copy on the box is using — left its claims behind on a row
+  # nothing would run again. Starting a replacement produced a second agent for
+  # the same role and copy that could not claim what the first still held.
+  #
+  # Measured 2026-09-23 on Broken Oaths: a promote stopped coding `b01a95bb` at
+  # 01:50:04 while it held `code_on_running_copy` active on story 950 and a
+  # blocked `bdd_specs_passing`. The replacement reported "get_next_requirement's
+  # only offering — story 950's code_on_running_copy — is already claimed by
+  # another agent" and had nothing else to do. Four other stopped agents on that
+  # copy held active tasks the same way. The role was stalled with a live agent
+  # sitting next to its own orphaned work.
+  #
+  # Resuming rather than moving the tasks across is deliberate. Task ids are
+  # referenced from outside the row — `question_requests.task_id` is what a
+  # blocker is keyed on — and `embeds_many ... on_replace: :delete` means
+  # lifting a task out of one list and putting it in another mints a new id and
+  # orphans every blocker pointing at the old one. The row already knows how to
+  # come back: `restart_agent/2` keeps the tasks, the conversation and the
+  # blockers exactly where they are.
+  #
+  # Only for a holder. A stopped agent with nothing unfinished is genuinely
+  # finished, and reviving it instead of starting a clean one would make
+  # `start_agent` unable to ever give a role a fresh start.
+  defp resume_holder(%Scope{} = scope, attrs) do
+    with copy_id when is_binary(copy_id) <- Map.get(attrs, :working_copy_id),
+         role when not is_nil(role) <- Map.get(attrs, :role),
+         %Agent{} = holder <- stopped_holder(scope, copy_id, role) do
+      Logger.info(
+        "[Agents] #{role} on #{copy_id} is resuming stopped agent #{holder.id}, which still " <>
+          "holds #{length(unfinished(holder))} unfinished task(s), rather than starting beside it"
+      )
+
+      restart_agent(scope, holder.id)
+    else
+      _ -> :start
+    end
+  end
+
+  defp stopped_holder(%Scope{} = scope, copy_id, role) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(fn agent ->
+      agent.status == :stopped and agent.working_copy_id == copy_id and
+        to_string(agent.role) == to_string(role) and unfinished(agent) != []
+    end)
+    |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
+  end
+
+  defp unfinished(%Agent{} = agent),
+    do: Enum.filter(agent.tasks || [], &(&1.status in [:active, :blocked]))
 
   # A machine that answered, and answered with nothing.
   #
@@ -391,11 +462,57 @@ defmodule CodeMySpec.Agents do
              # still climbing, against a row nothing would ever clear
              # (`4078e7bf`).
              turn_started_at: nil,
-             tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+             # Stale otherwise: an agent about to run again does not need to
+             # keep saying why it last stopped, and a `:reaped` row that starts
+             # cleanly and is stopped deliberately later must not be read as
+             # still reaped from before.
+             stopped_reason: nil,
+             tools: tools_of(scope, agent)
            }) do
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
         broadcast(scope, {:agent_started, agent})
+
+        # A restarted agent is admissible again, and nothing else is going to
+        # say so. `Work.consider_project/2` is edge-triggered — a turn ending, a
+        # graph change, a harness joining — and a restart is none of those from
+        # its point of view: the row simply went from stopped to running with
+        # no observation attached. So an agent came back holding work and sat
+        # there, which reads exactly like the wake bug it is not.
+        #
+        # `set_agent_continuous/3` already does this and its own doc says why:
+        # "an agent is a supervised process that acts when messaged, and nothing
+        # polls. So this rings its bell too." A restart needs the same bell, and
+        # needs it more now that `start_agent/2` resumes a stopped holder —
+        # the whole point of resuming is that the agent continues, and a row
+        # marked running that never takes a turn has not continued.
+        #
+        # Measured 2026-09-23: coding b01a95bb was resumed at 02:34:29 holding
+        # `code_on_running_copy` on story 950, with `get_next_requirement`
+        # answering "Status: ready — PromoteWork" the whole time. Eleven minutes,
+        # zero turns, nothing in flight, decline damper long expired.
+        #
+        # Two bells, because a restarted agent is in one of two states and they
+        # need opposite things.
+        #
+        # `runnable_state?/1` requires `is_nil(active_task)` — an agent already
+        # holding work is not a candidate for being offered more, which is
+        # right. But that is exactly the agent a resume produces: it comes back
+        # holding the task the restart interrupted, so the offer path skips it
+        # and nothing else speaks to it. `resume_held_tasks/2`'s `stranded?/1`
+        # is the predicate for precisely that shape — running, continuous, no
+        # turn open, no reservation, and holding an active task — and it tells
+        # the agent to carry on with what it has rather than offering it
+        # something new. Scoped to the copy rather than the agent on purpose:
+        # one restart usually stranded every agent on that checkout.
+        #
+        # An agent that came back holding nothing takes the second call
+        # instead, and `request_turn_if_runnable/3` decides admissibility
+        # itself, so neither can start a turn for an agent that should not have
+        # one.
+        Work.resume_held_tasks(scope, agent.working_copy_id)
+        Work.request_turn_if_runnable(scope, agent, :restarted)
+
         {:ok, agent}
       end
     end
@@ -452,7 +569,7 @@ defmodule CodeMySpec.Agents do
   """
   @spec working_copy_connected?(Agent.t()) :: boolean()
   def working_copy_connected?(%Agent{working_copy_id: id}) do
-    match?({:ok, _pid, _instance}, Analysis.executor_holder(id))
+    match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
 
   # The main working copy holds one agent, and it is the project's own.
@@ -462,14 +579,17 @@ defmodule CodeMySpec.Agents do
   # than that: the user is told there is one thing to talk to, and a second
   # conversation appears on the copy that is supposed to have exactly one.
   #
-  # Only the main copy is protected. Every other checkout may run as many as
-  # somebody wants, which is what story 1023's "stop one and leave its siblings
-  # running" is about.
-  defp main_copy_is_free(scope, attrs) do
-    case WorkingCopies.main(scope) do
-      nil -> :ok
-      copy -> if names?(attrs, copy), do: refuse_if_occupied(scope, copy), else: :ok
-    end
+  # Every other checkout holds one agent per role. Two coding agents on one copy
+  # claim and edit the same work: on metric_flow 2026-09-27 the main agent could
+  # not reach `restart_agent`, started a fresh coder beside the running one, and
+  # the copy had two once the original came back. `restart_agent/2` does not
+  # pass through here, so an agent is never refused for counting as itself.
+  defp copy_is_free(scope, attrs) do
+    main = WorkingCopies.main(scope)
+
+    if main && names?(attrs, main),
+      do: refuse_if_occupied(scope, main),
+      else: refuse_if_role_taken(scope, attrs)
   end
 
   # Where the agent will actually run, decided before anything is checked
@@ -599,11 +719,31 @@ defmodule CodeMySpec.Agents do
     id == copy.id or (is_binary(root) and root != "" and Path.expand(root) == copy.root)
   end
 
+  # Any agent, not just `main_agent/1`: the copy holds one agent whatever its role.
   defp refuse_if_occupied(scope, copy) do
-    case main_agent(scope) do
+    if scope |> AgentsRepository.list_running() |> Enum.any?(&(&1.working_copy_id == copy.id)),
+      do: {:error, {:main_copy_occupied, copy.root}},
+      else: :ok
+  end
+
+  defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, working_copy: root, role: role})
+       when is_binary(copy_id) do
+    scope
+    |> AgentsRepository.list_running()
+    |> Enum.find(&same_seat?(&1, copy_id, root, role))
+    |> case do
       nil -> :ok
-      %Agent{} -> {:error, {:main_copy_occupied, copy.root}}
+      agent -> {:error, {:role_taken, agent.role, agent.id, agent.working_copy}}
     end
+  end
+
+  defp refuse_if_role_taken(_scope, _attrs), do: :ok
+
+  # Root as well as id: a root with no row of its own is recorded under the
+  # caller's copy id (`id_for/2`), and is still a different tree.
+  defp same_seat?(agent, copy_id, root, role) do
+    agent.working_copy_id == copy_id and agent.working_copy == root and
+      to_string(agent.role) == to_string(role)
   end
 
   # Ask the machine to bring it up, and record what it reports.
@@ -678,6 +818,20 @@ defmodule CodeMySpec.Agents do
   # somewhere else, was a two-callers-one-function problem:
   # `find_or_create_session_conversation/3` now answers for a Claude Code lane
   # that has an external id and no agent row, and this answers for an agent.
+  @doc """
+  The conversation an agent's transcript goes to, for someone who has its id
+  and a scope it must belong to.
+  """
+  @spec conversation_id(Scope.t(), String.t()) :: {:ok, Ecto.UUID.t()} | :error
+  def conversation_id(%Scope{} = scope, agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      {:ok, conversation.id}
+    else
+      _ -> :error
+    end
+  end
+
   defp open_conversation(%Scope{} = scope, %Agent{} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
@@ -802,6 +956,44 @@ defmodule CodeMySpec.Agents do
           agent.id
         )
     end
+  end
+
+  @doc """
+  Restart every continuous agent on this copy that a restart, not a
+  deliberate stop, left `:stopped` -- 73d0d505.
+
+  `consider_copy/4` and `resume_held_tasks/2` both require `status ==
+  :running`, by design: neither is in the business of bringing a dead
+  process back, only of admitting or resuming a live one. Nothing else on
+  the reconnect path does either, so a role a restart actually killed stayed
+  unstaffed until a person noticed and pressed play by hand.
+
+  Gated on `stopped_reason == :reaped`, not on `continuous` alone -- an
+  agent a person stopped on purpose is still `continuous: true` on its row
+  (`continuous` is "keep working when running", not "should be running"),
+  and restarting one of those would override a decision this sweep has no
+  business overriding. Only a row `record_stopped/2` itself marked `:reaped`
+  -- no report confirmed it, or the machine could not be asked -- is this
+  sweep's to touch.
+
+  `restart_agent/2` already rings both bells once the process is back
+  (`resume_held_tasks/2` if it comes back holding a task, otherwise
+  `request_turn_if_runnable/3`), so nothing further is needed here beyond
+  calling it.
+  """
+  @spec restart_reaped_agents(Scope.t(), Ecto.UUID.t()) :: :ok
+  def restart_reaped_agents(%Scope{} = scope, copy_id) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&reaped_and_continuous?(&1, copy_id))
+    |> Enum.each(&restart_agent(scope, &1.id))
+
+    :ok
+  end
+
+  defp reaped_and_continuous?(agent, copy_id) do
+    agent.working_copy_id == copy_id and agent.status == :stopped and agent.continuous and
+      agent.stopped_reason == :reaped
   end
 
   # Dispatched, so the caller's patience is not the agent's turn limit.
@@ -988,12 +1180,18 @@ defmodule CodeMySpec.Agents do
   def main_agent(%Scope{} = scope) do
     case WorkingCopies.main(scope) do
       nil -> nil
-      copy -> AgentsRepository.list_running(scope) |> Enum.find(&on_copy?(&1, copy))
+      copy -> AgentsRepository.list_running(scope) |> Enum.find(&main_on_copy?(&1, copy))
     end
   end
 
-  defp on_copy?(%Agent{working_copy_id: id}, %{id: id}), do: true
-  defp on_copy?(_agent, _copy), do: false
+  # Role as well as copy. This matched on the working copy alone, so "the main
+  # agent" was whichever agent happened to be running on the main checkout —
+  # and the main copy holds one agent only by convention, not by constraint.
+  # Story 1059's criterion 3331 puts a continuous main and a continuous coding
+  # agent on one checkout, and anything addressed to "the main agent" there
+  # reached whichever the query returned first.
+  defp main_on_copy?(%Agent{role: :main, working_copy_id: id}, %{id: id}), do: true
+  defp main_on_copy?(_agent, _copy), do: false
 
   @doc """
   The project's own agent, started if it does not exist yet.
@@ -1261,6 +1459,20 @@ defmodule CodeMySpec.Agents do
 
       {:ok, count}
     end
+  end
+
+  @doc """
+  Point every live agent of one working copy at its current root.
+
+  For `HarnessProjectChannel` to call right after a join corrects
+  `working_copies.root` — see `AgentsRepository.sync_working_copy_root/3` for
+  why an agent's own `working_copy` snapshot needs the same correction rather
+  than trusting `report_root/2` alone to fix a restore.
+  """
+  @spec sync_working_copy_root(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def sync_working_copy_root(%Scope{} = scope, copy_id, root) when is_binary(root) do
+    AgentsRepository.sync_working_copy_root(scope, copy_id, root)
   end
 
   @doc """
@@ -1648,7 +1860,19 @@ defmodule CodeMySpec.Agents do
         # rather than after: `deliver/3` runs the whole stop menu — analysis,
         # graph, problems — and an agent read during it would show a turn that
         # ended as still running.
+        # Read before the clear: `Work.record_decline/3` needs it to tell a turn
+        # that closed a task from one that did nothing, and the next line is
+        # what destroys it.
+        turn_started_at = agent.turn_started_at
+
         {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+
+        # Before the stop menu, because `deliver/3` is what produces the
+        # observation that fires `Work.consider_project/2` — recording the
+        # decline afterwards would lose the race with the wake it is meant to
+        # damp.
+        {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
+
         StopDecision.deliver(scope, agent, opts)
 
       _ ->
@@ -1997,7 +2221,8 @@ defmodule CodeMySpec.Agents do
     status: :running,
     turn_started_at: nil,
     work_request_id: nil,
-    work_requested_at: nil
+    work_requested_at: nil,
+    stopped_reason: nil
   }
 
   defp settle_against(_scope, %Agent{status: :running}, true), do: :ok
@@ -2013,7 +2238,7 @@ defmodule CodeMySpec.Agents do
         "its row said #{agent.status}"
     )
 
-    {:ok, _stopped} = record_stopped(scope, agent)
+    {:ok, _stopped} = record_stopped(scope, agent, :reaped)
     :ok
   end
 
@@ -2172,7 +2397,7 @@ defmodule CodeMySpec.Agents do
   # report of absence. A harness that went quiet says nothing about its agents,
   # and nothing calls this without a report to reconcile against.
   defp reap_if_absent(scope, %Agent{} = agent, false) do
-    {:ok, stopped} = record_stopped(scope, agent)
+    {:ok, stopped} = record_stopped(scope, agent, :reaped)
     stopped
   end
 
@@ -2188,7 +2413,7 @@ defmodule CodeMySpec.Agents do
   def stop_agent(%Scope{} = scope, id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <- end_process(scope, agent),
-         {:ok, stopped} <- record_stopped(scope, agent) do
+         {:ok, stopped} <- record_stopped(scope, agent, :stopped) do
       broadcast(scope, {:agent_stopped, stopped})
       {:ok, stopped}
     end
@@ -2261,9 +2486,18 @@ defmodule CodeMySpec.Agents do
   # their machine went away is a decision rather than a cleanup — `held?/3`
   # going on withholding a node claimed by a stopped agent is a real problem
   # (`68436370`) and a different one.
-  defp record_stopped(scope, agent) do
+  #
+  # 73d0d505: `reason` is the one thing this function's two callers actually
+  # disagree about. `reap_if_absent/3` passes `:reaped` — nothing confirms
+  # this was on purpose, a report simply stopped mentioning the agent.
+  # `stop_agent/2` passes `:stopped` — something explicitly asked for this.
+  # Both used to write an identical row, which is why nothing could ever
+  # tell a role that went unstaffed by a restart from one a person meant to
+  # leave stopped.
+  defp record_stopped(scope, agent, reason) when reason in [:reaped, :stopped] do
     AgentsRepository.update_agent(scope, agent, %{
       status: :stopped,
+      stopped_reason: reason,
       os_pid: nil,
       os_boot_id: nil,
       turn_started_at: nil,
@@ -2477,11 +2711,9 @@ defmodule CodeMySpec.Agents do
     %{
       engine: Map.get(attrs, :engine, :alloy),
       provider: Map.fetch!(attrs, :provider),
-      # Written down at start rather than derived at call time. A list on the
-      # row survives a change to what a role means, answers "what may this
-      # agent call" without a second lookup, and takes an exception without
-      # inventing a role for it.
-      tools: Map.get(attrs, :tools) || tools_for(scope, attrs),
+      # A record of what it launched with. Enforcement reads `tools_of/2`, so a
+      # list passed here would be ignored and is not accepted.
+      tools: tools_for(scope, attrs),
       model: Map.get(attrs, :model),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.fetch!(attrs, :role),

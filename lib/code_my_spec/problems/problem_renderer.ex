@@ -13,6 +13,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Compactness policy for stop-hook responses. The agent's context window
   # is finite — the response must stay tight.
   @per_problem_cap 200
+  # Ten is story 554's answer and criterion 5094 pins it. Lowering it to three
+  # made the stop hook shorter, which is what was asked for, and broke 5094 and
+  # 5095 — the latter because the response then no longer reached the 4 KB cap it
+  # exists to exercise. Changing it is a story-554 decision, not a renderer one.
   @per_source_list_cap 10
   @total_response_cap 4096
 
@@ -137,7 +141,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     parts =
       if truncated_count > 0,
-        do: parts ++ ["", "(#{truncated_count} more problems not shown)"],
+        do:
+          parts ++
+            ["", "(#{truncated_count} more — `list_problems` has them, filter with `source`)"],
         else: parts
 
     parts = parts ++ ["", "Please fix these issues and try again."]
@@ -219,7 +225,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       duration: run_duration,
       overtaken: overtaken,
       failures: Keyword.get(opts, :run_failures, %{}),
-      analyzer_staleness: Keyword.get(opts, :analyzer_staleness, %{})
+      analyzer_staleness: Keyword.get(opts, :analyzer_staleness, %{}),
+      failed_reruns: Keyword.get(opts, :failed_reruns, %{})
     }
 
     blocking_section = render_blocking_section(blocking, stale, runs, reproduce, session_paths)
@@ -424,8 +431,12 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     overflow =
       case count - length(visible) do
-        0 -> ""
-        n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
+        0 ->
+          ""
+
+        n ->
+          "\n  ... #{n} more #{source} problems — `list_problems({source = \"#{source}\"})` " <>
+            "has them, page through with `page` and `per_page`"
       end
 
     marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)
@@ -435,7 +446,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       killed_note(items) <>
       foreign_spex_note(source, items, session_paths) <>
       precondition_note(items) <>
-      stale_build_note(source, runs)
+      stale_build_note(source, runs) <>
+      failed_rerun_note(source, runs)
   end
 
   # The one case where "stop again and let a rerun replace these" is wrong for a
@@ -460,6 +472,22 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   end
 
   defp stale_build_note(_source, _runs), do: ""
+
+  # The newest run failed behind an older answer, so these findings were not re-checked.
+  defp failed_rerun_note(source, %{failed_reruns: reruns}) do
+    case Map.get(reruns, source) do
+      %{failed_at: failed_at, answered_at: answered_at} = rerun ->
+        reason = if rerun[:reason], do: ": #{rerun.reason}", else: ""
+
+        "\n  Latest #{source} run failed at #{time_phrase(failed_at)}#{reason}." <>
+          "\n  These findings are from the run at #{time_phrase(answered_at)} and were not re-checked."
+
+      _ ->
+        ""
+    end
+  end
+
+  defp failed_rerun_note(_source, _runs), do: ""
 
   # Why a spex still blocks after being marked as somebody else's.
   #

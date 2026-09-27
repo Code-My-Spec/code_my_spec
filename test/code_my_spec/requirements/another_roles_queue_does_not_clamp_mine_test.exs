@@ -70,6 +70,53 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
     :ok = GraphWatcher.settle(scope)
   end
 
+  # An active story used to hide the project from every role, because
+  # `actionable_for_role/2` is `story_execution/2` and a selected story scoped
+  # the whole answer. Assigning a story is the first thing anyone does on a new
+  # project, and doing it before the project chain finished stopped the fleet
+  # dead: four roles idle over a ready `spex_boundary_ready`, `list_agent_work`
+  # reporting "the graph holds no work for its role", and nothing naming the
+  # story scope as the reason. Clearing the story started it within seconds.
+  #
+  # Only project-scope work is reached this way, and only for a role that asked.
+  # Widening to the whole copy would offer *other stories*, which is what story
+  # 561 forbids — a finished story answers "complete" rather than moving its own
+  # copy onto the next one. Project requirements are in no story, so offering
+  # them takes nothing from the active one.
+  #
+  # ## The premise has to be project work this role can actually do
+  #
+  # A first version asked `:main` against the bare fixture and asserted it saw
+  # something. It saw nothing, and not because of any clamp: `apply_up_to_analysis/1`
+  # leaves the project chain green, so main's only project requirement
+  # (`work_dispatched`) was satisfied and there was nothing to hide. The test
+  # went in red and stayed red, because the assertion it failed was its own
+  # premise rather than the behaviour.
+  #
+  # Filing an issue is what makes the question answerable. `issues_triaged` is
+  # product's, project-scope, and actionable the moment an untriaged medium+
+  # issue exists — a real piece of work, outside the active story, belonging to
+  # a role whose story queue is empty.
+  test "a story with nothing for this role does not hide the project", ctx do
+    assert names(ctx.scope, :product) == [],
+           "the fixture settles the project, so product starts with nothing"
+
+    :ok = file_an_issue(ctx.scope)
+
+    product_work = names(ctx.scope, :product)
+
+    assert "issues_triaged" in product_work,
+           """
+           `set_active_story` ran in setup and product has no work inside that
+           story, so this is project-level work reached past a selected story.
+           Before the fix the active story scoped the whole answer and product
+           was told the graph held nothing for its role.
+           """
+
+    refute Enum.any?(product_work, &(&1 in ~w(component_linked three_amigos_complete))),
+           "project work, not the active story's own chain"
+  end
+
   test "coding keeps its own work while product's queue is untriaged", ctx do
     before = names(ctx.scope, :coding)
 
@@ -118,6 +165,7 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
       ctx.scope
       |> Requirements.next_actionable_project()
       |> Enum.map(& &1.name)
+
     coding = names(ctx.scope, :coding)
 
     assert "issues_triaged" in product,

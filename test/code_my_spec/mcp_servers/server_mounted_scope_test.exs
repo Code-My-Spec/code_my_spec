@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.UserPreferences
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -47,7 +47,7 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
 
     test "a scope whose project is nil does not silently pass through" do
       user = user_fixture()
-      scope = Scope.for_user(user)
+      scope = UserPreferences.scope_for(user)
 
       frame = %Frame{assigns: %{current_scope: scope}}
 

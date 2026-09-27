@@ -12,7 +12,7 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Integrations,
       CodeMySpec.Mailer,
       CodeMySpec.Repo,
-      CodeMySpec.UserPreferences
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

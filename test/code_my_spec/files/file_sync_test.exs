@@ -690,6 +690,71 @@ defmodule CodeMySpec.Files.FileSyncTest do
       refute Files.get_by_path(scope, "lib/my_app/users.ex")
     end
 
+    # The watcher is what an agent rewriting a story's BDD specs actually fires,
+    # and it updates the fingerprint eagerly. So by the time the stop hook's
+    # pass runs, the stored fingerprint already matches the file: the entry is
+    # in that pass's mtime-changed set and absent from its fingerprint-changed
+    # set, which is the set the clear is keyed on. The clear lived only in the
+    # stop-hook pass, so it never saw a rewrite the watcher had handled —
+    # measured 2026-09-23, it had never fired once for any story on this
+    # machine since it was written.
+    #
+    # What it cost: story 947's specs were rewritten to a new contract, the
+    # latch stayed on, and its deliberately-red criterion stayed *enforced*.
+    # `Promotion.gate/1` is per-copy, so that one red stopped every other story
+    # promoting from the checkout, with nothing an agent could call to clear it.
+    test "rewriting a story's BDD spec through the watcher clears its specs_ready latch" do
+      {scope, tmp_dir} = setup_project()
+
+      story =
+        CodeMySpec.StoriesFixtures.story_fixture(scope, %{
+          title: "Delegated control",
+          number: 45
+        })
+
+      rel = "test/spex/45_delegated_control/criterion_3139_a_thing_happens_spex.exs"
+      write_file(tmp_dir, rel, "defmodule A do\nend")
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
+      assert story.specs_ready == true
+
+      # The contract changes. This is the event an agent's Write fires.
+      abs = write_file(tmp_dir, rel, "defmodule A do\n  # a different contract\nend")
+      {:ok, _} = FileSync.sync_path(scope, abs, base_dir: tmp_dir)
+
+      assert CodeMySpec.Stories.get_story(scope, story.id).specs_ready == false,
+             "a rewritten spec changes the contract, so whatever a previous " <>
+               "green run proved no longer applies — and the latch is what " <>
+               "decides whether this story's reds block the whole copy"
+    end
+
+    test "a byte-identical rewrite through the watcher leaves the latch alone" do
+      {scope, tmp_dir} = setup_project()
+
+      story =
+        CodeMySpec.StoriesFixtures.story_fixture(scope, %{
+          title: "Shipped story",
+          number: 46
+        })
+
+      rel = "test/spex/46_shipped_story/criterion_4000_a_thing_happens_spex.exs"
+      body = "defmodule B do\nend"
+      write_file(tmp_dir, rel, body)
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
+
+      abs = write_file(tmp_dir, rel, body)
+      {:ok, _} = FileSync.sync_path(scope, abs, base_dir: tmp_dir)
+
+      assert CodeMySpec.Stories.get_story(scope, story.id).specs_ready == true,
+             "a touch or a reformat that lands identical bytes is not a " <>
+               "contract change and must not knock a shipped story out of " <>
+               "enforcement — this is why the clear is keyed on the " <>
+               "fingerprint-changed set rather than the mtime-changed one"
+    end
+
     test "deletes file record when file no longer exists on disk" do
       {scope, tmp_dir} = setup_project()
 

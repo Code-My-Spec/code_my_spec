@@ -20,6 +20,16 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Environments.Local
 
+  # `mix <task>` → analysis source. Never shelled out: replayed from a recording
+  # (attached here, or a cmd cassette) or refused.
+  @analyzer_tasks %{
+    "compile" => "compiler",
+    "credo" => "credo",
+    "test" => "exunit",
+    "spex" => "spex",
+    "sobelow" => "sobelow"
+  }
+
   @impl true
   def create(opts \\ []) do
     {:ok, agent} = Agent.start_link(fn -> %{} end)
@@ -29,7 +39,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
      %Environment{
        type: :memory,
        cwd: working_dir,
-       ref: %{agent: agent},
+       ref: %{agent: agent, recorded: %{}},
        metadata: Keyword.get(opts, :metadata, %{})
      }}
   end
@@ -91,10 +101,6 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   underneath this delegation exactly as it did when callers invoked System.cmd
   directly.
 
-  Returning an error here instead would break every cassette-driven spec, and
-  would do it by making the memory environment claim authority over something
-  it does not model.
-
   The `:memory_shell` escape exists because a cassette cannot model a command's
   *effect*. `ssh-keygen -f path` writes a key, and on replay the recorded
   stdout comes back while no file appears — so a later step reading that path
@@ -103,9 +109,62 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   filesystem, so the effect is there for the next command to find.
 
   Off by default: nothing changes for anything that has not opted in.
+
+  Analyzer commands (`mix compile|credo|test|spex|sobelow`) are the exception:
+  never run for real. An attached recording (`record_output/3`) or an open cmd
+  cassette answers them; with neither, they are refused with a nonzero exit.
   """
   @impl true
-  def cmd(env, command, args, opts) do
+  def cmd(env, "mix", [task | _] = args, opts) when is_map_key(@analyzer_tasks, task) do
+    source = Map.fetch!(@analyzer_tasks, task)
+
+    cond do
+      path = recorded_output(env, source) -> replayed(source, path)
+      ExCliVcr.Recorder.active?() -> shell(env, "mix", args, opts)
+      true -> {refusal(source), 1}
+    end
+  end
+
+  def cmd(env, command, args, opts), do: shell(env, command, args, opts)
+
+  @doc """
+  Attach a recorded output file for analysis `source` ("compiler", "credo",
+  "exunit", "spex", "sobelow"). Runs against the returned environment replay it.
+
+  Kept on the struct, not the agent: a run a tool started can outlive the test
+  process, and with it the agent.
+  """
+  @spec record_output(Environment.t(), String.t(), String.t()) :: Environment.t()
+  def record_output(%Environment{ref: ref} = env, source, path) do
+    %{env | ref: Map.update(ref, :recorded, %{source => path}, &Map.put(&1, source, path))}
+  end
+
+  @impl true
+  def recorded_output(%Environment{ref: ref}, source), do: get_in(ref, [:recorded, source])
+
+  # Stands in for the subprocess; the runner reads the recorded file itself.
+  # exunit's exit status decides `execution_status`, so it follows the file.
+  defp replayed("exunit", path) do
+    failures =
+      with {:ok, raw} <- File.read(path),
+           {:ok, %{"stats" => %{"failures" => n}}} <- Jason.decode(raw) do
+        n
+      else
+        _ -> 0
+      end
+
+    {"", if(failures > 0, do: 2, else: 0)}
+  end
+
+  defp replayed(_source, _path), do: {"", 0}
+
+  defp refusal(source) do
+    "no recorded analyzer output for #{source}; attach one with " <>
+      "CodeMySpecSpex.RecordedAnalysis.attach_recorded_analysis/2 " <>
+      "(tests never start a real analyzer)"
+  end
+
+  defp shell(env, command, args, opts) do
     case Application.get_env(:code_my_spec, :memory_shell) do
       nil -> Local.cmd(env, command, args, opts)
       module -> memory_cmd(env, command, args, opts, module)

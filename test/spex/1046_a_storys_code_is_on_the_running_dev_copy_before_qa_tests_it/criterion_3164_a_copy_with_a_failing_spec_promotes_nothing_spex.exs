@@ -89,6 +89,46 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
   # Arranged as two real checkouts rather than one, because a promotion that
   # merges into the tree it is promoting *from* is not a promotion, and a spec
   # built on one repository cannot tell the two apart.
+  # A warning is still a problem here: v2.0.162 landed two credo AliasUsage
+  # warnings on main and they blocked every other copy's promote after it.
+  spex "A credo warning holds the promotion too" do
+    scenario "a warning-severity credo finding promotes nothing" do
+      given_ "a story branch with committed work, ready to promote", context do
+        context = a_promotable_project(context)
+
+        write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
+        {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        {:ok, context}
+      end
+
+      given_ "but credo has one warning on the copy", context do
+        CodeMySpecSpex.Fixtures.record_problem(context.scope, "credo", %{
+          file_path: "lib/broken_oaths/diplomacy/war.ex",
+          message: "Nested modules could be aliased at the top of the invoking module.",
+          severity: :warning
+        })
+
+        {:ok, context}
+      end
+
+      when_ "the agent tries to promote its work", context do
+        {:ok, Map.put(context, :response, promote(context))}
+      end
+
+      then_ "nothing is merged, and the warning is named", context do
+        {log, 0} = git(context, context.running_root, ["log", "--oneline", "-1"])
+
+        assert log =~ "base",
+               "a copy carrying a credo warning moved the running checkout. Got: #{log}"
+
+        assert response_text(context.response) =~ "war.ex"
+
+        {:ok, context}
+      end
+    end
+  end
+
   defp a_promotable_project(context) do
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
@@ -187,11 +227,4 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
   defp disk(root), do: Environment.new(:local, root)
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
-
-  defp read(root, path) do
-    {:ok, content} = Environments.read_file(disk(root), path)
-    content
-  end
-
-  defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
 end

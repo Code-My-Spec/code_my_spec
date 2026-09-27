@@ -20,10 +20,8 @@ defmodule CodeMySpec.Issues do
       CodeMySpec.Accounts,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
-      CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all
@@ -121,6 +119,25 @@ defmodule CodeMySpec.Issues do
   end
 
   defdelegate unresolved_by_story(scope, min_severity), to: IssuesRepository
+
+  @doc """
+  Resolved issues in one project, by id, for callers that hold an id rather
+  than a scope.
+
+  `list_issues/1` and its neighbours read `scope.active_project.id` — the
+  loaded association — so a scope assembled from a bare project_id raises
+  inside the repository. A caller that only ever has the id (a notification
+  deciding whether the thing an agent named has since been fixed) would have
+  to fake an association to ask a question that needs neither account nor
+  preloads.
+
+  Same shape as `report_from_widget/3`, which takes raw ids for the same
+  reason: the caller genuinely has no scope to offer.
+  """
+  @spec resolved_in_project(Ecto.UUID.t()) :: [%{id: String.t(), title: String.t()}]
+  def resolved_in_project(project_id) when is_binary(project_id) do
+    IssuesRepository.resolved_in_project(project_id)
+  end
 
   def list_filtered(%Scope{} = scope, filters) do
     IssuesRepository.list_filtered(scope, filters)

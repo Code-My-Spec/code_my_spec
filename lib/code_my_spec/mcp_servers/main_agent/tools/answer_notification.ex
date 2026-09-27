@@ -38,7 +38,12 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   schema do
     field :id, :string, required: true, doc: "From `list_notifications`."
 
-    field :answer, :string, doc: "For a question: what you found, in the agent's terms."
+    field :answer, :string,
+      doc:
+        "What you found, in the agent's terms. For a question, the answer. For a " <>
+          "denied tap_out, why it was denied — the agent is told this, and without it " <>
+          "all it hears is 'declined', so it re-reads its own transcript and repeats " <>
+          "whatever it last concluded."
 
     field :basis, :string,
       doc: "For a question: `record` (the project records it) or `precedent`."
@@ -51,8 +56,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
     field :on_behalf_of, :string, doc: "A role you are acting as. Usually leave this out."
     field :tool, :string, doc: "A tool you are using on that role's behalf."
 
-    field :decision, :string,
-      doc: "For a permission (e.g. `tap_out`): `allow` or `deny`."
+    field :decision, :string, doc: "For a permission (e.g. `tap_out`): `allow` or `deny`."
   end
 
   @impl true
@@ -93,7 +97,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   defp decide(scope, params, decision, frame) do
     id = MapAccess.get(params, :id)
 
-    case MainAgent.decide_permission(scope, id, decision) do
+    case MainAgent.decide_permission(scope, id, decision, MapAccess.get(params, :answer)) do
       {:ok, _resolved} -> {:reply, AnswerMapper.decided(id, decision), frame}
       {:error, reason} -> {:reply, AnswerMapper.error(reason), frame}
     end

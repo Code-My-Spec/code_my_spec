@@ -10,6 +10,7 @@ defmodule CodeMySpec.Analysis.Execution do
   require Logger
 
   alias CodeMySpec.Analysis.{Reconciler, Run, Runners}
+  alias CodeMySpec.Environments
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
 
@@ -36,10 +37,13 @@ defmodule CodeMySpec.Analysis.Execution do
     start = System.monotonic_time(:millisecond)
     args = run_args(run)
 
-    case Runners.run(run.source, scope, args, runner_opts(run, opts)) do
+    case Runners.run(run.source, scope, args, runner_opts(scope, run, opts)) do
       {:ok, %{problems: problems} = result} ->
         ms = System.monotonic_time(:millisecond) - start
-        Logger.info("[Analysis] run #{run.id} (#{run.source} #{inspect(args)}) finished in #{ms}ms")
+
+        Logger.info(
+          "[Analysis] run #{run.id} (#{run.source} #{inspect(args)}) finished in #{ms}ms"
+        )
 
         if starved?(problems) do
           Logger.warning(
@@ -119,11 +123,12 @@ defmodule CodeMySpec.Analysis.Execution do
   defp run_args(%Run{args: args}) when is_list(args), do: args
   defp run_args(_run), do: []
 
-  # Cassette escape hatch: spex inject pre-recorded tool output per source.
-  defp runner_opts(%Run{source: source}, opts) do
+  # Cassette escape hatch: spex inject pre-recorded tool output per source,
+  # per call or attached to the scope's environment.
+  defp runner_opts(scope, %Run{source: source}, opts) do
     key = :"#{output_key(source)}_output_file"
 
-    case Keyword.get(opts, key) do
+    case Keyword.get(opts, key) || Environments.recorded_output(scope.environment, source) do
       nil -> []
       path -> [output_file: path]
     end

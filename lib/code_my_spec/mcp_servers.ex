@@ -54,10 +54,12 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
+      CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],

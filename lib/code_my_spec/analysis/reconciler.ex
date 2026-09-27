@@ -15,7 +15,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   require Logger
 
   alias CodeMySpec.Analysis.{
-    AgentReport,
     Coverage,
     Fingerprint,
     Run,
@@ -129,7 +128,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
         # the digest on its next tool call through `Hooks.AnalysisAlert`. Two
         # consumers, two shapes, and telling both here would tell one of them
         # twice.
-        AgentReport.deliver(scope, run.source, problems)
+        announce_if_new(scope, run, problems, previous, signatures)
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
@@ -145,7 +144,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
         )
 
-        RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
+        finish_failed(run, inspect(reason))
         {:error, reason}
     end
   end
@@ -188,9 +187,48 @@ defmodule CodeMySpec.Analysis.Reconciler do
         requested_by_suffix(run)
     )
 
-    RunsRepository.finish_run(run, :failed, %{
-      stats: %{"error" => error_text(reason)}
-    })
+    finish_failed(run, reason)
+  end
+
+  defp finish_failed(run, reason) do
+    with {:ok, failed} <-
+           RunsRepository.finish_run(run, :failed, %{stats: %{"error" => error_text(reason)}}) do
+      announce_failed(failed, reason)
+      {:ok, failed}
+    end
+  end
+
+  @doc """
+  Tell the agent that requested a failed run that it failed, and why.
+
+  Every path that marks a run `:failed` ends here — `fail/2`, and the bulk
+  sweeps that close runs a harness disconnect or a server restart stranded. A
+  requested run always answers (see `announce_if_new/5`); before this, only a
+  completed one did, and an agent whose spex run was killed by a server restart
+  waited on it forever. A run nobody requested fails silently.
+  """
+  @spec announce_failed(Run.t(), term()) :: :ok
+  def announce_failed(%Run{} = run, reason) do
+    case requesting_agent_id(run) do
+      nil ->
+        :ok
+
+      requester ->
+        :telemetry.execute(
+          [:code_my_spec, :analysis, :run_reported],
+          %{},
+          %{
+            scope: %Scope{
+              active_project_id: run.project_id,
+              active_working_copy_id: run.working_copy_id
+            },
+            source: run.source,
+            problems: [],
+            requester: requester,
+            failure: error_text(reason)
+          }
+        )
+    end
   end
 
   # A string reason is stored as itself; everything else is inspected.
@@ -215,6 +253,64 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # row this was still leaves "who asked for it" as a separate lookup unless
   # the line says that too. Blank unless `build_job/4` was given one — most
   # runs still won't be until more callers are taught to pass it.
+  # Only when this run says something the last one did not.
+  #
+  # The report to agents (`Agents.AnalysisReport`) used to fire on every completed run, and every stop
+  # hook re-enqueues credo, so an unchanged finding announced itself once a
+  # turn forever. A main agent on the math project spent four consecutive turns
+  # answering "same repeated alert — already covered by issue ..., no action"
+  # and never reached `work_dispatched`, which is the requirement that puts
+  # story work in flight. It diagnosed its own livelock and filed `bffa0da7`
+  # before anyone looked: "no file was edited and no new analysis was requested
+  # between repeats, so nothing about the tree changed between alerts".
+  #
+  # `new` is empty both when nothing changed and when problems only went away,
+  # and neither is worth a wake — the digest counts what remains, which the
+  # agent has already been told. An absent baseline reads as all-new, so a
+  # first run, and a run whose predecessor predates signature recording, both
+  # still announce.
+  #
+  # A run an agent *asked for* always answers, whatever the delta says. That is
+  # the half this was missing, and it stalled the fleet within the hour: coding
+  # started a spex sweep, said "not polling — will act on the result when it
+  # arrives as a message, task stays open until then", and stopped. The sweep
+  # found the same seven criteria failing for a new reason, so the signatures —
+  # `file:line criterion-name`, which do not carry the error — were unchanged,
+  # the delta was empty, and the answer was swallowed. The agent waited on a
+  # message that was never going to come, holding its task, for twenty-two
+  # minutes.
+  #
+  # The distinction is who started it. An unsolicited repeat is noise; a reply
+  # to a question the agent asked is a reply, and silence there is not quiet, it
+  # is a hang.
+  defp announce_if_new(scope, run, problems, previous, signatures) do
+    requester = requesting_agent_id(run)
+
+    if requester || new_findings?(previous, signatures) do
+      # An event rather than a call: `Agents.AnalysisReport` is attached to it,
+      # and Analysis does not depend on Agents. Handled synchronously, in this
+      # process, as the direct call was.
+      :telemetry.execute(
+        [:code_my_spec, :analysis, :run_reported],
+        %{},
+        %{scope: scope, source: run.source, problems: problems, requester: requester}
+      )
+    else
+      :ok
+    end
+  end
+
+  # Threaded through so `deliver/4` can answer the asker on a clean run while
+  # leaving everyone else the silence criterion 3046 buys them. Without it a
+  # green run told nobody at all, and an agent that had asked for one waited on
+  # an answer that was never going to be sent.
+  defp requesting_agent_id(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: id
+  defp requesting_agent_id(_run), do: nil
+
+  defp new_findings?(previous, signatures) do
+    Signatures.delta(previous, signatures).new != []
+  end
+
   defp requested_by_suffix(%Run{requested_by: nil}), do: ""
   defp requested_by_suffix(%Run{requested_by: by}) when by == %{}, do: ""
   defp requested_by_suffix(%Run{requested_by: by}), do: " — requested by #{inspect(by)}"

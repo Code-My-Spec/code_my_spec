@@ -12,15 +12,12 @@ defmodule CodeMySpec.Stories do
     deps: [
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Accounts,
-      CodeMySpec.Components,
-      CodeMySpec.Epics,
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
-      CodeMySpec.Tags,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

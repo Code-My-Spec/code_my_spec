@@ -221,6 +221,4 @@ defmodule CodeMySpecSpex.Story1046.Criterion3169Spex do
     {:ok, content} = Environments.read_file(disk(root), path)
     content
   end
-
-  defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
 end

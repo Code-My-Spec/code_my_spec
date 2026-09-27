@@ -2,7 +2,8 @@ defmodule CmsHarness.Device do
   @moduledoc """
   This machine's identity, established when the harness comes up.
 
-  One file, `~/.codemyspec/device.json`, beside `harness_secret` and
+  One file, `device.json` in `CmsHarness.Config.local_state_dir/0` — beside
+  `harness_secret` on a laptop, where that is `~/.codemyspec` — and
   deliberately **not** inside any working copy.
 
   ## Why the install and not the checkout
@@ -65,19 +66,22 @@ defmodule CmsHarness.Device do
   alias CmsHarness.Device.Client
   alias CmsHarness.Token
 
-  @default_path "~/.codemyspec/device.json"
-
   @doc """
   Announce this machine and keep the identity it is issued.
 
-  Returns `{:ok, %{device_id: id, working_copies: %{id => root}}}`, or
-  `{:error, reason}` when the server could not be reached or refused. Safe to
-  call on every boot: presenting the id we already hold is how the server
+  Returns `{:ok, %{device_id: id, working_copies: %{id => root}, pending_local_projects: [...]}}`,
+  or `{:error, reason}` when the server could not be reached or refused. Safe
+  to call on every boot: presenting the id we already hold is how the server
   recognises the machine rather than minting another.
 
   `working_copies` is what the *server* believes is on this machine, which is
   the half of the exchange the harness cannot work out for itself — see
   `CmsHarness.WorkingCopyReporter`.
+
+  `pending_local_projects` is passed through unread: acting on it is
+  `WorkingCopyReporter`'s job, on the same reasoning this module's own doc
+  gives for `working_copies` — identity is this module's job, and generating a
+  project onto this machine is even further from it.
 
   Safe to call repeatedly, too, and `CmsHarness.WorkingCopyReporter` does. The
   observation it passes — `%{working_copy_id => present?}` — rides along on the
@@ -111,7 +115,14 @@ defmodule CmsHarness.Device do
   """
 
   @spec announce(%{optional(String.t()) => boolean()}) ::
-          {:ok, %{device_id: String.t(), working_copies: %{String.t() => String.t()}}}
+          {:ok,
+           %{
+             device_id: String.t(),
+             working_copies: %{String.t() => String.t()},
+             pending_local_projects: [
+               %{id: String.t(), name: String.t(), app_name: String.t(), deploy_key: String.t()}
+             ]
+           }}
           | {:error, term()}
   def announce(observations \\ %{}) do
     # Written before the round trip, not after it. Minting and recording are
@@ -212,7 +223,8 @@ defmodule CmsHarness.Device do
   # type and `Ecto.UUID.cast/1` both only check the string shape.
   defp machine_fingerprint do
     with {:ok, interfaces} <- :inet.getifaddrs(),
-         mac when is_binary(mac) <- interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
+         mac when is_binary(mac) <-
+           interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
          {:ok, uuid} <- mac |> then(&:crypto.hash(:md5, &1)) |> Ecto.UUID.load() do
       uuid
     else
@@ -233,6 +245,10 @@ defmodule CmsHarness.Device do
   @doc """
   Where the identity is kept.
 
+  `Config.local_state_dir/0`, not always `~/.codemyspec` — see that
+  function's own comment for why a `Runner.Local`-booted workspace cannot
+  share the real one.
+
   Overridable so a test can point it somewhere disposable — the same seam
   `harness_secret_path` has, and for the same reason.
   """
@@ -246,7 +262,8 @@ defmodule CmsHarness.Device do
     # a background reconnect crashing on somebody else's test's leftover state
     # is a worse failure than this function being lenient about which "unset"
     # it was given.
-    (Application.get_env(:code_my_spec, :device_config_path) || @default_path)
+    (Application.get_env(:code_my_spec, :device_config_path) ||
+       Path.join(Config.local_state_dir(), "device.json"))
     |> Path.expand()
   end
 

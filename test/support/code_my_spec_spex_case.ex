@@ -403,6 +403,7 @@ defmodule CodeMySpecSpex.Case do
 
     stage_local_only_push()
     stub_stripe_by_default()
+    stub_no_preview_by_default()
 
     {:ok, conn: ConnTest.build_conn()}
   end
@@ -442,6 +443,19 @@ defmodule CodeMySpecSpex.Case do
 
     Conn.put_resp_content_type(conn, "application/json")
     |> Conn.send_resp(200, Jason.encode!(body))
+  end
+
+  # `Workspaces.instance_env/1` asks `PreviewTunnel.ensure/1` for every boot of
+  # a main copy, reaching a `Req.Test`-pinned Cloudflare client the same way
+  # billing reaches Stripe — same reasoning as `stub_stripe_by_default/0`: the
+  # dozens of scenarios that only need a working copy to come up are not each
+  # responsible for standing up a fake Cloudflare. A spex whose subject is the
+  # preview itself (story 968, 1030) overrides this stub for its own scenario.
+  defp stub_no_preview_by_default do
+    Req.Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
+      Conn.put_resp_content_type(conn, "application/json")
+      |> Conn.send_resp(200, Jason.encode!(%{"success" => false, "errors" => []}))
+    end)
   end
 
   @doc """

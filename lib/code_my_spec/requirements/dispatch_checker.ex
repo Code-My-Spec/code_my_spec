@@ -29,7 +29,7 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
   965 reads exactly this to decide what to say.
   """
 
-  alias CodeMySpec.EpicDispatch
+  alias CodeMySpec.Epics
 
   @doc """
   Whether the main agent has nothing to do about assignment.
@@ -39,7 +39,7 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
   separate acts.
   """
   @spec dispatched?(term(), term()) :: {boolean(), map()}
-  def dispatched?(scope, _entity), do: scope |> EpicDispatch.dispatch_state() |> verdict()
+  def dispatched?(scope, _entity), do: scope |> Epics.dispatch_state() |> verdict()
 
   @doc """
   The verdict for a dispatch state the caller already worked out.
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
   replace; this keeps the wording in one place while the rows come from
   wherever the caller got them.
   """
-  @spec verdict(EpicDispatch.dispatch_state()) :: {boolean(), map()}
+  @spec verdict(Epics.dispatch_state()) :: {boolean(), map()}
   def verdict(state) do
     case state do
       {:nothing_to_assign, :in_progress} ->

@@ -25,8 +25,7 @@ defmodule CodeMySpec.WorkingCopies do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
-      CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Components,
       CodeMySpec.Devices,
       CodeMySpec.Encrypted.Binary,
@@ -35,9 +34,9 @@ defmodule CodeMySpec.WorkingCopies do
       CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -45,12 +44,9 @@ defmodule CodeMySpec.WorkingCopies do
 
   require Logger
 
-  alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.Transport
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -309,6 +305,7 @@ defmodule CodeMySpec.WorkingCopies do
 
         if is_nil(copy), do: Repo.rollback(:not_found)
 
+        release_backlog(scope, copy)
         selected_id = select_story(scope, copy, story_id)
 
         case save(copy, %{active_story_id: selected_id}) do
@@ -328,6 +325,28 @@ defmodule CodeMySpec.WorkingCopies do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # A copy holds the story it is pointed at, and no others.
+  #
+  # `select_story/3` assigned on the way in and nothing ever released, so a copy
+  # accumulated every story it had ever been pointed at and each one was pinned
+  # there: `story_assigned_elsewhere` refuses to move an assigned story, and
+  # clearing the active story left the assignment behind. Pointing a copy at a
+  # second story stranded the first with no tool able to free it — measured on
+  # 2026-09-21, where story 1027 was pinned to a main checkout within ten
+  # minutes of the project being set up and could not be handed to the copy
+  # that was staffed to build it.
+  #
+  # Released before the new one is selected and inside the same transaction, so
+  # a refusal rolls the release back with it: a copy pointed at something
+  # invalid keeps exactly what it had.
+  defp release_backlog(scope, copy) do
+    Story
+    |> where([s], s.working_copy_id == ^copy.id)
+    |> where([s], s.project_id == ^scope.active_project_id)
+    |> where([s], s.account_id == ^scope.active_account_id)
+    |> Repo.update_all(set: [working_copy_id: nil])
   end
 
   defp select_story(_scope, _copy, nil), do: nil
@@ -450,10 +469,6 @@ defmodule CodeMySpec.WorkingCopies do
     Repo.transaction(fn -> designate_main_in_transaction(project_id, working_copy_id) end)
     |> case do
       {:ok, copy} ->
-        # The agent goes where the designation goes. A project whose main copy
-        # is one checkout and whose main agent is running in another satisfies
-        # nobody: the page names one place and the work happens in the other.
-        _ = CodeMySpec.Agents.move_main_agent(scope, copy)
         broadcast_designated(scope, copy)
 
         # Designation moves two of the three fields the graph reads: which copy
@@ -720,6 +735,27 @@ defmodule CodeMySpec.WorkingCopies do
   def preview_url(%Scope{} = scope) do
     case main(scope) do
       %WorkingCopy{preview_url: url} when is_binary(url) and url != "" -> url
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Whether this project's preview is actually answering, or nothing.
+
+  `record_preview_status/2`'s own words: reported by the machine that holds
+  the disk, on every sync — so `nil` means not "down", it means the checkout
+  has never reported at all. A URL is minted the moment a copy is issued one,
+  which can be well before the checkout that will answer it has even booted
+  — `PreviewTunnel.ensure/1` runs at instance-boot time, `cloudflared` comes
+  up inside the app it is tunneling for, and there is a real gap between the
+  two. Conflating "never reported" with "down" is how a preview that is
+  still coming up read as broken, for as long as it took the first sync to
+  land (`reference_cloudflare_tunnel_530_is_down`).
+  """
+  @spec preview_status(Scope.t()) :: String.t() | nil
+  def preview_status(%Scope{} = scope) do
+    case main(scope) do
+      %WorkingCopy{preview_status: status} -> status
       _ -> nil
     end
   end
@@ -1231,28 +1267,11 @@ defmodule CodeMySpec.WorkingCopies do
   @spec offboard(Scope.t(), WorkingCopy.t()) ::
           {:ok, %{files: integer(), problems: integer(), components: integer()}}
           | {:error, :not_yours}
-  def offboard(%Scope{active_project_id: project_id} = scope, %WorkingCopy{
+  def offboard(%Scope{active_project_id: project_id}, %WorkingCopy{
         project_id: project_id,
         id: id
       })
       when is_binary(project_id) do
-    # The agents first, and outside the transaction, because stopping one is a
-    # request to a machine rather than a write.
-    #
-    # A copy is the boundary of the work — story 964's rule, John: "I can keep
-    # them through that whole epic and then I can discard the working copy". So
-    # discarding has to end them, and an agent that outlived its checkout would
-    # be a model held open against a directory that is not there, still holding
-    # a subscription slot and still spending. Story 961 is the same concern
-    # arriving from the other side.
-    #
-    # Best-effort, and it does not block the offboard. The copy this is most
-    # often used on is one whose machine has gone — that is story 892's whole
-    # premise — and refusing to let go of a checkout because nothing can be
-    # reached to stop an agent on it would make the vanished case unofboardable,
-    # which is the one case the control exists for.
-    agents = stop_agents_on(scope, id)
-
     Repo.transaction(fn ->
       {files, _} =
         Repo.delete_all(
@@ -1270,7 +1289,7 @@ defmodule CodeMySpec.WorkingCopies do
 
       Repo.delete_all(from w in WorkingCopy, where: w.id == ^id)
 
-      Map.merge(%{files: files, problems: problems, components: components}, agents)
+      %{files: files, problems: problems, components: components}
     end)
     |> case do
       {:ok, counts} ->
@@ -1308,144 +1327,10 @@ defmodule CodeMySpec.WorkingCopies do
   # the same reason: there is nothing to learn from the answer that would change
   # what we do, and waiting would hand an offboard a way to hang.
   defp tell_the_machine(working_copy_id) do
-    case Analysis.executor_holder(working_copy_id) do
+    case HarnessRegistry.executor_holder(working_copy_id) do
       {:ok, pid, _instance} -> send(pid, {:offboarded, working_copy_id})
       _ -> :ok
     end
-  end
-
-  @doc """
-  Make a working copy for this project and staff it.
-
-  One act with two halves in two places: the harness makes the checkout on its
-  own disk and writes the identity into it, and this records the copy and starts
-  the agents that will work in it. The caller makes one call.
-
-  Here rather than in the MCP tool because it has two callers with nothing else
-  in common — an agent asking for somewhere to work, and `EpicDispatch` placing
-  an epic that has nowhere to go. A tool cannot be the home of that: `McpServers`
-  depends on this context and not the other way round, so `EpicDispatch` calling
-  the tool would be the dependency backwards.
-
-  Answers `{:ok, copy, staffed}` where `staffed` is `ensure_copy_agents/2`'s
-  report, so the caller can say which agents came up and which did not. A copy
-  that could not be staffed is still a copy: the checkout exists and the failure
-  belongs in front of somebody, not in a rollback.
-  """
-  @spec mint(Scope.t(), keyword()) ::
-          {:ok, WorkingCopy.t(), map()} | {:error, term()}
-  def mint(%Scope{active_project_id: project_id} = scope, opts \\ [])
-      when is_binary(project_id) do
-    # Only copies that are checkouts. A row is not one until it reports a root —
-    # `ensure_default/1` mints a rootless nil-object row — and a machine is only
-    # a candidate host if it actually holds the repository.
-    # The main checkout first, then anything else that is a checkout.
-    #
-    # Order matters and it is not a preference. A new copy is made *beside* the
-    # host — `.claude/worktrees/<name>` under its root — so a host that is
-    # itself a worktree nests one inside another. Run live once, the first copy
-    # this made landed at
-    # `…/worktrees/agent-conversation-ui/.claude/worktrees/live-smoke-test-one`,
-    # because `host_holder/1` takes whichever candidate is connected and the
-    # list happened to start with a worktree.
-    #
-    # The main checkout is the one place a sibling is a sibling. Everything else
-    # stays in the list because a project whose main copy is not connected
-    # should still be able to make one, and a nested worktree is worse than no
-    # worktree only in tidiness — it still works.
-    copies =
-      scope
-      |> list_harnesses()
-      |> Enum.filter(&(is_binary(&1.root) and &1.root != ""))
-
-    candidates =
-      copies
-      |> Enum.sort_by(& &1.main, :desc)
-      |> Enum.map(& &1.id)
-
-    request = %{
-      "project_id" => project_id,
-      # The identity travels *to* the harness rather than back from it, so the
-      # file on disk and the row here hold one value rather than two derivations
-      # of it — the failure story 891 exists to end.
-      "working_copy_id" => Ecto.UUID.generate(),
-      "label" => opts[:label],
-      "root" => opts[:root],
-      # A copy that cannot authenticate is a copy that never joins, so the key
-      # goes with it. `ensure_deploy_key/2` mints one if the project has none —
-      # a new project does not get one at creation, and everything that must
-      # authenticate as the project has to ask for it first.
-      "deploy_key" => opts[:deploy_key] || deploy_key(scope)
-    }
-
-    with {:ok, %{root: root, working_copy_id: id}} <-
-           Transport.impl().create_working_copy(candidates, request, 60_000),
-         {:ok, copy} <-
-           issue(scope, id,
-             root: root,
-             label: opts[:label],
-             device: host_device(scope),
-             # Not a suggestion. This id is already written into the checkout's
-             # own config, and a row under a different one is a copy nothing can
-             # recognise.
-             working_copy_id: id
-           ),
-         {:ok, copy} <- report_root(copy, root) do
-      {:ok, copy, Agents.ensure_copy_agents(scope, copy, opts[:roles] || Agents.copy_roles())}
-    end
-  end
-
-  # `ensure_deploy_key/2` takes the project and answers the project, minting a
-  # key onto it if it has none — a new project does not get one at creation, and
-  # everything that must authenticate as the project has to ask first.
-  #
-  # `nil` when there is no project in scope to ask about, which the harness
-  # handles: the copy is written without a key and joins on whatever the machine
-  # already holds. Not rescued — an unexpected shape here should be loud, and
-  # the version this replaced swallowed a FunctionClauseError for a whole
-  # session.
-  defp deploy_key(%Scope{active_project: %Project{} = project} = scope) do
-    case Projects.ensure_deploy_key(scope, project) do
-      {:ok, %Project{deploy_key: key}} when is_binary(key) and key != "" -> key
-      _ -> nil
-    end
-  end
-
-  defp deploy_key(%Scope{}), do: nil
-
-  # The machine the host copy is on. A created copy sits on the same filesystem
-  # as the checkout it was made beside, so it is on the same device — and
-  # recording that is what stops two machines' copies at one path being confused.
-  defp host_device(scope) do
-    scope
-    |> list_harnesses()
-    |> Enum.find_value(& &1.device_id)
-  end
-
-  # Stop everything on this copy, and say what would not stop.
-  #
-  # Counted rather than swallowed: "3 agents stopped" and "3 agents stopped, 1
-  # still running" are different facts and the person offboarding needs the
-  # second one, because the remedy is theirs — a process on a machine we could
-  # not reach is not something the server can end on its own.
-  defp stop_agents_on(scope, working_copy_id) do
-    scope
-    |> Agents.list_agents()
-    |> Enum.filter(&(&1.working_copy_id == working_copy_id and &1.status != :stopped))
-    |> Enum.reduce(%{agents_stopped: 0, agents_left_running: []}, fn agent, acc ->
-      case Agents.stop_agent(scope, agent.id) do
-        {:ok, _stopped} ->
-          %{acc | agents_stopped: acc.agents_stopped + 1}
-
-        {:error, reason} ->
-          Logger.warning(
-            "[WorkingCopies] offboarding #{working_copy_id}: could not stop agent " <>
-              "#{agent.id} (#{inspect(reason)}); it may still be running"
-          )
-
-          %{acc | agents_left_running: [agent.id | acc.agents_left_running]}
-      end
-    end)
   end
 
   # Two plain subqueries rather than correlated `exists`. The component set is

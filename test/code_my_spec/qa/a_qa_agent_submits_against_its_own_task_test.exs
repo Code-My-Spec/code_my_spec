@@ -124,4 +124,35 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
            "the refusal did not name the open QA task, so the agent has nothing " <>
              "to correct its guess with"
   end
+
+  # 257a6a15: scenarios and prose describe what QA found, never how the
+  # evidence was gathered. tools_used is self-reported the same way the
+  # observation text already is — this pins that it round-trips, and that
+  # nil (never asked) and [] (asked, answered none) stay distinguishable.
+  describe "tools_used" do
+    test "records the tools an agent reports calling", ctx do
+      submitted =
+        Map.put(attrs(ctx.task_id, :pass), :tools_used, ["browser_navigate", "browser_click"])
+
+      {:ok, attempt} = Qa.submit_qa_result(ctx.scope, submitted)
+
+      assert attempt.tools_used == ["browser_navigate", "browser_click"]
+    end
+
+    test "an attempt that never answers the question records nil, not []", ctx do
+      {:ok, attempt} = Qa.submit_qa_result(ctx.scope, attrs(ctx.task_id, :pass))
+
+      assert attempt.tools_used == nil,
+             "an old-shaped submission that never mentions tools_used must not be " <>
+               "recorded the same as one that explicitly reported calling none"
+    end
+
+    test "an agent that explicitly reports calling nothing records []", ctx do
+      submitted = Map.put(attrs(ctx.task_id, :pass), :tools_used, [])
+
+      {:ok, attempt} = Qa.submit_qa_result(ctx.scope, submitted)
+
+      assert attempt.tools_used == []
+    end
+  end
 end

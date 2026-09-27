@@ -19,7 +19,11 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
     %{scope: %{scope | active_working_copy_id: copy.id}, copy: copy}
   end
 
-  test "selecting, replacing, and clearing a story preserve the assigned backlog", %{scope: scope} do
+  # A copy used to keep every story it had ever been pointed at, and each one
+  # was then stuck: `story_assigned_elsewhere` refuses to move an assigned
+  # story, and clearing left the assignment behind. Pointing a copy at a second
+  # story stranded the first with no tool able to free it.
+  test "a copy holds the story it is pointed at and releases the rest", %{scope: scope} do
     first = story_fixture(scope)
     second = story_fixture(scope)
 
@@ -29,11 +33,34 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
 
     assert {:ok, %{active_story_id: second_id}} = WorkingCopies.set_active_story(scope, second.id)
     assert second_id == second.id
+
+    assert Repo.get!(Story, second.id).working_copy_id == scope.active_working_copy_id
+
+    assert Repo.get!(Story, first.id).working_copy_id == nil,
+           "the story it moved off has to be free for another copy to take"
+
     assert {:ok, %{active_story_id: nil}} = WorkingCopies.set_active_story(scope, nil)
 
     for story <- [first, second] do
-      assert Repo.get!(Story, story.id).working_copy_id == scope.active_working_copy_id
+      assert Repo.get!(Story, story.id).working_copy_id == nil,
+             "clearing releases what the copy held rather than pinning it there"
     end
+  end
+
+  # The release happens inside the same transaction as the selection, so a
+  # refusal takes it back: a copy pointed at something invalid keeps what it
+  # had rather than being emptied by the attempt.
+  test "a refused selection leaves the held story where it was", %{scope: scope} do
+    held = story_fixture(scope)
+    {:ok, _} = WorkingCopies.set_active_story(scope, held.id)
+
+    parked = story_fixture(scope, %{ready_for_dev: false})
+
+    assert {:error, :story_not_ready} = WorkingCopies.set_active_story(scope, parked.id)
+
+    assert Repo.get!(Story, held.id).working_copy_id == scope.active_working_copy_id
+    assert {:ok, %{active_story_id: id}} = WorkingCopies.fetch(scope.active_working_copy_id)
+    assert id == held.id
   end
 
   test "rejects parked, foreign, and differently assigned stories without replacing selection", %{

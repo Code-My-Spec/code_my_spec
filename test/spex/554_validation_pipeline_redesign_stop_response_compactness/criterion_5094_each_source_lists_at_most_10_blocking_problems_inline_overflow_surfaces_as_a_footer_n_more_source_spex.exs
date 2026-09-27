@@ -106,8 +106,14 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
         assert reason =~ ~r/\.\.\.\s*5\s+more\s+exunit\s+problems/,
                "overflow footer must say '... 5 more exunit problems', got:\n#{reason}"
 
-        assert reason =~ "get_issue",
-               "overflow footer must point the agent at get_issue, got:\n#{reason}"
+        # `list_problems`, not `get_issue`. This asked for `get_issue`, which
+        # answers about *issues* — so the one next step the footer offered could
+        # not return a problem, and an agent that followed it got nothing. The
+        # criterion's intent is that the footer names a way to see the rest; only
+        # the tool named was wrong.
+        assert reason =~ "list_problems",
+               "overflow footer must name a tool that can return the remaining " <>
+                 "problems, got:\n#{reason}"
 
         {:ok, context}
       end

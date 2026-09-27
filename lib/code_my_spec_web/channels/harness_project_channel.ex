@@ -44,6 +44,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -57,9 +59,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
+  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Promotion
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
@@ -84,7 +88,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
              device: device,
              root: payload["root"]
            ),
-         {:ok, harness} <- report_root(harness, payload["root"]),
+         {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
          {:ok, harness} <- Devices.attach(harness, device),
          :ok <-
@@ -110,7 +114,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # rather than something each call site has to remember — and forgetting it
       # returns another checkout's files with no error to notice.
       {:ok,
-       %{working_copy_id: harness.id, harness_id: harness.id, device_id: device && device.id},
+       %{
+         working_copy_id: harness.id,
+         harness_id: harness.id,
+         device_id: device && device.id,
+         sops_age_keys: local_age_keys(scope)
+       },
        socket
        |> assign(:scope, scope)
        |> assign(:harness, harness)
@@ -479,7 +488,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       ids
     )
 
-    {:reply, :ok, socket}
+    {:reply, :ok, consider_once(socket)}
   end
 
   # What the box is carrying, from the box.
@@ -739,7 +748,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # machine does not wait on it: it casts.
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
+    settle_draft(socket, agent_id, event)
     {:reply, :ok, socket}
+  end
+
+  # What an agent is writing, before it is a message. Held and broadcast, never
+  # written to the database — the message it becomes is the record. Arrives
+  # every 100ms while an agent writes, so the conversation it belongs to is
+  # looked up once and cached on the socket rather than read per draft.
+  def handle_in("agent_draft", %{"agent_id" => agent_id, "text" => text}, socket)
+      when is_binary(text) do
+    case draft_conversation(socket, agent_id) do
+      {:ok, conversation_id, socket} ->
+        Drafts.put(conversation_id, text)
+        {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_in("agent_start_result", %{"ref" => ref} = msg, socket) do
@@ -821,6 +847,85 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # The one moment we know what is running on this copy, which is the moment to
+  # ask whether any of it should be working.
+  #
+  # `Work.consider_*` is edge-triggered — a graph change, a finished task,
+  # continuous being switched on — and a restart is none of those. So a promote
+  # parked the whole fleet until the main agent's cadence came round, twenty
+  # minutes by default, at exactly the point a restart has just stranded
+  # reservations and discarded turns. Measured on the math project 2026-09-22:
+  # three promotes, and after each one every role sat idle over work that was
+  # ready the whole time.
+  #
+  # Here rather than at application boot, which is where this was tried first
+  # and did not work. The boot task runs while the agent rows still say what the
+  # last shutdown left them saying; the harness reconnects and re-registers them
+  # a moment later, so the sweep asked an empty board and woke nobody. This
+  # message *is* the re-registration, so by the time it returns there is
+  # something to ask about.
+  #
+  # Once per join, not per report. `agents_running` arrives with every manifest,
+  # and admission is guarded but not free — `graph_work?/2` is a graph read per
+  # idle agent. A join is a harness that has just (re)connected, which is the
+  # case with something to catch.
+  #
+  # In a Task because `Transport.Harness` resolves this copy's holder and calls
+  # it, and the holder is this channel: calling from here is `:calling_self`,
+  # which kills the channel and cancels every agent's turn on the copy. That is
+  # the outage this session started with.
+  defp consider_once(%{assigns: %{considered_agents?: true}} = socket), do: socket
+
+  defp consider_once(socket) do
+    scope = socket.assigns.scope
+    copy_id = scope.active_working_copy_id
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
+
+      # And the agents `consider_copy/4` cannot reach: a restart discards the
+      # turn but leaves the task held, and admission refuses an agent holding
+      # one. That combination is the thing a reconnect is most likely to have
+      # just created, and it is the one case this sweep used to walk straight
+      # past.
+      Agents.Work.resume_held_tasks(scope, copy_id)
+
+      # 73d0d505: neither call above reaches a role a restart killed outright
+      # rather than merely interrupted -- both require `status == :running`,
+      # and an agent the harness never reported back in is `:stopped`. Gated
+      # on `stopped_reason == :reaped` so a role a person deliberately stopped
+      # stays stopped; see `Agents.restart_reaped_agents/2`.
+      Agents.restart_reaped_agents(scope, copy_id)
+
+      # 1b450fc3: every existing caller of `ensure_cadence/1` (`agents.ex`
+      # watch_over/2, set_copy_continuous/3, set_agent_continuous/3) fires on a
+      # state *transition* — an agent starting, continuous flipping on. None of
+      # them fire on a bare reconnect, because nothing transitions: an agent
+      # that was already running and already continuous before the crash is
+      # still running and still continuous after it, from the server's own
+      # row's point of view. The cadence GenServer that watched it lived in the
+      # BEAM process that died, and nothing about "the harness came back" looks
+      # like a transition to any of the three triggers above. Measured: no
+      # `[Cadence]` check-in in web.log for six hours across two projects both
+      # configured at 1200s, `:4000` having restarted five times in that
+      # window.
+      #
+      # A reconnect is the shape already established for restart-survival here
+      # (`consider_copy/4`, `resume_held_tasks/2` above), so this copies it
+      # rather than adding a fourth transition-shaped trigger: idempotent
+      # (`DynamicSupervisor.start_child` treats `:already_started` as success),
+      # and it re-arms on every harness that comes back regardless of which one
+      # crashed. Not a redesign of the trigger — John is weighing replacing or
+      # supplementing polling cadence with event-based wakes, and this reaches
+      # for the existing one rather than pre-empting that; the liveness
+      # property (a restart doesn't leave the watcher dead) is what has to
+      # survive, not this particular call site.
+      MainAgent.ensure_cadence(scope)
+    end)
+
+    assign(socket, :considered_agents?, true)
   end
 
   # Unknown copy answers false. A correction we cannot attribute to the main
@@ -1740,7 +1845,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp working_copy_instance(%{assigns: %{scope: %Scope{active_working_copy_id: id}}})
        when is_binary(id) do
-    case Analysis.executor_holder(id) do
+    case HarnessRegistry.executor_holder(id) do
       {:ok, _pid, instance} -> instance
       :error -> nil
     end
@@ -2007,7 +2112,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # two processes still cannot tell which to stop. The holder's instance and the
   # checkout's root are both things this server has, so it says them.
   defp take_working_copy(harness, payload) do
-    case Analysis.register_executor(harness.id, payload["instance"], payload["root"]) do
+    case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
         :ok
 
@@ -2057,7 +2162,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp working_copy_in_use(harness, pid) do
     holder =
-      case Analysis.executor_holder(harness.id) do
+      case HarnessRegistry.executor_holder(harness.id) do
         {:ok, _pid, instance} when is_binary(instance) -> instance
         _ -> inspect(pid)
       end
@@ -2094,6 +2199,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp resolve_device(_scope, _payload), do: nil
 
+  # The keys that open this project's local `envs/dev.enc.env` and
+  # `envs/test.enc.env`, for the harness's machine keyring. Deploy environments'
+  # keys stay on the server.
+  @local_sops_environments ~w(dev test)
+
+  defp local_age_keys(scope) do
+    for env <- @local_sops_environments,
+        {:ok, key} <- [ProjectSecrets.fetch_value(scope, "age_private_key_#{env}")],
+        is_binary(key) and key != "",
+        uniq: true,
+        do: key
+  end
+
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"
 
@@ -2101,10 +2219,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the field existed does not send one, and its identity is unaffected either
   # way, because the root is recorded about the harness rather than used to
   # find it.
-  defp report_root(harness, root) when is_binary(root) and root != "",
-    do: WorkingCopies.report_root(harness, root)
+  #
+  # Corrects any agent's stale `working_copy` snapshot in the same beat as
+  # the working copy's own root, not just at read time — `LaunchRequest.for/1`
+  # sends `agent.working_copy` verbatim on a restore, so a row started against
+  # the old path would otherwise keep offering it forever, and restore fails
+  # with `:working_copy_missing` against a checkout that just joined correctly.
+  defp report_root(scope, harness, root) when is_binary(root) and root != "" do
+    with {:ok, harness} <- WorkingCopies.report_root(harness, root) do
+      {:ok, _count} = Agents.sync_working_copy_root(scope, harness.id, harness.root)
+      {:ok, harness}
+    end
+  end
 
-  defp report_root(harness, _), do: {:ok, harness}
+  defp report_root(_scope, harness, _), do: {:ok, harness}
 
   # Story 968. The checkout's config is the source; this is the server's copy of
   # it, kept the way `root` is, so the web app can render a frame at an address
@@ -2145,4 +2273,36 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       _ -> Sessions.external_id_for_harness(scope.active_working_copy_id) || "sprite"
     end
   end
+
+  defp draft_conversation(socket, agent_id) do
+    cached = Map.get(socket.assigns, :draft_conversations, %{})
+
+    case cached do
+      %{^agent_id => conversation_id} ->
+        {:ok, conversation_id, socket}
+
+      _ ->
+        case Agents.conversation_id(socket.assigns.scope, agent_id) do
+          {:ok, conversation_id} ->
+            {:ok, conversation_id,
+             assign(socket, :draft_conversations, Map.put(cached, agent_id, conversation_id))}
+
+          _ ->
+            :error
+        end
+    end
+  end
+
+  # The draft has been said, or never will be. Only an agent this socket has
+  # drafted for can have one to clear.
+  @settling_kinds ~w(message turn_ended turn_failed turn_cut_off)
+
+  defp settle_draft(socket, agent_id, %{"kind" => kind}) when kind in @settling_kinds do
+    case socket.assigns do
+      %{draft_conversations: %{^agent_id => conversation_id}} -> Drafts.clear(conversation_id)
+      _ -> :ok
+    end
+  end
+
+  defp settle_draft(_socket, _agent_id, _event), do: :ok
 end

@@ -2,7 +2,7 @@ defmodule CodeMySpecWeb.AccountLive.Components.Navigation do
   @moduledoc false
   use CodeMySpecWeb, :live_component
 
-  alias CodeMySpec.Authorization
+  alias CodeMySpec.Accounts.Authorization
 
   def render(assigns) do
     ~H"""

@@ -24,7 +24,8 @@ defmodule CodeMySpec.Embeddings do
       CodeMySpec.Environments,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

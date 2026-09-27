@@ -32,6 +32,12 @@ export const StripePaymentElement = {
   async mounted() {
     const pk = this.el.dataset.publishableKey
     const clientSecret = this.el.dataset.clientSecret
+    // A trial confirms a SetupIntent (collecting a card, charging nothing
+    // today) instead of a PaymentIntent — same Payment Element either way,
+    // Stripe reads the mode off the secret itself, but confirming it is a
+    // different call. Defaults to "payment" so nothing here changes for the
+    // charge-today flow this hook already had.
+    this.intentType = this.el.dataset.intentType === "setup" ? "setup" : "payment"
 
     if (!pk || !clientSecret) return this.showError("Payment form failed to load.")
 
@@ -58,7 +64,11 @@ export const StripePaymentElement = {
     btn.disabled = true
     this.showError("")
 
-    const {error} = await this.stripe.confirmPayment({
+    const confirm = this.intentType === "setup"
+      ? this.stripe.confirmSetup.bind(this.stripe)
+      : this.stripe.confirmPayment.bind(this.stripe)
+
+    const {error} = await confirm({
       elements: this.elements,
       // Cards confirm in place; only redirect-based methods leave the page.
       redirect: "if_required",
@@ -66,8 +76,11 @@ export const StripePaymentElement = {
 
     if (error) {
       btn.disabled = false
-      this.showError(error.message || "Payment could not be completed.")
-      this.pushEvent("payment_failed", {message: error.message || "Payment could not be completed."})
+      const fallback = this.intentType === "setup"
+        ? "Your card could not be saved."
+        : "Payment could not be completed."
+      this.showError(error.message || fallback)
+      this.pushEvent("payment_failed", {message: error.message || fallback})
       return
     }
 

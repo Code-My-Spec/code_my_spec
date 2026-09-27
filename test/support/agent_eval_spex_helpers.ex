@@ -76,8 +76,26 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   socket is where its turn events land.
   """
   @spec given_a_harnessed_checkout(map(), String.t()) :: map()
-  def given_a_harnessed_checkout(context, label) do
-    copy = CodeMySpec.TempFile.dir(label)
+  def given_a_harnessed_checkout(context, label, opts \\ []) do
+    # `root: :project` puts the agent in the project's own checkout instead of
+    # an empty one, which is where a real agent works.
+    #
+    # An empty directory is its own premise. The graph is computed per vantage,
+    # and a checkout holding no files satisfies nothing — so the whole project
+    # chain reads unsatisfied there and the only actionable requirement is its
+    # first link, whatever the fixture satisfied elsewhere. Measured on 3539:
+    # `technical_strategy` at the agent's copy while the fixture's own copy had
+    # it satisfied, a valid `:architecture` row and all of the story work
+    # waiting behind it.
+    #
+    # Still a temp directory by default, because most of these criteria are
+    # about an agent's conduct and not about what it can see.
+    copy =
+      case Keyword.get(opts, :root, :fresh) do
+        :project -> context.scope.cwd
+        :fresh -> CodeMySpec.TempFile.dir(label)
+      end
+
     File.mkdir_p!(copy)
 
     # `harness_id` is nil because this checkout has never described itself
@@ -245,10 +263,20 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   def observe(context, opts \\ [], fun) do
     agent_id = fresh_agent(context, Keyword.get(opts, :role, "coding"))
 
+    # Starting the agent moves the graph, and asking for a turn before it has
+    # settled measures a frontier that is still changing. Observed on 3539:
+    # `main: ["technical_strategy"]` at admission and `bdd_specs_passing`
+    # (coding) by the time the admitted agent asked — a different role's work,
+    # one turn apart, so whichever role the scenario picked was wrong at one end
+    # or the other.
+    settle_frontier(context)
+
     try do
-      if Keyword.get(opts, :wake, true), do: wake(context, agent_id)
+      if Keyword.get(opts, :request_turn, true), do: request_turn(context, agent_id)
       if said = Keyword.get(opts, :say), do: say(agent_id, said)
       settle(agent_id)
+
+      refute_toolless(context, agent_id)
 
       {fun.(agent_id), transcript_of(context, agent_id)}
     after
@@ -294,12 +322,19 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
   The production trigger, and the whole of it: an agent is a supervised process
   that acts when messaged and nothing polls, so `set_agent_continuous` sets the
-  flag and rings the bell. The menu it wakes with is `StopDecision.wake/2`'s —
-  rendered from the graph, addressed to this role — which is the same first
-  turn a real agent gets.
+  standing intent and `Agents.Work.request_turn_if_runnable/3` admits the turn
+  if the agent is runnable and the graph has work for its role. That is the
+  same first turn a real agent gets.
+
+  Named for what it does. This was `wake/2`, from the fanout the
+  durable-agent-work plan retired — untyped, project-wide, and replaced by
+  guarded per-agent admission. Nothing in `lib/` performs a wake any more;
+  every remaining mention there is a comment about the concept that went away.
+  A helper still called `wake` left the vocabulary alive in the one place
+  people read to learn how this works.
   """
-  @spec wake(map(), String.t()) :: String.t()
-  def wake(context, agent_id) do
+  @spec request_turn(map(), String.t()) :: String.t()
+  def request_turn(context, agent_id) do
     {:reply, response, _} =
       SetAgentContinuous.execute(%{agent_id: agent_id, continuous: true}, frame(context))
 
@@ -313,7 +348,113 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
            #{said}
            """
 
+    # Enabled is not the same as woken, and the difference is the whole run.
+    #
+    # `set_agent_continuous` answers successfully either way: it may admit a
+    # turn, or it may set the flag and find nothing to offer — no eligible work
+    # for the role on that copy, mid-turn, or holding an undispositioned task.
+    # In the second case the agent never runs, `called_in_order?/3` finds no
+    # tool calls, and the criterion reports "called nothing at all" as though
+    # the agent had considered the work and declined it.
+    #
+    # Measured 2026-09-20 on 3539: 0 of 1 in 1.1 seconds, which is far too fast
+    # for a turn against a real model and was the tell. The distinction only
+    # became visible in the reply at 3a47f6a59 (issue `fe059aa3`) — before that
+    # both outcomes said the same words, and this was undiagnosable from here.
+    #
+    # Same fault as `say/2` one function over: a premise that silently did not
+    # hold, producing a rate that describes the fixture rather than the agent.
+    refute said =~ "Nothing was requested", """
+    The agent was enabled but no turn was admitted, so it never ran and this
+    run measures nothing about its conduct.
+
+    This is the premise failing, not the agent declining. Something the
+    scenario is responsible for is not true: the role has no eligible work on
+    this copy, the agent is mid-turn, or it holds an undispositioned task.
+
+    #{said}
+
+    What the graph holds actionable at this agent's checkout, by role:
+
+    #{offered(context, agent_id)}
+    """
+
     said
+  end
+
+  # A run where the model never called a tool it had measured nothing.
+  #
+  # Not an MCP fault, which is what this first looked like. `claude-code` runs
+  # the CLI with `--tools ""` on purpose — with its own tools in hand it would
+  # do the work itself and hand back prose rather than the `tool_use` blocks
+  # Alloy executes — so tool calling is emulated: the definitions are
+  # serialised into the request as `available_tools` and the model is asked to
+  # name one back.
+  #
+  # When it does not follow that protocol it fails as *wrong output* rather than
+  # as an error, which the provider's own moduledoc names as its sharpest edge.
+  # The model writes `No such tool available` — its own words, a string in no
+  # part of this codebase or any dependency — refuses to improvise exactly as
+  # `OperatingRules` asks, and stops. Schema-valid, no exception, no log line,
+  # and indistinguishable from an agent that saw its work and declined it.
+  #
+  # `Agents.ProviderBrief` now tells a claude-code agent where its tools arrive,
+  # which took criterion 3539 from roughly three runs in four to eight in eight.
+  # This stays because the protocol is prompted rather than native, so a miss
+  # remains possible — and a miss is not evidence about conduct.
+  defp refute_toolless(context, agent_id) do
+    said = conversation(context, agent_id)
+
+    if said =~ "No such tool available", do: throw({:eval_errored, :no_tool_call})
+
+    :ok
+  end
+
+  # Drain the graph at both vantages until the actionable set stops moving.
+  #
+  # Bounded rather than looping: a graph that never settles is a finding, not
+  # something to wait out, and a spex that hangs here reports nothing at all.
+  defp settle_frontier(context) do
+    at_copy = %{context.scope | active_working_copy_id: context.copy_id}
+
+    _ =
+      Enum.reduce_while(1..10, nil, fn _, previous ->
+        :ok = Fixtures.settle_graph(context.scope)
+        :ok = Fixtures.settle_graph(at_copy)
+
+        now =
+          for role <- [:coding, :main, :product, :qa],
+              do: {role, Fixtures.actionable_names(at_copy, role)}
+
+        if now == previous, do: {:halt, now}, else: {:cont, now}
+      end)
+
+    :ok
+  end
+
+  # What `get_next_requirement` answers for this agent, quoted into a premise
+  # failure so the reason is in the message rather than in a re-run.
+  #
+  # Through the agent's own surface rather than `Requirements` directly: the
+  # spex boundary does not reach that context, and asking the way the agent
+  # asks is the more useful answer anyway — it is the same filter admission
+  # uses, so an empty answer here and a refused turn are the same fact.
+  defp offered(context, _agent_id) do
+    # `Fixtures.actionable_names/2` rather than `get_next_requirement`: it reads
+    # what `Work.graph_work?/2` reads, and it settles the graph first. The MCP
+    # tool renders for a person and answered a different question — it showed
+    # work at the fixture's copy while admission was asking about the agent's,
+    # which read as a contradiction rather than as two vantages.
+    #
+    # Per role, because the role filter is usually what is wrong: a scenario
+    # measuring a coding agent on a project whose only actionable work belongs
+    # to main is the commonest way one of these premises fails.
+    scope = %{context.scope | active_working_copy_id: context.copy_id}
+
+    [:coding, :main, :product, :qa]
+    |> Enum.map_join("\n", &"  #{&1}: #{inspect(Fixtures.actionable_names(scope, &1))}")
+  rescue
+    error -> "  could not ask: #{inspect(error)}"
   end
 
   @doc """
@@ -602,19 +743,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec measure(String.t(), pos_integer(), (pos_integer() -> {boolean(), term()})) :: map()
   def measure(behaviour, total, fun) do
-    outcomes =
-      Enum.map(1..total, fn n ->
-        case fun.(n) do
-          {held?, evidence} when is_boolean(held?) ->
-            {n, held?, evidence}
-
-          other ->
-            flunk("""
-            A measured run must answer `{held?, evidence}` — whether the agent
-            did the thing, and what it did instead. Got: #{inspect(other)}
-            """)
-        end
-      end)
+    {outcomes, errored} = collect(total, fun, [], 0)
 
     hits = Enum.count(outcomes, fn {_n, held?, _e} -> held? end)
 
@@ -623,8 +752,59 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       runs: total,
       hits: hits,
       rate: hits / total,
+      errored: errored,
       misses: Enum.filter(outcomes, fn {_n, held?, _e} -> not held? end)
     }
+  end
+
+  # A run that errored is not evidence about the agent, so it is not in the
+  # denominator — it is discarded and taken again until `total` runs actually
+  # measured something.
+  #
+  # Capped, because a criterion that errors every time is telling you about the
+  # harness and retrying forever would hide that behind a hang. Measured on 3539
+  # before `await`/`refute_toolless`: about one run in four started with no MCP
+  # session and scored `called nothing at all`, which the rate then reported as
+  # the agent declining work it had never been able to see.
+  @max_errored 10
+
+  defp collect(0, _fun, acc, errored), do: {Enum.reverse(acc), errored}
+
+  defp collect(remaining, fun, acc, errored) do
+    n = length(acc) + 1
+
+    case run_once(fun, n) do
+      {:ok, outcome} ->
+        collect(remaining - 1, fun, [outcome | acc], errored)
+
+      {:errored, reason} ->
+        assert errored < @max_errored, """
+        #{@max_errored} runs errored before #{length(acc)} could be measured, so
+        this is the harness rather than the agent. Last reason: #{inspect(reason)}.
+
+        The commonest cause is the model not following `claude-code`'s prompted
+        tool protocol: it reads `available_tools`, does not believe what it
+        finds, reports the tools missing and stops without calling anything.
+        `Agents.ProviderBrief` is what addresses that in the prompt.
+        """
+
+        collect(remaining, fun, acc, errored + 1)
+    end
+  end
+
+  defp run_once(fun, n) do
+    case fun.(n) do
+      {held?, evidence} when is_boolean(held?) ->
+        {:ok, {n, held?, evidence}}
+
+      other ->
+        flunk("""
+        A measured run must answer `{held?, evidence}` — whether the agent did
+        the thing, and what it did instead. Got: #{inspect(other)}
+        """)
+    end
+  catch
+    {:eval_errored, reason} -> {:errored, reason}
   end
 
   @doc """

@@ -56,6 +56,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Epics
   alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
@@ -63,8 +64,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Utils
-  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
@@ -79,7 +80,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # function has an error branch which assigns almost nothing, and a render
   # missing the key is a `KeyError` on a page whose whole job is to show an
   # agent that something went wrong.
-  def mount(_params, _session, socket), do: {:ok, assign(socket, :analysis_running, [])}
+  def mount(_params, _session, socket),
+    do: {:ok, assign(socket, analysis_running: [], agent_writing: nil)}
 
   # One page of turns. 50 is `Conversations.@default_page_size`; named here too
   # because the loader compares against it to decide whether more sit above.
@@ -343,12 +345,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
       {true, previous, conversation} ->
         previous && Conversations.unsubscribe_conversation(previous.id)
+        previous && Drafts.unsubscribe(previous.id)
         conversation && Conversations.subscribe_conversation(conversation.id)
+        # Subscribed before reading, so a draft that moves on in between
+        # arrives rather than being missed.
+        conversation && Drafts.subscribe(conversation.id)
 
         # The composer belongs to the agent you were talking to, not to the
         # screen. Carrying a half-typed message across to a different agent is
         # how you send it to the wrong one.
-        assign(socket, :draft, "")
+        socket
+        |> assign(:draft, "")
+        |> assign(:agent_writing, conversation && Drafts.get(conversation.id))
     end
   end
 
@@ -365,10 +373,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # that as `:starting` makes a broken app read as a slow one.
   defp assign_preview(socket, scope) do
     src = WorkingCopies.preview_url(scope)
+    status = WorkingCopies.preview_status(scope)
 
     socket
     |> assign(:preview_src, src)
-    |> assign(:preview_state, preview_state(src))
+    |> assign(:preview_state, preview_state(src, status))
     |> assign(
       :preview_extra_frame_origins,
       PreviewAddress.extra_frame_origins(scope.active_project)
@@ -376,12 +385,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   # No address is `:absent` — nothing was asked for, so the pane promises
-  # nothing. An address we have not probed is `:starting` rather than
-  # `:running`: framing it before anything answers renders a blank rectangle
-  # indistinguishable from an app that rendered nothing, which lands on the
-  # person as "my app is broken".
-  defp preview_state(nil), do: :absent
-  defp preview_state(_src), do: :running
+  # nothing. An address the checkout has never reported against is
+  # `:starting` rather than `:running`: framing it before anything answers
+  # renders a blank rectangle indistinguishable from an app that rendered
+  # nothing, which lands on the person as "my app is broken" — and, worse,
+  # framing a tunnel before `cloudflared` has connected doesn't even render
+  # blank, it renders Cloudflare's own error page inside the pane. Measured
+  # live, 2026-09-22: a preview minted at instance-boot time and probed
+  # before its first health check read as broken for the whole gap between
+  # the URL existing and the app actually answering it.
+  defp preview_state(nil, _status), do: :absent
+  defp preview_state(_src, "serving"), do: :running
+  defp preview_state(_src, "erroring"), do: :broken
+  defp preview_state(_src, "down"), do: :down
+  defp preview_state(_src, _never_reported), do: :starting
 
   # What the dynamic tab is showing, loaded once per change rather than per
   # render. The tab is one tab whose contents swap — this is the swap.
@@ -1254,6 +1271,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
   end
 
+  # What the agent is writing, before it is a message: the whole draft so far,
+  # or nil once it has been said. Checked against the conversation on screen,
+  # because a draft already in the mailbox outlives a switch to another agent.
+  def handle_info({:agent_draft, conversation_id, text}, socket) do
+    case socket.assigns[:conversation] do
+      %{id: ^conversation_id} -> {:noreply, assign(socket, :agent_writing, text)}
+      _ -> {:noreply, socket}
+    end
+  end
+
   # A waiting message settled — the agent picked it up, or it was taken back.
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
@@ -1436,6 +1463,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           analysis_running={@analysis_running}
           working?={@working?}
           draft={@draft}
+          agent_writing={@agent_writing}
           main_agent?={@main_agent?}
           main={@main}
         />
@@ -1478,6 +1506,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               analysis_running={@analysis_running}
               working?={@working?}
               draft={@draft}
+              agent_writing={@agent_writing}
               main_agent?={@main_agent?}
               main={@main}
             />
@@ -1545,6 +1574,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :analysis_running, :list, required: true
   attr :working?, :boolean, required: true
   attr :draft, :string, required: true
+
+  attr :agent_writing, :string,
+    default: nil,
+    doc: "what the agent is writing, before it is a message"
 
   # Whether the thread on screen is the project's own agent, and — when there
   # is no agent to have — why. Both came from the agents index, which was the
@@ -1762,6 +1795,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             request={request}
             on_approve="approve_permission"
             on_deny="deny_permission"
+          />
+
+          <%!-- The reply as it is written. Replaced by the message itself when
+          the turn settles; never stored. --%>
+          <ChatComponents.chat_message
+            :if={@agent_writing}
+            id="agent-writing"
+            role={:assistant}
+            label="writing…"
+            text={@agent_writing}
           />
         </div>
       </div>

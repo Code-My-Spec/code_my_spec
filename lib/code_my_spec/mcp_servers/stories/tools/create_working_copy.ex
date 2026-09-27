@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Staffing
 
   schema do
     field :label, :string,
@@ -88,7 +88,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   end
 
   defp mint(scope, params, roles) do
-    case WorkingCopies.mint(scope, label: params[:label], root: params[:root], roles: roles) do
+    case Staffing.mint(scope, label: params[:label], root: params[:root], roles: roles) do
       {:ok, copy, staffed} -> Response.tool() |> Response.text(report(copy, staffed))
       {:error, reason} -> Response.tool() |> Response.error(refusal(reason))
     end
@@ -131,26 +131,52 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
 
   defp names(known), do: Enum.map_join(known, ", ", &to_string/1)
 
-  defp report(copy, %{started: started, failed: []}) do
+  defp report(copy, %{started: started, failed: []} = staffed) do
     """
     Made a working copy at #{copy.root}.
 
     id: #{copy.id}
     agents: #{roles(started)}
+    #{setup_note(staffed)}
     """
   end
 
-  defp report(copy, %{started: started, failed: failed}) do
+  defp report(copy, %{started: started, failed: failed} = staffed) do
     """
     Made a working copy at #{copy.root}, and it is not fully staffed.
 
     id: #{copy.id}
     started: #{roles(started)}
     could not start: #{Enum.map_join(failed, ", ", fn {role, reason} -> "#{role} (#{inspect(reason)})" end)}
-
+    #{setup_note(staffed)}
     The copy exists and the work it was made for cannot all be done on it yet.
     """
   end
+
+  # Said here because the agent that asked for the copy is the one about to work
+  # in it, and a bare copy fails in ways that do not name their own cause.
+  #
+  # Measured 2026-09-24 on metric_flow, which has a justfile and no
+  # `init-worktree` recipe: the copy arrived with no deps, so the compiler leg
+  # reported "cannot satisfy its own mix.lock" and prescribed a `mix deps.get`
+  # that fails in a fresh worktree on shallow git deps; no `_build`, so
+  # `mix format` died on `Phoenix.CodeReloader`, a Mix listener in the project's
+  # own mix.exs; and no dotenv files, so a clean test file read as five broken
+  # tests when its own guard clauses flunked. Two agents filed those as framework
+  # defects and both were dismissed as environment. None of it was visible from
+  # the copy, and the fallback was silent.
+  defp setup_note(%{setup: :bare_worktree}) do
+    """
+
+    This project declares no `init-worktree` recipe, so the copy is a worktree
+    plus submodules, with `deps/` copied and `.env*` files linked from the source
+    checkout, and no `_build`. Run `mix deps.compile` there before trusting any
+    analyzer or test. Anything else the project keeps untracked is not there, and
+    failures from it describe the copy's setup, not your work.
+    """
+  end
+
+  defp setup_note(_staffed), do: ""
 
   defp roles([]), do: "none"
   defp roles(agents), do: Enum.map_join(agents, ", ", &to_string(&1.role))

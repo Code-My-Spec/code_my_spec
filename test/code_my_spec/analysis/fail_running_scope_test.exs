@@ -32,7 +32,7 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
     scope = full_scope_fixture()
     run = running_run(scope)
 
-    assert {:ok, 0} =
+    assert {:ok, []} =
              RunsRepository.fail_running(%{scope | active_working_copy_id: nil}, :probe, [])
 
     assert RunsRepository.get_run_in_project(scope, run.id).status == :running,
@@ -43,7 +43,7 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
     scope = full_scope_fixture()
     run = running_run(scope)
 
-    assert {:ok, 1} = RunsRepository.fail_running(scope, :probe, [])
+    assert {:ok, [_]} = RunsRepository.fail_running(scope, :probe, [])
     assert RunsRepository.get_run_in_project(scope, run.id).status == :failed
   end
 
@@ -53,7 +53,7 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
     scope = full_scope_fixture()
     run = running_run(scope)
 
-    assert {:ok, 0} = RunsRepository.fail_running(scope, :probe, [run.id])
+    assert {:ok, []} = RunsRepository.fail_running(scope, :probe, [run.id])
     assert RunsRepository.get_run_in_project(scope, run.id).status == :running
   end
 end

@@ -37,11 +37,9 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
-      CodeMySpec.Sessions,
-      CodeMySpec.Stories,
-      CodeMySpec.Users,
+      CodeMySpec.TaskOwner,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all
@@ -129,8 +127,11 @@ defmodule CodeMySpec.Qa do
   """
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
-      latest when is_map(latest) -> latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
-      _ -> complete_check(scope, story)
+      latest when is_map(latest) ->
+        latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
+
+      _ ->
+        complete_check(scope, story)
     end
   end
 

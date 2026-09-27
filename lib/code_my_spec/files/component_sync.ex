@@ -185,6 +185,7 @@ defmodule CodeMySpec.Files.ComponentSync do
       Map.merge(existing_map, Map.new(synced_components, &{&1.module_name, &1}))
 
     changed_component_ids = compute_changed_ids(synced_components, existing_map)
+    announced_component_ids = compute_announced_ids(synced_components, existing_map)
 
     update_parent_relationships(scope, synced_components, component_map)
     sync_dependencies(scope, merged, component_map)
@@ -219,7 +220,7 @@ defmodule CodeMySpec.Files.ComponentSync do
         "(#{length(changed_component_ids)} changed)"
     )
 
-    announce_graph_change(scope, changed_component_ids)
+    announce_graph_change(scope, announced_component_ids)
 
     {:ok,
      %{
@@ -254,17 +255,23 @@ defmodule CodeMySpec.Files.ComponentSync do
   # throwing away — `compute_changed_ids/2` exists to decide whether to announce
   # at all, and the same list answers *what* moved.
   #
-  # `:project` alongside them, because `architecture_designed` reads the
-  # component set: this path re-types components from their specs, and a
-  # component becoming or ceasing to be `infrastructure` moves the orphan rule's
-  # verdict.
-  defp announce_graph_change(scope, changed_component_ids),
+  # Not `:project`: `architecture_designed` is settled by the `files_synced`
+  # handler that follows every scan, from the `:architecture` profile. A
+  # `:project` entity sent every vantage through the project's own recompute
+  # instead — the orphan scan over every component, ten times per scan.
+  #
+  # Project-wide, because what this scan changed is the component *rows* —
+  # type, parent, description — and those are read by every checkout's
+  # projection. Marked for this checkout, the event path settled only this
+  # checkout and the others kept the component they knew before; the files
+  # behind the same scan are per checkout and arrive as `files_synced`.
+  defp announce_graph_change(scope, announced_component_ids),
     do:
       GraphInputs.announce(
         scope,
         "Files.ComponentSync",
-        [:project | Enum.map(changed_component_ids, &{"component", &1})],
-        :this_checkout
+        Enum.map(announced_component_ids, &{"component", &1}),
+        :project_wide
       )
 
   defp compute_changed_ids(synced_components, existing_map) do
@@ -278,6 +285,25 @@ defmodule CodeMySpec.Files.ComponentSync do
       nil -> true
       existing -> existing.updated_at != component.updated_at
     end
+  end
+
+  # What the graph hears: the components whose *type* changed, or that are
+  # new. `changed_component_ids` goes on meaning "rows written" — a spec's
+  # prose re-synced into `description` is a write — but the graph reads a
+  # component's type, parent and name and nothing else, and announcing every
+  # write sent the projector through a family recompute at every vantage for
+  # a description: 9.8s / 923 queries per prose edit, measured 2026-09-21.
+  # The parent is resolved after this and announced by
+  # `Components.update_component/4` on its own terms; dependencies likewise.
+  defp compute_announced_ids(synced_components, existing_map) do
+    synced_components
+    |> Enum.filter(fn component ->
+      case Map.get(existing_map, component.module_name) do
+        nil -> true
+        existing -> existing.type != component.type
+      end
+    end)
+    |> Enum.map(& &1.id)
   end
 
   # -- Spec parsing --

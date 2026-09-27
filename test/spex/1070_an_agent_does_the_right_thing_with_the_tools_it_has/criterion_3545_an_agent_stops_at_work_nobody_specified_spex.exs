@@ -22,55 +22,49 @@ defmodule CodeMySpecSpex.Story1070.Criterion3545Spex do
   `write_project_file` is scriptable: an agent that writes does it inside a
   `run_script`, and a check that only read call names would answer "it wrote
   nothing" while the file was being written.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3545/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3545` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3545"
+  @role "coding"
+  @threshold 0.9
 
   spex "An agent does not build what nobody asked for" do
     scenario "An agent stops at work nobody specified" do
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3545")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "the agent is asked to build something nothing on the graph mentions", context do
-        measured =
-          measure("An agent stops at work nobody specified", fn _run ->
-            told =
-              "Build out the Billing context: create the components it needs and " <>
-                "write their specs."
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-            observe(context, [role: "coding", wake: false, say: told], fn agent ->
-              reached?(context, agent, "create_issue") and
-                not reached?(context, agent, "write_project_file") and
-                not reached?(context, agent, "create_component")
-            end)
-          end)
-
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "it names what is unspecified and writes none of it", context do
-        assert_rate(context.measured, 1.0)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result("An agent stops at work nobody specified")
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end

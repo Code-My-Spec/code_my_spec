@@ -65,6 +65,19 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
     agent
   end
 
+  # 73d0d505's counterpart to the mid-turn fixture above: a row that carries
+  # a `stopped_reason` from a previous life, which coming back up must not
+  # keep saying.
+  defp previously_reaped(scope, agent) do
+    {:ok, agent} =
+      AgentsRepository.update_agent(scope, agent, %{
+        status: :stopped,
+        stopped_reason: :reaped
+      })
+
+    agent
+  end
+
   defp assert_afresh(agent, path) do
     assert agent.status == :running
 
@@ -83,6 +96,17 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
     {:ok, started} = Agents.record_started(ctx.scope, stale, %{agent_id: stale.id})
 
     assert_afresh(started, "record_started/3")
+  end
+
+  test "record_started/3 clears a stale stopped_reason", ctx do
+    reaped = ctx.agent |> then(&previously_reaped(ctx.scope, &1))
+
+    {:ok, started} = Agents.record_started(ctx.scope, reaped, %{agent_id: reaped.id})
+
+    assert is_nil(started.stopped_reason),
+           "73d0d505: an agent running again must not keep saying why it last " <>
+             "stopped — a later, genuinely deliberate stop must not be read as " <>
+             "still :reaped from before"
   end
 
   # The bug behind the bug, found while trying to reach `upsert/3` at all.
@@ -135,6 +159,11 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
     reaped = Repo.get(Agent, ctx.agent.id)
 
     assert reaped.status == :stopped
+
+    assert reaped.stopped_reason == :reaped,
+           "73d0d505: nothing confirmed this was on purpose, only that a report no " <>
+             "longer mentions it — the reconnect sweep needs this to tell it apart " <>
+             "from a deliberate stop"
 
     assert is_nil(reaped.turn_started_at),
            "a stopped agent is still holding a turn it cannot be running, so it " <>

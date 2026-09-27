@@ -144,9 +144,22 @@ defmodule CmsHarnessTest.Projects do
   directly, which is what that lookup ends in.
   """
   def serve(root) do
-    CmsHarness.Projects.ensure_started(root)
+    ensure_started(root)
     :ok
   end
+
+  @doc """
+  Start serving a working copy and hand back the resolved project identity.
+
+  `serve/1` discards it because most callers only need the copy to be up; a
+  scenario about what a harness does mid-run (a hang, a concurrent second
+  request) checks the `:ok`/`:error` tag itself. Delegates rather than
+  duplicating: this is `CmsHarness.Projects.ensure_started/1` by its real
+  name, exported here so a spex reaches it through this boundary instead of
+  `CmsHarness` directly.
+  """
+  @spec ensure_started(String.t()) :: {:ok, CmsHarness.ProjectIdentity.t()} | {:error, term()}
+  def ensure_started(root), do: CmsHarness.Projects.ensure_started(root)
 
   @doc "A directory with no project identity at all."
   def anonymous_dir do

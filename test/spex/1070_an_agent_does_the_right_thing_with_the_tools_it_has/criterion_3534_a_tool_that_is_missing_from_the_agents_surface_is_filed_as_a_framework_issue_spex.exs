@@ -23,66 +23,51 @@ defmodule CodeMySpecSpex.Story1070.Criterion3534Spex do
   is exactly the shape of the incident (`23f5544e`): the stop menu named
   `list_tasks` to a surface that did not carry it. Naming one here reproduces
   the premise without needing a real absence in the tree to still be there.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3534/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3534` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3534"
+  @role "coding"
+  @threshold 0.8
 
   spex "An agent files a framework issue when the tooling is what is broken" do
     scenario "A tool that is missing from the agent's surface is filed as a framework issue" do
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3534")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "the agent is told to use a tool nothing carries", context do
-        measured =
-          measure("A tool that is missing from the agent's surface is filed as a framework issue",
-            fn _run ->
-              told =
-                "Before you start, call `list_my_open_tasks` to see what you are " <>
-                  "already holding. It is on your surface."
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
-                filed_at?(context, "framework")
-              end)
-            end)
-
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "the fault is in the framework backlog rather than on a story", context do
-        assert_rate(context.measured, 0.8)
-
-        refute filed_at?(context, "app"),
-               """
-               The tooling fault was filed against the application.
-
-               A framework fault on a story blocks work that has nothing to do
-               with it and leaves the framework backlog empty — so the thing
-               that is broken goes unlisted while something that is not broken
-               is marked as blocked.
-
-               #{issues_filed(context, %{scope: "app"})}
-               """
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result(
+          "A tool that is missing from the agent's surface is filed as a framework issue"
+        )
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end

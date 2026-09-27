@@ -5,7 +5,7 @@ defmodule CodeMySpec.TaskOwner do
       CodeMySpec.Agents,
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -47,7 +47,9 @@ defmodule CodeMySpec.TaskOwner do
   change lands rather than in fifteen call sites.
   """
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
@@ -121,7 +123,8 @@ defmodule CodeMySpec.TaskOwner do
   @spec block_task(Scope.t(), t(), String.t(), atom(), String.t(), keyword()) ::
           {:ok, t()} | {:error, term()}
   def block_task(scope, owner, task_id, type, blocker_id, opts \\ [])
-      when type in [:question, :tap_out, :manual] and is_binary(blocker_id) and blocker_id != "" do
+      when type in [:question, :tap_out, :manual, :issue] and is_binary(blocker_id) and
+             blocker_id != "" do
     locked_update(scope, owner, fn current ->
       case find_task(current, task_id) do
         %Task{status: :active} ->
@@ -141,6 +144,63 @@ defmodule CodeMySpec.TaskOwner do
           {:error, :task_not_active}
       end
     end)
+  end
+
+  @doc """
+  Release any task blocked on an issue, now that the issue is resolved.
+
+  The handoff QA could not make for itself. A QA agent that finds a bug files
+  it and then has nothing it can do until another role fixes it — but a task
+  could only be blocked on a `:question`, a `:tap_out` or `:manual`, all of
+  which wait on a person. So QA raised a tap-out, which is a human gate, to
+  express a condition the system can see for itself.
+
+  Measured on story 1053, 2026-09-22: three rounds of QA finding a real
+  regression, filing it, tapping out, a human denying the tap-out once coding
+  had landed the fix, and QA re-testing. Every technical step was autonomous
+  and correct; the only human input was three mechanical "yes, that is fixed
+  now".
+
+  The obvious alternative does not exist: `qa_complete` (id 4) cannot take
+  `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
+  on 4 and the graph would cycle.
+
+  Answers the count released, so a caller can say whether anything was waiting.
+  """
+  @spec release_issue_block(Scope.t(), String.t()) :: {:ok, non_neg_integer()}
+  def release_issue_block(%Scope{} = scope, issue_id) when is_binary(issue_id) do
+    released =
+      scope
+      |> Agents.list_agents()
+      |> Enum.filter(&blocked_on_issue?(&1, issue_id))
+      |> Enum.map(&release_one(scope, &1, issue_id))
+      |> Enum.count(&(&1 == :ok))
+
+    {:ok, released}
+  end
+
+  defp blocked_on_issue?(agent, issue_id) do
+    Enum.any?(agent.tasks || [], fn task ->
+      task.status == :blocked and task.blocker_type == :issue and
+        task.blocker_id == issue_id and is_nil(task.blocker_resolved_at)
+    end)
+  end
+
+  # Released and then offered a turn, because clearing the block alone leaves
+  # the agent eligible and asleep — `Work.consider_*` is edge-triggered and an
+  # issue resolving elsewhere is not one of its edges.
+  defp release_one(scope, agent, issue_id) do
+    case release_block(scope, agent, issue_id) do
+      {:ok, _owner} ->
+        Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Work.consider_copy(scope, agent.working_copy_id, :issue_resolved)
+        end)
+
+        :ok
+
+      _ ->
+        :error
+    end
   end
 
   @doc "Resolve only a matching blocker; never reactivate its task. Replays are no-ops."

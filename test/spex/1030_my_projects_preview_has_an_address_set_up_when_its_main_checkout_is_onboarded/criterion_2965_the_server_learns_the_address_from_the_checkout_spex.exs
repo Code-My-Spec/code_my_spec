@@ -67,6 +67,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion2965Spex do
              context do
         context = given_a_main_checkout(context, "spex_2965", preview_url: @url)
 
+        :ok =
+          CodeMySpecSpex.WorkingCopyHelpers.report_preview_status(
+            context.harness_socket,
+            "serving"
+          )
+
         # The conversation has to exist for there to be a screen with a preview
         # beside it, and saying something is how one comes into being — the panel
         # is part of the page a person talks to their agent on, not a page of its

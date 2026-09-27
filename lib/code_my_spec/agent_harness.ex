@@ -42,6 +42,7 @@ defmodule CodeMySpec.AgentHarness do
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all

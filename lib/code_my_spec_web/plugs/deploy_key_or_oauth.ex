@@ -27,7 +27,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.UserAuth
 
@@ -126,7 +126,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
 
   defp scope_for(user, project) do
     user
-    |> Scope.for_user()
+    |> UserPreferences.scope_for()
     |> Map.merge(%{
       active_account_id: project.account_id,
       active_project: project,

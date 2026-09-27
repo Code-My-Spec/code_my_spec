@@ -51,7 +51,12 @@ defmodule CodeMySpecTest.InProcessDeviceClient do
   defp issued(%Plug.Conn{status: 200} = conn) do
     case Phoenix.ConnTest.json_response(conn, 200) do
       %{"device_id" => id} = body when is_binary(id) ->
-        {:ok, %{device_id: id, working_copies: body["working_copies"] || %{}}}
+        {:ok,
+         %{
+           device_id: id,
+           working_copies: body["working_copies"] || %{},
+           pending_local_projects: pending_local_projects(body["pending_local_projects"])
+         }}
 
       other ->
         {:error, {200, other}}
@@ -60,6 +65,15 @@ defmodule CodeMySpecTest.InProcessDeviceClient do
 
   defp issued(%Plug.Conn{status: status} = conn),
     do: {:error, {status, Phoenix.ConnTest.response(conn, status)}}
+
+  defp pending_local_projects(list) when is_list(list) do
+    for %{"id" => id, "name" => name, "app_name" => app_name, "deploy_key" => key} <- list,
+        is_binary(id) and is_binary(name) and is_binary(app_name) and is_binary(key) do
+      %{id: id, name: name, app_name: app_name, deploy_key: key}
+    end
+  end
+
+  defp pending_local_projects(_other), do: []
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)

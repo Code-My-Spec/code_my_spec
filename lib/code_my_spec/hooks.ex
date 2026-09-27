@@ -45,6 +45,7 @@ defmodule CodeMySpec.Hooks do
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Validation
     ],
     exports: :all

@@ -20,9 +20,10 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -53,6 +54,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
       end
 
       then_ "and holding a different one instead runs on that", context do
+        stop(context.first, context.frame)
         Fixtures.disconnect_provider(context.scope, :zai)
         Fixtures.connect_provider(context.scope, "anthropic")
 
@@ -67,5 +69,12 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
         {:ok, context}
       end
     end
+  end
+
+  # A copy holds one agent per role, so the next one starts after this one stops.
+  defp stop(response, frame) do
+    agent_id = response_field(response, "Agent")
+    {:reply, reply, _} = StopAgent.execute(%{"agent_id" => agent_id}, frame)
+    refute reply.isError, response_text(reply)
   end
 end

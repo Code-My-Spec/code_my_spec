@@ -57,6 +57,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.AnalysisServer
+  alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
@@ -620,12 +621,38 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_join(topic, reply, socket) do
     Logger.info("[CmsHarness] holding #{socket.assigns.project.root} — joined #{topic}")
 
+    # `attempts` is deliberately NOT reset here, and that is the whole of this
+    # comment. Joining is not evidence the connection works — it is evidence the
+    # server accepted a join, which is a weaker claim and, for a channel whose
+    # very next push is refused, a false one.
+    #
+    # Measured 2026-09-23: four harness instances ran this loop — join, push
+    # `read_model`, get `{:error, %{"reason" => "unmatched topic"}}`, disconnect,
+    # `backoff(0)` = 1000ms, join again — roughly once a second, indefinitely.
+    # One instance logged 2,777 read-model refusals against 1,130 disconnects.
+    # Together they wrote ~370 lines a minute into `harness.log`, rotating a
+    # 10MB file every ~35 minutes, so the entire retained harness history was
+    # under two hours old and the previous day's was gone. That history is the
+    # only place harness symptoms live — a refused hook, a manifest sent and
+    # never accepted, a dropped analyzer result — so the loop was destroying the
+    # evidence for the next harness bug faster than anyone could look at it.
+    #
+    # The backoff table only ever reached its first entry, because every cycle
+    # passed through here and zeroed it.
+    #
+    # So the reset moves to the read-model reply, which is what the join exists
+    # to obtain — the comment below says so: "a scan without one resolves no
+    # owners and validates no specs". A connection that has handed over a read
+    # model has proved it works. One that has not is still a candidate for
+    # backing off, which is the correct behaviour for a harness that cannot
+    # resolve owners and is therefore not scanning anyway.
+    install_age_keys(reply)
+
     socket =
       socket
       |> persist_issued_identity(reply)
       |> assign(:joined, true)
       |> assign(:joined_at, System.monotonic_time(:second))
-      |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
       |> assign(:silences, 0)
@@ -633,8 +660,7 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_read_model_refresh()
     schedule_preview_check()
     schedule_machine_load_check()
-    schedule_agents_running()
-    socket = report_agents_running(socket)
+    schedule_agents_running_after_join()
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -647,6 +673,22 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, ask_what_to_restore(socket, topic)}
     end
   end
+
+  # So `just init-worktree` can decrypt this project's `envs/*.enc.env`.
+  defp install_age_keys(%{"sops_age_keys" => [_ | _] = keys}) do
+    case CmsHarness.SopsKeyring.install(keys) do
+      {:ok, _added} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not write the sops keyring (#{inspect(reason)}); new working " <>
+            "copies of this project will not be able to decrypt their env files"
+        )
+    end
+  end
+
+  defp install_age_keys(_reply), do: :ok
 
   # The id the server issued for this working copy, written down so a restart
   # presents the same one rather than being issued a second.
@@ -762,6 +804,31 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_agents_running,
     do: Process.send_after(self(), :report_agents_running, @agents_running_ms)
+
+  # Matches `Agents.start_agent/2`'s own @start_timeout_ms — how long the
+  # server already gives a fresh start to confirm, so a restore gets no less
+  # runway than an ordinary one.
+  #
+  # `handle_join` used to report immediately and unconditionally, which reads
+  # as "what is running right now" at the one moment that answer is always
+  # empty — nothing has been asked to start yet, restoring included, since
+  # `ask_what_to_restore/2` below fires its push and returns without waiting
+  # for any of the agents it asked for to actually come up. The server read
+  # that empty report as "none of this copy's :starting agents are really
+  # running" and reaped every one of them — `settle_against/3` has no grace
+  # period — before the restore reply had a chance to land, let alone launch
+  # anything. `34e03128`: measured live against a Docker boot where an agent
+  # created 600ms before the harness joined was marked :stopped forever,
+  # though nothing had ever tried, and failed, to start it — the request
+  # simply arrived after the one report that would ever ask about it.
+  #
+  # The ordinary 60s cadence is not the fix for the same reason: it is armed
+  # from this same instant, so its first firing sits in exactly the window
+  # this delay exists to skip.
+  @join_agents_running_delay_ms 15_000
+
+  defp schedule_agents_running_after_join,
+    do: Process.send_after(self(), :report_agents_running, @join_agents_running_delay_ms)
 
   # What is actually alive here, read from the registry rather than from
   # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
@@ -883,7 +950,14 @@ defmodule CmsHarness.Project.ChannelClient do
         previous = Map.get(socket.assigns, :read_model)
         read_model = deserialize_read_model(payload)
 
-        socket = socket |> assign(:read_model, read_model) |> resume_watcher()
+        # The connection has now done the thing the join exists for, so this is
+        # where the reconnect backoff is allowed to forget its history. See the
+        # note in `handle_join/3` for what resetting it there cost.
+        socket =
+          socket
+          |> assign(:read_model, read_model)
+          |> assign(:attempts, 0)
+          |> resume_watcher()
 
         maybe_sync(socket, previous, read_model)
         {:ok, socket}
@@ -1143,8 +1217,9 @@ defmodule CmsHarness.Project.ChannelClient do
     Logger.error("""
     [CmsHarness] the server REJECTED the #{source} result for #{socket.assigns.project.root}: #{inspect(other)}
 
-    That analyzer ran, but nothing was recorded from it. The run is still open on
-    the server, so the next stop will report analysis pending rather than clean.
+    No findings were recorded from this result. Rejected analyzer payloads mark
+    their run failed; a missing or otherwise unrecognized run cannot establish
+    its status. Consult the rejection reason and server run ledger before retrying.
     """)
 
     socket
@@ -1490,10 +1565,8 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
-  defp apply_promotion("promotion_restart", %{"root" => root} = payload) do
-    refresh_harness? = Map.get(payload, "refresh_harness", true)
-    with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1, refresh_harness?))
-  end
+  defp apply_promotion("promotion_restart", %{"root" => root}),
+    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}
@@ -1558,6 +1631,22 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def encode_start_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
+
+  @doc """
+  One fragment of the text an agent is writing, for the live view.
+
+  Never stored. Fragments are gathered per agent and pushed as the whole draft
+  so far, every 100ms at most — so a view that missed one push is corrected
+  by the next rather than showing a sentence with a hole in it.
+  """
+  def report_draft(root, agent_id, %{payload: text} = envelope) when is_binary(text) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:draft, agent_id, Map.get(envelope, :turn), text})
+      [] -> :ok
+    end
+  end
+
+  def report_draft(_root, _agent_id, _envelope), do: :ok
 
   @doc """
   Tell the server about one step an agent took.
@@ -1729,9 +1818,25 @@ defmodule CmsHarness.Project.ChannelClient do
       %{text: text} when is_binary(text) -> text
       %{content: content} when is_binary(content) -> content
       %{payload: %{name: name} = payload} when is_binary(name) -> tool_text(name, payload)
-      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect()
+      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect_rest()
     end
   end
+
+  # `turn_started` has nothing left once the bookkeeping is dropped, and
+  # `inspect(%{})` is the three characters `%{}` — which the server stored as
+  # something the agent said, 5,667 times, one per turn (1926fbc4). No text is
+  # `nil`, which the server already skips.
+  defp inspect_rest(rest) when map_size(rest) == 0, do: nil
+  defp inspect_rest(rest), do: inspect(rest)
+
+  @draft_flush_ms 100
+
+  defp schedule_draft_flush(%{assigns: %{draft_flush: ref}} = socket) when ref != nil, do: socket
+
+  defp schedule_draft_flush(socket),
+    do: assign(socket, :draft_flush, Process.send_after(self(), :flush_drafts, @draft_flush_ms))
+
+  defp drafts(socket), do: Map.get(socket.assigns, :drafts, DraftBuffer.new())
 
   # A tool call, as a person would say it: `read mix.exs`.
   #
@@ -2025,6 +2130,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  def handle_info(:flush_drafts, %{assigns: %{joined: true}} = socket) do
+    {payloads, drafts} = DraftBuffer.take(drafts(socket))
+    Enum.each(payloads, &push(socket, socket.assigns.topic, "agent_draft", &1))
+    {:noreply, socket |> assign(:drafts, drafts) |> assign(:draft_flush, nil)}
+  end
+
+  def handle_info(:flush_drafts, socket),
+    do: {:noreply, socket |> assign(:drafts, DraftBuffer.new()) |> assign(:draft_flush, nil)}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # Consecutive hook decisions the server never answered.
@@ -2226,13 +2340,28 @@ defmodule CmsHarness.Project.ChannelClient do
       "event" => encode_turn_event(envelope)
     })
 
-    {:noreply, socket}
+    # Dropped here so a flush still pending cannot push a draft after the
+    # message it became; the push for this event went out first, and the server
+    # clears its copy on it.
+    drafts = DraftBuffer.settle(drafts(socket), agent_id, Map.get(envelope, :event))
+    {:noreply, assign(socket, :drafts, drafts)}
   end
 
   # Not joined, so there is nowhere to send it. Dropped rather than queued, for
   # the same reason as `record_turn`: a backlog of steps replayed after a
   # reconnect reads as the agent doing them now.
   def handle_cast({:turn_event, _agent_id, _envelope}, socket), do: {:noreply, socket}
+
+  # A fragment of what an agent is writing, flushed on a timer: a push per
+  # fragment is a push every few characters.
+  def handle_cast({:draft, agent_id, turn, text}, %{assigns: %{joined: true}} = socket) do
+    socket
+    |> assign(:drafts, DraftBuffer.add(drafts(socket), agent_id, turn, text))
+    |> schedule_draft_flush()
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_cast({:draft, _agent_id, _turn, _text}, socket), do: {:noreply, socket}
 
   @impl Slipstream
   # Dropped rather than queued when the channel is not joined. A recording that

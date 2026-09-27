@@ -117,6 +117,43 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     do: {false, %{reason: "No active scope or invalid story entity — cannot check Three Amigos."}}
 
   @doc """
+  Whether every question raised against this story is answered — none left
+  `:open`, resolved or deferred.
+
+  Distinct from `sealed?/2`, on purpose. `sealed?` is the one-way latch on the
+  Three Amigos *conversation*, and correctly ignores a question raised or
+  backfilled afterward — recomputing it would silently un-ship a story that
+  shipped months ago (see the prerequisite comment on `three_amigos_complete`
+  in `RequirementDefinitionData`). This is the other half issue 56cf5697
+  found missing: a sealed story's open questions were nothing's problem,
+  because nothing asked this question at all. `questions_answered?` is what
+  `ResolveQuestions` (`AgentTasks.ResolveQuestions`) reads, gated downstream
+  of the seal so it has nothing to do before sealing's own pre-seal gate
+  (`maybe_add_questions_gap/2` below) has already cleared.
+
+  Takes the same three-argument shape as `sealed?/3` so both delegates agree;
+  there is nothing worth preloading here that a direct query does not already
+  answer as cheaply.
+  """
+  @spec questions_answered?(Scope.t(), term(), map()) :: {boolean(), map()}
+  def questions_answered?(scope, entity, _ctx), do: questions_answered?(scope, entity)
+
+  @spec questions_answered?(Scope.t(), term()) :: {boolean(), map()}
+  def questions_answered?(scope, %Story{} = story) do
+    case Questions.list_questions_for_story(scope, story.id) |> Enum.filter(&(&1.status == :open)) do
+      [] ->
+        {true, %{status: "No open questions"}}
+
+      open ->
+        {false,
+         %{reason: "#{length(open)} open question(s): " <> Enum.map_join(open, "; ", & &1.text)}}
+    end
+  end
+
+  def questions_answered?(_scope, _entity),
+    do: {false, %{reason: "No active scope or invalid story entity — cannot check questions."}}
+
+  @doc """
   Why a story that is not sealed is not sealed.
 
   Public for `Requirements.Handlers`, which settles `three_amigos_complete`

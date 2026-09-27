@@ -87,7 +87,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     File.write!(log_file, "")
 
     harness_port = free_port()
-    script = build_script(dir, app_dir, app_name, port, harness_port)
+    script = build_script(container_name, dir, app_dir, app_name, port, harness_port)
     script_path = Path.join(dir, "run.sh")
     File.write!(script_path, script)
     File.chmod!(script_path, 0o755)
@@ -120,7 +120,44 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   # such internal/external split, so the line is informational scaffolding
   # for the same marker match, not a claim about where the app is actually
   # bound — `PORT` is what actually places it.
-  defp build_script(dir, app_dir, app_name, port, harness_port) do
+  #
+  # `CMS_NODE_NAME` and `CMS_PROJECT_DIR` on the harness line are both
+  # load-bearing, not decoration — two separate gaps that produced the exact
+  # same visitor-facing failure ("dumped into the cockpit, no preview, and
+  # every message refused with 'nothing here is holding that working copy'")
+  # and were only distinguishable by reading this workspace's own `run.log`,
+  # which nothing serves or reads.
+  #
+  # `CMS_NODE_NAME=#{container_name}`: `rel/env.sh.eex` names every
+  # `cms start` node `codemyspec` by default — one cms per machine is the
+  # desktop-install assumption — and its own comment already names this exact
+  # failure: "a fixed sname makes the second one die at boot with 'the name
+  # codemyspec@<host> seems to be in use', including when a sprite runs next
+  # to a developer's own cms." A box that also runs its own persistent `cms
+  # harness` for other checkouts — this one does, continuously — collided
+  # with every workspace booted here on the very first boot, silently: the
+  # app came up and answered fine while the harness died on `epmd`
+  # registration. One unique name per workspace, reusing the same
+  # `container_name` that already keys everything else about it, is what
+  # `CMS_NODE_NAME` exists for.
+  #
+  # `CMS_PROJECT_DIR=#{app_dir}`: fixing the name collision surfaced a second,
+  # independent gap behind it — the harness came up cleanly, under its own
+  # name, and still never served this project. `CmsHarness.Projects`'
+  # moduledoc says why: a project is served either because `CMS_PROJECT_DIR`
+  # named it at boot (the *sprite* path — "one checkout... started at boot
+  # rather than waiting for the first hook") or because a hook request from
+  # an already-running session picked it up (the *laptop* path). A workspace
+  # booted here is the sprite case exactly — there is no developer already
+  # sitting in this checkout to fire a first hook — but this runner never set
+  # the variable that path depends on, so the harness sat idle forever
+  # waiting for a hook that had no way to ever arrive.
+  #
+  # No third variable for device isolation, though there is a third gap here
+  # — `CmsHarness.Device.path/0` now derives it from `CMS_PROJECT_DIR`
+  # itself, one directory up. See that function's own comment for why a
+  # workspace needs to be a device of its own at all.
+  defp build_script(container_name, dir, app_dir, app_name, port, harness_port) do
     """
     #!/bin/bash
     set -uo pipefail
@@ -174,7 +211,10 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     fi
 
     log "Starting the cms harness server on :#{harness_port}"
-    CMS_HARNESS_PORT=#{harness_port} cms start &
+    export CMS_NODE_NAME="#{container_name}"
+    export CMS_HARNESS_PORT="#{harness_port}"
+    export CMS_PROJECT_DIR="#{app_dir}"
+    #{harness_source().command()} &
 
     log "Starting #{app_name} on :4000"
     exec env PORT=#{port} mix phx.server
@@ -237,11 +277,23 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   def write_identity(dir, env) do
     # `instance_env/1` hands back string-keyed 2-tuples, not a keyword list, so
     # `env[:KEY]` finds nothing and finds it silently.
+    #
+    # The five `preview_*` keys are exactly what `ClientUtils.Harness.
+    # Preview.config/2` reads out of this same file to decide whether
+    # `ClientUtils.CloudflareTunnel` has anything to dial — absent, it reads
+    # `enabled: false` and the generated app's preview stays a permanently
+    # empty frame, which is what every instance did before `preview_env/1`
+    # existed to provision one at all.
     fields = %{
       "working_copy_id" => value(env, "CMS_WORKING_COPY_ID"),
       "project_id" => value(env, "CMS_PROJECT_ID"),
       "deploy_key" => value(env, "CMS_DEPLOY_KEY"),
-      "server_url" => value(env, "CMS_SERVER_URL")
+      "server_url" => value(env, "CMS_SERVER_URL"),
+      "preview_url" => value(env, "CMS_PREVIEW_URL"),
+      "preview_tunnel_id" => value(env, "CMS_PREVIEW_TUNNEL_ID"),
+      "preview_tunnel_secret" => value(env, "CMS_PREVIEW_TUNNEL_SECRET"),
+      "preview_account_tag" => value(env, "CMS_PREVIEW_ACCOUNT_TAG"),
+      "preview_embedder" => value(env, "CMS_PREVIEW_EMBEDDER")
     }
 
     fields
@@ -407,12 +459,39 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   defp state_path(dir), do: Path.join(dir, ".runner_state.json")
   defp log_path(dir), do: Path.join(dir, "run.log")
 
+  @doc """
+  Where an instance of `app_name` under `container_name` actually lands.
+
+  The bare-metal counterpart to `Workspaces.instance_root/1`'s Docker case —
+  "the entrypoint generates into /workspace/<app> and nowhere else" has no
+  equivalent fixed truth here, since a boot's root depends on this box's own
+  `local_workspace_root` configuration (`~/.codemyspec/workspaces` by
+  default) rather than a path baked into an image. Public so the server can
+  ask rather than assume the container path: `WorkingCopies.report_root/2`
+  recording `/workspace/<app>` for an instance that actually landed
+  somewhere under that real root is a path the harness can never match once
+  it joins under its own — which reads as `cms harness`'s own agent-restore
+  failing with `:working_copy_missing`, not as a wrong path, since nothing
+  compares the two directly.
+  """
+  @spec root(String.t(), String.t()) :: String.t()
+  def root(container_name, app_name), do: container_name |> workspace_dir() |> Path.join(app_name)
+
   defp workspace_dir(container_name), do: Path.join(workspace_root(), container_name)
 
   defp workspace_root do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Workspaces, [])
     |> Keyword.get(:local_workspace_root, Path.expand("~/.codemyspec/workspaces"))
+  end
+
+  # Defaults to the published release, which is the only correct answer on a
+  # customer's own laptop — see `HarnessSource`'s own moduledoc for what
+  # trusting it unconditionally cost this dev box specifically.
+  defp harness_source do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Workspaces, [])
+    |> Keyword.get(:harness_source, CodeMySpec.Workspaces.HarnessSource.Installed)
   end
 
   defp free_port do

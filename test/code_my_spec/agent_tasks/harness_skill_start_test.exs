@@ -54,9 +54,12 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
              "server-side walk could make them"
   end
 
-  # A copy with no story selected is answered for the project, so an empty
-  # project graph is the terminal state and says so — story 1015's criterion
-  # 2393 is the one that lets an agent with nothing to do stop.
+  # A copy with no story selected is answered for the project. Nothing has
+  # projected this fixture's graph, and a graph with no rows says so rather
+  # than calling the project finished — zero requirements is not zero left,
+  # and "All requirements satisfied" is what decides whether an agent is
+  # started. A computed graph with nothing left is the terminal state story
+  # 1015's criterion 2393 lets an agent stop on; this is not that.
   #
   # What it must never do is name a story. "This story is complete" against a
   # copy that was never given one describes work that does not exist, and the
@@ -68,7 +71,8 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
              SkillRouter.resolve(harness_scope(scope), %{"skill" => "next"})
 
     assert prompt =~ "# Story scope"
-    assert prompt =~ "All requirements satisfied"
+    assert prompt =~ "No requirement graph yet"
+    refute prompt =~ "All requirements satisfied"
     refute prompt =~ "This story is complete"
     refute prompt =~ "Call `start_task`"
   end

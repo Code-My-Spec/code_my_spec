@@ -28,6 +28,7 @@ defmodule CodeMySpec.PromotionTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   describe "a runner with nowhere to run" do
@@ -321,6 +322,61 @@ defmodule CodeMySpec.PromotionTest do
       assert status == "", "the version bump has to land as a commit, not sit uncommitted"
     end
 
+    # The target's submodule checkout is not moved by `git merge`, so a bump
+    # committed with `-a` staged that stale checkout and reverted the pointer
+    # the branch brought. Every promote dropped `.code_my_spec` bumps this way.
+    test "the version bump does not revert a submodule pointer the branch moved",
+         %{root: root, git: git, env: env} do
+      {:ok, sub} = Briefly.create(directory: true)
+      sub_git = fn args -> System.cmd("git", args, cd: sub, stderr_to_stdout: true) end
+      {_, 0} = sub_git.(["init", "--initial-branch=main"])
+
+      {_, 0} =
+        sub_git.([
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "user.name=T",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "one"
+        ])
+
+      {_, 0} =
+        sub_git.([
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "user.name=T",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "two"
+        ])
+
+      {two, 0} = sub_git.(["rev-parse", "HEAD"])
+      {one, 0} = sub_git.(["rev-parse", "HEAD~1"])
+
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["-c", "protocol.file.allow=always", "submodule", "add", sub, "docs"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(one)])
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(two)])
+      {_, 0} = git.(["add", "docs"])
+      {_, 0} = git.(["commit", "-m", "bump docs"])
+      {_, 0} = git.(["checkout", "main"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(one)])
+
+      assert {:ok, %{version: "1.2.4"}} = Steps.merge(env, root, "side")
+
+      {tree, 0} = git.(["ls-tree", "HEAD", "docs"])
+      assert tree =~ String.trim(two), "the promote commit reverted the submodule pointer"
+    end
+
     test "a checkout with no mix.exs merges anyway and originates no version",
          %{root: root, git: git, env: env} do
       File.write!(Path.join(root, "f.txt"), "base\n")
@@ -357,6 +413,62 @@ defmodule CodeMySpec.PromotionTest do
       {tags, 0} = git.(["tag", "--list"])
       assert tags == "", "a no-op promote must not mint a tag for nothing"
     end
+
+    test "an already-up-to-date merge still says which version carries the work",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.0.0",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, stamp_version: "1.0.0"}} = Steps.merge(env, root, "side"),
+             "the merge originated nothing, so `version` is nil — but the work " <>
+               "on this branch is on main, carried there by 1.0.0, and that is " <>
+               "the version a story on it should be stamped with. Before this " <>
+               "split, a story whose specs went green after the promotion that " <>
+               "carried its code could never be stamped by anything: only a " <>
+               "merge that moves the sha stamped, and for that story there was " <>
+               "nothing left to move (Broken Oaths story 937, 2026-09-22)"
+
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.0.0"),
+             "stamping reads the version, it does not mint one"
+
+      {tags, 0} = git.(["tag", "--list"])
+      assert tags == "", "and it does not tag one either"
+    end
+
+    test "a no-op merge with no mix.exs has no version to stamp with",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "f.txt"), "base\n")
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, stamp_version: nil}} = Steps.merge(env, root, "side"),
+             "nothing to read and nothing to mint stamps nothing, which is the " <>
+               "behaviour a checkout with no mix.exs had before this existed"
+    end
+
+    test "a merge that moves stamps with the version it just minted",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: "1.2.4", stamp_version: "1.2.4"}} = Steps.merge(env, root, "side"),
+             "when the merge does originate a version the two agree, so this " <>
+               "split changes nothing on the path that already worked"
+    end
   end
 
   # The checkout's live git state can no longer be set here at all, and that is
@@ -381,7 +493,7 @@ defmodule CodeMySpec.PromotionTest do
           device: device
         )
 
-      {:ok, _} = WorkingCopies.designate_main(scope, running.id)
+      {:ok, _} = Staffing.designate_main(scope, running.id)
 
       {:ok, agent} =
         WorkingCopies.issue(scope, nil,

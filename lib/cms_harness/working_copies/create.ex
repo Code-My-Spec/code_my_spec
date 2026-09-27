@@ -72,11 +72,11 @@ defmodule CmsHarness.WorkingCopies.Create do
     target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
     with :ok <- refuse_existing(target),
-         :ok <- add_worktree(root, target, name),
+         {:ok, setup} <- add_worktree(root, target, name),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
       Logger.info("[CmsHarness] made a working copy at #{target}")
-      {:ok, %{root: target, working_copy_id: id}}
+      {:ok, %{root: target, working_copy_id: id, setup: setup}}
     end
   end
 
@@ -145,12 +145,39 @@ defmodule CmsHarness.WorkingCopies.Create do
   # caller got a crash where it had asked a question, and the reply the agent
   # was waiting for never came. Somewhere it cannot write is an ordinary answer
   # here, not an exceptional one.
+  # Answers `{:ok, setup}` where `setup` says how the copy was made, because a
+  # copy made by the fallback is a different thing from one the project set up
+  # and the caller has to be able to tell.
+  #
+  # It used to answer a bare `:ok` for both. `:no_recipe` then fell through to
+  # `plain_worktree/3` mutely, and the copy was handed to agents with a worktree
+  # and submodules and nothing else. On 2026-09-24 that cost a night on
+  # metric_flow: no deps, so the compiler leg said "cannot satisfy its own
+  # mix.lock" and prescribed a `mix deps.get` that fails in a fresh worktree on
+  # shallow git deps; no `_build`, so `mix format` died on `Phoenix.CodeReloader`,
+  # a Mix listener in the project's own mix.exs; no dotenv files, so a clean test
+  # file read as five broken tests when its own guard clauses flunked. Two agents
+  # filed those as framework defects and both were dismissed as environment.
+  #
+  # `cms_new` generates the recipe, so this only ever bites a brownfield project
+  # — which is exactly the project nobody thinks to check.
   defp add_worktree(root, target, name) do
     with :ok <- make_parent(target) do
       case recipe(root, name, target) do
-        :ok -> :ok
-        :no_recipe -> plain_worktree(root, target, name)
-        {:error, _} = error -> error
+        :ok ->
+          {:ok, :project_recipe}
+
+        :no_recipe ->
+          Logger.warning(
+            "[CmsHarness] #{root} declares no `#{@recipe}` recipe, so #{target} got a " <>
+              "worktree, its submodules, the source's deps/ and links to its dotenv files — " <>
+              "no _build. Add `#{@recipe} name target` to its justfile."
+          )
+
+          with :ok <- plain_worktree(root, target, name), do: {:ok, :bare_worktree}
+
+        {:error, _} = error ->
+          error
       end
     end
   end
@@ -204,7 +231,7 @@ defmodule CmsHarness.WorkingCopies.Create do
          ) do
       {_out, 0} ->
         init_submodules(target)
-        :ok
+        seed(root, target)
 
       {out, status} ->
         {:error, {:worktree_failed, status, String.trim(out)}}
@@ -235,6 +262,62 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
 
     :ok
+  end
+
+  @doc """
+  Give a bare copy what `git worktree add` leaves behind: `deps/` and the
+  untracked dotenv files, both taken from the checkout it came from.
+  """
+  @spec seed(Path.t(), Path.t()) :: :ok
+  def seed(source, target) do
+    copy_deps(source, target)
+    link_dotenvs(source, target)
+    :ok
+  end
+
+  # Copied, not fetched: `mix.lock` is the same, and `mix deps.get` in a fresh
+  # worktree fails on shallow git deps whose pinned sha is not in the clone.
+  # `cp -R` because `File.cp_r/2` took 47s on 474 MB where `cp` took 3.
+  defp copy_deps(source, target) do
+    from = Path.join(source, "deps")
+    to = Path.join(target, "deps")
+
+    if File.dir?(from) and not File.exists?(to) do
+      case copy_tree(from, to) do
+        :ok ->
+          Logger.info("[CmsHarness] copied deps/ into #{target}")
+
+        error ->
+          Logger.error("[CmsHarness] could not copy deps/ into #{target}: #{inspect(error)}")
+      end
+    end
+  end
+
+  defp copy_tree(from, to) do
+    case System.find_executable("cp") do
+      nil ->
+        with {:ok, _} <- File.cp_r(from, to), do: :ok
+
+      cp ->
+        case System.cmd(cp, ["-R", from, to], stderr_to_stdout: true) do
+          {_out, 0} -> :ok
+          {out, status} -> {:cp_failed, status, String.trim(out)}
+        end
+    end
+  end
+
+  # Linked, not copied, so secrets are not duplicated per copy — the call
+  # `just worktree-setup` makes for `envs/`. Committed ones are already there.
+  defp link_dotenvs(source, target) do
+    for from <- Path.wildcard(Path.join(source, ".env*"), match_dot: true),
+        File.regular?(from),
+        to = Path.join(target, Path.basename(from)),
+        not File.exists?(to) do
+      case File.ln_s(from, to) do
+        :ok -> :ok
+        {:error, reason} -> Logger.error("[CmsHarness] could not link #{to}: #{inspect(reason)}")
+      end
+    end
   end
 
   defp make_parent(target) do

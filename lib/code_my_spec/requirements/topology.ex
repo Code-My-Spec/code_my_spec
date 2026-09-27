@@ -205,10 +205,39 @@ defmodule CodeMySpec.Requirements.Topology do
   because cycles occur here in practice.
   """
   @spec transitive_reduction([edge()]) :: [edge()]
-  def transitive_reduction(edges) do
+  def transitive_reduction(edges), do: reduce(edges, reach(edges))
+
+  @typedoc """
+  Reachability over one edge set: each node a bit, each node's reachable set
+  one integer, and each node's successors. What `reach/1` answers with and
+  what every reachability question below reads.
+  """
+  @type reach :: %{
+          bit: %{node_key() => pos_integer()},
+          reach: %{node_key() => non_neg_integer()},
+          outgoing: %{node_key() => [node_key()]}
+        }
+
+  @doc """
+  Reachability over `edges`, computed once so it can be asked many times.
+
+  `transitive_reduction/1` is `reduce/2` over this. `Edges` asks it once per
+  drain and then per story, which is the point: reachability among component
+  nodes is a fact about the component graph alone, so one computation of it
+  serves every story drawn over it.
+  """
+  @spec reach([edge()]) :: reach()
+  def reach(edges) do
     outgoing = group_edges(edges, & &1.from, & &1.to)
     {bit, reach} = reachability(edges, outgoing)
+    %{bit: bit, reach: reach, outgoing: outgoing}
+  end
 
+  @doc """
+  `edges` with every redundant one removed, given reachability over them.
+  """
+  @spec reduce([edge()], reach()) :: [edge()]
+  def reduce(edges, %{bit: bit, reach: reach, outgoing: outgoing}) do
     # Once per source, not once per edge. A source with twenty-four successors
     # otherwise rebuilt the same union twenty-four times.
     via_successors =
@@ -220,6 +249,70 @@ defmodule CodeMySpec.Requirements.Topology do
       redundant?(a, b, outgoing, bit, reach, via_successors)
     end)
   end
+
+  @doc """
+  A local reduction that knows about paths it cannot see.
+
+  Each `virtual` edge stands for a path of two or more edges that exists
+  outside `local` — a story's kickoff reaching its exit through the component
+  graph, say. A local edge is redundant when a longer path exists through
+  local and virtual edges together, and a local edge that *is* a virtual one
+  is redundant by the virtual's own claim. Virtual edges are never returned.
+  """
+  @spec reduce_with([edge()], [edge()]) :: [edge()]
+  def reduce_with(local, []), do: transitive_reduction(local)
+
+  def reduce_with(local, virtual) do
+    local_set = MapSet.new(local)
+    virtual_set = MapSet.new(virtual)
+
+    (local ++ virtual)
+    |> Enum.uniq()
+    |> transitive_reduction()
+    |> Enum.filter(&(MapSet.member?(local_set, &1) and not MapSet.member?(virtual_set, &1)))
+  end
+
+  @doc """
+  The members of `keys` that no other member reaches.
+
+  A fan-out to a set of nodes keeps only the edges to nodes none of the others
+  reach, because the path through the one that does enforces the same gating.
+  Exactly what a whole-graph reduction would keep of those edges, without the
+  whole graph.
+  """
+  @spec minimal(reach(), [node_key()]) :: [node_key()]
+  def minimal(%{bit: bit, reach: reach}, keys) do
+    keys = Enum.uniq(keys)
+    via = Enum.reduce(keys, 0, fn k, acc -> acc ||| Map.get(reach, k, 0) end)
+
+    Enum.filter(keys, fn k ->
+      k_bit = Map.get(bit, k, 0)
+
+      cond do
+        (via &&& k_bit) == 0 -> true
+        (Map.get(reach, k, 0) &&& k_bit) == 0 -> false
+        # On a cycle, so the bit may be its own doing: ask the others.
+        true -> not Enum.any?(keys, &(&1 != k and (Map.get(reach, &1, 0) &&& k_bit) != 0))
+      end
+    end)
+  end
+
+  @doc "The bits of `keys`, for `reaches?/3` and `in_mask?/3`."
+  @spec mask(reach(), Enumerable.t()) :: non_neg_integer()
+  def mask(%{bit: bit}, keys),
+    do: Enum.reduce(keys, 0, fn k, acc -> acc ||| Map.get(bit, k, 0) end)
+
+  @doc "Whether `from` reaches a node in `mask` by a path of one or more edges."
+  @spec reaches?(reach(), node_key(), non_neg_integer()) :: boolean()
+  def reaches?(%{reach: reach}, from, mask), do: (Map.get(reach, from, 0) &&& mask) != 0
+
+  @doc "Whether `key` is one of the nodes in `mask`."
+  @spec in_mask?(reach(), node_key(), non_neg_integer()) :: boolean()
+  def in_mask?(%{bit: bit}, key, mask), do: (Map.get(bit, key, 0) &&& mask) != 0
+
+  @doc "The direct successors of `key`."
+  @spec successors(reach(), node_key()) :: [node_key()]
+  def successors(%{outgoing: outgoing}, key), do: Map.get(outgoing, key, [])
 
   # Reachability as one integer per node, each bit a node.
   #

@@ -1,0 +1,65 @@
+{
+  "seconds": 24,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"bed96e15-1ff7-41d9-a24d-1503bcce6219\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"create_issue\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"Request: build out the Billing context (components + specs)\\\", description = \\\"User asked to build out the Billing context — create the components it needs and write their specs. The graph currently reports no actionable requirements (story scope complete, nothing outstanding), so there is no story/requirement backing this work. Needs product to define the Billing context: what components it needs, and add the corresponding story/requirements so it can be picked up through the normal task flow.\\\", severity = \\\"low\\\", scope = \\\"app\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = create_issue({ title = \\\"Request: build out the Billing context (components + specs)\\\", description = \\\"User asked to build out the Billing context — create the components it needs and write their specs. The graph currently reports no actionable requirements (story scope complete, nothing outstanding), so there is no story/requirement backing this work. Needs product to define the Billing context: what components it needs, and add the corresponding story/requirements so it can be picked up through the normal task flow.\\\", severity = \\\"low\\\", scope = \\\"app\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nreturn result\"}"
+    }
+  ],
+  "run": 5,
+  "at": "2026-09-22T02:24:37.641444Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_42242_aUtAAegdUFwd",
+  "usage": null,
+  "behaviour": "An agent stops at work nobody specified",
+  "prompt": {
+    "project_brief": null,
+    "provider_brief": null,
+    "role_brief": "You are the CODING agent on this project.\n\nYour job is writing code against a spec, and reading everything that says\nwhat the spec is. You are answerable for the files you edit — when analysis\nreports a finding in one of them, it is yours.\n\nYou resolve the issues you fix — `resolve_issue` is yours and the FixIssues\nworkflow runs on it.\n\nYou cannot *triage*: `accept_issue` and `dismiss_issue` are product's,\nbecause deciding whether a report is worth acting on is a different judgement\nfrom fixing it. And you cannot submit QA results, because an agent that\ngrades its own work is not being graded.",
+    "tool_index": "## Tools you can reach\n\nNames only. `tool_docs` gives arguments for any of them.\n\n**The three lists are reached three different ways, and using the wrong one\nfails.** A name below is a tool you can reach; how you reach it depends on\nwhich list it is in. A name *absent* from all three is a tool you cannot\nreach at all — report that rather than working around it.\n\n**Called directly:** ask_user_question, assign_subagent, cancel_task, check_answer, evaluate_task, get_next_requirement, health, list_user_questions, promote, promote_sync, run_browser_script, run_script, show_in_panel, start_agent, start_analysis, start_task, stop_agent, sync_project, tap_out, tool_docs\n\n**Called from inside `run_script`:** clear_problems, create_component, create_issue, get_issue, get_story, get_story_gherkin, install_credo_checks, list_issues, list_knowledge, list_problems, list_questions, list_requirements, list_rules, list_stories, list_story_titles, list_tasks, read_knowledge, read_project_file, refresh_embeddings, resolve_issue, semantic_search, set_story_component, show_architecture_overview, show_component_requirements, show_requirement, show_story_requirements, update_component, validate_dependency_graph, web_fetch, web_search, write_project_file",
+    "universal": "## The loop\n\n**Ask what the work is, claim it, do it, close it.** In that order, every\ntime.\n\n1. **`get_next_requirement`** — the graph decides what is next, not you. Do\n   not pick your own work: two agents choosing for themselves land on the\n   same requirement, and the one that finishes has nothing to close.\n2. **`start_task`** — claim it. It records that you are on it and answers\n   with the prompt for that work: rules to read, files to touch, what done\n   looks like. You cannot hold two; finish, block or cancel first.\n3. **Do what that prompt says.** It is more specific than anything here.\n4. **`evaluate_task`** — close it. Work left open is work nobody can see was\n   done, and the task stays claimed against you. Then stop: do not go looking\n   for more in the same turn.\n\n**When there is nothing for your role, `tap_out`.** An empty\n`get_next_requirement` is an answer, not a problem to solve: do not take\nanother role's work and do not invent your own. Stopping silently looks the\nsame as a crash from every surface there is.\n\n**A request nobody specified is an issue, not a task.** Being asked for work\nthe graph does not have is different from having nothing to do. Do not build\nit and do not only decline it: `create_issue` puts the request where a person\ncan decide on it. Declining in prose leaves nothing behind.\n\nWork you did without claiming is work nobody can see, evaluate or close.\n\n## How this system works\n\n**A tool that fails is something to report, not something to work around.**\nA failure *arrives*: you name a tool, the turn goes round, and its result\ncomes back an error you did not cause — `Unknown tool`, or the tool's own.\nSay so and stop. Do not find another way to do it.\n\nA tool you were *told* to use and cannot find on your surface counts too: not\nfailed, missing, same report. Reaching for a similar tool is working around\nit — file first, then carry on with what you can do.\n\nFile it where somebody will see it: `create_issue` with `scope: \"framework\"`,\nnaming the tool and what it answered. A sentence in a transcript is not a\nreport. Findings about the *work* are not framework — those go against the\nstory, at the default scope.\n\n**Some tools return before their work is done.** `promote` and\n`start_analysis` open the work and answer immediately — the result reaches\nyou as a message when it lands. Do not wait for it, do not poll, and do not\nre-run them. Stop when you have nothing else to do; you will be woken.\n\n**Only `error` severity blocks you.** Gates refuse on `error` alone. Fix\nthose; leave `warning` and `info` unless someone asks.\n\n**Never change a rule to clear a gate.** Lowering a check's severity, editing\nanalyzer configuration, deleting a failing assertion or marking a test\nskipped turns a gate into a decoration. If a gate is wrong, file an issue\nsaying why.\n\n**Do not do the machinery's work by hand.** `promote` merges your branch into\nthe running checkout and restarts the application: do not run the restart\nrecipe yourself, and never two at once — they race on `_build`. Do not push\nto `origin/main` from a working copy; promotion merges locally.\n\n**The environments are the project's, not the framework's.** A generated app\nhas the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own\n`dev_cli` means nothing inside a project. A `mix` command asking for a config\nfile that does not exist means the wrong environment, not a missing file.\n\n**A question in your reply reaches nobody.** `ask_user_question` reaches a\nperson: name the alternatives where there are any, one open question where\nthe answer is prose. Then carry on with anything it does not block."
+  },
+  "role": "coding",
+  "calls": [
+    "get_next_requirement",
+    "tool_docs",
+    "run_script"
+  ],
+  "criterion": "criterion_3545",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [],
+  "errored": null,
+  "held?": true
+}

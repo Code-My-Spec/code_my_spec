@@ -45,7 +45,7 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
@@ -277,7 +277,7 @@ defmodule CodeMySpec.Validation do
   end
 
   defp do_remote_validate_stop(scope, task, opts) do
-    changed_files = remote_changed_files(scope, task, opts)
+    {changed_files, consume_ledger} = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
 
@@ -291,6 +291,12 @@ defmodule CodeMySpec.Validation do
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
+      # d726cfda: only now, once both reads of the ledger this stop makes —
+      # here, and inside `check_blocking_problems` above — have happened and
+      # been acted on. Consuming any earlier would risk a demotion decision
+      # made against a ledger already cleared for a different purpose; not
+      # consuming at all is the bug this fixes.
+      consume_ledger.()
       {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
     end
   end
@@ -322,9 +328,14 @@ defmodule CodeMySpec.Validation do
   # disk is on the other end of a channel. The harness sends its edit paths
   # project-relative, so `relativize/2` has nothing to strip and passes them
   # through.
+  # A task has its own window (`started_at`), so nothing here is the ledger's
+  # sole answer for it — `changed_files_for_task/3` intersects it with
+  # `Files.changed_since/2`, and consuming rows out from under that
+  # intersection would starve it for the rest of the task's lifetime rather
+  # than for one stop. No cleanup for this branch, on purpose.
   defp remote_changed_files(scope, %{started_at: started_at} = task, opts)
        when not is_nil(started_at) do
-    changed_files_for_task(scope, task, opts)
+    {changed_files_for_task(scope, task, opts), fn -> :ok end}
   end
 
   # Without a task, the local path uses the paths its own scan found dirty.
@@ -336,17 +347,37 @@ defmodule CodeMySpec.Validation do
   # is treated as one. It does not mean "could not tell": a session that edited
   # something has those edits recorded, and a project with no harness never
   # reaches this function at all.
+  #
+  # d726cfda: that was the documented contract and it was never actually true,
+  # because nothing ever forgot a path once `attributed_paths/2` reported it —
+  # a session that wrote once stayed non-empty for as long as it lived, up to
+  # 314 rows over 16 days measured on one session, re-enqueuing analysis on
+  # every stop forever. The second element is how the caller makes the
+  # contract true: call it once the paths this call returned have actually
+  # been used, and the next stop with nothing new sees an empty ledger instead
+  # of this one's leftovers.
   defp remote_changed_files(scope, _task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
-        session_id
-        |> attributed_paths(Keyword.get(opts, :agent_id))
-        |> then(&Files.get_by_paths(scope, &1))
+        agent_id = Keyword.get(opts, :agent_id)
+        paths = attributed_paths(session_id, agent_id)
+        files = Files.get_by_paths(scope, paths)
+        {files, fn -> consume_attributed_paths(session_id, agent_id, paths) end}
 
       _ ->
-        agent_changed_files(scope, opts)
+        {agent_changed_files(scope, opts), fn -> :ok end}
     end
   end
+
+  defp consume_attributed_paths(session_id, nil, paths),
+    do: FileEdits.consume_edits(session_id, paths)
+
+  defp consume_attributed_paths(session_id, agent_id, paths) when is_binary(agent_id),
+    do: FileEdits.consume_edits_by_agent(session_id, agent_id, paths)
+
+  @doc false
+  def remote_changed_files_for_test(scope, task, opts),
+    do: remote_changed_files(scope, task, opts)
 
   # The same answer, for an agent that has no session to record against.
   #
@@ -360,6 +391,14 @@ defmodule CodeMySpec.Validation do
   # `FileEdits.track_agent_edit/2` records it now, on every `write` and `edit`
   # the agent makes, so this path answers exactly what the session path answers:
   # the files this agent touched, resolved to their rows.
+  #
+  # Not given a cleanup thunk. `get_edited_files_for_agent/1` has the identical
+  # no-window shape `get_edited_files/1` had (d726cfda) and nothing here
+  # consumes it either, so a continuous in-BEAM agent with no session could in
+  # principle hit the same livelock this fix closes for external sessions.
+  # Unmeasured — the issue this fixes was reproduced on a session, not an
+  # agent — so left as a comment rather than a guess at behavior nobody has
+  # watched happen.
   defp agent_changed_files(scope, opts) do
     case Keyword.get(opts, :agent_id) do
       agent_id when is_binary(agent_id) ->
@@ -954,67 +993,44 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  # In-process validators run synchronously (they're milliseconds); the four
-  # subprocess sources go through Analysis — enqueued in the background,
-  # memoized against the run ledger when inputs haven't changed. Returns the
-  # `%{enqueued: [...], memoized: [...]}` summary.
+  # A stop never starts an analyzer. Analysis is explicit — `start_analysis`, or
+  # required by promote (`.code_my_spec/rules/analysis_is_explicit.md`). Starting
+  # runs here queued compiler and credo on every stop and subagent_stop, and
+  # every leg once a scan marked them stale, which is how one project's 25-minute
+  # spex sweep held the machine's only analyzer slot in a loop (`38d87eb5`).
   #
-  # No changed files → stay quiet (criterion 5097): only re-enqueue sources
-  # whose latest run failed (crash/timeout/superseded recovery), via
-  # `only_failed`.
-  defp run_pipeline(scope, task, [], config, opts) do
-    excluded = StaticAnalysis.task_excluded_analyzers(task)
-    declared = StaticAnalysis.task_analyzers(task)
+  # The exception is output a caller hands over explicitly: `test_output_files`
+  # names a finished result to ingest, not a run to start. Only specs send it.
+  @nothing_enqueued %{enqueued: [], memoized: []}
 
-    # Config gates a source here the same way `resolve_analyzers/3` gates
-    # role-derived inclusion — but a source the active task declared via
-    # `analyzers/0` bypasses it, same reasoning as there: `FixBddSpecs`
-    # naming `spex_stale` has to survive `spex: :off` on a quiet stop too,
-    # or the re-enqueue this branch exists for stops happening for the one
-    # task that needed it.
-    enabled =
-      for {analyzer, source} <- @subprocess_analyzers,
-          analyzer not in excluded,
-          analyzer in declared or mode_for(config, config_field(analyzer)) != :off,
-          do: source
-
-    Analysis.ensure_stale_runs(
-      scope,
-      Enum.uniq(["compiler" | enabled]),
-      Keyword.put(opts, :only_failed, true)
-    )
-  end
+  @output_file_sources %{
+    compile_output_file: "compiler",
+    credo_output_file: "credo",
+    exunit_output_file: "exunit",
+    spex_output_file: "spex"
+  }
 
   defp run_pipeline(scope, task, changed_files, config, opts) do
-    log_changed_files(changed_files)
+    if changed_files != [] do
+      log_changed_files(changed_files)
 
-    analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
+      in_process =
+        task
+        |> StaticAnalysis.resolve_analyzers(changed_files, config)
+        |> Enum.reject(&Map.has_key?(@subprocess_analyzers, &1))
 
-    {subprocess, in_process} =
-      Enum.split_with(analyzers, &Map.has_key?(@subprocess_analyzers, &1))
+      StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
+    end
 
-    StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
-
-    requests =
-      ["compiler" | Enum.map(subprocess, &request_for(&1, changed_files, config))]
-      |> Enum.uniq()
-
-    Analysis.ensure_stale_runs(scope, requests, opts)
+    ingest_supplied_output(scope, opts)
   end
 
-  # Every source, credo included, scans the whole project. The config mode
-  # decides whether credo *blocks*; it no longer decides what credo looks at.
-  #
-  # `:block_changed` still blocks only on violations in the turn's changed
-  # files — that filtering lives in `apply_mode/4` at decision time. What
-  # changes is that violations elsewhere are now persisted as advisory and
-  # visible on the Problems page instead of never being looked for.
-  defp request_for(analyzer, _changed_files, _config),
-    do: Map.fetch!(@subprocess_analyzers, analyzer)
-
-  defp config_field(:credo), do: :credo
-  defp config_field(:exunit_stale), do: :exunit
-  defp config_field(:spex_stale), do: :spex
+  defp ingest_supplied_output(scope, opts) do
+    case for({opt, source} <- @output_file_sources, Keyword.has_key?(opts, opt), do: source) do
+      [] -> @nothing_enqueued
+      supplied -> Analysis.ensure_stale_runs(scope, supplied, opts)
+    end
+  end
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
        when not is_nil(started_at) do
@@ -1106,6 +1122,8 @@ defmodule CodeMySpec.Validation do
       # tree it decided about. Stamped on the run by the harness, because only
       # the harness can compare its own boot sha against its own checkout.
       analyzer_staleness: analyzer_staleness(scope, sources_with_problems),
+      # A rerun that failed behind an older answer; those findings were not re-checked.
+      failed_reruns: failed_reruns(scope, sources_with_problems),
       # How long the run itself took. Read together with the age, this separates
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
@@ -1323,6 +1341,30 @@ defmodule CodeMySpec.Validation do
         do: {source, note}
   end
 
+  @doc """
+  Per source, the newest full run when it failed after the latest answer.
+
+  The findings still come from that older answer (`Analysis.fresh?/2` keeps it
+  good), so the reader must be told the rerun failed and why.
+  """
+  @spec failed_reruns(Scope.t(), [String.t()]) :: %{String.t() => map()}
+  def failed_reruns(_scope, []), do: %{}
+
+  def failed_reruns(scope, sources) do
+    for source <- sources,
+        %Run{status: :failed} = run <- [RunsRepository.latest_full_run(scope, source)],
+        %Run{} = answer <- [Analysis.latest_answer(scope, source)],
+        DateTime.compare(run.started_at, answer.started_at) == :gt,
+        into: %{},
+        do:
+          {source,
+           %{
+             failed_at: run.finished_at || run.started_at,
+             reason: failure_reason(run),
+             answered_at: answer.finished_at || answer.started_at
+           }}
+  end
+
   # Did an edit land while this run was in flight?
   #
   # `input_fingerprint` is stamped at enqueue and `completed_fingerprint` at
@@ -1427,7 +1469,7 @@ defmodule CodeMySpec.Validation do
   # looks exactly like one that resolves to the right story. A missing story
   # would have hit the `nil` branch and been loud.
   #
-  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/2` writes it
+  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/3` writes it
   # when a spex file is created, which is why it survives a rename. 22 of this
   # project's 25 spex problems join on it exactly.
   #
@@ -1530,7 +1572,23 @@ defmodule CodeMySpec.Validation do
   defp story_id_for(file_path, by_path, by_spec_file, by_number) do
     Map.get(by_path, file_path) ||
       Map.get(by_spec_file, file_path) ||
-      story_id_from_path(file_path, by_number)
+      story_id_from_path(file_path, by_number) ||
+      story_id_from_directory(file_path, by_path)
+  end
+
+  # A legacy spex directory names no story number, and a file in it whose
+  # criterion was renumbered is recorded against nothing. Unattributed, its
+  # failure blocked regardless of the story's `specs_ready` — metric_flow's
+  # unbuilt white-label and auto-enrollment spex held every promote on
+  # 2026-09-27. The directory's story is the one every recorded spec in it
+  # belongs to; a mixed directory answers nothing.
+  defp story_id_from_directory(file_path, by_path) do
+    dir = Path.dirname(file_path)
+
+    case for({path, story_id} <- by_path, Path.dirname(path) == dir, uniq: true, do: story_id) do
+      [story_id] -> story_id
+      _ -> nil
+    end
   end
 
   defp story_id_from_path(file_path, by_number) do

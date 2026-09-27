@@ -16,13 +16,11 @@ defmodule CodeMySpec.Deploys do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
-      CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -101,7 +99,15 @@ defmodule CodeMySpec.Deploys do
   # recomputes everything. Conservative and correct: this cannot say what such a
   # row moved.
   defp announce({:ok, deploy} = result, scope) do
-    GraphInputs.event(scope, "Deploys", "deploy_changed", %{}, deploy_entities(deploy), :project_wide)
+    GraphInputs.event(
+      scope,
+      "Deploys",
+      "deploy_changed",
+      %{},
+      deploy_entities(deploy),
+      :project_wide
+    )
+
     result
   end
 

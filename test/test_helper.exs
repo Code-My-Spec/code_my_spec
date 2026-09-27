@@ -1,3 +1,8 @@
+# Harness restart hints must never read or write the developer's served roots.
+served_roots_dir = Path.join(System.tmp_dir!(), "cms_test_served_roots_#{System.pid()}")
+Application.put_env(:code_my_spec, :harness_served_roots_dir, served_roots_dir)
+System.at_exit(fn _ -> File.rm_rf(served_roots_dir) end)
+
 # :live hits real provider APIs and creates real resources. Never in the
 # normal suite — run it deliberately with `mix test --only live`.
 # :sops drives the real `sops` and `age` binaries, because the claim those

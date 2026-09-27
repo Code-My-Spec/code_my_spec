@@ -69,7 +69,8 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
     parent_attempt_id: #{attempt.parent_attempt_id || "none"}
     scenarios (#{length(attempt.scenarios)}):
     #{render_scenarios(attempt.scenarios)}
-    issue_ids: #{render_issue_ids(attempt.issue_ids)}#{invalidation}
+    issue_ids: #{render_issue_ids(attempt.issue_ids)}
+    tools_used: #{render_tools_used(attempt.tools_used)}#{invalidation}
     """
     |> String.trim_trailing()
   end
@@ -85,6 +86,14 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   defp render_issue_ids(nil), do: "(none)"
   defp render_issue_ids([]), do: "(none)"
   defp render_issue_ids(ids), do: Enum.join(ids, ", ")
+
+  # 257a6a15: nil and [] are different facts here — nil is an attempt that
+  # predates this field or never answered the question; [] is an agent
+  # stating outright that it called none. Collapsing them would erase the
+  # exact distinction this field exists to preserve.
+  defp render_tools_used(nil), do: "(not reported)"
+  defp render_tools_used([]), do: "(none — reported explicitly)"
+  defp render_tools_used(tools), do: Enum.join(tools, ", ")
 
   defp render_invalidation(%{invalidations: invalidations})
        when is_list(invalidations) and invalidations != [] do

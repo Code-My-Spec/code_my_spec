@@ -114,6 +114,45 @@ defmodule CmsHarness.ChannelClientTransportTest do
                      "holds an empty domain for the whole session"
   end
 
+  # `34e03128`. A report sent the instant a join completes always describes
+  # the one moment the answer is empty — nothing has been asked to start yet,
+  # including whatever `agents_to_restore` (pushed a few lines below this) is
+  # about to ask for. The server read that emptiness as "none of this copy's
+  # :starting agents are really running" and reaped them — `settle_against/3`
+  # has no grace period — before the restore reply had a chance to land, let
+  # alone launch anything. Measured live against a Docker boot: an agent
+  # created 600ms before the harness joined was marked :stopped forever,
+  # though nothing had ever tried, and failed, to start it.
+  test "agents_running is not reported synchronously on join" do
+    assert {:ok, _out} =
+             ChannelClient.handle_join(
+               "harness_project:p1",
+               %{},
+               socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
+             )
+
+    refute_receive {:transport_push, _, "agents_running", _, _},
+                   100,
+                   "reporting immediately races the restore this same join just asked " <>
+                     "for — a freshly parked agent gets reaped before the request to " <>
+                     "start it can possibly have landed"
+  end
+
+  test "join still asks what to restore, immediately" do
+    assert {:ok, _out} =
+             ChannelClient.handle_join(
+               "harness_project:p1",
+               %{},
+               socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
+             )
+
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", _, _},
+                   1_000,
+                   "delaying the self-report must not delay the ask — a restore that " <>
+                     "waits behind the delayed report would just move the race rather " <>
+                     "than close it"
+  end
+
   describe "a topic the server does not have" do
     # Cost an hour of dogfooding. The server-side channel was gone, no
     # `handle_topic_close/3` ever arrived, and the harness went on believing it
@@ -380,6 +419,80 @@ defmodule CmsHarness.ChannelClientTransportTest do
       after
         50 -> :ok
       end
+    end
+  end
+
+  describe "the reconnect backoff survives a join that does not work" do
+    # Measured 2026-09-23: four harness instances ran join -> push read_model ->
+    # {:error, %{"reason" => "unmatched topic"}} -> disconnect -> backoff(0) =
+    # 1000ms -> join, about once a second, indefinitely. One logged 2,777
+    # read-model refusals against 1,130 disconnects; together they wrote ~370
+    # lines a minute and rotated harness.log's 10MB file every ~35 minutes, so
+    # the retained harness history was under two hours old.
+    #
+    # The backoff table ([1s, 2s, 5s, 10s, 30s]) only ever reached its first
+    # entry, because every cycle passed through handle_join/3 and zeroed
+    # `attempts`. Joining is not evidence the connection works.
+    test "joining does not reset attempts, because a join can be followed by a refusal" do
+      root = Path.join(System.tmp_dir!(), "backoff-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      sock =
+        socket(%{
+          attempts: 3,
+          refusals: 2,
+          project: %{id: "p1", root: root, working_copy_id: "h1"}
+        })
+
+      {:ok, out} = ChannelClient.handle_join("harness_project:p1", %{}, sock)
+
+      assert out.assigns.attempts == 3,
+             """
+             A join reset the reconnect backoff, so a channel that joins and is
+             refused one push later retries at the table's first entry forever.
+             """
+
+      assert out.assigns.refusals == 0,
+             "refusals are about the server's verdict on this join and do reset"
+    end
+
+    test "handing over the read model does reset attempts" do
+      ref = make_ref()
+
+      # `:refresh` with an identical model so `maybe_sync/3` stays its hand — the
+      # sync path needs a live task registry and is not what this asserts.
+      sock =
+        socket(%{
+          attempts: 4,
+          read_model_ref: ref,
+          read_model_reason: :refresh,
+          read_model: %CodeMySpec.Files.Scanner.ReadModel{}
+        })
+
+      {:ok, out} = ChannelClient.handle_reply(ref, {:ok, %{}}, sock)
+
+      assert out.assigns.attempts == 0,
+             """
+             The read model is what the join exists to obtain — a scan without one
+             resolves no owners. A connection that has handed one over has proved
+             it works, and that is where the backoff is allowed to forget.
+             """
+    end
+
+    test "a refused read model leaves attempts alone so the backoff can grow" do
+      ref = make_ref()
+      sock = socket(%{attempts: 4, read_model_ref: ref, read_model_reason: :join})
+
+      {:ok, out} =
+        ChannelClient.handle_reply(ref, {:error, %{"reason" => "unmatched topic"}}, sock)
+
+      assert out.assigns.attempts == 4,
+             """
+             `unmatched topic` is structural, not transient. Retrying it at the
+             first backoff entry is what shredded the log; the count has to carry
+             so the next disconnect waits longer.
+             """
     end
   end
 end

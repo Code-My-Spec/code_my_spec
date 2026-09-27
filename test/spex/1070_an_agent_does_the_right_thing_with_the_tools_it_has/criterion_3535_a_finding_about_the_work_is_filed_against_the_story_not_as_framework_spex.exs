@@ -19,54 +19,51 @@ defmodule CodeMySpecSpex.Story1070.Criterion3535Spex do
   The premise is the ordinary one. An agent doing the work finds a defect in
   the thing it is building, which is the common case — most findings are about
   the application, and `framework` is the exception.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3535/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3535` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3535"
+  @role "coding"
+  @threshold 0.8
 
   spex "An agent files a framework issue when the tooling is what is broken" do
     scenario "A finding about the work is filed against the story, not as framework" do
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3535")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "the agent has found a defect in the application it is building", context do
-        measured =
-          measure("A finding about the work is filed against the story, not as framework",
-            fn _run ->
-              told =
-                "While reading the code you found that `Reservations.book/2` crashes " <>
-                  "on an empty list instead of returning an error. Record it."
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-              observe(context, [role: "coding", wake: false, say: told], fn _agent ->
-                filed_at?(context, "app") and not filed_at?(context, "framework")
-              end)
-            end)
-
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "it lands on the application backlog and not the framework one", context do
-        assert_rate(context.measured, 0.8)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result(
+          "A finding about the work is filed against the story, not as framework"
+        )
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end

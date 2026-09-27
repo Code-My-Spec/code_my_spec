@@ -1,0 +1,143 @@
+{
+  "seconds": 42,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"dd01e089-5812-493f-8dc8-8bad1831ded5\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "start_task %{\"entity_id\" => \"2934\", \"entity_type\" => \"story\", \"requirement_name\" => \"component_linked\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "start_task %{\"entity_id\" => \"2934\", \"entity_type\" => \"story\", \"requirement_name\" => \"component_linked\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local overview = read_knowledge({ path = \\\"architecture_design/workflow.md\\\" })\\nreturn overview\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local overview = read_knowledge({ path = \\\"architecture_design/workflow.md\\\" })\\nreturn overview\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local story = get_story({ story_id = \\\"2934\\\" })\\nlocal overview = show_architecture_overview({})\\nreturn { story = story, overview = overview }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local story = get_story({ story_id = \\\"2934\\\" })\\nlocal overview = show_architecture_overview({})\\nreturn { story = story, overview = overview }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local components = list_stories({})\\nreturn components\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local components = list_stories({})\\nreturn components\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "tool_docs %{\"names\" => [\"set_story_component\", \"validate_dependency_graph\"]}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "tool_docs %{\"names\" => [\"set_story_component\", \"validate_dependency_graph\"]}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = set_story_component({ module_name = \\\"MyApp.Reservations\\\", story_id = \\\"2934\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = set_story_component({ module_name = \\\"MyApp.Reservations\\\", story_id = \\\"2934\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "bash %{\"command\" => \"find /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_33954_64qPaCWXXNVS/.code_my_spec/spec -type f\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "bash %{\"command\" => \"find /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_33954_64qPaCWXXNVS/.code_my_spec/spec -type f\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "read %{\"file_path\" => \"/private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_33954_64qPaCWXXNVS/.code_my_spec/spec/reservations.spec.md\", \"limit\" => 30}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "read %{\"file_path\" => \"/private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_33954_64qPaCWXXNVS/.code_my_spec/spec/reservations.spec.md\", \"limit\" => 30}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "run_script %{\"script\" => \"local result, err = set_story_component({ module_name = \\\"Reservations\\\", story_id = \\\"2934\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "run_script %{\"script\" => \"local result, err = set_story_component({ module_name = \\\"Reservations\\\", story_id = \\\"2934\\\" })\\nif result == nil then return \\\"failed: \\\" .. err.message end\\nlocal validation = validate_dependency_graph({})\\nreturn { link = result, validation = validation }\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "evaluate_task %{\"task_id\" => \"1c283557-8cc7-4152-a523-5e36770d08fe\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "evaluate_task %{\"task_id\" => \"1c283557-8cc7-4152-a523-5e36770d08fe\"}"
+    }
+  ],
+  "run": 4,
+  "at": "2026-09-22T02:15:26.965065Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-48636_33954_64qPaCWXXNVS",
+  "usage": null,
+  "behaviour": "An agent that finishes work closes the task",
+  "prompt": {
+    "project_brief": null,
+    "provider_brief": null,
+    "role_brief": "You are the PRODUCT agent on this project.\n\nYour job is shaping what gets built, and never building it: stories,\nacceptance criteria, rules, personas, epics. Run Three Amigos sessions,\ninterview for stories, organise them into epics, and mark them ready.\n\nChoosing which component implements a story is yours as well.\n`component_linked` is a product requirement and `set_story_component`,\n`create_component` and `validate_dependency_graph` are your tools: deciding\nwhere a story lives in the architecture is shaping it, not building it.\n\nYou do not write application code, and findings about code are not yours to\nfix. If analysis reports a failing test or a lint finding in a file you did\nnot edit, it belongs to whoever wrote it — say so and carry on with your own\nwork rather than trying to clear it.",
+    "tool_index": "## Tools you can reach\n\nNames only. `tool_docs` gives arguments for any of them.\n\n**The three lists are reached three different ways, and using the wrong one\nfails.** A name below is a tool you can reach; how you reach it depends on\nwhich list it is in. A name *absent* from all three is a tool you cannot\nreach at all — report that rather than working around it.\n\n**Called directly:** ask_user_question, assign_subagent, cancel_task, check_answer, evaluate_task, get_next_requirement, health, list_user_questions, promote, promote_sync, run_browser_script, run_script, show_in_panel, start_agent, start_analysis, start_task, stop_agent, sync_project, tap_out, tool_docs\n\n**Called from inside `run_script`:** accept_issue, add_criterion, add_question, add_rule, add_scenario, analyze_stories, assign_epic_to_working_copy, assign_story_to_epic, create_component, create_epic, create_issue, create_persona, create_story, create_working_copy, delete_criterion, delete_persona, delete_rule, delete_story, dismiss_issue, execute_proposal, get_issue, get_persona, get_story, get_story_gherkin, link_criterion_to_rule, link_persona_to_story, list_epics, list_issues, list_knowledge, list_personas, list_project_tags, list_questions, list_rules, list_stories, list_story_titles, list_working_copies, move_criterion, offboard_working_copy, propose_epic, read_knowledge, resolve_question, semantic_search, set_epic_stories_ready, set_story_component, set_working_copy_loop, show_architecture_overview, show_story_requirements, start_story_interview, start_story_review, start_three_amigos_session, tag_stories, triage_issues, unlink_persona_from_story, update_component, update_criterion, update_epic, update_issue, update_persona, update_rule, update_scenario, update_story, validate_dependency_graph, web_fetch, web_search",
+    "universal": "## The loop\n\n**Ask what the work is, claim it, do it, close it.** In that order, every\ntime.\n\n1. **`get_next_requirement`** — the graph decides what is next, not you. Do\n   not pick your own work: two agents choosing for themselves land on the\n   same requirement, and the one that finishes has nothing to close.\n2. **`start_task`** — claim it. It records that you are on it and answers\n   with the prompt for that work: rules to read, files to touch, what done\n   looks like. You cannot hold two; finish, block or cancel first.\n3. **Do what that prompt says.** It is more specific than anything here.\n4. **`evaluate_task`** — close it. Work left open is work nobody can see was\n   done, and the task stays claimed against you. Then stop: do not go looking\n   for more in the same turn.\n\n**When there is nothing for your role, `tap_out`.** An empty\n`get_next_requirement` is an answer, not a problem to solve: do not take\nanother role's work and do not invent your own. Stopping silently looks the\nsame as a crash from every surface there is.\n\n**A request nobody specified is an issue, not a task.** Being asked for work\nthe graph does not have is different from having nothing to do. Do not build\nit and do not only decline it: `create_issue` puts the request where a person\ncan decide on it. Declining in prose leaves nothing behind.\n\nWork you did without claiming is work nobody can see, evaluate or close.\n\n## How this system works\n\n**A tool that fails is something to report, not something to work around.**\nA failure *arrives*: you name a tool, the turn goes round, and its result\ncomes back an error you did not cause — `Unknown tool`, or the tool's own.\nSay so and stop. Do not find another way to do it.\n\nA tool you were *told* to use and cannot find on your surface counts too: not\nfailed, missing, same report. Reaching for a similar tool is working around\nit — file first, then carry on with what you can do.\n\nFile it where somebody will see it: `create_issue` with `scope: \"framework\"`,\nnaming the tool and what it answered. A sentence in a transcript is not a\nreport. Findings about the *work* are not framework — those go against the\nstory, at the default scope.\n\n**Some tools return before their work is done.** `promote` and\n`start_analysis` open the work and answer immediately — the result reaches\nyou as a message when it lands. Do not wait for it, do not poll, and do not\nre-run them. Stop when you have nothing else to do; you will be woken.\n\n**Only `error` severity blocks you.** Gates refuse on `error` alone. Fix\nthose; leave `warning` and `info` unless someone asks.\n\n**Never change a rule to clear a gate.** Lowering a check's severity, editing\nanalyzer configuration, deleting a failing assertion or marking a test\nskipped turns a gate into a decoration. If a gate is wrong, file an issue\nsaying why.\n\n**Do not do the machinery's work by hand.** `promote` merges your branch into\nthe running checkout and restarts the application: do not run the restart\nrecipe yourself, and never two at once — they race on `_build`. Do not push\nto `origin/main` from a working copy; promotion merges locally.\n\n**The environments are the project's, not the framework's.** A generated app\nhas the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own\n`dev_cli` means nothing inside a project. A `mix` command asking for a config\nfile that does not exist means the wrong environment, not a missing file.\n\n**A question in your reply reaches nobody.** `ask_user_question` reaches a\nperson: name the alternatives where there are any, one open question where\nthe answer is prose. Then carry on with anything it does not block."
+  },
+  "role": "product",
+  "calls": [
+    "get_next_requirement",
+    "start_task",
+    "run_script",
+    "run_script",
+    "run_script",
+    "tool_docs",
+    "run_script",
+    "bash",
+    "read",
+    "run_script",
+    "evaluate_task"
+  ],
+  "criterion": "criterion_3540",
+  "actionable": {
+    "product": [
+      "component_linked"
+    ],
+    "main": [
+      "architecture_designed"
+    ],
+    "qa": [],
+    "coding": []
+  },
+  "unsatisfied": [
+    "three_amigos_complete (story)"
+  ],
+  "errored": null,
+  "held?": true
+}

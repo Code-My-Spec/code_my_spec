@@ -197,13 +197,34 @@ config :code_my_spec, :cloudflare_tunnel,
 # Bare metal, not Docker — see `CodeMySpec.Workspaces.Runner.Local`'s
 # moduledoc for what that trades away (each instance's own filesystem and
 # loopback) against what it does not need (a Docker daemon on this machine).
-# `host.docker.internal`, not localhost: inside a container localhost is the
-# container. An instance told to report to localhost:4000 announces itself to
-# its own Phoenix app, and the working copy the visitor is waiting to see never
-# appears.
+#
+# `localhost`, not `host.docker.internal` — that reasoning belongs to
+# `Runner.Docker` and was copied here when `runner:` switched to `Local`
+# without `server_url` following it. A bare-metal instance shares this box's
+# own loopback with the Phoenix app it is trying to report to — a container
+# has its own, which is the one case `host.docker.internal` names — so a
+# `Local`-run instance told to report to that hostname could never resolve
+# it, silently: the harness came up, minted its own node and served its own
+# project (config/dev.exs's earlier gaps ruled those two out), and every
+# connection attempt failed before it could name why, three failures deep in
+# the same visitor-facing symptom — "dumped into the cockpit, no preview,
+# and every message refused with 'nothing here is holding that working
+# copy.'" Caught live: the harness's own connection log named the mismatch
+# directly, once the first two causes stopped hiding it.
+#
+# `harness_source: HarnessSource.Checkout` — a fourth gap the same night
+# surfaced once the first three stopped hiding it. Left at the default
+# (`HarnessSource.Installed`, the published `cms` on PATH), every fix above
+# and every other harness-side fix promoted since would keep silently never
+# reaching a bare-metal boot on this box: `promote_sync` updates this
+# server, not the separately-released tap formula `cms` resolves to, and
+# that formula measured three weeks behind this repo's own HEAD — missing
+# an Alloy provider a workspace's own agent needed just to restore. See
+# `HarnessSource`'s own moduledoc.
 config :code_my_spec, CodeMySpec.Workspaces,
   runner: CodeMySpec.Workspaces.Runner.Local,
-  server_url: "http://host.docker.internal:4000"
+  server_url: "http://localhost:4000",
+  harness_source: CodeMySpec.Workspaces.HarnessSource.Checkout
 
 # `codemyspec.com`, not `astralbi.com`, and the reason is the session cookie.
 #
@@ -294,4 +315,40 @@ config :code_my_spec, graph_stale_read_log: true
 # It writes `shadow_requirements` and `shadow_requirement_edges` and decides
 # nothing; the pass still serves. Turning it off stops the second projection
 # without losing the marks that would let it restart.
+#
+# The projection stays ON. It is the event path — the direction this project is
+# moving toward, not away from — and a projection nothing drives stops being a
+# candidate to swap to.
+#
+# What is off is the *comparison*. `Shadow.diff/1` opens with a full
+# `Preloader.load/2` per computed vantage, on every pass; `ShadowProjector` is
+# built to avoid exactly that ("`Preloader.load/1` is never called"). Measured
+# here 2026-09-21: **814 preloads for 157 passes**, 5.2x, against a preload
+# that is the largest phase of a pass at 21-90ms. Almost all of it was the
+# measurement rather than the thing measured.
+#
+# These were one flag, and turning it off to stop paying for the diff also
+# stopped the event path and left the batched pass serving alone — backwards.
+# Hence two.
+#
+# Turn `graph_shadow_diff` on to re-validate. What it proved while it ran: 157
+# consecutive passes at `shadow agrees`, nodes and edges exact (2107/2107,
+# 6653/6653). What it cannot prove, and what still blocks
+# `graph_event_is_source`, is idle-vantage staleness — `report_shadow/2` diffs
+# only the vantages the pass just computed, so a clean run says nothing about
+# the checkouts nothing named. Measured the same day: the `Harness` vantage sat
+# 6h36m behind on the event side while every diff read clean. Criterion 3522.
+# The event path serves readers in dev (2026-09-21). `ShadowProjector` writes
+# `requirements` and `requirement_edges`; the batched pass writes the shadow
+# pair and stays on as the oracle, with the diff below comparing the two at
+# every live vantage on every pass. Flipped on: the spex suite green with reads
+# served from the event path, a diff window of 226 verdicts whose every
+# difference was the pass behind on an idle checkout, and handler drains at
+# 47/53/330ms against the pass's 698ms in the same window.
+config :code_my_spec, graph_event_is_source: true
 config :code_my_spec, graph_shadow_projection: true
+# On for a validation window (2026-09-21): every pass diffs the projector's
+# rows and edges against its own at every live vantage, and `[Requirements]
+# shadow agrees|differs` in web.log is the record. It costs a preload per live
+# vantage per pass; turn it back off once the window has said its piece.
+config :code_my_spec, graph_shadow_diff: true

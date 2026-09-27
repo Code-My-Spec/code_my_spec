@@ -17,14 +17,13 @@ defmodule CodeMySpec.StaticAnalysis do
       CodeMySpec.Code,
       CodeMySpec.Compile,
       CodeMySpec.Components,
-      CodeMySpec.Configurations,
       CodeMySpec.Documents,
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
       CodeMySpec.TempFile,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

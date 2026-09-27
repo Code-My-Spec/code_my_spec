@@ -109,13 +109,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript do
   defp timeout(_params), do: @default_timeout_ms
 
   # Same rule as `run_script`: the caller names which agent it is, and the
-  # server reads what that agent carries off its own row.
+  # server derives what that agent may call from its role.
   defp allowed_tools(_scope, nil), do: nil
 
   defp allowed_tools(scope, agent_id) do
     with {:ok, _uuid} <- Ecto.UUID.cast(agent_id),
          {:ok, agent} <- CodeMySpec.Agents.fetch_agent(scope, agent_id) do
-      agent.tools
+      CodeMySpec.Agents.tools_of(scope, agent)
     else
       _ -> nil
     end

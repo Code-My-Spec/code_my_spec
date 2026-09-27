@@ -42,7 +42,7 @@ defmodule CodeMySpec.Host do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Users],
+    deps: [CodeMySpec.Environments, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   require Logger

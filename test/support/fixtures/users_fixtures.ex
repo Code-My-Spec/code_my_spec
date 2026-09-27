@@ -11,7 +11,7 @@ defmodule CodeMySpec.UsersFixtures do
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.{Scope, User}
+  alias CodeMySpec.Users.User
   alias CodeMySpec.WorkingCopies
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
@@ -67,11 +67,11 @@ defmodule CodeMySpec.UsersFixtures do
   end
 
   def user_scope_fixture(user) do
-    Scope.for_user(user)
+    UserPreferences.scope_for(user)
   end
 
   def user_scope_fixture(user, account) do
-    Scope.for_user(user)
+    UserPreferences.scope_for(user)
     |> Map.put(:active_account_id, account.id)
     |> Map.put(:active_account, account)
   end

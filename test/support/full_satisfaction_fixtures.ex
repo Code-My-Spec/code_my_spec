@@ -208,6 +208,20 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> render_click()
 
     context
+  rescue
+    # Outside a test process `live/2` raises, and `mix cms.eval` is not one.
+    #
+    # The toggle stays the path a spex takes, for the reason above — it is the
+    # whole of how the latch gets set and this module drives real surfaces. The
+    # runner cannot reach a LiveView at all, so it calls what the toggle calls
+    # rather than losing the state the rest of the chain depends on.
+    ArgumentError ->
+      # Reloaded, because `context.story` is the map `StoryHelpers.fetch/2`
+      # answers rather than a `%Story{}`, and `set_specs_ready/4` matches on the
+      # struct.
+      story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+      {:ok, _} = CodeMySpec.Stories.set_specs_ready(context.scope, story, true)
+      context
   end
 
   # tests_passing / spex_passing require a fresh completed analysis run at
@@ -258,10 +272,14 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
         test_file_content(module_name)
       )
 
-    {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
-
-    sync_live |> element("button[phx-click='sync']") |> render_click()
+    # The sync itself, not the button that calls it.
+    #
+    # `FilesLive`'s handler is `FileSync.sync/2` then
+    # `ComponentSync.sync_from_files/2`, so driving it through the LiveView adds
+    # a test process and nothing else — and `live/2` raises "LiveView helpers
+    # can only be invoked from the test process", which made this fixture
+    # unusable from `mix cms.eval`. Setup is not the surface under test.
+    ProjectStateFixtures.synced(context)
 
     component = Fixtures.get_component_by_module_name(context.scope, module_name)
     Map.put(context, :component, component)

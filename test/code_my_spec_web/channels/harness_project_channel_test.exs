@@ -71,6 +71,86 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     })
   end
 
+  describe "agent drafts" do
+    alias CodeMySpec.Agents
+    alias CodeMySpec.Agents.AgentsRepository
+    alias CodeMySpec.Conversations.Drafts
+    alias CodeMySpec.Conversations.Message
+
+    test "held and broadcast without a row, and cleared when the turn says it",
+         %{scope: scope, topic: topic} do
+      {:ok, agent} =
+        AgentsRepository.create_agent(scope, %{
+          provider: "claude-code",
+          engine: :alloy,
+          role: "coding",
+          continuous: true,
+          working_copy: "/tmp/drafts-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      {:ok, conversation_id} = Agents.conversation_id(scope, agent.id)
+      Drafts.subscribe(conversation_id)
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      push(channel, "agent_draft", %{"agent_id" => agent.id, "turn" => 1, "text" => "Plums"})
+      assert_receive {:agent_draft, ^conversation_id, "Plums"}
+      assert Drafts.get(conversation_id) == "Plums"
+
+      assert CodeMySpec.Repo.aggregate(
+               from(m in Message, where: m.conversation_id == ^conversation_id),
+               :count
+             ) == 0
+
+      ref =
+        push(channel, "agent_turn_event", %{
+          "agent_id" => agent.id,
+          "event" => %{"kind" => "message", "text" => "Plums are stone fruits."}
+        })
+
+      assert_reply ref, :ok
+      assert_receive {:agent_draft, ^conversation_id, nil}
+      assert Drafts.get(conversation_id) == nil
+    end
+
+    test "a draft for an agent outside the scope is dropped and the channel carries on",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      stranger = Ecto.UUID.generate()
+
+      push(channel, "agent_draft", %{"agent_id" => stranger, "turn" => 1, "text" => "stranger"})
+
+      ref =
+        push(channel, "agent_turn_event", %{
+          "agent_id" => stranger,
+          "event" => %{"kind" => "turn_ended"}
+        })
+
+      assert_reply ref, :ok
+    end
+  end
+
+  describe "sops keys on join" do
+    alias CodeMySpec.ProjectSecrets
+
+    test "hands the harness the project's dev and test age keys and never a deploy key",
+         %{scope: scope, topic: topic} do
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_dev", "dev")
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_test", "test")
+      {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_prod", "prod")
+
+      {:ok, reply, _channel} = join_as(scope, topic)
+
+      assert Enum.sort(reply.sops_age_keys) == ["dev", "test"]
+    end
+
+    test "a project with no local keys hands over none", %{scope: scope, topic: topic} do
+      {:ok, reply, _channel} = join_as(scope, topic)
+
+      assert reply.sops_age_keys == []
+    end
+  end
+
   describe "the identity a working copy is issued" do
     # Story 727. Files and problems are projections of a working copy but have
     # only ever been keyed by project, so two checkouts write the same rows and
@@ -737,6 +817,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       }
     end
 
+    # An explicit request, which is the only thing that opens a run: a stop
+    # starts none (`.code_my_spec/rules/analysis_is_explicit.md`).
+    defp dispatch_compiler(channel) do
+      push(channel, "analysis_run", %{"source" => "compiler", "args" => []})
+      assert_push "run_analysis", %{"runs" => [run]}, 5_000
+      run["run_id"]
+    end
+
     # The agent's own `mix test`, rewritten into this by the PreToolUse hook.
     #
     # The reply is deferred: `await_run/4` takes as long as the suite does, and
@@ -779,26 +867,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert reason =~ "harness_never_answered"
     end
 
-    test "a stop asks the harness to run the compiler", %{channel: channel} do
+    test "a stop asks the harness to run nothing", %{channel: channel} do
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000
 
-      assert_push "run_analysis", %{"runs" => runs}, 5_000
-
-      assert Enum.any?(runs, &(&1["source"] == "compiler")),
-             "the compiler is the cheapest signal and every other source short-circuits " <>
-               "on its errors, so it is always requested"
-
-      assert Enum.all?(runs, &is_integer(&1["run_id"])),
-             "the run row is opened here so the request is recoverable — a push with no " <>
-               "row would leave no trace that anything was ever asked for"
+      refute_push "run_analysis", _runs, 200
     end
 
     test "a stop while the harness is still running one says so, rather than reporting clean",
          %{channel: channel} do
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, _first, 5_000
-      assert_push "run_analysis", %{"runs" => _}, 5_000
+      _run_id = dispatch_compiler(channel)
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, decision, 5_000
@@ -808,11 +886,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "diagnostics from the harness become Problems", %{channel: channel, scope: scope} do
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, _decision, 5_000
-      assert_push "run_analysis", %{"runs" => runs}, 5_000
-
-      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+      run_id = dispatch_compiler(channel)
 
       ref = push(channel, "analysis_result", compiler_result(run_id, [broken_file_diagnostic()]))
       assert_reply ref, :ok, %{"status" => "completed"}, 5_000
@@ -825,21 +899,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # The acceptance test, in process. The wire version of it is the e2e run.
     test "a project whose code will not compile has its next stop BLOCKED",
          %{channel: channel, scope: scope} do
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, first, 5_000
-
-      refute first["decision"] == "block",
-             "nothing has been looked at yet, so this stop is allowed — but labelled"
-
-      assert_push "run_analysis", %{"runs" => runs}, 5_000
-      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+      run_id = dispatch_compiler(channel)
 
       ref = push(channel, "analysis_result", compiler_result(run_id, [broken_file_diagnostic()]))
       assert_reply ref, :ok, _recorded, 5_000
-
-      # Drain whatever the reconcile enqueued next, so the stop below is
-      # decided from the Problems rather than from a run still in flight.
-      Analysis.fail_in_flight(scope, :test_drain)
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, decision, 5_000
@@ -857,11 +920,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
     test "a run the harness could not do fails rather than completing empty",
          %{channel: channel, scope: scope} do
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, _decision, 5_000
-      assert_push "run_analysis", %{"runs" => runs}, 5_000
-
-      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+      run_id = dispatch_compiler(channel)
 
       ref =
         push(channel, "analysis_result", %{
@@ -905,6 +964,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     test "a sub-agent stopping with problems blocks, rather than killing the channel",
          %{channel: channel, scope: scope} do
       Process.flag(:trap_exit, true)
+
+      # Credo, not the compiler: a compiler run in flight would supersede the
+      # compiler finding and the stop would rightly allow.
+      push(channel, "analysis_run", %{"source" => "credo", "args" => []})
+      assert_push "run_analysis", %{"runs" => [_run]}, 5_000
 
       # A compiler error blocks unconditionally — no mode, no changed-file
       # scoping to arrange. What matters is only that something blocks.
@@ -956,9 +1020,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert decision["reason"] =~ "broken.ex"
 
-      # The runs this very stop enqueued. The harness is still holding them, so
-      # nothing here may close them — closing them is what made their results
-      # unrecordable.
+      # The run opened above. The harness is still holding it, so nothing here
+      # may close it — closing it is what made its result unrecordable.
       assert Analysis.runs_in_flight?(scope), """
       The stop swept the runs the harness is still working on.
 
@@ -996,9 +1059,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       # different one is asking about a different machine.
       served = %{scope | active_working_copy_id: id}
 
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, _decision, 5_000
-      assert_push "run_analysis", %{"runs" => _}, 5_000
+      _run_id = dispatch_compiler(channel)
 
       assert Analysis.runs_in_flight?(served)
 
@@ -1030,9 +1091,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       {:ok, %{working_copy_id: id}, channel} = join_with(scope, topic, nil)
       served = %{scope | active_working_copy_id: id}
 
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, _decision, 5_000
-      assert_push "run_analysis", %{"runs" => _}, 5_000
+      _run_id = dispatch_compiler(channel)
       assert Analysis.runs_in_flight?(served)
 
       open_ids = open_run_ids(served)

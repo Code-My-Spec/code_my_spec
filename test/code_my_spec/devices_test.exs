@@ -142,6 +142,30 @@ defmodule CodeMySpec.DevicesTest do
     end
   end
 
+  describe "one person's machine across their accounts" do
+    test "announcing under another of the user's accounts recognises the same machine",
+         %{scope: scope} do
+      {:ok, machine} = Devices.announce(scope, nil, %{hostname: "laptop", kind: :local})
+      {:ok, copy} = WorkingCopies.issue(scope, nil, root: "/tmp/restored", device: machine)
+      {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/restored")
+      {:ok, copy} = Devices.attach(copy, machine)
+
+      other_account = CodeMySpec.AccountsFixtures.account_fixture()
+      CodeMySpec.AccountsFixtures.member_fixture(scope.user, other_account)
+      elsewhere = %{scope | active_account_id: other_account.id, active_account: other_account}
+
+      assert {:ok, again} =
+               Devices.announce(elsewhere, machine.id, %{hostname: "laptop", kind: :local})
+
+      assert again.id == machine.id,
+             "minting a device per heartbeat left the harness an empty roster, so a " <>
+               "restart restored none of the copies on this machine"
+
+      assert again.account_id == scope.active_account_id
+      assert Map.has_key?(WorkingCopies.list_on_device(again), copy.id)
+    end
+  end
+
   describe "a machine that belongs to nobody" do
     test "a shared box is issued an identity without an account" do
       assert {:ok, device} =

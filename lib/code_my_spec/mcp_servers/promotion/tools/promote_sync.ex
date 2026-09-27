@@ -30,7 +30,10 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        {:reply, Responses.respond(Promotion.promote(scope)), frame}
+        # An in-app agent is told when the detached restart confirms or fails;
+        # no agent id (a Claude Code session, an operator) tells nobody.
+        result = Promotion.promote(scope, notify: frame.assigns[:agent_id])
+        {:reply, Responses.respond(result), frame}
 
       {:error, _reason} ->
         {:reply, Response.tool() |> Response.error(Responses.no_project()), frame}

@@ -48,9 +48,8 @@ defmodule CodeMySpec.Requirements.Handlers do
   skip work it owed.
   """
 
-  alias CodeMySpec.AgentTasks.QaIntegrationPlan
   alias CodeMySpec.Deploys
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.Promotion.RunningCopy
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Requirements.ArchitectureChecker
@@ -58,6 +57,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.DispatchChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
+  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.SpexBoundaryChecker
@@ -121,8 +121,44 @@ defmodule CodeMySpec.Requirements.Handlers do
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
     "story_changed" => [:stories, :links, :specs, :issues],
-    "qa_attempt_submitted" => [:qa]
+    "qa_attempt_submitted" => [:qa],
+    # A component appearing, going or changing moves `architecture_designed`
+    # — the orphan rule reads the component set — and that is settled here
+    # from the `:architecture` profile. The component's *own* rows are not:
+    # a template can add or remove nodes, and handlers settle rows rather
+    # than create them, so these three are `@partial` and their fallback
+    # marks stay for the narrow recompute of the component itself.
+    "component_created" => [:architecture],
+    "component_changed" => [:architecture],
+    "component_deleted" => [:architecture],
+    # A dependency moves edges and no verdict: the cross-context edge between
+    # the two components and every kickoff drawn through them. Handled so its
+    # marks do not send the source's family through a recompute nothing reads,
+    # and `@shape` so the projector redraws the edges for it.
+    "dependency_changed" => []
   }
+
+  # Handled kinds whose handler answers only part of what the event moved.
+  # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
+  # event as answered; for these it keeps it, so the entities the event named
+  # still go through `compute_entity/4`.
+  @partial ~w(component_created component_changed component_deleted)
+
+  @doc "The handled kinds whose fallback marks still apply."
+  @spec partial_kinds() :: [String.t()]
+  def partial_kinds, do: @partial
+
+  # Handled kinds that can move the shape the edges are drawn from — a
+  # dependency declared, a story relinked to another component — without
+  # moving a row a handler creates. Their verdicts are settled here; the
+  # projector asks the shape whether the edges have to be redrawn. Component
+  # kinds are not listed because `@partial` already sends them down the path
+  # that asks.
+  @shape ~w(dependency_changed story_changed)
+
+  @doc "The handled kinds after which the projector checks the shape."
+  @spec shape_kinds() :: [String.t()]
+  def shape_kinds, do: @shape
 
   @doc """
   The event kinds this module can apply.
@@ -183,6 +219,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "component_linked" => [:links],
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
+    "questions_answered" => [:stories],
     "code_on_running_copy" => [:stories],
     "qa_complete" => [:qa],
     # The rollups. `qa_integration_plan` is handed the file profile it would
@@ -190,7 +227,12 @@ defmodule CodeMySpec.Requirements.Handlers do
     # `@delegate_requirements`.
     "qa_integration_plan" => [:files],
     "spex_boundary_ready" => [:files],
-    "personas_complete" => [:personas],
+    # Moved by files as well: a persona's artifacts — `summary.md`,
+    # `sources.md` in its folder — are files, and the `:personas` profile loads
+    # them by role. Profiled as `[:personas]` alone, a sync that wrote them
+    # settled nothing here, and the story-560 criteria read "personas_complete
+    # is still the blocking requirement" after every artifact existed.
+    "personas_complete" => {[:files, :personas], [:personas]},
     # Reads all three now. It used to read nothing and query for itself —
     # four fresh reads per drain, one of them every component with two
     # preloads.
@@ -228,8 +270,20 @@ defmodule CodeMySpec.Requirements.Handlers do
     "architecture_designed" => {ArchitectureChecker, :complete?},
     "stories_exist" => {StoriesChecker, :exist?},
     "work_dispatched" => {DispatchChecker, :dispatched?},
-    "qa_integration_plan" => {QaIntegrationPlan, :delegate}
+    "qa_integration_plan" => {QaIntegrationPlanChecker, :delegate}
   }
+
+  @doc """
+  Every requirement name this module knows how to settle from an event —
+  `@requirement_profiles` and `@delegate_requirements` both, since a name in
+  either is reachable without the silent-skip gap dfb8ef8f found: a
+  requirement definition added to the graph and to
+  `story_graph()`/`project_graph()` but not to either of these is never
+  settled by any event handled here, for as long as it exists.
+  """
+  @spec settleable_requirement_names() :: [String.t()]
+  def settleable_requirement_names,
+    do: Map.keys(@requirement_profiles) ++ Map.keys(@delegate_requirements)
 
   # Component work is the presence of its implementation file.
   @file_requirements %{
@@ -481,6 +535,32 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
+  # dfb8ef8f / 56cf5697: `"story_changed"` is a handled event kind
+  # (`@dirties`), which discards the fallback safe-recompute for everything
+  # it can move — a requirement with no `settle/3` clause here is not marked
+  # stale by that path, it is silently skipped and keeps whatever verdict it
+  # already had, forever. `questions_answered` shipped with a definition and
+  # a `@requirement_profiles` entry but no clause, so any story whose
+  # questions changed after its initial computation (answering one,
+  # releasing a story that gets fresh Three Amigos) never had this
+  # requirement re-settled again. Measured on Broken Oaths: three stories
+  # stuck `STALE READ` forever, two of them with `questions_answered` as
+  # their only unsatisfied requirement.
+  #
+  # From the same preloaded profile `unsealed_verdicts/2` above reads
+  # (`profile.amigos.questions_by_story`), not a fresh query per story — the
+  # whole reason this profile exists is one read per event instead of one
+  # per story.
+  defp settle("questions_answered", %{stories: profile}, _scope) do
+    %{
+      entity_type: "story",
+      name: "questions_answered",
+      default: true,
+      default_details: details(%{status: "No open questions"}),
+      except: open_question_verdicts(profile)
+    }
+  end
+
   # Promotion is a stamp on the story, so the sweep is the two states it has:
   # the default is every story that has never been promoted, and the exceptions
   # are the ones carrying a version.
@@ -491,7 +571,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # reads rather than two per story.
   defp settle("code_on_running_copy", %{stories: profile}, scope) do
     {{default?, default_details}, promoted} =
-      Promotion.running_copy_verdicts(scope, profile.stories)
+      RunningCopy.running_copy_verdicts(scope, profile.stories)
 
     %{
       entity_type: "story",
@@ -702,11 +782,11 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   defp delegate_verdict(name, profiles, scope) do
     case Map.fetch!(@delegate_requirements, name) do
-      {QaIntegrationPlan, :delegate} ->
+      {QaIntegrationPlanChecker, :delegate} ->
         # Handed the profile's files so it does not re-read them;
         # `integration_files/2` takes a context in exactly this shape.
         scope
-        |> QaIntegrationPlan.evaluate(nil, %{files_by_project: profiles.files.all})
+        |> QaIntegrationPlanChecker.evaluate(nil, %{files_by_project: profiles.files.all})
         |> RequirementCalculator.normalize_delegate_result()
 
       {PersonasChecker, :complete?} ->
@@ -736,7 +816,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # `EpicDispatch.dispatch_state/1`'s three answers, from the profile.
+  # `Epics.dispatch_state/1`'s three answers, from the profile.
   #
   # Unsatisfied only when nothing is in progress and unassigned work exists —
   # the one state that wants the main agent to act. Ready matters: an unshaped
@@ -774,6 +854,28 @@ defmodule CodeMySpec.Requirements.Handlers do
       {false, detail} = BddRulesChecker.unsealed_reason(scope, story, profile.amigos)
       change("story", story.id, "three_amigos_complete", false, detail)
     end
+  end
+
+  # The stories with at least one open question, each naming them — mirrors
+  # `unsealed_verdicts/2`'s shape exactly, reading the same preloaded map
+  # rather than querying per story.
+  defp open_question_verdicts(profile) do
+    for story <- profile.stories,
+        open = open_questions(profile.amigos.questions_by_story, story.id),
+        open != [] do
+      detail =
+        details(%{
+          reason: "#{length(open)} open question(s): " <> Enum.map_join(open, "; ", & &1.text)
+        })
+
+      change("story", story.id, "questions_answered", false, detail)
+    end
+  end
+
+  defp open_questions(questions_by_story, story_id) do
+    questions_by_story
+    |> Map.get(story_id, [])
+    |> Enum.filter(&(&1.status == :open))
   end
 
   # A promoted story keeps `Promotion`'s answer, which is not always satisfied:

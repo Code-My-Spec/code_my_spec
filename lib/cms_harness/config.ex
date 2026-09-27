@@ -68,6 +68,51 @@ defmodule CmsHarness.Config do
   end
 
   @doc """
+  Where this instance keeps machine-identity state that lives outside any
+  checkout — `device.json` today, and anything that needs the same shape
+  later.
+
+  `~/.codemyspec` on a laptop, where one `$HOME` really is one machine — the
+  reasoning `CmsHarness.Device`'s own moduledoc gives for keeping this file
+  out of every checkout in the first place. Wrong for a `Runner.Local`-booted
+  workspace, which shares that same real `$HOME` with whatever persistent
+  harness the box already runs, so a workspace silently presented as *that*
+  harness's own device and inherited every working copy the server believed
+  it served — contending with the harness actually running each one.
+  Measured live, 2026-09-21.
+
+  No env var of its own for the distinction: `CMS_PROJECT_DIR` already names
+  where this instance's one project lives, and a boot that named one is a
+  workspace by definition (`CmsHarness.Projects`' own moduledoc — this is
+  the sprite path). One directory up from it is that workspace's own root,
+  already unique per instance because `Workspaces.instance_env/1` minted it
+  that way, and `Runner.Docker` never needed the distinction at all — a
+  container's filesystem starts empty, so `~/.codemyspec` there is already a
+  device of one.
+  """
+  @spec local_state_dir() :: String.t()
+  def local_state_dir do
+    case System.get_env("CMS_PROJECT_DIR") do
+      dir when is_binary(dir) and dir != "" -> Path.dirname(dir)
+      _ -> "~/.codemyspec"
+    end
+    |> Path.expand()
+  end
+
+  @doc """
+  Where this harness generates a project nobody chose a directory for.
+
+  `CmsHarness.Projects.Generator`'s only caller: a heartbeat, not a human at a
+  prompt, so there is nobody to ask "where should this go" the way
+  `IntakeLive.Workspace.local_commands/1`'s three lines assume for a person
+  typing `mix cms.new` themselves. `local_state_dir/0`'s own directory —
+  harness-owned space outside any checkout, on the same reasoning that keeps
+  `device.json` there rather than inside one.
+  """
+  @spec projects_root() :: String.t()
+  def projects_root, do: Path.join(local_state_dir(), "projects")
+
+  @doc """
   The credential the socket authenticates with, for a given project.
 
   A user token when someone is signed in on this machine, otherwise a deploy

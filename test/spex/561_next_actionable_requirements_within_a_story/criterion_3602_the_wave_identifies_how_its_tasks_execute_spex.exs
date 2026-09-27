@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story561.Criterion3602Spex do
       then_ "each task in the wave says how it is executed", context do
         Slice.assert_active(context.answer, context, "ready")
         assert Slice.offered?(context.answer, Slice.component(context, "Reservations.Booking").id)
-        assert context.answer =~ "execution_type"
-        assert context.answer =~ "sub_agent"
+        assert context.answer =~ "role=coding"
+        assert context.answer =~ "runs_in=subagent"
         assert context.answer =~ "orchestrated_by"
         assert context.answer =~ "develop_context"
         assert context.answer =~ "validation_type"

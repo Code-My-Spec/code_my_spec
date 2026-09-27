@@ -25,7 +25,7 @@ defmodule CodeMySpec.Knowledge do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Users],
+    deps: [CodeMySpec.Environments, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Environments
@@ -108,9 +108,18 @@ defmodule CodeMySpec.Knowledge do
           {:ok, "# #{config.title}\n\n#{lines}\n"}
 
         segments ->
+          # The listing strips `.md` (`format_entries/1`), so read the name it
+          # printed as well as the name on disk.
           full_path = Path.join([root_path(root) | segments])
-          located = locate(root, full_path)
-          resolve_located(located, root, full_path, config)
+
+          case locate(root, full_path) do
+            :not_found ->
+              with_md = full_path <> ".md"
+              resolve_located(locate(root, with_md), root, with_md, config)
+
+            located ->
+              resolve_located(located, root, full_path, config)
+          end
       end
     end
   end

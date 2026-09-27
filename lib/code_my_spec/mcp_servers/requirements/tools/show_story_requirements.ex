@@ -10,6 +10,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
 
   schema do
@@ -90,12 +91,57 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
     end
   end
 
+  # Ordered so the list reads as the route through the story.
+  #
+  # The rows arrive in whatever order the query returned, and the render walked
+  # them as-is: `qa_complete` second, `three_amigos_complete` — a prerequisite of
+  # nearly everything — sixth. An agent reading that cannot tell what to do next
+  # from the order, and criterion 8167 says it should ("the gate is listed before
+  # QA, so the agent walking the story meets it first"). That was true by accident
+  # and stopped being true when `story_issues_resolved` moved ahead of
+  # `qa_complete`, which is how the accident surfaced.
+  #
+  # Depth from the template's prerequisites, then name for a stable tie-break
+  # among siblings. Declaration order would not do: it still lists `qa_complete`
+  # before `story_issues_resolved`, so it encodes the chain as it was rather than
+  # as it is.
+  #
+  # A name the template does not carry sorts last rather than crashing — a row
+  # for a retired definition is a projection question, not a reason to refuse to
+  # render the story.
+  defp in_dependency_order(reqs) do
+    depths = template_depths()
+    Enum.sort_by(reqs, &{Map.get(depths, &1.name, 999), &1.name})
+  end
+
+  defp template_depths do
+    defs = RequirementDefinitionData.story_graph()
+    by_id = Map.new(defs, &{&1.id, &1})
+
+    Map.new(defs, &{&1.name, depth_of(&1, by_id)})
+  end
+
+  defp depth_of(%{prerequisites: []}, _by_id), do: 0
+
+  defp depth_of(%{prerequisites: prereqs}, by_id) do
+    prereqs
+    |> Enum.map(fn id ->
+      case Map.get(by_id, id) do
+        nil -> 0
+        parent -> 1 + depth_of(parent, by_id)
+      end
+    end)
+    |> Enum.max(fn -> 0 end)
+  end
+
   defp story_response(story, reqs, scope) do
     satisfied = Enum.count(reqs, & &1.satisfied)
     total = length(reqs)
 
     lines =
-      Enum.map_join(reqs, "\n", fn r ->
+      reqs
+      |> in_dependency_order()
+      |> Enum.map_join("\n", fn r ->
         status = if r.satisfied, do: "[x]", else: "[ ]"
         "- #{status} **#{r.name}** — #{r.description || "no description"}"
       end)

@@ -39,6 +39,21 @@ defmodule CodeMySpec.Utils.Data do
   anyway, for a caller that has read the refusal and means it.
   """
 
+  # Its own boundary rather than part of `Utils`: this reads and writes
+  # projects, components and stories, and inside `Utils` it made every caller
+  # of a string helper depend on those contexts too.
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Components,
+      CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
+    ],
+    exports: :all
+
   require Logger
 
   alias CodeMySpec.Components.Component

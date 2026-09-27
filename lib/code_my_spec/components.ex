@@ -6,13 +6,11 @@ defmodule CodeMySpec.Components do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Accounts,
       CodeMySpec.Paths,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -42,38 +40,36 @@ defmodule CodeMySpec.Components do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:components")
   end
 
-  defp broadcast(%Scope{} = scope, message) do
+  # The PubSub message always — the UI wants every change — and the graph
+  # event only when `graph:` says the graph has something to read.
+  defp broadcast(%Scope{} = scope, message, opts \\ []) do
     key = scope.user.id
 
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:components", message)
 
-    kind = component_event_kind(message)
+    if Keyword.get(opts, :graph, true) do
+      kind = component_event_kind(message)
+      GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
+    end
 
-    GraphInputs.event(scope, "Components", kind, %{}, graph_entities(message), vantage_of(kind))
+    :ok
   end
 
-  # Which checkouts a component event moves, and the two halves are not the
-  # same.
+  # Every checkout, whatever the kind. A component is a project fact: the
+  # `components` table has no `working_copy_id`, and every vantage projects
+  # rows for every component from the row's type, parent and dependencies.
   #
-  # A component *changing* moves what one checkout answers about it — its files
-  # are read per checkout, so `spec_file` and the rest are that worktree's
-  # answers and nobody else's.
-  #
-  # A component *appearing or going* changes the entity set, and the
-  # `components` table has no `working_copy_id`: every checkout projects
-  # requirements for every component. Narrowing creation to the checkout that
-  # made it leaves every other vantage without rows for it at all — handlers
-  # settle rows and never create them, so only the fallback creates them, and
-  # the fallback only runs where the mark points.
-  #
-  # Measured on dev, 2026-09-17: ten components created in five minutes, and
-  # every vantage but the creator sat at `missing 4-6` rows and did not
-  # converge. `extra 0` throughout, which is what says the shadow was behind on
-  # creation rather than wrong about what it held.
-  defp vantage_of(kind) when kind in ["component_created", "component_deleted"],
-    do: :project_wide
-
-  defp vantage_of(_changed), do: :this_checkout
+  # Creation and deletion were project-wide already — measured on dev,
+  # 2026-09-17: ten components created in five minutes and every vantage but
+  # the creator sat at `missing 4-6` rows. A *change* was narrowed to the
+  # checkout on the reasoning that its files are read per checkout, which is
+  # true of the files and not of the row: a retype moves the template and a
+  # new dependency moves the edges at every vantage. The event path narrows a
+  # drain to the checkouts its marks name, so a change marked for one checkout
+  # left the others — the UI's vantage first among them — with the component
+  # they knew before, and nothing ever told them otherwise. Per-checkout
+  # effects of the same scan arrive as `files_synced`, marked per checkout.
+  defp vantage_of(_kind), do: :project_wide
 
   # The component, and its parent.
   #
@@ -104,12 +100,31 @@ defmodule CodeMySpec.Components do
   # — its orphan rule asks which contexts are story-linked, descended from one,
   # or depended on by one. A component appearing, moving parent or changing type
   # can move that verdict.
-  defp graph_entities({_verb, %{id: id} = component}) do
-    case Map.get(component, :parent_component_id) do
-      nil -> [{"component", id}, :project]
-      parent_id -> [{"component", id}, {"component", parent_id}, :project]
-    end
-  end
+  #
+  # Only when the component appears or goes. A *change* to a component moves
+  # its own template and edges and nothing of its parent's — `Freshness`
+  # hashes the parent's children by id, not by content — and naming the parent
+  # sent the whole family of the parent's own root through a recompute at
+  # every vantage for a child's retype.
+  #
+  # The component and nothing else — not its parent, not the project.
+  #
+  # Not the parent: a component's unit of computation is its family, rooted
+  # at its parent — `Preloader.load_component_family/3` loads the parent and
+  # every sibling and instantiates the parent's template over them, which is
+  # where the child's own nodes come from. Naming the parent as well named
+  # *its* family, rooted at the grandparent: a child created under
+  # `CodeMySpec.Workspaces` recomputed `CodeMySpec` and its 101 children at
+  # every vantage — 7.1s, 483 queries, 1,020 rows across ten checkouts,
+  # measured 2026-09-21 — for nodes that do not read the child at all.
+  #
+  # Not `:project`: the project requirement a component moves is
+  # `architecture_designed`, and the three component kinds are handled for
+  # it — settled from the `:architecture` profile, one query and a coverage
+  # pass — where a `:project` entity sent every vantage through
+  # `compute_project_nodes/3`, whose delegates query for themselves and rerun
+  # the orphan scan over 1,147 components: ~700ms of CPU per vantage.
+  defp graph_entities({_verb, %{id: id}}), do: [{"component", id}]
 
   defp graph_entities(_message), do: []
 
@@ -168,11 +183,27 @@ defmodule CodeMySpec.Components do
   def update_component(%Scope{} = scope, %Component{} = component, attrs, opts \\ []) do
     true = component.project_id == scope.active_project.id
 
-    with {:ok, component = %Component{}} <-
+    with {:ok, updated = %Component{}} <-
            ComponentRepository.update_component(scope, component, attrs, opts) do
-      if Keyword.get(opts, :broadcast, true), do: broadcast(scope, {:updated, component})
-      {:ok, component}
+      if Keyword.get(opts, :broadcast, true),
+        do: broadcast(scope, {:updated, updated}, graph: structural_change?(component, updated))
+
+      {:ok, updated}
     end
+  end
+
+  # What the graph reads off a component row: its type (the template), its
+  # parent (the family and the tree edges) and its name (identity). A change
+  # to anything else — a spec's prose re-synced into `description` — moves no
+  # verdict and no edge, and was costing a whole family recompute at every
+  # vantage: measured 2026-09-21, three prose edits under
+  # `CodeMySpec.Workspaces` ran 9.8s / 923 queries each across ten checkouts,
+  # because the change named its parent and the parent's family root is
+  # `CodeMySpec`, 101 children.
+  @structural [:type, :parent_component_id, :module_name]
+
+  defp structural_change?(%Component{} = before, %Component{} = after_) do
+    Enum.any?(@structural, &(Map.get(before, &1) != Map.get(after_, &1)))
   end
 
   @doc """

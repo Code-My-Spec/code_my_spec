@@ -28,10 +28,7 @@ defmodule CodeMySpec.Requirements.EveryDeclaredEventIsAppliedOrCountedTest do
     "story_created" => "a row that does not exist yet cannot be settled",
     "story_deleted" => "the rows go with the entity, which is `delete_departed`",
     "story_readiness_changed" => "`ready_for_dev` decides whether a story projects at all",
-    "issue_changed" => "the catch-all kind; the five specific ones are handled",
-    "component_created" => "a row that does not exist yet cannot be settled",
-    "component_deleted" => "the rows go with the entity",
-    "component_changed" => "moves the component set, which moves topology"
+    "issue_changed" => "the catch-all kind; the five specific ones are handled"
   }
 
   test "every declared event kind is either handled or recorded as falling back" do

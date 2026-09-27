@@ -182,6 +182,15 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Enum.group_by(& &1.story_id)
   end
 
+  @doc "Resolved issues in a project, keyed by id — for callers holding only the id."
+  def resolved_in_project(project_id) when is_binary(project_id) do
+    from(i in Issue,
+      where: i.project_id == ^project_id and i.status == :resolved,
+      select: %{id: i.id, title: i.title}
+    )
+    |> Repo.all()
+  end
+
   def list_by_story(%Scope{} = scope, story_id) do
     Issue
     |> by_project(scope.active_project.id)

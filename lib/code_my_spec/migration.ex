@@ -36,7 +36,8 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Questions,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

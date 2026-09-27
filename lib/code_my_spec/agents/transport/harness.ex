@@ -14,8 +14,8 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.LaunchRequest
-  alias CodeMySpec.Analysis
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   @impl true
   @doc """
   Ask a machine to make a working copy.
@@ -32,7 +32,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   @spec create_working_copy([String.t()], map(), timeout()) ::
           {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
   def create_working_copy(candidate_ids, request, timeout) do
-    case Analysis.host_holder(candidate_ids) do
+    case HarnessRegistry.host_holder(candidate_ids) do
       {:ok, pid, _root} ->
         call(pid, {:create_working_copy, request}, timeout, :create_timed_out)
 
@@ -168,13 +168,32 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   # answer, and the suite stayed green because every spex here swaps the
   # transport for an in-process one — so this module was never exercised.
   defp holder(working_copy_id) do
-    case Analysis.executor_holder(working_copy_id) do
+    case HarnessRegistry.executor_holder(working_copy_id) do
       {:ok, pid, _instance} -> {:ok, pid}
       :error -> :none
     end
   end
 
-  defp call(pid, message, timeout, timeout_reason) do
+  # Calling the holder when *we are* the holder is a deadlock, and the BEAM
+  # turns it into an exit that kills the channel — taking every agent on that
+  # copy with it, because the harness then rejoins and
+  # `Agents.account_for_interrupted_turns/2` tells each one its turn was
+  # discarded.
+  #
+  # Measured on the math project 2026-09-22: an in-BEAM agent completing a task
+  # ran `TaskEvaluator.reconsider_other_agents/2` inside the harness project
+  # channel, which dispatched a work turn to the copy's holder — itself.
+  # `channel DIED reason={:calling_self, {GenServer, :call, [#PID<..>,
+  # {:request_work_turn, ..`. One agent finishing its work cancelled everybody
+  # else's.
+  #
+  # That call site now runs in a Task, which is the real fix. This is the floor
+  # under it: any *other* path that reaches a transport call from inside the
+  # channel — `set_working_copy_loop` and `check_in` are both one MCP call away
+  # from it — gets a refusal it can report instead of a dead channel and four
+  # cancelled turns. Loud, because a caller on this path is a bug to move off
+  # the channel rather than a condition to handle.
+  defp call(pid, message, timeout, timeout_reason) when pid != :erlang.self() do
     GenServer.call(pid, message, timeout + call_grace_ms())
   catch
     :exit, {:timeout, _} ->
@@ -182,6 +201,17 @@ defmodule CodeMySpec.Agents.Transport.Harness do
       # for a stop the process may well still be running — and reporting one
       # here would be the lie the whole story is about.
       {:error, timeout_reason}
+  end
+
+  defp call(_pid, message, _timeout, _timeout_reason) do
+    Logger.error(
+      "[Transport.Harness] refused #{inspect(elem(message, 0))} from inside the channel that " <>
+        "holds this working copy — calling it would deadlock and kill the channel, cancelling " <>
+        "every agent's turn on this copy. Run this from a Task, as " <>
+        "`TaskEvaluator.reconsider_other_agents/2` and `GraphWatcher.maybe_request_work/2` do."
+    )
+
+    {:error, :would_deadlock}
   end
 
   # The id is the whole handle. It used to carry a process group id and the boot

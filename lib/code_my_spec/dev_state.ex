@@ -37,10 +37,12 @@ defmodule CodeMySpec.DevState do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
@@ -49,6 +51,7 @@ defmodule CodeMySpec.DevState do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -295,7 +298,7 @@ defmodule CodeMySpec.DevState do
   defp note(%{enqueued: []}, _copy), do: "nothing enqueued — every source was already current"
 
   defp note(_report, copy) do
-    case Analysis.executor_holder(copy.id) do
+    case HarnessRegistry.executor_holder(copy.id) do
       {:ok, _pid, _instance} -> "enqueued; poll /dev/state for it to finish"
       :error -> "enqueued, but nothing is holding this working copy — it will not run"
     end
@@ -372,7 +375,7 @@ defmodule CodeMySpec.DevState do
   end
 
   defp executor(copy_id) do
-    case Analysis.executor_holder(copy_id) do
+    case HarnessRegistry.executor_holder(copy_id) do
       {:ok, pid, instance} -> %{held: true, pid: inspect(pid), instance: instance}
       :error -> %{held: false}
     end
@@ -429,10 +432,13 @@ defmodule CodeMySpec.DevState do
     # (07f42ebf). A cycle went to it, and the same claim had been copied into a
     # seed's documentation from this sentence.
     #
-    # Nothing on the read path starts one. `RequirementsLive.provenance/2` calls
-    # `status/1`, which is read-only, and `Requirements.cached_all/1` does not
-    # ensure one either. The only callers are `watch_active_projects/0` at boot
-    # and the two continuous toggles in `agents.ex`.
+    # Nothing on the read path starts one for a project that has rows.
+    # `RequirementsLive.provenance/2` calls `status/1`, which is read-only, and
+    # `Requirements.cached_all/1` does not ensure one either. The callers are
+    # `watch_active_projects/0` at boot, the two continuous toggles in
+    # `agents.ex`, and — since Metric Flow sat with 3,480 marks and no rows —
+    # a read of a project with no rows at all (`RequirementGraph.settle_owner/1`).
+    # A project with agents in the loop has rows, so that door is shut here.
     #
     # Not fixed by having the read start one, though that was the other option
     # and the reporter leaned toward it. This module is the place that says what
@@ -445,8 +451,8 @@ defmodule CodeMySpec.DevState do
       if is_nil(watcher) and in_the_loop do
         [
           "project #{project.name} has agents in the loop and no GraphWatcher — work " <>
-            "appearing will not wake anybody. Reading the graph does not start one and " <>
-            "neither does this page: toggle an agent's loop off and on, or restart the " <>
+            "appearing will not wake anybody. Reading a graph that has rows does not " <>
+            "start one and neither does this page: toggle an agent's loop off and on, or restart the " <>
             "server, which seeds a watcher for every project with agents in it."
         ]
       else

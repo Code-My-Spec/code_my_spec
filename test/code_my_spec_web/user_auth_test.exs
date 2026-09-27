@@ -1,8 +1,9 @@
 defmodule CodeMySpecWeb.UserAuthTest do
   use CodeMySpecTest.ConnCase, async: true
 
+  alias CodeMySpec.UserPreferences
+
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
   alias Phoenix.LiveView
 
@@ -37,7 +38,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
     test "keeps session when re-authenticating", %{conn: conn, user: user} do
       conn =
         conn
-        |> assign(:current_scope, Scope.for_user(user))
+        |> assign(:current_scope, UserPreferences.scope_for(user))
         |> put_session(:to_be_removed, "value")
         |> UserAuth.log_in_user(user)
 
@@ -52,7 +53,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
 
       conn =
         conn
-        |> assign(:current_scope, Scope.for_user(other_user))
+        |> assign(:current_scope, UserPreferences.scope_for(other_user))
         |> put_session(:to_be_removed, "value")
         |> UserAuth.log_in_user(user)
 
@@ -80,7 +81,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
     test "redirects to the app when user is already logged in", %{conn: conn, user: user} do
       conn =
         conn
-        |> assign(:current_scope, Scope.for_user(user))
+        |> assign(:current_scope, UserPreferences.scope_for(user))
         |> UserAuth.log_in_user(user)
 
       assert redirected_to(conn) == ~p"/app"
@@ -335,7 +336,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
 
     test "auto-selects the first account and continues when none is active", %{user: user} do
       account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
-      scope = Scope.for_user(user)
+      scope = UserPreferences.scope_for(user)
       assert is_nil(scope.active_account)
 
       socket = %LiveView.Socket{
@@ -394,7 +395,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
     test "does not redirect if user is authenticated", %{conn: conn, user: user} do
       conn =
         conn
-        |> assign(:current_scope, Scope.for_user(user))
+        |> assign(:current_scope, UserPreferences.scope_for(user))
         |> UserAuth.require_authenticated_user([])
 
       refute conn.halted

@@ -21,7 +21,8 @@ defmodule CodeMySpec.Mail do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Uploads,
-      CodeMySpec.Users
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 

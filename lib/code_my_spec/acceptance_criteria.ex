@@ -13,11 +13,10 @@ defmodule CodeMySpec.AcceptanceCriteria do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Files,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
-      CodeMySpec.Users
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -113,10 +112,16 @@ defmodule CodeMySpec.AcceptanceCriteria do
 
   @doc """
   Record where each criterion's spex file lives, for criteria that do not
-  already say. See `AcceptanceCriteriaRepository.claim_spec_paths/2`.
+  already say. See `AcceptanceCriteriaRepository.claim_spec_paths/3`.
+
+  `recorded_paths` are the files already recorded for this checkout. The caller
+  supplies them — it is `Files` that syncs files, and reading them back from
+  here made the two contexts depend on each other.
   """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}) :: {:ok, non_neg_integer()}
-  def claim_spec_paths(%Scope{} = scope, paths), do: impl().claim_spec_paths(scope, paths)
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
+          {:ok, non_neg_integer()}
+  def claim_spec_paths(%Scope{} = scope, paths, recorded_paths),
+    do: impl().claim_spec_paths(scope, paths, recorded_paths)
 
   @doc "Every claimed spec path in the project, mapped to the story that owns it."
   @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}

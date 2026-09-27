@@ -38,20 +38,18 @@ defmodule CodeMySpec.Analysis do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.BddSpecs,
       CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Notifications,
       CodeMySpec.Problems,
-      CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Validation
     ],
     exports: :all
@@ -240,6 +238,49 @@ defmodule CodeMySpec.Analysis do
   defp skipped_for_compile_errors?(_run), do: false
 
   @doc """
+  Admit an analyzer run durably and return its id without waiting for execution.
+
+  A remote harness or local analysis supervisor must exist. The ledger row is
+  created before returning; admission failures reach the caller synchronously.
+  """
+  @spec start_run(Scope.t(), String.t(), [String.t()], keyword()) ::
+          {:ok, :started | :joined | :skipped, integer()} | {:error, term()}
+  def start_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
+    job = build_job(source, args, Fingerprint.current(scope, source), opts)
+
+    case remote_executor(scope) do
+      {:ok, channel} ->
+        dispatch_remote(scope, job, channel)
+
+      :none ->
+        start_local(scope, job, mode())
+    end
+  end
+
+  # `mode/0` decides, as it does for `await_local/2`. This always started a
+  # ProjectServer, so under `analysis_mode: :inline` — the test env — a run
+  # requested through `start_analysis` became an async server under the
+  # application supervisor that outlived the test, then ran its queued job
+  # against that test's `InMemoryEnvironment` after it was gone. The logged
+  # `:noproc` landed in whichever spex was running at the time; story 1052's
+  # criterion 3215 was the one that kept catching it.
+  # Admission, not outcome. The run is opened and executed here, and whatever
+  # the execution does is recorded on the run — the caller asked whether the run
+  # was accepted, which it was. Answering with the execution's error made a suite
+  # that failed to boot read as a refused request.
+  defp start_local(scope, job, :inline) do
+    run = open_run(scope, job)
+    _ = Execution.execute(scope, run, job.opts)
+    {:ok, :started, run.id}
+  end
+
+  defp start_local(scope, job, :async) do
+    with {:ok, server} <- ensure_server(scope) do
+      ProjectServer.ensure_run(server, scope, job)
+    end
+  end
+
+  @doc """
   Run one analyzer and block until it finishes (joining an identical
   in-flight run instead of double-executing). Never memo-skips: an explicit
   call always executes — it's the escape hatch for flaky tests.
@@ -291,7 +332,7 @@ defmodule CodeMySpec.Analysis do
 
     try do
       case dispatch_remote(scope, job, channel) do
-        {:ok, :started, run_id} ->
+        {:ok, started_or_joined, run_id} when started_or_joined in [:started, :joined] ->
           wait_for_remote(scope, run_id, job.source, deadline())
 
         # Never dispatched — the code does not compile, so the row is already
@@ -581,6 +622,10 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc "Whether an agent has a run it requested still in flight on a working copy."
+  @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
+  defdelegate awaiting_runs?(scope, working_copy_id, agent_id), to: RunsRepository
+
   @doc """
   Whether anything is running, nothing is, or nobody is watching.
 
@@ -845,165 +890,6 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Register the calling process as the executor for `project_id`.
-
-  Called from the harness channel at join. The registration dies with the
-  channel, which is what makes `remote_executor/1` a liveness answer rather than
-  a stored one.
-
-  `instance` names the OS process holding the harness's socket. A harness that
-  reconnects presents the same `working_copy_id` as the registration it is colliding
-  with — that id *is* the working copy, read from a file inside it — so the id
-  alone cannot say whether this is a rival or the same process returning. The
-  instance can, and a process is allowed to take its own registration back.
-
-  It has to be, because the entry only dies with the channel, and a channel is
-  only killed by its socket closing. A harness whose client-side channel went
-  while the socket stayed open leaves an entry nothing will ever release, and
-  the harness then queues behind its own ghost at the capped backoff forever —
-  hooks refusing with `:not_connected` against a server answering 200. That was
-  not a slow recovery, it was a permanent one, and only killing the harness
-  process cleared it.
-
-  A *different* instance is still refused: that is two harnesses on one
-  `_build`, where two `mix test` runs corrupt it into reporting failures that
-  are not in the code. Registered entries are always live — Registry drops them
-  when the channel dies — so a live entry from another instance means a real
-  rival, not a leftover.
-
-  ## The instance is necessary and not sufficient
-
-  It answers "same OS process", and one daemon serves several working copies.
-  So two channels for *different checkouts* presented the same instance, and a
-  guard meaning "this is me reconnecting" fired for a sibling — killing it. The
-  victim rejoined and killed the other back, about once a second, until the
-  process was restarted: 1078 evictions in one evening with every stop hook
-  refused.
-
-  It only got the chance because their ids had collapsed onto one — see
-  `CmsHarness.HarnessConfig.read/1` — and with distinct ids these are different
-  registry keys that never meet. This pairs the root with the instance anyway,
-  so the day identity breaks again the answer is a refusal naming both roots
-  rather than a loop that has to be diagnosed from the outside.
-  """
-  @spec register_executor(String.t(), String.t() | nil, String.t() | nil) ::
-          :ok | {:error, {:already_registered, pid()}} | {:error, {:id_collision, pid(), term()}}
-  def register_executor(working_copy_id, instance \\ nil, root \\ nil) do
-    key = to_string(working_copy_id)
-
-    case Registry.register(HarnessRegistry, key, {instance, root}) do
-      {:ok, _} -> :ok
-      {:error, {:already_registered, pid}} -> take_over(key, pid, instance, root)
-    end
-  end
-
-  @doc """
-  Who is holding this working copy's executor slot, if anyone.
-
-  Exists for the refusal message. "A second agent is refused" is only half of
-  criterion 744; the half that matters to whoever hit it is *which* agent holds
-  it, because the operator is looking at two processes and has to know which one
-  to stop. The registry is the only place that knows, and the entry is live by
-  construction — Registry drops it when the channel dies — so a hit here names a
-  process that is really there.
-
-  `instance` is what the harness called itself at join, typically its OS pid. It
-  can be nil for a harness that predates the field, in which case the pid is all
-  there is to say and is still better than "another harness".
-  """
-  @spec executor_holder(String.t()) :: {:ok, pid(), String.t() | nil} | :error
-  def executor_holder(working_copy_id) do
-    case Registry.lookup(HarnessRegistry, to_string(working_copy_id)) do
-      [{pid, {instance, _root}} | _] -> {:ok, pid, instance}
-      [] -> :error
-    end
-  end
-
-  @doc """
-  A machine that can host a new working copy for this project, if one is
-  connected.
-
-  Every other request here is addressed to a checkout that exists —
-  `executor_holder/1` takes the id and the registry is keyed on it. Creating a
-  copy has no id yet, and the thing being asked for is not "do something to this
-  checkout" but "make one on your disk". So the address is a *machine*, and any
-  connected copy of the project stands for the machine it is on: its harness has
-  the repository, so it can make a sibling worktree beside it.
-
-  Any rather than a specific one, deliberately. Which checkout a harness happens
-  to be holding says nothing about its fitness to host another, and picking by
-  root or by last-seen is the inference story 963's designation rule exists to
-  rule out. What matters is that something is there.
-
-  `:none` when nothing is connected, which is a refusal rather than a wait: a
-  request for a checkout that cannot be satisfied is refused, and no row is
-  written for a directory nobody made (criterion 3094).
-  """
-  @spec host_holder([String.t()]) :: {:ok, pid(), String.t()} | :none
-  def host_holder(working_copy_ids) when is_list(working_copy_ids) do
-    Enum.find_value(working_copy_ids, :none, fn id ->
-      case Registry.lookup(HarnessRegistry, to_string(id)) do
-        [{pid, {_instance, root}} | _] when is_binary(root) and root != "" ->
-          {:ok, pid, root}
-
-        _ ->
-          nil
-      end
-    end)
-  end
-
-  # Only from the same instance, and only when we know both — an unknown
-  # instance on either side is not evidence of sameness, and guessing wrong
-  # here is the `_build` corruption the lock exists to prevent.
-  defp take_over(_key, pid, nil, _root), do: {:error, {:already_registered, pid}}
-
-  defp take_over(key, pid, instance, root) do
-    case Registry.lookup(HarnessRegistry, key) do
-      # Same process, same working copy: this is the harness reconnecting to its
-      # own slot, which it is allowed to do.
-      [{^pid, {^instance, ^root}}] ->
-        evict(key, pid, instance, root)
-
-      # Same process, *different* working copy. Not a reconnect — two checkouts
-      # claiming one identity, which is only possible when something upstream
-      # collapsed their ids. Refusing names both roots; evicting starts a loop
-      # that has to be diagnosed from the outside.
-      [{^pid, {^instance, held_root}}] ->
-        {:error, {:id_collision, pid, held_root}}
-
-      # It went between the register and the lookup. The slot is free now.
-      [] ->
-        register_executor(key, instance, root)
-
-      _ ->
-        {:error, {:already_registered, pid}}
-    end
-  end
-
-  # Kill it and wait for the entry to actually clear. Registry unregisters on
-  # the process's :DOWN, so registering before that lands would race and lose.
-  defp evict(key, pid, instance, root) do
-    Logger.info(
-      "[Analysis] harness #{key} reconnected from #{instance}; taking back the " <>
-        "registration held by its previous channel #{inspect(pid)}"
-    )
-
-    ref = Process.monitor(pid)
-    Process.exit(pid, :kill)
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
-    after
-      5_000 -> Process.demonitor(ref, [:flush])
-    end
-
-    case Registry.register(HarnessRegistry, key, {instance, root}) do
-      {:ok, _} -> :ok
-      {:error, {:already_registered, other}} -> {:error, {:already_registered, other}}
-    end
-  end
-
-  @doc """
   Close out every `:running` run for the project as failed.
 
   Called when a harness's channel goes, and again when a new one joins. Both are
@@ -1027,7 +913,9 @@ defmodule CodeMySpec.Analysis do
   """
   @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
   def fail_in_flight(%Scope{} = scope, reason, claimed) do
-    {:ok, count} = RunsRepository.fail_running(scope, reason, claimed)
+    {:ok, failed} = RunsRepository.fail_running(scope, reason, claimed)
+    Enum.each(failed, &Reconciler.announce_failed(&1, reason))
+    count = length(failed)
 
     if count > 0 do
       Logger.warning(
@@ -1037,6 +925,17 @@ defmodule CodeMySpec.Analysis do
     end
 
     {:ok, count}
+  end
+
+  @doc """
+  Close every run a previous server process left `:running`, telling each
+  requester its run died with that server.
+  """
+  @spec fail_stranded_runs() :: {:ok, non_neg_integer()}
+  def fail_stranded_runs do
+    {:ok, failed} = RunsRepository.fail_stranded_runs()
+    Enum.each(failed, &Reconciler.announce_failed(&1, :server_restarted))
+    {:ok, length(failed)}
   end
 
   defp claimed_suffix([]), do: ""
@@ -1265,10 +1164,44 @@ defmodule CodeMySpec.Analysis do
   # useless — and `FixBddSpecs`, which gates on `Analysis.fresh?(scope, "spex")`
   # and says to wait and re-evaluate, looped until somebody ran the analyzer by
   # hand.
-  #
-  # `:joined` was never true either: nothing joined anything, and the caller
-  # was told its work was in progress when it had been discarded.
   defp dispatch_remote(scope, job, channel) do
+    case joinable_run(scope, job) do
+      %Run{} = run -> join_remote(job, channel, run)
+      nil -> open_remote(scope, job, channel)
+    end
+  end
+
+  # A harness holds at most two entries per source — the one executing and the
+  # one queued behind it — and ties every further request onto the queued one
+  # (`CmsHarness.Project.AnalysisServer.tie_to_queued/4`). Opening a row for
+  # each of those anyway is what made one queued run read as six `:running`
+  # rows (75acdb84). So once two full rows are open, the newest is the queued
+  # entry or tied to it, and a new request joins it instead.
+  #
+  # Still sent, under the joined id: the harness ignores a run it already
+  # holds, and one it lost (a restart) is queued afresh rather than waited on
+  # forever.
+  defp joinable_run(scope, %{kind: :full, source: source}) do
+    case RunsRepository.running_full_runs(scope, source) do
+      [newest, _older | _] -> newest
+      _ -> nil
+    end
+  end
+
+  defp joinable_run(_scope, _job), do: nil
+
+  defp join_remote(job, channel, run) do
+    Logger.info("[Analysis] #{job.source} joined run #{run.id} already queued on the harness")
+
+    send(
+      channel,
+      {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+    )
+
+    {:ok, :joined, run.id}
+  end
+
+  defp open_remote(scope, job, channel) do
     case RunsRepository.start_run(scope, %{
            source: job.source,
            kind: job.kind,
@@ -1300,7 +1233,9 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp run_inline(scope, job) do
+  defp run_inline(scope, job), do: Execution.execute(scope, open_run(scope, job), job.opts)
+
+  defp open_run(scope, job) do
     {:ok, run} =
       RunsRepository.start_run(scope, %{
         source: job.source,
@@ -1310,7 +1245,7 @@ defmodule CodeMySpec.Analysis do
         requested_by: job.requested_by
       })
 
-    Execution.execute(scope, run, job.opts)
+    run
   end
 
   # The working copy, because that is what owns the build tree the queue exists
@@ -1330,13 +1265,19 @@ defmodule CodeMySpec.Analysis do
   def server_key(%Scope{active_project_id: project_id}), do: {:project, project_id}
 
   defp ensure_server(%Scope{active_project_id: project_id} = scope) do
-    case DynamicSupervisor.start_child(
-           CodeMySpec.Analysis.ServerSupervisor,
-           {ProjectServer, {server_key(scope), project_id}}
-         ) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
+    case Process.whereis(CodeMySpec.Analysis.ServerSupervisor) do
+      nil ->
+        {:error, :no_executor}
+
+      supervisor ->
+        case DynamicSupervisor.start_child(
+               supervisor,
+               {ProjectServer, {server_key(scope), project_id}}
+             ) do
+          {:ok, pid} -> {:ok, pid}
+          {:error, {:already_started, pid}} -> {:ok, pid}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

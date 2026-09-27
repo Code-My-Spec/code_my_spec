@@ -16,49 +16,49 @@ defmodule CodeMySpecSpex.Story1070.Criterion3540Spex do
   An agent holding two open tasks has told the graph it is doing two things and
   can finish at most one of them, so the ordering is the claim rather than the
   presence of both calls.
+
+  ## Asserted from a recording
+
+  This spex reads `test/fixtures/evals/criterion_3540/`, written by
+  `mix cms.eval`. It never starts an agent and never calls a model, so it runs
+  in the ordinary suite at ordinary speed and is gated like everything else.
+
+  It answers two questions in that order: whether the recording is still about
+  the prompt we ship, and whether the rate holds. A recording made against a
+  different prompt is not evidence, and fails as stale rather than as a rate —
+  the two are both red and mean different things, and sending somebody to debug
+  an agent that was never measured is the expensive mistake.
+
+  Re-record with `MIX_ENV=test mix cms.eval --pattern criterion_3540` whenever the
+  rules, this role's brief or the provider brief change.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentEvalHelpers
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.AgentEvalHelpers, only: [assert_rate: 2]
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpecSpex.EvalArtifacts
 
-  @moduletag :eval
-  # `CodeMySpecSpex.Case` sets three minutes, which is right for a spex that
-  # drives a surface and far too short for one that drives ten agents.
-  @moduletag timeout: CodeMySpecSpex.AgentEvalHelpers.eval_timeout()
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
-
-  setup do
-    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
-  end
+  @criterion "criterion_3540"
+  @role "product"
+  @threshold 0.9
 
   spex "An agent closes the work it finished" do
     scenario "An agent that finishes work closes the task" do
-      given_ :synced_context_in_satisfied_project
-
-      given_ "a checkout on the harness, reporting what its agents do", context do
-        {:ok, given_a_harnessed_checkout(context, "eval_3540")}
+      given_ "the runs `mix cms.eval` recorded for this criterion", context do
+        {:ok, Map.put(context, :runs, EvalArtifacts.runs(@criterion))}
       end
 
-      when_ "a fresh agent works what the graph offers it", context do
-        measured =
-          measure("An agent that finishes work closes the task", fn _run ->
-            observe(context, [role: "coding"], fn agent ->
-              closed_before_taking_more?(context, agent)
-            end)
-          end)
+      when_ "they are checked against the prompt we ship today", context do
+        :ok = EvalArtifacts.assert_current!(context.runs, @role)
 
-        {:ok, Map.put(context, :measured, measured)}
+        {:ok, context}
       end
 
-      then_ "it closes what it took, before taking anything else", context do
-        assert_rate(context.measured, 0.9)
+      then_ "the agent did the right thing often enough", context do
+        context.runs
+        |> EvalArtifacts.result("An agent that finishes work closes the task")
+        |> assert_rate(@threshold)
 
         {:ok, context}
       end

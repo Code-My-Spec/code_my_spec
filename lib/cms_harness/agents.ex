@@ -40,8 +40,16 @@ defmodule CmsHarness.Agents do
       provider: request["provider"],
       credential: credential(request),
       working_copy: request["working_copy"],
-      # Half of the system prompt; the engine composes it with the
-      # project's own guide, which only this side can read.
+      # The system prompt arrives in pieces and `SystemPrompt.compose/1`
+      # orders them general to specific: the universal half, then what this
+      # project and checkout are, then what this agent is for.
+      #
+      # All of it is resolved server-side. Role semantics, the loop and the
+      # tool list are the framework's, and the project's own description is a
+      # column — none of it is knowable from the machine.
+      universal: request["universal"],
+      project_brief: request["project_brief"],
+      provider_brief: request["provider_brief"],
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],
       # Where the application is running, off the project's main working
@@ -79,7 +87,10 @@ defmodule CmsHarness.Agents do
       # names somewhere else. Settable for the same reason `on_stop` is:
       # the default is right for the harness and it is not the only
       # caller.
-      on_event: request["on_event"] || reporter_for(request["working_copy"])
+      on_event: request["on_event"] || reporter_for(request["working_copy"]),
+      # The text of a turn as it is written, to whoever is watching live. Only
+      # the channel wants it; a caller naming its own `on_event` gets none.
+      on_draft: request["on_draft"] || drafter_for(request["on_event"], request["working_copy"])
     )
   end
 
@@ -230,6 +241,11 @@ defmodule CmsHarness.Agents do
   # should hear about it, and a copy this harness does not serve is a cast that
   # finds no registry entry and stops — which is the right answer, because
   # there is nowhere to report to.
+  defp drafter_for(nil, working_copy),
+    do: fn agent_id, envelope -> ChannelClient.report_draft(working_copy, agent_id, envelope) end
+
+  defp drafter_for(_on_event, _working_copy), do: nil
+
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
       warn_on_tool_failure(agent_id, envelope)

@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         {:ok, second_copy} =
           CodeMySpec.WorkingCopies.issue(context.scope, nil,
             label: "the second agent's checkout",
-            device: CodeMySpec.DevicesFixtures.device_fixture(context.scope)
+            device: CodeMySpecSpex.Fixtures.device_fixture(context.scope)
           )
 
         second = %{context.scope | active_working_copy_id: second_copy.id}

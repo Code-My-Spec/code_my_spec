@@ -30,7 +30,7 @@ defmodule CodeMySpec.AccountSecrets do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.ProjectSecrets, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec.ProjectSecrets, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.AccountSecrets.AccountSecretRepository

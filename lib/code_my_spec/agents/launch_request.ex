@@ -29,8 +29,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential, RoleBrief, ToolIndex}
+  alias CodeMySpec.Agents.{Agent, Credential, OperatingRules, ProviderBrief, RoleBrief, ToolIndex}
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -73,6 +74,22 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # set that enforces them, and the harness has no opinion about what a QA
       # agent may do.
       "role_brief" => RoleBrief.for(agent.role),
+      # Section one: the loop every agent runs, and how the machinery behaves.
+      # The same words for every role on every project, which is why it is
+      # resolved here once rather than assembled per agent on the machine.
+      #
+      # It carries the loop because the loop is framework machinery — a project
+      # cannot opt out of claiming work, `start_task` enforces it — and because
+      # the only other place it was written down was a file on disk that a
+      # checkout might not have. See `OperatingRules`.
+      "universal" => OperatingRules.text(),
+      # Section two, first part: what this project actually is, so an agent that
+      # has never seen it has the broad idea before it reads a requirement.
+      #
+      # Nil when the project has not written one. Nil rather than a placeholder,
+      # for the reason `app_url/1` gives below: an agent told something vague is
+      # worse off than one told nothing, because it will act on it.
+      "project_brief" => project_brief(agent),
       # Every tool it can reach, by name and nothing else.
       #
       # It already has schemas for what it carries and `tool_docs` answers for
@@ -83,6 +100,13 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # were available through `run_script` the whole time. Both could see what
       # they held and not what they could reach. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
+      # How a tool call physically happens on the engine running this agent.
+      #
+      # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and
+      # the provider serialises the definitions into the request — so an agent
+      # that does not know where its tools are reports them missing and stops,
+      # having called nothing. See `ProviderBrief`.
+      "provider_brief" => ProviderBrief.for(agent.provider),
       # Where the application it is working on is actually running.
       #
       # An agent that cannot answer this cannot open it. The QA agent on the
@@ -104,7 +128,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # had deliberately stopped watching. Paused is not stopped: the row is
       # alive, so it belongs in the answer, carrying the state it was in.
       "continuous" => agent.continuous == true,
-      "messages" => agent.history || []
+      "messages" => demo_turns() ++ (agent.history || [])
     }
     |> Map.merge(credential_fields(agent.credential))
   end
@@ -118,6 +142,31 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   end
 
   defp app_url(_agent), do: nil
+
+  # What the project is, in its own words.
+  #
+  # Measured 2026-09-20: 7 of 76 projects have written one, and the longest had
+  # drifted far enough to contradict the tool index shipping beside it in the
+  # same prompt — it named a port, an MCP library and a tool count that had all
+  # moved. So this is sent when it exists and omitted when it does not, and
+  # keeping it true is the project's job rather than something inferred here.
+  defp project_brief(%Agent{project_id: project_id}) when is_binary(project_id) do
+    case Projects.get_project_by_id(project_id) do
+      %{description: description} -> presence(description)
+      nil -> nil
+    end
+  end
+
+  defp project_brief(_agent), do: nil
+
+  defp presence(text) when is_binary(text) do
+    case String.trim(text) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp presence(_), do: nil
 
   # The browser this machine offers, read from the copy the agent runs on.
   #
@@ -151,6 +200,54 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       {:ok, conversation} -> Conversations.resume_messages(conversation)
       _error -> []
     end
+  end
+
+  # Two calls the agent has already made, before anything it is asked to do.
+  #
+  # The wire format is described to an agent in prose by `ProviderBrief`, and
+  # prose is read in the same mode that gets it wrong: measured on 2026-09-21,
+  # roughly one turn in ten came back with no call made and a fabricated
+  # account of one failing, and four rewrites of that prose moved the rate
+  # around inside noise. Nothing in the transcript ever showed the shape.
+  #
+  # Now it does, in the agent's own voice, before it is asked for anything:
+  # `health` for a direct call and `run_script` for the nested form a Lua
+  # function needs. Demonstration rather than instruction.
+  #
+  # `health` and `script_health` answer `ok` and do nothing else, so a seeded
+  # turn tells the agent nothing about the project it is about to work on.
+  defp demo_turns do
+    [
+      %{
+        "role" => "assistant",
+        "content" => [
+          %{"type" => "tool_use", "id" => "health-1", "name" => "health", "input" => %{}}
+        ]
+      },
+      %{
+        "role" => "user",
+        "content" => [
+          %{"type" => "tool_result", "tool_use_id" => "health-1", "content" => "ok"}
+        ]
+      },
+      %{
+        "role" => "assistant",
+        "content" => [
+          %{
+            "type" => "tool_use",
+            "id" => "health-2",
+            "name" => "run_script",
+            "input" => %{"script" => "local status, err = script_health(); return status"}
+          }
+        ]
+      },
+      %{
+        "role" => "user",
+        "content" => [
+          %{"type" => "tool_result", "tool_use_id" => "health-2", "content" => "ok"}
+        ]
+      }
+    ]
   end
 
   defp credential(%Scope{} = scope, %Agent{provider: provider}) when is_binary(provider) do

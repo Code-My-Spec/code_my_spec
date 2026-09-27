@@ -67,6 +67,8 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   alias CmsHarness.Device
   alias CmsHarness.Projects
+  alias CmsHarness.Projects.Generator
+  alias CmsHarness.ServedRoots
 
   # Slower than `LaneReporter`'s 30s, deliberately. Lanes come and go inside a
   # single sitting and the page renders them live; a checkout is removed rarely,
@@ -75,13 +77,10 @@ defmodule CmsHarness.WorkingCopyReporter do
   # somebody's laptop.
   @heartbeat :timer.minutes(2)
 
-  # The first one comes sooner, because the first exchange is mostly a question.
-  # A fresh harness knows only what it has been asked to serve, so its opening
-  # report is thin and its value is the answer — the copies the server says are
-  # on this machine. Waiting a full heartbeat to ask, and another to report on
-  # what came back, would put four minutes between a harness starting and it
-  # looking at the checkout somebody deleted yesterday.
-  @first_report :timer.seconds(20)
+  # Start the authoritative roster exchange as soon as the supervision tree
+  # exists. Credentials can bootstrap from durable served-root hints without
+  # first starting channels, so an offline offboard stays offboarded.
+  @first_report 0
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: name(opts))
 
@@ -109,7 +108,12 @@ defmodule CmsHarness.WorkingCopyReporter do
     # `last` is the previous report, held only so a repeat can be recognised and
     # not said twice. `nil` rather than `%{}`: having reported nothing is a
     # thing that happened, and is worth one line.
-    {:ok, %{known: Keyword.get(opts, :known, %{}), last: nil}}
+    #
+    # `generating` is which pending projects already have a generation task in
+    # flight — without it, a project that takes longer to generate than the
+    # 2-minute heartbeat would get a second `Generator.run/1` launched onto the
+    # same directory before the first finished.
+    {:ok, %{known: Keyword.get(opts, :known, %{}), last: nil, generating: MapSet.new()}}
   end
 
   @impl GenServer
@@ -125,6 +129,21 @@ defmodule CmsHarness.WorkingCopyReporter do
     {:noreply, state}
   end
 
+  @impl GenServer
+  def handle_info({:generated, project_id, result}, state) do
+    case result do
+      {:ok, dir} ->
+        Logger.info("[CmsHarness] generated project #{project_id} at #{dir}")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not generate project #{project_id}: #{inspect(reason)}"
+        )
+    end
+
+    {:noreply, %{state | generating: MapSet.delete(state.generating, project_id)}}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
 
   # One exchange: look, say what we saw, keep what the server says we hold.
@@ -132,10 +151,17 @@ defmodule CmsHarness.WorkingCopyReporter do
     {observations, known} = observe(known)
 
     case Device.announce(observations) do
-      {:ok, %{working_copies: from_server}} ->
+      {:ok, %{working_copies: from_server} = reply} ->
         say(observations, last)
         serve(from_server)
-        {observations, %{state | known: Map.merge(known, from_server), last: observations}}
+        state = generate(Map.get(reply, :pending_local_projects, []), state)
+        # `known` wins. A root from the server says where a copy is *recorded*,
+        # which is not a claim about this machine — so it fills in copies we do
+        # not know yet and never replaces one we were handed or read off this
+        # disk. Merged the other way, a copy recorded at a root this machine
+        # does not have got stat'ed at that root and reported missing by the
+        # very machine it was sitting on.
+        {observations, %{state | known: Map.merge(from_server, known), last: observations}}
 
       {:error, reason} ->
         # Debug, not warning. `Device.announce/1` already logs at warning; a box
@@ -188,7 +214,7 @@ defmodule CmsHarness.WorkingCopyReporter do
         :ok
 
       _pid ->
-        for {_id, root} <- from_server, is_binary(root), File.dir?(root) do
+        for {id, root} <- from_server, is_binary(root), ServedRoots.matches?(root, id) do
           case Projects.ensure_started(root) do
             {:ok, _project} ->
               :ok
@@ -200,6 +226,55 @@ defmodule CmsHarness.WorkingCopyReporter do
 
         :ok
     end
+  end
+
+  # A pending project the server offered, generated and onboarded onto this
+  # machine — same guard as `serve/1` and for the same reason: a harness with
+  # no `ProjectSupervisor` (the light-harness/sprite path, or any process that
+  # only embeds this reporter for its reporting) has nowhere to serve a
+  # generated project into and must not attempt to become the thing serving
+  # one. `DeviceController` already excludes `kind: :cloud` devices from ever
+  # being offered a pending project at all — this guard covers a `kind: :local`
+  # process that nonetheless has no project supervisor, which the server
+  # cannot see from its own side.
+  #
+  # Spawned, not awaited: `Generator.run/1` shells out through several `mix`
+  # tasks and can run for minutes, and this reporter has a report due again in
+  # two — blocking here would mean a machine mid-generation stops answering
+  # "which of my checkouts are still on disk" for as long as generation takes.
+  defp generate(pending, state) do
+    case Process.whereis(CmsHarness.ProjectSupervisor) do
+      nil -> state
+      _pid -> Enum.reduce(pending, state, &generate_one/2)
+    end
+  end
+
+  defp generate_one(%{id: id} = project, state) do
+    if MapSet.member?(state.generating, id) do
+      state
+    else
+      reporter = self()
+
+      Task.start(fn ->
+        send(reporter, {:generated, id, generate_safely(project)})
+      end)
+
+      %{state | generating: MapSet.put(state.generating, id)}
+    end
+  end
+
+  # Rescued at the boundary rather than left to crash the task: an unlinked
+  # `Task` that raises simply vanishes, and a vanished task never sends the
+  # message that frees `id` back out of `generating` — so the one project that
+  # hit an unexpected error would be the one project this harness could never
+  # retry again, even after whatever was wrong got fixed. `Generator.run/1`
+  # itself returns `{:error, _}` for every failure it anticipates; this is only
+  # for the ones it does not, chief among them `System.cmd/3` raising outright
+  # when the machine has no `mix` on its `PATH` at all — step 1.5's exact gap.
+  defp generate_safely(project) do
+    Generator.run(project)
+  rescue
+    error -> {:error, {:crashed, Exception.format(:error, error, __STACKTRACE__)}}
   end
 
   @doc """

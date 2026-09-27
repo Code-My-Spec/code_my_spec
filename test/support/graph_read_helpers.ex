@@ -98,6 +98,18 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   end
 
   @doc """
+  What one checkout currently holds, without reconciling first.
+
+  An ordinary read settles, and a settle remembers the vantage the reader named
+  — so asking what a checkout holds queues a computation for it. That is right
+  for a reader about to act and wrong for one *observing* whether some other
+  observation left this checkout alone: the question causes the answer. Criterion
+  3507 is that case.
+  """
+  def peek_graph(context, working_copy_id),
+    do: dispatch(context, "?working_copy=#{working_copy_id}&settle=false")
+
+  @doc """
   One requirement out of a graph read, by name, or `nil`.
 
   `nil` is a real answer and a common one: a requirement exists only while its

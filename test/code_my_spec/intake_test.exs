@@ -5,6 +5,8 @@ defmodule CodeMySpec.IntakeTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Plan
   alias CodeMySpec.Personas
@@ -284,6 +286,37 @@ defmodule CodeMySpec.IntakeTest do
       assert persona.persona_type == :proto
     end
 
+    # The `agent-conversation` page reads `Conversations`, not `Plan`/`Turn` —
+    # before this, a project born from guided intake landed there with no
+    # sign the visitor had ever said anything, even though the whole plan is
+    # a conversation. `find_or_create_session_conversation/3` already existed
+    # for exactly this ("the story interview... only borrowed the shape");
+    # nothing ever called it from here.
+    test "carries the shaping conversation into a conversation the agent page can show" do
+      scope = user_scope_fixture()
+      plan = planned_plan("a booking tool for hair salons")
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      assert {:ok, converted} = Intake.convert(plan, scope)
+
+      {:ok, conversation} =
+        Conversations.find_or_create_session_conversation(
+          converted.account_id,
+          converted.project_id,
+          "intake:#{converted.id}"
+        )
+
+      texts = conversation |> Conversations.list_messages() |> Enum.map(&Message.text/1)
+
+      assert "a booking tool for hair salons" in texts,
+             "the visitor's own first message never reached the agent's own conversation"
+
+      assert Enum.any?(texts, &(&1 =~ "Widget Tracker")),
+             "confirming the plan is part of the record everywhere else in the transcript"
+    end
+
     test "a plan that never said who it is for still converts" do
       scope = user_scope_fixture()
       token = Intake.new_session_token()
@@ -365,6 +398,70 @@ defmodule CodeMySpec.IntakeTest do
       # anything wrote a plan outside it.
       assert again.id == converted.id
       assert Repo.aggregate(from(p in Plan, where: p.id == ^converted.id), :count) == 1
+    end
+  end
+
+  describe "pending_local_projects/1" do
+    defp converted_local_plan(scope) do
+      plan = planned_plan()
+      {:ok, plan} = Intake.confirm_tier(plan, %{location: :local})
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Widget Tracker"})
+
+      {:ok, plan} = Intake.convert(plan, scope)
+      plan
+    end
+
+    test "a converted local plan with no checkout yet is pending" do
+      scope = user_scope_fixture()
+      plan = converted_local_plan(scope)
+
+      assert [pending] = Intake.pending_local_projects(plan.account_id)
+      assert pending.id == plan.id
+      assert pending.project.id == plan.project_id
+    end
+
+    # A working copy is what `mix harness.onboard` mints the instant it runs
+    # against this project — this asserts the "no flag to clear" design: the
+    # project simply stops matching once one exists, the same way an
+    # `Intake.convert/2`'d plan is found by having no working copy rather
+    # than by a column saying so.
+    test "a project a harness already onboarded is no longer pending" do
+      scope = user_scope_fixture()
+      plan = converted_local_plan(scope)
+
+      scope = %{scope | active_project_id: plan.project_id}
+
+      {:ok, _copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          label: "onboarded by a harness",
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      assert Intake.pending_local_projects(plan.account_id) == []
+    end
+
+    test "a plan that chose cloud is never offered as a local pending project" do
+      scope = user_scope_fixture()
+      plan = planned_plan()
+      {:ok, plan} = Intake.confirm_tier(plan, %{location: :cloud})
+
+      {:ok, plan} =
+        Intake.confirm_names(plan, %{account_name: "Acme", project_name: "Cloudy"})
+
+      {:ok, plan} = Intake.convert(plan, scope)
+
+      assert Intake.pending_local_projects(plan.account_id) == []
+    end
+
+    test "another account's pending local project is never offered" do
+      scope = user_scope_fixture()
+      _plan = converted_local_plan(scope)
+
+      other_account = account_fixture()
+
+      assert Intake.pending_local_projects(other_account.id) == []
     end
   end
 end

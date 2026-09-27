@@ -406,6 +406,21 @@ defmodule CodeMySpec.Environments do
     impl(type).delete_file(env, path)
   end
 
+  @doc """
+  The recorded analyzer output `env` carries for `source`, if any.
+
+  See `c:CodeMySpec.Environments.EnvironmentsBehaviour.recorded_output/2`.
+  """
+  @spec recorded_output(Environment.t() | nil, String.t()) :: String.t() | nil
+  def recorded_output(%Environment{type: type} = env, source) do
+    module = impl(type)
+
+    if Code.ensure_loaded?(module) and function_exported?(module, :recorded_output, 2),
+      do: module.recorded_output(env, source)
+  end
+
+  def recorded_output(_env, _source), do: nil
+
   # Private functions
 
   defp impl(:cli),

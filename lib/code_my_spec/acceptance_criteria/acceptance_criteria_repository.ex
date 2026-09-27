@@ -6,7 +6,6 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Files
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
@@ -33,17 +32,21 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   renamed keeps pointing where it was recorded rather than being re-derived —
   which is the whole point.
   """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}) :: {:ok, non_neg_integer()}
-  def claim_spec_paths(_scope, paths) when map_size(paths) == 0, do: {:ok, 0}
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
+          {:ok, non_neg_integer()}
+  def claim_spec_paths(_scope, paths, _recorded_paths) when map_size(paths) == 0, do: {:ok, 0}
 
-  def claim_spec_paths(%Scope{active_project_id: project_id} = scope, paths) do
+  def claim_spec_paths(%Scope{active_project_id: project_id}, paths, recorded_paths) do
+    # Every file naming an id, not the last one: after a renumbering a legacy
+    # directory reuses ids that now belong to other stories.
+    paths = Map.new(paths, fn {id, found} -> {id, List.wrap(found)} end)
     ids = Map.keys(paths)
 
     # Which files this checkout actually has.
     #
-    # Read once, here, rather than asked per path — and read from the record
-    # rather than the disk. See `stale?/2`.
-    present = present_paths(scope, paths)
+    # Read once, by the caller, rather than asked per path — and read from the
+    # record rather than the disk. See `stale?/2`.
+    present = present_paths(paths, recorded_paths)
 
     # Unclaimed, plus claimed-but-stale.
     #
@@ -62,20 +65,29 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     # Which numbers name a story here, so the guard below can tell "this
     # directory belongs to another story" from "this directory names nothing".
     story_numbers = project_story_numbers(project_id)
+    dir_owners = directory_owners(project_id)
 
     by_row_id =
       from(c in Criterion,
         join: s in "stories",
         on: s.id == c.story_id,
         where: c.project_id == ^project_id and c.id in ^ids,
-        select: {c.id, c.spec_path, s.number}
+        select: {c.id, c.spec_path, s.number, c.story_id}
       )
       |> Repo.all()
-      |> Enum.filter(fn {id, path, number} ->
-        stale?(path, present) and
-          names_this_story?(Map.fetch!(paths, id), number, story_numbers)
+      |> Enum.filter(fn {_id, path, _number, _story_id} -> stale?(path, present) end)
+      |> Enum.flat_map(fn {id, previous, number, story_id} ->
+        paths
+        |> Map.fetch!(id)
+        |> Enum.filter(fn observed ->
+          names_this_story?(observed, number, story_numbers) and
+            not owned_by_another_story?(observed, story_id, dir_owners)
+        end)
+        |> case do
+          [observed | _] -> [{id, previous, observed}]
+          [] -> []
+        end
       end)
-      |> Enum.map(fn {id, previous, _number} -> {id, previous, Map.fetch!(paths, id)} end)
 
     # And the ones the filename cannot name.
     #
@@ -119,8 +131,8 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   defp repair_candidate({id, previous}, paths) do
     with embedded when not is_nil(embedded) <- embedded_id(previous),
-         found when not is_nil(found) <- Map.get(paths, embedded),
-         true <- same_dir?(previous, found) do
+         found when not is_nil(found) <-
+           paths |> Map.get(embedded, []) |> Enum.find(&same_dir?(previous, &1)) do
       [{id, previous, found}]
     else
       _ -> []
@@ -174,22 +186,21 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   # Two sources, because neither alone is the whole picture at this moment.
   #
-  # `Files.list_files/1` scopes to the caller's working copy and is the durable
-  # record — but this runs *before* the manifest it is processing is upserted,
-  # so a file appearing for the first time is not in it yet. The observations
-  # are that missing half: a path in this manifest is a file the harness has
-  # just seen on that checkout's disk.
+  # `recorded_paths` (the caller's `Files.list_files/1`, scoped to its working
+  # copy) is the durable record — but this runs *before* the manifest it is
+  # processing is upserted, so a file appearing for the first time is not in it
+  # yet. The observations are that missing half: a path in this manifest is a
+  # file the harness has just seen on that checkout's disk.
   #
   # Union rather than either one, so a first sync does not read every existing
   # criterion as stale, and a file present but not in this manifest is not
   # mistaken for a deletion.
-  defp present_paths(%Scope{} = scope, paths) do
-    recorded = scope |> Files.list_files() |> MapSet.new(& &1.path)
-
+  defp present_paths(paths, recorded_paths) do
     paths
     |> Map.values()
+    |> List.flatten()
     |> MapSet.new()
-    |> MapSet.union(recorded)
+    |> MapSet.union(MapSet.new(recorded_paths))
   end
 
   defp embedded_id(path) do
@@ -239,6 +250,28 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     end
   end
 
+  # A directory with no story number is judged by who already has specs in it.
+  # The id in a legacy filename is from before a renumbering, so on metric_flow
+  # (2026-09-27) new criteria 4112-4115 of a subscription story claimed
+  # correlation-analysis files that happened to carry those old ids.
+  defp owned_by_another_story?(path, story_id, dir_owners) do
+    case Map.get(dir_owners, Path.dirname(path)) do
+      nil -> false
+      owners -> not MapSet.member?(owners, story_id)
+    end
+  end
+
+  defp directory_owners(project_id) do
+    from(c in Criterion,
+      where: c.project_id == ^project_id,
+      where: not is_nil(c.spec_path) and c.spec_path != "",
+      select: {c.spec_path, c.story_id}
+    )
+    |> Repo.all()
+    |> Enum.group_by(fn {path, _} -> Path.dirname(path) end, fn {_, story} -> story end)
+    |> Map.new(fn {dir, stories} -> {dir, MapSet.new(stories)} end)
+  end
+
   defp project_story_numbers(project_id) do
     from(s in "stories",
       where: s.project_id == type(^project_id, :binary_id) and not is_nil(s.number),
@@ -278,7 +311,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @doc """
   Every claimed spec path in the project, mapped to the story that owns it.
 
-  The counterpart to `claim_spec_paths/2`: that records which file a criterion
+  The counterpart to `claim_spec_paths/3`: that records which file a criterion
   is checked by, this reads it back. Anything deciding what a spex failure
   belongs to should ask here rather than parse the filename — the leading number
   in `test/spex/<n>_.../` is a directory name, not a story id, and the two have

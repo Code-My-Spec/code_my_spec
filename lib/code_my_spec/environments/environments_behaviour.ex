@@ -141,6 +141,14 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   """
   @callback exec_file_exists?(env :: Environment.t(), path :: String.t()) :: boolean()
 
+  @doc """
+  A recorded analyzer output file for `source`, replayed instead of running the
+  analyzer. Only test environments implement it.
+  """
+  @callback recorded_output(env :: Environment.t(), source :: String.t()) :: String.t() | nil
+
+  @optional_callbacks recorded_output: 2
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

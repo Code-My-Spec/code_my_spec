@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
-  alias CodeMySpec.EpicDispatch
+  alias CodeMySpec.Epics
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
@@ -250,7 +250,7 @@ defmodule CodeMySpec.Requirements.Profiles do
       # `work_dispatched` asks whether anything is being built. One `exists?`,
       # and the stories above answer the other half — which ready ones belong to
       # no epic — so the checker stops querying for either.
-      epic_in_progress?: EpicDispatch.in_progress?(scope),
+      epic_in_progress?: Epics.in_progress?(scope),
       amigos: %{
         personas_by_story: personas_by_story(story_ids),
         rules_by_story: rules_by_story(project_id),

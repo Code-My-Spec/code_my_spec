@@ -89,7 +89,7 @@ defmodule CodeMySpec.AnalysisTest do
       {:ok, _run} =
         RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
 
-      assert {:ok, 1} = RunsRepository.fail_stranded_runs()
+      assert {:ok, [_]} = RunsRepository.fail_stranded_runs()
       assert %{"exunit" => %{status: :failed}} = RunsRepository.latest_full_runs(scope)
     end
   end

@@ -27,6 +27,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
 
@@ -43,7 +44,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+        :ok =
+          HarnessRegistry.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+
         send(test, {:registered, self()})
 
         receive do

@@ -11,6 +11,8 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpecLocalWeb.RequirementsMarkdown
 
   @doc """
@@ -44,26 +46,38 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   """
   def graph(conn, params) do
     scope = scope_for(conn.assigns.current_scope, params)
-    {nodes, computed_at, served_from} = cached_with_provenance(scope)
+    {nodes, edges, computed_at, served_from} = cached_with_provenance(scope, settle?(params))
 
     json(conn, %{
       computed_at: computed_at,
       served_from: served_from,
-      watcher: watcher_report(GraphWatcher.status(scope.active_project_id)),
+      watcher: watcher_report(serving_status(scope.active_project_id)),
       # What the last drain on this project cost. Here for the same reason
       # `inputs_fingerprint` is on every node: "an observation costs work in
       # proportion to what it changed" is a claim about numbers, and one whose
       # evidence lives only in a log line cannot be asserted against from
       # outside. Queries, rows and checkouts settled — not milliseconds, which
       # measure the machine rather than the work.
-      last_drain: DrainCost.last(scope.active_project_id),
+      last_drain: DrainCost.last(scope.active_project_id, Shadow.serving_kind()),
       # Which row-space answered, and whose tree those rows are about. Two
       # facts, and a reader naming no checkout is where they differ: it is
       # answered from the rows kept under no working copy, computed from the
       # project's main checkout's files. Without this the graph carried the
       # answers and nothing saying what they were an answer *about*.
       vantage: Requirements.vantage_of(scope),
-      nodes: Enum.map(nodes, &node_report/1)
+      nodes: Enum.map(nodes, &node_report/1),
+      # The other half of the graph. Nodes alone cannot answer whether a
+      # requirement is *gated* — prerequisites live entirely in
+      # `requirement_edges`, and a set of nodes with no edges between them looks
+      # identical to a correct graph from every surface that reads only nodes.
+      #
+      # That is not hypothetical: computing an arriving story's requirements
+      # without rebuilding its edges produced seven requirements and no
+      # ordering, so `bdd_specs_passing` stopped waiting on `bdd_specs_exist`
+      # and every one of them was offered at once. Nothing failed; the graph was
+      # just wrong. Criterion 3616 is the claim, and this is what makes it
+      # checkable from outside.
+      edges: Enum.map(edges, &edge_report/1)
     })
   end
 
@@ -79,10 +93,23 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   # `"empty"` rather than `"computed"` for the same reason: nothing computed
   # anything. A vantage with no rows has not been computed *by anybody yet*,
   # which is a different and more alarming answer than "this read built it".
-  defp cached_with_provenance(scope) do
-    case Requirements.cached_all(scope) do
-      {nodes, nil} -> {nodes, nil, "empty"}
-      {nodes, computed_at} -> {nodes, computed_at, "cache"}
+  # `?settle=false` answers from the rows without reconciling the watcher first.
+  #
+  # Reading normally settles, and `GraphWatcher.settle/2` remembers the vantage
+  # the reader named — so asking what a checkout currently holds queues a
+  # computation for that checkout. That is right for an agent about to act on
+  # the answer and wrong for anything *observing*: criterion 3507 asks whether
+  # an analyzer run on one checkout left another alone, and reading the other
+  # one to find out was itself causing the recompute it was checking for.
+  #
+  # Read-only either way. This only chooses whether to reconcile first.
+  defp settle?(%{"settle" => "false"}), do: false
+  defp settle?(_params), do: true
+
+  defp cached_with_provenance(scope, settle?) do
+    case RequirementGraph.cached_graph(scope, settle: settle?) do
+      {{nodes, edges}, nil} -> {nodes, edges, nil, "empty"}
+      {{nodes, edges}, computed_at} -> {nodes, edges, computed_at, "cache"}
     end
   end
 
@@ -99,6 +126,17 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     do: %{scope | active_working_copy_id: id}
 
   defp scope_for(scope, _params), do: scope
+
+  # The writer a reader is served from, which is what `watcher` has always
+  # meant to a reader: is somebody keeping this current, and when did they
+  # last. Inverted, that is the projector — and it has no debounce, so a write
+  # with nobody reading moves `last_recompute` the moment it lands.
+  defp serving_status(project_id) do
+    case Shadow.serving_kind() do
+      :event -> ShadowProjector.status(project_id)
+      :pass -> GraphWatcher.status(project_id)
+    end
+  end
 
   defp watcher_report(nil), do: %{watching: false}
 
@@ -160,6 +198,14 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
       inputs_fingerprint: Map.get(node, :inputs_fingerprint)
     }
   end
+
+  # `{entity_type, entity_id, name}` — `Topology.node_key/1`'s own shape, as a
+  # list because JSON has no tuple. The same three fields `node_report/1`
+  # already emits, so a reader can join the two without an id it has no other
+  # use for.
+  defp edge_report(%{from: from, to: to}), do: %{from: key_report(from), to: key_report(to)}
+
+  defp key_report({entity_type, entity_id, name}), do: [entity_type, to_string(entity_id), name]
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope

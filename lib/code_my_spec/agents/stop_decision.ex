@@ -42,6 +42,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -57,6 +58,14 @@ defmodule CodeMySpec.Agents.StopDecision do
   def deliver(scope, agent, opts \\ [])
 
   def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
+    # Holding nothing and waiting on its tap-out: any message here only buys a
+    # "still waiting" turn (070d1bab). The decision wakes it.
+    if is_nil(Agent.active_task(agent)) and Work.awaiting_tap_out?(agent),
+      do: :ok,
+      else: decide_and_deliver(scope, agent, opts)
+  end
+
+  defp decide_and_deliver(scope, agent, opts) do
     # Opened once, before anything is recorded into it, and that is not a
     # formality. `record_sent_to_agent/2` looks the conversation up by
     # agent and answers `:ok` when there is none — correct for a caller that
@@ -73,8 +82,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
     case decided do
       {nil, _key} ->
-        Work.request_turn_if_runnable(scope, agent, :turn_ended)
-        :ok
+        request_turn(scope, agent)
 
       # A menu that repeats byte-for-byte is a repeat regardless of the key it
       # arrived under — genuine progress changes the menu (a count drops, a
@@ -183,6 +191,17 @@ defmodule CodeMySpec.Agents.StopDecision do
   # arriving for free rather than as a second emptiness check that could
   # disagree with the first.
   defp keep_working(%Scope{} = scope, %Agent{continuous: true} = agent) do
+    # Waiting on runs it started is not idling: `AnalysisReport` messages it
+    # when each lands or fails, so a continuation now only buys a "still
+    # waiting" turn. Watched on metric_flow 2026-09-27, 5-27 of those an hour.
+    if Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id),
+      do: {nil, nil},
+      else: continuation(scope, agent)
+  end
+
+  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
+
+  defp continuation(scope, agent) do
     # Narrowed to this agent's own role — R10. A coding agent asked whether the
     # *project* has work is held open by product's queue and QA's, neither of
     # which it can do anything about, and it would loop until somebody else
@@ -194,8 +213,6 @@ defmodule CodeMySpec.Agents.StopDecision do
     end
   end
 
-  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
-
   # `tag` separates the counters — `:decision`, `:continuing`, `:wake` — so one
   # slot per agent doesn't let them overwrite each other's count and reset a
   # threshold none of them reached on their own.
@@ -203,13 +220,21 @@ defmodule CodeMySpec.Agents.StopDecision do
   # agent has nothing open, so eligibility is worth asking about once. With a
   # task still active the menu is the answer instead, subject to the same
   # repeat-silencing as any other class.
-  defp continuing(scope, agent, _message, nil) do
-    Work.request_turn_if_runnable(scope, agent, :turn_ended)
-    :ok
-  end
+  defp continuing(scope, agent, _message, nil), do: request_turn(scope, agent)
 
   defp continuing(scope, agent, message, _task) do
     if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+  end
+
+  # Off this process for the reason `dispatch` is (ad8c1213): `deliver/3` runs
+  # inside the harness channel at turn end, and the turn request is a call back
+  # into that channel, refused as a would-be deadlock (104bcb23).
+  defp request_turn(scope, agent) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Work.request_turn_if_runnable(scope, agent, :turn_ended)
+    end)
+
+    :ok
   end
 
   defp stuck?(agent, key, tag \\ :decision)

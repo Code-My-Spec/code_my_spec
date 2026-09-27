@@ -26,7 +26,7 @@ defmodule CodeMySpec.Content do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Utils],
+    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope, CodeMySpec.Utils],
     exports: :all
 
   import Ecto.Query, warn: false

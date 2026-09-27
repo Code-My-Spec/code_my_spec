@@ -68,14 +68,16 @@ defmodule CodeMySpec.Devices do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Accounts,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -104,10 +106,37 @@ defmodule CodeMySpec.Devices do
       |> Map.put(:account_id, account_id)
       |> Map.put(:last_seen_at, DateTime.utc_now())
 
-    case existing(account_id, device_id) do
-      nil -> create_or_recognise(account_id, device_id, attrs)
-      device -> device |> Device.changeset(attrs) |> Repo.update()
+    case recognised(scope, device_id) do
+      nil -> create_or_recognise(scope, device_id, attrs)
+      device -> refresh(device, attrs)
     end
+  end
+
+  # One machine carries copies from every account its user belongs to, but the
+  # row sits in whichever announced first. A token scoped to the user's other
+  # account must still recognise it: minting a fresh device on every heartbeat
+  # left the harness asking for an empty roster, so a restart restored nothing
+  # (ae3b491f). Recognising never moves the row to the caller's account.
+  defp recognised(%Scope{active_account_id: account_id} = scope, device_id) do
+    existing(account_id, device_id) || members_device(scope, device_id)
+  end
+
+  defp members_device(%Scope{user_id: user_id}, device_id)
+       when is_integer(user_id) and is_binary(device_id) do
+    case Ecto.UUID.cast(device_id) do
+      :error ->
+        nil
+
+      {:ok, id} ->
+        accounts = from(m in Member, where: m.user_id == ^user_id, select: m.account_id)
+        Repo.one(from(d in Device, where: d.id == ^id and d.account_id in subquery(accounts)))
+    end
+  end
+
+  defp members_device(_scope, _device_id), do: nil
+
+  defp refresh(device, attrs) do
+    device |> Device.changeset(Map.delete(attrs, :account_id)) |> Repo.update()
   end
 
   # Not found under this account, but the id it presented still matters: a
@@ -119,21 +148,21 @@ defmodule CodeMySpec.Devices do
   # A well-formed id that fails to cast is not this machine's fault, so it
   # still gets a device — just one minted here instead, same as the
   # never-presented-anything case always has.
-  defp create_or_recognise(account_id, device_id, attrs) do
+  defp create_or_recognise(scope, device_id, attrs) do
     case Ecto.UUID.cast(device_id) do
-      {:ok, id} -> insert_or_reconcile(account_id, id, attrs)
+      {:ok, id} -> insert_or_reconcile(scope, id, attrs)
       :error -> %Device{} |> Device.changeset(attrs) |> Repo.insert()
     end
   end
 
-  defp insert_or_reconcile(account_id, id, attrs) do
+  defp insert_or_reconcile(scope, id, attrs) do
     case id |> Device.new_changeset(attrs) |> Repo.insert() do
       {:ok, device} ->
         {:ok, device}
 
       {:error, changeset} ->
         if unique_id_violation?(changeset) do
-          reconcile_after_conflict(account_id, id, attrs)
+          reconcile_after_conflict(scope, id, attrs)
         else
           {:error, changeset}
         end
@@ -149,10 +178,10 @@ defmodule CodeMySpec.Devices do
   # unlikely, but not a reason to hand this machine's announce to that
   # account's row — so a fresh, server-minted id is issued instead, same as
   # the no-id-presented case.
-  defp reconcile_after_conflict(account_id, id, attrs) do
-    case existing(account_id, id) do
+  defp reconcile_after_conflict(scope, id, attrs) do
+    case recognised(scope, id) do
       nil -> %Device{} |> Device.changeset(attrs) |> Repo.insert()
-      device -> device |> Device.changeset(attrs) |> Repo.update()
+      device -> refresh(device, attrs)
     end
   end
 

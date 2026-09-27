@@ -2,9 +2,12 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
   @moduledoc """
   `DevState`'s "no GraphWatcher" disagreement must name a remedy that exists.
 
-  It used to end "until something reads the graph". Nothing on the read path
-  starts a watcher — `RequirementsLive.provenance/2` calls `status/1`, which is
-  read-only, and `Requirements.cached_all/1` does not ensure one either. A QA
+  It used to end "until something reads the graph". At the time nothing on the
+  read path started a watcher — `RequirementsLive.provenance/2` calls
+  `status/1`, which is read-only, and `Requirements.cached_all/1` did not
+  ensure one either. (Since Metric Flow, a read of a project with *no rows at
+  all* does start the writers, and that is the one case the sentence may
+  name; a project with rows and no watcher still needs the other two.) A QA
   agent did exactly what the sentence said, read the graph page twice, checked
   `/dev/state` after each, got `watching: false` both times, and only turned it
   into a report because it grepped `ensure_watching/1` rather than shrugging
@@ -28,15 +31,23 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
   # Everywhere outside `GraphWatcher` itself that starts one, and why each is a
   # remedy a reader can actually perform.
   #
-  # `graph_watcher.ex` is excluded because it defines the function and calls it
-  # from `watch_active_projects/0` — that is the boot task, and it is the
-  # "restart the server" remedy rather than a separate caller to police.
+  # Excluded: `graph_watcher.ex`, which defines the function, and
+  # `agents/graph_wake.ex`, whose `watch_active_projects/0` is the boot task —
+  # the "restart the server" remedy rather than a separate caller to police. It
+  # lived in `GraphWatcher` until 2026-09-27, when the graph stopped reading the
+  # agents table to decide what to watch.
   @callers %{
     "lib/code_my_spec/agents.ex" =>
-      "the two continuous toggles — the 'toggle an agent's loop' remedy"
+      "the two continuous toggles — the 'toggle an agent's loop' remedy",
+    "lib/code_my_spec/requirements/requirement_graph.ex" =>
+      "a read of a project with no rows at all — the 'read it once' remedy, " <>
+        "which is only a remedy for a project nothing has ever projected"
   }
 
-  @definer "lib/code_my_spec/requirements/graph_watcher.ex"
+  @excluded [
+    "lib/code_my_spec/requirements/graph_watcher.ex",
+    "lib/code_my_spec/agents/graph_wake.ex"
+  ]
 
   defp calls_ensure_watching?(path) do
     path
@@ -52,11 +63,11 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
     end)
   end
 
-  test "nothing outside GraphWatcher starts a watcher except the continuous toggles" do
+  test "nothing outside GraphWatcher starts a watcher except the continuous toggles and a first read" do
     callers =
       "lib/**/*.ex"
       |> Path.wildcard()
-      |> Enum.reject(&(&1 == @definer))
+      |> Enum.reject(&(&1 in @excluded))
       |> Enum.filter(&calls_ensure_watching?/1)
       |> Enum.sort()
 

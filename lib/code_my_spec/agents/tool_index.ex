@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.CodeMode.Catalog
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
 
   @doc """
@@ -58,9 +59,9 @@ defmodule CodeMySpec.Agents.ToolIndex do
   @spec for(Agent.t(), [String.t()]) :: String.t() | nil
   def for(%Agent{} = agent, machine_tools \\ []) do
     [
-      section("Called directly", carried(agent)),
-      section("Called from inside `run_script`", scriptable(agent)),
-      section("Called from inside `run_browser_script`", Enum.sort(machine_tools || []))
+      section(direct_heading(), carried(agent)),
+      section(scriptable_heading(), scriptable(agent)),
+      section(browser_heading(), Enum.sort(machine_tools || []))
     ]
     |> Enum.reject(&is_nil/1)
     |> case do
@@ -73,9 +74,12 @@ defmodule CodeMySpec.Agents.ToolIndex do
     """
     ## Tools you can reach
 
-    Names only. You already have full schemas for what you carry; `tool_docs`
-    gives arguments for anything else. A name missing here is a tool you cannot
-    reach — report that rather than working around it.
+    Names only. `tool_docs` gives arguments for any of them.
+
+    **The three lists are reached three different ways, and using the wrong one
+    fails.** A name below is a tool you can reach; how you reach it depends on
+    which list it is in. A name *absent* from all three is a tool you cannot
+    reach at all — report that rather than working around it.
     """
     |> String.trim()
   end
@@ -83,15 +87,42 @@ defmodule CodeMySpec.Agents.ToolIndex do
   defp section(_heading, []), do: nil
   defp section(_heading, nil), do: nil
 
-  defp section(heading, names) do
-    "**#{heading}:** " <> Enum.join(names, ", ")
-  end
+  defp section(heading, names), do: "**#{heading}:** " <> Enum.join(names, ", ")
 
-  # What the row says, not what the role says. `ToolSets.for_role/1` is how the
-  # list is computed at start; the column is what was actually granted, and an
-  # agent that predates scoping has `nil` there meaning "everything".
-  defp carried(%Agent{tools: tools}) when is_list(tools), do: Enum.sort(tools)
-  defp carried(%Agent{}), do: []
+  # Headings name the route, not the wire format.
+  #
+  # They say which of three ways a name is reached and stop there. *How* a call
+  # is physically made is the provider's business — on `claude-code` it is a
+  # `tool_calls` entry in a JSON object, on an engine with native tool calling
+  # it is nothing of the sort — so the shape, and the worked example of the
+  # nested form, live in `ProviderBrief` where they can differ per engine.
+  defp direct_heading, do: "Called directly"
+
+  defp scriptable_heading, do: "Called from inside `run_script`"
+
+  defp browser_heading, do: "Called from inside `run_browser_script`"
+
+  # What the direct server exposes, which is the same for every agent.
+  #
+  # Not the `tools` column. That column governs what a *script* may call and its
+  # names are `ScriptableTools` components — `create_issue`, `list_stories` and
+  # the rest of the domain; none of them has ever been reachable directly.
+  # Listing them under "Called directly" told the agent to call something the
+  # direct server does not expose, and agents did exactly that: 3543 lost two
+  # runs in ten to one calling `create_issue`, getting `Unknown tool`, and then
+  # correctly refusing to route around a tool it had been told was broken.
+  #
+  # The `nil` branch failed the other way round. An agent whose column was unset
+  # was told it carried nothing at all, so the index contradicted the
+  # `available_tools` it was sent — the likeliest source of agents reporting
+  # `get_next_requirement` as "No such tool available" while it sat in the list.
+  #
+  # The direct surface is the loop: `get_next_requirement`, `start_task`,
+  # `evaluate_task`, `tap_out`, `run_script`, `tool_docs` and their neighbours.
+  # It is not scoped by role, so neither is this.
+  defp carried(%Agent{}) do
+    LocalServer.__components__() |> Enum.map(& &1.name) |> Enum.sort()
+  end
 
   # `Catalog.from/3` maps, rejects and filters a list into a map, and
   # `Catalog.names/1` sorts its keys — both total over a well-formed component

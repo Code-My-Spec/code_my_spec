@@ -146,11 +146,7 @@ defmodule CodeMySpec.Promotion.Steps do
   outside a promotion.
 
   A successful merge's result also carries `before`/`after` — the checkout's
-  HEAD on either side of it. `Promotion` needs that range to ask
-  `BootVersion.contract_changed?/2` whether the merge touched the code that
-  decides whether a harness and a server can talk to each other (376e3356);
-  reading it here, where the git access to `root` already is, is cheaper than
-  a fourth round trip to ask again.
+  HEAD on either side of it, which `Promotion` logs.
 
   It also carries `version` — the version this promotion originated by
   bumping and tagging `root`'s own `mix.exs`, or `nil` for a checkout that has
@@ -228,18 +224,72 @@ defmodule CodeMySpec.Promotion.Steps do
     case git(env, root, ["merge", "--ff-only", branch]) do
       {out, 0} ->
         after_sha = head(env, root)
+        originated = version_if_moved(env, root, before, after_sha)
 
         {:ok,
          %{
            output: String.trim(out),
            before: before,
            after: after_sha,
-           version: version_if_moved(env, root, before, after_sha)
+           version: originated,
+           stamp_version: originated || current_version(env, root)
          }}
 
       {out, _} ->
-        not_fast_forward(root, branch, out)
+        merge_refused(root, branch, out)
     end
+  end
+
+  # `git merge --ff-only` fails for more than one reason, and the refusal used
+  # to assert the same one every time.
+  #
+  # A dirty tree is the other common one: git aborts with "would be overwritten
+  # by merge" and names the files, *while printing the fast-forward it was about
+  # to make*. Reporting that as "behind main" sends the reader to
+  # `git merge --ff-only main`, which is a no-op for it — so the remedy confirms
+  # the diagnosis by changing nothing, and the next attempt fails identically.
+  #
+  # Measured on the math project 2026-09-22: one untracked `mix.lock` in the
+  # target. The coding agent verified `git merge-base --is-ancestor main sum`
+  # twice, ran the suggested merge twice, and filed a framework issue saying
+  # promote "looks like it is comparing against a stale or wrong reference
+  # rather than the actual git ancestry". It was reading the only evidence it
+  # had, and the evidence was wrong.
+  #
+  # `out` was already being carried on the error; now it decides what the error
+  # says.
+  @doc false
+  def merge_refusal(root, branch, out), do: merge_refused(root, branch, out)
+
+  defp merge_refused(root, branch, out) do
+    case dirty_tree_refusal(out) do
+      nil -> not_fast_forward(root, branch, out)
+      files -> would_be_overwritten(root, files, out)
+    end
+  end
+
+  defp dirty_tree_refusal(out) do
+    case Regex.run(~r/would be overwritten by merge:\s*\n(.+?)\n\s*(?:Please|Aborting)/s, out) do
+      [_, block] ->
+        block |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+      nil ->
+        nil
+    end
+  end
+
+  defp would_be_overwritten(root, files, out) do
+    {:error,
+     %{
+       reason:
+         "the merge is a clean fast-forward, but #{root} has local files it " <>
+           "would overwrite: #{Enum.join(files, ", ")}. Nothing was merged. " <>
+           "This is not a divergence — the branch is ahead, and git says so in " <>
+           "the output below. Remove or commit those files in that checkout, " <>
+           "then promote again. Merging main into the copy you are promoting " <>
+           "from will not help.",
+       output: String.trim(out)
+     }}
   end
 
   # `git merge --ff-only` exits 0 for "Already up to date." too — the branch
@@ -252,6 +302,55 @@ defmodule CodeMySpec.Promotion.Steps do
   # patch bump on every call, with no corresponding change to anything.
   defp version_if_moved(_env, _root, same, same), do: nil
   defp version_if_moved(env, root, _before, _after), do: bump_version(env, root)
+
+  # The version a story carried onto main should be stamped with, which is not
+  # the same question as the version this promotion originated.
+  #
+  # `version_if_moved/4` above answers "did this merge mint a version," and nil
+  # is the right answer for an "Already up to date" merge — a promotion that
+  # landed no commits does not get to mint a patch bump, and the guard above
+  # exists because repeated promotes used to do exactly that. `Promotion` was
+  # then reusing that same nil to decide whether to stamp any story, and those
+  # two questions come apart precisely where it matters.
+  #
+  # A story whose code is already on main is the story a no-op merge is looking
+  # at. Refusing to stamp it means nothing ever can: the only thing that stamps
+  # is a merge that moves the sha, and for that story there is nothing left to
+  # move. The gate it feeds never becomes satisfiable again by any sequence of
+  # actions an agent can take.
+  #
+  # Measured on Broken Oaths 2026-09-22. Story 937's code reached main on the
+  # 23:30 promote that minted 0.3.3; its `specs_ready` latch — which is what
+  # `mark_ready_stories_promoted/2` selects on — was written at 23:38:07, eight
+  # minutes after that stamp set was taken. The three promotes that followed
+  # were all no-ops (05d5453 -> 05d5453, "version none"), so the story sat at
+  # 23 of 24 requirements permanently while the graph went on offering its
+  # promote to every role. Three agents declined it nineteen times between them
+  # before the damper capped them.
+  #
+  # So a no-op stamps with the version main already carries, which is the
+  # honest answer to "which promotion put this on main" — for 937 that is
+  # 0.3.3, the merge that did carry it. Nothing is minted and nothing is
+  # committed: `mix.exs` is not rewritten, no tag moves, `version` stays nil,
+  # and the log line still reads "version none".
+  #
+  # This widens an exposure that already exists rather than adding a new one.
+  # `mark_ready_stories_promoted/2` stamps every qualifying story in the
+  # project, not only those on the merged branch — deliberately, per its own
+  # docstring — so a story whose specs are green while its code sits unmerged
+  # on a *different* copy can be stamped early. That was already true of every
+  # real promotion; this makes it true of no-op promotions too. The narrower
+  # predicate is a story's code actually being on main, which this module
+  # deliberately stopped asking git about; changing that is a larger decision
+  # than this fix and is tracked separately.
+  defp current_version(env, root) do
+    with {contents, 0} <- git(env, root, ["show", "HEAD:mix.exs"]),
+         {:ok, current, _next} <- next_version(contents) do
+      current
+    else
+      _ -> nil
+    end
+  end
 
   # The version this promotion originates, or nil.
   #
@@ -288,7 +387,9 @@ defmodule CodeMySpec.Promotion.Steps do
   defp commit_bumped_version(env, root, contents) do
     with {:ok, current, next} <- next_version(contents),
          {_, 0} <- write_file(env, root, "mix.exs", replace_version(contents, current, next)),
-         {_, 0} <- git(env, root, ["commit", "-am", "chore: promote to v#{next}"]),
+         # Only mix.exs: `-a` also staged the submodule's checkout, which the
+         # merge never moves, and reverted the pointer the branch brought.
+         {_, 0} <- git(env, root, ["commit", "-m", "chore: promote to v#{next}", "--", "mix.exs"]),
          {_, 0} <- git(env, root, ["tag", "v#{next}"]) do
       next
     else
@@ -382,31 +483,20 @@ defmodule CodeMySpec.Promotion.Steps do
   Through the project's own `just restart`, which is the seam. A promotion does
   not know how to start a Phoenix app, and should not learn.
 
-  `refresh_harness?` (default `true`) is whether `restart` should also rebuild
-  the harness at its tail. `Promotion` passes `false` only when it has already
-  established, from the merge that just landed, that the range could not have
-  touched the channel contract (376e3356) — skipping is a cost-saving
-  optimization for that one caller, not a new default.
-
-  Signaled through an environment variable, not a `just` CLI argument. This
-  function calls `root`'s *own* `just restart` — a promoted project's own
-  recipe, or the synthetic one criterion 3175's spex writes to prove the
-  restart always runs — and neither is guaranteed to declare a parameter for
-  this. An env var a recipe never reads is invisible to it; an extra
-  positional argument to a recipe that does not declare it is not silently
-  ignored — `just` reads the next token as the name of a *second* recipe to
-  also run and fails with "justfile does not contain recipe <value>"
-  (confirmed empirically before this shipped, against exactly the zero-
-  parameter shape criterion 3175's fixture uses).
+  Always the whole of it, harness included. Skipping the harness refresh when
+  a merge provably left the channel contract alone (376e3356) was removed:
+  the harness hot-reloads its own code from this checkout, so any merge can
+  swap its modules under live processes, and a promote that did not restart it
+  left it crashed (08744186).
   """
-  @spec restart(Environments.Environment.t(), String.t(), boolean()) :: result()
-  def restart(env, root, refresh_harness? \\ true) do
+  @spec restart(Environments.Environment.t(), String.t()) :: result()
+  def restart(env, root) do
     env
     |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(env, root, refresh_harness?)
+    |> run_restart(env, root)
   end
 
-  defp run_restart(false, _env, root, _refresh_harness?) do
+  defp run_restart(false, _env, root) do
     {:error,
      %{
        reason:
@@ -424,17 +514,14 @@ defmodule CodeMySpec.Promotion.Steps do
   # nothing merged onward — and then reported "`just restart` failed (1):" with
   # an empty body, telling the agent its promotion failed and not one word about
   # what broke.
-  defp run_restart(true, env, root, refresh_harness?) do
-    opts = [cd: root, stderr_to_stdout: true, env: skip_harness_env(refresh_harness?)]
+  defp run_restart(true, env, root) do
+    opts = [cd: root, stderr_to_stdout: true]
 
     case normalize(Environments.cmd(env, "just", ["restart"], opts)) do
       {out, 0} -> serving(env, root, out)
       {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
     end
   end
-
-  defp skip_harness_env(true), do: []
-  defp skip_harness_env(false), do: [{"CMS_SKIP_HARNESS_REFRESH", "true"}]
 
   defp serving(env, root, out) do
     case git(env, root, ["rev-parse", "--short", "HEAD"]) do

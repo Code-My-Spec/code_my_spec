@@ -84,9 +84,46 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def set_copy_continuous(%Scope{}, _copy_id, _continuous?), do: {:error, :no_project}
 
   @doc """
+  Point every live agent of one working copy at its current root.
+
+  `working_copy` is a snapshot taken once, at start — `LaunchRequest.for/1`
+  sends it verbatim rather than resolving it fresh, so it is the only place a
+  restore actually reads the path from. `report_root/2` can correct
+  `working_copies.root` on any later rejoin (a checkout that moved, or one
+  whose first boot recorded the wrong path); without this, an agent started
+  before that correction keeps offering the harness the old one forever, and
+  restore fails with `:working_copy_missing` against a checkout that is
+  right there. `update_all` rather than a changeset each, same as
+  `set_copy_continuous/3` above: every agent of one copy moves together, and
+  `updated_at` is set by hand because `update_all` does not touch timestamps.
+
+  Stopped agents are excluded, same reasoning as `set_copy_continuous/3`: a
+  path corrected on a process that is gone is not a restore anybody will use.
+  """
+  @spec sync_working_copy_root(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, non_neg_integer()} | {:error, :no_project}
+  def sync_working_copy_root(%Scope{active_project_id: project_id}, copy_id, root)
+      when is_binary(project_id) and is_binary(copy_id) and is_binary(root) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {count, _} =
+      Agent
+      |> where(
+        [a],
+        a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+          a.status != :stopped and a.working_copy != ^root
+      )
+      |> Repo.update_all(set: [working_copy: root, updated_at: now])
+
+    {:ok, count}
+  end
+
+  def sync_working_copy_root(%Scope{}, _copy_id, _root), do: {:error, :no_project}
+
+  @doc """
   A scope per project that has at least one agent in the loop.
 
-  For `GraphWatcher.watch_active_projects/0` at boot. Scopeless because there is
+  For `Agents.GraphWake.watch_active_projects/0` at boot. Scopeless because there is
   no caller to scope it to — this runs before anybody has asked for anything,
   and "which projects are being worked" is a fact about the whole install.
 

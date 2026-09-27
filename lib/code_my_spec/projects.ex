@@ -12,7 +12,7 @@ defmodule CodeMySpec.Projects do
       CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
     exports: :all
@@ -421,6 +421,33 @@ defmodule CodeMySpec.Projects do
   def ensure_deploy_key(%Scope{} = scope, %Project{} = project) do
     update_project(scope, project, %{deploy_key: Project.mint_deploy_key()})
   end
+
+  @doc """
+  The OTP application name `mix cms.new` should generate this project under.
+
+  Derived from the project's own `name` rather than `module_name`: the latter
+  is nil until a generated app exists to report it (see `Project`'s own field
+  comment), which makes it useless for picking the name of the app about to be
+  generated. `Workspaces.boot/1` computes this identically for the same reason
+  before starting a cloud container — kept here too, as a plain function
+  rather than something only the boot path can reach, so a harness asking the
+  server what to generate gets the same answer a cloud boot would have picked,
+  computed once rather than reimplemented by whichever client asks.
+  """
+  @spec app_name(Project.t()) :: String.t()
+  def app_name(%Project{name: name}) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "_")
+    |> String.trim("_")
+    |> prefix_if_leading_digit()
+  end
+
+  defp prefix_if_leading_digit(<<digit::utf8, _rest::binary>> = name) when digit in ?0..?9,
+    do: "app_" <> name
+
+  defp prefix_if_leading_digit(""), do: "app"
+  defp prefix_if_leading_digit(name), do: name
 
   @doc """
   Returns the distinct `account_id` for every project that has a

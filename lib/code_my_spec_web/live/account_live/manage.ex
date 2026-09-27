@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.AccountLive.Manage do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Authorization
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpecWeb.AccountLive.Components.Navigation
 
   @impl true

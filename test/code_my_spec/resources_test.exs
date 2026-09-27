@@ -312,4 +312,90 @@ defmodule CodeMySpec.ResourcesTest do
     Process.sleep(10)
     wait_until(fun, attempts - 1)
   end
+
+  # 3f9bb7b7: `project_checklist/2` used to read presence off `step.state ==
+  # :done`, so a step that had created real infrastructure and then errored,
+  # or was still running, or simply had not reached :done on this pass,
+  # reported as having "nothing behind it" — indistinguishable from a step
+  # that had genuinely never run. Measured on Broken Oaths: five of six
+  # non-:done steps held real resources.
+  describe "project_report/2 — presence follows resources, not the last run's state" do
+    setup %{scope: scope} do
+      {:ok, _} = Configurations.update(scope, %{devops: :prod})
+      %{scope: scope}
+    end
+
+    defp checklist_entry(report, key) do
+      Enum.find(report.checklist, &(&1.key == key))
+    end
+
+    @repo_resource %{
+      kind: "repository",
+      location: "github.com/acme/acme",
+      identifier: "acme/acme"
+    }
+    @position CodeMySpec.Provisioning.Sequence.position(:repository)
+
+    test "a step that errored after creating a resource still reads present", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{
+        state: :errored,
+        position: @position,
+        attempted: "2026-09-22T00:00:00Z",
+        provider_error: "rate limited on the follow-up call",
+        resources: [@repo_resource]
+      })
+
+      {:ok, report} = Resources.project_report(scope, scope.active_project)
+
+      entry = checklist_entry(report, :repository)
+      assert entry.state == :present
+      assert entry.detail == "rate limited on the follow-up call"
+    end
+
+    test "a step still running with a resource already created reads present", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{
+        state: :running,
+        position: @position,
+        resources: [@repo_resource]
+      })
+
+      {:ok, report} = Resources.project_report(scope, scope.active_project)
+
+      assert checklist_entry(report, :repository).state == :present
+    end
+
+    test "a step that errored before creating anything still reads missing", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{
+        state: :errored,
+        position: @position,
+        attempted: "2026-09-22T00:00:00Z",
+        provider_error: "no token configured",
+        resources: []
+      })
+
+      {:ok, report} = Resources.project_report(scope, scope.active_project)
+
+      entry = checklist_entry(report, :repository)
+      assert entry.state == :missing
+      assert entry.detail == "no token configured"
+    end
+
+    test "a step that never ran reads missing, unchanged", %{scope: scope} do
+      {:ok, report} = Resources.project_report(scope, scope.active_project)
+
+      assert checklist_entry(report, :repository).state == :missing
+    end
+
+    test "a step that actually finished still reads present", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{
+        state: :done,
+        position: @position,
+        resources: [@repo_resource]
+      })
+
+      {:ok, report} = Resources.project_report(scope, scope.active_project)
+
+      assert checklist_entry(report, :repository).state == :present
+    end
+  end
 end

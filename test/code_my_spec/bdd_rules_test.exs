@@ -52,6 +52,59 @@ defmodule CodeMySpec.BddRulesTest do
       assert Repo.get(Criterion, scenario.id)
       assert Repo.get(Rule, rule.id)
     end
+
+    # 146c01a6: `delete_criterion/2`'s tool-level guard already refuses a
+    # verified criterion one at a time. The cascade had no equivalent, so
+    # "PM-side cleanup of a bogus rule" could hard-delete verified work with
+    # real spec files still on disk in one call — Broken Oaths measured: 23
+    # verified criteria deleted, recreated under new ids with spec_path nil,
+    # 20 real passing spec files on disk left claimed by nothing.
+    test "refuses to delete a rule with a verified scenario" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{criteria: []})
+      rule = insert_rule(scope, story)
+      verified = verified_criterion_fixture(scope, story, %{rule_id: rule.id})
+
+      assert {:error, {:criteria_verified_or_specced, descriptions}} =
+               BddRules.delete_rule(scope, rule)
+
+      assert descriptions == [verified.description]
+      assert Repo.get(Criterion, verified.id), "the criterion must survive the refusal"
+      assert Repo.get(Rule, rule.id), "the rule must survive alongside it"
+    end
+
+    # The other half of what the cascade was destroying: a criterion can hold
+    # a real spec file without being marked verified (verification and
+    # authoring a spec are separate acts), and orphaning the file is the
+    # actual, measured harm — the verified check alone would have missed
+    # this shape.
+    test "refuses to delete a rule with a criterion that already has a spec file" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{criteria: []})
+      rule = insert_rule(scope, story)
+
+      specced =
+        criterion_fixture(scope, story, %{
+          rule_id: rule.id,
+          spec_path: "test/spex/1_a_story/criterion_1_spex.exs"
+        })
+
+      assert {:error, {:criteria_verified_or_specced, descriptions}} =
+               BddRules.delete_rule(scope, rule)
+
+      assert descriptions == [specced.description]
+      assert Repo.get(Criterion, specced.id)
+    end
+
+    test "still deletes a rule whose scenarios are neither verified nor specced" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{criteria: []})
+      rule = insert_rule(scope, story)
+      scenario = criterion_fixture(scope, story, %{rule_id: rule.id})
+
+      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+      refute Repo.get(Criterion, scenario.id)
+    end
   end
 
   defp insert_rule(scope, story) do

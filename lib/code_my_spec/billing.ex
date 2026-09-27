@@ -5,21 +5,31 @@ defmodule CodeMySpec.Billing do
   The shape of this context is one decision: **the webhook is the only writer
   of `account.plan`.** Starting a subscription hands the browser a client
   secret and writes nothing about entitlement; the tier flips later, when
-  Stripe tells us the money actually moved. A page that granted the plan on
-  its own would mean a closed tab is a free upgrade, and it would have no
-  answer at all for renewals, failures or cancellations — all of which arrive
-  as webhooks and never as page loads.
+  Stripe tells us the money actually moved — or, for a trial, that a trial
+  started, since a trial has no money to move yet and still has to grant
+  something. A page that granted the plan on its own would mean a closed tab
+  is a free upgrade, and it would have no answer at all for renewals,
+  failures or cancellations — all of which arrive as webhooks and never as
+  page loads.
 
   Lifecycle, as decided:
 
+    * A trial (`start_subscription/3`'s `:trial_days` option) grants the tier
+      the moment Stripe reports the subscription as `trialing`, before any
+      card is even confirmed — the renewal at the end of the trial is billed
+      and granted the same way any other charge is.
     * Cancelling keeps the tier until the period already paid for ends.
     * A failed renewal keeps the tier while Stripe retries; only Stripe giving
       up returns the account to free.
+    * With no Stripe secret key configured at all, `start_subscription/3`
+      grants the tier directly instead of asking Stripe for anything — see
+      `grant_without_stripe/2`. The only exception to "the webhook is the
+      only writer," and only because there is no Stripe to send one.
   """
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Repo, CodeMySpec.Users],
+    deps: [CodeMySpec.Accounts, CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope],
     exports: :all
 
   import Ecto.Query
@@ -58,9 +68,20 @@ defmodule CodeMySpec.Billing do
   guards against and a fresh one is created beside it; Stripe expires those on
   its own.
   """
-  @spec start_subscription(Scope.t(), atom()) ::
-          {:ok, %{client_secret: String.t(), subscription_id: String.t()}} | {:error, term()}
-  def start_subscription(%Scope{} = scope, tier) when tier in @tiers do
+  @spec start_subscription(Scope.t(), atom(), keyword()) ::
+          {:ok, %{client_secret: String.t() | nil, subscription_id: String.t()}}
+          | {:error, term()}
+  def start_subscription(%Scope{} = scope, tier, opts \\ []) when tier in @tiers do
+    if StripeClient.configured?() do
+      buy_subscription(scope, tier, opts)
+    else
+      grant_without_stripe(scope, tier)
+    end
+  end
+
+  defp buy_subscription(scope, tier, opts) do
+    trial_days = Keyword.get(opts, :trial_days, 0)
+
     with {:ok, account} <- ensure_customer(scope) do
       # Reloaded, never taken from the scope. `scope.active_account` is a
       # snapshot from when the page mounted, and `stripe_subscription_id` is
@@ -75,26 +96,61 @@ defmodule CodeMySpec.Billing do
 
       case billing_subscription(account) do
         {:ok, existing} -> change_tier(account, existing, tier)
-        :none -> create_subscription(account, tier)
+        :none -> create_subscription(account, tier, trial_days)
         {:error, reason} -> {:error, reason}
       end
     end
   end
 
-  defp create_subscription(account, tier) do
-    with {:ok, subscription} <-
-           StripeClient.create_subscription(%{
-             "customer" => account.stripe_customer_id,
-             "items[0][price]" => price_id!(tier),
-             "items[0][quantity]" => "1",
-             # Leaves the subscription unpaid until the browser confirms, which
-             # is what makes this embedded rather than a redirect.
-             "payment_behavior" => "default_incomplete",
-             "payment_settings[save_default_payment_method]" => "on_subscription",
-             "metadata[account_id]" => account.id,
-             "metadata[tier]" => to_string(tier),
-             "expand[0]" => "latest_invoice.confirmation_secret"
-           }) do
+  # No Stripe secret key configured at all — true for a fresh dev box with no
+  # billing test keys set up yet, and never true once real keys exist
+  # (`StripeClient.configured?/0` flips the moment `secret_key` is set, the
+  # same key every other Stripe call already needs or fails outright). Asking
+  # a visitor to configure billing before they can test the rest of the
+  # intake funnel would be gating unrelated work on a missing local config
+  # value, so the tier is granted directly instead — this is the one place
+  # something other than the webhook writes `account.plan` (see moduledoc),
+  # justified only because there is no webhook that will ever arrive to do it.
+  defp grant_without_stripe(%Scope{active_account: %Account{id: id}}, tier) do
+    Logger.info("[Billing] Stripe not configured — granting #{tier} directly for account #{id}")
+
+    id
+    |> Accounts.get_account_by_id()
+    |> Ecto.Changeset.change(plan: tier)
+    |> Repo.update()
+    |> case do
+      {:ok, _account} -> {:ok, %{client_secret: nil, subscription_id: nil}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # `trial_days > 0` puts the subscription straight into `trialing` with
+  # nothing due today — there is no invoice to attach a `confirmation_secret`
+  # to, so Stripe instead attaches a `pending_setup_intent` for collecting a
+  # payment method to charge once the trial ends. `expand`ing both and letting
+  # `client_secret/1` pick whichever is present is what lets the same call
+  # site work for a trial and a real charge.
+  defp create_subscription(account, tier, trial_days) do
+    params = %{
+      "customer" => account.stripe_customer_id,
+      "items[0][price]" => price_id!(tier),
+      "items[0][quantity]" => "1",
+      # Leaves the subscription unpaid until the browser confirms, which
+      # is what makes this embedded rather than a redirect.
+      "payment_behavior" => "default_incomplete",
+      "payment_settings[save_default_payment_method]" => "on_subscription",
+      "metadata[account_id]" => account.id,
+      "metadata[tier]" => to_string(tier),
+      "expand[0]" => "latest_invoice.confirmation_secret",
+      "expand[1]" => "pending_setup_intent"
+    }
+
+    params =
+      if trial_days > 0,
+        do: Map.put(params, "trial_period_days", to_string(trial_days)),
+        else: params
+
+    with {:ok, subscription} <- StripeClient.create_subscription(params) do
       client_secret(subscription)
     end
   end
@@ -115,7 +171,8 @@ defmodule CodeMySpec.Billing do
              "payment_settings[save_default_payment_method]" => "on_subscription",
              "metadata[account_id]" => account.id,
              "metadata[tier]" => to_string(tier),
-             "expand[0]" => "latest_invoice.confirmation_secret"
+             "expand[0]" => "latest_invoice.confirmation_secret",
+             "expand[1]" => "pending_setup_intent"
            }) do
       settled_or_confirmable(updated)
     end
@@ -134,11 +191,12 @@ defmodule CodeMySpec.Billing do
   # means confirm it, no secret on a *successful* update means the change is
   # done and there is nothing to pay.
   defp settled_or_confirmable(subscription) do
-    case get_in(subscription, ["latest_invoice", "confirmation_secret", "client_secret"]) do
-      secret when is_binary(secret) ->
-        {:ok, %{client_secret: secret, subscription_id: subscription["id"]}}
+    case confirmable_secret(subscription) do
+      {secret, intent_type} ->
+        {:ok,
+         %{client_secret: secret, subscription_id: subscription["id"], intent_type: intent_type}}
 
-      _ ->
+      nil ->
         {:ok, %{client_secret: nil, subscription_id: subscription["id"]}}
     end
   end
@@ -205,14 +263,33 @@ defmodule CodeMySpec.Billing do
   end
 
   defp client_secret(subscription) do
-    case get_in(subscription, ["latest_invoice", "confirmation_secret", "client_secret"]) do
-      secret when is_binary(secret) ->
-        {:ok, %{client_secret: secret, subscription_id: subscription["id"]}}
+    case confirmable_secret(subscription) do
+      {secret, intent_type} ->
+        {:ok,
+         %{client_secret: secret, subscription_id: subscription["id"], intent_type: intent_type}}
 
-      _ ->
+      nil ->
         # Without the expand there is no secret and the Payment Element has
         # nothing to confirm — a silent misconfiguration rather than a decline.
         {:error, :no_client_secret}
+    end
+  end
+
+  # A real charge confirms a `latest_invoice`'s PaymentIntent; a trial with
+  # nothing due today confirms the subscription's own `pending_setup_intent`
+  # instead — collecting a card without charging it, so the renewal after the
+  # trial has something to bill. Checked in that order because a subscription
+  # can carry both once a trial has ended and a real invoice exists.
+  defp confirmable_secret(subscription) do
+    cond do
+      secret = get_in(subscription, ["latest_invoice", "confirmation_secret", "client_secret"]) ->
+        {secret, :payment}
+
+      secret = get_in(subscription, ["pending_setup_intent", "client_secret"]) ->
+        {secret, :setup}
+
+      true ->
+        nil
     end
   end
 
@@ -267,8 +344,25 @@ defmodule CodeMySpec.Billing do
     %StripeEvent{} |> StripeEvent.changeset(%{event_id: event_id, type: type}) |> Repo.insert()
   end
 
-  # Money moved. This is the only place a paid tier is granted.
+  # Money moved. This and the trial start below are the only places a paid
+  # tier is granted.
   defp handle("invoice.payment_succeeded", event) do
+    with {:ok, account} <- account_for(event) do
+      set_plan(account, tier_for(event) || account.plan, subscription_id(event))
+    end
+  end
+
+  # A trial has nothing to invoice, so `invoice.payment_succeeded` never fires
+  # at trial start — only when it ends. Waiting for that would mean a visitor
+  # who chose a free trial gets no access for the 7 days it is meant to cover,
+  # which defeats the trial. Stripe puts a subscription with a trial straight
+  # into `trialing` on creation, before any payment method is even collected,
+  # so that status is what grants access here; the eventual renewal charge
+  # still arrives as `invoice.payment_succeeded` above, unchanged.
+  defp handle(
+         "customer.subscription.created",
+         %{"data" => %{"object" => %{"status" => "trialing"}}} = event
+       ) do
     with {:ok, account} <- account_for(event) do
       set_plan(account, tier_for(event) || account.plan, subscription_id(event))
     end

@@ -37,7 +37,7 @@ defmodule CodeMySpec.Validation.PreRecordedOutputsNeedTheSameDiskTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
 
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Validation
 
   # A stand-in for the harness channel: the registry holds the channel process,
@@ -48,7 +48,9 @@ defmodule CodeMySpec.Validation.PreRecordedOutputsNeedTheSameDiskTest do
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+        :ok =
+          HarnessRegistry.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+
         send(test, {:registered, self()})
 
         receive do

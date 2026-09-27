@@ -378,6 +378,22 @@ defmodule CodeMySpec.ProjectsTest do
     end
   end
 
+  describe "app_name/1" do
+    alias CodeMySpec.Projects.Project
+
+    test "derives an OTP app name from the project name" do
+      assert Projects.app_name(%Project{name: "Widget Tracker"}) == "widget_tracker"
+    end
+
+    test "strips punctuation and collapses runs of separators" do
+      assert Projects.app_name(%Project{name: "Bob's Coffee & Co."}) == "bob_s_coffee_co"
+    end
+
+    test "prefixes a name that would otherwise start with a digit" do
+      assert Projects.app_name(%Project{name: "1099 Filer"}) == "app_1099_filer"
+    end
+  end
+
   # A project root carrying `.code_my_spec/config.yml`, the way a real checkout
   # does. Briefly cleans it up.
   defp write_config(config) do
