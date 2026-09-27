@@ -266,11 +266,14 @@ defmodule CodeMySpec.Analysis do
   # against that test's `InMemoryEnvironment` after it was gone. The logged
   # `:noproc` landed in whichever spex was running at the time; story 1052's
   # criterion 3215 was the one that kept catching it.
+  # Admission, not outcome. The run is opened and executed here, and whatever
+  # the execution does is recorded on the run — the caller asked whether the run
+  # was accepted, which it was. Answering with the execution's error made a suite
+  # that failed to boot read as a refused request.
   defp start_local(scope, job, :inline) do
-    case run_inline(scope, job) do
-      {:ok, %Run{id: id}} -> {:ok, :started, id}
-      {:error, _} = error -> error
-    end
+    run = open_run(scope, job)
+    _ = Execution.execute(scope, run, job.opts)
+    {:ok, :started, run.id}
   end
 
   defp start_local(scope, job, :async) do
@@ -1340,7 +1343,9 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp run_inline(scope, job) do
+  defp run_inline(scope, job), do: Execution.execute(scope, open_run(scope, job), job.opts)
+
+  defp open_run(scope, job) do
     {:ok, run} =
       RunsRepository.start_run(scope, %{
         source: job.source,
@@ -1350,7 +1355,7 @@ defmodule CodeMySpec.Analysis do
         requested_by: job.requested_by
       })
 
-    Execution.execute(scope, run, job.opts)
+    run
   end
 
   # The working copy, because that is what owns the build tree the queue exists
