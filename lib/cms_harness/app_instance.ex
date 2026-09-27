@@ -59,6 +59,7 @@ defmodule CmsHarness.AppInstance do
   defstruct [
     :root,
     :port,
+    :https_port,
     :database,
     :os_pid,
     :commit,
@@ -101,9 +102,14 @@ defmodule CmsHarness.AppInstance do
   """
   @spec stop_app(String.t()) :: :ok | {:error, term()}
   def stop_app(root) do
-    case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
-      [{pid, _}] -> GenServer.call(pid, :stop, op_timeout())
-      [] -> :ok
+    # Through `find_or_start/1`, not a bare registry lookup: a harness
+    # restart between a start and this stop takes the in-memory registration
+    # with it, but `init/1` reads the persisted state file back — the same
+    # reason `Runner.Local` persists to disk rather than to a process. A bare
+    # lookup finding nothing here would report success while an orphaned
+    # `mix phx.server` kept running and kept spending.
+    with {:ok, pid} <- find_or_start(root) do
+      GenServer.call(pid, :stop, op_timeout())
     end
   end
 
@@ -190,14 +196,15 @@ defmodule CmsHarness.AppInstance do
 
   # --- Internals: status ---
 
-  # Public only so the shape can be tested without booting a real process —
-  # same reasoning as `AnalysisServer.insert_by_cost/2`.
-  @doc false
+  @doc """
+  Public only so the shape can be tested without booting a real process —
+  same reasoning as `AnalysisServer.insert_by_cost/2`.
+  """
   def result(%__MODULE__{status: status, port: port, commit: commit}) do
     %{status: status || "down", url: url(port, status), commit: commit}
   end
 
-  @doc false
+  @doc "A stopped copy never reports the address it used to answer on."
   def url(_port, status) when status in [nil, "down"], do: nil
   def url(port, _status), do: "http://127.0.0.1:#{port}"
 
@@ -260,12 +267,13 @@ defmodule CmsHarness.AppInstance do
 
   defp start_app(state) do
     with :ok <- ensure_serve_recipe(state),
-         {port, database} <- ensure_port_and_database(state),
+         {port, https_port, database} <- ensure_port_and_database(state),
          :ok <- ensure_database(state, database),
-         {:ok, os_pid} <- launch(state, port, database) do
+         {:ok, os_pid} <- launch(state, port, https_port, database) do
       new_state = %{
         state
         | port: port,
+          https_port: https_port,
           database: database,
           os_pid: os_pid,
           commit: current_commit(state),
@@ -297,13 +305,19 @@ defmodule CmsHarness.AppInstance do
   # Reused across restarts once allocated — a stable address is worth more
   # than a fresh one, and QA bookmarking a link should not have it move under
   # them on every restart.
-  defp ensure_port_and_database(%__MODULE__{port: port, database: database})
-       when is_integer(port) and is_binary(database) do
-    {port, database}
+  #
+  # `https_port` is allocated whether or not the app has an HTTPS endpoint —
+  # cheaper than asking, and an app with none just never reads the variable.
+  # Skipping it is what cost code_my_spec's own copy its first real start:
+  # `HTTPS_PORT` unset fell back to config's default 4001, and boot failed
+  # `:eaddrinuse` against main's own dev server already holding it.
+  defp ensure_port_and_database(%__MODULE__{port: port, https_port: https_port, database: database})
+       when is_integer(port) and is_integer(https_port) and is_binary(database) do
+    {port, https_port, database}
   end
 
   defp ensure_port_and_database(state) do
-    {state.port || free_port(), state.database || database_name(state)}
+    {state.port || free_port(), state.https_port || free_port(), state.database || database_name(state)}
   end
 
   defp free_port do
@@ -366,7 +380,11 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  @doc false
+  @doc """
+  Whether `name` is safe to interpolate into the shell string
+  `clone_database/2` builds — public so a regression here is caught by a
+  test, not discovered as a command-injection seam.
+  """
   def safe_identifier?(name), do: is_binary(name) and Regex.match?(~r/^[a-zA-Z0-9_]+$/, name)
 
   defp main_database_name(state) do
@@ -405,10 +423,11 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  defp launch(state, port, database) do
+  defp launch(state, port, https_port, database) do
     File.mkdir_p!(Path.dirname(state.log_path))
 
-    cmd = "just serve #{port} #{database} > #{state.log_path} 2>&1 < /dev/null"
+    env_prefix = "PORT=#{port} HTTPS_PORT=#{https_port} DATABASE_NAME=#{database}"
+    cmd = "#{env_prefix} just serve > #{state.log_path} 2>&1 < /dev/null"
 
     shell =
       if System.find_executable("setsid") do
@@ -470,6 +489,7 @@ defmodule CmsHarness.AppInstance do
 
     payload = %{
       "port" => state.port,
+      "https_port" => state.https_port,
       "database" => state.database,
       "os_pid" => state.os_pid,
       "commit" => state.commit,
@@ -496,6 +516,7 @@ defmodule CmsHarness.AppInstance do
     %{
       state
       | port: decoded["port"],
+        https_port: decoded["https_port"],
         database: decoded["database"],
         os_pid: decoded["os_pid"],
         commit: decoded["commit"],

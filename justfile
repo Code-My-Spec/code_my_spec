@@ -403,8 +403,14 @@ restart port="4000":
 # them for changes that needed none of it, three separate agent failures caused
 # by the bounce rather than by the code.
 
-# Story 1108: run *this* checkout's own app in the foreground, on the port
-# and database given to it.
+# Story 1108: run *this* checkout's own app in the foreground, on whatever
+# it's given.
+#
+# No parameters — the caller (the harness) sets PORT, HTTPS_PORT and
+# DATABASE_NAME as environment before invoking this, rather than positional
+# args. This app happens to need three; a plainer one needs one. A fixed
+# `just` signature every app's `serve` recipe has to match would break the
+# moment they didn't agree on how many.
 #
 # Deliberately not `restart` reworked: `restart` always resolves to the main
 # checkout (`--git-common-dir`) because :4000 is the one server everyone
@@ -416,9 +422,12 @@ restart port="4000":
 #
 # `exec` rather than launching a child: no shell left holding a pid that
 # is not the one actually listening.
-serve port database_name:
+serve:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    : "${PORT:?PORT must be set}"
+    : "${DATABASE_NAME:?DATABASE_NAME must be set}"
 
     if ! mix loadpaths >/dev/null 2>&1; then
         echo "→ deps do not satisfy mix.exs — fetching and recompiling" >&2
@@ -428,8 +437,6 @@ serve port database_name:
     mix ecto.create
     mix ecto.migrate
 
-    export PORT="{{port}}"
-    export DATABASE_NAME="{{database_name}}"
     exec mix phx.server
 
 # Pull main into the running checkout without restarting — the code reloader takes it.
