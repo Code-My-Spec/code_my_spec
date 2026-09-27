@@ -7,18 +7,19 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
   This is the seam that carries "start/restart/stop" from the server to the
   machine holding the checkout.
 
-  Same mechanism as `CodeMySpec.Agents.Transport.Harness`: `Analysis` holds a
-  live process per connected copy — the channel itself — and the request goes
-  to that pid, because it is the same process that already proved the machine
-  is reachable. See that module's own history before changing this one: a
-  lookup through a registry module that does not exist raised on every call
-  and a `rescue` silently turned every failure into "not connected," which no
-  test caught because every spex swaps this for an in-process transport.
+  Same mechanism as `CodeMySpec.Agents.Transport.Harness`: `Analysis.
+  HarnessRegistry` holds a live process per connected copy — the channel
+  itself — and the request goes to that pid, because it is the same process
+  that already proved the machine is reachable. See that module's own
+  history before changing this one: a lookup through a registry module that
+  does not exist raised on every call and a `rescue` silently turned every
+  failure into "not connected," which no test caught because every spex
+  swaps this for an in-process transport.
   """
 
   require Logger
 
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
 
   @doc """
   Ask the copy's machine to bring its app up, starting it if it is not
@@ -49,7 +50,7 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
   end
 
   defp holder(working_copy_id) do
-    case Analysis.executor_holder(working_copy_id) do
+    case HarnessRegistry.executor_holder(working_copy_id) do
       {:ok, pid, _instance} -> {:ok, pid}
       :error -> :none
     end

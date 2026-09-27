@@ -14,7 +14,7 @@ defmodule CodeMySpec.WorkingCopies.AppTransportTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.WorkingCopies.AppTransport
 
   test "a copy nothing is holding is reported unreachable" do
@@ -51,7 +51,7 @@ defmodule CodeMySpec.WorkingCopies.AppTransportTest do
 
     {:ok, _pid} =
       Task.start_link(fn ->
-        Analysis.register_executor(working_copy_id, self(), "/tmp/a-copy")
+        HarnessRegistry.register_executor(working_copy_id, self(), "/tmp/a-copy")
         send(test, :registered)
         Process.sleep(:infinity)
       end)
