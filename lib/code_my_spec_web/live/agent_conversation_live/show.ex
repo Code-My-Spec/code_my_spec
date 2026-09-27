@@ -1507,7 +1507,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               working?={@working?}
               draft={@draft}
               agent_writing={@agent_writing}
-              agent_writing={@agent_writing}
               main_agent?={@main_agent?}
               main={@main}
             />
