@@ -58,6 +58,14 @@ defmodule CodeMySpec.Agents.StopDecision do
   def deliver(scope, agent, opts \\ [])
 
   def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
+    # Holding nothing and waiting on its tap-out: any message here only buys a
+    # "still waiting" turn (070d1bab). The decision wakes it.
+    if is_nil(Agent.active_task(agent)) and Work.awaiting_tap_out?(agent),
+      do: :ok,
+      else: decide_and_deliver(scope, agent, opts)
+  end
+
+  defp decide_and_deliver(scope, agent, opts) do
     # Opened once, before anything is recorded into it, and that is not a
     # formality. `record_sent_to_agent/2` looks the conversation up by
     # agent and answers `:ok` when there is none — correct for a caller that

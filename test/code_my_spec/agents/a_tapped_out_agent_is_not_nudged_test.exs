@@ -3,18 +3,25 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
   An agent that tapped out has asked to leave the loop until a person answers.
 
   metric_flow's coding agent, 2026-09-27: its only task blocked on a tap-out,
-  and the work loop offered it a turn 42 times over 5.5 hours. Each turn it
-  called get_next_requirement, was shown the blocked task, could not start it,
-  and said so again.
+  and the work loop offered it a turn 42 times over 5.5 hours. A tap-out with
+  no task blocks no task, and its agent was nudged 40+ times (fad1a314) and
+  handed the same stop decision every turn (070d1bab).
   """
 
   use CodeMySpecSpex.Case, async: false
 
+  import Ecto.Query
+
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Notifications
+  alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecTest.RecordingAgentTransport
 
@@ -41,6 +48,8 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
         working_copy_id: ctx.scope.active_working_copy_id
       })
 
+    on_exit(fn -> :persistent_term.erase({StopDecision, :decision, agent.id}) end)
+
     {:ok, _conversation} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(
         ctx.scope.active_account_id,
@@ -51,29 +60,80 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
     Map.put(ctx, :agent, agent)
   end
 
-  defp tapped_out(agent, resolved_at) do
-    agent
-    |> Agent.add_task(%{
-      status: :blocked,
-      requirement_name: "bdd_specs_exist",
-      blocker_type: :tap_out,
-      blocker_id: Ecto.UUID.generate(),
-      blocked_at: DateTime.utc_now(),
-      blocker_resolved_at: resolved_at
-    })
-    |> Repo.update!()
+  defp tap_out_task(scope, agent) do
+    agent =
+      agent
+      |> Agent.add_task(%{
+        status: :active,
+        requirement_name: "bdd_specs_exist",
+        started_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    [task] = agent.tasks
+    {:ok, request} = Notifications.request_agent_tap_out(scope, agent.id, task.id, "stuck")
+    {Repo.get!(Agent, agent.id), request}
   end
 
-  test "is not offered a turn while its tap-out waits", %{scope: scope, agent: agent} do
-    agent = tapped_out(agent, nil)
+  defp tap_out_whole_agent(scope, agent) do
+    {:ok, request} = Notifications.request_agent_tap_out(scope, agent.id, nil, "stop")
+    request
+  end
+
+  defp answered(request) do
+    from(p in PermissionRequest, where: p.id == ^request.id)
+    |> Repo.update_all(set: [status: "denied", decision: "deny"])
+  end
+
+  test "is not offered a turn while a task's tap-out waits", %{scope: scope, agent: agent} do
+    {agent, _request} = tap_out_task(scope, agent)
+
+    assert {:ok, :not_runnable} = Work.request_turn_if_runnable(scope, agent, :test)
+  end
+
+  test "is not offered a turn while a whole-agent tap-out waits", %{scope: scope, agent: agent} do
+    tap_out_whole_agent(scope, agent)
 
     assert {:ok, :not_runnable} = Work.request_turn_if_runnable(scope, agent, :test)
   end
 
   test "is offered one again once the tap-out is answered", %{scope: scope, agent: agent} do
-    agent = tapped_out(agent, DateTime.utc_now())
+    scope |> tap_out_whole_agent(agent) |> answered()
 
     refute match?({:ok, :not_runnable}, Work.request_turn_if_runnable(scope, agent, :test)),
-           "a resolved blocker must not keep the agent out of the loop"
+           "an answered tap-out must not keep the agent out of the loop"
+  end
+
+  describe "the stop decision" do
+    @impl_path "lib/example_context.ex"
+
+    setup ctx do
+      Fixtures.set_analyzer_mode(ctx.scope, :credo, :block_all)
+
+      :ok =
+        Environments.write_file(ctx.environment, @impl_path, "defmodule ExampleContext do\nend\n")
+
+      Fixtures.deliver_manifest(ctx.scope)
+      Fixtures.record_problem(ctx.scope, "credo", %{file_path: @impl_path})
+      Fixtures.fresh_analysis_runs(ctx.scope, ["credo"])
+      Fixtures.record_agent_edit(ctx.agent.id, @impl_path)
+      :ok
+    end
+
+    # Instrument check: without a tap-out this tree does produce a decision.
+    test "names the finding to an agent that has not tapped out", ctx do
+      StopDecision.deliver(ctx.scope, ctx.agent, [])
+
+      assert_receive {:agent_dispatch, _id, _ref, message}, 2_000
+      assert message =~ "credo"
+    end
+
+    test "says nothing to an idle agent whose tap-out waits", ctx do
+      tap_out_whole_agent(ctx.scope, ctx.agent)
+
+      StopDecision.deliver(ctx.scope, ctx.agent, [])
+
+      refute_receive {:agent_dispatch, _id, _ref, _message}, 500
+    end
   end
 end
