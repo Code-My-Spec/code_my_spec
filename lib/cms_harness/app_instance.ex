@@ -50,8 +50,7 @@ defmodule CmsHarness.AppInstance do
 
   require Logger
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CmsHarness.AppInstance.Runner
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real
@@ -255,13 +254,7 @@ defmodule CmsHarness.AppInstance do
   def url(port, _status), do: "http://127.0.0.1:#{port}"
 
   defp running?(%__MODULE__{os_pid: nil}), do: false
-
-  defp running?(%__MODULE__{os_pid: pid} = state) do
-    case Environments.cmd(env(state), "kill", ["-0", Integer.to_string(pid)], []) do
-      {_out, 0} -> true
-      _ -> false
-    end
-  end
+  defp running?(%__MODULE__{os_pid: pid}), do: Runner.alive?(pid)
 
   # Requests count as activity by way of the log file `just serve` redirects
   # into — its mtime moving inside the idle window is read as "not idle."
@@ -278,36 +271,13 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp probe(%__MODULE__{port: port} = state) when is_integer(port) do
-    status =
-      case health_get(port) do
-        {:ok, %{status: code}} when code < 500 -> "serving"
-        {:ok, %{status: _code}} -> "erroring"
-        _ -> "down"
-      end
-
+    status = port |> Runner.probe() |> to_string()
     new_state = %{state | status: status}
     persist!(new_state)
     new_state
   end
 
   defp probe(state), do: state
-
-  defp health_get(port) do
-    Req.get(
-      "http://127.0.0.1:#{port}/",
-      [retry: false, receive_timeout: 3_000, connect_options: [timeout: 1_500]] ++ req_plug()
-    )
-  end
-
-  # Pinnable under test, same reasoning as `Runner.Local.req_plug/0`: the port
-  # is an argument, so an unpinned test could probe a real dev server on the
-  # machine and read its answer as this instance's health.
-  defp req_plug do
-    case Application.get_env(:code_my_spec, __MODULE__, []) |> Keyword.get(:plug) do
-      nil -> []
-      plug -> [plug: plug]
-    end
-  end
 
   # --- Internals: start/stop ---
 
@@ -332,20 +302,7 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp ensure_serve_recipe(state) do
-    env = env(state)
-
-    if Environments.exec_file_exists?(env, "justfile") and has_recipe?(env, "serve") do
-      :ok
-    else
-      {:error, :no_start_recipe}
-    end
-  end
-
-  defp has_recipe?(env, name) do
-    case Environments.cmd(env, "just", ["--list"], []) do
-      {out, 0} -> Regex.match?(~r/^\s*#{name}(\s|$)/m, out)
-      _ -> false
-    end
+    if Runner.recipe?(state.root, "serve"), do: :ok, else: {:error, :no_start_recipe}
   end
 
   # Reused across restarts once allocated — a stable address is worth more
@@ -363,21 +320,15 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp ensure_port_and_database(state) do
-    {state.port || free_port(), state.https_port || free_port(), state.database || database_name(state)}
-  end
-
-  defp free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
-    port
+    {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
+     state.database || database_name(state)}
   end
 
   # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this
   # same checkout, distinct from every other copy of the same project without
   # needing to ask anything for an id.
   defp database_name(state) do
-    app = Environments.mix_exs_app_name(env(state)) || "app"
+    app = Runner.app_name(state.root) || "app"
     suffix = state.root |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower) |> binary_part(0, 8)
     "#{app}_dev_wc_#{suffix}"
   end
@@ -386,10 +337,10 @@ defmodule CmsHarness.AppInstance do
   # convention — belt and suspenders on top of `discard/1` only ever being
   # called with this process's own state: a `DROP DATABASE` is exactly the
   # one command here with no undo.
-  defp drop_database(%__MODULE__{database: database} = state)
+  defp drop_database(%__MODULE__{database: database})
        when is_binary(database) do
     if safe_identifier?(database) and String.contains?(database, "_dev_wc_") do
-      Environments.cmd(env(state), "dropdb", ["-h", "localhost", "-U", "postgres", "--if-exists", database], [])
+      Runner.drop_database(database)
     end
 
     :ok
@@ -398,24 +349,11 @@ defmodule CmsHarness.AppInstance do
   defp drop_database(_state), do: :ok
 
   defp ensure_database(state, database) do
-    env = env(state)
-
-    case Environments.cmd(env, "psql", ["-h", "localhost", "-U", "postgres", "-tAc", psql_exists_query(database)], []) do
-      {"1" <> _, 0} -> :ok
-      {_out, 0} -> clone_database(state, database)
-      {out, status} -> {:error, "could not check for database #{database} (exit #{status}): #{out}"}
-    end
+    if Runner.database_exists?(database), do: :ok, else: clone_database(state, database)
   end
 
-  defp psql_exists_query(database),
-    do: "SELECT 1 FROM pg_database WHERE datname = '#{database}'"
-
-  # Dump-and-restore, not `CREATE DATABASE ... TEMPLATE`: main's dev app
-  # always holds open connections, and Postgres refuses to template-clone a
-  # database that has any.
   defp clone_database(state, database) do
-    env = env(state)
-    main_db = main_database_name(state)
+    main_db = Runner.main_database_name(state.root)
 
     cond do
       not (is_binary(main_db) and safe_identifier?(main_db)) ->
@@ -425,94 +363,37 @@ defmodule CmsHarness.AppInstance do
         {:error, {:unsafe_database_name, database}}
 
       true ->
-        with {_out, 0} <- Environments.cmd(env, "createdb", ["-h", "localhost", "-U", "postgres", database], []),
-             {_out, 0} <-
-               Environments.cmd(
-                 env,
-                 "bash",
-                 ["-c", "pg_dump -h localhost -U postgres #{main_db} | psql -h localhost -U postgres -q #{database}"],
-                 []
-               ) do
-          maybe_seed(state)
+        with :ok <- Runner.clone_database(state.root, main_db, database) do
+          Runner.seed(state.root)
           :ok
-        else
-          {out, status} -> {:error, "cloning #{main_db} into #{database} failed (exit #{status}): #{out}"}
         end
     end
   end
 
   @doc """
   Whether `name` is safe to interpolate into the shell string
-  `clone_database/2` builds — public so a regression here is caught by a
-  test, not discovered as a command-injection seam.
+  `CmsHarness.AppInstance.Runner.Local.clone_database/3` builds — public so a
+  regression here is caught by a test, not discovered as a
+  command-injection seam.
   """
   def safe_identifier?(name), do: is_binary(name) and Regex.match?(~r/^[a-zA-Z0-9_]+$/, name)
 
-  defp main_database_name(state) do
-    with main when is_binary(main) <- main_checkout_path(state),
-         {:ok, content} <- Environments.read_file(%Environment{type: :local, cwd: main}, "config/dev.exs"),
-         [_, db] <-
-           Regex.run(
-             ~r/database:\s*(?:System\.get_env\("DATABASE_NAME"\)\s*\|\|\s*)?"([^"]+)"/,
-             content
-           ) do
-      db
-    else
-      _ -> nil
-    end
-  end
-
-  defp main_checkout_path(state) do
-    case Environments.cmd(env(state), "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], []) do
-      {out, 0} -> out |> String.trim() |> Path.dirname()
-      _ -> nil
-    end
-  end
-
-  # Optional, and checked the same way as the start recipe: a project with no
-  # `seed` recipe still gets an app, on an empty-but-cloned database.
-  defp maybe_seed(state) do
-    env = env(state)
-    if has_recipe?(env, "seed"), do: Environments.cmd(env, "just", ["seed"], [])
-    :ok
-  end
-
-  defp current_commit(state) do
-    case Environments.cmd(env(state), "git", ["rev-parse", "HEAD"], []) do
-      {out, 0} -> String.trim(out)
-      _ -> nil
-    end
-  end
+  defp current_commit(state), do: Runner.current_commit(state.root)
 
   defp launch(state, port, https_port, database) do
-    File.mkdir_p!(Path.dirname(state.log_path))
-
-    env_prefix = "PORT=#{port} HTTPS_PORT=#{https_port} DATABASE_NAME=#{database}"
-    cmd = "#{env_prefix} just serve > #{state.log_path} 2>&1 < /dev/null"
-
-    shell =
-      if System.find_executable("setsid") do
-        "setsid #{cmd} & echo $!"
-      else
-        "#{cmd} & disown; echo $!"
-      end
-
-    case Environments.cmd(env(state), "bash", ["-c", shell], []) do
-      {out, 0} ->
-        case out |> String.trim() |> Integer.parse() do
-          {os_pid, _} -> {:ok, os_pid}
-          :error -> {:error, "no pid on launch: #{inspect(out)}"}
-        end
-
-      {out, status} ->
-        {:error, "launch exited #{status}: #{String.trim(out)}"}
-    end
+    Runner.launch(state.root, port, https_port, database, state.log_path)
   end
 
   # A short, bounded wait so the common case can report "serving" rather than
   # "started, ask again" — not a long one, since the caller (a QA session
-  # starting) is already holding a call for this.
-  defp wait_for_health(state, attempts \\ 15)
+  # starting) is already holding a call for this. Attempts and interval are
+  # both configurable, same reasoning as the idle timeout: a spex proving "an
+  # app that fails to boot is reported, not waited on" should not spend 15
+  # real seconds finding that out against a scripted `Runner` that already
+  # knows the answer on attempt one.
+  defp wait_for_health(state, attempts \\ nil)
+
+  defp wait_for_health(state, nil), do: wait_for_health(state, health_wait_attempts())
 
   defp wait_for_health(state, 0), do: probe(state)
 
@@ -522,15 +403,18 @@ defmodule CmsHarness.AppInstance do
         new_state
 
       _ ->
-        Process.sleep(1_000)
+        Process.sleep(health_wait_interval_ms())
         wait_for_health(state, attempts - 1)
     end
   end
 
+  defp health_wait_attempts, do: Application.get_env(:code_my_spec, :app_instance_health_wait_attempts, 15)
+
+  defp health_wait_interval_ms,
+    do: Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)
+
   defp stop_process(%__MODULE__{os_pid: pid} = state) when is_integer(pid) do
-    env = env(state)
-    Environments.cmd(env, "pkill", ["-TERM", "-P", Integer.to_string(pid)], [])
-    Environments.cmd(env, "kill", ["-TERM", Integer.to_string(pid)], [])
+    Runner.stop_process(pid)
 
     # A stale address on a stopped copy is the exact failure story 1108
     # exists to prevent — never left standing.
@@ -540,8 +424,6 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp stop_process(state), do: %{state | status: "down"}
-
-  defp env(%__MODULE__{root: root}), do: %Environment{type: :local, cwd: root}
 
   # --- Internals: persistence ---
 

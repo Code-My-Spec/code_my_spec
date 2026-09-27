@@ -189,8 +189,11 @@ defmodule CmsHarnessTest.FakeServer do
     ref = payload["ref"] || Integer.to_string(System.unique_integer([:positive]))
 
     case :persistent_term.get({__MODULE__, :channel}, nil) do
-      nil -> {:error, :no_channel}
-      pid -> send(pid, {:push_app_event, event, Map.put(payload, "ref", ref)})
+      nil ->
+        raise "no channel has joined the fake server yet — push_app_event can't reach a harness"
+
+      pid ->
+        send(pid, {:push_app_event, event, Map.put(payload, "ref", ref)})
     end
 
     ref
