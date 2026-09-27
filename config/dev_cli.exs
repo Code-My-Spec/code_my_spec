@@ -79,8 +79,13 @@ config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 # started from here). `code_reloader: true` recompiles changed modules,
 # including a changed router, on the next request — without this, every
 # code change to lib/cms_harness/** needed `just refresh-harness` to show up.
+#
+# Off: a promote merges into the checkout this harness runs from, and the next
+# hook request hot-swapped lib/cms_harness under live processes, crashing the
+# channel carrying the restart (08744186). Promotion restarts the harness
+# instead; in dev, `just refresh-harness` picks up a harness change.
 config :code_my_spec, CmsHarness.Web.Endpoint,
-  code_reloader: true,
+  # code_reloader: true,
   debug_errors: true
 
 # Local web endpoint — compiled for this env but not started by
