@@ -150,4 +150,40 @@ defmodule CodeMySpec.AcceptanceCriteria.SpecPathStalenessTest do
     assert repaired == 1, "an unclaimed criterion must still take the path it was found at"
     assert Repo.get!(Criterion, criterion.id).spec_path == @spec_path
   end
+
+  describe "the graph hears about a claim" do
+    alias CodeMySpec.Requirements.Invalidations
+
+    defp story_marks(scope) do
+      marks = Invalidations.pending(scope.active_project_id)
+      Invalidations.consume(marks)
+      {named, _flags} = Invalidations.entities(marks)
+      named
+    end
+
+    # metric_flow story 1100, 2026-09-27: the binding fix bound all 21 criteria
+    # on a manifest that changed no file, and bdd_specs_exist stayed "14 of 21
+    # missing" because nothing named the story to the graph.
+    test "a claim marks the claimed criterion's story" do
+      scope = full_scope_fixture()
+      criterion = criterion_with_path(scope, nil)
+      story_marks(scope)
+
+      {:ok, 1} =
+        AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path}, recorded(scope))
+
+      assert MapSet.member?(story_marks(scope), {"story", criterion.story_id})
+    end
+
+    test "a claim that changes nothing marks nothing" do
+      scope = full_scope_fixture()
+      criterion = criterion_with_path(scope, @spec_path)
+      story_marks(scope)
+
+      {:ok, 0} =
+        AcceptanceCriteria.claim_spec_paths(scope, %{criterion.id => @spec_path}, recorded(scope))
+
+      assert story_marks(scope) == MapSet.new()
+    end
+  end
 end

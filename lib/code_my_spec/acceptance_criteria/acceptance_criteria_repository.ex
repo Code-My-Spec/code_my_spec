@@ -7,6 +7,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -114,8 +115,10 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
       |> Enum.flat_map(&repair_candidate(&1, paths))
 
+    claims = by_row_id ++ by_recorded_id
+
     count =
-      (by_row_id ++ by_recorded_id)
+      claims
       |> Enum.reduce(0, fn {id, previous, recorded}, acc ->
         {n, _} =
           from(c in Criterion, where: c.id == ^id and c.project_id == ^project_id)
@@ -126,7 +129,26 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
         acc + n
       end)
 
+    announce_claimed(project_id, Enum.map(claims, &elem(&1, 0)))
     {:ok, count}
+  end
+
+  # A claim changes no file, so the manifest's file-change recompute never sees
+  # it; without this the story's bdd_specs_exist stayed unsatisfied after the
+  # criteria were bound.
+  defp announce_claimed(_project_id, []), do: :ok
+
+  defp announce_claimed(project_id, criterion_ids) do
+    stories =
+      from(c in Criterion,
+        where: c.id in ^criterion_ids and not is_nil(c.story_id),
+        distinct: true,
+        select: c.story_id
+      )
+      |> Repo.all()
+      |> Enum.map(&{"story", &1})
+
+    GraphInputs.announce(project_id, "AcceptanceCriteria", stories, :project_wide)
   end
 
   defp repair_candidate({id, previous}, paths) do
