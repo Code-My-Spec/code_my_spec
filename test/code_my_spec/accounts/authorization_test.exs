@@ -1,7 +1,7 @@
-defmodule CodeMySpec.AuthorizationTest do
+defmodule CodeMySpec.Accounts.AuthorizationTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.Authorization
+  alias CodeMySpec.Accounts.Authorization
 
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures

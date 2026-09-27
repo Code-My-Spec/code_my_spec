@@ -21,7 +21,6 @@ defmodule CodeMySpec do
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
-      CodeMySpec.Authorization,
       CodeMySpec.BddRules,
       CodeMySpec.BddSpecs,
       CodeMySpec.Billing,

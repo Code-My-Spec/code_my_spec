@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Authorization do
+defmodule CodeMySpec.Accounts.Authorization do
   @moduledoc """
   Role-based authorization checks against account membership.
 
@@ -7,11 +7,6 @@ defmodule CodeMySpec.Authorization do
   membership; management and deletion require `:owner` or `:admin` (deletion
   requires `:owner`).
   """
-
-  use Boundary,
-    top_level?: true,
-    deps: [CodeMySpec.Accounts, CodeMySpec.Users.Scope],
-    exports: :all
 
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Users.Scope

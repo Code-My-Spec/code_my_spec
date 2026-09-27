@@ -32,7 +32,6 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
-      CodeMySpec.Authorization,
       CodeMySpec.BddRules,
       CodeMySpec.Billing,
       CodeMySpec.BootVersion,

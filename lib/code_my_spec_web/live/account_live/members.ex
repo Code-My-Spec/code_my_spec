@@ -2,7 +2,7 @@ defmodule CodeMySpecWeb.AccountLive.Members do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Authorization
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpecWeb.AccountLive.Components.Navigation
 
   @impl true

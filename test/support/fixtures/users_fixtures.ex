@@ -67,11 +67,11 @@ defmodule CodeMySpec.UsersFixtures do
   end
 
   def user_scope_fixture(user) do
-    Users.scope_for(user)
+    UserPreferences.scope_for(user)
   end
 
   def user_scope_fixture(user, account) do
-    Users.scope_for(user)
+    UserPreferences.scope_for(user)
     |> Map.put(:active_account_id, account.id)
     |> Map.put(:active_account, account)
   end

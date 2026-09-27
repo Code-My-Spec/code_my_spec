@@ -12,60 +12,14 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Integrations,
       CodeMySpec.Mailer,
       CodeMySpec.Repo,
-      CodeMySpec.UserPreferences,
       CodeMySpec.Users.Scope
     ],
     exports: :all
 
   import Ecto.Query, warn: false
   alias CodeMySpec.Repo
-  alias CodeMySpec.UserPreferences
 
-  alias CodeMySpec.Users.{Scope, User, UserNotifier, UserToken}
-
-  ## Scope
-
-  @doc """
-  The scope for a signed-in user, with their saved active account and project.
-
-  Returns nil if no user is given. Lives here rather than on `Scope` because it
-  reads preferences from the database: `Scope` is a struct nearly every context
-  takes, and a data-loading constructor on it made all of them depend on
-  `UserPreferences` and everything that reaches.
-  """
-  @spec scope_for(User.t() | nil) :: Scope.t() | nil
-  def scope_for(%User{} = user) do
-    scope = %Scope{user: user, user_id: user.id}
-
-    case UserPreferences.get_user_preference(scope) do
-      {:ok, preferences} ->
-        # The active project is a *fallback*, not the answer. Every LiveView
-        # under /app/projects/:project_id gets its project from the URL, put on
-        # the scope per-request by the PortableHosts, which overwrite whatever
-        # is here — so the bug this used to cause (a link landing on a page
-        # showing a different project than the one it named) stays fixed.
-        #
-        # It is still read because the REST API has no project in its URL:
-        # /api/issues is what `Issues.RemoteClient` calls from the shipped CLI,
-        # and IssuesRepository.resolve_project_id/1 has no other way to know
-        # which project a request means. Removing it 500s that endpoint.
-        # Deleting this for real means project-scoping the API routes, which
-        # is a breaking change for CLIs already in the field.
-        %Scope{
-          user: user,
-          user_id: user.id,
-          active_account: preferences.active_account,
-          active_account_id: preferences.active_account_id,
-          active_project: preferences.active_project,
-          active_project_id: preferences.active_project_id
-        }
-
-      {:error, :not_found} ->
-        scope
-    end
-  end
-
-  def scope_for(nil), do: nil
+  alias CodeMySpec.Users.{User, UserNotifier, UserToken}
 
   ## Database getters
 

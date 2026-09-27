@@ -15,7 +15,8 @@ defmodule CodeMySpecTest.ConnCase do
 
   use ExUnit.CaseTemplate
 
-  alias CodeMySpec.Users
+  alias CodeMySpec.UserPreferences
+
 
   using do
     quote do
@@ -46,7 +47,7 @@ defmodule CodeMySpecTest.ConnCase do
   """
   def register_and_log_in_user(%{conn: conn} = context) do
     user = CodeMySpec.UsersFixtures.user_fixture()
-    scope = Users.scope_for(user)
+    scope = UserPreferences.scope_for(user)
 
     opts =
       context
