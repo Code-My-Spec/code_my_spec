@@ -9,8 +9,7 @@ defmodule CmsHarness.SopsKeyring do
   over on join (`age_private_key_dev`, `age_private_key_test` — never a deploy
   environment's) and they are appended here.
 
-  The keyring is the file sops itself reads: `$SOPS_AGE_KEY_FILE`, else
-  `~/.config/sops/age/keys.txt`.
+  The keyring is the file sops itself reads — see `path/0`.
   """
 
   require Logger
@@ -33,11 +32,23 @@ defmodule CmsHarness.SopsKeyring do
     end
   end
 
-  @doc "The keyring sops reads."
+  @doc """
+  The keyring sops reads, in sops' own order. `~/.config` is only the default
+  off macOS: there sops uses the OS config directory, so a key written to
+  `~/.config` was never found.
+  """
   @spec path() :: Path.t()
   def path do
     System.get_env("SOPS_AGE_KEY_FILE") ||
-      Path.join([System.user_home!(), ".config", "sops", "age", "keys.txt"])
+      Path.join([config_dir(), "sops", "age", "keys.txt"])
+  end
+
+  defp config_dir do
+    case {System.get_env("XDG_CONFIG_HOME"), :os.type()} do
+      {xdg, _} when is_binary(xdg) and xdg != "" -> xdg
+      {_, {:unix, :darwin}} -> Path.join([System.user_home!(), "Library", "Application Support"])
+      _ -> Path.join(System.user_home!(), ".config")
+    end
   end
 
   defp valid?(key), do: is_binary(key) and String.starts_with?(key, "AGE-SECRET-KEY-")

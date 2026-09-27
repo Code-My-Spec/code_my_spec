@@ -48,6 +48,32 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == path
   end
 
+  # metric_flow, 2026-09-27: legacy directories carry no story number, and a
+  # new subscription story's criteria 4112-4115 claimed correlation-analysis
+  # files named for criteria that had since been renumbered.
+  test "a file in another story's directory is not claimed by a matching id" do
+    scope = full_scope_fixture()
+    owner = story_fixture(scope)
+    other = story_fixture(scope)
+    dir = "test/spex/correlation-analysis-3567d7c2"
+
+    criterion(scope, owner, %{spec_path: "#{dir}/criterion_1_owned_spex.exs"})
+    newcomer = criterion(scope, other)
+    legacy = "#{dir}/criterion_#{newcomer.id}_correlations_use_daily_data_spex.exs"
+
+    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(scope, %{newcomer.id => legacy})
+    assert AcceptanceCriteria.get_criterion(scope, newcomer.id).spec_path == nil
+  end
+
+  test "a file in a directory no story owns yet is still claimed" do
+    scope = full_scope_fixture()
+    story = story_fixture(scope)
+    c = criterion(scope, story)
+    path = "test/spex/some-legacy-dir-c0c417c7/criterion_#{c.id}_a_thing_happens_spex.exs"
+
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path})
+  end
+
   test "a criterion whose recorded file is really there is left alone" do
     scope = full_scope_fixture()
     story = story_fixture(scope)

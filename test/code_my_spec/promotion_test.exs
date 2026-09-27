@@ -322,6 +322,61 @@ defmodule CodeMySpec.PromotionTest do
       assert status == "", "the version bump has to land as a commit, not sit uncommitted"
     end
 
+    # The target's submodule checkout is not moved by `git merge`, so a bump
+    # committed with `-a` staged that stale checkout and reverted the pointer
+    # the branch brought. Every promote dropped `.code_my_spec` bumps this way.
+    test "the version bump does not revert a submodule pointer the branch moved",
+         %{root: root, git: git, env: env} do
+      {:ok, sub} = Briefly.create(directory: true)
+      sub_git = fn args -> System.cmd("git", args, cd: sub, stderr_to_stdout: true) end
+      {_, 0} = sub_git.(["init", "--initial-branch=main"])
+
+      {_, 0} =
+        sub_git.([
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "user.name=T",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "one"
+        ])
+
+      {_, 0} =
+        sub_git.([
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "user.name=T",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "two"
+        ])
+
+      {two, 0} = sub_git.(["rev-parse", "HEAD"])
+      {one, 0} = sub_git.(["rev-parse", "HEAD~1"])
+
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["-c", "protocol.file.allow=always", "submodule", "add", sub, "docs"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(one)])
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(two)])
+      {_, 0} = git.(["add", "docs"])
+      {_, 0} = git.(["commit", "-m", "bump docs"])
+      {_, 0} = git.(["checkout", "main"])
+      {_, 0} = git.(["-C", "docs", "checkout", String.trim(one)])
+
+      assert {:ok, %{version: "1.2.4"}} = Steps.merge(env, root, "side")
+
+      {tree, 0} = git.(["ls-tree", "HEAD", "docs"])
+      assert tree =~ String.trim(two), "the promote commit reverted the submodule pointer"
+    end
+
     test "a checkout with no mix.exs merges anyway and originates no version",
          %{root: root, git: git, env: env} do
       File.write!(Path.join(root, "f.txt"), "base\n")

@@ -615,12 +615,23 @@ defmodule CodeMySpec.Promotion do
   # Through `Validation.enforceable/2`, which is what the gate elsewhere blocks
   # on. That function's own doc says why it is public: "two copies of what
   # counts as enforceable drift, and the drift is silent."
+  #
+  # Credo and compiler findings block at any severity and whatever the stop
+  # hook's mode says. A warning let through here lands on main and blocks
+  # every other copy's promote until someone cleans it up (v2.0.162's two
+  # AliasUsage findings).
+  @always_block ~w(credo compiler)
+
   defp blocking_problems(%Scope{} = scope, copy) do
     here = as_copy(scope, copy)
 
+    strict = ProblemRepository.list_project_problems(here, sources: @always_block)
+
     here
     |> ProblemRepository.list_project_problems(severity: :error)
+    |> Enum.reject(&(&1.source in @always_block))
     |> then(&Validation.enforceable(here, &1))
+    |> Kernel.++(strict)
   end
 
   defp as_copy(%Scope{} = scope, nil), do: scope
