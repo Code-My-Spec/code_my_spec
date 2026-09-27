@@ -63,6 +63,9 @@ defmodule CodeMySpecTest.InProcessDeviceClient do
     end
   end
 
+  defp issued(%Plug.Conn{status: status} = conn),
+    do: {:error, {status, Phoenix.ConnTest.response(conn, status)}}
+
   defp pending_local_projects(list) when is_list(list) do
     for %{"id" => id, "name" => name, "app_name" => app_name, "deploy_key" => key} <- list,
         is_binary(id) and is_binary(name) and is_binary(app_name) and is_binary(key) do
@@ -71,9 +74,6 @@ defmodule CodeMySpecTest.InProcessDeviceClient do
   end
 
   defp pending_local_projects(_other), do: []
-
-  defp issued(%Plug.Conn{status: status} = conn),
-    do: {:error, {status, Phoenix.ConnTest.response(conn, status)}}
 
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)

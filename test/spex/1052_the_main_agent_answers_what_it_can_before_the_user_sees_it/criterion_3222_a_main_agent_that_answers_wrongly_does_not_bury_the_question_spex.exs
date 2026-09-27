@@ -40,7 +40,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3222Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.QuestionRoutingHelpers
-  import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Ecto.Adapters.SQL.Sandbox
@@ -61,7 +60,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion3222Spex do
         id =
           ask(context, "Should refunds older than ninety days be allowed?", ["Allow", "Refuse"])
 
-        wrong_answer = "Allow — refunds already run without a window on #{checkout_of(context, id)}"
+        wrong_answer =
+          "Allow — refunds already run without a window on #{checkout_of(context, id)}"
+
         reply = main_answers(context, id, wrong_answer)
 
         refute reply.isError,

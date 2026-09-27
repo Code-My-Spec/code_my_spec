@@ -32,7 +32,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3221Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.QuestionRoutingHelpers
-  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox

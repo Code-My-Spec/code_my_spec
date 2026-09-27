@@ -1604,20 +1604,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Stop every graph watcher, so nothing new starts during teardown.
-
-  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
-  project-scoped GenServer under a dynamic supervisor and outlives the scenario
-  that started it, so its debounce timer can fire *after* the drain and spawn
-  another wake into a sandbox that is about to go away. Stopping the watchers
-  first closes that window.
-
-  Every one rather than this scope's, because teardown runs before the scope is
-  in hand and because a spex run gives each scenario its own project — so the
-  watchers alive at the end of one are that one's, and a watcher belonging to
-  nothing is what a straggler is.
-  """
-  @doc """
   Forget everything the event path has projected for this project, at every
   vantage, so the next projector to arrive meets it for the first time.
 
@@ -1632,6 +1618,20 @@ defmodule CodeMySpecSpex.Fixtures do
     |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
   end
 
+  @doc """
+  Stop every graph watcher, so nothing new starts during teardown.
+
+  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
+  project-scoped GenServer under a dynamic supervisor and outlives the scenario
+  that started it, so its debounce timer can fire *after* the drain and spawn
+  another wake into a sandbox that is about to go away. Stopping the watchers
+  first closes that window.
+
+  Every one rather than this scope's, because teardown runs before the scope is
+  in hand and because a spex run gives each scenario its own project — so the
+  watchers alive at the end of one are that one's, and a watcher belonging to
+  nothing is what a straggler is.
+  """
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do
     CodeMySpec.Requirements.WatcherSupervisor
