@@ -92,6 +92,16 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # delivery would silently end every later one. Logged at error, not
   # swallowed — the failure stays loud each time it happens.
   @doc false
+  def handle_event(@event, _measurements, %{failure: reason} = meta, _config) do
+    deliver_failure(meta.scope, meta.source, reason, meta.requester)
+  rescue
+    e ->
+      Logger.error(
+        "[AnalysisReport] delivering #{meta.source} failure failed: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+  end
+
   def handle_event(@event, _measurements, meta, _config) do
     deliver(meta.scope, meta.source, meta.problems, meta.requester)
   rescue
@@ -123,6 +133,39 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   def deliver(_scope, _source, _problems, _requester_id), do: :ok
+
+  @doc """
+  Tell the agent that requested a run that it failed.
+
+  Only the requester: a failed run has no findings for anyone else, and one
+  nobody requested stays silent. A requester that is not an agent row (a
+  Claude Code subagent id) is told nothing here.
+  """
+  @spec deliver_failure(Scope.t(), atom() | String.t(), String.t(), String.t() | nil) :: :ok
+  def deliver_failure(%Scope{active_working_copy_id: copy_id} = scope, source, reason, requester)
+      when is_binary(copy_id) do
+    case agent_uuid(requester) do
+      nil ->
+        :ok
+
+      agent_id ->
+        scope
+        |> requesting_agent(copy_id, agent_id)
+        |> Enum.each(&tell(&1, failed(source, reason)))
+    end
+  end
+
+  def deliver_failure(_scope, _source, _reason, _requester), do: :ok
+
+  defp failed(source, reason) do
+    """
+    Your #{source} run failed without a result: #{reason}
+
+    This is the answer to the run you started — it is not coming. Nothing it
+    was meant to measure has been measured, so start the #{source} run again
+    rather than waiting on this one.
+    """
+  end
 
   # `requested_by["agent_id"]` carries two kinds of id. `start_analysis` stores an
   # in-app agent's UUID; the `subagent_stop` hook stores a Claude Code subagent
@@ -226,6 +269,16 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
         a.status != :stopped and a.engine == :alloy and
         (a.role in ^@report_roles or a.id == ^agent_id)
+    )
+    |> Repo.all()
+  end
+
+  defp requesting_agent(%Scope{active_project_id: project_id}, copy_id, agent_id) do
+    Agent
+    |> where(
+      [a],
+      a.id == ^agent_id and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+        a.status != :stopped and a.engine == :alloy
     )
     |> Repo.all()
   end

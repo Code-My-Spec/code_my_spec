@@ -909,7 +909,9 @@ defmodule CodeMySpec.Analysis do
   """
   @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
   def fail_in_flight(%Scope{} = scope, reason, claimed) do
-    {:ok, count} = RunsRepository.fail_running(scope, reason, claimed)
+    {:ok, failed} = RunsRepository.fail_running(scope, reason, claimed)
+    Enum.each(failed, &Reconciler.announce_failed(&1, reason))
+    count = length(failed)
 
     if count > 0 do
       Logger.warning(
@@ -919,6 +921,17 @@ defmodule CodeMySpec.Analysis do
     end
 
     {:ok, count}
+  end
+
+  @doc """
+  Close every run a previous server process left `:running`, telling each
+  requester its run died with that server.
+  """
+  @spec fail_stranded_runs() :: {:ok, non_neg_integer()}
+  def fail_stranded_runs do
+    {:ok, failed} = RunsRepository.fail_stranded_runs()
+    Enum.each(failed, &Reconciler.announce_failed(&1, :server_restarted))
+    {:ok, length(failed)}
   end
 
   defp claimed_suffix([]), do: ""

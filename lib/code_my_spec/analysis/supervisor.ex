@@ -11,7 +11,7 @@ defmodule CodeMySpec.Analysis.Supervisor do
 
   use Supervisor
 
-  alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpec.Analysis
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Analysis.Supervisor do
       _ ->
         [
           Supervisor.child_spec(
-            {Task, fn -> RunsRepository.fail_stranded_runs() end},
+            {Task, fn -> Analysis.fail_stranded_runs() end},
             id: :fail_stranded_runs,
             restart: :temporary
           )

@@ -144,7 +144,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
         )
 
-        RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
+        finish_failed(run, inspect(reason))
         {:error, reason}
     end
   end
@@ -187,9 +187,48 @@ defmodule CodeMySpec.Analysis.Reconciler do
         requested_by_suffix(run)
     )
 
-    RunsRepository.finish_run(run, :failed, %{
-      stats: %{"error" => error_text(reason)}
-    })
+    finish_failed(run, reason)
+  end
+
+  defp finish_failed(run, reason) do
+    with {:ok, failed} <-
+           RunsRepository.finish_run(run, :failed, %{stats: %{"error" => error_text(reason)}}) do
+      announce_failed(failed, reason)
+      {:ok, failed}
+    end
+  end
+
+  @doc """
+  Tell the agent that requested a failed run that it failed, and why.
+
+  Every path that marks a run `:failed` ends here — `fail/2`, and the bulk
+  sweeps that close runs a harness disconnect or a server restart stranded. A
+  requested run always answers (see `announce_if_new/5`); before this, only a
+  completed one did, and an agent whose spex run was killed by a server restart
+  waited on it forever. A run nobody requested fails silently.
+  """
+  @spec announce_failed(Run.t(), term()) :: :ok
+  def announce_failed(%Run{} = run, reason) do
+    case requesting_agent_id(run) do
+      nil ->
+        :ok
+
+      requester ->
+        :telemetry.execute(
+          [:code_my_spec, :analysis, :run_reported],
+          %{},
+          %{
+            scope: %Scope{
+              active_project_id: run.project_id,
+              active_working_copy_id: run.working_copy_id
+            },
+            source: run.source,
+            problems: [],
+            requester: requester,
+            failure: error_text(reason)
+          }
+        )
+    end
   end
 
   # A string reason is stored as itself; everything else is inspected.

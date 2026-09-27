@@ -235,7 +235,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   and `bdd_specs_passing` unsatisfiable for every story, because the only
   evidence that can satisfy it is a result that could never be recorded.
   """
-  @spec fail_running(Scope.t(), term()) :: {:ok, non_neg_integer()}
+  @spec fail_running(Scope.t(), term()) :: {:ok, [Run.t()]}
   def fail_running(%Scope{} = scope, reason), do: fail_running(scope, reason, [])
 
   @doc """
@@ -253,22 +253,24 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   genuinely dead harness is handled exactly as before — an empty declaration is
   the old behaviour.
   """
-  @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, [Run.t()]}
   # No harness on the scope means there is no working copy whose runs these are,
   # so there is nothing to close. Falling through to `scope_to_harness/2`'s
   # unfiltered clause would close every other checkout's in-flight runs — the
   # opposite of what the caller asked for, and invisible until an unrelated
   # agent's sweep came back as `:harness_disconnected`.
-  def fail_running(%Scope{active_working_copy_id: nil}, _reason, _claimed), do: {:ok, 0}
+  def fail_running(%Scope{active_working_copy_id: nil}, _reason, _claimed), do: {:ok, []}
 
   def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
 
-    {count, _} =
+    # The closed rows come back so their requesters can be told.
+    {_count, failed} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running)
       |> scope_to_harness(scope)
       |> exclude_claimed(claimed)
+      |> select([r], r)
       |> Repo.update_all(
         set: [
           status: :failed,
@@ -278,7 +280,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
         ]
       )
 
-    {:ok, count}
+    {:ok, failed}
   end
 
   # An empty claim sweeps everything, which is what this did before harnesses
@@ -307,24 +309,21 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   So it stays blunt and says what it did.
   """
-  @spec fail_stranded_runs() :: {:ok, integer()}
+  @spec fail_stranded_runs() :: {:ok, [Run.t()]}
   def fail_stranded_runs do
     now = DateTime.utc_now()
 
-    stranded =
+    {_count, failed} =
       Run
       |> where([r], r.status == :running)
-      |> select([r], {r.id, r.source, r.working_copy_id})
-      |> Repo.all()
-
-    {count, _} =
-      Run
-      |> where([r], r.status == :running)
+      |> select([r], r)
       |> Repo.update_all(set: [status: :failed, finished_at: now, updated_at: now])
 
-    log_stranded(stranded)
+    failed
+    |> Enum.map(&{&1.id, &1.source, &1.working_copy_id})
+    |> log_stranded()
 
-    {:ok, count}
+    {:ok, failed}
   end
 
   defp log_stranded([]), do: :ok
