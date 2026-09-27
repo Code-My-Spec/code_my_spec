@@ -65,7 +65,8 @@ defmodule CmsHarness.AppInstance do
     :commit,
     :status,
     :log_path,
-    :state_path
+    :state_path,
+    main?: false
   ]
 
   # --- Client ---
@@ -80,21 +81,28 @@ defmodule CmsHarness.AppInstance do
   Bring this copy's app up if it is not already running, and report its
   current state either way. Idempotent — the caller does not need to know
   whether anything was actually started.
+
+  `main?: true` marks this as the project's designated copy, so main's app
+  is never stopped for idling — told fresh on every call rather than
+  remembered, since only the server knows who holds the designation and it
+  can change while this process is alive.
   """
-  @spec ensure_running(String.t()) :: {:ok, map()} | {:error, term()}
-  def ensure_running(root) do
+  @spec ensure_running(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def ensure_running(root, opts \\ []) do
     with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, :ensure_running, op_timeout())
+      GenServer.call(pid, {:ensure_running, main?(opts)}, op_timeout())
     end
   end
 
   @doc "Stop this copy's app, then start it again on the current commit."
-  @spec restart(String.t()) :: {:ok, map()} | {:error, term()}
-  def restart(root) do
+  @spec restart(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def restart(root, opts \\ []) do
     with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, :restart, op_timeout())
+      GenServer.call(pid, {:restart, main?(opts)}, op_timeout())
     end
   end
+
+  defp main?(opts), do: Keyword.get(opts, :main?, false)
 
   @doc """
   Stop this copy's app. A copy with nothing running answers `:ok` too — there
@@ -111,6 +119,23 @@ defmodule CmsHarness.AppInstance do
     with {:ok, pid} <- find_or_start(root) do
       GenServer.call(pid, :stop, op_timeout())
     end
+  end
+
+  @doc """
+  Stop this copy's app and drop the database it was cloned into — offboarding,
+  not idling. The clone and the process are both this feature's own disposable
+  artifacts, never the user's checkout or main's database, so this is safe to
+  do without asking; `WorkingCopies.offboard/2`'s own "never touches disk"
+  rule is about the checkout, not about what this story's own clone left
+  behind on the Postgres server beside it.
+  """
+  @spec discard(String.t()) :: :ok
+  def discard(root) do
+    with {:ok, pid} <- find_or_start(root) do
+      GenServer.call(pid, :discard, op_timeout())
+    end
+
+    :ok
   end
 
   @doc "Note that this copy's app just did something — resets the idle clock."
@@ -152,7 +177,9 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_call(:ensure_running, _from, state) do
+  def handle_call({:ensure_running, main?}, _from, state) do
+    state = %{state | main?: main?}
+
     if running?(state) do
       new_state = probe(state)
       {:reply, {:ok, result(new_state)}, new_state, @idle_timeout}
@@ -165,7 +192,8 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_call(:restart, _from, state) do
+  def handle_call({:restart, main?}, _from, state) do
+    state = %{state | main?: main?}
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
@@ -181,9 +209,22 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
+  def handle_call(:discard, _from, state) do
+    stopped = if running?(state), do: stop_process(state), else: state
+    drop_database(stopped)
+    {:stop, :normal, :ok, %{stopped | database: nil}}
+  end
+
+  @impl true
   def handle_cast(:touch, state), do: {:noreply, state, @idle_timeout}
 
   @impl true
+  def handle_info(:timeout, %{main?: true} = state) do
+    # Main's app is never stopped for idling — rule, not a longer timeout.
+    Process.send_after(self(), :timeout, @idle_check_interval)
+    {:noreply, state, :infinity}
+  end
+
   def handle_info(:timeout, state) do
     if running?(state) and recently_active?(state) do
       Process.send_after(self(), :timeout, @idle_check_interval)
@@ -335,6 +376,21 @@ defmodule CmsHarness.AppInstance do
     suffix = state.root |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower) |> binary_part(0, 8)
     "#{app}_dev_wc_#{suffix}"
   end
+
+  # Refuses anything that doesn't look like this module's own naming
+  # convention — belt and suspenders on top of `discard/1` only ever being
+  # called with this process's own state: a `DROP DATABASE` is exactly the
+  # one command here with no undo.
+  defp drop_database(%__MODULE__{database: database} = state)
+       when is_binary(database) do
+    if safe_identifier?(database) and String.contains?(database, "_dev_wc_") do
+      Environments.cmd(env(state), "dropdb", ["-h", "localhost", "-U", "postgres", "--if-exists", database], [])
+    end
+
+    :ok
+  end
+
+  defp drop_database(_state), do: :ok
 
   defp ensure_database(state, database) do
     env = env(state)

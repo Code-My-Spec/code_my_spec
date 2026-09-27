@@ -1267,6 +1267,13 @@ defmodule CmsHarness.Project.ChannelClient do
 
     Logger.info("[CmsHarness] server offboarded #{root} — releasing its channel and watchers")
 
+    # Story 1108: an offboarded copy's own app and its cloned database are
+    # this feature's own disposable artifacts, not the user's checkout —
+    # `WorkingCopies.offboard/2` never touches disk for exactly that
+    # distinction, and this is the one thing under this root that isn't the
+    # user's. Best-effort and fire-and-forget, same as everything else this
+    # event does: nothing here can hold up the offboard.
+    Task.start(fn -> CmsHarness.AppInstance.discard(root) end)
     Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
 
     {:ok, socket}
@@ -1482,17 +1489,17 @@ defmodule CmsHarness.Project.ChannelClient do
   # above: a first start can mean cloning a database, which takes real time,
   # and holding this channel for it would stall every report and manifest
   # this copy needs to send behind one app booting.
-  def handle_message(_topic, "ensure_app_running", %{"ref" => ref}, socket) do
+  def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root)
+      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root, main?: msg["main"] == true)
     end)
 
     {:ok, socket}
   end
 
-  def handle_message(_topic, "restart_app", %{"ref" => ref}, socket) do
+  def handle_message(_topic, "restart_app", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "restart_app_result", fn ->
-      CmsHarness.AppInstance.restart(socket.assigns.project.root)
+      CmsHarness.AppInstance.restart(socket.assigns.project.root, main?: msg["main"] == true)
     end)
 
     {:ok, socket}
