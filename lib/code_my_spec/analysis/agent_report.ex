@@ -80,6 +80,7 @@ defmodule CodeMySpec.Analysis.AgentReport do
   def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
       when is_binary(copy_id) do
     findings = digest(source, problems)
+    requester_id = agent_uuid(requester_id)
 
     scope
     |> internal_agents(copy_id, requester_id)
@@ -87,6 +88,21 @@ defmodule CodeMySpec.Analysis.AgentReport do
   end
 
   def deliver(_scope, _source, _problems, _requester_id), do: :ok
+
+  # `requested_by["agent_id"]` carries two kinds of id. `start_analysis` stores an
+  # in-app agent's UUID; the `subagent_stop` hook stores a Claude Code subagent
+  # id, which is short hex (`af6cbaec65372da7a`) and is never an `agents` row.
+  # Queried as `:binary_id` the second raised, failing the reconcile — so a leg
+  # recorded as failed a run that had completed, which is the one thing this
+  # module says it must not do. Only a UUID can name an agent here.
+  defp agent_uuid(id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> uuid
+      :error -> nil
+    end
+  end
+
+  defp agent_uuid(_id), do: nil
 
   # The asker is answered whatever the run found; everyone else keeps the
   # silence a clean tree earns them.
