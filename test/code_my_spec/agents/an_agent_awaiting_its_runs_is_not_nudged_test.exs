@@ -65,12 +65,13 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
     run
   end
 
-  defp continuations do
+  defp continuations, do: Enum.count(dispatched(), &(&1 =~ "loop is still running"))
+
+  defp dispatched do
     receive do
-      {:agent_dispatch, _id, _ref, message} ->
-        if message =~ "loop is still running", do: 1 + continuations(), else: continuations()
+      {:agent_dispatch, _id, _ref, message} -> [message | dispatched()]
     after
-      200 -> 0
+      200 -> []
     end
   end
 
