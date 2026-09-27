@@ -484,13 +484,19 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     architectural issues listed above. **Do not rewrite the proposal
     end-to-end** unless the changes are too sweeping for incremental tools.
 
+    Every unlinked story above gets a component this session: link it with
+    `set_story_component` when one fits, otherwise `create_component` and
+    link that. Map a story as written — a thin or odd story is not a reason
+    to hold the task for a question.
+
     ### Primary tool surface (use these first)
 
     - **`set_story_component`** — link an unsatisfied story to an existing
       component. The simplest action when the architecture already has the
       right component.
     - **`create_component`** — add a new context / child / surface when no
-      existing component fits. Scaffolds the spec file automatically.
+      existing component fits. Scaffolds the spec file automatically; no
+      proposal edit needed.
     - **`update_component`** — edit existing component metadata; the spec
       file is re-projected.
     - **`validate_dependency_graph`** — run after every structural change.
