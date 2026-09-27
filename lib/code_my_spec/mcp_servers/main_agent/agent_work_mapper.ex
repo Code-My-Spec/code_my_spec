@@ -144,10 +144,24 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
       found
       |> Enum.take(10)
       |> Enum.map_join("\n    ", fn problem ->
-        "[#{problem.source}] #{problem.file_path}:#{problem.line} #{problem.message}"
+        "[#{problem.source}] #{problem.file_path}:#{problem.line} #{headline(problem.message)}"
       end)
 
     "problems on this copy: #{length(found)}\n    #{lines}#{more(found)}"
+  end
+
+  # One line per finding. A failure message can carry a whole rendered page, and
+  # on metric_flow (2026-09-27) one filled the 24,000-character answer cap by
+  # itself, so the main agent's listing ended after its own entry and never
+  # showed the coding and product agents. `list_problems` has the full text.
+  @headline_limit 160
+
+  defp headline(message) do
+    line = (message || "") |> String.split("\n", parts: 2) |> hd() |> String.trim()
+
+    if String.length(line) > @headline_limit,
+      do: String.slice(line, 0, @headline_limit) <> "…",
+      else: line
   end
 
   # Named rather than silently dropped: a truncated list that does not say it is
