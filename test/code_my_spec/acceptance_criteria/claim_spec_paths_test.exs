@@ -61,7 +61,9 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     newcomer = criterion(scope, other)
     legacy = "#{dir}/criterion_#{newcomer.id}_correlations_use_daily_data_spex.exs"
 
-    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(scope, %{newcomer.id => legacy})
+    assert {:ok, 0} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{newcomer.id => legacy}, recorded(scope))
+
     assert AcceptanceCriteria.get_criterion(scope, newcomer.id).spec_path == nil
   end
 
@@ -71,7 +73,7 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     c = criterion(scope, story)
     path = "test/spex/some-legacy-dir-c0c417c7/criterion_#{c.id}_a_thing_happens_spex.exs"
 
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path})
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path}, recorded(scope))
   end
 
   test "a criterion whose recorded file is really there is left alone" do
