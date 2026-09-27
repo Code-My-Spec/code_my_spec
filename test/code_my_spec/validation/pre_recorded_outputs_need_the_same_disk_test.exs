@@ -37,7 +37,6 @@ defmodule CodeMySpec.Validation.PreRecordedOutputsNeedTheSameDiskTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
 
-
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Validation
 

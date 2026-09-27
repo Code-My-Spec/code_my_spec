@@ -17,7 +17,6 @@ defmodule CodeMySpecTest.ConnCase do
 
   alias CodeMySpec.UserPreferences
 
-
   using do
     quote do
       # The default endpoint for testing

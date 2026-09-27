@@ -48,7 +48,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   skip work it owed.
   """
 
-  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Deploys
   alias CodeMySpec.Promotion.RunningCopy
   alias CodeMySpec.Qa
@@ -58,6 +57,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.DispatchChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
+  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.SpexBoundaryChecker

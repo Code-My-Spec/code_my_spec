@@ -19,9 +19,9 @@ defmodule CodeMySpec.Invitations do
     exports: :all
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Accounts.Member
   alias CodeMySpec.Accounts.MembersRepository
-  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Invitations.{Invitation, InvitationNotifier, InvitationRepository}
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope

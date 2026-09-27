@@ -13,8 +13,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   import CodeMySpecWeb.IntakeComponents
 
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Agents
   alias CodeMySpec.Accounts.Authorization
+  alias CodeMySpec.Agents
   alias CodeMySpec.Billing
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.Interview
