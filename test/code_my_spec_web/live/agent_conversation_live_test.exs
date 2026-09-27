@@ -415,6 +415,53 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     {agent, conversation}
   end
 
+  describe "what the agent is writing" do
+    alias CodeMySpec.Conversations.Drafts
+
+    test "shows the draft as it grows and drops it when the turn settles", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} = agent_with_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "#agent-writing")
+
+      Drafts.put(conversation.id, "Plums are")
+      assert view |> element("#agent-writing") |> render() =~ "Plums are"
+
+      Drafts.put(conversation.id, "Plums are stone fruits.")
+      assert view |> element("#agent-writing") |> render() =~ "Plums are stone fruits."
+
+      Drafts.clear(conversation.id)
+      refute has_element?(view, "#agent-writing")
+    end
+
+    test "a page opened mid-turn shows the draft without waiting for more", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} = agent_with_conversation(scope, project)
+      Drafts.put(conversation.id, "Halfway through a sentence")
+      on_exit(fn -> Drafts.clear(conversation.id) end)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert view |> element("#agent-writing") |> render() =~ "Halfway through a sentence"
+    end
+
+    test "ignores another conversation's draft", %{conn: conn, scope: scope, project: project} do
+      {_agent, conversation} = agent_with_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      send(view.pid, {:agent_draft, Ecto.UUID.generate(), "not yours"})
+
+      refute has_element?(view, "#agent-writing")
+    end
+  end
+
   describe "stopping an agent" do
     test "a click ends the agent and confirms it", %{conn: conn, scope: scope, project: project} do
       {agent, conversation} = agent_with_conversation(scope, project)

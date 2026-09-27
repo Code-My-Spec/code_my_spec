@@ -26,6 +26,9 @@ defmodule CmsHarnessTest.HeldProvider do
   Flowing by default — a request is answered as it arrives, so an ordinary turn
   runs and finishes. `hold/0` makes the next requests wait; `refuse/0` makes
   them fail; `release/0` answers everything waiting and every request after it.
+  `hold_mid_reply/0` answers the next request with `reply_so_far/0` and waits
+  there, part-way through, until `release/0` finishes it as `whole_reply/0` or
+  `drop/0` drops the connection and refuses what comes after.
   Release is deliberately sticky:
   a turn that ends drains the agent's queue and starts the next one, and a
   release that only covered requests already in flight would leave that one
@@ -52,6 +55,20 @@ defmodule CmsHarnessTest.HeldProvider do
     ~s(data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n),
     "data: [DONE]\n\n"
   ]
+
+  # Distinctive for the same reason `@answer` is, and in two halves so a reply
+  # can be caught between them: the first half on the page and the whole not
+  # yet, which is what "part-way through a reply" means.
+  @so_far "PROVIDER-STARTED-"
+  @rest "AND-FINISHED"
+
+  @doc "What a reply held by `hold_mid_reply/0` has said when it stops."
+  @spec reply_so_far() :: String.t()
+  def reply_so_far, do: @so_far
+
+  @doc "What that reply says once `release/0` lets it finish."
+  @spec whole_reply() :: String.t()
+  def whole_reply, do: @so_far <> @rest
 
   @doc "What this provider answers with — the needle a criterion looks for."
   @spec answer() :: String.t()
@@ -101,6 +118,20 @@ defmodule CmsHarnessTest.HeldProvider do
   @spec refuse() :: :ok
   defdelegate refuse(), to: Store
 
+  @doc "Answer the next request part-way, and wait there."
+  @spec hold_mid_reply() :: :ok
+  defdelegate hold_mid_reply(), to: Store
+
+  @doc """
+  Drop the connection of a reply held part-way, and refuse what follows.
+
+  A dropped connection is transient to `Alloy.Provider.Retry`, so the turn
+  asks again — and is refused, which is terminal. The turn fails the way it
+  fails when a provider goes away mid-sentence and will not take it back.
+  """
+  @spec drop() :: :ok
+  defdelegate drop(), to: Store
+
   @doc "Let every waiting turn finish, and every one after it."
   @spec release() :: :ok
   defdelegate release(), to: Store
@@ -131,14 +162,38 @@ defmodule CmsHarnessTest.HeldProvider do
     case Store.arrived(body) do
       :ok -> answer(conn)
       :refuse -> refusal(conn)
+      :midway -> answer_midway(conn)
     end
   end
+
+  defp answer_midway(conn) do
+    conn =
+      conn
+      |> Plug.Conn.put_resp_content_type("text/event-stream")
+      |> Plug.Conn.send_chunked(200)
+      |> send_chunks([delta(@so_far)])
+
+    case Store.park() do
+      :ok ->
+        send_chunks(conn, [delta(@rest) | tl(@sse)])
+
+      # Killed rather than returned from: returning finishes the chunked
+      # response cleanly, which reads as a reply that simply stopped. Killing the
+      # connection's process closes the socket mid-stream, which is a dropped
+      # connection.
+      :drop ->
+        Process.exit(self(), :kill)
+    end
+  end
+
+  defp delta(text),
+    do: ~s(data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"#{text}"}}]}\n\n)
 
   defp answer(conn) do
     conn
     |> Plug.Conn.put_resp_content_type("text/event-stream")
     |> Plug.Conn.send_chunked(200)
-    |> stream_response()
+    |> send_chunks(@sse)
   end
 
   # What a provider that will not answer looks like from the harness's side.
@@ -156,8 +211,8 @@ defmodule CmsHarnessTest.HeldProvider do
     )
   end
 
-  defp stream_response(conn) do
-    Enum.reduce(@sse, conn, fn data, conn ->
+  defp send_chunks(conn, chunks) do
+    Enum.reduce(chunks, conn, fn data, conn ->
       {:ok, conn} = Plug.Conn.chunk(conn, data)
       conn
     end)
@@ -191,6 +246,24 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(__MODULE__, :hold)
     end
 
+    @spec hold_mid_reply() :: :ok
+    def hold_mid_reply do
+      ensure_started()
+      GenServer.call(__MODULE__, :hold_mid_reply)
+    end
+
+    @spec drop() :: :ok
+    def drop do
+      ensure_started()
+      GenServer.call(__MODULE__, :drop)
+    end
+
+    @spec park() :: :ok | :drop
+    def park do
+      ensure_started()
+      GenServer.call(__MODULE__, :park, :infinity)
+    end
+
     @spec refuse() :: :ok
     def refuse do
       ensure_started()
@@ -209,7 +282,7 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(__MODULE__, :seen)
     end
 
-    @spec arrived(String.t()) :: :ok | :refuse
+    @spec arrived(String.t()) :: :ok | :refuse | :midway
     def arrived(body) do
       ensure_started()
       GenServer.call(__MODULE__, {:arrived, body}, :infinity)
@@ -249,6 +322,17 @@ defmodule CmsHarnessTest.HeldProvider do
 
     def handle_call(:refuse, _from, state), do: {:reply, :ok, %{state | mode: :refusing}}
 
+    def handle_call(:hold_mid_reply, _from, state),
+      do: {:reply, :ok, %{state | mode: :holding_mid_reply}}
+
+    def handle_call(:drop, _from, state) do
+      Enum.each(state.held, &GenServer.reply(&1, :drop))
+      {:reply, :ok, %{state | mode: :refusing, held: []}}
+    end
+
+    # The half reply has been sent; the request waits here for the rest.
+    def handle_call(:park, from, state), do: {:noreply, hold_request(state, from)}
+
     def handle_call(:release, _from, state) do
       Enum.each(state.held, &GenServer.reply(&1, :ok))
       {:reply, :ok, %{state | mode: :flowing, held: []}}
@@ -266,6 +350,8 @@ defmodule CmsHarnessTest.HeldProvider do
         :flowing -> {:reply, :ok, state}
         :refusing -> {:reply, :refuse, state}
         :holding -> {:noreply, hold_request(state, from)}
+        # Only the one reply is caught part-way; the turn after it flows.
+        :holding_mid_reply -> {:reply, :midway, %{state | mode: :flowing}}
       end
     end
 
