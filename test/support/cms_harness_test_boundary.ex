@@ -5,17 +5,28 @@ defmodule CmsHarnessTest do
   # one thing here reaching outside the harness; when the harness moves to its
   # own repo this module goes with it, and a dozen lines of token generation
   # come along rather than the dependency.
-  # `Machine` and `HeldProvider` are the only things spex may reach: they drive
-  # a real harness through them rather than referencing `CmsHarness` themselves,
-  # which they may not do. Everything else here stays internal to the harness's
-  # own tests.
   #
-  # `HeldProvider` is exported for the same reason `Machine` is. An agent
-  # mid-turn is a premise three of story 1024's criteria share, and there is no
-  # way to establish it except by holding a provider's response — so a criterion
-  # has to be able to say when to hold and when to let go.
+  # `Machine` and `HeldProvider` drive a real harness without referencing
+  # `CmsHarness` directly, which a spex may not do (see `CodeMySpecSpex`'s own
+  # boundary). `AnalysisResults`, `Projects`, `FakeServer`, `BlockingProject`
+  # and `SlotHolder` are the same kind of facade, one per concern a story 839
+  # criterion needs (waiting on a real result, a throwaway working copy, the
+  # far side of the websocket, a compile step held open, a machine-wide slot
+  # taken directly) — each extracted because more than one spex needed it, per
+  # its own moduledoc. `f2ff4147`: this list undercounted them for as long as
+  # the compiler leg silently discarded its findings, so the export list never
+  # caught up with what spex actually reaches. Anything not listed here is
+  # genuinely internal to the harness's own unit tests.
   use Boundary,
     top_level?: true,
     deps: [CmsHarness, CodeMySpec.TempFile],
-    exports: [Machine, HeldProvider]
+    exports: [
+      Machine,
+      HeldProvider,
+      AnalysisResults,
+      Projects,
+      FakeServer,
+      BlockingProject,
+      SlotHolder
+    ]
 end

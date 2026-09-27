@@ -167,5 +167,21 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
 
       refute_receive {:agent_dispatch, _id, _ref, _message}, 500
     end
+
+    # `f2ff4147`: a Claude Code session writes its own session id, not an
+    # `agents.id`, to `run.requested_by["agent_id"]`. `internal_agents/3`
+    # compared it against `a.id` (a `:binary_id` column) unconditionally,
+    # which raised trying to dump a non-UUID string and failed the whole run's
+    # report — every compiler and credo run a CLI session asked for. The
+    # requester is not one of this copy's alloy agents either way, so this
+    # must fall back to the ordinary broadcast rather than crash it.
+    test "a requester id that is not a real agent's id does not crash the report", ctx do
+      coding = agent(ctx.scope, ctx.copy, :alloy, "coding")
+
+      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], "not-a-uuid-session-id")
+
+      assert_receive {:agent_dispatch, id, _ref, _message}
+      assert id == coding.id
+    end
   end
 end

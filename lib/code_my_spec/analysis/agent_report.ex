@@ -141,16 +141,21 @@ defmodule CodeMySpec.Analysis.AgentReport do
   # The broadcast filter is unchanged and still right — the comment above it
   # describes a real cost, and a QA agent still does not get told about 47 spex
   # errors it cannot read. It just no longer decides who may be answered.
-  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, requester_id)
-       when is_binary(requester_id) do
-    Agent
-    |> where(
-      [a],
-      a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy and
-        (a.role in ^@report_roles or a.id == ^requester_id)
-    )
-    |> Repo.all()
+  # `requester_id` is `run.requested_by["agent_id"]`, written by whoever called
+  # `start_analysis` — an alloy agent's real row id, but a Claude Code session
+  # writes its own (non-UUID) session id there instead, having no row in this
+  # table at all. `is_binary/1` accepts either, and `a.id == ^requester_id`
+  # then asks Ecto to dump a non-UUID string as this column's `:binary_id`,
+  # which raises and fails the whole run's report — not silently: it crashes
+  # every analysis a CLI session requests, compiler and credo included.
+  # Casting first turns "not a real agent id" back into the plain broadcast
+  # this session was always going to get told through its own path anyway (see
+  # "Alloy only" above).
+  defp internal_agents(%Scope{} = scope, copy_id, requester_id) when is_binary(requester_id) do
+    case Ecto.UUID.cast(requester_id) do
+      {:ok, agent_id} -> internal_agents_matching(scope, copy_id, agent_id)
+      :error -> internal_agents(scope, copy_id, nil)
+    end
   end
 
   defp internal_agents(%Scope{active_project_id: project_id}, copy_id, _requester_id) do
@@ -159,6 +164,17 @@ defmodule CodeMySpec.Analysis.AgentReport do
       [a],
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
         a.status != :stopped and a.engine == :alloy and a.role in ^@report_roles
+    )
+    |> Repo.all()
+  end
+
+  defp internal_agents_matching(%Scope{active_project_id: project_id}, copy_id, agent_id) do
+    Agent
+    |> where(
+      [a],
+      a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+        a.status != :stopped and a.engine == :alloy and
+        (a.role in ^@report_roles or a.id == ^agent_id)
     )
     |> Repo.all()
   end

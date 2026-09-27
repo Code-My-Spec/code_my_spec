@@ -116,9 +116,14 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
   defp restore_anthropic_key(nil), do: Application.delete_env(:req_llm, :anthropic_api_key)
   defp restore_anthropic_key(value), do: Application.put_env(:req_llm, :anthropic_api_key, value)
 
-  defp anthropic_key(:replay), do: "replayed-key"
+  # A guard rather than a literal pattern (`anthropic_key(:replay)`): with
+  # `@mode` fixed to `:replay` at rest, matching the literal lets the compiler
+  # prove the `:record` clause can never be reached from this file's one call
+  # site and warn on it — noise on every ordinary compile for a branch that
+  # exists specifically for someone to flip on by hand to re-record.
+  defp anthropic_key(mode) when mode == :replay, do: "replayed-key"
 
-  defp anthropic_key(:record) do
+  defp anthropic_key(mode) when mode == :record do
     System.get_env("ANTHROPIC_API_KEY") ||
       flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
@@ -126,7 +131,7 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
   spex "The interview's first question is written with the shaping answers already in hand" do
     scenario "Nothing the visitor already answered is asked again" do
       given_ "a visitor who described their idea and answered the shaping questions",
-            context do
+             context do
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 

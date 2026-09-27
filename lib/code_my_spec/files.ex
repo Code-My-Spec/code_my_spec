@@ -7,6 +7,10 @@ defmodule CodeMySpec.Files do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
+      # `stale_analyzers/2` marks an analyzer's results stale the moment a
+      # file it reads changes. `Analysis` already depends back on `Files` to
+      # read what changed, so this is a real mutual dependency, not a slip.
+      CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
       CodeMySpec.Documents,
@@ -17,7 +21,6 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.Users,

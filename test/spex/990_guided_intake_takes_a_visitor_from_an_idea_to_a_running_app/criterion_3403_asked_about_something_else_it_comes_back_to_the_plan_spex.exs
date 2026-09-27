@@ -102,9 +102,15 @@ defmodule CodeMySpecSpex.Story990.Criterion3403Spex do
   # A placeholder is correct in replay — the recorded interaction is matched
   # by method and uri, never by the Authorization header, and the real key is
   # stripped by `filter_request_headers` before anything reaches disk anyway.
-  defp anthropic_key(:replay), do: "replayed-key"
+  #
+  # A guard rather than a literal pattern (`anthropic_key(:replay)`): with
+  # `@mode` fixed to `:replay` at rest, matching the literal lets the compiler
+  # prove the `:record` clause can never be reached from this file's one call
+  # site and warn on it — noise on every ordinary compile for a branch that
+  # exists specifically for someone to flip on by hand per "Recording" above.
+  defp anthropic_key(mode) when mode == :replay, do: "replayed-key"
 
-  defp anthropic_key(:record) do
+  defp anthropic_key(mode) when mode == :record do
     System.get_env("ANTHROPIC_API_KEY") ||
       flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
@@ -112,7 +118,7 @@ defmodule CodeMySpecSpex.Story990.Criterion3403Spex do
   spex "An answer that is not about the application does not move the plan forward" do
     scenario "Asked about something else, it comes back to the plan" do
       given_ "a visitor part way through intake, having just been asked a question",
-            context do
+             context do
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 
