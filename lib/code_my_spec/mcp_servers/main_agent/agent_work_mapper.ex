@@ -90,7 +90,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
         "nothing to do: the graph holds no work for its role"
 
       true ->
-        "no task claimed, and the graph does hold work for its role"
+        AgentWork.unclaimed_work(work)
     end
   end
 
