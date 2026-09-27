@@ -49,11 +49,12 @@ defmodule CodeMySpec.Problems.TheStopHookPointsAtListProblemsTest do
            "progressive disclosure means showing fewer, not hiding how many there are"
   end
 
-  test "only a few problems are listed inline per source" do
+  # Ten, because story 554's criterion 5094 pins it. Asserted here so that
+  # whoever changes it has to change this too, and finds 5094 while doing so.
+  test "the inline list is capped per source" do
     text = ProblemRenderer.render_stop_response(problems(30, "exunit"), [])
     listed = text |> String.split("\n") |> Enum.count(&String.starts_with?(&1, "  - "))
 
-    assert listed <= 3, "listed #{listed} problems inline; the stop hook is for recognition"
-    assert listed >= 1, "listing none leaves nothing to recognise the shape from"
+    assert listed == 10, "listed #{listed} inline; criterion 5094 pins ten per source"
   end
 end

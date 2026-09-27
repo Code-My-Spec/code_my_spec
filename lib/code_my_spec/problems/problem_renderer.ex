@@ -13,11 +13,11 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Compactness policy for stop-hook responses. The agent's context window
   # is finite — the response must stay tight.
   @per_problem_cap 200
-  # Three, not ten. A stop hook listing ten per source across four sources is
-  # most of a turn's context spent on text the agent then has to re-read, and a
-  # coding agent tapped out against one. It needs enough to recognise the shape
-  # and a way to ask for the rest.
-  @per_source_list_cap 3
+  # Ten is story 554's answer and criterion 5094 pins it. Lowering it to three
+  # made the stop hook shorter, which is what was asked for, and broke 5094 and
+  # 5095 — the latter because the response then no longer reached the 4 KB cap it
+  # exists to exercise. Changing it is a story-554 decision, not a renderer one.
+  @per_source_list_cap 10
   @total_response_cap 4096
 
   @doc """
@@ -434,8 +434,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
           ""
 
         n ->
-          "\n  ... #{n} more — `list_problems({source = \"#{source}\"})` has them, " <>
-            "page through with `page` and `per_page`"
+          "\n  ... #{n} more #{source} problems — `list_problems({source = \"#{source}\"})` " <>
+            "has them, page through with `page` and `per_page`"
       end
 
     marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)
