@@ -155,16 +155,17 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:reply, is_nil(state.running) and state.queue == [], state}
   end
 
-  # Queued runs count as in flight. Their rows are already `:running` on the
-  # server — it opens one per dispatched request — so a sweep would close them
-  # just the same, and this server will get to them.
+  # Queued and tied runs count as in flight. Their rows are already `:running`
+  # on the server, so a sweep would close them just the same, and this server
+  # will answer them.
   def handle_call(:in_flight, _from, state) do
-    running = if state.running, do: [state.running.run_id], else: []
-    {:reply, running ++ Enum.map(state.queue, & &1.run_id), state}
+    {:reply, held_run_ids(state), state}
   end
 
   def handle_call(:status, _from, state) do
-    {:reply, %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)}, state}
+    {:reply,
+     %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)},
+     state}
   end
 
   @impl true
@@ -280,11 +281,17 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp accept(request, state) do
     case parse(request) do
       {:ok, run_id, source, args} ->
-        case queued_entry_for(state, source) do
-          %{} ->
+        cond do
+          # The server re-sends a run it has joined rather than opening a new
+          # row for it (75acdb84). Already held, so there is nothing to add; a
+          # second entry for it would push its result twice.
+          holds_run?(state, run_id) ->
+            state
+
+          queued_entry_for(state, source) ->
             tie_to_queued(state, source, run_id, args)
 
-          nil ->
+          true ->
             entry = %{
               run_id: run_id,
               tied_run_ids: [],
@@ -320,7 +327,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     queue =
       Enum.map(state.queue, fn
         %{source: ^source} = entry ->
-          %{entry | tied_run_ids: [run_id | entry.tied_run_ids], args: merge_args(entry.args, args)}
+          %{
+            entry
+            | tied_run_ids: [run_id | entry.tied_run_ids],
+              args: merge_args(entry.args, args)
+          }
 
         entry ->
           entry
@@ -351,6 +362,16 @@ defmodule CmsHarness.Project.AnalysisServer do
   # *further* duplicate ties onto. Checking `running` here as well would make
   # this true too early and change nothing about what gets created.
   defp queued_entry_for(state, source), do: Enum.find(state.queue, &(&1.source == source))
+
+  defp holds_run?(state, run_id), do: run_id in held_run_ids(state)
+
+  # Every run id this queue will answer: each entry's own and everything tied
+  # to it.
+  defp held_run_ids(state) do
+    [state.running | state.queue]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.flat_map(&[&1.run_id | Map.get(&1, :tied_run_ids, [])])
+  end
 
   # Cheapest first. Measured on this harness: compiler ~9s, credo ~10s,
   # exunit ~2m10s, spex ~2m35s — more than an order of magnitude between the

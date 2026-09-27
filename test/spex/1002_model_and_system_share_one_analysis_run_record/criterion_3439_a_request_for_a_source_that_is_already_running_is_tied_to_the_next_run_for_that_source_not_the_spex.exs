@@ -28,11 +28,15 @@ defmodule CodeMySpecSpex.Story839.Criterion3439Spex do
   use CodeMySpecSpex.Case
 
   import CmsHarnessTest.Projects,
-    only: [ensure_harness_supervisor_started: 0, project_dir: 0, stop_project: 1]
+    only: [
+      ensure_harness_supervisor_started: 0,
+      project_dir: 0,
+      stop_project: 1,
+      ensure_started: 1
+    ]
 
   import CmsHarnessTest.AnalysisResults
 
-  alias CmsHarness.Projects
   alias CmsHarnessTest.BlockingProject
   alias CmsHarnessTest.FakeServer
 
@@ -49,7 +53,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3439Spex do
 
       given_ "the harness is connected and joined for that working copy", context do
         FakeServer.start()
-        {:ok, _pid} = Projects.ensure_started(context.project.root)
+        {:ok, _pid} = ensure_started(context.project.root)
         await_connected(context.project.root)
 
         {:ok, context}

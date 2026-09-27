@@ -226,10 +226,5 @@ defmodule CodeMySpecSpex.Story1046.Criterion3165Spex do
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
 
-  defp read(root, path) do
-    {:ok, content} = Environments.read_file(disk(root), path)
-    content
-  end
-
   defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
 end

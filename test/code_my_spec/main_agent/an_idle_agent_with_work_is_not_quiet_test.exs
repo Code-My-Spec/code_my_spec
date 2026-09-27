@@ -18,7 +18,7 @@ defmodule CodeMySpec.MainAgent.AnIdleAgentWithWorkIsNotQuietTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.MainAgent.{AgentWork, Digest}
+  alias CodeMySpec.MainAgent.{AgentWork, CheckInReport, Digest}
 
   defp entry(overrides) do
     struct!(
@@ -74,6 +74,29 @@ defmodule CodeMySpec.MainAgent.AnIdleAgentWithWorkIsNotQuietTest do
 
   test "a stopped agent is not stalled — it is stopped" do
     refute_stalled(entry(agent_status: :stopped, idle?: false))
+  end
+
+  # 3f1fc39f: the report printed "no task claimed, and the graph does hold
+  # work" for all of these, one line under a "Nothing needs you" headline. The
+  # line and the headline now answer from the same facts.
+  describe "the check-in's line agrees with its headline" do
+    for {name, overrides} <- [
+          stalled: [idle?: false],
+          mid_turn: [idle?: false, turn_started_at: ~U[2026-09-24 03:57:38Z]],
+          tapped_out: [idle?: false, tapped_out?: true],
+          stopped: [agent_status: :stopped, idle?: false]
+        ] do
+      test "#{name}" do
+        entry = entry(unquote(Macro.escape(overrides)))
+        report = CheckInReport.render(digest([entry]))
+
+        assert String.contains?(report, "STALLED") == not Digest.quiet?(digest([entry])),
+               report
+
+        assert String.contains?(report, "Nothing needs you") == Digest.quiet?(digest([entry])),
+               report
+      end
+    end
   end
 
   defp refute_stalled(entry) do

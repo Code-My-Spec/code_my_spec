@@ -36,9 +36,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     fires.
   """
 
-  import Phoenix.ConnTest
-  import Phoenix.LiveViewTest
-
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
@@ -50,8 +47,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
-
-  @endpoint CodeMySpecLocalWeb.Endpoint
 
   @all_setup_steps [
     Setup.ApplicationInWeb,

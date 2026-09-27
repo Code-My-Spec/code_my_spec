@@ -31,7 +31,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecTest.GraphHelpers, only: [settle_graph: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -111,7 +110,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
         # crash on a loaded box, not a signal about story 559 itself.
         # `settle_graph/1` does the pending pass now, synchronously, and is a
         # no-op if nothing is watching.
-        settle_graph(context)
+        CodeMySpecSpex.Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :stop_response, response)}
       end

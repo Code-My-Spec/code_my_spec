@@ -21,14 +21,27 @@ defmodule CmsHarness.ACheapSweepDoesNotStarveAnExpensiveOneTest do
   alias CmsHarness.Project.AnalysisServer
 
   defp state(queue) do
-    %{project: %{root: "/tmp/a-checkout"}, running: %{source: "credo", run_id: 1}, queue: queue, timer: nil}
+    %{
+      project: %{root: "/tmp/a-checkout"},
+      running: %{source: "credo", run_id: 1},
+      queue: queue,
+      timer: nil
+    }
   end
 
+  # `System.unique_integer/1` rather than `Enum.with_index/2`: the latter
+  # restarts at its offset on every call, so two separate `enqueue/2` calls —
+  # exactly what "a later arrival" means here — minted the same `run_id`.
+  # `state.running`'s `run_id: 1` is fixed and never reused by an arrival, so
+  # `holds_run?/2` read the second batch's request as a resend of the first
+  # batch's already-queued one and dropped it silently: the queue this was
+  # supposed to test never grew past one entry, `f2ff4147`.
   defp enqueue(state, sources) do
     runs =
       sources
-      |> Enum.with_index(2)
-      |> Enum.map(fn {source, i} -> %{"run_id" => i, "source" => source, "args" => []} end)
+      |> Enum.map(fn source ->
+        %{"run_id" => System.unique_integer([:positive]), "source" => source, "args" => []}
+      end)
 
     {:noreply, next} = AnalysisServer.handle_cast({:enqueue, runs}, state)
     next

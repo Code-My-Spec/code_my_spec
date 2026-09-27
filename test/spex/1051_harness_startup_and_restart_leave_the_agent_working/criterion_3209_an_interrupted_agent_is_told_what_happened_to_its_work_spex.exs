@@ -32,8 +32,6 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

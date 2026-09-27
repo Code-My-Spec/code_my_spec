@@ -297,7 +297,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # nothing to do. No fixture, no sync: the graph is empty because there is
   # nothing to compute one from, which is the state being measured.
   defp bare_world do
-    scope = fresh_scope()
+    %Scope{} = scope = fresh_scope()
     root = scope.environment.cwd
     scope = %Scope{scope | cwd: root}
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
@@ -309,7 +309,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp full_satisfaction_world do
-    scope = fresh_scope()
+    %Scope{} = scope = fresh_scope()
     root = scope.environment.cwd
     scope = %Scope{scope | cwd: root}
 

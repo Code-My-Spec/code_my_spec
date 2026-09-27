@@ -42,8 +42,6 @@ defmodule CodeMySpecSpex.Story1051.Criterion3210Spex do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -54,7 +52,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion3210Spex do
 
   spex "An agent is told when its harness restarts, and told what happened to any work of its own that was in flight" do
     scenario "An idle agent is told the harness restarted" do
-      given_ "an agent that is idle with nothing in flight, and live work for its role", context do
+      given_ "an agent that is idle with nothing in flight, and live work for its role",
+             context do
         context = given_a_staffed_checkout(context, "spex_3210")
 
         # A live `:problems` class for the coding role — countable, and not tied

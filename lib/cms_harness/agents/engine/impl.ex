@@ -659,20 +659,46 @@ defmodule CmsHarness.Agents.Engine.Impl do
     state.on_event.(state.agent_id, %{event: :turn_failed, text: failure_text(reason)})
   end
 
-  # A provider's refusal is prose — several lines of it, with the whole prompt
-  # quoted back. The first line is the sentence that says what went wrong;
-  # everything after it belongs in a log rather than in a transcript somebody
-  # is reading.
-  defp failure_text(reason) when is_binary(reason) do
-    reason |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 500)
+  @doc """
+  The line of a failed turn worth putting in a transcript.
+
+  A provider's refusal is prose — several lines of it, with the whole prompt
+  quoted back — so the first line is kept and the rest belongs in a log. But
+  the first line is not always the one that says what went wrong: codex opens
+  with its version banner, so an exhausted account read "codex exec failed with
+  status 1: OpenAI Codex v0.156.1" and the `ERROR:` line naming the usage limit
+  and its reset date was dropped (044599cc). When the output carries an error
+  line, it is kept too, through to the next blank line.
+  """
+  @spec failure_text(term()) :: String.t()
+  def failure_text(reason) when is_binary(reason) do
+    [headline | rest] = String.split(reason, "\n")
+
+    case error_paragraph(rest) do
+      nil -> headline
+      error -> headline <> " — " <> error
+    end
+    |> String.slice(0, 500)
   end
 
   # A failed turn arrives carrying the whole run — every message, the tools,
   # the prompt. The sentence that says what went wrong is one field of it, and
   # inspecting the rest into a transcript buries it.
-  defp failure_text(%{error: reason}) when reason != nil, do: failure_text(reason)
+  def failure_text(%{error: reason}) when reason != nil, do: failure_text(reason)
 
-  defp failure_text(reason), do: reason |> inspect() |> String.slice(0, 500)
+  def failure_text(reason), do: reason |> inspect() |> String.slice(0, 500)
+
+  defp error_paragraph(lines) do
+    case Enum.drop_while(lines, &(not Regex.match?(~r/^\s*error\b/i, &1))) do
+      [] ->
+        nil
+
+      paragraph ->
+        paragraph
+        |> Enum.take_while(&(String.trim(&1) != ""))
+        |> Enum.map_join(" ", &String.trim/1)
+    end
+  end
 
   defp reply_to(nil, _result), do: :ok
   defp reply_to(from, result), do: GenServer.reply(from, result)

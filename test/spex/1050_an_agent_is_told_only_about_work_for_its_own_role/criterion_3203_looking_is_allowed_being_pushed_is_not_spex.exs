@@ -24,7 +24,6 @@ defmodule CodeMySpecSpex.Story1050.Criterion3203Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
-  import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue

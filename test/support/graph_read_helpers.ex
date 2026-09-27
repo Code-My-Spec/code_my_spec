@@ -92,6 +92,11 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   matters more here: a criterion comparing two checkouts reads one it has never
   read before.
   """
+  def read_settled_graph(context, working_copy_id) do
+    _first = read_graph(context, working_copy_id)
+    read_graph(context, working_copy_id)
+  end
+
   @doc """
   What one checkout currently holds, without reconciling first.
 
@@ -103,11 +108,6 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   """
   def peek_graph(context, working_copy_id),
     do: dispatch(context, "?working_copy=#{working_copy_id}&settle=false")
-
-  def read_settled_graph(context, working_copy_id) do
-    _first = read_graph(context, working_copy_id)
-    read_graph(context, working_copy_id)
-  end
 
   @doc """
   One requirement out of a graph read, by name, or `nil`.
