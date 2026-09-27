@@ -168,13 +168,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   defp setup_note(%{setup: :bare_worktree}) do
     """
 
-    This project declares no `init-worktree` recipe, so the copy is a bare
-    worktree plus submodules: no deps, no `_build`, and none of its untracked
-    config. Before trusting anything you run there, install them — `mix deps.get`
-    may fail on shallow git deps, in which case copy `deps/` from the source
-    checkout, whose `mix.lock` is the same — then `mix deps.compile`, and copy any
-    untracked dotenv files across. Failures in that copy describe its setup, not
-    your work, until this is done.
+    This project declares no `init-worktree` recipe, so the copy is a worktree
+    plus submodules, with `deps/` copied and `.env*` files linked from the source
+    checkout, and no `_build`. Run `mix deps.compile` there before trusting any
+    analyzer or test. Anything else the project keeps untracked is not there, and
+    failures from it describe the copy's setup, not your work.
     """
   end
 
