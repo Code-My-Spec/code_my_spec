@@ -2,7 +2,6 @@ defmodule CodeMySpecWeb.UserAuthTest do
   use CodeMySpecTest.ConnCase, async: true
 
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
   alias Phoenix.LiveView
 

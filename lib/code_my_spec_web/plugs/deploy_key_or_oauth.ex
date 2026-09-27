@@ -28,7 +28,6 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.UserAuth
 

@@ -5,7 +5,6 @@ defmodule CodeMySpecWeb.UserSocket do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias ExOauth2Provider.AccessTokens
 
   # A Socket handler

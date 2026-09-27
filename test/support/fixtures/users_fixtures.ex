@@ -11,7 +11,7 @@ defmodule CodeMySpec.UsersFixtures do
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.{Scope, User}
+  alias CodeMySpec.Users.User
   alias CodeMySpec.WorkingCopies
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"

@@ -18,7 +18,6 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
