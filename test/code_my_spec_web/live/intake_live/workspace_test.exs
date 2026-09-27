@@ -119,6 +119,76 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     conn
   end
 
+  # Same as `with_confirmed_plan/1`, but through the plain form instead of the
+  # conversation — what a plan looks like when `IntakeLive.Procedural` filled
+  # it in. Two submits, same as a real visitor: the details form, then the
+  # tier — `location` is not part of the first one any more.
+  defp with_procedural_plan(conn, plan \\ %{}) do
+    conn = get(conn, ~p"/build/procedural")
+    {:ok, view, _html} = live(conn)
+
+    {location, details} = Map.pop(plan, :location, "cloud")
+
+    view
+    |> form("form[phx-submit=submit]", %{
+      plan:
+        Map.merge(
+          %{
+            account_name: "Acme",
+            project_name: "Widget Tracker",
+            who_uses: "warehouse staff",
+            needs_sign_in: "true",
+            separate_copies: "false",
+            technical: "false"
+          },
+          details
+        )
+    })
+    |> render_submit()
+
+    view
+    |> form("form[phx-submit=confirm_tier]", %{plan: %{location: location}})
+    |> render_submit()
+
+    conn
+  end
+
+  describe "a procedural plan (dump into the cockpit)" do
+    test "reaching :running sends the visitor straight to their agent, not a card", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_procedural_plan(conn)
+
+      {:ok, view, _html} = live(conn, ~p"/build/workspace")
+      project_id = :sys.get_state(view.pid).socket.assigns.scope.active_project_id
+
+      pay(view)
+
+      assert_redirect(view, ~p"/app/projects/#{project_id}/agent-conversation")
+    end
+
+    test "offers a reset back to the root, for testing", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_procedural_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      assert html =~ "Reset"
+      assert has_element?(view, "form[action='/build/reset']")
+    end
+  end
+
+  describe "a plan the conversation produced" do
+    test "offers no reset — a real visitor's workspace is not a test run to wipe", %{conn: conn} do
+      fake(healthy?: true)
+      conn = with_confirmed_plan(conn)
+
+      {:ok, view, html} = live(conn, ~p"/build/workspace")
+
+      refute html =~ "Reset"
+      refute has_element?(view, "form[action='/build/reset']")
+    end
+  end
+
   describe "coming up" do
     test "the visitor sees a progress bar driven by the container's own phases", %{conn: conn} do
       fake(healthy?: false, alive?: true, logs: "\e[1;36m==> Fetching dependencies\e[0m")
