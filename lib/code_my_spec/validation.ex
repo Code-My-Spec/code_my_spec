@@ -1122,6 +1122,8 @@ defmodule CodeMySpec.Validation do
       # tree it decided about. Stamped on the run by the harness, because only
       # the harness can compare its own boot sha against its own checkout.
       analyzer_staleness: analyzer_staleness(scope, sources_with_problems),
+      # A rerun that failed behind an older answer; those findings were not re-checked.
+      failed_reruns: failed_reruns(scope, sources_with_problems),
       # How long the run itself took. Read together with the age, this separates
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
@@ -1337,6 +1339,30 @@ defmodule CodeMySpec.Validation do
         is_binary(note),
         into: %{},
         do: {source, note}
+  end
+
+  @doc """
+  Per source, the newest full run when it failed after the latest answer.
+
+  The findings still come from that older answer (`Analysis.fresh?/2` keeps it
+  good), so the reader must be told the rerun failed and why.
+  """
+  @spec failed_reruns(Scope.t(), [String.t()]) :: %{String.t() => map()}
+  def failed_reruns(_scope, []), do: %{}
+
+  def failed_reruns(scope, sources) do
+    for source <- sources,
+        %Run{status: :failed} = run <- [RunsRepository.latest_full_run(scope, source)],
+        %Run{} = answer <- [Analysis.latest_answer(scope, source)],
+        DateTime.compare(run.started_at, answer.started_at) == :gt,
+        into: %{},
+        do:
+          {source,
+           %{
+             failed_at: run.finished_at || run.started_at,
+             reason: failure_reason(run),
+             answered_at: answer.finished_at || answer.started_at
+           }}
   end
 
   # Did an edit land while this run was in flight?
