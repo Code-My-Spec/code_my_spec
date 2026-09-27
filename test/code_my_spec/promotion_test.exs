@@ -28,6 +28,7 @@ defmodule CodeMySpec.PromotionTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   describe "a runner with nowhere to run" do
@@ -492,7 +493,7 @@ defmodule CodeMySpec.PromotionTest do
           device: device
         )
 
-      {:ok, _} = WorkingCopies.designate_main(scope, running.id)
+      {:ok, _} = Staffing.designate_main(scope, running.id)
 
       {:ok, agent} =
         WorkingCopies.issue(scope, nil,

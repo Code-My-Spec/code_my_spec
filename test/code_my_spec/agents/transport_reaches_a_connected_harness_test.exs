@@ -27,6 +27,8 @@ defmodule CodeMySpec.Agents.TransportReachesAConnectedHarnessTest do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Analysis
 
+  alias CodeMySpec.Analysis.HarnessRegistry
+
   defp agent_for(scope) do
     %Agent{
       id: Ecto.UUID.generate(),
@@ -78,7 +80,7 @@ defmodule CodeMySpec.Agents.TransportReachesAConnectedHarnessTest do
 
     {:ok, _pid} =
       Task.start_link(fn ->
-        Analysis.register_executor(working_copy_id, self(), "/tmp/a-copy")
+        HarnessRegistry.register_executor(working_copy_id, self(), "/tmp/a-copy")
         send(test, :registered)
         Process.sleep(:infinity)
       end)

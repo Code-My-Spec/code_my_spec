@@ -23,8 +23,10 @@ defmodule CodeMySpec.WorkingCopiesTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -43,9 +45,10 @@ defmodule CodeMySpec.WorkingCopiesTest do
       {:ok, copy} =
         WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/served")
 
-      :ok = CodeMySpec.Analysis.register_executor(copy.id, "instance", "/a/served")
+      :ok =
+        HarnessRegistry.register_executor(copy.id, "instance", "/a/served")
 
-      {:ok, _counts} = WorkingCopies.offboard(scope, copy)
+      {:ok, _counts} = Staffing.offboard(scope, copy)
 
       assert_receive {:offboarded, id}, 1_000
       assert id == copy.id
@@ -60,7 +63,7 @@ defmodule CodeMySpec.WorkingCopiesTest do
       {:ok, copy} =
         WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/unreachable")
 
-      assert {:ok, counts} = WorkingCopies.offboard(scope, copy)
+      assert {:ok, counts} = Staffing.offboard(scope, copy)
       assert is_map(counts)
 
       refute_receive {:offboarded, _}, 100

@@ -233,6 +233,7 @@ defmodule CodeMySpec.SpexGivensTest do
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
     ensure_harness_supervisor_started FakeServer. BlockingProject.
+    attach_recorded_analysis
     Projects.ensure_started await_connected SlotHolder.
     Application.put_env
   )

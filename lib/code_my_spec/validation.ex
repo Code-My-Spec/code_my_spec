@@ -1122,6 +1122,8 @@ defmodule CodeMySpec.Validation do
       # tree it decided about. Stamped on the run by the harness, because only
       # the harness can compare its own boot sha against its own checkout.
       analyzer_staleness: analyzer_staleness(scope, sources_with_problems),
+      # A rerun that failed behind an older answer; those findings were not re-checked.
+      failed_reruns: failed_reruns(scope, sources_with_problems),
       # How long the run itself took. Read together with the age, this separates
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
@@ -1339,6 +1341,30 @@ defmodule CodeMySpec.Validation do
         do: {source, note}
   end
 
+  @doc """
+  Per source, the newest full run when it failed after the latest answer.
+
+  The findings still come from that older answer (`Analysis.fresh?/2` keeps it
+  good), so the reader must be told the rerun failed and why.
+  """
+  @spec failed_reruns(Scope.t(), [String.t()]) :: %{String.t() => map()}
+  def failed_reruns(_scope, []), do: %{}
+
+  def failed_reruns(scope, sources) do
+    for source <- sources,
+        %Run{status: :failed} = run <- [RunsRepository.latest_full_run(scope, source)],
+        %Run{} = answer <- [Analysis.latest_answer(scope, source)],
+        DateTime.compare(run.started_at, answer.started_at) == :gt,
+        into: %{},
+        do:
+          {source,
+           %{
+             failed_at: run.finished_at || run.started_at,
+             reason: failure_reason(run),
+             answered_at: answer.finished_at || answer.started_at
+           }}
+  end
+
   # Did an edit land while this run was in flight?
   #
   # `input_fingerprint` is stamped at enqueue and `completed_fingerprint` at
@@ -1443,7 +1469,7 @@ defmodule CodeMySpec.Validation do
   # looks exactly like one that resolves to the right story. A missing story
   # would have hit the `nil` branch and been loud.
   #
-  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/2` writes it
+  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/3` writes it
   # when a spex file is created, which is why it survives a rename. 22 of this
   # project's 25 spex problems join on it exactly.
   #
@@ -1546,7 +1572,23 @@ defmodule CodeMySpec.Validation do
   defp story_id_for(file_path, by_path, by_spec_file, by_number) do
     Map.get(by_path, file_path) ||
       Map.get(by_spec_file, file_path) ||
-      story_id_from_path(file_path, by_number)
+      story_id_from_path(file_path, by_number) ||
+      story_id_from_directory(file_path, by_path)
+  end
+
+  # A legacy spex directory names no story number, and a file in it whose
+  # criterion was renumbered is recorded against nothing. Unattributed, its
+  # failure blocked regardless of the story's `specs_ready` — metric_flow's
+  # unbuilt white-label and auto-enrollment spex held every promote on
+  # 2026-09-27. The directory's story is the one every recorded spec in it
+  # belongs to; a mixed directory answers nothing.
+  defp story_id_from_directory(file_path, by_path) do
+    dir = Path.dirname(file_path)
+
+    case for({path, story_id} <- by_path, Path.dirname(path) == dir, uniq: true, do: story_id) do
+      [story_id] -> story_id
+      _ -> nil
+    end
   end
 
   defp story_id_from_path(file_path, by_number) do

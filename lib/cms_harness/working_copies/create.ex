@@ -169,9 +169,9 @@ defmodule CmsHarness.WorkingCopies.Create do
 
         :no_recipe ->
           Logger.warning(
-            "[CmsHarness] #{root} declares no `#{@recipe}` recipe, so #{target} got only a " <>
-              "worktree and its submodules — no deps, no _build, no untracked config. " <>
-              "Add `#{@recipe} name target` to its justfile."
+            "[CmsHarness] #{root} declares no `#{@recipe}` recipe, so #{target} got a " <>
+              "worktree, its submodules, the source's deps/ and links to its dotenv files — " <>
+              "no _build. Add `#{@recipe} name target` to its justfile."
           )
 
           with :ok <- plain_worktree(root, target, name), do: {:ok, :bare_worktree}
@@ -231,7 +231,7 @@ defmodule CmsHarness.WorkingCopies.Create do
          ) do
       {_out, 0} ->
         init_submodules(target)
-        :ok
+        seed(root, target)
 
       {out, status} ->
         {:error, {:worktree_failed, status, String.trim(out)}}
@@ -262,6 +262,62 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
 
     :ok
+  end
+
+  @doc """
+  Give a bare copy what `git worktree add` leaves behind: `deps/` and the
+  untracked dotenv files, both taken from the checkout it came from.
+  """
+  @spec seed(Path.t(), Path.t()) :: :ok
+  def seed(source, target) do
+    copy_deps(source, target)
+    link_dotenvs(source, target)
+    :ok
+  end
+
+  # Copied, not fetched: `mix.lock` is the same, and `mix deps.get` in a fresh
+  # worktree fails on shallow git deps whose pinned sha is not in the clone.
+  # `cp -R` because `File.cp_r/2` took 47s on 474 MB where `cp` took 3.
+  defp copy_deps(source, target) do
+    from = Path.join(source, "deps")
+    to = Path.join(target, "deps")
+
+    if File.dir?(from) and not File.exists?(to) do
+      case copy_tree(from, to) do
+        :ok ->
+          Logger.info("[CmsHarness] copied deps/ into #{target}")
+
+        error ->
+          Logger.error("[CmsHarness] could not copy deps/ into #{target}: #{inspect(error)}")
+      end
+    end
+  end
+
+  defp copy_tree(from, to) do
+    case System.find_executable("cp") do
+      nil ->
+        with {:ok, _} <- File.cp_r(from, to), do: :ok
+
+      cp ->
+        case System.cmd(cp, ["-R", from, to], stderr_to_stdout: true) do
+          {_out, 0} -> :ok
+          {out, status} -> {:cp_failed, status, String.trim(out)}
+        end
+    end
+  end
+
+  # Linked, not copied, so secrets are not duplicated per copy — the call
+  # `just worktree-setup` makes for `envs/`. Committed ones are already there.
+  defp link_dotenvs(source, target) do
+    for from <- Path.wildcard(Path.join(source, ".env*"), match_dot: true),
+        File.regular?(from),
+        to = Path.join(target, Path.basename(from)),
+        not File.exists?(to) do
+      case File.ln_s(from, to) do
+        :ok -> :ok
+        {:error, reason} -> Logger.error("[CmsHarness] could not link #{to}: #{inspect(reason)}")
+      end
+    end
   end
 
   defp make_parent(target) do

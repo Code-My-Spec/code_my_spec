@@ -6,7 +6,6 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Files
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
@@ -33,17 +32,18 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   renamed keeps pointing where it was recorded rather than being re-derived —
   which is the whole point.
   """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}) :: {:ok, non_neg_integer()}
-  def claim_spec_paths(_scope, paths) when map_size(paths) == 0, do: {:ok, 0}
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}, Enumerable.t()) ::
+          {:ok, non_neg_integer()}
+  def claim_spec_paths(_scope, paths, _recorded_paths) when map_size(paths) == 0, do: {:ok, 0}
 
-  def claim_spec_paths(%Scope{active_project_id: project_id} = scope, paths) do
+  def claim_spec_paths(%Scope{active_project_id: project_id}, paths, recorded_paths) do
     ids = Map.keys(paths)
 
     # Which files this checkout actually has.
     #
-    # Read once, here, rather than asked per path — and read from the record
-    # rather than the disk. See `stale?/2`.
-    present = present_paths(scope, paths)
+    # Read once, by the caller, rather than asked per path — and read from the
+    # record rather than the disk. See `stale?/2`.
+    present = present_paths(paths, recorded_paths)
 
     # Unclaimed, plus claimed-but-stale.
     #
@@ -178,22 +178,20 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   # Two sources, because neither alone is the whole picture at this moment.
   #
-  # `Files.list_files/1` scopes to the caller's working copy and is the durable
-  # record — but this runs *before* the manifest it is processing is upserted,
-  # so a file appearing for the first time is not in it yet. The observations
-  # are that missing half: a path in this manifest is a file the harness has
-  # just seen on that checkout's disk.
+  # `recorded_paths` (the caller's `Files.list_files/1`, scoped to its working
+  # copy) is the durable record — but this runs *before* the manifest it is
+  # processing is upserted, so a file appearing for the first time is not in it
+  # yet. The observations are that missing half: a path in this manifest is a
+  # file the harness has just seen on that checkout's disk.
   #
   # Union rather than either one, so a first sync does not read every existing
   # criterion as stale, and a file present but not in this manifest is not
   # mistaken for a deletion.
-  defp present_paths(%Scope{} = scope, paths) do
-    recorded = scope |> Files.list_files() |> MapSet.new(& &1.path)
-
+  defp present_paths(paths, recorded_paths) do
     paths
     |> Map.values()
     |> MapSet.new()
-    |> MapSet.union(recorded)
+    |> MapSet.union(MapSet.new(recorded_paths))
   end
 
   defp embedded_id(path) do
@@ -304,7 +302,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @doc """
   Every claimed spec path in the project, mapped to the story that owns it.
 
-  The counterpart to `claim_spec_paths/2`: that records which file a criterion
+  The counterpart to `claim_spec_paths/3`: that records which file a criterion
   is checked by, this reads it back. Anything deciding what a spex failure
   belongs to should ask here rather than parse the filename — the leading number
   in `test/spex/<n>_.../` is a directory name, not a story id, and the two have

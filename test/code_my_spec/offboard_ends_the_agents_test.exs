@@ -18,6 +18,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -44,7 +45,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   end
 
   test "the copy's agents are stopped", %{scope: scope, copy: copy} do
-    {:ok, counts} = WorkingCopies.offboard(scope, copy)
+    {:ok, counts} = Staffing.offboard(scope, copy)
 
     assert counts.agents_stopped == 3,
            "the copy is gone and its agents were left running against a directory " <>
@@ -62,7 +63,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   test "agents on other copies are left alone", %{scope: scope, copy: copy} do
     before = scope |> Agents.list_agents() |> Enum.reject(&(&1.working_copy_id == copy.id))
 
-    {:ok, _counts} = WorkingCopies.offboard(scope, copy)
+    {:ok, _counts} = Staffing.offboard(scope, copy)
 
     after_ =
       scope
@@ -77,7 +78,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   end
 
   test "the counts still report what was removed", %{scope: scope, copy: copy} do
-    {:ok, counts} = WorkingCopies.offboard(scope, copy)
+    {:ok, counts} = Staffing.offboard(scope, copy)
 
     for key <- [:files, :problems, :components] do
       assert Map.has_key?(counts, key),

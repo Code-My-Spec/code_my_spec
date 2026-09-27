@@ -37,6 +37,7 @@ defmodule CodeMySpec.DevState do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
@@ -50,6 +51,7 @@ defmodule CodeMySpec.DevState do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -296,7 +298,7 @@ defmodule CodeMySpec.DevState do
   defp note(%{enqueued: []}, _copy), do: "nothing enqueued — every source was already current"
 
   defp note(_report, copy) do
-    case Analysis.executor_holder(copy.id) do
+    case HarnessRegistry.executor_holder(copy.id) do
       {:ok, _pid, _instance} -> "enqueued; poll /dev/state for it to finish"
       :error -> "enqueued, but nothing is holding this working copy — it will not run"
     end
@@ -373,7 +375,7 @@ defmodule CodeMySpec.DevState do
   end
 
   defp executor(copy_id) do
-    case Analysis.executor_holder(copy_id) do
+    case HarnessRegistry.executor_holder(copy_id) do
       {:ok, pid, instance} -> %{held: true, pid: inspect(pid), instance: instance}
       :error -> %{held: false}
     end

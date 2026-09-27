@@ -37,46 +37,51 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Sessions
 
-  # Maps session type names to AgentTask modules
+  # Maps session type names to AgentTask modules. A function, not a module
+  # attribute: an attribute naming every task module is a compile-time reference
+  # to each of them, which put this module — and the router beyond it — in the
+  # app's compile cycle.
   # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component
-  @session_type_map %{
-    "component_spec" => AgentTasks.ComponentSpec,
-    "context_spec" => AgentTasks.ContextSpec,
-    "context_design_review" => AgentTasks.ContextDesignReview,
-    "develop_context" => AgentTasks.DevelopContext,
-    "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
-    "fix_bdd_specs" => AgentTasks.FixBddSpecs,
-    "develop_live_view" => AgentTasks.DevelopLiveView,
-    "component_code" => AgentTasks.ComponentCode,
-    "component_test" => AgentTasks.ComponentTest,
-    "project_setup" => AgentTasks.ProjectSetup,
-    "architecture_design" => AgentTasks.ArchitectureDesign,
-    "code_generation" => AgentTasks.CodeGeneration,
-    "write_bdd_specs" => AgentTasks.WriteBddSpecs,
-    "story_interview" => AgentTasks.StoryInterview,
-    "story_review" => AgentTasks.StoryInterview,
-    "design_ui" => AgentTasks.DesignUi,
-    "liveview_spec" => AgentTasks.LiveViewSpec,
-    "live_context_spec" => AgentTasks.LiveContextSpec,
-    "technical_strategy" => AgentTasks.TechnicalStrategy,
-    "research_topic" => AgentTasks.ResearchTopic,
-    "qa_app" => AgentTasks.QaApp,
-    "qa_integration_plan" => AgentTasks.QaIntegrationPlan,
-    "qa_journey_plan" => AgentTasks.QaJourney,
-    "qa_journey_execute" => AgentTasks.QaJourney,
-    "qa_journey_wallaby" => AgentTasks.QaJourney,
-    "qa_setup" => AgentTasks.QaSetup,
-    "qa_story" => AgentTasks.QaStory,
-    "start_implementation" => AgentTasks.StartImplementation,
-    "three_amigos" => AgentTasks.ThreeAmigos,
-    "triage_issues" => AgentTasks.TriageIssues,
-    "fix_issues" => AgentTasks.FixIssues,
-    "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
-    "persona_research" => AgentTasks.PersonaResearch,
-    "controller_spec" => AgentTasks.ControllerSpec,
-    "release" => AgentTasks.Release,
-    "init" => AgentTasks.Init
-  }
+  def session_type_map do
+    %{
+      "component_spec" => AgentTasks.ComponentSpec,
+      "context_spec" => AgentTasks.ContextSpec,
+      "context_design_review" => AgentTasks.ContextDesignReview,
+      "develop_context" => AgentTasks.DevelopContext,
+      "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
+      "fix_bdd_specs" => AgentTasks.FixBddSpecs,
+      "develop_live_view" => AgentTasks.DevelopLiveView,
+      "component_code" => AgentTasks.ComponentCode,
+      "component_test" => AgentTasks.ComponentTest,
+      "project_setup" => AgentTasks.ProjectSetup,
+      "architecture_design" => AgentTasks.ArchitectureDesign,
+      "code_generation" => AgentTasks.CodeGeneration,
+      "write_bdd_specs" => AgentTasks.WriteBddSpecs,
+      "story_interview" => AgentTasks.StoryInterview,
+      "story_review" => AgentTasks.StoryInterview,
+      "design_ui" => AgentTasks.DesignUi,
+      "liveview_spec" => AgentTasks.LiveViewSpec,
+      "live_context_spec" => AgentTasks.LiveContextSpec,
+      "technical_strategy" => AgentTasks.TechnicalStrategy,
+      "research_topic" => AgentTasks.ResearchTopic,
+      "qa_app" => AgentTasks.QaApp,
+      "qa_integration_plan" => AgentTasks.QaIntegrationPlan,
+      "qa_journey_plan" => AgentTasks.QaJourney,
+      "qa_journey_execute" => AgentTasks.QaJourney,
+      "qa_journey_wallaby" => AgentTasks.QaJourney,
+      "qa_setup" => AgentTasks.QaSetup,
+      "qa_story" => AgentTasks.QaStory,
+      "start_implementation" => AgentTasks.StartImplementation,
+      "three_amigos" => AgentTasks.ThreeAmigos,
+      "triage_issues" => AgentTasks.TriageIssues,
+      "fix_issues" => AgentTasks.FixIssues,
+      "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
+      "persona_research" => AgentTasks.PersonaResearch,
+      "controller_spec" => AgentTasks.ControllerSpec,
+      "release" => AgentTasks.Release,
+      "init" => AgentTasks.Init
+    }
+  end
 
   # Tasks that run without a project or config.yml
   @bootstrap_tasks ["project_setup", "init"]
@@ -119,11 +124,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # story directly.
   @topic_tasks ["research_topic", "qa_story", "three_amigos"]
 
-  @valid_types ["spec" | Map.keys(@session_type_map)]
-
-  def valid_types, do: @valid_types
+  def valid_types, do: ["spec" | Map.keys(session_type_map())]
   def componentless_tasks, do: @componentless_tasks
-  def session_type_map, do: @session_type_map
   def bootstrap_tasks, do: @bootstrap_tasks
   def project_tasks, do: @project_tasks
   def topic_tasks, do: @topic_tasks
@@ -333,7 +335,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Session type resolution
 
   defp resolve_session_type(nil, _component) do
-    {:error, "Session type is required. Valid types: #{Enum.join(@valid_types, ", ")}"}
+    {:error, "Session type is required. Valid types: #{Enum.join(valid_types(), ", ")}"}
   end
 
   # Auto-detect context vs component vs liveview spec based on component type
@@ -355,9 +357,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp resolve_session_type(name, _component) do
-    case Map.get(@session_type_map, name) do
+    case Map.get(session_type_map(), name) do
       nil ->
-        {:error, "Unknown session type: #{name}. Valid types: #{Enum.join(@valid_types, ", ")}"}
+        {:error, "Unknown session type: #{name}. Valid types: #{Enum.join(valid_types(), ", ")}"}
 
       module ->
         {:ok, module}

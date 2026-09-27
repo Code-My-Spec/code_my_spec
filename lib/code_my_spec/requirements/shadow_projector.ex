@@ -52,7 +52,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   require Logger
 
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
@@ -385,9 +384,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         {:graph_updated, state.project_id}
       )
 
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        Work.consider_project(state.scope, :graph_changed)
-      end)
+      # Answered by `Agents.GraphWake`, which starts the wake off this process.
+      :telemetry.execute(
+        [:code_my_spec, :requirements, :graph_changed],
+        %{},
+        %{scope: state.scope}
+      )
     end
 
     :ok

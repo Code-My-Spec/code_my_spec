@@ -32,6 +32,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   schema do
@@ -56,7 +57,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy do
   end
 
   defp discard(scope, copy) do
-    case WorkingCopies.offboard(scope, copy) do
+    case Staffing.offboard(scope, copy) do
       {:ok, counts} ->
         Response.tool() |> Response.text(report(copy, counts))
 

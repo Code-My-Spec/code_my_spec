@@ -15,7 +15,7 @@ defmodule CodeMySpec.Stories do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],

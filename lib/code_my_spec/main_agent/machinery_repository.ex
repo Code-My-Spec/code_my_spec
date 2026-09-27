@@ -20,8 +20,8 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Fingerprint
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.MainAgent.Machinery
@@ -68,7 +68,7 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
   end
 
   defp connected?(working_copy_id) do
-    match?({:ok, _pid, _instance}, Analysis.executor_holder(working_copy_id))
+    match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(working_copy_id))
   end
 
   # Whether each analyzer ran, and whether what it said is about the code that

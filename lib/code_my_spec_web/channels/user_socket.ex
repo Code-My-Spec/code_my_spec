@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.UserSocket do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias ExOauth2Provider.AccessTokens
 
@@ -41,7 +42,7 @@ defmodule CodeMySpecWeb.UserSocket do
       %{resource_owner_id: user_id} = access_token ->
         if AccessTokens.is_accessible?(access_token) do
           user = Users.get_user!(user_id)
-          scope = Users.scope_for(user)
+          scope = UserPreferences.scope_for(user)
 
           Logger.info("[UserSocket] connect ok user_id=#{user.id}")
 
@@ -122,7 +123,7 @@ defmodule CodeMySpecWeb.UserSocket do
     {:ok,
      socket
      |> assign(:user_id, user.id)
-     |> assign(:scope, Users.scope_for(user))
+     |> assign(:scope, UserPreferences.scope_for(user))
      |> assign(:deploy_key_project_id, project.id)}
   end
 

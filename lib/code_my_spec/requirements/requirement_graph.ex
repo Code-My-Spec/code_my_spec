@@ -539,7 +539,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # was, because the answer read as a finished project.
   #
   # Writers start with an agent (`Agents`) or at boot for continuous projects
-  # (`GraphWatcher.watch_active_projects/0`); a reader is the third door, and
+  # (`Agents.GraphWake.watch_active_projects/0`); a reader is the third door, and
   # only for a project with no rows at all. That bound is what keeps this from
   # resurrecting a writer a scenario's teardown stopped: a scenario that read
   # after computing has rows. Project rows are written by every seed, so their

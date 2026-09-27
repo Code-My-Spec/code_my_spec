@@ -9,6 +9,7 @@ defmodule CodeMySpec.Components do
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
     ],
     exports: :all

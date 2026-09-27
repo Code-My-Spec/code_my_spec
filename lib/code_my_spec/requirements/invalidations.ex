@@ -35,6 +35,13 @@ defmodule CodeMySpec.Requirements.Invalidations do
   the diff, which is exactly the signal this phase is built to read.
   """
 
+  # A leaf beside `GraphInputs`, for the same reason: writers reach it through
+  # `GraphInputs.announce/4`, and the graph consumes it.
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Repo, CodeMySpec.Requirements.Invalidation],
+    exports: :all
+
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo

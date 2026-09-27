@@ -19,6 +19,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpecTest.RecordingAgentTransport
 
@@ -68,7 +69,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
     end
 
     test "true once a channel join registers the copy", %{agent: agent} do
-      :ok = Analysis.register_executor(agent.working_copy_id)
+      :ok = HarnessRegistry.register_executor(agent.working_copy_id)
 
       assert Agents.working_copy_connected?(agent)
     end
@@ -86,7 +87,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
     setup %{scope: scope, agent: agent} do
       # Registered, so the copy reads as connected — this is the case the old
       # check got wrong, not a disconnected machine.
-      :ok = Analysis.register_executor(agent.working_copy_id)
+      :ok = HarnessRegistry.register_executor(agent.working_copy_id)
       {:ok, stopped} = AgentsRepository.update_agent(scope, agent, %{status: :stopped})
       %{agent: stopped}
     end

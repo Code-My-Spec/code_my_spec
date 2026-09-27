@@ -54,7 +54,19 @@ defmodule CodeMySpec.Requirements.GraphInputs do
 
   So a writer that publishes when nothing really changed costs one hash, and a
   writer that is unsure should publish.
+
+  ## A leaf, deliberately
+
+  Its own boundary, depending only on `Invalidations` and `Scope`. Every
+  context whose rows the graph reads publishes here, so anything this module
+  depended on — or anything its callers had to name as `Requirements` to reach
+  it — put all of them in a cycle with the graph that reads them.
   """
+
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Requirements.Invalidations, CodeMySpec.Users.Scope],
+    exports: :all
 
   require Logger
 

@@ -26,7 +26,6 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   Returns `{boolean(), map()}` per the checker contract.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
   alias CodeMySpec.{Files, Paths}
   alias CodeMySpec.Users.Scope
 
@@ -131,8 +130,20 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     end
   end
 
+  # The app name `mix.exs` declared, as the scanner parsed it at sync time —
+  # read from this checkout's `mix.exs` row. `Files.get_by_path/2` scopes to the
+  # scope's working copy, which matters: two checkouts of one project can be
+  # different applications (issue `282428a3`). Read here rather than through
+  # `AgentTasks.Setup.Helpers`, which the graph sits below.
+  defp synced_app_name(scope) do
+    case Files.get_by_path(scope, "mix.exs") do
+      %{validation_errors: %{"data" => %{"app_name" => name}}} when is_binary(name) -> name
+      _ -> nil
+    end
+  end
+
   defp add_fixtures_bridge_gap(gaps, paths, scope) do
-    # The synced answer only. `Helpers.app_name/1` falls back to reading
+    # The synced answer only. `Setup.Helpers.app_name/1` falls back to reading
     # `mix.exs` through the environment, which for a harness-served project is a
     # `GenServer.call` with a 35-second limit — and this runs inside the graph
     # computation, which the stop decision waits on. An unsynced `mix.exs` made
@@ -140,7 +151,7 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     #
     # Nothing is lost: not knowing the app name was already an outcome here, and
     # `mix.exs` is synced on any project far enough along to have spex at all.
-    case Helpers.synced_app_name(scope) do
+    case synced_app_name(scope) do
       nil ->
         ["Could not determine app name from `mix.exs` — cannot verify fixtures bridge." | gaps]
 

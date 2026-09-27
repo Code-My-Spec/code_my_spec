@@ -24,6 +24,9 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
 
   alias CodeMySpec.AcceptanceCriteria
 
+  # What `FileSync` passes: the files already recorded for this checkout.
+  defp recorded(scope), do: scope |> CodeMySpec.Files.list_files() |> Enum.map(& &1.path)
+
   defp criterion(scope, story, attrs \\ %{}) do
     {:ok, c} =
       AcceptanceCriteria.create_criterion(
@@ -41,7 +44,7 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     c = criterion(scope, story)
     path = "test/spex/1_x/criterion_#{c.id}_a_thing_happens_spex.exs"
 
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path})
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path}, recorded(scope))
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == path
   end
 
@@ -58,7 +61,9 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     newcomer = criterion(scope, other)
     legacy = "#{dir}/criterion_#{newcomer.id}_correlations_use_daily_data_spex.exs"
 
-    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(scope, %{newcomer.id => legacy})
+    assert {:ok, 0} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{newcomer.id => legacy}, recorded(scope))
+
     assert AcceptanceCriteria.get_criterion(scope, newcomer.id).spec_path == nil
   end
 
@@ -68,7 +73,7 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     c = criterion(scope, story)
     path = "test/spex/some-legacy-dir-c0c417c7/criterion_#{c.id}_a_thing_happens_spex.exs"
 
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path})
+    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => path}, recorded(scope))
   end
 
   test "a criterion whose recorded file is really there is left alone" do
@@ -91,7 +96,11 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     c = criterion(scope, story, %{spec_path: actual})
 
     assert {:ok, 0} =
-             AcceptanceCriteria.claim_spec_paths(scope, %{c.id => "test/spex/derived_spex.exs"})
+             AcceptanceCriteria.claim_spec_paths(
+               scope,
+               %{c.id => "test/spex/derived_spex.exs"},
+               recorded(scope)
+             )
 
     assert AcceptanceCriteria.get_criterion(scope, c.id).spec_path == actual,
            "a recorded path that resolves outranks a derived one — otherwise " <>
@@ -103,12 +112,18 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     theirs = full_scope_fixture()
     c = criterion(theirs, story_fixture(theirs))
 
-    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(mine, %{c.id => "test/spex/x_spex.exs"})
+    assert {:ok, 0} =
+             AcceptanceCriteria.claim_spec_paths(
+               mine,
+               %{c.id => "test/spex/x_spex.exs"},
+               recorded(mine)
+             )
+
     assert is_nil(AcceptanceCriteria.get_criterion(theirs, c.id).spec_path)
   end
 
   test "nothing to claim is not a query" do
-    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(full_scope_fixture(), %{})
+    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(full_scope_fixture(), %{}, [])
   end
 
   test "a recorded path whose file is gone is repaired" do
@@ -122,7 +137,8 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
 
     found = "test/spex/1_x/criterion_#{c.id}_under_its_new_name_spex.exs"
 
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}),
+    assert {:ok, 1} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}, recorded(scope)),
            "a criterion pointing at a file that no longer exists was left pointing " <>
              "at it. Renaming a spex is the normal consequence of rewording its " <>
              "criterion, and the record then names a file nobody will create " <>
@@ -153,7 +169,8 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     c = criterion(scope, story, %{spec_path: stale})
     found = "test/spex/1_x/criterion_#{c.id}_under_its_new_name_spex.exs"
 
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}),
+    assert {:ok, 1} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{c.id => found}, recorded(scope)),
            "the repair was refused because another checkout still has the old " <>
              "name, so a worktree that renames a spex can never satisfy " <>
              "`bdd_specs_exist` — and rescanning cannot fix it, because the " <>
@@ -175,7 +192,8 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
     found = "test/spex/1_x/criterion_8010_under_its_new_name_spex.exs"
 
     # Keyed by 8010 -- the id in the observed filename -- which matches no row.
-    assert {:ok, 1} = AcceptanceCriteria.claim_spec_paths(scope, %{8010 => found}),
+    assert {:ok, 1} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{8010 => found}, recorded(scope)),
            "a criterion whose filename id predates a renumbering was left pointing " <>
              "at a file that is gone. Matching the observed id against row ids finds " <>
              "nothing for it, so the repair reaches every criterion except the ones " <>
@@ -194,7 +212,8 @@ defmodule CodeMySpec.AcceptanceCriteria.ClaimSpecPathsTest do
 
     elsewhere = "test/spex/2_y/criterion_8010_a_different_storys_spec_spex.exs"
 
-    assert {:ok, 0} = AcceptanceCriteria.claim_spec_paths(scope, %{8010 => elsewhere}),
+    assert {:ok, 0} =
+             AcceptanceCriteria.claim_spec_paths(scope, %{8010 => elsewhere}, recorded(scope)),
            "a stale id was matched across directories. Criterion ids were reused by " <>
              "the renumbering, so the same number under a different story is a " <>
              "different criterion — repointing there would hand one story's spec to " <>

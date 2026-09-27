@@ -11,14 +11,12 @@ defmodule CodeMySpec.Requirements do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.AgentTasks,
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
       CodeMySpec.Configurations,
       CodeMySpec.Deploys,
-      CodeMySpec.EpicDispatch,
+      CodeMySpec.Epics,
       CodeMySpec.Faults,
       CodeMySpec.Files,
       CodeMySpec.Issues,
@@ -28,11 +26,15 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Projects,
       # `code_on_running_copy` is Promotion's verdict, and a graph that decided
       # it for itself would be a second answer to the question promotion exists
-      # to answer. One-way: Promotion no longer reads the graph.
-      CodeMySpec.Promotion,
+      # to answer. So the graph reads it — from this leaf, not from `Promotion`,
+      # which sits above the graph and must not be called by it.
+      CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Requirements.Invalidation,
+      CodeMySpec.Requirements.Invalidations,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
@@ -57,9 +59,18 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Users.Scope
 
-  @doc "The current story's execution state; never falls back to project work."
-  def story_execution(scope, role \\ nil, requested_story_id \\ nil),
-    do: StoryExecution.read(scope, role, requested_story_id)
+  @doc """
+  The current story's execution state; never falls back to project work.
+
+  `withheld?` drops nodes the caller cannot claim, before the wave is cut.
+  """
+  def story_execution(
+        scope,
+        role \\ nil,
+        requested_story_id \\ nil,
+        withheld? \\ fn _ -> false end
+      ),
+      do: StoryExecution.read(scope, role, requested_story_id, withheld?)
 
   @doc """
   How many requirements this role can act on for this working copy.

@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
   alias CodeMySpec.Requirements.Projection
+  alias CodeMySpec.Staffing
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
@@ -439,7 +440,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # not serving anything and the gate never looks at it.
     test "the running application going down moves it", %{scope: scope} do
       copy = a_checkout(scope)
-      {:ok, copy} = WorkingCopies.designate_main(scope, copy.id)
+      {:ok, copy} = Staffing.designate_main(scope, copy.id)
 
       {:ok, _} = WorkingCopies.record_preview_status(copy, "serving")
       up = current_fingerprint(scope)

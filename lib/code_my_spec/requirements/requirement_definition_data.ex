@@ -177,7 +177,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # you promoted". John: "it is eminently possible that someone would be
         # just doing the work on Maine."
         check_type: :delegate,
-        config: %{module: CodeMySpec.Promotion, function: :running_copy_check},
+        config: %{module: CodeMySpec.Promotion.RunningCopy, function: :running_copy_check},
         satisfied_by: AgentTasks.PromoteWork,
         artifact_type: :code,
         # Named for the state QA depends on rather than for the merge, because
@@ -434,7 +434,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         role: :qa,
         node_scope: :self,
         check_type: :delegate,
-        config: %{module: AgentTasks.QaIntegrationPlan, function: :evaluate},
+        config: %{module: CodeMySpec.Requirements.QaIntegrationPlanChecker, function: :evaluate},
         satisfied_by: AgentTasks.QaIntegrationPlan,
         artifact_type: :specification,
         description: "Integration specs exist and all verified, or no integrations are required",

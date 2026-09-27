@@ -375,9 +375,10 @@ restart port="4000":
 # Pull main into the running checkout and let the code reloader do the rest.
 #
 # The cheap half of `refresh`, for the changes that do not need a restart —
-# which is most of them. `config/dev.exs` and `config/dev_cli.exs` both set
-# `code_reloader: true`, so a plain module edit is picked up on the next request
-# to the endpoint and Erlang swaps it in process-wide from there.
+# which is most of them. `config/dev.exs` sets `code_reloader: true`, so a plain
+# module edit is picked up on the next request to :4000 and Erlang swaps it in
+# process-wide from there. The harness on :4004 does not reload (08744186); a
+# harness change needs `refresh-harness`.
 #
 # John: "Maybe we should just not restart. Phoenix hot reloads. Just pull the
 # code in and let it update."

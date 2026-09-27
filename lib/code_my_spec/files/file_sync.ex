@@ -620,7 +620,9 @@ defmodule CodeMySpec.Files.FileSync do
       end)
       |> Map.new()
 
-    case AcceptanceCriteria.claim_spec_paths(scope, paths) do
+    recorded = scope |> Files.list_files() |> Enum.map(& &1.path)
+
+    case AcceptanceCriteria.claim_spec_paths(scope, paths, recorded) do
       {:ok, 0} ->
         :ok
 
@@ -1061,6 +1063,7 @@ defmodule CodeMySpec.Files.FileSync do
   # A watcher fires on writes that change nothing (a save with no edit, a
   # touch), and announcing those would cost a preload each to discover it.
   defp announce_watched_change(_scope, false), do: :ok
+
   defp announce_watched_change(scope, true),
     do: GraphInputs.announce(scope, "FileSync.watched", [], :this_checkout)
 

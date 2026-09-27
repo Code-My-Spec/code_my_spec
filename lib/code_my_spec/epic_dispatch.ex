@@ -45,6 +45,7 @@ defmodule CodeMySpec.EpicDispatch do
       CodeMySpec.Conversations,
       CodeMySpec.Epics,
       CodeMySpec.Repo,
+      CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
@@ -60,14 +61,12 @@ defmodule CodeMySpec.EpicDispatch do
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Repo
+  alias CodeMySpec.Staffing
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
-  @type dispatch_state ::
-          {:work_to_assign, [Epic.t()]}
-          | {:nothing_to_assign, :in_progress}
-          | {:nothing_to_assign, :all_assigned}
+  @type dispatch_state :: Epics.dispatch_state()
 
   @doc """
   Send an epic for approval.
@@ -210,7 +209,7 @@ defmodule CodeMySpec.EpicDispatch do
   # reason for the page to say the epic is waiting, not a reason to throw away
   # somebody's approval.
   defp minted(scope) do
-    case WorkingCopies.mint(scope, label: "an epic's working copy") do
+    case Staffing.mint(scope, label: "an epic's working copy") do
       {:ok, copy, _staffed} ->
         copy
 
@@ -388,59 +387,15 @@ defmodule CodeMySpec.EpicDispatch do
 
   def progress(%Scope{}), do: %{epics: [], source: :record}
 
-  @doc """
-  Whether the main agent has work to assign, and why not when it has none.
-
-  A reason rather than a boolean because the two ways of having nothing to do
-  mean opposite things. Nothing in progress and nothing left is a finished
-  project; nothing in progress with work waiting is the one state that wants
-  somebody to act, and a node that reported them the same way would either nag a
-  finished project forever or go quiet on one that is stuck.
-  """
-  @spec dispatch_state(Scope.t()) :: dispatch_state()
-  def dispatch_state(%Scope{active_project_id: project_id} = scope)
-      when is_binary(project_id) do
-    cond do
-      in_progress?(project_id) -> {:nothing_to_assign, :in_progress}
-      unassigned(scope) == [] -> {:nothing_to_assign, :all_assigned}
-      true -> {:work_to_assign, unassigned(scope)}
-    end
-  end
-
-  def dispatch_state(%Scope{}), do: {:nothing_to_assign, :all_assigned}
+  @doc "Whether the main agent has work to assign, and why not. See `Epics.dispatch_state/1`."
+  defdelegate dispatch_state(scope), to: Epics
 
   @doc "Whether there is anything for the main agent to do about assignment."
   @spec work_to_assign?(Scope.t()) :: boolean()
   def work_to_assign?(%Scope{} = scope), do: match?({:work_to_assign, _}, dispatch_state(scope))
 
-  # Anything dispatched and not finished. A failed epic is not in progress —
-  # that is the distinction `record_failure/3` exists to make, and counting it
-  # as busy would leave a project that fell over reporting itself as working.
-  @doc """
-  Whether anything dispatched is still being built.
-
-  Public because `Requirements.Profiles` needs the same fact and must not reach
-  into `Epics` to get it — the boundary is right about that, and this module is
-  where "is work underway" is already decided.
-  """
-  @spec in_progress?(Scope.t()) :: boolean()
-  def in_progress?(%Scope{active_project_id: project_id}) when is_binary(project_id),
-    do: in_progress?(project_id)
-
-  def in_progress?(%Scope{}), do: false
-
-  def in_progress?(project_id) when is_binary(project_id) do
-    Repo.exists?(from e in Epic, where: e.project_id == ^project_id and e.status == :dispatched)
-  end
-
-  # Stories that are ready and belong to no epic. Ready matters: an unshaped
-  # story is not work waiting to be assigned, it is work waiting to be shaped,
-  # and proposing it would put the wrong thing in front of somebody.
-  defp unassigned(%Scope{active_project_id: project_id}) do
-    Story
-    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id))
-    |> Repo.all()
-  end
+  @doc "Whether anything dispatched is still being built. See `Epics.in_progress?/1`."
+  defdelegate in_progress?(scope_or_project_id), to: Epics
 
   # Cast before the query, because `Repo.get_by/3` raises on an id that is not a
   # UUID rather than answering nil — and the raise reaches an agent as a dump of

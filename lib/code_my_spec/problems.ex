@@ -12,7 +12,7 @@ defmodule CodeMySpec.Problems do
       CodeMySpec.Analysis,
       CodeMySpec.Files,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Tests,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,

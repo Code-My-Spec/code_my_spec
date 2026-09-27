@@ -16,6 +16,7 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpecTest.RecordingAgentTransport
@@ -79,6 +80,68 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
 
     {:ok, pid} = Cadence.start_link(scope)
     send(pid, :check_in)
+
+    refute_receive {:agent_message, _id, _text}, 1_000
+  end
+
+  defp coding_agent(scope) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        role: "coding",
+        status: :running,
+        continuous: false,
+        provider: "anthropic",
+        engine: :alloy,
+        working_copy: "/tmp/cadence-coding-#{System.unique_integer([:positive])}",
+        working_copy_id: scope.active_working_copy_id
+      })
+
+    agent
+  end
+
+  defp ask(scope, agent_id) do
+    {:ok, _request} =
+      Notifications.create_agent_question_request(
+        scope,
+        agent_id,
+        %{"title" => "Blocked", "questions" => [%{"question" => "Which way?", "options" => []}]},
+        nil
+      )
+  end
+
+  describe "a blocker raised by another agent" do
+    test "a question reaches main now, not at the next tick" do
+      scope = full_scope_fixture()
+      main = main_agent(scope)
+      coder = coding_agent(scope)
+      {:ok, _pid} = Cadence.start_link(scope)
+
+      ask(scope, coder.id)
+
+      assert_receive {:agent_message, id, text}, 5_000
+      assert id == main.id
+      assert text =~ "Which way?"
+    end
+
+    test "a tap-out reaches main now, not at the next tick" do
+      scope = full_scope_fixture()
+      main = main_agent(scope)
+      coder = coding_agent(scope)
+      {:ok, _pid} = Cadence.start_link(scope)
+
+      {:ok, _request} = Notifications.request_agent_tap_out(scope, coder.id, nil, "stuck")
+
+      assert_receive {:agent_message, id, _text}, 5_000
+      assert id == main.id
+    end
+  end
+
+  test "main's own question does not wake it" do
+    scope = full_scope_fixture()
+    main = main_agent(scope)
+    {:ok, _pid} = Cadence.start_link(scope)
+
+    ask(scope, main.id)
 
     refute_receive {:agent_message, _id, _text}, 1_000
   end

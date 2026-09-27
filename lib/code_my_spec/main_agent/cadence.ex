@@ -37,6 +37,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
   alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.MainAgent.CadenceRegistry
@@ -240,6 +241,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def init(%Scope{} = scope) do
+    :ok =
+      Phoenix.PubSub.subscribe(
+        CodeMySpec.PubSub,
+        Notifications.blockers_topic(scope.active_project_id)
+      )
+
     {:ok, schedule(%{scope: scope, last_check: nil})}
   end
 
@@ -258,6 +265,19 @@ defmodule CodeMySpec.MainAgent.Cadence do
     )
 
     {:noreply, schedule(%{state | last_check: checked_at})}
+  end
+
+  # 3265: a blocker is pushed when raised, not left for the next tick. Main's
+  # own blockers are skipped, or answering its own question would wake it.
+  # Not gated on `running?/1`: 3335, a stood-down main still hears questions.
+  def handle_info({:blocker_raised, raised_by}, state) do
+    case Agents.main_agent(state.scope) do
+      nil -> :ok
+      %{id: ^raised_by} -> :ok
+      main -> state.scope |> MainAgent.check_in() |> push(state.scope, main)
+    end
+
+    {:noreply, state}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
@@ -281,20 +301,22 @@ defmodule CodeMySpec.MainAgent.Cadence do
   # as well would be the second, unconditional turn its title rules out. The gap
   # `2c34da87` reported is the other case: a non-continuous main, which the work
   # path never reaches and which nothing else wakes.
-  defp deliver({:ok, report}, scope) do
-    with true <- running?(scope),
-         %{continuous: false, id: id} <- Agents.main_agent(scope) do
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        Agents.message_agent(scope, id, report)
-      end)
-    end
+  defp deliver(result, scope) do
+    if running?(scope), do: push(result, scope, Agents.main_agent(scope))
+    :ok
+  end
+
+  defp push({:ok, report}, scope, %{continuous: false, id: id}) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Agents.message_agent(scope, id, report)
+    end)
 
     :ok
   end
 
   # A digest that could not be assembled already raised a fault; delivering an
   # empty one would read as all-quiet.
-  defp deliver(_other, _scope), do: :ok
+  defp push(_result, _scope, _main), do: :ok
 
   @impl true
   def handle_cast(:reschedule, state) do

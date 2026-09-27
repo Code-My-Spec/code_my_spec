@@ -17,7 +17,7 @@ defmodule CodeMySpec.Questions do
     top_level?: true,
     deps: [
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils

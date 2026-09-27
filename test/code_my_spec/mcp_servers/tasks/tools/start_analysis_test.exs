@@ -5,6 +5,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysisTest do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.StartAnalysis
 
@@ -17,7 +18,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysisTest do
     scope: scope,
     frame: frame
   } do
-    assert :ok = Analysis.register_executor(scope.active_working_copy_id)
+    assert :ok = HarnessRegistry.register_executor(scope.active_working_copy_id)
 
     assert {:reply, response, ^frame} = StartAnalysis.execute(%{source: "compiler"}, frame)
     refute response.isError

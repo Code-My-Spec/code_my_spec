@@ -18,6 +18,8 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
 
   alias CodeMySpec.Analysis
 
+  alias CodeMySpec.Analysis.HarnessRegistry
+
   setup do
     # Same registry the harness channel uses; the app already starts it.
     working_copy_id = "harness-#{System.unique_integer([:positive])}"
@@ -31,7 +33,7 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
 
     pid =
       spawn(fn ->
-        result = Analysis.register_executor(working_copy_id, instance, root)
+        result = HarnessRegistry.register_executor(working_copy_id, instance, root)
         send(test, {:registered, self(), result})
         receive do: (:never -> :ok)
       end)
@@ -43,7 +45,7 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
   test "the same instance takes its own registration back", %{working_copy_id: working_copy_id} do
     ghost = holder(working_copy_id, "boxy:4242")
 
-    assert Analysis.register_executor(working_copy_id, "boxy:4242") == :ok,
+    assert HarnessRegistry.register_executor(working_copy_id, "boxy:4242") == :ok,
            "this is the harness reconnecting, and the entry it collided with was " <>
              "its own — refusing it is a deadlock nothing ever breaks"
 
@@ -72,7 +74,7 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
     incumbent = holder(working_copy_id, "boxy:4242", "/checkouts/a")
 
     assert {:error, {:id_collision, ^incumbent, "/checkouts/a"}} =
-             Analysis.register_executor(working_copy_id, "boxy:4242", "/checkouts/b"),
+             HarnessRegistry.register_executor(working_copy_id, "boxy:4242", "/checkouts/b"),
            "same instance is 'the same OS process', not 'the same working copy'"
 
     assert Process.alive?(incumbent),
@@ -84,7 +86,7 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
   } do
     ghost = holder(working_copy_id, "boxy:4242", "/checkouts/a")
 
-    assert Analysis.register_executor(working_copy_id, "boxy:4242", "/checkouts/a") == :ok,
+    assert HarnessRegistry.register_executor(working_copy_id, "boxy:4242", "/checkouts/a") == :ok,
            "adding the root must not break the ghost-entry recovery the instance " <>
              "match exists for — that deadlock cleared only by killing the harness"
 
@@ -95,7 +97,7 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
     incumbent = holder(working_copy_id, "boxy:4242")
 
     assert {:error, {:already_registered, ^incumbent}} =
-             Analysis.register_executor(working_copy_id, "boxy:9999"),
+             HarnessRegistry.register_executor(working_copy_id, "boxy:9999"),
            "a second live harness on one `_build` is the case the lock is for"
 
     assert Process.alive?(incumbent)
@@ -105,12 +107,12 @@ defmodule CodeMySpec.Analysis.ExecutorRegistrationTest do
     incumbent = holder(working_copy_id, "boxy:4242")
 
     assert {:error, {:already_registered, ^incumbent}} =
-             Analysis.register_executor(working_copy_id, nil)
+             HarnessRegistry.register_executor(working_copy_id, nil)
 
     assert Process.alive?(incumbent)
   end
 
   test "an unheld working copy registers straight away", %{working_copy_id: working_copy_id} do
-    assert Analysis.register_executor(working_copy_id, "boxy:4242") == :ok
+    assert HarnessRegistry.register_executor(working_copy_id, "boxy:4242") == :ok
   end
 end

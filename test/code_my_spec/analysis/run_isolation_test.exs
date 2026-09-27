@@ -47,9 +47,9 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
     run_a = start(a, "spex")
     run_b = start(b, "spex")
 
-    {:ok, count} = RunsRepository.fail_running(b, :harness_reconnected)
+    {:ok, failed} = RunsRepository.fail_running(b, :harness_reconnected)
 
-    assert count == 1, "only the joining harness's own run should have been closed"
+    assert length(failed) == 1, "only the joining harness's own run should have been closed"
 
     assert RunsRepository.get_running_run(a, run_a.id),
            "checkout A's spex sweep was still running and nothing about B's join " <>
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
     test "says when a run was swept, and as what" do
       {a, _b} = two_checkouts()
       run = start(a, "credo")
-      {:ok, 1} = RunsRepository.fail_running(a, :harness_reconnected)
+      {:ok, [_]} = RunsRepository.fail_running(a, :harness_reconnected)
 
       explanation = Analysis.explain_unknown_run(a, run.id)
 

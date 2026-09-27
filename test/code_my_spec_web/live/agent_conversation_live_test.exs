@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
@@ -504,7 +504,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     # entry and every one of these takes the restart path instead of the
     # wake path they are actually testing.
     defp connect_working_copy(working_copy_id),
-      do: :ok = Analysis.register_executor(working_copy_id)
+      do: :ok = HarnessRegistry.register_executor(working_copy_id)
 
     test "switching it on delivers nothing more than a plain flash", %{
       conn: conn,

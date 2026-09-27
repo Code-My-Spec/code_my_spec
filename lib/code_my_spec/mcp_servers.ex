@@ -54,6 +54,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
+      CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.TaskOwner,

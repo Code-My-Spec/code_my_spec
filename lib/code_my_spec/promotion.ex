@@ -57,9 +57,9 @@ defmodule CodeMySpec.Promotion do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
-      CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Problems,
+      CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
@@ -73,8 +73,6 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.BootVersion
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
@@ -86,209 +84,10 @@ defmodule CodeMySpec.Promotion do
 
   # ----------------------------------------------------------------- read model
 
-  @doc """
-  The requirement-graph checker: `{satisfied?, details}`.
-
-  Answers from git state, not from files.
-
-  The version before this compared the story's implementation files against the
-  running copy's, and it was insufficient for a case that happens on every
-  project: promote a story, QA files an issue, fix the issue on the working
-  copy. Whether the fix is back on main is a question about commits, and asking
-  it about files means depending on scans landing, on story-to-component
-  linkage, and on roles being classified right — three ways to answer "yes" for
-  a checkout that is behind.
-
-  That version read the checkout's own git state instead — nothing on it main
-  did not have (`commits_ahead_of_main`), no uncommitted changes (`tree_dirty`)
-  — deliberately not a third condition, whether main had commits the checkout
-  did not (`commits_behind_main`): that was gated once and produced a
-  demonstrable false negative. A promotion lands, the story is satisfied, an
-  unrelated push by somebody else on the shared box moves main forward, and
-  the story un-satisfies even though its own commit is still exactly as much
-  an ancestor of main as it ever was. Git history only grows, so once
-  `commits_ahead_of_main` reads 0 for a checkout it should stay true forever
-  after. See issue `cf06b908`.
-
-  It didn't, though — not for the checkout the answer actually came from. That
-  answer was read live off the *checkout*, and a checkout is shared by every
-  story an agent ever works on it: promote story A, then start story B on the
-  same checkout, and the first new commit or edit re-dirties the very row
-  story A's satisfied answer was being read from. Nothing about story A's
-  promotion changed; the checkout it happened to land from moved on, and the
-  gate could not tell those apart because it was never asking about the
-  story, only about the checkout.
-
-  So the answer now lives on the story: `promoted_version`, a stamp
-  `Promotion.promote/1` writes once, permanently, the moment a merge actually
-  lands that story's code on main. Ancestry only ever grows — once a
-  promotion happens it stays true forever, and now nothing but a deliberate
-  invalidation (clearing the field to send the story back through this gate)
-  can make it stop being true. Whether *this checkout* is right now in sync
-  with main is a real question and a different one, and it is answered where
-  it can be answered honestly: `promote` runs git in the checkout and reports
-  what is holding a merge up. It is not mirrored into `working_copies` any
-  more — a cached copy of git's answer could only ever be a staler one.
-  """
-  @spec running_copy_check(Scope.t(), term()) :: {boolean(), map()}
-  def running_copy_check(%Scope{} = scope, entity) do
-    scope
-    |> WorkingCopies.main()
-    |> verdict(scope, entity, :unread)
-  end
-
-  @doc """
-  The same verdict for every story at once.
-
-  Two reads answer this check — which copy is running, and which copy is asking
-  — and neither depends on the story. The only per-story input is
-  `promoted_version`, so asking per story is the same pair of reads repeated
-  once per story to answer a question that already had its answer.
-
-  Returns `{unpromoted_verdict, %{story_id => verdict}}`: the verdict every
-  story that has never been promoted gets, and the handful that carry a stamp.
-  That is a sweep's default and its exceptions, which is the shape
-  `Requirements.Handlers` settles this requirement with and the only reason
-  this exists beside `running_copy_check/2`. Both go through `verdict/4`, so
-  the per-story path and the set path cannot disagree.
-  """
-  @spec running_copy_verdicts(Scope.t(), [term()]) ::
-          {{boolean(), map()}, %{optional(term()) => {boolean(), map()}}}
-  def running_copy_verdicts(%Scope{} = scope, stories) do
-    running = WorkingCopies.main(scope)
-    local = local_copy(running, scope)
-
-    unpromoted = verdict(running, scope, %{promoted_version: nil}, local)
-
-    promoted =
-      for %{promoted_version: version} = story <- stories,
-          is_binary(version),
-          into: %{},
-          do: {story.id, verdict(running, scope, story, local)}
-
-    {unpromoted, promoted}
-  end
-
-  # No copy is designated, so nothing is running and nothing can be behind it.
-  # Holding every story until somebody designates one would be a wall with no
-  # agent able to clear it.
-  defp verdict(nil, _scope, _entity, _local), do: {true, %{status: "No running copy designated"}}
-
-  # Working directly on the running copy. There is no branch to merge and
-  # nothing an agent could do to a gate that asked for one — John: "it is
-  # eminently possible that someone would be just doing the work on Maine."
-  #
-  # Still has to be serving. The code is here by definition; whether anything
-  # is answering is a separate question and QA needs both.
-  defp verdict(
-         %WorkingCopy{id: id} = running,
-         %Scope{active_working_copy_id: id},
-         _entity,
-         _local
-       ),
-       do: serving(running, %{status: "Working on the running copy"})
-
-  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity, _local),
-    do: {true, %{status: "No checkout on this scope"}}
-
-  # `:unread` rather than reading the local copy up front, because the two
-  # clauses above answer without it — `running_copy_check/2` is called once per
-  # story on the path this is the fallback for, and a read those clauses throw
-  # away is one per story.
-  defp verdict(%WorkingCopy{} = running, %Scope{} = scope, entity, :unread),
-    do: verdict(running, scope, entity, local_copy(running, scope))
-
-  defp verdict(%WorkingCopy{} = running, %Scope{}, entity, {:ok, copy}),
-    do: entity |> promoted(copy) |> and_serving(running)
-
-  defp verdict(%WorkingCopy{}, %Scope{}, _entity, _local),
-    do: {true, %{status: "This checkout is not on file"}}
-
-  defp local_copy(%WorkingCopy{id: id}, %Scope{active_working_copy_id: here})
-       when is_binary(here) and here != id,
-       do: WorkingCopies.fetch(here)
-
-  defp local_copy(_running, %Scope{}), do: :none
-
-  # The story's own stamp, not a read of the checkout it happened to be
-  # promoted from. Once a promotion sets this, nothing the checkout does
-  # afterward — more commits, a dirty tree, work for an unrelated story — can
-  # make it stop being true, because it already happened.
-  defp promoted(entity, copy) do
-    case Map.get(entity, :promoted_version) do
-      version when is_binary(version) ->
-        {true, %{status: "Promoted at version #{version}"}}
-
-      _ ->
-        not_yet_promoted(copy)
-    end
-  end
-
-  # No git diagnostic any more, and `promote` is a better one than this was.
-  #
-  # This used to append "this checkout currently has 3 commit(s) not on main;
-  # uncommitted changes", read from columns the harness mirrored into
-  # `working_copies` on every sync. Those are gone: nothing decided on them, and
-  # `Freshness.story/2` hashed them into every story's fingerprint, so a
-  # keystroke anywhere reconsidered every story in the project.
-  #
-  # The advice was also the staler half of a pair. `promote` runs git in the
-  # checkout — `git merge --ff-only` is its precondition and its merge in one
-  # command — so it answers the same question live, at the moment it matters,
-  # and names what to do. A mirrored copy could only ever disagree with it, and
-  # `Sync` recorded it doing so: "at 06:01 git said `ahead=0 behind=0` and the
-  # row still said `ahead=3`".
-  defp not_yet_promoted(%WorkingCopy{}) do
-    {false,
-     %{
-       reason:
-         "this story has not been promoted yet. `promote` merges this checkout's " <>
-           "branch into main and stamps every story still on it with the version " <>
-           "that lands; it reports anything holding that merge up.",
-       promoted: false
-     }}
-  end
-
-  # Both halves, and the order matters: naming the sync problem first gives an
-  # agent something it can act on before it is told the application is down.
-  #
-  # This used to say promoting fixes both, which is true for *ahead* and false
-  # for *behind*: promotion merges this branch into the running copy and leaves
-  # this worktree where it was, so promoting while behind restarts the shared
-  # dev server and leaves the agent exactly as far behind. The counts now travel
-  # with the verdict so the remedy can tell those cases apart.
-  defp and_serving({false, _details} = behind, _running), do: behind
-  defp and_serving({true, details}, running), do: serving(running, details)
-
-  # Whether the application QA browses is answering.
-  #
-  # `code_on_running_copy` proved the code was on the running copy and stopped
-  # there, and the two came apart within a day: Broken Oaths' preview was down,
-  # this gate was satisfied, and a QA agent stood in front of a connection
-  # refused with the graph reporting the story ready to test. It then asked to
-  # restart the app itself — which would have started it on code that did not
-  # contain the work it was there to verify.
-  #
-  # Never checked passes. A copy with no preview address has nothing to be up,
-  # and a harness that has not reported yet is not evidence of anything; holding
-  # every story on either would be a gate no agent can clear.
-  defp serving(%WorkingCopy{preview_status: nil}, details), do: {true, details}
-  defp serving(%WorkingCopy{preview_status: "serving"}, details), do: {true, details}
-
-  # A 500 is the application answering. That is a QA finding rather than a
-  # reason to keep QA away from it — the whole point of testing is to meet it.
-  defp serving(%WorkingCopy{preview_status: "erroring"}, details), do: {true, details}
-
-  defp serving(%WorkingCopy{preview_status: "down"} = running, _details) do
-    {false,
-     %{
-       reason:
-         "the application is not answering at #{running.preview_url || "its preview address"}, " <>
-           "so there is nothing for QA to test. `promote` restarts it — and if this " <>
-           "checkout is also behind, brings the work across in the same act.",
-       preview_status: "down"
-     }}
-  end
+  # The verdict itself lives in `Promotion.RunningCopy`, a leaf the requirement
+  # graph reads too: the graph sits below promotion and must not call it.
+  defdelegate running_copy_check(scope, entity), to: CodeMySpec.Promotion.RunningCopy
+  defdelegate running_copy_verdicts(scope, stories), to: CodeMySpec.Promotion.RunningCopy
 
   # -------------------------------------------------------------- the promotion
 
@@ -309,17 +108,20 @@ defmodule CodeMySpec.Promotion do
   first promotion started — a queued promotion whose branch has since moved
   on would be a merge nobody asked for.
 
-  `notify:` is who to correct if the deployment fails after this has answered.
+  `notify:` is the agent to tell how the deployment ended — confirmed or
+  failed — after this has answered.
 
   The answer goes out as soon as the merge lands, which means it is sent before
   anybody knows whether the application came back — it says so, but it also
   says QA can start. When the restart then fails, that earlier message is wrong
   and the only party who can act on the correction is whoever received it.
-  `promote_async/2` is the only caller that knows who that was, so it passes it
-  down rather than the failure path guessing (0060d67d).
+  The `promote` tool is the only caller that knows who that was — the agent id
+  on its frame — so it passes it down rather than the restart path guessing
+  (0060d67d).
 
-  `nil`, and a caller that omits it, mean nobody is waiting to be corrected —
-  `promote_sync` answers its caller directly and the log is the record.
+  `nil`, and a caller that omits it, mean nobody is waiting to be told — a
+  Claude Code session or an operator has no conversation, and the log is the
+  record.
   """
   @spec promote(Scope.t(), keyword()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope, opts \\ []) do
@@ -378,16 +180,11 @@ defmodule CodeMySpec.Promotion do
          %WorkingCopy{id: id} = running,
          opts
        ) do
-    # No merge crossed here, so there is no range to ask `contract_changed?/2`
-    # about — the current commit could still differ from what the harness
-    # booted, same as any ordinary push. Always refresh: the only caller that
-    # gets to skip it is the one that has already checked.
-    #
-    # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
+    # `restart/2` always answers `{:error, %{reason: ...}}` now — dispatched,
     # not awaited, for every promotion (54aa534c) — so this wraps it as the
     # success it is rather than pattern-matching for a confirmation that no
     # longer arrives.
-    {:error, reason} = restart(scope, running, true, opts)
+    {:error, reason} = restart(scope, running, opts)
     {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
   end
 
@@ -430,7 +227,7 @@ defmodule CodeMySpec.Promotion do
       stamp_promoted_stories(scope, stamp_version)
 
       scope
-      |> restart(running, refresh_harness?(scope, merge_result), opts)
+      |> restart(running, opts)
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
     else
       {:error, reason} = error ->
@@ -448,44 +245,6 @@ defmodule CodeMySpec.Promotion do
         error
     end
   end
-
-  # Whether the restart that follows this merge needs to rebuild the harness
-  # too — the other half of `just refresh` that `just restart` always ran
-  # unconditionally, on every promotion, whether or not the merge touched
-  # anything the harness cares about (376e3356).
-  #
-  # Answered from the merge's own `before`/`after` — the checkout's HEAD on
-  # either side of exactly the commits this promotion just brought in — rather
-  # than the harness's general drift, which would also be true for commits
-  # this promotion had nothing to do with.
-  #
-  # `false` is the only answer that changes anything: `:unknown` (the range
-  # could not be read) and `true` both keep today's behavior. That asymmetry
-  # is deliberate. A refresh this promotion did not need costs a shared
-  # harness bounce and some seconds; a refresh it did need and skipped is
-  # d00a3272 again — every stop hook on the machine wrong until someone
-  # notices and restarts it by hand. Only a merge whose range is *provably*
-  # silent on `lib/cms_harness` and the channel modules gets to skip it.
-  #
-  # Scoped to a local promotion on purpose. `BootVersion.contract_changed?/2`
-  # reads the diff against *this process's own* booted root — correct only
-  # when that root is the same checkout the merge just landed in, which is
-  # true for this project's own self-hosted setup but not guaranteed for a
-  # `:harness`-environment promotion, whose checkout lives on a different
-  # machine than the server answering this question. Rather than guess, a
-  # harness-environment promotion always refreshes, unchanged from before.
-  defp refresh_harness?(%Scope{environment: %Environment{type: :harness}}, _merge_result),
-    do: true
-
-  defp refresh_harness?(%Scope{}, %{before: before, after: after_})
-       when is_binary(before) and is_binary(after_) do
-    case BootVersion.contract_changed?(before, after_) do
-      false -> false
-      _ -> true
-    end
-  end
-
-  defp refresh_harness?(%Scope{}, _merge_result), do: true
 
   # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
   # never awaited, for every promotion (54aa534c, phase two) — so there is
@@ -920,8 +679,8 @@ defmodule CodeMySpec.Promotion do
   # rather than an observation, deliberately: over-claiming costs one QA
   # attempt that meets a real failure and reports it; under-claiming costs an
   # agent that cannot get out of the gate at all.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, refresh_harness?, opts) do
-    dispatch_restart(scope, root, running.id, refresh_harness?, opts)
+  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, opts) do
+    dispatch_restart(scope, root, running.id, opts)
     {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
     {:error, %{reason: deployment_dispatched_reason()}}
   end
@@ -938,14 +697,14 @@ defmodule CodeMySpec.Promotion do
   # here that wasn't already gated — had nowhere to go. The caller had already
   # been told "merged, restart unconfirmed" and moved on; this is the one
   # place that outcome is ever actually resolved one way or the other.
-  defp dispatch_restart(scope, root, working_copy_id, refresh_harness?, opts) do
+  defp dispatch_restart(scope, root, working_copy_id, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         scope
-        |> Runner.restart(root, working_copy_id, refresh_harness?)
+        |> Runner.restart(root, working_copy_id)
         |> classify_restart()
         |> log_restart_outcome(root)
-        |> correct_the_agent(scope, root, Keyword.get(opts, :notify))
+        |> tell_the_agent(scope, root, Keyword.get(opts, :notify))
       end)
 
     :ok
@@ -955,7 +714,7 @@ defmodule CodeMySpec.Promotion do
   # readings that can disagree.
   #
   # They did disagree, and the shape of it is the reason this function exists
-  # rather than a comment: `correct_the_agent/4` consulted
+  # rather than a comment: `tell_the_agent/4` consulted
   # `restart_acknowledgement_lost?/1` and correctly said nothing, while
   # `log_restart_outcome/2` consulted nothing and wrote `restart FAILED` at
   # error level for that same restart. Both halves were right on their own
@@ -1028,19 +787,28 @@ defmodule CodeMySpec.Promotion do
   # the only record is a line in web.log that nobody who was not already
   # tailing it will read. From the agent's side that is silence.
   #
-  # Only on failure. A confirmed restart needs no message — the agent was told
-  # the merge landed and it did, and a second message saying so is noise in a
-  # conversation that is the agent's working memory.
+  # A confirmed restart is told too. It used to be skipped as noise, and an
+  # agent that decided to hold its task until the restart was confirmed then
+  # waited on a confirmation that only ever reached web.log (metric_flow,
+  # 2026-09-27).
   #
-  # `nil` is the ordinary case rather than an oversight: `promote_sync` answers
-  # its caller directly and has nobody to correct, and the log is the record
-  # there. Only `promote_async/2` knows who received the optimistic message,
+  # `nil` is the ordinary case rather than an oversight: a Claude Code session
+  # or an operator has no conversation to be told in, and the log is the record
+  # there. Only the tool call knows which agent received the first answer,
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
-  defp correct_the_agent(outcome, _scope, _root, nil), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, nil), do: outcome
 
-  # `:failed` only, and every other verdict falls through to the clause below.
-  #
+  defp tell_the_agent({:confirmed, revision} = outcome, scope, root, agent_id) do
+    text =
+      "The restart from your promotion is confirmed: the application at #{root} " <>
+        "is up and serving #{revision || "an unreported revision"}. Your merged " <>
+        "work is live — nothing more to wait for."
+
+    deliver(scope, agent_id, text, "restart confirmation")
+    outcome
+  end
+
   # A lost acknowledgement is not a failure — see `restart_acknowledgement_lost?/1`
   # above and `merged/5`'s use of it. The agent's first message already said
   # "merged, QA can start" and that is still true; correcting it here would
@@ -1049,10 +817,10 @@ defmodule CodeMySpec.Promotion do
   # this check exists to prevent — each unnecessary retry restarts the shared
   # dev server every other working copy on the box is using.
   #
-  # That rule is now applied by `classify_restart/1`, before this runs, so the
+  # That rule is applied by `classify_restart/1`, before this runs, so the
   # discrimination happens in one place and the log cannot reach a different
   # answer than the agent does.
-  defp correct_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
+  defp tell_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
         "deployment that followed it failed, so the application at #{root} is NOT " <>
@@ -1060,23 +828,26 @@ defmodule CodeMySpec.Promotion do
         "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
         "is still on the running copy. Fix what broke the restart and promote again."
 
-    case Agents.dispatch_message(scope, agent_id, text) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
-
-      # Logged rather than retried, matching `report_to/3`: the agent may already
-      # be acting on the wrong message, and a delivery loop does not fix that.
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] restart failed for #{root} and the agent could not be told: " <>
-            inspect(deliver_error)
-        )
-    end
-
+    deliver(scope, agent_id, text, "restart failure")
     outcome
   end
 
-  defp correct_the_agent(outcome, _scope, _root, _agent_id), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, _agent_id), do: outcome
+
+  # Logged rather than retried, matching `report_to/3`: the agent may already be
+  # acting on the first message, and a delivery loop does not fix that.
+  defp deliver(scope, agent_id, text, what) do
+    case Agents.dispatch_message(scope, agent_id, text) do
+      {:ok, disposition, _message} ->
+        Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
+
+      {:error, deliver_error} ->
+        Logger.warning(
+          "[Promotion] #{what} could not be delivered to agent #{agent_id}: " <>
+            inspect(deliver_error)
+        )
+    end
+  end
 
   defp deployment_dispatched_reason do
     "the restart is dispatched, not awaited: promote answers as soon as the " <>

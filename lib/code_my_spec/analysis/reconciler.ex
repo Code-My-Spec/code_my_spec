@@ -15,7 +15,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   require Logger
 
   alias CodeMySpec.Analysis.{
-    AgentReport,
     Coverage,
     Fingerprint,
     Run,
@@ -145,7 +144,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
         )
 
-        RunsRepository.finish_run(run, :failed, %{stats: %{"error" => inspect(reason)}})
+        finish_failed(run, inspect(reason))
         {:error, reason}
     end
   end
@@ -188,9 +187,48 @@ defmodule CodeMySpec.Analysis.Reconciler do
         requested_by_suffix(run)
     )
 
-    RunsRepository.finish_run(run, :failed, %{
-      stats: %{"error" => error_text(reason)}
-    })
+    finish_failed(run, reason)
+  end
+
+  defp finish_failed(run, reason) do
+    with {:ok, failed} <-
+           RunsRepository.finish_run(run, :failed, %{stats: %{"error" => error_text(reason)}}) do
+      announce_failed(failed, reason)
+      {:ok, failed}
+    end
+  end
+
+  @doc """
+  Tell the agent that requested a failed run that it failed, and why.
+
+  Every path that marks a run `:failed` ends here — `fail/2`, and the bulk
+  sweeps that close runs a harness disconnect or a server restart stranded. A
+  requested run always answers (see `announce_if_new/5`); before this, only a
+  completed one did, and an agent whose spex run was killed by a server restart
+  waited on it forever. A run nobody requested fails silently.
+  """
+  @spec announce_failed(Run.t(), term()) :: :ok
+  def announce_failed(%Run{} = run, reason) do
+    case requesting_agent_id(run) do
+      nil ->
+        :ok
+
+      requester ->
+        :telemetry.execute(
+          [:code_my_spec, :analysis, :run_reported],
+          %{},
+          %{
+            scope: %Scope{
+              active_project_id: run.project_id,
+              active_working_copy_id: run.working_copy_id
+            },
+            source: run.source,
+            problems: [],
+            requester: requester,
+            failure: error_text(reason)
+          }
+        )
+    end
   end
 
   # A string reason is stored as itself; everything else is inspected.
@@ -217,7 +255,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # runs still won't be until more callers are taught to pass it.
   # Only when this run says something the last one did not.
   #
-  # `AgentReport.deliver/3` used to fire on every completed run, and every stop
+  # The report to agents (`Agents.AnalysisReport`) used to fire on every completed run, and every stop
   # hook re-enqueues credo, so an unchanged finding announced itself once a
   # turn forever. A main agent on the math project spent four consecutive turns
   # answering "same repeated alert — already covered by issue ..., no action"
@@ -249,7 +287,14 @@ defmodule CodeMySpec.Analysis.Reconciler do
     requester = requesting_agent_id(run)
 
     if requester || new_findings?(previous, signatures) do
-      AgentReport.deliver(scope, run.source, problems, requester)
+      # An event rather than a call: `Agents.AnalysisReport` is attached to it,
+      # and Analysis does not depend on Agents. Handled synchronously, in this
+      # process, as the direct call was.
+      :telemetry.execute(
+        [:code_my_spec, :analysis, :run_reported],
+        %{},
+        %{scope: scope, source: run.source, problems: problems, requester: requester}
+      )
     else
       :ok
     end

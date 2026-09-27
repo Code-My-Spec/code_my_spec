@@ -41,7 +41,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -91,7 +91,9 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   # is reachable exactly while something on it is connected.
   defp reachable?(device) do
     device.working_copies
-    |> Enum.any?(fn copy -> match?({:ok, _pid, _instance}, Analysis.executor_holder(copy.id)) end)
+    |> Enum.any?(fn copy ->
+      match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
+    end)
   end
 
   # Presence is the connection; last seen is the fallback for a machine that

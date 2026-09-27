@@ -7,8 +7,9 @@ defmodule CodeMySpecWeb.Application do
 
   require Logger
 
+  alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.GraphWake
   alias CodeMySpec.Analytics.GoogleAnalytics
-  alias CodeMySpec.Requirements.GraphWatcher
 
   @impl true
   def start(_type, _args) do
@@ -80,7 +81,7 @@ defmodule CodeMySpecWeb.Application do
         # will not start helps nobody — but it is a reason to read a failure
         # here as something to act on rather than as self-correcting.
         Supervisor.child_spec(
-          {Task, &GraphWatcher.watch_active_projects/0},
+          {Task, &GraphWake.watch_active_projects/0},
           id: :watch_active_projects,
           restart: :temporary
         ),
@@ -155,6 +156,8 @@ defmodule CodeMySpecWeb.Application do
     case Supervisor.start_link(children, opts) do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
+        AnalysisReport.attach()
+        GraphWake.attach()
         ok
 
       other ->
