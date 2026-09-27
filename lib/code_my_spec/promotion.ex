@@ -108,17 +108,20 @@ defmodule CodeMySpec.Promotion do
   first promotion started — a queued promotion whose branch has since moved
   on would be a merge nobody asked for.
 
-  `notify:` is who to correct if the deployment fails after this has answered.
+  `notify:` is the agent to tell how the deployment ended — confirmed or
+  failed — after this has answered.
 
   The answer goes out as soon as the merge lands, which means it is sent before
   anybody knows whether the application came back — it says so, but it also
   says QA can start. When the restart then fails, that earlier message is wrong
   and the only party who can act on the correction is whoever received it.
-  `promote_async/2` is the only caller that knows who that was, so it passes it
-  down rather than the failure path guessing (0060d67d).
+  The `promote` tool is the only caller that knows who that was — the agent id
+  on its frame — so it passes it down rather than the restart path guessing
+  (0060d67d).
 
-  `nil`, and a caller that omits it, mean nobody is waiting to be corrected —
-  `promote_sync` answers its caller directly and the log is the record.
+  `nil`, and a caller that omits it, mean nobody is waiting to be told — a
+  Claude Code session or an operator has no conversation, and the log is the
+  record.
   """
   @spec promote(Scope.t(), keyword()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope, opts \\ []) do
@@ -701,7 +704,7 @@ defmodule CodeMySpec.Promotion do
         |> Runner.restart(root, working_copy_id)
         |> classify_restart()
         |> log_restart_outcome(root)
-        |> correct_the_agent(scope, root, Keyword.get(opts, :notify))
+        |> tell_the_agent(scope, root, Keyword.get(opts, :notify))
       end)
 
     :ok
@@ -711,7 +714,7 @@ defmodule CodeMySpec.Promotion do
   # readings that can disagree.
   #
   # They did disagree, and the shape of it is the reason this function exists
-  # rather than a comment: `correct_the_agent/4` consulted
+  # rather than a comment: `tell_the_agent/4` consulted
   # `restart_acknowledgement_lost?/1` and correctly said nothing, while
   # `log_restart_outcome/2` consulted nothing and wrote `restart FAILED` at
   # error level for that same restart. Both halves were right on their own
@@ -784,19 +787,28 @@ defmodule CodeMySpec.Promotion do
   # the only record is a line in web.log that nobody who was not already
   # tailing it will read. From the agent's side that is silence.
   #
-  # Only on failure. A confirmed restart needs no message — the agent was told
-  # the merge landed and it did, and a second message saying so is noise in a
-  # conversation that is the agent's working memory.
+  # A confirmed restart is told too. It used to be skipped as noise, and an
+  # agent that decided to hold its task until the restart was confirmed then
+  # waited on a confirmation that only ever reached web.log (metric_flow,
+  # 2026-09-27).
   #
-  # `nil` is the ordinary case rather than an oversight: `promote_sync` answers
-  # its caller directly and has nobody to correct, and the log is the record
-  # there. Only `promote_async/2` knows who received the optimistic message,
+  # `nil` is the ordinary case rather than an oversight: a Claude Code session
+  # or an operator has no conversation to be told in, and the log is the record
+  # there. Only the tool call knows which agent received the first answer,
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
-  defp correct_the_agent(outcome, _scope, _root, nil), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, nil), do: outcome
 
-  # `:failed` only, and every other verdict falls through to the clause below.
-  #
+  defp tell_the_agent({:confirmed, revision} = outcome, scope, root, agent_id) do
+    text =
+      "The restart from your promotion is confirmed: the application at #{root} " <>
+        "is up and serving #{revision || "an unreported revision"}. Your merged " <>
+        "work is live — nothing more to wait for."
+
+    deliver(scope, agent_id, text, "restart confirmation")
+    outcome
+  end
+
   # A lost acknowledgement is not a failure — see `restart_acknowledgement_lost?/1`
   # above and `merged/5`'s use of it. The agent's first message already said
   # "merged, QA can start" and that is still true; correcting it here would
@@ -805,10 +817,10 @@ defmodule CodeMySpec.Promotion do
   # this check exists to prevent — each unnecessary retry restarts the shared
   # dev server every other working copy on the box is using.
   #
-  # That rule is now applied by `classify_restart/1`, before this runs, so the
+  # That rule is applied by `classify_restart/1`, before this runs, so the
   # discrimination happens in one place and the log cannot reach a different
   # answer than the agent does.
-  defp correct_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
+  defp tell_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
         "deployment that followed it failed, so the application at #{root} is NOT " <>
@@ -816,23 +828,26 @@ defmodule CodeMySpec.Promotion do
         "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
         "is still on the running copy. Fix what broke the restart and promote again."
 
-    case Agents.dispatch_message(scope, agent_id, text) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] restart failure #{disposition} to agent #{agent_id}")
-
-      # Logged rather than retried, matching `report_to/3`: the agent may already
-      # be acting on the wrong message, and a delivery loop does not fix that.
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] restart failed for #{root} and the agent could not be told: " <>
-            inspect(deliver_error)
-        )
-    end
-
+    deliver(scope, agent_id, text, "restart failure")
     outcome
   end
 
-  defp correct_the_agent(outcome, _scope, _root, _agent_id), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, _agent_id), do: outcome
+
+  # Logged rather than retried, matching `report_to/3`: the agent may already be
+  # acting on the first message, and a delivery loop does not fix that.
+  defp deliver(scope, agent_id, text, what) do
+    case Agents.dispatch_message(scope, agent_id, text) do
+      {:ok, disposition, _message} ->
+        Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
+
+      {:error, deliver_error} ->
+        Logger.warning(
+          "[Promotion] #{what} could not be delivered to agent #{agent_id}: " <>
+            inspect(deliver_error)
+        )
+    end
+  end
 
   defp deployment_dispatched_reason do
     "the restart is dispatched, not awaited: promote answers as soon as the " <>
