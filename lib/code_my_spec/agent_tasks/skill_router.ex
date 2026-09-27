@@ -264,7 +264,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
     # Next: #{node.name}
 
     Your next task is **#{node.name}** for #{node.entity_type} `#{node.entity_name}`.
-    execution_type=#{node.execution_type}, orchestrated_by=#{node.orchestrated_by || "none"}, validation_type=#{node.validation_type}
+    role=#{Map.get(node, :role) || "any"}, runs_in=#{CodeMySpec.Requirements.Requirement.runs_in(node.execution_type)}, orchestrated_by=#{node.orchestrated_by || "none"}, validation_type=#{node.validation_type}
 
     Call `start_task` with:
     - `requirement_name`: `"#{node.name}"`

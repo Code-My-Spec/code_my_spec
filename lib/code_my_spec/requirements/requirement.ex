@@ -100,4 +100,13 @@ defmodule CodeMySpec.Requirements.Requirement do
       {key, value} -> {key, value}
     end)
   end
+
+  @doc """
+  Where a requirement's work runs, in words. `execution_type: :main_agent` means
+  the agent's own session, and printed raw it read as "the main agent's job" —
+  metric_flow's main claimed a coding task on that reading.
+  """
+  @spec runs_in(atom() | nil) :: String.t()
+  def runs_in(:sub_agent), do: "subagent"
+  def runs_in(_execution_type), do: "own_session"
 end

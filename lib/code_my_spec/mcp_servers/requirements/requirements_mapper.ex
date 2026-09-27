@@ -48,7 +48,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   defp execution_metadata(node) do
     "- #{node.name} (#{node.entity_type} #{node.entity_id}): " <>
-      "execution_type=#{node.execution_type}, " <>
+      "role=#{Map.get(node, :role) || "any"}, runs_in=#{CodeMySpec.Requirements.Requirement.runs_in(node.execution_type)}, " <>
       "orchestrated_by=#{node.orchestrated_by || "none"}, " <>
       "validation_type=#{node.validation_type}"
   end
