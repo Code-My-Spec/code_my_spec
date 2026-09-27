@@ -993,67 +993,44 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  # In-process validators run synchronously (they're milliseconds); the four
-  # subprocess sources go through Analysis — enqueued in the background,
-  # memoized against the run ledger when inputs haven't changed. Returns the
-  # `%{enqueued: [...], memoized: [...]}` summary.
+  # A stop never starts an analyzer. Analysis is explicit — `start_analysis`, or
+  # required by promote (`.code_my_spec/rules/analysis_is_explicit.md`). Starting
+  # runs here queued compiler and credo on every stop and subagent_stop, and
+  # every leg once a scan marked them stale, which is how one project's 25-minute
+  # spex sweep held the machine's only analyzer slot in a loop (`38d87eb5`).
   #
-  # No changed files → stay quiet (criterion 5097): only re-enqueue sources
-  # whose latest run failed (crash/timeout/superseded recovery), via
-  # `only_failed`.
-  defp run_pipeline(scope, task, [], config, opts) do
-    excluded = StaticAnalysis.task_excluded_analyzers(task)
-    declared = StaticAnalysis.task_analyzers(task)
+  # The exception is output a caller hands over explicitly: `test_output_files`
+  # names a finished result to ingest, not a run to start. Only specs send it.
+  @nothing_enqueued %{enqueued: [], memoized: []}
 
-    # Config gates a source here the same way `resolve_analyzers/3` gates
-    # role-derived inclusion — but a source the active task declared via
-    # `analyzers/0` bypasses it, same reasoning as there: `FixBddSpecs`
-    # naming `spex_stale` has to survive `spex: :off` on a quiet stop too,
-    # or the re-enqueue this branch exists for stops happening for the one
-    # task that needed it.
-    enabled =
-      for {analyzer, source} <- @subprocess_analyzers,
-          analyzer not in excluded,
-          analyzer in declared or mode_for(config, config_field(analyzer)) != :off,
-          do: source
-
-    Analysis.ensure_stale_runs(
-      scope,
-      Enum.uniq(["compiler" | enabled]),
-      Keyword.put(opts, :only_failed, true)
-    )
-  end
+  @output_file_sources %{
+    compile_output_file: "compiler",
+    credo_output_file: "credo",
+    exunit_output_file: "exunit",
+    spex_output_file: "spex"
+  }
 
   defp run_pipeline(scope, task, changed_files, config, opts) do
-    log_changed_files(changed_files)
+    if changed_files != [] do
+      log_changed_files(changed_files)
 
-    analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
+      in_process =
+        task
+        |> StaticAnalysis.resolve_analyzers(changed_files, config)
+        |> Enum.reject(&Map.has_key?(@subprocess_analyzers, &1))
 
-    {subprocess, in_process} =
-      Enum.split_with(analyzers, &Map.has_key?(@subprocess_analyzers, &1))
+      StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
+    end
 
-    StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
-
-    requests =
-      ["compiler" | Enum.map(subprocess, &request_for(&1, changed_files, config))]
-      |> Enum.uniq()
-
-    Analysis.ensure_stale_runs(scope, requests, opts)
+    ingest_supplied_output(scope, opts)
   end
 
-  # Every source, credo included, scans the whole project. The config mode
-  # decides whether credo *blocks*; it no longer decides what credo looks at.
-  #
-  # `:block_changed` still blocks only on violations in the turn's changed
-  # files — that filtering lives in `apply_mode/4` at decision time. What
-  # changes is that violations elsewhere are now persisted as advisory and
-  # visible on the Problems page instead of never being looked for.
-  defp request_for(analyzer, _changed_files, _config),
-    do: Map.fetch!(@subprocess_analyzers, analyzer)
-
-  defp config_field(:credo), do: :credo
-  defp config_field(:exunit_stale), do: :exunit
-  defp config_field(:spex_stale), do: :spex
+  defp ingest_supplied_output(scope, opts) do
+    case for({opt, source} <- @output_file_sources, Keyword.has_key?(opts, opt), do: source) do
+      [] -> @nothing_enqueued
+      supplied -> Analysis.ensure_stale_runs(scope, supplied, opts)
+    end
+  end
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
        when not is_nil(started_at) do
