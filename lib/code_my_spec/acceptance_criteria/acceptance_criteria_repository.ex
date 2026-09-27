@@ -62,20 +62,24 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     # Which numbers name a story here, so the guard below can tell "this
     # directory belongs to another story" from "this directory names nothing".
     story_numbers = project_story_numbers(project_id)
+    dir_owners = directory_owners(project_id)
 
     by_row_id =
       from(c in Criterion,
         join: s in "stories",
         on: s.id == c.story_id,
         where: c.project_id == ^project_id and c.id in ^ids,
-        select: {c.id, c.spec_path, s.number}
+        select: {c.id, c.spec_path, s.number, c.story_id}
       )
       |> Repo.all()
-      |> Enum.filter(fn {id, path, number} ->
+      |> Enum.filter(fn {id, path, number, story_id} ->
+        observed = Map.fetch!(paths, id)
+
         stale?(path, present) and
-          names_this_story?(Map.fetch!(paths, id), number, story_numbers)
+          names_this_story?(observed, number, story_numbers) and
+          not owned_by_another_story?(observed, story_id, dir_owners)
       end)
-      |> Enum.map(fn {id, previous, _number} -> {id, previous, Map.fetch!(paths, id)} end)
+      |> Enum.map(fn {id, previous, _number, _story} -> {id, previous, Map.fetch!(paths, id)} end)
 
     # And the ones the filename cannot name.
     #
@@ -237,6 +241,28 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
       ^story_number -> true
       other -> not MapSet.member?(story_numbers, other)
     end
+  end
+
+  # A directory with no story number is judged by who already has specs in it.
+  # The id in a legacy filename is from before a renumbering, so on metric_flow
+  # (2026-09-27) new criteria 4112-4115 of a subscription story claimed
+  # correlation-analysis files that happened to carry those old ids.
+  defp owned_by_another_story?(path, story_id, dir_owners) do
+    case Map.get(dir_owners, Path.dirname(path)) do
+      nil -> false
+      owners -> not MapSet.member?(owners, story_id)
+    end
+  end
+
+  defp directory_owners(project_id) do
+    from(c in Criterion,
+      where: c.project_id == ^project_id,
+      where: not is_nil(c.spec_path) and c.spec_path != "",
+      select: {c.spec_path, c.story_id}
+    )
+    |> Repo.all()
+    |> Enum.group_by(fn {path, _} -> Path.dirname(path) end, fn {_, story} -> story end)
+    |> Map.new(fn {dir, stories} -> {dir, MapSet.new(stories)} end)
   end
 
   defp project_story_numbers(project_id) do
