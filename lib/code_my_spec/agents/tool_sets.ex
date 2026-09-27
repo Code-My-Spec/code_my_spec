@@ -134,6 +134,7 @@ defmodule CodeMySpec.Agents.ToolSets do
     web_search web_fetch
     browser
     promote
+    ensure_app_running restart_app stop_app
   )
 
   # Shaping what gets built, and never building it. The product half of the
