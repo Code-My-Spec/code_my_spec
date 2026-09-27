@@ -65,6 +65,25 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   defp put_or_delete(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   @doc """
+  Shrink `AppInstance`'s idle timeout and re-check interval to real
+  milliseconds, restored on exit — for a criterion about the idle-stop
+  itself, where `app_instance_rig/1`'s own defaults (fast health polling,
+  production idle timing) would otherwise mean actually waiting 30 minutes.
+  """
+  def set_idle_timeout(opts) do
+    previous_idle = Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms)
+    previous_interval = Application.get_env(:code_my_spec, :app_instance_idle_check_interval_ms)
+
+    Application.put_env(:code_my_spec, :app_instance_idle_timeout_ms, Keyword.fetch!(opts, :idle_ms))
+    Application.put_env(:code_my_spec, :app_instance_idle_check_interval_ms, Keyword.fetch!(opts, :check_interval_ms))
+
+    on_exit(fn ->
+      put_or_delete(:app_instance_idle_timeout_ms, previous_idle)
+      put_or_delete(:app_instance_idle_check_interval_ms, previous_interval)
+    end)
+  end
+
+  @doc """
   Install (or reconfigure) `FakeAppInstanceRunner` as `AppInstance`'s runner.
 
   Idempotent for the same reason `install_workspace_runner/2` is: scenarios
