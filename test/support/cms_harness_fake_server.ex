@@ -199,6 +199,21 @@ defmodule CmsHarnessTest.FakeServer do
     ref
   end
 
+  @doc """
+  Push any event with no reply expected — `"offboard"`, in particular, which
+  `ChannelClient` answers with a fire-and-forget `Task.start`, not a
+  `_result` push. Raises the same way `push_app_event/2` does when nothing
+  has joined yet.
+  """
+  def push_event(event, payload \\ %{}) do
+    case :persistent_term.get({__MODULE__, :channel}, nil) do
+      nil -> raise "no channel has joined the fake server yet — push_event can't reach a harness"
+      pid -> send(pid, {:push_app_event, event, payload})
+    end
+
+    :ok
+  end
+
   def notify(message) do
     case listener() do
       nil -> :ok

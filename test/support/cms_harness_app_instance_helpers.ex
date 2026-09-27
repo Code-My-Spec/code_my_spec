@@ -33,6 +33,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   def app_instance_rig(runner_opts \\ []) do
     ensure_harness_supervisor_started()
     install_app_instance_runner(runner_opts)
+    use_fast_health_wait()
     FakeServer.start()
 
     root = project_root()
@@ -42,6 +43,26 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
 
     %{root: root, working_copy_id: working_copy_id}
   end
+
+  # Two attempts, no sleep — against a scripted `Runner` that already knows
+  # its answer, waiting the production 15×1000ms for "an app that fails to
+  # boot is reported, not waited on" would make that criterion's own subject
+  # true of the spex proving it.
+  defp use_fast_health_wait do
+    previous_attempts = Application.get_env(:code_my_spec, :app_instance_health_wait_attempts)
+    previous_interval = Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms)
+
+    Application.put_env(:code_my_spec, :app_instance_health_wait_attempts, 2)
+    Application.put_env(:code_my_spec, :app_instance_health_wait_interval_ms, 0)
+
+    on_exit(fn ->
+      put_or_delete(:app_instance_health_wait_attempts, previous_attempts)
+      put_or_delete(:app_instance_health_wait_interval_ms, previous_interval)
+    end)
+  end
+
+  defp put_or_delete(key, nil), do: Application.delete_env(:code_my_spec, key)
+  defp put_or_delete(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   @doc """
   Install (or reconfigure) `FakeAppInstanceRunner` as `AppInstance`'s runner.
@@ -100,6 +121,13 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     File.mkdir_p!(Path.join(root, "test"))
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
     File.write!(Path.join(root, "justfile"), "serve:\n    @true\n")
+
+    # One trackable file so a scan mid-test finds something rather than
+    # erroring "found no trackable files" — a real error-level log this
+    # rig's own emptiness would cause, unrelated to whatever a criterion is
+    # asserting.
+    File.write!(Path.join(root, "lib/fake_app.ex"), "defmodule FakeApp do\nend\n")
+
     on_exit(fn -> File.rm_rf(root) end)
     root
   end
