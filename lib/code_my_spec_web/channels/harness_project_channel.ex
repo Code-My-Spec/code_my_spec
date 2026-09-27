@@ -61,6 +61,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Promotion
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
@@ -111,7 +112,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # rather than something each call site has to remember — and forgetting it
       # returns another checkout's files with no error to notice.
       {:ok,
-       %{working_copy_id: harness.id, harness_id: harness.id, device_id: device && device.id},
+       %{
+         working_copy_id: harness.id,
+         harness_id: harness.id,
+         device_id: device && device.id,
+         sops_age_keys: local_age_keys(scope)
+       },
        socket
        |> assign(:scope, scope)
        |> assign(:harness, harness)
@@ -2107,6 +2113,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp resolve_device(_scope, _payload), do: nil
+
+  # The keys that open this project's local `envs/dev.enc.env` and
+  # `envs/test.enc.env`, for the harness's machine keyring. Deploy environments'
+  # keys stay on the server.
+  @local_sops_environments ~w(dev test)
+
+  defp local_age_keys(scope) do
+    for env <- @local_sops_environments,
+        {:ok, key} <- [ProjectSecrets.fetch_value(scope, "age_private_key_#{env}")],
+        is_binary(key) and key != "",
+        uniq: true,
+        do: key
+  end
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"
