@@ -359,7 +359,19 @@ defmodule CodeMySpec.Agents.Work do
   defp runnable_state?(agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id)
+      not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent)
+  end
+
+  # An agent that tapped out has asked to leave the loop until a person
+  # answers. metric_flow's coding agent was nudged 42 times over 5.5 hours on
+  # 2026-09-27 while its tap-out waited, answering each with a turn that said
+  # the same thing. A decision resolves the blocker or cancels the task, and
+  # either one makes it runnable again.
+  defp awaiting_tap_out?(agent) do
+    Enum.any?(agent.tasks || [], fn task ->
+      task.status == :blocked and task.blocker_type == :tap_out and
+        is_nil(task.blocker_resolved_at)
+    end)
   end
 
   # A reservation is the gap between stamping a turn and the agent reporting it
