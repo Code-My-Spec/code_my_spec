@@ -37,6 +37,8 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
+  alias CodeMySpec.Configurations.ProjectConfiguration
+
   alias CodeMySpec.{
     AccountSecrets,
     Configurations,
@@ -3984,12 +3986,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # No row, or a row predating the column, means nobody has said this project
   # ships — the same answer the schema default gives. Mirrors
   # `Resources.devops/2`, which reads it for the same reason.
-  defp devops_level(scope) do
-    case Configurations.get(scope) do
-      %{devops: devops} when not is_nil(devops) -> devops
-      _ -> :off
-    end
-  end
+  defp devops_level(scope),
+    do: scope |> Configurations.get() |> ProjectConfiguration.devops_level()
 
   # Shared by every run/3 clause that fans out over environments and must
   # refuse rather than report done for a project whose devops level filtered

@@ -25,6 +25,7 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   """
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Resources
   alias CodeMySpec.Users.Scope
 
@@ -129,7 +130,7 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   defp prod_enabled?(nil), do: false
 
   defp prod_enabled?(config) do
-    (Map.get(config, :devops) || :off) == :prod
+    ProjectConfiguration.devops_level(config) == :prod
   end
 
   # ── Prompt sections ─────────────────────────────────────────────────
