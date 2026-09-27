@@ -25,7 +25,6 @@ defmodule CodeMySpec.WorkingCopies do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Components,
       CodeMySpec.Devices,

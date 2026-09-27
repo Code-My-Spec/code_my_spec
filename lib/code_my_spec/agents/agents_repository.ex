@@ -123,7 +123,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   A scope per project that has at least one agent in the loop.
 
-  For `GraphWatcher.watch_active_projects/0` at boot. Scopeless because there is
+  For `Agents.GraphWake.watch_active_projects/0` at boot. Scopeless because there is
   no caller to scope it to — this runs before anybody has asked for anything,
   and "which projects are being worked" is a fact about the whole install.
 

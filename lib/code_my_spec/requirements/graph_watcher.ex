@@ -59,8 +59,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   import Ecto.Query, only: [from: 2]
 
-  alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
@@ -262,37 +260,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     end
   catch
     :exit, _ -> nil
-  end
-
-  @doc """
-  Start a watcher for every project that has an agent in the loop.
-
-  Watchers live in memory, so a restart takes them all — and nothing recreated
-  them until somebody toggled a loop. That is the worst possible time to lose
-  them: a deploy is exactly when agents are mid-run, and an agent that goes idle
-  after one has nothing watching for the work that would wake it.
-
-  Called at boot. A project with nobody working it stays unwatched, which is the
-  same rule `ensure_watching/1` follows on demand.
-
-  Best-effort by design: a project whose scope cannot be built is skipped rather
-  than taking the boot down with it, and the next stop decision on that project
-  starts its watcher anyway.
-  """
-  @spec watch_active_projects() :: :ok
-  def watch_active_projects do
-    AgentsRepository.continuous_project_scopes()
-    |> Enum.each(fn scope ->
-      case ensure_watching(scope) do
-        {:ok, _pid} ->
-          :ok
-
-        other ->
-          Logger.warning(
-            "[GraphWatcher] could not watch #{scope.active_project_id}: #{inspect(other)}"
-          )
-      end
-    end)
   end
 
   # -- Server --
@@ -709,15 +676,12 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   defp maybe_request_work(_state, []), do: nil
 
+  # An event, not a call: `Agents.GraphWake` answers it by starting the wake
+  # off this process (see its moduledoc for why that must be off-process), and
+  # the graph does not depend on Agents.
   defp maybe_request_work(state, _observations) do
-    scope = state.scope
-
-    case Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-           Work.consider_project(scope, :graph_changed)
-         end) do
-      {:ok, pid} -> pid
-      _ -> nil
-    end
+    :telemetry.execute([:code_my_spec, :requirements, :graph_changed], %{}, %{scope: state.scope})
+    true
   end
 
   defp recompute(state) do

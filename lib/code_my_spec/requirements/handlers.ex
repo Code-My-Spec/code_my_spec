@@ -48,9 +48,9 @@ defmodule CodeMySpec.Requirements.Handlers do
   skip work it owed.
   """
 
-  alias CodeMySpec.AgentTasks.QaIntegrationPlan
+  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Deploys
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.Promotion.RunningCopy
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Requirements.ArchitectureChecker
@@ -270,7 +270,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "architecture_designed" => {ArchitectureChecker, :complete?},
     "stories_exist" => {StoriesChecker, :exist?},
     "work_dispatched" => {DispatchChecker, :dispatched?},
-    "qa_integration_plan" => {QaIntegrationPlan, :delegate}
+    "qa_integration_plan" => {QaIntegrationPlanChecker, :delegate}
   }
 
   @doc """
@@ -571,7 +571,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # reads rather than two per story.
   defp settle("code_on_running_copy", %{stories: profile}, scope) do
     {{default?, default_details}, promoted} =
-      Promotion.running_copy_verdicts(scope, profile.stories)
+      RunningCopy.running_copy_verdicts(scope, profile.stories)
 
     %{
       entity_type: "story",
@@ -782,11 +782,11 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   defp delegate_verdict(name, profiles, scope) do
     case Map.fetch!(@delegate_requirements, name) do
-      {QaIntegrationPlan, :delegate} ->
+      {QaIntegrationPlanChecker, :delegate} ->
         # Handed the profile's files so it does not re-read them;
         # `integration_files/2` takes a context in exactly this shape.
         scope
-        |> QaIntegrationPlan.evaluate(nil, %{files_by_project: profiles.files.all})
+        |> QaIntegrationPlanChecker.evaluate(nil, %{files_by_project: profiles.files.all})
         |> RequirementCalculator.normalize_delegate_result()
 
       {PersonasChecker, :complete?} ->
@@ -816,7 +816,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # `EpicDispatch.dispatch_state/1`'s three answers, from the profile.
+  # `Epics.dispatch_state/1`'s three answers, from the profile.
   #
   # Unsatisfied only when nothing is in progress and unassigned work exists —
   # the one state that wants the main agent to act. Ready matters: an unshaped

@@ -21,8 +21,11 @@ defmodule CodeMySpec.Epics do
     ],
     exports: :all
 
+  import Ecto.Query, only: [from: 2, where: 3]
+
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Epics.EpicsRepository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -102,5 +105,61 @@ defmodule CodeMySpec.Epics do
 
   defp broadcast(%Scope{} = scope, message) do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(scope), message)
+  end
+
+  @type dispatch_state ::
+          {:work_to_assign, [Epic.t()]}
+          | {:nothing_to_assign, :in_progress}
+          | {:nothing_to_assign, :all_assigned}
+
+  @doc """
+  Whether the main agent has work to assign, and why not when it has none.
+
+  A reason rather than a boolean because the two ways of having nothing to do
+  mean opposite things. Nothing in progress and nothing left is a finished
+  project; nothing in progress with work waiting is the one state that wants
+  somebody to act, and a node that reported them the same way would either nag a
+  finished project forever or go quiet on one that is stuck.
+  """
+  @spec dispatch_state(Scope.t()) :: dispatch_state()
+  def dispatch_state(%Scope{active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    cond do
+      in_progress?(project_id) -> {:nothing_to_assign, :in_progress}
+      unassigned(scope) == [] -> {:nothing_to_assign, :all_assigned}
+      true -> {:work_to_assign, unassigned(scope)}
+    end
+  end
+
+  def dispatch_state(%Scope{}), do: {:nothing_to_assign, :all_assigned}
+
+  # Anything dispatched and not finished. A failed epic is not in progress —
+  # that is the distinction `record_failure/3` exists to make, and counting it
+  # as busy would leave a project that fell over reporting itself as working.
+  @doc """
+  Whether anything dispatched is still being built.
+
+  Here rather than in `EpicDispatch` because the requirement graph asks it,
+  and the graph sits below dispatch: it reads epics, it does not call the code
+  that acts on them. (It went through `EpicDispatch` from 2026-09-16 only
+  because `Epics` was not yet a declared dependency of `Requirements`.)
+  """
+  @spec in_progress?(Scope.t()) :: boolean()
+  def in_progress?(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: in_progress?(project_id)
+
+  def in_progress?(%Scope{}), do: false
+
+  def in_progress?(project_id) when is_binary(project_id) do
+    Repo.exists?(from e in Epic, where: e.project_id == ^project_id and e.status == :dispatched)
+  end
+
+  # Stories that are ready and belong to no epic. Ready matters: an unshaped
+  # story is not work waiting to be assigned, it is work waiting to be shaped,
+  # and proposing it would put the wrong thing in front of somebody.
+  defp unassigned(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id))
+    |> Repo.all()
   end
 end

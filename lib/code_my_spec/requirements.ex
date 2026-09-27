@@ -11,14 +11,12 @@ defmodule CodeMySpec.Requirements do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.AgentTasks,
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
       CodeMySpec.Configurations,
       CodeMySpec.Deploys,
-      CodeMySpec.EpicDispatch,
+      CodeMySpec.Epics,
       CodeMySpec.Faults,
       CodeMySpec.Files,
       CodeMySpec.Issues,
@@ -28,8 +26,9 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Projects,
       # `code_on_running_copy` is Promotion's verdict, and a graph that decided
       # it for itself would be a second answer to the question promotion exists
-      # to answer. One-way: Promotion no longer reads the graph.
-      CodeMySpec.Promotion,
+      # to answer. So the graph reads it — from this leaf, not from `Promotion`,
+      # which sits above the graph and must not be called by it.
+      CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,

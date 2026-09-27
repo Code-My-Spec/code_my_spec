@@ -31,9 +31,11 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
   # Everywhere outside `GraphWatcher` itself that starts one, and why each is a
   # remedy a reader can actually perform.
   #
-  # `graph_watcher.ex` is excluded because it defines the function and calls it
-  # from `watch_active_projects/0` — that is the boot task, and it is the
-  # "restart the server" remedy rather than a separate caller to police.
+  # Excluded: `graph_watcher.ex`, which defines the function, and
+  # `agents/graph_wake.ex`, whose `watch_active_projects/0` is the boot task —
+  # the "restart the server" remedy rather than a separate caller to police. It
+  # lived in `GraphWatcher` until 2026-09-27, when the graph stopped reading the
+  # agents table to decide what to watch.
   @callers %{
     "lib/code_my_spec/agents.ex" =>
       "the two continuous toggles — the 'toggle an agent's loop' remedy",
@@ -42,7 +44,10 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
         "which is only a remedy for a project nothing has ever projected"
   }
 
-  @definer "lib/code_my_spec/requirements/graph_watcher.ex"
+  @excluded [
+    "lib/code_my_spec/requirements/graph_watcher.ex",
+    "lib/code_my_spec/agents/graph_wake.ex"
+  ]
 
   defp calls_ensure_watching?(path) do
     path
@@ -62,7 +67,7 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
     callers =
       "lib/**/*.ex"
       |> Path.wildcard()
-      |> Enum.reject(&(&1 == @definer))
+      |> Enum.reject(&(&1 in @excluded))
       |> Enum.filter(&calls_ensure_watching?/1)
       |> Enum.sort()
 

@@ -240,14 +240,14 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   test "a restart re-establishes a watcher for a project being worked", ctx do
     _product = product_agent(ctx.scope, ctx.copy)
 
-    assert :ok = GraphWatcher.watch_active_projects()
+    assert :ok = CodeMySpec.Agents.GraphWake.watch_active_projects()
 
     assert [{_pid, _}] =
              Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id)
   end
 
   test "a project nobody is working is left unwatched", ctx do
-    assert :ok = GraphWatcher.watch_active_projects()
+    assert :ok = CodeMySpec.Agents.GraphWake.watch_active_projects()
 
     assert [] = Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id),
            "a project with no agent in the loop needs no watcher"
