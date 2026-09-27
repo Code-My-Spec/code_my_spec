@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Users.Scope
 
   # Only tools the agent actually carries directly.
   #
@@ -359,7 +360,19 @@ defmodule CodeMySpec.Agents.Work do
   defp runnable_state?(agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id)
+      not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent)
+  end
+
+  # An agent that tapped out has asked to leave the loop until a person
+  # answers. metric_flow's coding agent was nudged 42 times over 5.5 hours on
+  # 2026-09-27 while its tap-out waited, answering each with a turn that said
+  # the same thing. A decision resolves the blocker or cancels the task, and
+  # either one makes it runnable again.
+  defp awaiting_tap_out?(agent) do
+    Enum.any?(agent.tasks || [], fn task ->
+      task.status == :blocked and task.blocker_type == :tap_out and
+        is_nil(task.blocker_resolved_at)
+    end)
   end
 
   # A reservation is the gap between stamping a turn and the agent reporting it
@@ -498,27 +511,54 @@ defmodule CodeMySpec.Agents.Work do
 
   # The nodes themselves rather than a boolean, so the offer can be fingerprinted.
   defp graph_work(scope, agent) do
+    scope
+    |> claimable_work(agent)
+    |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
+  end
+
+  @doc """
+  The graph work this agent would be offered: its role's actionable nodes at its
+  own checkout, minus any another agent there holds.
+
+  Public so the main agent's "this agent has work" is this answer rather than a
+  second one that disagrees (4849f20b). `owners` saves a reader asking for a
+  whole fleet from listing the project's agents once per agent.
+  """
+  @spec claimable_work(Scope.t(), Agent.t(), [Agent.t()] | nil) :: [map()]
+  def claimable_work(scope, agent, owners \\ nil) do
     scope = %{scope | active_working_copy_id: agent.working_copy_id}
-    owners = AgentsRepository.list_agents(scope)
+    owners = owners || AgentsRepository.list_agents(scope)
 
     scope
     |> Requirements.actionable_for_role(agent.role)
     |> Enum.reject(&held?(owners, agent, &1))
-    |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
 
-  defp held?(owners, agent, node) do
+  defp held?(owners, agent, node), do: held_by?(owners, agent, node, true)
+
+  @doc """
+  Whether a task at `agent`'s checkout withholds `node` from it: another
+  agent's live task, or its own blocked on an unresolved blocker.
+
+  `get_next_requirement` asks this so it never offers what `start_task` refuses
+  (467310a7). Its own active task is not withheld — `start_task` resumes that.
+  """
+  @spec withheld?([Agent.t()], Agent.t(), map()) :: boolean()
+  def withheld?(owners, agent, node), do: held_by?(owners, agent, node, false)
+
+  defp held_by?(owners, agent, node, own_active?) do
     owners
     |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
     |> Enum.any?(fn owner ->
-      Enum.any?(owner.tasks || [], &holds_node?(&1, owner.id == agent.id, node))
+      mine? = owner.id == agent.id
+      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, own_active?, node))
     end)
   end
 
-  defp holds_node?(task, mine?, node) do
+  defp holds_node?(task, mine?, own_active?, node) do
     task.requirement_name == node.name and
       entity_id(task, node.entity_type) == to_string(node.entity_id) and
-      (task.status == :active or
+      ((task.status == :active and (own_active? or not mine?)) or
          (task.status == :blocked and (not mine? or is_nil(task.blocker_resolved_at))))
   end
 

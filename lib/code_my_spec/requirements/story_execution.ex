@@ -10,11 +10,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved)
 
-  def read(scope, role \\ nil, requested_story_id \\ nil) do
+  # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
+  # another agent's at this checkout — before the wave is cut (467310a7).
+  def read(scope, role \\ nil, requested_story_id \\ nil, withheld? \\ fn _ -> false end) do
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
          :ok <- GraphWatcher.settle(scope),
          {:ok, ctx} <- Preloader.load(scope),
+         ctx = Map.put(ctx, :withheld?, withheld?),
          {{nodes, edges}, _actionable, _at} <-
            RequirementGraph.cached_graph_with_actionable(scope) do
       case selected(scope, copy, requested_story_id) do
@@ -221,7 +224,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   defp empty_reason([], _edges, _ctx), do: no_graph_reason()
 
   defp empty_reason(nodes, edges, ctx) do
-    case actionable_nodes(nodes, edges, ctx, nil) do
+    case graph_actionable(nodes, edges, ctx, nil) do
       [] ->
         "# All requirements satisfied\n\nNo actionable requirements remain."
 
@@ -248,10 +251,16 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     """
   end
 
-  defp actionable_nodes(nodes, edges, context, nil),
+  defp actionable_nodes(nodes, edges, context, role) do
+    nodes
+    |> graph_actionable(edges, context, role)
+    |> Enum.reject(Map.get(context, :withheld?, fn _ -> false end))
+  end
+
+  defp graph_actionable(nodes, edges, context, nil),
     do: RequirementGraph.actionable_from(nodes, edges, context)
 
-  defp actionable_nodes(nodes, edges, context, role),
+  defp graph_actionable(nodes, edges, context, role),
     do: RequirementGraph.actionable_for_role_from(nodes, edges, context, role)
 
   @doc false

@@ -28,6 +28,8 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.MainAgent.AgentWork
@@ -35,7 +37,6 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -51,7 +52,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     questions = open_questions(agents)
     tapped_out = tapped_out(agents)
     problems = problems_by_copy(scope)
-    idle_queues = idle_queues(scope, agents)
+    owners = AgentsRepository.list_agents(scope)
     stories = story_titles(agents)
 
     Enum.map(agents, fn agent ->
@@ -74,7 +75,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         turn_started_at: agent.turn_started_at,
         # A claimed task means there is work whatever the queue says; idle is
         # only ever about an agent with nothing in hand.
-        idle?: is_nil(task) and MapSet.member?(idle_queues, queue_key(agent)),
+        idle?: is_nil(task) and nothing_claimable?(scope, agent, owners),
         machine_tools: copy && copy.machine_tools,
         problems: Map.get(problems, agent.working_copy_id, [])
       }
@@ -187,44 +188,22 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     |> Enum.group_by(& &1.working_copy_id)
   end
 
-  # Which queues the graph currently holds nothing for.
+  # Whether the graph holds work *this agent* would be offered.
   #
   # Asked of the graph rather than read off a field, because there is no field:
   # "nothing to do" is a property of the project's outstanding work and an
   # implementation reporting it from somewhere a scenario had set would pass a
   # scenario and fail in production, where nobody sets it.
   #
-  # A queue is a role *on a checkout*, not a role. This asked once per role at
-  # the caller's own scope, which is the blended vantage `Preloader.load/1`
-  # warns about — "a file present in one and absent in another reads as
-  # present. Expected for the UI; an agent path here is a bug." A supervisor's
-  # report about an agent is an agent path, and `Agents.wake_project_roles/2`
-  # already computes each agent's menu at `at_agents_vantage/2` for exactly
-  # this reason.
-  #
-  # Measured 2026-09-17 with seven checkouts joined: both QA agents were
-  # reported as having work for their role while each, asked from its own
-  # connection, correctly answered that it had none. An agent that has stood
-  # down correctly then reads identically to one that is stuck, so every remedy
-  # the supervisor has is aimed at a fault that is not there.
-  defp idle_queues(scope, agents) do
-    agents
-    |> Enum.map(&queue_key/1)
-    |> Enum.uniq()
-    |> Enum.filter(fn {copy_id, role} ->
-      Requirements.actionable_count(at_vantage(scope, copy_id), role) == 0
-    end)
-    |> MapSet.new()
-  end
-
-  defp queue_key(agent), do: {agent.working_copy_id, agent.role}
-
-  # An agent with no checkout has no vantage of its own, and the caller's is
-  # the only honest answer rather than a wrong one.
-  defp at_vantage(%Scope{} = scope, nil), do: scope
-
-  defp at_vantage(%Scope{} = scope, copy_id),
-    do: %Scope{scope | active_working_copy_id: copy_id}
+  # Per agent, at its own checkout, through `Work.claimable_work/3` — the same
+  # answer that decides whether it is offered a turn. Asking once per role at
+  # the caller's scope reported QA agents as having work each correctly said it
+  # had none (2026-09-17); asking per checkout but ignoring claims reported an
+  # agent STALLED whose only work a neighbour held, which `Work` never offers
+  # and `start_task` refuses (4849f20b). Either way an agent that had stood down
+  # correctly read identically to one that was stuck.
+  defp nothing_claimable?(scope, agent, owners),
+    do: Work.claimable_work(scope, agent, owners) == []
 
   # The story each task is against, by title.
   #

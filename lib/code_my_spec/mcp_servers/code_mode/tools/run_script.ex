@@ -58,10 +58,11 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   def execute(%{script: script} = params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        # Which tools, read off the agent's row rather than worked out from its
-        # role. The caller names *which* agent it is; the server decides what
-        # that agent may do, so naming a different one cannot invent
-        # permissions — it can only borrow another agent's, and both are ours.
+        # Which tools, from the agent's role as it stands now
+        # (`Agents.tools_of/2`), not a list the caller supplies. The caller
+        # names *which* agent it is; the server decides what that agent may do,
+        # so naming a different one cannot invent permissions — it can only
+        # borrow another agent's, and both are ours.
         {allowed, kind} = agent_scope(scope, Map.get(params, :agent_id))
 
         result =
@@ -111,7 +112,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   defp agent_scope(scope, agent_id) do
     with {:ok, _uuid} <- Ecto.UUID.cast(agent_id),
          {:ok, agent} <- CodeMySpec.Agents.fetch_agent(scope, agent_id) do
-      {agent.tools, agent.role}
+      {CodeMySpec.Agents.tools_of(scope, agent), agent.role}
     else
       # An id that names no agent is a caller pointed at nothing, not a caller
       # to be narrowed: guessing a scope for an agent we cannot find would apply

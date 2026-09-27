@@ -59,9 +59,18 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Users.Scope
 
-  @doc "The current story's execution state; never falls back to project work."
-  def story_execution(scope, role \\ nil, requested_story_id \\ nil),
-    do: StoryExecution.read(scope, role, requested_story_id)
+  @doc """
+  The current story's execution state; never falls back to project work.
+
+  `withheld?` drops nodes the caller cannot claim, before the wave is cut.
+  """
+  def story_execution(
+        scope,
+        role \\ nil,
+        requested_story_id \\ nil,
+        withheld? \\ fn _ -> false end
+      ),
+      do: StoryExecution.read(scope, role, requested_story_id, withheld?)
 
   @doc """
   How many requirements this role can act on for this working copy.

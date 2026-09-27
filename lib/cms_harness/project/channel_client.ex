@@ -1762,9 +1762,16 @@ defmodule CmsHarness.Project.ChannelClient do
       %{text: text} when is_binary(text) -> text
       %{content: content} when is_binary(content) -> content
       %{payload: %{name: name} = payload} when is_binary(name) -> tool_text(name, payload)
-      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect()
+      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect_rest()
     end
   end
+
+  # `turn_started` has nothing left once the bookkeeping is dropped, and
+  # `inspect(%{})` is the three characters `%{}` — which the server stored as
+  # something the agent said, 5,667 times, one per turn (1926fbc4). No text is
+  # `nil`, which the server already skips.
+  defp inspect_rest(rest) when map_size(rest) == 0, do: nil
+  defp inspect_rest(rest), do: inspect(rest)
 
   # A tool call, as a person would say it: `read mix.exs`.
   #

@@ -149,6 +149,19 @@ defmodule CodeMySpec.Agents do
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
+  What an agent may call: its role's grants as the code states them now, plus
+  what its machine reported.
+
+  Derived on each call rather than read off the row. The row's list was written
+  at start, so a grant added to a role never reached an agent already running —
+  `install_credo_checks` for coding and `read_project_file` for qa sat in
+  `ToolSets` while existing agents were refused them (`c5df88e7`).
+  """
+  @spec tools_of(Scope.t(), Agent.t()) :: [String.t()] | nil
+  def tools_of(%Scope{} = scope, %Agent{} = agent),
+    do: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+
+  @doc """
   Starts an agent on a working copy, on the provider the caller named.
 
   The provider is an argument rather than ambient state. A machine-wide default
@@ -453,7 +466,7 @@ defmodule CodeMySpec.Agents do
              # cleanly and is stopped deliberately later must not be read as
              # still reaped from before.
              stopped_reason: nil,
-             tools: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+             tools: tools_of(scope, agent)
            }) do
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
@@ -2660,11 +2673,9 @@ defmodule CodeMySpec.Agents do
     %{
       engine: Map.get(attrs, :engine, :alloy),
       provider: Map.fetch!(attrs, :provider),
-      # Written down at start rather than derived at call time. A list on the
-      # row survives a change to what a role means, answers "what may this
-      # agent call" without a second lookup, and takes an exception without
-      # inventing a role for it.
-      tools: Map.get(attrs, :tools) || tools_for(scope, attrs),
+      # A record of what it launched with. Enforcement reads `tools_of/2`, so a
+      # list passed here would be ignored and is not accepted.
+      tools: tools_for(scope, attrs),
       model: Map.get(attrs, :model),
       working_copy: Map.get(attrs, :working_copy) || scope.cwd,
       role: Map.fetch!(attrs, :role),
