@@ -174,6 +174,24 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   @doc """
+  This working copy's still-`:running` full runs of `source`, newest first.
+
+  Nil working copy answers nothing: the caller joins onto one of these, and a
+  run from another checkout would answer about the wrong tree.
+  """
+  @spec running_full_runs(Scope.t(), String.t()) :: [Run.t()]
+  def running_full_runs(%Scope{active_working_copy_id: nil}, _source), do: []
+
+  def running_full_runs(%Scope{active_project_id: project_id} = scope, source) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source)
+    |> where([r], r.kind == :full and r.status == :running)
+    |> scope_to_harness(scope)
+    |> order_by(desc: :id)
+    |> Repo.all()
+  end
+
+  @doc """
   Fetch one still-`:running` run of this project by id.
 
   Scoped and status-checked together on purpose: a result arriving for a run

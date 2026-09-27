@@ -291,7 +291,7 @@ defmodule CodeMySpec.Analysis do
 
     try do
       case dispatch_remote(scope, job, channel) do
-        {:ok, :started, run_id} ->
+        {:ok, started_or_joined, run_id} when started_or_joined in [:started, :joined] ->
           wait_for_remote(scope, run_id, job.source, deadline())
 
         # Never dispatched — the code does not compile, so the row is already
@@ -1265,10 +1265,44 @@ defmodule CodeMySpec.Analysis do
   # useless — and `FixBddSpecs`, which gates on `Analysis.fresh?(scope, "spex")`
   # and says to wait and re-evaluate, looped until somebody ran the analyzer by
   # hand.
-  #
-  # `:joined` was never true either: nothing joined anything, and the caller
-  # was told its work was in progress when it had been discarded.
   defp dispatch_remote(scope, job, channel) do
+    case joinable_run(scope, job) do
+      %Run{} = run -> join_remote(job, channel, run)
+      nil -> open_remote(scope, job, channel)
+    end
+  end
+
+  # A harness holds at most two entries per source — the one executing and the
+  # one queued behind it — and ties every further request onto the queued one
+  # (`CmsHarness.Project.AnalysisServer.tie_to_queued/4`). Opening a row for
+  # each of those anyway is what made one queued run read as six `:running`
+  # rows (75acdb84). So once two full rows are open, the newest is the queued
+  # entry or tied to it, and a new request joins it instead.
+  #
+  # Still sent, under the joined id: the harness ignores a run it already
+  # holds, and one it lost (a restart) is queued afresh rather than waited on
+  # forever.
+  defp joinable_run(scope, %{kind: :full, source: source}) do
+    case RunsRepository.running_full_runs(scope, source) do
+      [newest, _older | _] -> newest
+      _ -> nil
+    end
+  end
+
+  defp joinable_run(_scope, _job), do: nil
+
+  defp join_remote(job, channel, run) do
+    Logger.info("[Analysis] #{job.source} joined run #{run.id} already queued on the harness")
+
+    send(
+      channel,
+      {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+    )
+
+    {:ok, :joined, run.id}
+  end
+
+  defp open_remote(scope, job, channel) do
     case RunsRepository.start_run(scope, %{
            source: job.source,
            kind: job.kind,
