@@ -78,7 +78,8 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
               "test_output_files" => %{
                 "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
                 "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json")
+                "exunit" => fixture_path("exunit.json"),
+                "credo" => fixture_path("credo.json")
               }
             })
             |> Phoenix.ConnTest.json_response(200)

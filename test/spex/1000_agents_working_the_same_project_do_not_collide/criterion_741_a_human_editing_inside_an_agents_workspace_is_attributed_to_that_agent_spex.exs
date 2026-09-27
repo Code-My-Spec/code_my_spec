@@ -33,7 +33,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.SharedGivens
+
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -51,6 +54,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
 
   spex "The working copy is the unit, not the author" do
     scenario "A human editing inside an agent's workspace is attributed to that agent" do
+      given_ :synced_context_component
+      given_ :context_implementation_task_started
+
       given_ "an agent is serving a working copy", context do
         # Joining with the scope's own harness id, so the agent serving this
         # checkout and the agent the assertions read back are the same one.
@@ -113,6 +119,18 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
       end
 
       then_ "that agent's stop hook evaluates it like any other change", context do
+        # Shown by blocking, not by a run: analysis is explicit, so a stop reads
+        # recorded findings and starts nothing. Under `:block_changed` a finding
+        # blocks only when its file is in the task's changed set. The session
+        # recorded no edits, so only the checkout's own change window can put the
+        # hand edit there.
+        Fixtures.set_analyzer_mode(context.scope, :credo, :block_changed)
+
+        Fixtures.record_problem(context.scope, "credo", %{
+          file_path: @path,
+          working_copy_id: context.scope.active_working_copy_id
+        })
+
         stop =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
@@ -121,22 +139,14 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
             CodeMySpecLocalWeb.Endpoint,
             :post,
             "/api/hooks/stop",
-            %{"session_id" => "spex-operator-edit"}
+            %{"session_id" => context.session_id}
           )
           |> Phoenix.ConnTest.json_response(200)
 
-        # "Like any other change" means the analyzers were pointed at it. The
-        # stop hook says so by name when it enqueues, and says nothing about
-        # analysis when it decided the tree was unchanged — which is the outcome
-        # this criterion forbids, and the one a session-only attribution rule
-        # would produce, since this session recorded no edits at all.
-        rendered = inspect(stop)
-
-        assert rendered =~ "analysis",
-               "the stop hook ran no analysis over a working copy the operator had just " <>
-                 "changed. An edit nobody's tool made is still that checkout's, and a gate " <>
-                 "that only sees its own writes passes an agent over a tree it has not " <>
-                 "looked at. Got: #{rendered}"
+        assert stop["decision"] == "block" and (stop["reason"] || "") =~ @path,
+               "a finding on the file the operator edited did not hold this agent, so " <>
+                 "the hand edit was not treated as this checkout's change. An edit nobody's " <>
+                 "tool made is still that checkout's. Got: #{inspect(stop)}"
 
         {:ok, context}
       end
