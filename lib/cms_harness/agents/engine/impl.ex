@@ -897,6 +897,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # sandbox we would have to build — and `bash_restricted` stays on, because
   # Alloy is explicit that bash is a guardrail and not a sandbox. The sprite is
   # the sandbox.
+  defp unknown_tool(name),
+    do: "`#{name}` is not a direct tool; call it from run_script (tool_docs lists them)"
+
   defp alloy_options(opts, mcp_client) do
     with {:ok, provider} <- require_opt(opts, :provider),
          {:ok, working_copy} <- require_opt(opts, :working_copy),
@@ -942,6 +945,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
        )
        |> Keyword.put(:max_turns, @max_turns)
        |> Keyword.put(:middleware, [Compaction])
+       # A code-mode tool called directly came back as a bare "Unknown tool",
+       # and the main agent answered it by starting a second coder instead of
+       # restarting the first.
+       |> Keyword.put(:unknown_tool, &unknown_tool/1)
        |> Keyword.put(:context, %{
          working_directory: working_copy,
          allowed_paths: [working_copy],
