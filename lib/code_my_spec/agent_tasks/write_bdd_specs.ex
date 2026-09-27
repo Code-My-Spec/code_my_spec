@@ -12,6 +12,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
 
   require Logger
@@ -661,27 +663,71 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Validation (evaluate)
   # ============================================================================
 
+  # Contents first, then the requirement's own check, so a pass here always
+  # clears it. Files are read across every copy, per the note on `best_report/2`.
   defp validate_story_specs(scope, story) do
     criteria = story.criteria || []
+    all_copies = %{scope | active_working_copy_id: nil}
+    files = Files.list_story_files(all_copies, story.id)
+    coverage = RequirementCalculator.compute_one(all_copies, story, requirement(), files)
+    uncovered = Map.get(coverage.details, :missing_criteria_ids, [])
     check = spec_checker(scope)
 
     errors =
-      criteria
-      |> Enum.map(fn criterion ->
+      Enum.flat_map(criteria, fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
-        {criterion, spec_path, check.(spec_path)}
-      end)
-      |> Enum.reject(fn {_, _, result} -> result == :ok end)
-      |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{ContentCheck.describe(reason, spec_path)}\n  Expected: `#{spec_path}`#{where(reason, scope)}"
+
+        case {check.(spec_path), criterion.id in uncovered} do
+          {{:error, reason}, _} -> [content_error(scope, criterion, spec_path, reason)]
+          {:ok, true} -> [coverage_error(scope, story, criterion)]
+          {:ok, false} -> []
+        end
       end)
 
-    if Enum.empty?(errors) do
-      {:ok, :valid}
-    else
-      {:ok, :invalid, "Spec issues:\n\n#{Enum.join(errors, "\n\n")}"}
+    cond do
+      coverage.satisfied and errors == [] -> {:ok, :valid}
+      errors == [] -> {:ok, :invalid, "Requirement not met: #{coverage.details[:reason]}"}
+      true -> {:ok, :invalid, "Spec issues:\n\n#{Enum.join(errors, "\n\n")}"}
     end
   end
+
+  defp requirement do
+    Enum.find(RequirementDefinitionData.story_requirements(), &(&1.name == "bdd_specs_exist"))
+  end
+
+  defp content_error(scope, criterion, spec_path, reason) do
+    "#{label(criterion)}: #{ContentCheck.describe(reason, spec_path)}\n" <>
+      "  Expected: `#{spec_path}`#{where(reason, scope)}"
+  end
+
+  defp label(criterion), do: "Criterion #{criterion.id} (#{criterion.description})"
+
+  # The file checks out; these name which half of the requirement's match did
+  # not: the criterion's recorded path, or the file's record and owner.
+  defp coverage_error(_scope, story, %{spec_path: path} = criterion)
+       when is_nil(path) or path == "" do
+    "#{label(criterion)}: no spec_path is recorded for this criterion. A harness scan " <>
+      "records it from a file named for criterion #{criterion.id}.\n" <>
+      "  Expected: `#{BddSpecs.spec_file_path(story, criterion)}`"
+  end
+
+  defp coverage_error(scope, story, %{spec_path: path} = criterion) do
+    case best_report(scope, path) do
+      nil ->
+        "#{label(criterion)}: `#{path}` is on disk but no working copy has reported it yet." <>
+          where(:file_not_found, scope)
+
+      %{role: role} when role != :bdd_spec ->
+        "#{label(criterion)}: `#{path}` exists but is recorded as #{inspect(role)}, not :bdd_spec."
+
+      %{story_id: owner} ->
+        "#{label(criterion)}: `#{path}` exists but is attributed to #{owner_name(owner)}, " <>
+          "not story #{story.id}, so it does not count for this criterion."
+    end
+  end
+
+  defp owner_name(nil), do: "no story"
+  defp owner_name(story_id), do: "story #{story_id}"
 
   # Read the disk when there is one; otherwise read what the harness reported.
   #

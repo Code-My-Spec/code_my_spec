@@ -58,6 +58,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5536Spex do
         {:ok, context}
       end
 
+      # `bdd_specs_exist` reads what the scan recorded, so the evaluator does too.
+      given_ "the harness has scanned the working copy", context do
+        :ok = Fixtures.scan_working_copy(context.scope)
+        {:ok, context}
+      end
+
       when_ "the agent calls evaluate_task on the active task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
