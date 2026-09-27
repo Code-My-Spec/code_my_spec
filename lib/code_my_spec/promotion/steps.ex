@@ -391,7 +391,9 @@ defmodule CodeMySpec.Promotion.Steps do
   defp commit_bumped_version(env, root, contents) do
     with {:ok, current, next} <- next_version(contents),
          {_, 0} <- write_file(env, root, "mix.exs", replace_version(contents, current, next)),
-         {_, 0} <- git(env, root, ["commit", "-am", "chore: promote to v#{next}"]),
+         # Only mix.exs: `-a` also staged the submodule's checkout, which the
+         # merge never moves, and reverted the pointer the branch brought.
+         {_, 0} <- git(env, root, ["commit", "-m", "chore: promote to v#{next}", "--", "mix.exs"]),
          {_, 0} <- git(env, root, ["tag", "v#{next}"]) do
       next
     else
