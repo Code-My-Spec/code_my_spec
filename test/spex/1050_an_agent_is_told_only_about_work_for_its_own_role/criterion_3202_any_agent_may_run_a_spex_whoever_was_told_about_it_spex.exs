@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IdleAgentHelpers
+  import CodeMySpecSpex.RecordedAnalysis
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -58,6 +59,11 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, context |> Map.put(:coding, coding.id) |> Map.put(:qa, qa.id)}
+      end
+
+      given_ "the spex suite's result is recorded", context do
+        {:ok,
+         attach_recorded_analysis(context, spex: "test/fixtures/validation/spex_green.jsonl")}
       end
 
       when_ "the coding agent runs that spex", context do

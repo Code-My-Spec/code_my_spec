@@ -41,6 +41,8 @@ defmodule CodeMySpecSpex do
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       CodeMySpecSpex.Fixtures,
+      # Recorded analyzer output attached to a spex's environment.
+      CodeMySpecSpex.RecordedAnalysis,
       # The harness-side counterpart to `Fixtures`: spex that are about what
       # a machine did have to drive the harness, and may not reference
       # `CmsHarness` to do it.
