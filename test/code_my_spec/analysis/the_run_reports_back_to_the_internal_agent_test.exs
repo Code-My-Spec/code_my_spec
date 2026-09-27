@@ -21,7 +21,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Analysis.AgentReport
+  alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a run with errors reports back to the agent", ctx do
     agent = agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error), problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error), problem(:error)])
 
     assert_receive {:agent_dispatch, id, _ref, message}
     assert id == agent.id
@@ -76,7 +76,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a clean run says nothing", ctx do
     agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [])
+    AnalysisReport.deliver(ctx.scope, "spex", [])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -84,7 +84,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "warnings alone are not worth waking anyone for", ctx do
     agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:warning), problem(:warning)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:warning), problem(:warning)])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -94,7 +94,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   test "a Claude Code agent in the same copy is not told here", ctx do
     agent(ctx.scope, ctx.copy, :claude_code)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)])
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     one = agent(ctx.scope, ctx.copy, :alloy)
     two = agent(ctx.scope, ctx.copy, :alloy)
 
-    AgentReport.deliver(ctx.scope, "spex", [problem(:error)])
+    AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)])
 
     assert_receive {:agent_dispatch, first, _, _}
     assert_receive {:agent_dispatch, second, _, _}
@@ -113,13 +113,13 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   # It runs inside `Reconciler.reconcile/4`, after the run is recorded. A
   # delivery that cannot land must not make a completed run look incomplete.
   test "a copy with no agents is not an error", ctx do
-    assert AgentReport.deliver(ctx.scope, "spex", [problem(:error)]) == :ok
+    assert AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)]) == :ok
   end
 
   test "a scope with no working copy is not an error", ctx do
     scope = %{ctx.scope | active_working_copy_id: nil}
 
-    assert AgentReport.deliver(scope, "spex", [problem(:error)]) == :ok
+    assert AnalysisReport.deliver(scope, "spex", [problem(:error)]) == :ok
   end
 
   describe "the agent that asked for the run" do
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     test "is answered even when its role is not a report role", ctx do
       qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
 
-      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], qa.id)
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], qa.id)
 
       assert_receive {:agent_dispatch, id, _ref, _message}
 
@@ -151,7 +151,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     test "is answered on a clean run, which is the case it most needs", ctx do
       qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
 
-      AgentReport.deliver(ctx.scope, "spex", [], qa.id)
+      AnalysisReport.deliver(ctx.scope, "spex", [], qa.id)
 
       assert_receive {:agent_dispatch, id, _ref, message}
       assert id == qa.id
@@ -163,7 +163,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     test "a non-asking agent outside the report roles still hears nothing", ctx do
       _qa = agent(ctx.scope, ctx.copy, :alloy, "qa")
 
-      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], nil)
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], nil)
 
       refute_receive {:agent_dispatch, _id, _ref, _message}, 500
     end
@@ -178,7 +178,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     test "a requester id that is not a real agent's id does not crash the report", ctx do
       coding = agent(ctx.scope, ctx.copy, :alloy, "coding")
 
-      AgentReport.deliver(ctx.scope, "spex", [problem(:error)], "not-a-uuid-session-id")
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], "not-a-uuid-session-id")
 
       assert_receive {:agent_dispatch, id, _ref, _message}
       assert id == coding.id

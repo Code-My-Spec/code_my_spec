@@ -93,6 +93,7 @@ defmodule CodeMySpec do
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
+      CodeMySpec.Staffing,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Stories,
       CodeMySpec.Tags,

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Analysis.AgentReport do
+defmodule CodeMySpec.Agents.AnalysisReport do
   @moduledoc """
   Tell the agents in a working copy that their analysis has landed.
 
@@ -56,6 +56,16 @@ defmodule CodeMySpec.Analysis.AgentReport do
   An agent with no process is not owed delivery and is not a failure
   (criterion 3049). `dispatch_message` answers `{:error, :not_running}` and this
   drops it — an agent halted on purpose is not news anybody is waiting for.
+
+  ## Why this is a telemetry handler
+
+  `Analysis` announces a finished run as the `[:code_my_spec, :analysis, :run_reported]` event and
+  this module, attached at application start, answers it. Analysis used to call
+  it directly, which made Analysis depend on Agents — the analyzer knowing that
+  agents exist. A telemetry handler runs synchronously in the emitting process,
+  so delivery still happens inside the reconciler exactly as the direct call
+  did (and a test's sandboxed connection is still the one it reads through),
+  without Analysis naming this module.
   """
 
   require Logger
@@ -66,6 +76,31 @@ defmodule CodeMySpec.Analysis.AgentReport do
   alias CodeMySpec.Users.Scope
 
   import Ecto.Query
+
+  @event [:code_my_spec, :analysis, :run_reported]
+
+  @doc "The event `Analysis` emits when a run's findings are recorded."
+  def event, do: @event
+
+  @doc "Attach the handler. Called once, after the application tree starts."
+  def attach do
+    :telemetry.attach({__MODULE__, :deliver}, @event, &__MODULE__.handle_event/4, nil)
+  end
+
+  # Rescued and logged rather than left to raise: `:telemetry` detaches a
+  # handler that raises, permanently and after one log line, so a single bad
+  # delivery would silently end every later one. Logged at error, not
+  # swallowed — the failure stays loud each time it happens.
+  @doc false
+  def handle_event(@event, _measurements, meta, _config) do
+    deliver(meta.scope, meta.source, meta.problems, meta.requester)
+  rescue
+    e ->
+      Logger.error(
+        "[AnalysisReport] delivering #{meta.source} findings failed: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+  end
 
   @doc """
   Tell every internal agent in this run's working copy what landed.

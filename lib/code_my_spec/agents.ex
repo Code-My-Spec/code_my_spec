@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.CodeMode,
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
@@ -71,6 +72,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.MainAgent
@@ -553,7 +555,7 @@ defmodule CodeMySpec.Agents do
   """
   @spec working_copy_connected?(Agent.t()) :: boolean()
   def working_copy_connected?(%Agent{working_copy_id: id}) do
-    match?({:ok, _pid, _instance}, Analysis.executor_holder(id))
+    match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
 
   # The main working copy holds one agent, and it is the project's own.

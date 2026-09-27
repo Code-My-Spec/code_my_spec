@@ -24,6 +24,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Requirements.Invalidations
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -89,7 +90,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
 
       drain(scope)
 
-      {:ok, _} = WorkingCopies.designate_main(scope, other.id)
+      {:ok, _} = Staffing.designate_main(scope, other.id)
 
       # This announced nothing before. `designate_main/2` broadcasts on the
       # context's own topic and never reached `GraphInputs`, and the clearing

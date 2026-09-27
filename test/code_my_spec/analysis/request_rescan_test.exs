@@ -25,6 +25,8 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Analysis
+
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Users.Scope
 
   defp scope(working_copy_id), do: %Scope{active_working_copy_id: working_copy_id}
@@ -35,7 +37,9 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+        :ok =
+          HarnessRegistry.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+
         send(test, {:registered, self()})
 
         receive do

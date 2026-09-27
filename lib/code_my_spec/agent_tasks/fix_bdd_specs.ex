@@ -369,7 +369,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   defp wait_directive(scope, _owner), do: external_directive(scope)
 
   # An agent in our own BEAM does not wait. It has a process we can reach, so
-  # the run reports back when it lands — `Analysis.AgentReport` dispatches the
+  # the run reports back when it lands — `Agents.AnalysisReport` dispatches the
   # digest at the end of `Reconciler.reconcile/4`. Telling it to hold a `curl`
   # open instead spends a turn watching a sweep that takes several minutes,
   # which is what it was doing when John found it.

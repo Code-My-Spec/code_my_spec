@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Staffing
 
   schema do
     field :label, :string,
@@ -88,7 +88,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy do
   end
 
   defp mint(scope, params, roles) do
-    case WorkingCopies.mint(scope, label: params[:label], root: params[:root], roles: roles) do
+    case Staffing.mint(scope, label: params[:label], root: params[:root], roles: roles) do
       {:ok, copy, staffed} -> Response.tool() |> Response.text(report(copy, staffed))
       {:error, reason} -> Response.tool() |> Response.error(refusal(reason))
     end

@@ -25,6 +25,7 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
 
   alias CodeMySpec.Devices
   alias CodeMySpec.Repo
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -149,7 +150,7 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
            "the premise failed: this copy does not already hold the designation, " <>
              "so re-designating it is not what this test exercises"
 
-    {:ok, _} = WorkingCopies.designate_main(scope, only.id)
+    {:ok, _} = Staffing.designate_main(scope, only.id)
 
     assert WorkingCopies.main(scope),
            """
@@ -168,7 +169,7 @@ defmodule CodeMySpec.WorkingCopies.TheMainCopyIsARealCheckoutTest do
     _first = checkout(scope, "/workspace/app", "a-laptop")
     second = checkout(scope, "/workspace/other", "a-desktop")
 
-    {:ok, _} = WorkingCopies.designate_main(scope, second.id)
+    {:ok, _} = Staffing.designate_main(scope, second.id)
 
     assert WorkingCopies.main(scope).id == second.id
   end

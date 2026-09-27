@@ -44,6 +44,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -1760,7 +1761,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp working_copy_instance(%{assigns: %{scope: %Scope{active_working_copy_id: id}}})
        when is_binary(id) do
-    case Analysis.executor_holder(id) do
+    case HarnessRegistry.executor_holder(id) do
       {:ok, _pid, instance} -> instance
       :error -> nil
     end
@@ -2027,7 +2028,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # two processes still cannot tell which to stop. The holder's instance and the
   # checkout's root are both things this server has, so it says them.
   defp take_working_copy(harness, payload) do
-    case Analysis.register_executor(harness.id, payload["instance"], payload["root"]) do
+    case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
         :ok
 
@@ -2077,7 +2078,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp working_copy_in_use(harness, pid) do
     holder =
-      case Analysis.executor_holder(harness.id) do
+      case HarnessRegistry.executor_holder(harness.id) do
         {:ok, _pid, instance} when is_binary(instance) -> instance
         _ -> inspect(pid)
       end

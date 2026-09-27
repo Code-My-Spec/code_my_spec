@@ -34,6 +34,7 @@ defmodule CodeMySpec.MainAgent do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Devices,

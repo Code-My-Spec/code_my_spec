@@ -62,6 +62,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
+      CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
@@ -1373,7 +1374,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec designate_main(Scope.t(), Ecto.UUID.t()) :: :ok
   def designate_main(%Scope{} = scope, working_copy_id) do
-    {:ok, _} = CodeMySpec.WorkingCopies.designate_main(scope, working_copy_id)
+    {:ok, _} = CodeMySpec.Staffing.designate_main(scope, working_copy_id)
 
     {:ok, _} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{

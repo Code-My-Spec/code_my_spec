@@ -29,6 +29,7 @@ defmodule CodeMySpecWeb.ANamedConversationIsNotSubstitutedTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account]
@@ -62,7 +63,7 @@ defmodule CodeMySpecWeb.ANamedConversationIsNotSubstitutedTest do
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, label: "the main checkout", device: device_fixture(scope))
 
-    {:ok, _} = WorkingCopies.designate_main(scope, copy.id)
+    {:ok, _} = Staffing.designate_main(scope, copy.id)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

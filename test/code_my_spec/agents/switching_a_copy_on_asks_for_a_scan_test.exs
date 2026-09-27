@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.SwitchingACopyOnAsksForAScanTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Requirements.GraphWatcher
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -51,7 +52,9 @@ defmodule CodeMySpec.Agents.SwitchingACopyOnAsksForAScanTest do
 
     pid =
       spawn(fn ->
-        :ok = Analysis.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+        :ok =
+          HarnessRegistry.register_executor(working_copy_id, "test:#{System.unique_integer()}")
+
         send(test, {:registered, self()})
 
         receive do

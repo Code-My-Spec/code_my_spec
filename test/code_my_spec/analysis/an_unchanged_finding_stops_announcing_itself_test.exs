@@ -2,7 +2,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   @moduledoc """
   A run that says what the last one said does not wake anybody.
 
-  `AgentReport.deliver/3` fired on every completed run, and every stop hook
+  `AnalysisReport.deliver/3` fired on every completed run, and every stop hook
   re-enqueues credo, so one unchanged finding announced itself once a turn
   forever. The agent has nothing to do about it — the tree did not change — so
   it answers "already covered, no action", ends the turn, and the next stop

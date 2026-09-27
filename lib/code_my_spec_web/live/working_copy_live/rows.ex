@@ -38,7 +38,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   """
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
@@ -185,7 +185,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       # Distinct from liveness, which reports what the agents last said. A copy
       # nothing is serving has no agent that can say anything, and until this
       # existed the page showed no difference between that and a quiet one.
-      served: match?({:ok, _pid, _instance}, Analysis.executor_holder(harness.id)),
+      served: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(harness.id)),
       missing: missing(harness, now)
     }
   end

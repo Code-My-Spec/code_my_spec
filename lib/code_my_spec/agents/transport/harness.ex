@@ -14,8 +14,8 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.LaunchRequest
-  alias CodeMySpec.Analysis
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   @impl true
   @doc """
   Ask a machine to make a working copy.
@@ -32,7 +32,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   @spec create_working_copy([String.t()], map(), timeout()) ::
           {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
   def create_working_copy(candidate_ids, request, timeout) do
-    case Analysis.host_holder(candidate_ids) do
+    case HarnessRegistry.host_holder(candidate_ids) do
       {:ok, pid, _root} ->
         call(pid, {:create_working_copy, request}, timeout, :create_timed_out)
 
@@ -168,7 +168,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   # answer, and the suite stayed green because every spex here swaps the
   # transport for an in-process one — so this module was never exercised.
   defp holder(working_copy_id) do
-    case Analysis.executor_holder(working_copy_id) do
+    case HarnessRegistry.executor_holder(working_copy_id) do
       {:ok, pid, _instance} -> {:ok, pid}
       :error -> :none
     end

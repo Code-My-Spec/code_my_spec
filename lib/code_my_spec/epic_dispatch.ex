@@ -45,6 +45,7 @@ defmodule CodeMySpec.EpicDispatch do
       CodeMySpec.Conversations,
       CodeMySpec.Epics,
       CodeMySpec.Repo,
+      CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
@@ -60,6 +61,7 @@ defmodule CodeMySpec.EpicDispatch do
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Repo
+  alias CodeMySpec.Staffing
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -210,7 +212,7 @@ defmodule CodeMySpec.EpicDispatch do
   # reason for the page to say the epic is waiting, not a reason to throw away
   # somebody's approval.
   defp minted(scope) do
-    case WorkingCopies.mint(scope, label: "an epic's working copy") do
+    case Staffing.mint(scope, label: "an epic's working copy") do
       {:ok, copy, _staffed} ->
         copy
 

@@ -152,6 +152,7 @@ defmodule CodeMySpecWeb.Application do
     case Supervisor.start_link(children, opts) do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
+        CodeMySpec.Agents.AnalysisReport.attach()
         ok
 
       other ->

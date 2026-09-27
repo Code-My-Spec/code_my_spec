@@ -15,7 +15,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   require Logger
 
   alias CodeMySpec.Analysis.{
-    AgentReport,
     Coverage,
     Fingerprint,
     Run,
@@ -217,7 +216,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # runs still won't be until more callers are taught to pass it.
   # Only when this run says something the last one did not.
   #
-  # `AgentReport.deliver/3` used to fire on every completed run, and every stop
+  # The report to agents (`Agents.AnalysisReport`) used to fire on every completed run, and every stop
   # hook re-enqueues credo, so an unchanged finding announced itself once a
   # turn forever. A main agent on the math project spent four consecutive turns
   # answering "same repeated alert — already covered by issue ..., no action"
@@ -249,7 +248,14 @@ defmodule CodeMySpec.Analysis.Reconciler do
     requester = requesting_agent_id(run)
 
     if requester || new_findings?(previous, signatures) do
-      AgentReport.deliver(scope, run.source, problems, requester)
+      # An event rather than a call: `Agents.AnalysisReport` is attached to it,
+      # and Analysis does not depend on Agents. Handled synchronously, in this
+      # process, as the direct call was.
+      :telemetry.execute(
+        [:code_my_spec, :analysis, :run_reported],
+        %{},
+        %{scope: scope, source: run.source, problems: problems, requester: requester}
+      )
     else
       :ok
     end
