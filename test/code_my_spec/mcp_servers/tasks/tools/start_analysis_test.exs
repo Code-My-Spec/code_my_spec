@@ -32,6 +32,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysisTest do
     scope: scope,
     frame: frame
   } do
+    # The web app runs `:async` and has no `ServerSupervisor`; both halves are
+    # needed to be it. Under the test env's `:inline` a run executes in-process,
+    # which is always available, so removing the supervisor alone models nothing.
+    previous = Application.get_env(:code_my_spec, :analysis_mode)
+    Application.put_env(:code_my_spec, :analysis_mode, :async)
+    on_exit(fn -> Application.put_env(:code_my_spec, :analysis_mode, previous) end)
+
     :ok = Supervisor.terminate_child(Analysis.Supervisor, Analysis.ServerSupervisor)
     on_exit(fn -> Supervisor.restart_child(Analysis.Supervisor, Analysis.ServerSupervisor) end)
     assert Process.whereis(Analysis.ServerSupervisor) == nil

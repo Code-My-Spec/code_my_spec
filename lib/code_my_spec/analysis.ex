@@ -255,9 +255,27 @@ defmodule CodeMySpec.Analysis do
         dispatch_remote(scope, job, channel)
 
       :none ->
-        with {:ok, server} <- ensure_server(scope) do
-          ProjectServer.ensure_run(server, scope, job)
-        end
+        start_local(scope, job, mode())
+    end
+  end
+
+  # `mode/0` decides, as it does for `await_local/2`. This always started a
+  # ProjectServer, so under `analysis_mode: :inline` — the test env — a run
+  # requested through `start_analysis` became an async server under the
+  # application supervisor that outlived the test, then ran its queued job
+  # against that test's `InMemoryEnvironment` after it was gone. The logged
+  # `:noproc` landed in whichever spex was running at the time; story 1052's
+  # criterion 3215 was the one that kept catching it.
+  defp start_local(scope, job, :inline) do
+    case run_inline(scope, job) do
+      {:ok, %Run{id: id}} -> {:ok, :started, id}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp start_local(scope, job, :async) do
+    with {:ok, server} <- ensure_server(scope) do
+      ProjectServer.ensure_run(server, scope, job)
     end
   end
 
