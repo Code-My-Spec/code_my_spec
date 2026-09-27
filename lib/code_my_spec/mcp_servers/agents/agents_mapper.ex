@@ -212,6 +212,19 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  def error({:role_taken, role, agent_id, root}, _provider) do
+    refuse("""
+    That working copy already has a #{role} agent, so nothing was started.
+
+    Agent: #{agent_id}
+    Checkout: #{root}
+
+    A copy holds one agent per role; two would claim and edit the same work.
+    Use restart_agent on #{agent_id} if it is stuck, or message_agent to
+    redirect it.
+    """)
+  end
+
   def error({:unknown_working_copy, id}, _provider) do
     refuse("""
     No working copy #{id} on this project, so no agent was started.
