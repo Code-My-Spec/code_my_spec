@@ -82,8 +82,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
     case decided do
       {nil, _key} ->
-        Work.request_turn_if_runnable(scope, agent, :turn_ended)
-        :ok
+        request_turn(scope, agent)
 
       # A menu that repeats byte-for-byte is a repeat regardless of the key it
       # arrived under — genuine progress changes the menu (a count drops, a
@@ -221,13 +220,21 @@ defmodule CodeMySpec.Agents.StopDecision do
   # agent has nothing open, so eligibility is worth asking about once. With a
   # task still active the menu is the answer instead, subject to the same
   # repeat-silencing as any other class.
-  defp continuing(scope, agent, _message, nil) do
-    Work.request_turn_if_runnable(scope, agent, :turn_ended)
-    :ok
-  end
+  defp continuing(scope, agent, _message, nil), do: request_turn(scope, agent)
 
   defp continuing(scope, agent, message, _task) do
     if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+  end
+
+  # Off this process for the reason `dispatch` is (ad8c1213): `deliver/3` runs
+  # inside the harness channel at turn end, and the turn request is a call back
+  # into that channel, refused as a would-be deadlock (104bcb23).
+  defp request_turn(scope, agent) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Work.request_turn_if_runnable(scope, agent, :turn_ended)
+    end)
+
+    :ok
   end
 
   defp stuck?(agent, key, tag \\ :decision)
