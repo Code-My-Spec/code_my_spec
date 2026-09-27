@@ -58,20 +58,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     %{story_id: story.id, component_id: story.component_id, project_id: nil}
   end
 
-  # The state `bdd_specs_exist` accepts: the criterion claims its path and the
-  # harness has a row for it on this story. No verdict, so contents come from disk.
-  defp record_specs!(scope, story, criteria) do
-    CodeMySpec.Files.upsert_files(
-      scope,
-      Enum.map(criteria, fn criterion ->
-        path = BddSpecs.spec_file_path(story, criterion)
-        criterion |> Ecto.Changeset.change(spec_path: path) |> Repo.update!()
-
-        %{path: path, role: :bdd_spec, story_id: story.id, mtime: DateTime.utc_now(), size: 1}
-      end)
-    )
-  end
-
   defp write_valid_spec!(tmp_dir, story, criterion) do
     spec_path = BddSpecs.spec_file_path(story, criterion)
     full_path = Path.join(tmp_dir, spec_path)
@@ -340,8 +326,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       for criterion <- story.criteria do
         write_valid_spec!(tmp_dir, story, criterion)
       end
-
-      record_specs!(scope, story, story.criteria)
 
       assert {:ok, :valid} = WriteBddSpecs.evaluate(scope, task)
     end

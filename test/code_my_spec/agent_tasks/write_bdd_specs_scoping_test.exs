@@ -57,34 +57,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
     {:ok, theirs} =
       WorkingCopies.issue(scope, nil, label: "theirs", device: device_fixture(scope))
 
-    %{scope: scope, story: story, mine: mine, theirs: theirs}
+    paths = Enum.map(story.criteria, &BddSpecs.spec_file_path(story, &1))
+
+    %{scope: scope, story: story, paths: paths, mine: mine, theirs: theirs}
   end
 
   # The writer names its working copy through the scope, which is the same way
   # the harness's reconcile does it.
-  # Claimed by the criterion and attributed to the story, as `bdd_specs_exist`
-  # requires; only the working copy varies here.
-  defp record(scope, working_copy, story) do
+  defp record(scope, working_copy, paths) do
     %{scope | active_working_copy_id: working_copy.id}
     |> Files.upsert_files(
-      Enum.map(story.criteria, fn criterion ->
-        path = BddSpecs.spec_file_path(story, criterion)
-        criterion |> Ecto.Changeset.change(spec_path: path) |> Repo.update!()
-
-        %{
-          path: path,
-          role: :bdd_spec,
-          story_id: story.id,
-          valid: true,
-          mtime: DateTime.utc_now(),
-          size: 1
-        }
+      Enum.map(paths, fn path ->
+        %{path: path, role: :bdd_spec, valid: true, mtime: DateTime.utc_now(), size: 1}
       end)
     )
   end
 
   test "a spec recorded for the working copy the request names counts", ctx do
-    record(ctx.scope, ctx.mine, ctx.story)
+    record(ctx.scope, ctx.mine, ctx.paths)
 
     scope = %{ctx.scope | active_working_copy_id: ctx.mine.id}
 
@@ -95,7 +85,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
   end
 
   test "a spec recorded in another checkout of the same project also counts", ctx do
-    record(ctx.scope, ctx.theirs, ctx.story)
+    record(ctx.scope, ctx.theirs, ctx.paths)
 
     scope = %{ctx.scope | active_working_copy_id: ctx.mine.id}
 
