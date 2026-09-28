@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.DrainCost
@@ -3587,9 +3588,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #
   # `devops_setup` and `release` remain out. Setup is answered by
   # `devops_status` against the providers, and release has no read model yet.
-  defp maybe_filter_devops(definitions, %{devops: :off}) do
-    Enum.reject(definitions, &(&1.artifact_type == :deployment))
+  defp maybe_filter_devops(definitions, config) do
+    case ProjectConfiguration.devops_level(config) do
+      :off -> Enum.reject(definitions, &(&1.artifact_type == :deployment))
+      _on -> definitions
+    end
   end
-
-  defp maybe_filter_devops(definitions, _config), do: definitions
 end

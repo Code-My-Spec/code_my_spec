@@ -129,6 +129,7 @@ defmodule CodeMySpec.Agents do
           | :reconnect_required
           | :unknown_provider
           | {:unknown_working_copy, String.t()}
+          | {:role_taken, atom(), Ecto.UUID.t(), String.t() | nil}
           | Ecto.Changeset.t()
           | term()
 
@@ -176,9 +177,9 @@ defmodule CodeMySpec.Agents do
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
          {:ok, attrs} <- put_destination(scope, attrs),
-         :ok <- main_copy_is_free(scope, attrs),
          :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
+         :ok <- copy_is_free(scope, attrs),
          :start <- resume_holder(scope, attrs),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
@@ -578,14 +579,17 @@ defmodule CodeMySpec.Agents do
   # than that: the user is told there is one thing to talk to, and a second
   # conversation appears on the copy that is supposed to have exactly one.
   #
-  # Only the main copy is protected. Every other checkout may run as many as
-  # somebody wants, which is what story 1023's "stop one and leave its siblings
-  # running" is about.
-  defp main_copy_is_free(scope, attrs) do
-    case WorkingCopies.main(scope) do
-      nil -> :ok
-      copy -> if names?(attrs, copy), do: refuse_if_occupied(scope, copy), else: :ok
-    end
+  # Every other checkout holds one agent per role. Two coding agents on one copy
+  # claim and edit the same work: on metric_flow 2026-09-27 the main agent could
+  # not reach `restart_agent`, started a fresh coder beside the running one, and
+  # the copy had two once the original came back. `restart_agent/2` does not
+  # pass through here, so an agent is never refused for counting as itself.
+  defp copy_is_free(scope, attrs) do
+    main = WorkingCopies.main(scope)
+
+    if main && names?(attrs, main),
+      do: refuse_if_occupied(scope, main),
+      else: refuse_if_role_taken(scope, attrs)
   end
 
   # Where the agent will actually run, decided before anything is checked
@@ -720,6 +724,26 @@ defmodule CodeMySpec.Agents do
     if scope |> AgentsRepository.list_running() |> Enum.any?(&(&1.working_copy_id == copy.id)),
       do: {:error, {:main_copy_occupied, copy.root}},
       else: :ok
+  end
+
+  defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, working_copy: root, role: role})
+       when is_binary(copy_id) do
+    scope
+    |> AgentsRepository.list_running()
+    |> Enum.find(&same_seat?(&1, copy_id, root, role))
+    |> case do
+      nil -> :ok
+      agent -> {:error, {:role_taken, agent.role, agent.id, agent.working_copy}}
+    end
+  end
+
+  defp refuse_if_role_taken(_scope, _attrs), do: :ok
+
+  # Root as well as id: a root with no row of its own is recorded under the
+  # caller's copy id (`id_for/2`), and is still a different tree.
+  defp same_seat?(agent, copy_id, root, role) do
+    agent.working_copy_id == copy_id and agent.working_copy == root and
+      to_string(agent.role) == to_string(role)
   end
 
   # Ask the machine to bring it up, and record what it reports.

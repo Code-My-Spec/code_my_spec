@@ -363,16 +363,21 @@ defmodule CodeMySpec.Agents.Work do
       not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent)
   end
 
-  # An agent that tapped out has asked to leave the loop until a person
-  # answers. metric_flow's coding agent was nudged 42 times over 5.5 hours on
-  # 2026-09-27 while its tap-out waited, answering each with a turn that said
-  # the same thing. A decision resolves the blocker or cancels the task, and
-  # either one makes it runnable again.
-  defp awaiting_tap_out?(agent) do
-    Enum.any?(agent.tasks || [], fn task ->
-      task.status == :blocked and task.blocker_type == :tap_out and
-        is_nil(task.blocker_resolved_at)
-    end)
+  @doc """
+  Whether this agent has a tap-out waiting on a person.
+
+  Read off the pending request rather than a blocked task: a tap-out with no
+  `task_id` blocks no task, and its agent was nudged 40+ times (fad1a314).
+  Schemaless because `Notifications`, which owns the row, depends on `Agents`.
+  """
+  @spec awaiting_tap_out?(Agent.t()) :: boolean()
+  def awaiting_tap_out?(%Agent{id: agent_id}) do
+    from(p in "permission_requests",
+      where:
+        p.agent_id == type(^agent_id, :binary_id) and p.tool_name == "tap_out" and
+          p.status == "pending"
+    )
+    |> Repo.exists?()
   end
 
   # A reservation is the gap between stamping a turn and the agent reporting it

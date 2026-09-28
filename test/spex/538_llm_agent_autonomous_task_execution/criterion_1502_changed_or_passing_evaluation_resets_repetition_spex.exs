@@ -239,8 +239,9 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
 
         refute conversation.isError, response_text(conversation)
 
-        refute response_text(conversation) =~
-                 ~r/repeated failure|five.*fail|5.*fail|same feedback/i
+        # The menu's sentence, as above: `5.*fail` matched
+        # `Criterion 108005 (Failure path)` on 2026-09-27.
+        refute response_text(conversation) =~ ~r/the same feedback has repeated/i
 
         {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
         refute tasks.isError, response_text(tasks)

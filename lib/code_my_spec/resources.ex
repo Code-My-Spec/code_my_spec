@@ -46,6 +46,7 @@ defmodule CodeMySpec.Resources do
   import Ecto.Query
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -403,10 +404,10 @@ defmodule CodeMySpec.Resources do
   # ships — which is `:off`, the same answer the schema default gives.
   defp devops(scope, project) do
     Utils.rescued("Resources.devops", :off, fn ->
-      case Configurations.get(project_scope(scope, project)) do
-        %{devops: devops} when not is_nil(devops) -> devops
-        _ -> :off
-      end
+      scope
+      |> project_scope(project)
+      |> Configurations.get()
+      |> ProjectConfiguration.devops_level()
     end)
   end
 

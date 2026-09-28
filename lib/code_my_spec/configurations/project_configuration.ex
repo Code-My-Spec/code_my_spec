@@ -119,4 +119,13 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     |> validate_number(:main_agent_cadence_seconds, greater_than: 0)
     |> unique_constraint(:project_id)
   end
+
+  @doc """
+  The project's devops level. A row predating the column loads `nil`, and nil
+  means nobody said the project ships, the same as the schema default. Every
+  reader asks here, so `nil` cannot mean `:off` to one and "on" to another.
+  """
+  @spec devops_level(t() | map() | nil) :: :off | :uat | :prod
+  def devops_level(%{devops: devops}) when not is_nil(devops), do: devops
+  def devops_level(_config), do: :off
 end
