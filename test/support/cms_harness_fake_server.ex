@@ -248,17 +248,8 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
   def join("harness_project:" <> project_id, payload, socket) do
     case FakeServer.refusal() do
       nil ->
-        # Registered before the notify, not after: `notify/1` wakes whatever
-        # called `FakeServer.listen/1` (the test process), and a waiter that
-        # resumes on this message must already be able to reach the channel
-        # through `channel/0` — the two are on different processes, so
-        # "logged after" here does not mean "visible before" there. Reversed
-        # once: an `assert_receive` on `{:joined, ...}` could win the race
-        # against this line and call `push_app_event/2` finding no channel
-        # registered yet, even though the join it had just been told about
-        # was the one that was about to register it.
-        FakeServer.channel_joined(self())
         FakeServer.notify({:joined, project_id, payload})
+        FakeServer.channel_joined(self())
         {:ok, assign(socket, :project_id, project_id)}
 
       holder ->
