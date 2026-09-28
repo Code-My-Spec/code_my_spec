@@ -21,7 +21,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
@@ -60,6 +62,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
 
         context = Map.put(context, :story, story)
 
+        # On disk, not just in the DB: `EvaluateTask` syncs files first
+        # (`Evaluator.sync_files/1`), and `FileSync.sync/2` clears problems
+        # recorded against a path that sync no longer finds
+        # (`Problems.clear_problems_for_missing_files/2`) — correct for a
+        # real orphaned finding, and exactly what would silently clear this
+        # one if the file it names were never actually written.
+        :ok =
+          Environments.write_file(context.environment, "lib/example/widget.ex", """
+          defmodule Example.Widget do
+            def render, do: :ok
+          end
+          """)
+
         {:ok, [problem]} = Problems.create_problems(context.scope, [credo_finding()])
 
         {:ok, Map.put(context, :problem, problem)}
@@ -89,7 +104,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
 
       then_ "starting that task's prompt names the finding by file, line and message",
             context do
-        prompt = start_problems_resolved_task(context)
+        context = start_problems_resolved_task(context)
+        prompt = context.prompt
 
         assert prompt =~ "lib/example/widget.ex:17",
                "the task's prompt should name the finding's file and line directly, " <>
@@ -97,6 +113,30 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
 
         assert prompt =~ "Function is too complex",
                "the task's prompt should name the finding's message. Got: #{prompt}"
+
+        {:ok, context}
+      end
+
+      then_ "evaluating that task fails while the finding remains", context do
+        {:reply, response, _frame} =
+          EvaluateTask.execute(
+            %{task_id: context.task_id, session_id: context.session_id},
+            %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+          )
+
+        text = response_text(response)
+
+        assert text =~ "Needs work",
+               "evaluating the task should refuse while the credo finding is still on " <>
+                 "this story's own working copy — an agent that calls evaluate_task " <>
+                 "too early must not be told it's done. Got: #{text}"
+
+        assert text =~ "this task remains open",
+               "the refusal should leave the task active rather than close it out from " <>
+                 "under the agent. Got: #{text}"
+
+        assert text =~ "blocking problem",
+               "the refusal should say why, not just that it failed. Got: #{text}"
 
         {:ok, context}
       end
@@ -137,6 +177,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
   # from a fresh Claude Code session takes.
   defp start_problems_resolved_task(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+    session_id = "spex-1575-#{System.unique_integer([:positive])}"
 
     {:reply, response, _frame} =
       StartTask.execute(
@@ -144,13 +185,27 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
           requirement_name: "problems_resolved",
           entity_type: "story",
           entity_id: to_string(context.story.number),
-          session_id: "spex-1575-#{System.unique_integer([:positive])}"
+          session_id: session_id
         },
         frame
       )
 
-    response_text(response)
+    text = response_text(response)
+
+    context
+    |> Map.put(:prompt, text)
+    |> Map.put(:task_id, extract_task_id(text))
+    |> Map.put(:session_id, session_id)
   end
+
+  defp extract_task_id(text) do
+    text
+    |> then(&Regex.run(~r/Task ID: `([^`]+)`/, &1))
+    |> task_id_from_match(text)
+  end
+
+  defp task_id_from_match([_, id], _text), do: id
+  defp task_id_from_match(_no_match, text), do: flunk("start_task's response named no task id. Got: #{text}")
 
   defp credo_finding do
     %{

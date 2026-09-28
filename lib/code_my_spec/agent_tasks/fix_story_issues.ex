@@ -24,8 +24,19 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   story blocked only by a bare analyzer finding from being offered a task
   whose prompt names nothing it can act on, which is exactly the "claim the
   task, find no issues, tap out, get offered the same task again" spin this
-  project has been burned by before (94327fe2). `evaluate/2` checks both, so
-  a story cannot read as done here while either kind of blocker remains.
+  project has been burned by before (94327fe2).
+
+  `evaluate/2` below shows both together for an agent reading its own
+  feedback, but this module is not in `Evaluator.custom_evaluate_modules/0`,
+  so neither `EvaluateTask` nor the stop hook ever calls it —
+  `dispatch_evaluate/4` in each falls through to `Evaluator.evaluate/2`,
+  which checks the *one* requirement `task.requirement_name` actually names
+  (`ProblemsChecker.resolved?/2` for a `problems_resolved` task,
+  `IssuesChecker.story_resolved?/2` for `story_issues_resolved`). That already
+  refuses correctly per requirement, independent of the other — confirmed by
+  criterion 1575's own `evaluate_task` assertion — which is what actually
+  keeps a story from reading done while either blocker remains, not this
+  function.
   """
 
   alias CodeMySpec.{Configurations, Issues, Paths, Problems, Stories}
@@ -53,9 +64,11 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   end
 
   @doc """
-  Check that every accepted issue on this story at or above the configured
-  threshold has been resolved, and that its own working copy carries no
-  credo or compiler finding.
+  Dead as far as evaluation goes — see the moduledoc. Kept because a task
+  module without `evaluate/2` reads as unfinished to the next person who
+  opens this file, and this shows accepted issues and analyzer problems
+  the same combined way `command/2`'s prompt does, in case something ever
+  does call it directly.
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(task) do
