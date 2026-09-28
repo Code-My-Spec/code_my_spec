@@ -341,6 +341,19 @@ defmodule CodeMySpec.Stories do
   end
 
   @doc """
+  Brings a retired story back under its number, with the criteria retired
+  with it. It comes back parked.
+  """
+  def restore_story(%Scope{} = scope, %Story{} = story) do
+    true = story.account_id == scope.active_account_id
+
+    with {:ok, story = %Story{}} <- impl().restore_story(scope, story) do
+      broadcast(scope, {:updated, story})
+      {:ok, story}
+    end
+  end
+
+  @doc """
   Returns an `%Ecto.Changeset{}` for tracking story changes.
 
   ## Examples

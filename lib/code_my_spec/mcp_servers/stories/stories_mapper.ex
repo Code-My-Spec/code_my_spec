@@ -92,6 +92,14 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   defp epic_line(%{name: name}), do: "\n\n**Epic:** #{name}"
   defp epic_line(_), do: ""
 
+  def story_restored_response(story) do
+    Response.tool()
+    |> Response.text(
+      "Story restored: \"#{story.title}\" (ID: #{story.id})#{number_line(story)}. " <>
+        "It is parked; release it with update_story(ready_for_dev: true) to put it back to work."
+    )
+  end
+
   def story_retired_response(story) do
     Response.tool()
     |> Response.text("Story retired: \"#{story.title}\" (ID: #{story.id})#{number_line(story)}")

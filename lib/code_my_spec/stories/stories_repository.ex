@@ -480,6 +480,29 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end)
   end
 
+  # Back under its number, with the criteria that were retired with it —
+  # the ones stamped at the same instant. Criteria retired on their own
+  # before the story stay retired. The story comes back parked: releasing it
+  # again is its own decision.
+  def restore_story(%Scope{} = scope, %Story{retired_at: %DateTime{} = retired_at} = story) do
+    Repo.transaction(fn ->
+      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+        where: c.story_id == ^story.id and c.retired_at == ^retired_at
+      )
+      |> Repo.update_all(set: [retired_at: nil])
+
+      story
+      |> Ecto.Changeset.change(retired_at: nil)
+      |> PaperTrail.update(originator: originator(scope))
+      |> case do
+        {:ok, %{model: model}} -> model
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  def restore_story(_scope, %Story{}), do: {:error, :not_retired}
+
   def by_project(query \\ Story, project_id) do
     from(s in query, where: s.project_id == ^project_id)
   end
