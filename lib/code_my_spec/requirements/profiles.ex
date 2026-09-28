@@ -194,21 +194,6 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
-  defp stories_on_blocked_copies(_project_id, blocking_by_working_copy)
-       when map_size(blocking_by_working_copy) == 0,
-       do: []
-
-  defp stories_on_blocked_copies(project_id, blocking_by_working_copy) do
-    working_copy_ids = Map.keys(blocking_by_working_copy)
-
-    Repo.all(
-      from(s in Story,
-        where: s.project_id == ^project_id and s.working_copy_id in ^working_copy_ids,
-        select: %{id: s.id, working_copy_id: s.working_copy_id}
-      )
-    )
-  end
-
   # Everything `bdd_specs_passing` reads, for every story, in three reads.
   #
   # The requirement has three outcomes and `SpecsPassingChecker.passing?/3`
@@ -354,6 +339,27 @@ defmodule CodeMySpec.Requirements.Profiles do
   # nothing.
   def load(%Scope{} = scope, :architecture) do
     %{components: Components.list_components_for_coverage(scope)}
+  end
+
+  # `stories_by_id` for the `:problems` profile above — narrowed to stories on
+  # one of the blocked copies, not every story in the project: criterion 1511
+  # measures a pass's query count against what genuinely moved, and the
+  # steady state has no blocking working copy at all, so the common case
+  # skips the query outright rather than paying for a project-wide scan that
+  # `blocking_by_working_copy` already knows will match nothing.
+  defp stories_on_blocked_copies(_project_id, blocking_by_working_copy)
+       when map_size(blocking_by_working_copy) == 0,
+       do: []
+
+  defp stories_on_blocked_copies(project_id, blocking_by_working_copy) do
+    working_copy_ids = Map.keys(blocking_by_working_copy)
+
+    Repo.all(
+      from(s in Story,
+        where: s.project_id == ^project_id and s.working_copy_id in ^working_copy_ids,
+        select: %{id: s.id, working_copy_id: s.working_copy_id}
+      )
+    )
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same
