@@ -103,7 +103,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     # event moves is left to the marks it discards.
     "files_synced" => [:files, :specs],
     # Story test verdicts must be refreshed when analysis problems change.
-    "problems_changed" => [:specs],
+    # `:problems` too, story 1003: `problems_resolved` reads the same event —
+    # a credo/compiler finding landing or clearing on a story's own working
+    # copy has to move its verdict the same turn `bdd_specs_passing` does.
+    "problems_changed" => [:specs, :problems],
     "deploy_changed" => [:links],
     # A story row reaches five profiles, which is why this event took five
     # conversions to turn on:
@@ -115,12 +118,15 @@ defmodule CodeMySpec.Requirements.Handlers do
     #                   story's `working_copy_id`, so moving a story between
     #                   checkouts moves which issues gate here
     #   * `:qa`       — no. A story row says nothing about its QA attempts.
+    #   * `:problems` — story 1003: `working_copy_id` also decides which
+    #                   working copy's credo/compiler findings gate
+    #                   `problems_resolved`, the same way it does for `:issues`.
     #
     # Creation and deletion are `story_created` / `story_deleted`, which nothing
     # handles, and so is `story_readiness_changed`: `ready_for_dev` decides
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
-    "story_changed" => [:stories, :links, :specs, :issues],
+    "story_changed" => [:stories, :links, :specs, :issues, :problems],
     "qa_attempt_submitted" => [:qa],
     # A component appearing, going or changing moves `architecture_designed`
     # — the orphan rule reads the component set — and that is settled here
@@ -205,6 +211,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
     "story_issues_resolved" => [:issues],
+    "problems_resolved" => [:problems],
     "bdd_specs_passing" => [:specs],
     "implementation_file" => [:files],
     # Files for the spec paths, stories for the criteria those paths have to
@@ -399,6 +406,43 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
+  # Story 1003: a story's own working copy carrying a credo/compiler finding.
+  # `:problems` gives both the counts and `stories_by_id` — already narrowed
+  # to stories on one of the blocked copies, not the full `:stories` profile
+  # (personas/rules/criteria/questions/epic, none of which this reads) and
+  # not every story in the project either: criterion 1511 measures a pass's
+  # query count against what genuinely moved, and the steady state has no
+  # blocked copy at all, so `Profiles.load/2` skips the story query outright
+  # rather than paying for a project-wide scan that would match nothing.
+  #
+  # A story with no working copy assigned yet cannot carry a finding on one,
+  # so it defaults satisfied along with everyone else — same reasoning as
+  # `story_issues_resolved` never gating on a copy that does not exist yet.
+  defp settle("problems_resolved", %{problems: problems}, _scope) do
+    %{
+      entity_type: "story",
+      name: "problems_resolved",
+      default: true,
+      default_details:
+        details(%{status: "No blocking problems on this story's own working copy"}),
+      except:
+        Enum.map(problems.stories_by_id, fn story ->
+          count = Map.fetch!(problems.blocking_by_working_copy, story.working_copy_id)
+
+          %{
+            entity_type: "story",
+            entity_id: story.id,
+            name: "problems_resolved",
+            satisfied: false,
+            details:
+              details(%{
+                reason: "#{count} blocking problem(s) on this story's own working copy"
+              })
+          }
+        end)
+    }
+  end
+
   # The eight file requirements, settled from one profile.
   #
   # Default satisfied, exceptions unsatisfied, and that direction is forced
@@ -586,15 +630,14 @@ defmodule CodeMySpec.Requirements.Handlers do
   # a later `:partial` overrides an earlier pass, and an invalidated pass is not
   # one. Default unsatisfied, because a story with no attempt at all is the
   # common state and reads identically to one whose latest attempt failed.
-  defp settle("qa_complete", %{qa: profile}, _scope) do
-    %{
+  defp settle("qa_complete", %{qa: profile}, _scope),
+    do: %{
       entity_type: "story",
       name: "qa_complete",
       default: false,
       default_details: details(elem(Qa.verdict(false), 1)),
       except: qa_passes(profile)
     }
-  end
 
   # The rollups. One call to the requirement's own checker, which is a narrowed
   # recompute rather than event application — see `@delegate_requirements` for

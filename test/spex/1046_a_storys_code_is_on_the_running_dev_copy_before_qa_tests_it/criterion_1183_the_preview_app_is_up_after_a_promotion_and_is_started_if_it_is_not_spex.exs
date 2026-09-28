@@ -4,24 +4,24 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   Criterion 3176 — The preview app is up after a promotion, and is started if it
   is not.
 
-  Rule: The running application must be serving the code that was promoted.
+  Rule: the running application must be serving the code that was promoted —
+  a property of *promotion*, not of QA. Two scenarios below: an error is
+  something QA is there to find, never a reason to hold a story back; and
+  `promote` itself is what brings a down application back, restarting it as
+  part of landing the merge.
 
-  The half `code_on_running_copy` did not cover, and the gap showed within a day
-  of shipping it. The gate proved the code was on the running copy and said
-  nothing about whether anything was serving it — so Broken Oaths' preview went
-  down, the gate stayed satisfied, and a QA agent stood in front of a connection
-  refused with the graph reporting the story ready to test.
-
-  What it did next is the reason this is a rule rather than a nicety: it asked
-  for permission to restart the app itself. Restarting would have started it on
-  code that did not contain the work it was there to verify, and QA would then
-  have tested a healthy-looking application missing the feature — the nine false
-  failures of 2026-09-09 with the sign flipped.
-
-  So the state QA depends on is both halves at once: the code is here, and the
-  thing QA opens is answering. A checkout that is behind *and* down gets one
-  instruction, because `promote` fixes both — it brings the work across and
-  restarts on the way.
+  Story 1003, revised 2026-09-28: this file used to carry a third scenario,
+  "A story is not ready for QA while its application is down" — refusing QA
+  and routing to `PromoteWork` when the story's *own* copy (not main's
+  post-promotion preview) wasn't answering. That was this criterion's
+  business when `code_on_running_copy` sat upstream of `qa_complete` and QA
+  tested main after promotion. Story 1003 reverses that order; the scenario
+  moved to criterion 1169, rewritten to match what `QaStory` actually does
+  now — brings the copy's own app up live as part of starting, and if that
+  still fails, hands the task out anyway with a prompt saying so, never a
+  graph-level refusal or a redirect to promotion. Caught by Harness
+  (session 4298eb) before it shipped: offering `PromoteWork` there would have
+  let an agent stamp `promoted_version` before `qa_complete` was satisfied.
   """
 
   use CodeMySpecSpex.Case
@@ -35,6 +35,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -46,61 +47,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     :ok
   end
 
-  spex "A story is not ready for QA while its application is down", criterion: 1183 do
-    scenario "the code is on the running copy and nothing is answering" do
-      given_ "a story ready for QA, on the checkout the application runs from", context do
-        # The chain first. Joining or designating a checkout before it leaves
-        # the story short of `bdd_specs_passing`, and the graph then answers
-        # with an earlier task instead of the node this criterion is about.
-        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:ok, this_copy_is_the_running_one(context)}
-      end
-
-      given_ "whose application is answering", context do
-        report_preview(context, "serving")
-
-        text = ask_for_next_work(context)
-
-        assert text =~ "QaStory",
-               "the premise failed: QA was not offered the story even with the " <>
-                 "application up, so the assertion below would pass for the " <>
-                 "wrong reason. Got: #{text}"
-
-        {:ok, context}
-      end
-
-      when_ "the application stops answering", context do
-        {:ok, report_preview(context, "down")}
-      end
-
-      then_ "QA is no longer offered the story", context do
-        text = ask_for_next_work(context)
-
-        refute text =~ "QaStory",
-               "QA was sent to test a story whose application is not answering. " <>
-                 "It cannot test a connection refused, and what it does instead " <>
-                 "is file the story as broken. Got: #{text}"
-
-        {:ok, context}
-      end
-
-      then_ "and is told the application is down, not that the story is unfinished",
-            context do
-        text = ask_for_next_work(context)
-
-        assert text =~ "PromoteWork",
-               "the story was not routed to the one action that starts it. Got: #{text}"
-
-        {:ok, context}
-      end
-    end
-  end
-
   spex "An application that answers with an error is QA's to find" do
     scenario "the application is up and returning 500s" do
       given_ "a story ready for QA, on the checkout the application runs from", context do
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:ok, this_copy_is_the_running_one(context)}
+        context = this_copy_is_the_running_one(context)
+        {:ok, assign_story_to_this_copy(context)}
       end
 
       when_ "its application answers with an error", context do
@@ -297,5 +249,22 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     |> render_click()
 
     context
+  end
+
+  # Story 1003: `Qa.complete_check/2,3` reads the *story's own* working copy
+  # to know whether anything is serving before QA is offered — the half
+  # `code_on_running_copy` used to cover for free by being upstream of
+  # `qa_complete`. `FullSatisfactionFixtures.apply_story/1` never assigns a
+  # copy, so it has to be set explicitly here, same as criterion 1575's own
+  # fixture needed for `problems_resolved`.
+  defp assign_story_to_this_copy(context) do
+    story = Stories.get_story(context.scope, context.story.id)
+
+    {:ok, story} =
+      Stories.update_story(context.scope, story, %{
+        working_copy_id: context.scope.active_working_copy_id
+      })
+
+    Map.put(context, :story, story)
   end
 end

@@ -1,20 +1,24 @@
-defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
+defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion 3162 — QA does not start on a story the running copy has never seen.
+  Criterion 1170 — QA starts once the copy's own app serves the copy's
+  commit, and not against main's app or the preview.
 
-  Rule: A story's code must be present on the running dev copy before QA work
-  on that story begins.
+  Rule, revised 2026-09-28 (story 1003, Three Amigos, phase 2 of story 1108):
+  QA no longer waits on a story's code reaching *main* at all — it waits on
+  the story's own working copy having clean specs, no accepted issues and no
+  analyzer problems. Story 1108 gave every copy its own app; promotion now
+  follows QA (`code_on_running_copy` moved to depend on `qa_complete`, not
+  the other way round), so the checkout QA tests is the agent's own,
+  unpromoted worktree — not the checkout the application runs from.
 
-  The failure this exists to stop, measured on Broken Oaths 2026-09-09: nine
-  stories were handed to QA whose implementation had never left the coding
-  agent's worktree. QA failed all nine — correctly, because the code it tested
-  was not the code that had been written. Nine defects that were not defects.
-
-  Asked of git rather than of files. "Has this checkout's work reached main"
-  is a question about commits, and answering it from file rows depends on scans
-  landing, on story-to-component linkage, and on roles being classified right —
-  three ways to answer yes for a checkout that is behind.
+  Originally this criterion asserted the opposite: QA was refused while a
+  checkout was ahead of main, because it was main's app QA tested. That
+  premise is what caused the failure this criterion used to guard against
+  (Broken Oaths 2026-09-09, nine stories QA'd against code that had never
+  reached the checkout being tested) — the fix now is that QA tests the
+  agent's own checkout directly, so "ahead of main" no longer describes a
+  copy QA hasn't seen; it describes exactly the copy QA is about to test.
   """
 
   use CodeMySpecSpex.Case
@@ -26,6 +30,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -37,22 +42,23 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
     :ok
   end
 
-  spex "QA is not offered a story while the checkout is ahead of main", criterion: 1169 do
+  spex "QA is offered a story on its own copy even while that copy is ahead of main",
+       criterion: 1170 do
     scenario "the agent has committed work that main does not have" do
-      given_ "a story ready for QA on a checkout with unpromoted commits", context do
+      given_ "a story with clean specs, no issues and no problems, ready for QA on a checkout with unpromoted commits",
+             context do
         context = a_promotable_project(context)
-        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
+        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        # No git state to report any more, and that is the point rather than a
-        # simplification. The gate used to read this checkout's commit counts;
-        # it reads the story's own `promoted_version` stamp now, and the
-        # columns behind those counts are gone — nothing decided on them and
-        # they cost a whole-project recompute per keystroke. An unpromoted
-        # story is refused whatever this checkout looks like, which is a
-        # stronger version of the same premise.
+        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
+
+        # Never promoted — `code_on_running_copy` unsatisfied for this story,
+        # on purpose. Under the old order that alone refused QA. Under the
+        # new one it has to make no difference: promotion is downstream of
+        # QA now, not upstream of it.
         {:ok, context}
       end
 
@@ -60,12 +66,29 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
         {:ok, ask_for_next_work(context)}
       end
 
-      then_ "it is not handed the story", context do
+      then_ "it is handed the story, on this checkout, unpromoted", context do
         text = response_text(context.response)
 
-        refute text =~ "QaStory",
-               "QA was handed a story whose code has never reached the copy it " <>
-                 "tests. Got: #{text}"
+        assert text =~ "QaStory",
+               "QA should run on the agent's own checkout regardless of whether " <>
+                 "that checkout has been promoted — promotion is what follows a " <>
+                 "QA pass now, not what precedes it. Got: #{text}"
+
+        {:ok, context}
+      end
+
+      then_ "starting the task addresses the copy's own app, not main's", context do
+        prompt = start_qa_task(context)
+
+        assert prompt =~ "this working copy's own instance",
+               "the task should point QA at the checkout carrying the story's own " <>
+                 "commit, not main's app — testing main here would test code that " <>
+                 "never left the coding agent's worktree, the exact failure this " <>
+                 "criterion exists to prevent. Got: #{prompt}"
+
+        refute prompt =~ "#{@endpoint}.url()",
+               "the prompt fell back to main's address instead of resolving this " <>
+                 "checkout's own app. Got: #{prompt}"
 
         {:ok, context}
       end
@@ -76,6 +99,53 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
     {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
     Map.put(context, :response, response)
+  end
+
+  # Through `start_task`, the surface an agent actually calls, so the
+  # assertion below observes what `QaStory.command/2` really renders rather
+  # than asserting against the task module directly.
+  #
+  # `own_copy_app_url_line/1` dispatches `ensure_app_running` live, over the
+  # same channel the agent's checkout joined with — a real `GenServer.call`
+  # with a real timeout, not a cached column read. Started in a `Task`
+  # because it blocks on the reply this test itself has to answer, the same
+  # push-and-reply shape `criterion_1183`'s `answer_restart_app/2` uses for
+  # `restart_app`.
+  defp start_qa_task(context) do
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+
+    task =
+      Task.async(fn ->
+        StartTask.execute(
+          %{
+            requirement_name: "qa_complete",
+            entity_type: "story",
+            entity_id: to_string(context.story.id),
+            session_id: "spex-1170-#{System.unique_integer([:positive])}"
+          },
+          frame
+        )
+      end)
+
+    assert_push "ensure_app_running", %{"ref" => ref}, 5_000
+
+    reply_ref =
+      Phoenix.ChannelTest.push(context.agent_socket, "ensure_app_running_result", %{
+        "ref" => ref,
+        "status" => "ok",
+        "app_status" => "serving",
+        "app_url" => "http://127.0.0.1:4100",
+        "app_commit" => "cafef00d"
+      })
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
+    after
+      1_000 -> flunk("ensure_app_running_result was never acknowledged")
+    end
+
+    {:reply, response, _frame} = Task.await(task, 5_000)
+    response_text(response)
   end
 
   # Two checkouts of one repository, which is what a promotion actually meets.
@@ -132,7 +202,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
     _ = out
 
     running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    {agent, agent_socket} = join_working_copy_socket(context, agent_root, "the coding agent's copy")
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy
@@ -151,6 +221,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3162Spex do
     |> Map.put(:agent_root, agent_root)
     |> Map.put(:running, running)
     |> Map.put(:agent, agent)
+    |> Map.put(:agent_socket, agent_socket)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
 

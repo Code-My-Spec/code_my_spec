@@ -424,16 +424,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # slipped through (issue 2d612ae8) — the copy's address silently served
   # main's pre-fix code.
   #
-  # Main keeps the existing instruction: its app is assumed already running,
-  # and every other story still QAs it there until phase 2 (revising story
-  # 1003) moves qa_complete before code_on_running_copy for every copy, not
-  # only non-main ones.
+  # Story 1003, revised 2026-09-28 (phase 2): main is just another working
+  # copy under story 1108's model now — `qa_complete` moved ahead of
+  # `code_on_running_copy` for every copy, not only non-main ones, so main no
+  # longer gets to assume its app is already running. `main_app_url_line/1`
+  # survives only as the fallback for the two cases where there is no copy id
+  # to resolve at all (no active working copy on the scope, or the id it
+  # names does not exist) — there is nothing else to ask in either case.
   @app_start_timeout to_timeout(minute: 3)
 
   defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
        when is_binary(id) do
     case WorkingCopies.fetch(id) do
-      {:ok, %{main: true}} -> main_app_url_line(endpoint_module)
       {:ok, copy} -> own_copy_app_url_line(copy)
       {:error, _} -> main_app_url_line(endpoint_module)
     end

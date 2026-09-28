@@ -111,7 +111,14 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   # eminently possible that someone would be just doing the work on Maine."
   #
   # Still has to be serving. The code is here by definition; whether anything
-  # is answering is a separate question and QA needs both.
+  # is answering is a separate question.
+  #
+  # Story 1003, revised 2026-09-28: this check no longer gates what QA is
+  # about to test — QA now runs against a story's own working copy before
+  # promotion (story 1108), and `code_on_running_copy` moved to depend on
+  # `qa_complete` rather than the reverse. This verdict answers "has this
+  # landed on main and is main serving it," a promotion-completeness fact,
+  # not a precondition QA is waiting on.
   defp verdict(
          %WorkingCopy{id: id} = running,
          %Scope{active_working_copy_id: id},

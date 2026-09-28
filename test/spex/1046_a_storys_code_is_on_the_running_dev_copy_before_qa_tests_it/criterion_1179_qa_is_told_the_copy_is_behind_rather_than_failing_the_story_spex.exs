@@ -3,16 +3,30 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
   Story 1046 — A story's code is on the running dev copy before QA tests it.
   Criterion 3172 — QA is told the copy is behind rather than failing the story.
 
-  Rule: QA is told when the copy it is testing is behind the work it is meant
-  to verify.
+  Rule, revised 2026-09-28 (story 1003, Three Amigos, phase 2 of story 1108):
+  the belt to 3162's suspenders, re-pointed at the new order. QA now tests
+  the agent's own checkout directly, so a story ready for QA is never routed
+  to a promotion first — promotion is what follows a QA pass, not what
+  precedes it. Asserting both directions in one spec: QA is offered, and
+  promotion specifically is not offered instead.
 
-  The belt to 3162's suspenders. If a story does reach QA while the checkout
-  and main disagree, it must read as "the copy is behind", not as "the feature
-  is broken".
+  Originally this asserted the opposite direction: an unpromoted checkout was
+  routed to `PromoteWork`, not `QaStory`, so QA would never discover a missing
+  feature by testing for it — the nine false defects of 2026-09-09, where QA
+  was right about what it saw and wrong about what it meant. That protection
+  is now structural rather than an ordering trick: QA tests the checkout the
+  work actually landed on, so there is no other checkout for it to be
+  surprised by.
 
-  That distinction is the nine false defects of 2026-09-09. QA was right about
-  what it saw every time — the feature genuinely was not there — and wrong
-  about what it meant. An agent told the difference files nothing.
+  The original criterion's fuller framing — QA told explicitly when *its own
+  copy's app* has not yet caught up to the commit it is meant to test, as
+  opposed to promotion status — depends on comparing a submitted QA attempt's
+  recorded commit against the story's current one, which this revision does
+  not yet implement (deferred: recording the commit `AppTransport.ensure_app_running/2`
+  returns at QA kickoff onto the attempt, and checking it in `Qa.complete_check/2,3`).
+  `own_copy_app_url_line/1` in `qa_story.ex` already tells the agent plainly
+  when its own copy's app is down or unreachable rather than silently pointing
+  at a stale address — see that module for what is covered today.
   """
 
   use CodeMySpecSpex.Case
@@ -35,22 +49,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
     :ok
   end
 
-  spex "A checkout out of sync is reported as out of sync", criterion: 1179 do
+  spex "A story ready for QA on its own checkout is offered testing, not a promotion",
+       criterion: 1179 do
     scenario "the checkout has work main has not seen" do
-      given_ "a story ready for QA on a checkout with unpromoted commits", context do
+      given_ "a story with clean specs, no issues and no problems, on a checkout with unpromoted commits",
+             context do
         context = a_promotable_project(context)
-        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
+        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        # No git state to report any more, and that is the point rather than a
-        # simplification. The gate used to read this checkout's commit counts;
-        # it reads the story's own `promoted_version` stamp now, and the
-        # columns behind those counts are gone — nothing decided on them and
-        # they cost a whole-project recompute per keystroke. An unpromoted
-        # story is refused whatever this checkout looks like, which is a
-        # stronger version of the same premise.
+        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
+
         {:ok, context}
       end
 
@@ -58,15 +69,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
         {:ok, ask_for_next_work(context)}
       end
 
-      then_ "it is routed to a promotion, not to testing", context do
+      then_ "it is routed to testing, not to a promotion", context do
         text = response_text(context.response)
 
-        assert text =~ "PromoteWork",
-               "the story was not routed to a promotion. Got: #{text}"
+        assert text =~ "QaStory",
+               "the story was not routed to QA. Got: #{text}"
 
-        refute text =~ "QaStory",
-               "QA was left to discover a missing feature by testing for it, " <>
-                 "which is how nine stories were failed for being un-merged"
+        refute text =~ "PromoteWork",
+               "promotion should not be offered ahead of QA any more — a " <>
+                 "story reaches a promotion only after it passes"
 
         {:ok, context}
       end

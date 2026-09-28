@@ -3,20 +3,42 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
   The per-story issue gate, and the template-id collision that placing it
   exposed.
 
-  `story_issues_resolved` sits between `code_on_running_copy` and `qa_complete`
-  so known blockers on a story are cleared before QA spends a pass on it. It
-  reads only issues attributed to that story — the project queue is the
-  end-of-cycle `issues_resolved` node's business, and a gate that waited on it
-  could not be passed by whoever owns the story.
+  `story_issues_resolved` sits ahead of `qa_complete` so known blockers on a
+  story are cleared before QA spends a pass on it. It reads only issues
+  attributed to that story — the project queue is the end-of-cycle
+  `issues_resolved` node's business, and a gate that waited on it could not be
+  passed by whoever owns the story.
 
   It used to sit after `qa_complete`, on the reasoning that it is about what a
   story's own QA pass raised. The checker never read it that way —
   `IssuesChecker.story_resolved?/2` counts any accepted issue carrying the
   `story_id`, whoever filed it — so an issue could land before QA ran, block the
   QA agent's task, and be unreachable, because the node that clears it was gated
-  behind the QA it was preventing. Broken Oaths story 947, 2026-09-23.
+  behind the QA it was preventing. Broken Oaths story 947, 2026-09-23. The fix
+  moved it to depend on `code_on_running_copy` instead.
 
-  The old order's stated property survives the move: a story still cannot
+  Story 1003, revised 2026-09-28: `code_on_running_copy` moved again, to
+  *depend on* `qa_complete` (story 1108 gave every copy its own app, so QA no
+  longer needs the story's code on main first) — leaving this node's
+  prerequisite at `code_on_running_copy` would have closed the same cycle the
+  2026-09-23 fix broke, one hop later. Repointed straight to `bdd_specs_passing`:
+  the checker was never reading the edge for its own safety anyway, so nothing
+  is lost by offering the work as soon as specs are green. `qa_complete` also
+  gained a second prerequisite, `problems_resolved` — a story's own working
+  copy has to carry no blocking analyzer problem before QA runs, not only no
+  accepted issue.
+
+  Whether the story's own copy is actually serving is deliberately *not* a
+  graph node: a `qa_target_serving` node ahead of `qa_complete` was tried and
+  reverted the same day (Harness, session 4298eb) — `QaStory`'s own dispatch
+  already calls `AppTransport.ensure_app_running/2` live and, on anything
+  short of `"serving"`, still hands out the task with a prompt telling the
+  agent to investigate. A graph-level refusal that redirected to
+  `PromoteWork` instead would have let an agent stamp `promoted_version`
+  before `qa_complete` was ever satisfied — the exact ordering story 1003
+  exists to prevent. See criterion 1169's spex for the corrected behavior.
+
+  The old order's stated property survives every move: a story still cannot
   release carrying a blocker its own QA pass raised, because this node is in
   `StoryExecution.@completion_names` and an issue filed afterwards takes the
   story back out of completion whenever it arrives. Ordering decides when work
@@ -50,21 +72,32 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs story_issues_resolved → qa_complete → deploy" do
+    test "the chain runs bdd_specs_passing → {story_issues_resolved, problems_resolved} → qa_complete → code_on_running_copy → deploy" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
 
       assert by_name["story_issues_resolved"].prerequisites ==
-               [id_of.("code_on_running_copy")],
+               [id_of.("bdd_specs_passing")],
              """
-             Known issues have to be clearable before QA runs. Gated behind
-             qa_complete, an issue that blocked the QA task made the node that
-             would clear it unreachable — the circle that stalled story 947.
+             Known issues have to be clearable before QA runs, independent of
+             promotion — repointing this at code_on_running_copy (or leaving
+             it there once code_on_running_copy moved past qa_complete) closes
+             the circle that stalled story 947 one hop later.
              """
 
-      assert by_name["qa_complete"].prerequisites == [id_of.("story_issues_resolved")]
-      assert by_name["deploy"].prerequisites == [id_of.("qa_complete")]
+      assert by_name["problems_resolved"].prerequisites == [id_of.("bdd_specs_passing")]
+
+      assert by_name["qa_complete"].prerequisites ==
+               [id_of.("story_issues_resolved"), id_of.("problems_resolved")],
+             "QA now waits on both issues clear and the copy's own analyzers clean"
+
+      assert by_name["code_on_running_copy"].prerequisites == [id_of.("qa_complete")],
+             "story 1003: promotion follows QA, not the other way round"
+
+      assert by_name["deploy"].prerequisites == [id_of.("code_on_running_copy")],
+             "deploy has to stay downstream of promotion, or a story could " <>
+               "reach UAT before its code ever landed on main"
     end
 
     test "bdd_specs_exist gates on three_amigos_complete, not on deploy" do

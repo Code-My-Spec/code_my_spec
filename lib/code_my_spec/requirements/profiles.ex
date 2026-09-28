@@ -59,6 +59,11 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
+  # `Requirements.ProblemsChecker`'s own list — kept here too rather than
+  # cross-referenced, since a profile and the delegate check it backs must not
+  # drift on what "blocking" means for the same requirement.
+  @always_block_problem_sources ~w(credo compiler)
+
   @type name ::
           :issues
           | :specs
@@ -154,12 +159,54 @@ defmodule CodeMySpec.Requirements.Profiles do
         )
       )
 
+    # `problems_resolved` (story 1003): a story's own working copy carrying
+    # any credo/compiler finding — the same always-blocking sources
+    # `Promotion`'s own gate reads. By working copy, not by component: a
+    # story's copy can carry a finding in a file no component owns yet, and
+    # `problems_resolved` still has to see it.
+    blocking_by_working_copy =
+      Repo.all(
+        from(p in Problem,
+          where:
+            p.project_id == ^project_id and p.source in ^@always_block_problem_sources and
+              not is_nil(p.working_copy_id),
+          group_by: p.working_copy_id,
+          select: {p.working_copy_id, count(p.id)}
+        )
+      )
+      |> Map.new()
+
     %{
       by_component_source:
         Enum.reduce(counts, %{}, fn {component_id, source, n}, acc ->
           Map.update(acc, component_id, %{source => n}, &Map.put(&1, source, n))
-        end)
+        end),
+      blocking_by_working_copy: blocking_by_working_copy,
+      # `{id, working_copy_id}` for stories whose copy is one of the ones
+      # above — not the `:stories` profile (personas/rules/criteria/
+      # questions/epic_in_progress, none of which `problems_resolved` reads),
+      # and not every story in the project either: criterion 1511 measures a
+      # pass's query count against what genuinely moved, and the steady state
+      # has no blocking working copy at all, so the common case skips the
+      # query outright rather than paying for a project-wide story scan that
+      # `blocking_by_working_copy` already knows will match nothing.
+      stories_by_id: stories_on_blocked_copies(project_id, blocking_by_working_copy)
     }
+  end
+
+  defp stories_on_blocked_copies(_project_id, blocking_by_working_copy)
+       when map_size(blocking_by_working_copy) == 0,
+       do: []
+
+  defp stories_on_blocked_copies(project_id, blocking_by_working_copy) do
+    working_copy_ids = Map.keys(blocking_by_working_copy)
+
+    Repo.all(
+      from(s in Story,
+        where: s.project_id == ^project_id and s.working_copy_id in ^working_copy_ids,
+        select: %{id: s.id, working_copy_id: s.working_copy_id}
+      )
+    )
   end
 
   # Everything `bdd_specs_passing` reads, for every story, in three reads.

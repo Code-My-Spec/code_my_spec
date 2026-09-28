@@ -110,9 +110,8 @@ defmodule CodeMySpec.Qa do
   `{boolean(), details_map()}` pair suitable for `normalize_delegate_result/1`.
   """
   @spec complete_check(Scope.t(), map()) :: {boolean(), map()}
-  def complete_check(%Scope{} = scope, story) do
-    scope |> QaAttempts.complete?(story.id) |> verdict()
-  end
+  def complete_check(%Scope{} = scope, story),
+    do: scope |> QaAttempts.complete?(story.id) |> verdict()
 
   @doc """
   The same check, reading the graph context instead of querying per story.

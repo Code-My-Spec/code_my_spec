@@ -448,16 +448,22 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "qa_complete prerequisites" do
-    # `code_on_running_copy` now sits between them. QA tests the running
-    # application, so a story whose code has not reached that checkout would be
-    # tested in a build that never contained it — which is what happened to nine
-    # stories on 2026-09-09, all of them failed for code that was never there.
-    test "qa_complete waits on code_on_running_copy, which waits on bdd_specs_passing" do
-      # Now reached through `story_issues_resolved`, which moved in front of
-      # `qa_complete` so a known blocker on the story can be cleared before QA
-      # spends a pass. The property this test exists for is unchanged and still
-      # transitive: nothing lets QA start before the code reaches the running
-      # copy.
+    # Story 1003, revised 2026-09-28: QA now runs against the story's own
+    # working copy (story 1108), not against main after a promotion — so
+    # `code_on_running_copy` moved from *before* `qa_complete` to *after* it.
+    # Promotion records verified work landing; it no longer gates what QA can
+    # test. `story_issues_resolved` and `problems_resolved` sit ahead of
+    # `qa_complete` instead, straight off `bdd_specs_passing`: a story's own
+    # known issues and its own working copy's analyzer findings both have to
+    # be clear before QA spends a pass on it.
+    #
+    # Whether the copy is actually serving is deliberately not a graph node —
+    # a `qa_target_serving` node here was tried and reverted the same day
+    # (Harness, session 4298eb): `QaStory` already brings the copy's own app
+    # up live as part of starting, and a graph-level refusal that redirected
+    # to `PromoteWork` instead would have let `promoted_version` get stamped
+    # before `qa_complete` was satisfied. See criterion 1169's spex.
+    test "qa_complete waits on issues and problems clearing; code_on_running_copy waits on qa_complete" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -479,22 +485,31 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         end)
       end
 
-      assert edge?.("bdd_specs_passing", "code_on_running_copy"),
-             "code_on_running_copy should follow bdd_specs_passing"
+      assert edge?.("bdd_specs_passing", "story_issues_resolved"),
+             "story_issues_resolved should follow bdd_specs_passing directly"
 
-      assert edge?.("code_on_running_copy", "story_issues_resolved"),
-             "clearing a story's issues should wait on its code reaching the running copy"
+      assert edge?.("bdd_specs_passing", "problems_resolved"),
+             "problems_resolved should follow bdd_specs_passing directly"
 
       assert edge?.("story_issues_resolved", "qa_complete"),
              "qa_complete should wait on the story's known issues being resolved"
+
+      assert edge?.("problems_resolved", "qa_complete"),
+             "qa_complete should wait on the story's own working copy carrying no problems"
+
+      assert edge?.("qa_complete", "code_on_running_copy"),
+             "promotion should follow QA, not the other way round"
 
       refute edge?.("bdd_specs_passing", "qa_complete"),
              "the direct edge would let QA start on a story whose code has not " <>
                "left the coding agent's worktree"
 
       refute edge?.("code_on_running_copy", "qa_complete"),
-             "code_on_running_copy now reaches qa_complete through " <>
-               "story_issues_resolved, not directly"
+             "the old direction — promotion gating QA — must not survive the reorder"
+
+      refute edge?.("bdd_specs_passing", "code_on_running_copy"),
+             "promotion is no longer reached straight off bdd_specs_passing; it " <>
+               "waits on qa_complete now"
     end
 
     test "qa_complete is not actionable when bdd_specs_exist is unsatisfied" do

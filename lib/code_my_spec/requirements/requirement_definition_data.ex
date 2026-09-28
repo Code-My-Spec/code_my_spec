@@ -166,6 +166,38 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [2],
         execution_type: :main_agent
       }),
+      # Story 1003, added 2026-09-28: John — "I want all the problems gone,
+      # all the issues fixed, then we run QA." Problems (compiler, credo,
+      # exunit, spex findings) were previously only checked at promotion —
+      # this closes the gap so QA is never spent on a copy the analyzers
+      # already know is broken. Checks credo/compiler findings specifically
+      # (`ProblemsChecker`, the same always-blocking half `Promotion`'s own
+      # gate reads), scoped to this story's own working copy rather than
+      # whichever copy happens to be asking. Narrower than promotion's full
+      # definition of clean — see the module doc for why the rest of it
+      # cannot be reused from here.
+      new!(%{
+        id: 19,
+        name: "problems_resolved",
+        role: :coding,
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.ProblemsChecker, function: :resolved?},
+        # No dedicated task exists for "clear analyzer findings generally" —
+        # every existing coding task already surfaces persisted problems for
+        # its own files via `ProblemFeedback`/the stop hook regardless of
+        # which one is offered. `FixStoryIssues` is reused here as the
+        # nearest "this story isn't release-ready yet" coding gate; its own
+        # prompt is issue-specific and won't always describe *this* trigger
+        # precisely when what's blocking is a bare compiler/credo finding
+        # with no accepted issue behind it. Worth a dedicated task later if
+        # that mismatch turns out to matter in practice.
+        satisfied_by: AgentTasks.FixStoryIssues,
+        artifact_type: :review,
+        description: "This story's own working copy carries no blocking analyzer problem",
+        prerequisites: [3],
+        execution_type: :main_agent
+      }),
       new!(%{
         id: 18,
         name: "code_on_running_copy",
@@ -200,7 +232,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
             "the promotion stamp (a story is marked promoted once a promote " <>
             "sweep runs), not a live git-ancestry check. The two can briefly " <>
             "disagree with what `git log` shows on the running checkout.",
-        prerequisites: [3],
+        # Story 1003, revised 2026-09-28: was [3], straight off
+        # `bdd_specs_passing` — promotion used to be what QA tested. Now [4]:
+        # story 1108 gave every working copy its own app, so QA tests the
+        # story's own copy directly and no longer needs its code on the
+        # checkout main runs from first. Promotion moves after QA instead —
+        # it records that verified work landed, rather than being the thing
+        # that makes the work testable.
+        prerequisites: [4],
         execution_type: :main_agent
       }),
       new!(%{
@@ -221,7 +260,26 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # QA spends a pass. John: "we have to move story issues resolved before
         # qa because that's the logical progression." The deadlock that forced
         # it is on `story_issues_resolved` below.
-        prerequisites: [6],
+        #
+        # Story 1003, revised 2026-09-28: `code_on_running_copy` (18) is no
+        # longer upstream of this node at all — it moved to *depend on*
+        # `qa_complete` instead (story 1108 gave every copy its own app, so
+        # QA no longer needs the story's code on main first). Added `19`
+        # (`problems_resolved`) alongside the existing `6`: QA now waits on
+        # both issues being clear and the copy's own analyzers being clean.
+        #
+        # Whether the story's own copy is actually serving is deliberately
+        # *not* a prerequisite here (a `qa_target_serving` node ahead of this
+        # one was tried and reverted the same day): `QaStory`'s own dispatch
+        # already calls `AppTransport.ensure_app_running/2` live
+        # (`qa_story.ex`'s `own_copy_app_url_line/1`) and, on anything short of
+        # `"serving"`, still hands out the task with a prompt telling the agent
+        # to say so and investigate rather than test. A graph-level refusal
+        # that redirected to `PromoteWork` instead would have let an agent
+        # stamp `promoted_version` before this node was ever satisfied — the
+        # exact ordering story 1003 exists to prevent. Caught by Harness
+        # before it shipped.
+        prerequisites: [6, 19],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
@@ -295,7 +353,17 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # takes the story back out of completion whenever it arrives. Ordering
         # only decides when the work is *offered*, and offering it before QA
         # spends a pass on a story with known blockers is the better trade.
-        prerequisites: [18],
+        #
+        # Story 1003, revised 2026-09-28: was [18] (`code_on_running_copy`).
+        # `code_on_running_copy` moved to depend on `qa_complete`, which
+        # depends on this node — leaving the prerequisite at [18] would have
+        # closed a cycle (4 needs 6, 6 needs 18, 18 needs 4), the exact
+        # deadlock shape this node exists to avoid. Repointed straight to [3]
+        # (`bdd_specs_passing`): `IssuesChecker.story_resolved?/2` counts any
+        # accepted issue regardless of ordering, so this only ever decided
+        # *when* the work is offered, never enforced anything through the
+        # edge itself — offering it as soon as specs are green is safe.
+        prerequisites: [3],
         execution_type: :main_agent
       }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
@@ -338,7 +406,15 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # Follows `qa_complete` rather than `story_issues_resolved`, which it
         # used to, because those two swapped places above. Deploy still comes
         # last in the story chain; the node it waits on is now the QA pass.
-        prerequisites: [4],
+        #
+        # Story 1003, revised 2026-09-28: was [4] (`qa_complete`) — no longer
+        # enough on its own. `code_on_running_copy` moved to depend on
+        # `qa_complete` rather than the reverse, so staying on [4] would have
+        # silently decoupled deploy from promotion: a story could clear QA
+        # and be offered for UAT deploy before its code ever reached the
+        # checkout main runs from. Repointed to [18] instead — deploy still
+        # comes last, transitively through promotion and QA both.
+        prerequisites: [18],
         execution_type: :main_agent
       })
     ]
