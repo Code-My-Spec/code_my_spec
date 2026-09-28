@@ -153,6 +153,84 @@ defmodule CmsHarness.ChannelClientTransportTest do
                      "than close it"
   end
 
+  # `00121aa6`. The server answers `agents_to_restore` by writing a "harness
+  # restarted" notice to every agent, so asking on each reconnect told every
+  # agent twice or more per restart.
+  test "a rejoin after a dropped connection does not ask what to restore again" do
+    sock =
+      socket(%{
+        joined: false,
+        attempts: 0,
+        pending: %{},
+        project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}
+      })
+
+    {:ok, joined} = ChannelClient.handle_join("harness_project:p1", %{}, sock)
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", _, ref}, 1_000
+
+    {:ok, restored} = ChannelClient.handle_reply(ref, {:ok, %{"agents" => []}}, joined)
+
+    {:ok, dropped} =
+      capture_log_result(fn -> ChannelClient.handle_disconnect(:closed_by_remote, restored) end)
+
+    {:ok, _rejoined} = ChannelClient.handle_join("harness_project:p1", %{}, dropped)
+
+    refute_receive {:transport_push, _, "agents_to_restore", _, _},
+                   100,
+                   "a reconnect lost no agent; asking again writes a second restart notice"
+  end
+
+  test "a join whose restore was refused asks again on the next join" do
+    sock = socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
+
+    {:ok, joined} = ChannelClient.handle_join("harness_project:p1", %{}, sock)
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", _, ref}, 1_000
+
+    {:ok, refused} =
+      capture_log_result(fn ->
+        ChannelClient.handle_reply(ref, {:error, %{"reason" => "boom"}}, joined)
+      end)
+
+    {:ok, _} = ChannelClient.handle_join("harness_project:p1", %{}, refused)
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", _, _}, 1_000
+  end
+
+  # Harness session: a harness that starts while :4000 is down fails its first
+  # connects; the restore still happens exactly once, on the first join that lands.
+  test "a harness that starts while the server is down restores once, on its first join" do
+    sock =
+      socket(%{
+        joined: false,
+        attempts: 0,
+        pending: %{},
+        project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}
+      })
+
+    {:ok, refused} =
+      capture_log_result(fn -> ChannelClient.handle_disconnect(:econnrefused, sock) end)
+
+    refute_receive {:transport_push, _, "agents_to_restore", _, _}, 100
+
+    {:ok, joined} = ChannelClient.handle_join("harness_project:p1", %{}, refused)
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", _, ref}, 1_000
+
+    {:ok, restored} = ChannelClient.handle_reply(ref, {:ok, %{"agents" => []}}, joined)
+
+    {:ok, dropped} =
+      capture_log_result(fn -> ChannelClient.handle_disconnect(:closed_by_remote, restored) end)
+
+    {:ok, _} = ChannelClient.handle_join("harness_project:p1", %{}, dropped)
+
+    refute_receive {:transport_push, _, "agents_to_restore", _, _},
+                   100,
+                   "restored on the first join that landed; a later join must not ask again"
+  end
+
+  defp capture_log_result(fun) do
+    {result, _log} = with_log(fun)
+    result
+  end
+
   describe "a topic the server does not have" do
     # Cost an hour of dogfooding. The server-side channel was gone, no
     # `handle_topic_close/3` ever arrived, and the harness went on believing it

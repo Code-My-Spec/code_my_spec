@@ -988,7 +988,7 @@ defmodule CmsHarness.Project.ChannelClient do
     case reply do
       {:ok, %{"agents" => agents}} when is_list(agents) ->
         restore(agents)
-        {:ok, socket}
+        {:ok, assign(socket, :restored, true)}
 
       other ->
         # Not fatal: nothing is running yet, so the worst case is a harness that
@@ -1693,6 +1693,10 @@ defmodule CmsHarness.Project.ChannelClient do
       [] -> :ok
     end
   end
+
+  # Once per harness process: a reconnect loses no agent, and every ask writes a
+  # "harness restarted" notice into each agent's thread (`00121aa6`).
+  defp ask_what_to_restore(%{assigns: %{restored: true}} = socket, _topic), do: socket
 
   defp ask_what_to_restore(socket, topic) do
     case transport().push(socket, topic, "agents_to_restore", %{}, decision_timeout()) do
