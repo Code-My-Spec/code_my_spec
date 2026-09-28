@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   it the wrong way is no better off, so the grouping is the instruction.
   """
 
-  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.{Agent, ToolSets}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
@@ -60,7 +60,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   def for(%Agent{} = agent, machine_tools \\ []) do
     [
       section(direct_heading(), carried(agent)),
-      section(scriptable_heading(), scriptable(agent)),
+      section(scriptable_heading(), reach(agent)["scriptable"]),
       section(browser_heading(), Enum.sort(machine_tools || []))
     ]
     |> Enum.reject(&is_nil/1)
@@ -124,14 +124,36 @@ defmodule CodeMySpec.Agents.ToolIndex do
     LocalServer.__components__() |> Enum.map(& &1.name) |> Enum.sort()
   end
 
-  # `Catalog.from/3` maps, rejects and filters a list into a map, and
-  # `Catalog.names/1` sorts its keys — both total over a well-formed component
-  # list, which `__components__/0` is by construction. This was wrapped in a
-  # rescue answering `[]`, on the reasoning that an index is a convenience and
-  # must never stop an agent starting. That guarded nothing reachable and hid
-  # the one thing worth seeing: a malformed registration, which should be loud.
-  defp scriptable(%Agent{tools: allowed}) do
-    ScriptableTools.__components__()
+  @doc """
+  What this agent can reach from `run_script`, and what exists that it cannot.
+
+  The data the index's scriptable section renders from, sent to the harness so a
+  wrong call is answered from the same grant. `holders` names roles that carry
+  each ungranted tool; `main` carries every one.
+  """
+  @spec reach(Agent.t()) :: %{String.t() => term()}
+  def reach(%Agent{tools: allowed}) do
+    registered = ScriptableTools.__components__()
+    not_granted = Catalog.out_of_scope(registered, allowed)
+
+    %{
+      "scriptable" => scriptable(registered, allowed),
+      "not_granted" => not_granted,
+      "holders" => Map.new(not_granted, &{&1, holders(&1)})
+    }
+  end
+
+  @scoped_roles [:qa, :coding, :product]
+
+  defp holders(name) do
+    Enum.map(Enum.filter(@scoped_roles, &(name in ToolSets.for_role(&1))), &to_string/1) ++
+      ["main"]
+  end
+
+  # `Catalog.from/3` and `Catalog.names/1` are total over a well-formed
+  # component list; a malformed registration should be loud, not an empty index.
+  defp scriptable(registered, allowed) do
+    registered
     |> Catalog.from(fn _tool -> fn _args -> {:error, :index_only} end end, allowed)
     |> Catalog.names()
   end

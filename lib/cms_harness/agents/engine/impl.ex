@@ -901,15 +901,71 @@ defmodule CmsHarness.Agents.Engine.Impl do
     end
   end
 
+  @doc """
+  What a direct call to a tool the engine does not carry is told.
+
+  `reach` is the launch request's `tool_reach` (`ToolIndex.reach/1`); `nil`
+  from an older server keeps the run_script hint. `direct_names` are the
+  engine's own tools.
+  """
+  @spec unknown_tool_message(String.t(), map() | nil, [String.t()]) :: String.t()
+  def unknown_tool_message(name, nil, _direct_names), do: run_script_hint(name)
+
+  # Exact names before the fuzzy match, so a real ungranted tool is never
+  # mistaken for a typo of a direct one.
+  def unknown_tool_message(name, reach, direct_names) when is_map(reach) do
+    cond do
+      name in Map.get(reach, "scriptable", []) ->
+        run_script_hint(name)
+
+      name in Map.get(reach, "not_granted", []) ->
+        "Your role does not have `#{name}`, directly or through run_script, so do " <>
+          "not try run_script. #{held_by(reach, name)}"
+
+      match = closest(name, direct_names) ->
+        "`#{name}` is not a tool. Did you mean `#{match}`? It is called directly."
+
+      true ->
+        "No tool named `#{name}` exists. tool_docs lists the ones you can reach."
+    end
+  end
+
+  defp run_script_hint(name),
+    do: "`#{name}` is not a direct tool; call it from run_script (tool_docs lists them)"
+
+  defp closest(name, direct_names) do
+    down = String.downcase(name)
+
+    direct_names
+    |> Enum.map(&{&1, String.jaro_distance(down, String.downcase(&1))})
+    |> Enum.filter(fn {_candidate, score} -> score >= 0.85 end)
+    |> Enum.max_by(fn {_candidate, score} -> score end, fn -> nil end)
+    |> case do
+      {candidate, _score} -> candidate
+      nil -> nil
+    end
+  end
+
+  defp held_by(reach, name) do
+    case get_in(reach, ["holders", name]) do
+      [_ | _] = roles -> "Roles that carry it: #{Enum.join(roles, ", ")}."
+      _ -> ""
+    end
+    |> String.trim()
+  end
+
+  defp unknown_tool_hook(opts) do
+    reach = Keyword.get(opts, :tool_reach)
+    direct_names = Enum.map(tools(opts), & &1.name())
+    &unknown_tool_message(&1, reach, direct_names)
+  end
+
   # The tools run against this checkout and are told so explicitly. `Alloy`'s
   # core tools read `:working_directory` and `:allowed_paths` out of the
   # context, so scoping an agent to its copy is configuration rather than a
   # sandbox we would have to build — and `bash_restricted` stays on, because
   # Alloy is explicit that bash is a guardrail and not a sandbox. The sprite is
   # the sandbox.
-  defp unknown_tool(name),
-    do: "`#{name}` is not a direct tool; call it from run_script (tool_docs lists them)"
-
   defp alloy_options(opts, mcp_client) do
     with {:ok, provider} <- require_opt(opts, :provider),
          {:ok, working_copy} <- require_opt(opts, :working_copy),
@@ -958,7 +1014,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
-       |> Keyword.put(:unknown_tool, &unknown_tool/1)
+       |> Keyword.put(:unknown_tool, unknown_tool_hook(opts))
        |> Keyword.put(:context, %{
          working_directory: working_copy,
          allowed_paths: [working_copy],

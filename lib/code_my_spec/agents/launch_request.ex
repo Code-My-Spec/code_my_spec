@@ -100,6 +100,8 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # were available through `run_script` the whole time. Both could see what
       # they held and not what they could reach. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
+      # The same grant as data, so the harness can say why a direct call missed.
+      "tool_reach" => ToolIndex.reach(agent),
       # How a tool call physically happens on the engine running this agent.
       #
       # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and

@@ -52,6 +52,7 @@ defmodule CmsHarness.Agents do
       provider_brief: request["provider_brief"],
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],
+      tool_reach: request["tool_reach"],
       # Where the application is running, off the project's main working
       # copy. Only the server knows it — it is a column there — and an
       # agent that cannot answer it cannot open the thing it is testing.

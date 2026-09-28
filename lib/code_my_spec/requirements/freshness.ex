@@ -63,6 +63,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   of data we never read.
   """
 
+  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementDefinitionData
 
@@ -375,12 +376,9 @@ defmodule CodeMySpec.Requirements.Freshness do
   # only connect definitions that do. Taken by the keys the filters
   # actually read rather than by hashing the whole struct, which carries
   # timestamps and would make every config save look like a new shape.
-  defp config_shape(config) do
-    Enum.map(
-      [:devops],
-      &{&1, Map.get(config, &1)}
-    )
-  end
+  # The level the filters apply, not the raw column: a legacy nil and :off
+  # are the same shape.
+  defp config_shape(config), do: [devops: ProjectConfiguration.devops_level(config)]
 
   @doc """
   The project's own inputs, as a fingerprint.
