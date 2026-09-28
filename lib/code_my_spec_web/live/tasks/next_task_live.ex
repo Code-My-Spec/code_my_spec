@@ -6,10 +6,10 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
 
   require Logger
 
-  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution

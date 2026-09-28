@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
         # story*.
         {:reply, response, _frame} =
           ShowStoryRequirements.execute(
-            %{story: to_string(context.story.id)},
+            %{story: to_string(context.story.number)},
             %Frame{assigns: %{current_scope: context.scope}}
           )
 

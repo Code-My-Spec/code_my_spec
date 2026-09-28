@@ -288,10 +288,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ ".code_my_spec/qa/#{story.number}/brief.md"
       assert prompt =~ "# QA Story #{story.number}: "
 
-      if story.id != story.number do
-        refute prompt =~ ".code_my_spec/qa/#{story.id}/",
-               "QA evidence directories are named by story number, never the id"
-      end
+      refute story.id != story.number and prompt =~ ".code_my_spec/qa/#{story.id}/",
+             "QA evidence directories are named by story number, never the id"
 
       refute prompt =~ ".code_my_spec/qa/#{story.number}/result.md",
              "result.md path was removed from the prompt; findings flow via create_issue + submit_qa_result"

@@ -79,7 +79,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StoryTagToolsTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        story_numbers: [story.number, 99999, 88888],
+        story_numbers: [story.number, 99_999, 88_888],
         tag: "partial-tag"
       }
 

@@ -7,8 +7,8 @@ defmodule CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.Personas.PersonasMapper
-  alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Personas
 
   schema do

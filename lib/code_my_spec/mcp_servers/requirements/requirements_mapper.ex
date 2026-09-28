@@ -3,8 +3,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   Maps requirements data to MCP tool responses.
   """
 
-  alias CodeMySpec.McpServers.StoryRefs
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements.Requirement
 
   # ---------------------------------------------------------------------------

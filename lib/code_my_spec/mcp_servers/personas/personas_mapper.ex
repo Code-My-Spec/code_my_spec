@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
 
   def link_response(persona_story, story) do
     summary =
-      "Persona linked: persona_id `#{persona_story.persona_id}` ↔ story #{story.number}."
+      "Persona linked: persona_id `#{persona_story.persona_id}` ↔ story #{story.number} (\"#{story.title}\")."
 
     Response.tool()
     |> Response.text(summary)
@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
 
   def unlink_response(persona_id, story) do
     summary =
-      "Persona unlinked: persona_id `#{persona_id}` ↮ story #{story.number}."
+      "Persona unlinked: persona_id `#{persona_id}` ↮ story #{story.number} (\"#{story.title}\")."
 
     Response.tool()
     |> Response.text(summary)

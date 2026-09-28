@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2988Spex do
         text = response_text(context.response)
 
         assert text =~ "get_story"
-        assert text =~ "story_id"
+        assert text =~ "story_number"
         {:ok, context}
       end
 

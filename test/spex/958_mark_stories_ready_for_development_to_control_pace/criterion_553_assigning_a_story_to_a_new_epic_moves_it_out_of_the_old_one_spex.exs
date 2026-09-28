@@ -12,10 +12,10 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
+  alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
   setup :setup_active_project
