@@ -19,8 +19,8 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
 
