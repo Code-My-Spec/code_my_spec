@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4681Spex do
       end
 
       and_ "bdd_specs_exist is satisfied", context do
-        assert CriterionScript.specs_exist?(context.scope, to_string(context.story.id)),
+        assert CriterionScript.specs_exist?(context.scope, context.story.number),
                "the requirement and the evaluator must give the same answer"
 
         {:ok, context}

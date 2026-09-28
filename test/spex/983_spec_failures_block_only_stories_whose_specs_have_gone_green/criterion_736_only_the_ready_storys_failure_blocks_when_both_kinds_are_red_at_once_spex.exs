@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
         {:reply, link_response, _frame} =
           SetStoryComponent.execute(
             %{
-              story_id: to_string(mid_build.id),
+              story_number: mid_build.number,
               module_name: context.component.module_name
             },
             frame
@@ -89,7 +89,13 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
         {mid_build_path, mid_build_number} = spec_path(context.scope, context.mid_build_story.id)
 
         :ok = Environments.write_file(context.environment, ready_path, passing_spex(ready_number))
-        :ok = Environments.write_file(context.environment, mid_build_path, failing_spex(mid_build_number))
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            mid_build_path,
+            failing_spex(mid_build_number)
+          )
 
         # Synced now, so the latch set below is not cleared by the next sync
         # reading these as freshly rewritten specs (criterion 2193).
@@ -107,7 +113,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
       # this scenario is about what happens once one story is ready, not how
       # it got there.
       given_ "the first story is specs-ready", context do
-        {:ok, index_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/stories")
+        {:ok, index_live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         index_live
         |> element("[data-test='toggle-story-specs-ready'][phx-value-id='#{context.story.id}']")

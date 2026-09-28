@@ -5,7 +5,7 @@ defmodule CodeMySpec.Qa.Evidence do
   ## The gap this closes
 
   `submit_qa_result` records a pass on the server and closes `qa_complete`. The
-  brief and screenshots backing it are written to `.code_my_spec/qa/<story>/` —
+  brief and screenshots backing it are written to `.code_my_spec/qa/<story_number>/` —
   and `.code_my_spec` is a **git submodule** (`code_my_spec_docs`) that nothing
   in the QA flow commits. So the claim propagates and the evidence stays in one
   working copy.
@@ -52,18 +52,18 @@ defmodule CodeMySpec.Qa.Evidence do
   @type verdict :: :ok | {:uncommitted, [String.t()]} | {:unknown, term()}
 
   @doc """
-  Whether story `story_id`'s QA evidence is committed in the docs submodule.
+  Whether story `story_number`'s QA evidence is committed in the docs submodule.
 
-    * `:ok` — nothing untracked or modified under `qa/<story_id>/`.
+    * `:ok` — nothing untracked or modified under `qa/<story_number>/`.
     * `{:uncommitted, paths}` — the paths git reports as dirty, submodule-relative.
     * `{:unknown, reason}` — this machine could not answer. Never treated as `:ok`.
   """
   @spec committed?(Environments.Environment.t() | nil, integer() | String.t()) :: verdict()
-  def committed?(nil, _story_id), do: {:unknown, :no_working_copy}
+  def committed?(nil, _story_number), do: {:unknown, :no_working_copy}
 
-  def committed?(env, story_id) do
+  def committed?(env, story_number) do
     case initialized?(env) do
-      :ok -> status(env, story_id)
+      :ok -> status(env, story_number)
       {:unknown, reason} -> {:unknown, reason}
     end
   rescue
@@ -122,7 +122,7 @@ defmodule CodeMySpec.Qa.Evidence do
       else: {:unknown, :submodule_not_initialized}
   end
 
-  defp status(env, story_id) do
+  defp status(env, story_number) do
     # `--porcelain` because the human-readable output is localised and
     # reformatted between git versions; this is parsed, so it takes the format
     # that promises not to change.
@@ -139,7 +139,7 @@ defmodule CodeMySpec.Qa.Evidence do
     case Environments.cmd(
            env,
            "git",
-           ["status", "--porcelain", "-uall", "--", story_dir(story_id)],
+           ["status", "--porcelain", "-uall", "--", story_dir(story_number)],
            cd: submodule_path(env),
            stderr_to_stdout: true
          ) do
@@ -161,7 +161,7 @@ defmodule CodeMySpec.Qa.Evidence do
   commands, in the submodule, in order.
   """
   @spec refusal(integer() | String.t(), [String.t()]) :: String.t()
-  def refusal(story_id, paths) do
+  def refusal(story_number, paths) do
     listed = paths |> Enum.take(10) |> Enum.map_join("\n", &"  #{&1}")
 
     more =
@@ -171,9 +171,9 @@ defmodule CodeMySpec.Qa.Evidence do
       end
 
     """
-    Submission rejected: story #{story_id}'s QA evidence is not committed.
+    Submission rejected: story #{story_number}'s QA evidence is not committed.
 
-    Uncommitted under #{@submodule}/#{story_dir(story_id)}:
+    Uncommitted under #{@submodule}/#{story_dir(story_number)}:
     #{listed}#{more}
 
     `.code_my_spec` is a git submodule. A pass recorded now would propagate to \
@@ -183,8 +183,8 @@ defmodule CodeMySpec.Qa.Evidence do
 
     Commit and push the evidence, then resubmit:
 
-      git -C #{@submodule} add #{story_dir(story_id)}
-      git -C #{@submodule} commit -m "QA evidence for story #{story_id}"
+      git -C #{@submodule} add #{story_dir(story_number)}
+      git -C #{@submodule} commit -m "QA evidence for story #{story_number}"
       git -C #{@submodule} push
 
     Nothing else about the pass changes; this refuses the claim, not the result.
@@ -217,7 +217,7 @@ defmodule CodeMySpec.Qa.Evidence do
       "an error: the attempt above is recorded regardless. Before you finish, " <>
       "confirm it yourself:\n\n" <>
       "  git -C .code_my_spec rev-parse --show-toplevel   # must end in /.code_my_spec\n" <>
-      "  git -C .code_my_spec status --porcelain -uall -- qa/<story_id>   # must print nothing\n\n" <>
+      "  git -C .code_my_spec status --porcelain -uall -- qa/<story_number>   # must print nothing\n\n" <>
       "Both, in that order. In a git worktree `.code_my_spec` is usually not " <>
       "checked out as a submodule, and then the second command reports the " <>
       "*outer* repository — which ignores those files, so it prints nothing " <>
@@ -291,7 +291,8 @@ defmodule CodeMySpec.Qa.Evidence do
     end
   end
 
-  defp story_dir(story_id), do: Path.join(Path.basename(Paths.qa_dir()), to_string(story_id))
+  defp story_dir(story_number),
+    do: Path.join(Path.basename(Paths.qa_dir()), to_string(story_number))
 
   defp submodule_path(env), do: Path.join(env.cwd, @submodule)
 end

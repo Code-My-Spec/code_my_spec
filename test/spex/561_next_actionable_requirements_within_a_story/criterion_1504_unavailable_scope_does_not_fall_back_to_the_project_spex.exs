@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3606Spex do
         Slice.call(
           %{context | scope: other_scope},
           SetActiveStory,
-          %{story_id: to_string(context.waiting.id)}
+          %{story_number: context.waiting.number}
         )
 
         project = CodeMySpecSpex.Fixtures.project_fixture(context.scope)

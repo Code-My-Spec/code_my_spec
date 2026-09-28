@@ -54,6 +54,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3504Spex do
         {:ok,
          context
          |> Map.put(:edited_id, edited.id)
+         |> Map.put(:edited_number, edited.number)
          |> Map.put(:bystander_id, bystander.id)}
       end
 
@@ -76,7 +77,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3504Spex do
         {:reply, reply, _frame} =
           AddCriterion.execute(
             %{
-              story_id: to_string(context.edited_id),
+              story_number: context.edited_number,
               description: "a criterion that nothing covers yet"
             },
             frame

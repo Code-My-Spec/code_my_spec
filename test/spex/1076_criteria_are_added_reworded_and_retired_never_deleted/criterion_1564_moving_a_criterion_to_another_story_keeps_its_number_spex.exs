@@ -16,9 +16,15 @@ defmodule CodeMySpecSpex.Story1076.Criterion4688Spex do
   spex "Moving keeps the number", criterion: 1564 do
     scenario "a criterion moved to another story arrives under the same number" do
       given_ "a criterion is on story A", context do
-        story_a = CriterionScript.create_story(context.scope, "Story A", ["A thing that belongs elsewhere"])
+        story_a =
+          CriterionScript.create_story(context.scope, "Story A", [
+            "A thing that belongs elsewhere"
+          ])
+
         story_b = CriterionScript.create_story(context.scope, "Story B", [])
-        [number] = context.scope |> CriterionScript.story_text(story_a) |> CriterionScript.numbers()
+
+        [number] =
+          context.scope |> CriterionScript.story_text(story_a) |> CriterionScript.numbers()
 
         {:ok, Map.merge(context, %{story_a: story_a, story_b: story_b, number: number})}
       end
@@ -26,7 +32,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4688Spex do
       when_ "the agent moves it to story B", context do
         result =
           CriterionScript.run(context.scope, """
-          return move_criterion({ criterion_id = "#{context.number}", target_story_id = "#{context.story_b}" })
+          return move_criterion({ criterion_number = #{context.number}, target_story_number = #{context.story_b} })
           """)
 
         refute result.error?, "move_criterion failed: #{result.text}"

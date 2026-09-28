@@ -104,13 +104,13 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     )
   end
 
-  defp write_story_brief(env, story_id, content \\ nil) do
+  defp write_story_brief(env, story_number, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}/brief.md",
+      ".code_my_spec/qa/#{story_number}/brief.md",
       content ||
         """
-        # QA Brief: Story #{story_id}
+        # QA Brief: Story #{story_number}
 
         ## Tool
 
@@ -132,18 +132,18 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
         ## Result Path
 
-        .code_my_spec/qa/#{story_id}/result.md
+        .code_my_spec/qa/#{story_number}/result.md
         """
     )
   end
 
-  defp write_story_result(env, story_id, content \\ nil) do
+  defp write_story_result(env, story_number, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}/result.md",
+      ".code_my_spec/qa/#{story_number}/result.md",
       content ||
         """
-        # QA Result: Story #{story_id}
+        # QA Result: Story #{story_number}
 
         ## Status
 
@@ -159,7 +159,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
         ## Evidence
 
-        - `.code_my_spec/qa/#{story_id}/screenshots/login.png` — login page
+        - `.code_my_spec/qa/#{story_number}/screenshots/login.png` — login page
 
         ## Issues
 
@@ -239,7 +239,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert {:ok, _prompt} = QaApp.command(scope, task)
 
       # Prompt file should be written for the story
-      prompt_path = Path.join(scope.environment.cwd, ".code_my_spec/qa/#{story.id}/prompt.md")
+      prompt_path = Path.join(scope.environment.cwd, ".code_my_spec/qa/#{story.number}/prompt.md")
       assert File.exists?(prompt_path)
 
       content = File.read!(prompt_path)
@@ -252,7 +252,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
       assert {:ok, prompt} = QaApp.command(scope, task)
 
-      assert prompt =~ ".code_my_spec/qa/#{story.id}/prompt.md"
+      assert prompt =~ ".code_my_spec/qa/#{story.number}/prompt.md"
     end
   end
 
@@ -287,11 +287,12 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
       # No brief or result — QaStory.evaluate should report brief missing
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
-      assert feedback =~ "Story #{story.id}"
+      assert feedback =~ "Story #{story.number}:"
       assert feedback =~ "Brief"
     end
 
-    test "returns invalid demanding submit_qa_result when stories have file artifacts but no DB attempts", %{scope: scope} do
+    test "returns invalid demanding submit_qa_result when stories have file artifacts but no DB attempts",
+         %{scope: scope} do
       # Per issue 3dd4ec46: file-based artifacts alone don't satisfy
       # qa_complete. submit_qa_result lands the DB attempt that the
       # requirement graph reads. QaApp delegates to QaStory.evaluate;
@@ -301,20 +302,21 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_story_result(scope.environment, story.number)
       write_qa_summary(scope.environment)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "submit_qa_result"
     end
 
-    test "returns invalid demanding submit_qa_result when story has brief but no result and no DB attempt", %{scope: scope} do
+    test "returns invalid demanding submit_qa_result when story has brief but no result and no DB attempt",
+         %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
       write_qa_summary(scope.environment)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
@@ -326,8 +328,8 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_story_result(scope.environment, story.number)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "summary"

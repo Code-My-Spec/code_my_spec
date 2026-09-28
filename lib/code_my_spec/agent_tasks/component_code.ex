@@ -167,7 +167,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   defp implementation_steps(""),
     do: """
     1. Read the test file to understand the expected behavior and any test fixtures
-    2. Read the linked story's BDD spex (under `test/spex/<story_id>_*/`) — they are the contract for this component's public API
+    2. Read the linked story's BDD spex (under `test/spex/<story_number>_*/`) — they are the contract for this component's public API
     3. Create all necessary module files
     4. Implement all public API functions implied by the spex and tests
     5. Ensure the implementation satisfies the tests

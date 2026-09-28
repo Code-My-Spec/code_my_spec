@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
   setup :setup_active_project
   setup :setup_qa_story_task
 
-  spex "Findings enter the system only via create_issue and submit references them by id", criterion: 508 do
+  spex "Findings enter the system only via create_issue and submit references them by id",
+    criterion: 508 do
     scenario "Finding flows through create_issue then is referenced by id in submit" do
       given_ "a started qa_complete task and a defect surfaced by the agent's probing",
              context do
@@ -43,7 +44,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
               title: "QA-found defect from criterion 6443 spex",
               severity: "low",
               scope: "app",
-              story_id: context.story.id,
+              story_number: context.story.number,
               description: "Discovered while probing the agent surface."
             },
             frame
@@ -73,7 +74,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListIssues.execute(%{story_id: context.story.id}, frame)
+          ListIssues.execute(%{story_number: context.story.number}, frame)
 
         refute list_response.isError
         text = response_text(list_response)

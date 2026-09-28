@@ -60,19 +60,14 @@ your first one.
 One detail that is process rather than craft, because getting it wrong
 puts good specs in a directory nothing reads:
 
-> **The spex directory is named from the story's NUMBER, not its ID.**
+> **A story is named by its NUMBER, everywhere.**
 
-Every MCP tool takes the **id**. `get_story`, `update_story`, `add_rule`,
-`start_task` — all id. The spex directory is
-`test/spex/<number>_<slug>/`, and the number is a different integer.
-Story id 1031 is story number 1065, and its specs live in
-`test/spex/1065_.../`.
-
-They are different because the id is the database primary key and the
-number is the story's position in the project — so for a project whose
-stories happen to start at 1, they coincide for a while, and an agent that
-assumes they are the same is right for months. Read the number off the
-story rather than assuming; `get_story` returns both.
+Every MCP tool takes `story_number` — `get_story`, `update_story`,
+`add_rule`, `start_task` (as `entity_id`) — and every response says
+"story 1065". The spex directory is `test/spex/<number>_<slug>/` and QA
+evidence lives under `.code_my_spec/qa/<number>/`, so story 1065's specs
+live in `test/spex/1065_.../`. The database id is internal and never
+shown.
 
 ## Released for work
 

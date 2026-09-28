@@ -134,7 +134,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, attempts, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute response_text(attempts) =~ ~r/\bpass(ed|ing)?\b/i,
                """

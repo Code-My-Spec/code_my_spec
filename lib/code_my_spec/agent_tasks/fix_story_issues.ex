@@ -48,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
       threshold = Configurations.fix_issues_min_severity(scope)
       issues = blocking_issues(scope, story_id, threshold)
       problems = blocking_problems(scope, story_id)
-      {:ok, build_prompt(story_id, issues, threshold, problems)}
+      {:ok, build_prompt(story_number(scope, story_id), issues, threshold, problems)}
     end
   end
 
@@ -68,7 +68,8 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
           {:ok, :valid}
 
         {issues, problems} ->
-          {:ok, :invalid, invalid_message(story_id, issues, threshold, problems)}
+          {:ok,
+           :invalid, invalid_message(story_number(scope, story_id), issues, threshold, problems)}
       end
     end
   end
@@ -91,22 +92,22 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     end
   end
 
-  defp invalid_message(story_id, issues, threshold, problems) do
+  defp invalid_message(story_number, issues, threshold, problems) do
     [
-      issues_section(story_id, issues, threshold),
+      issues_section(story_number, issues, threshold),
       problems_section(problems)
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n\n")
   end
 
-  defp issues_section(_story_id, [], _threshold), do: nil
+  defp issues_section(_story_number, [], _threshold), do: nil
 
-  defp issues_section(story_id, issues, threshold) do
+  defp issues_section(story_number, issues, threshold) do
     names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — [#{&1.severity}] #{&1.title}")
 
     """
-    #{length(issues)} unresolved accepted issue(s) on story #{story_id} at #{threshold}+ severity:
+    #{length(issues)} unresolved accepted issue(s) on story #{story_number} at #{threshold}+ severity:
 
     #{names}
 
@@ -131,29 +132,39 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     """
   end
 
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> "?"
+      story -> story.number
+    end
+  end
+
   defp get_story_id(%{story_id: story_id}) when not is_nil(story_id) do
     case Integer.parse(to_string(story_id)) do
-      {id, _} -> {:ok, id}
-      :error -> {:error, {:invalid_story_id, "Expected a numeric story ID, got #{inspect(story_id)}."}}
+      {id, _} ->
+        {:ok, id}
+
+      :error ->
+        {:error, {:invalid_story_id, "Expected a numeric story, got #{inspect(story_id)}."}}
     end
   end
 
   defp get_story_id(_task) do
     {:error,
      {:story_id_required,
-      "FixStoryIssues is a story-scoped requirement. Call `start_task` with entity_type=`story` and the story's id."}}
+      "FixStoryIssues is a story-scoped requirement. Call `start_task` with entity_type=`story` and the story's number as entity_id."}}
   end
 
-  defp build_prompt(story_id, [], _threshold, []) do
+  defp build_prompt(story_number, [], _threshold, []) do
     """
-    # Fix Story Issues — story #{story_id}
+    # Fix Story Issues — story #{story_number}
 
     No unresolved accepted issues and no analyzer problems on this story's
     own working copy. Call `evaluate_task` to record it and move on.
     """
   end
 
-  defp build_prompt(story_id, issues, threshold, problems) do
+  defp build_prompt(story_number, issues, threshold, problems) do
     issues_listing =
       case issues do
         [] ->
@@ -175,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
       end
 
     """
-    # Fix Story Issues — story #{story_id}
+    # Fix Story Issues — story #{story_number}
 
     This story is blocked from QA/release by #{length(issues)} accepted
     issue(s) at or above `#{threshold}` severity and/or #{length(problems)}
@@ -205,7 +216,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
 
     ## QA context
 
-    - **QA evidence for this story**: `#{Paths.qa_dir()}/#{story_id}/` —
+    - **QA evidence for this story**: `#{Paths.qa_dir()}/#{story_number}/` —
       the brief, the failed result, and any screenshots that produced these
       issues, if any exist yet.
 

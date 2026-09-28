@@ -50,7 +50,7 @@ Diagnose the actual cause, fix the offending code, and re-run
 
 - **QA plan**: `.code_my_spec/qa/plan.md` — server startup, seeds, auth
   strategy. Read for environment setup before verifying a fix.
-- **QA results per story**: `.code_my_spec/qa/<story_id>/` — the failed
+- **QA results per story**: `.code_my_spec/qa/<story_number>/` — the failed
   `result_failed_<ts>.md`, screenshots, and the brief. Each accepted
   issue's source QA evidence lives here.
 

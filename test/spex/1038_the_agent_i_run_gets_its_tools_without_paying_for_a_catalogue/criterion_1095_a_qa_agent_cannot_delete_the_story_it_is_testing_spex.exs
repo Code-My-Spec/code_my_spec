@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
   Rule: Each agent type reaches only the tools its job needs.
 
   The scoping has to survive code mode or it was never scoping. A QA agent that
-  cannot call `delete_story` from a tool list, but can call it from inside a
+  cannot call `retire_story` from a tool list, but can call it from inside a
   script, is scoped in the schemas and unscoped in fact — and the script is
   where an agent goes when the direct route is closed.
 
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
       end
 
       when_ "its script calls a tool its type does not carry", context do
-        script = "return delete_story({ story_id = \"#{context.story.id}\" })"
+        script = "return retire_story({ story_number = #{context.story.id} })"
         reply = Fixtures.run_script(script, agent_context(context))
 
         {:ok, Map.put(context, :reply, reply)}
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
       then_ "it is refused and told the tool is not for its type", context do
         said = context.reply |> elem(1) |> to_string()
 
-        assert said =~ ~r/qa/i and said =~ "delete_story",
+        assert said =~ ~r/qa/i and said =~ "retire_story",
                "the refusal does not say which tool was refused or which type was " <>
                  "refused it. An unknown-tool answer sends a QA agent hunting a typo in a " <>
                  "name that exists. Got: #{inspect(said)}"
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
         assert {:ok, body} = listed
 
         assert body =~ context.story.title,
-               "the story was deleted and the refusal came afterwards, which is not " <>
+               "the story was retired and the refusal came afterwards, which is not " <>
                  "a refusal. Got: #{inspect(body)}"
 
         {:ok, context}

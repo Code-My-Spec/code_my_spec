@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
 
         {:reply, update_response, _frame} =
           UpdateStory.execute(
-            %{story_id: story_id!(released_response), ready_for_dev: true},
+            %{story_number: story_number!(released_response), ready_for_dev: true},
             frame
           )
 
@@ -86,15 +86,16 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
     end
   end
 
-  # MCP responses carry record ids in the text footer.
-  defp story_id!(response) do
-    response |> response_text() |> story_id_from()
+  # MCP responses name the story by number.
+  defp story_number!(response) do
+    response |> response_text() |> story_number_from()
   end
 
-  defp story_id_from(body), do: story_id_match(Regex.run(~r/\(ID: (\d+)\)/, body), body)
+  defp story_number_from(body),
+    do: story_number_match(Regex.run(~r/^Story (\d+) (?:created|updated)/, body), body)
 
-  defp story_id_match([_, id], _body), do: id
+  defp story_number_match([_, n], _body), do: String.to_integer(n)
 
-  defp story_id_match(_no_match, body),
-    do: raise("could not read story id from response: #{body}")
+  defp story_number_match(_no_match, body),
+    do: raise("could not read story number from response: #{body}")
 end

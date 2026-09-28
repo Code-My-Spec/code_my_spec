@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
               title: "something is wrong on this story",
               description: "filed at the severity the graph gates on",
               severity: "medium",
-              story_id: story.id
+              story_number: story.number
             },
             frame
           )

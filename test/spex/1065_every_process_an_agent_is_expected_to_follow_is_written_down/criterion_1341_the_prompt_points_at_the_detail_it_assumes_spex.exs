@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1065.Criterion3393Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          StartThreeAmigosSession.execute(%{story_id: to_string(context.story.id)}, frame)
+          StartThreeAmigosSession.execute(%{story_number: context.story.number}, frame)
 
         {:ok, Map.put(context, :prompt, response_text(response))}
       end

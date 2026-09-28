@@ -2,111 +2,123 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Issues
+  alias CodeMySpec.Stories
 
   @impl true
   def render(assigns) do
     ~H"""
-      <.header>
-        {@issue.title}
-        <:subtitle>
-          <div class="flex items-center gap-2 mt-1">
-            <.badge color={severity_color(@issue.severity)}>{@issue.severity}</.badge>
-            <.badge color={status_color(@issue.status)}>{@issue.status}</.badge>
-            <span :if={@issue.scope != :app} class="badge badge-sm badge-outline">{@issue.scope}</span>
-          </div>
-        </:subtitle>
-        <:actions>
-          <.button navigate={path(@socket, ~p"/app/projects/#{@project.id}/issues")}>
-            <.icon name="hero-arrow-left" />
-          </.button>
-        </:actions>
-      </.header>
-
-      <.list>
-        <:item title="Description">
-          <p class="whitespace-pre-wrap">{@issue.description}</p>
-        </:item>
-        <:item :if={has_screenshot?(@issue) and @serves_attachments?} title="Screenshot">
-          <a href={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")} target="_blank" rel="noopener">
-            <img
-              src={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
-              alt="Reported screenshot"
-              class="max-h-96 rounded border border-base-300"
-            />
-          </a>
-        </:item>
-        <:item :if={@issue.story_id} title="Story">#{@issue.story_id}</:item>
-        <:item :if={@issue.source_path} title="Source path">
-          <code class="text-sm">{@issue.source_path}</code>
-        </:item>
-        <:item :if={@issue.resolution} title="Resolution">
-          <p class="whitespace-pre-wrap">{@issue.resolution}</p>
-        </:item>
-        <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
-      </.list>
-
-      <div :if={available_actions(@issue) != []} class="mt-8">
-        <h3 class="text-lg font-semibold mb-4">Actions</h3>
-        <div class="flex gap-2">
-          <button
-            :if={:accept in available_actions(@issue)}
-            phx-click="accept"
-            class="btn btn-sm btn-primary"
-          >
-            Accept
-          </button>
-          <button
-            :if={:dismiss in available_actions(@issue)}
-            phx-click="show_dismiss_form"
-            class="btn btn-sm btn-ghost"
-          >
-            Dismiss
-          </button>
-          <button
-            :if={:resolve in available_actions(@issue)}
-            phx-click="show_resolve_form"
-            class="btn btn-sm btn-success"
-          >
-            Resolve
-          </button>
+    <.header>
+      {@issue.title}
+      <:subtitle>
+        <div class="flex items-center gap-2 mt-1">
+          <.badge color={severity_color(@issue.severity)}>{@issue.severity}</.badge>
+          <.badge color={status_color(@issue.status)}>{@issue.status}</.badge>
+          <span :if={@issue.scope != :app} class="badge badge-sm badge-outline">{@issue.scope}</span>
         </div>
+      </:subtitle>
+      <:actions>
+        <.button navigate={path(@socket, ~p"/app/projects/#{@project.id}/issues")}>
+          <.icon name="hero-arrow-left" />
+        </.button>
+      </:actions>
+    </.header>
 
-        <form
-          :if={@show_form == :dismiss}
-          phx-submit="dismiss"
-          class="mt-4 space-y-3"
+    <.list>
+      <:item title="Description">
+        <p class="whitespace-pre-wrap">{@issue.description}</p>
+      </:item>
+      <:item :if={has_screenshot?(@issue) and @serves_attachments?} title="Screenshot">
+        <a
+          href={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
+          target="_blank"
+          rel="noopener"
         >
-          <.input
-            type="textarea"
-            name="reason"
-            label="Dismissal reason"
-            value=""
-            required
+          <img
+            src={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
+            alt="Reported screenshot"
+            class="max-h-96 rounded border border-base-300"
           />
-          <div class="flex gap-2">
-            <button type="submit" class="btn btn-sm btn-ghost">Dismiss issue</button>
-            <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
-          </div>
-        </form>
+        </a>
+      </:item>
+      <:item :if={@story} title="Story">
+        <.link
+          navigate={path(@socket, ~p"/app/projects/#{@project.id}/stories/#{@story.number}")}
+          class="link link-hover"
+        >
+          Story {@story.number} — {@story.title}
+        </.link>
+      </:item>
+      <:item :if={@issue.source_path} title="Source path">
+        <code class="text-sm">{@issue.source_path}</code>
+      </:item>
+      <:item :if={@issue.resolution} title="Resolution">
+        <p class="whitespace-pre-wrap">{@issue.resolution}</p>
+      </:item>
+      <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
+    </.list>
 
-        <form
-          :if={@show_form == :resolve}
-          phx-submit="resolve"
-          class="mt-4 space-y-3"
+    <div :if={available_actions(@issue) != []} class="mt-8">
+      <h3 class="text-lg font-semibold mb-4">Actions</h3>
+      <div class="flex gap-2">
+        <button
+          :if={:accept in available_actions(@issue)}
+          phx-click="accept"
+          class="btn btn-sm btn-primary"
         >
-          <.input
-            type="textarea"
-            name="resolution"
-            label="Resolution"
-            value=""
-            required
-          />
-          <div class="flex gap-2">
-            <button type="submit" class="btn btn-sm btn-success">Resolve issue</button>
-            <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
-          </div>
-        </form>
+          Accept
+        </button>
+        <button
+          :if={:dismiss in available_actions(@issue)}
+          phx-click="show_dismiss_form"
+          class="btn btn-sm btn-ghost"
+        >
+          Dismiss
+        </button>
+        <button
+          :if={:resolve in available_actions(@issue)}
+          phx-click="show_resolve_form"
+          class="btn btn-sm btn-success"
+        >
+          Resolve
+        </button>
       </div>
+
+      <form
+        :if={@show_form == :dismiss}
+        phx-submit="dismiss"
+        class="mt-4 space-y-3"
+      >
+        <.input
+          type="textarea"
+          name="reason"
+          label="Dismissal reason"
+          value=""
+          required
+        />
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-sm btn-ghost">Dismiss issue</button>
+          <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
+        </div>
+      </form>
+
+      <form
+        :if={@show_form == :resolve}
+        phx-submit="resolve"
+        class="mt-4 space-y-3"
+      >
+        <.input
+          type="textarea"
+          name="resolution"
+          label="Resolution"
+          value=""
+          required
+        />
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-sm btn-success">Resolve issue</button>
+          <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
+        </div>
+      </form>
+    </div>
     """
   end
 
@@ -122,7 +134,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
      socket
      |> assign(:section, :issues)
      |> assign(:page_title, issue.title)
-     |> assign(:issue, issue)
+     |> assign_issue(issue)
      |> assign(:show_form, nil)}
   end
 
@@ -132,7 +144,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       {:ok, issue} ->
         {:noreply,
          socket
-         |> assign(:issue, issue)
+         |> assign_issue(issue)
          |> put_flash(:info, "Issue accepted.")}
 
       {:error, _changeset} ->
@@ -161,7 +173,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       {:ok, issue} ->
         {:noreply,
          socket
-         |> assign(:issue, issue)
+         |> assign_issue(issue)
          |> assign(:show_form, nil)
          |> put_flash(:info, "Issue dismissed.")}
 
@@ -176,7 +188,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       {:ok, issue} ->
         {:noreply,
          socket
-         |> assign(:issue, issue)
+         |> assign_issue(issue)
          |> assign(:show_form, nil)
          |> put_flash(:info, "Issue resolved.")}
 
@@ -186,13 +198,25 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   end
 
   @impl true
-  def handle_info({_action, %Issues.Issue{id: id} = issue}, %{assigns: %{issue: %{id: id}}} = socket) do
-    {:noreply, assign(socket, :issue, issue)}
+  def handle_info(
+        {_action, %Issues.Issue{id: id} = issue},
+        %{assigns: %{issue: %{id: id}}} = socket
+      ) do
+    {:noreply, assign_issue(socket, issue)}
   end
 
   def handle_info({_action, %Issues.Issue{}}, socket) do
     {:noreply, socket}
   end
+
+  defp assign_issue(socket, issue) do
+    socket
+    |> assign(:issue, issue)
+    |> assign(:story, issue_story(socket.assigns.current_scope, issue))
+  end
+
+  defp issue_story(_scope, %{story_id: nil}), do: nil
+  defp issue_story(scope, %{story_id: story_id}), do: Stories.get_story(scope, story_id)
 
   defp has_screenshot?(%{attachments: attachments}) when is_list(attachments) do
     Enum.any?(attachments, &(is_map(&1) and &1["type"] == "screenshot"))

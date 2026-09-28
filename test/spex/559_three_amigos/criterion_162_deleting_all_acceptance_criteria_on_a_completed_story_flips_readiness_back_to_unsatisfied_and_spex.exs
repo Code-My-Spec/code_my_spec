@@ -43,14 +43,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
         {:reply, _add_rule, _frame} =
           AddRule.execute(
-            %{story_id: context.story.id, statement: rule_statement},
+            %{story_number: context.story.number, statement: rule_statement},
             frame
           )
 
         {:reply, _happy, _frame} =
           AddScenario.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               rule_statement: rule_statement,
               title: "Driver attempts purchase with suspended card",
               kind: "happy_path",
@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         {:reply, _failure, _frame} =
           AddScenario.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               rule_statement: rule_statement,
               title: "Suspension status fails to load",
               kind: "failure_path",
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, get_response, _frame} =
-          GetStory.execute(%{story_id: to_string(context.story.id)}, frame)
+          GetStory.execute(%{story_number: context.story.number}, frame)
 
         criterion_ids =
           Regex.scan(~r/\(criterion ([^)]+)\)/, response_text(get_response))
@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
         for id <- criterion_ids do
           {:reply, _resp, _frame} =
-            RetireCriterion.execute(%{criterion_id: id}, frame)
+            RetireCriterion.execute(%{criterion_number: id}, frame)
         end
 
         {:ok, context}

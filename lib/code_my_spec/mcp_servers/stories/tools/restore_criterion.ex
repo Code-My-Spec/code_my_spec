@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreCriterion do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :criterion_id, :string,
+    field :criterion_number, :integer,
       required: true,
       doc: "Criterion number to restore (from get_criterion)"
   end
@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreCriterion do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          {:ok, restored} <- AcceptanceCriteria.restore_criterion(scope, criterion) do
       {:reply, StoriesMapper.criterion_restored_response(restored), frame}
     else

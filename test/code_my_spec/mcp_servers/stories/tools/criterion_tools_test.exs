@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       story = story_fixture(scope, %{title: "Test Story"})
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{story_id: to_string(story.id), description: "New acceptance criterion"}
+      params = %{story_number: story.number, description: "New acceptance criterion"}
 
       assert {:reply, response, ^frame} = AddCriterion.execute(params, frame)
       assert response.type == :tool
@@ -37,7 +37,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       scope = full_scope_fixture()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{story_id: "99999", description: "Won't work"}
+      params = %{story_number: 99_999, description: "Won't work"}
 
       assert {:reply, response, ^frame} = AddCriterion.execute(params, frame)
       assert response.isError == true
@@ -53,7 +53,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
         AcceptanceCriteria.create_criterion(scope, story, %{description: "Original"})
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.number), description: "Updated description"}
+      params = %{criterion_number: criterion.number, description: "Updated description"}
 
       assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
       assert response.type == :tool
@@ -76,7 +76,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       {:ok, _verified} = AcceptanceCriteria.mark_verified(scope, criterion)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.number), description: "Trying to change"}
+      params = %{criterion_number: criterion.number, description: "Trying to change"}
 
       assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
       assert response.isError == true
@@ -91,7 +91,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       scope = full_scope_fixture()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{criterion_id: "99999", description: "Won't work"}
+      params = %{criterion_number: 99_999, description: "Won't work"}
 
       assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
       assert response.isError == true
@@ -112,7 +112,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
         AcceptanceCriteria.create_criterion(scope, story, %{description: "To retire"})
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.number)}
+      params = %{criterion_number: criterion.number}
 
       assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.type == :tool
@@ -137,7 +137,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       {:ok, _verified} = AcceptanceCriteria.mark_verified(scope, criterion)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.number)}
+      params = %{criterion_number: criterion.number}
 
       assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.isError == true
@@ -152,7 +152,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       scope = full_scope_fixture()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{criterion_id: "99999"}
+      params = %{criterion_number: 99_999}
 
       assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.isError == true

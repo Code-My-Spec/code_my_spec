@@ -5,6 +5,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Formatters
 
   def issue_created_response(issue) do
@@ -13,6 +14,8 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   end
 
   def issue_get_response(issue) do
+    issue = Issues.with_story(issue)
+
     summary = """
     ## #{issue.title} (ID: #{issue.id})
 
@@ -76,6 +79,8 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   end
 
   def issue_updated_response(issue, action) do
+    issue = Issues.with_story(issue)
+
     summary =
       "Issue #{action}: \"#{issue.title}\" (ID: #{issue.id})" <>
         category_suffix(issue) <> story_suffix(issue)
@@ -204,6 +209,9 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     |> Response.error(Formatters.format_changeset_errors(changeset))
   end
 
+  def error(:story_not_found),
+    do: error("Story not found in the active project. list_story_titles shows the numbers.")
+
   def error(error) when is_atom(error), do: error |> to_string() |> error()
 
   def error(error) when is_binary(error) do
@@ -249,14 +257,14 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   defp category_segment(%{category: nil}), do: ""
   defp category_segment(%{category: category}), do: " | **Category:** #{category}"
 
-  defp story_segment(%{story_id: nil}), do: ""
-  defp story_segment(%{story_id: story_id}), do: " | **Story:** #{story_id}"
+  defp story_segment(%{story: %{number: number}}), do: " | **Story:** #{number}"
+  defp story_segment(_issue), do: ""
 
   defp category_suffix(%{category: nil}), do: ""
   defp category_suffix(%{category: category}), do: " [#{category}]"
 
-  defp story_suffix(%{story_id: nil}), do: ""
-  defp story_suffix(%{story_id: story_id}), do: " → Story #{story_id}"
+  defp story_suffix(%{story: %{number: number}}), do: " → story #{number}"
+  defp story_suffix(_issue), do: ""
 
   defp issue_data(issue) do
     %{
@@ -267,7 +275,6 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
       description: issue.description,
       status: issue.status,
       resolution: issue.resolution,
-      story_id: issue.story_id,
       source_path: issue.source_path
     }
   end

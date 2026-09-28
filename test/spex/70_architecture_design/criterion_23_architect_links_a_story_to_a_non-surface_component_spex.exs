@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
       when_ "the architect writes a proposal linking the story to an internal context component",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         # The story is linked to AgentTasks (an internal context module), not a surface.
         # Per Rule 2, this should be accepted with a warning, not rejected.
@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
 
         - **Type:** context
         - **Description:** Agent task orchestration — internal, not a user surface
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Dependencies
 
@@ -139,13 +139,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
       then_ "the evaluation feedback contains a warning naming the story and its non-surface link",
             context do
         body = response_text(context.evaluate_response)
-        story_id = to_string(context.story.id)
+        story_number = to_string(context.story.number)
 
         assert body =~ ~r/warning/i,
                "expected a surface-preference warning in the feedback, got: #{inspect(body)}"
 
-        assert body =~ story_id,
-               "expected warning to name story #{story_id}, got: #{inspect(body)}"
+        assert body =~ "story #{story_number}",
+               "expected warning to name story #{story_number}, got: #{inspect(body)}"
 
         {:ok, context}
       end

@@ -226,11 +226,10 @@ defmodule CodeMySpec.Files.FileSync do
     # Re-resolving here costs one read-model build per manifest and removes the
     # whole class: the harness reports what a file *is*, and the server, which
     # owns the database, decides what it *belongs to*.
-    # A manifest is the whole tree, so a spex that is not in it holds nothing.
     observations =
       observations
       |> Scanner.resolve_owners(Files.read_model(scope))
-      |> then(&SpecBinding.bind(scope, &1, true))
+      |> then(&SpecBinding.bind(scope, &1))
 
     # One statement, and it is both the write and the answer to what moved.
     #
@@ -815,7 +814,7 @@ defmodule CodeMySpec.Files.FileSync do
           # The upsert says what moved. `validated_entries` is everything whose
           # mtime bumped; the rows that come back are the ones whose content,
           # role, ownership or validity actually differs.
-          Files.upsert_files(scope, SpecBinding.bind(scope, validated_entries, false))
+          Files.upsert_files(scope, SpecBinding.bind(scope, validated_entries))
       end
 
     # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
@@ -947,7 +946,7 @@ defmodule CodeMySpec.Files.FileSync do
               [entry] = Scanner.resolve_owners([entry], read_model)
               [entry] = Scanner.fingerprint_entries(env, [entry])
               entry = Scanner.validate_entry(entry, env, read_model.component_by_id, read_model.strict?)
-              [entry] = SpecBinding.bind(scope, [entry], false)
+              [entry] = SpecBinding.bind(scope, [entry])
               entry
 
             setup_validated_role?(role) ->

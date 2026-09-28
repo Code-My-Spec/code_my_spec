@@ -7,22 +7,23 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ListQuestions do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Questions
 
   schema do
-    field :story_id, :integer,
+    field :story_number, :integer,
       required: true,
-      doc: "ID of the story whose questions should be listed."
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        questions = Questions.list_questions_for_story(scope, get_param(params, :story_id))
-        {:reply, BddRulesMapper.questions_list_response(questions), frame}
-
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, story} <- StoryRefs.fetch_story(scope, get_param(params, :story_number)) do
+      questions = Questions.list_questions_for_story(scope, story.id)
+      {:reply, BddRulesMapper.questions_list_response(questions), frame}
+    else
       {:error, reason} ->
         {:reply, BddRulesMapper.error(reason), frame}
     end

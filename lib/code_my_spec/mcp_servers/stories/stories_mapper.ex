@@ -13,14 +13,14 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   def story_response(story) do
     data = story_data(story)
-    summary = "Story created: \"#{story.title}\" (ID: #{story.id})"
+    summary = "Story #{story.number} created: \"#{story.title}\""
 
     hybrid_response(summary, data)
   end
 
   def story_updated_response(story) do
     data = story_data(story)
-    summary = "Story updated: \"#{story.title}\" (ID: #{story.id})"
+    summary = "Story #{story.number} updated: \"#{story.title}\""
 
     hybrid_response(summary, data)
   end
@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     epic_line = epic_line(story.epic)
 
     summary = """
-    ## #{story.title} (ID: #{story.id})#{number_line(story)}
+    ## Story #{story.number}: #{story.title}
 
     #{story.story || story.description || "No story"}#{notes_line}#{component_line}#{epic_line}
 
@@ -67,21 +67,6 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     if Ecto.assoc_loaded?(story.tags), do: tags, else: []
   end
 
-  # The durable number, beside the primary key.
-  #
-  # Both, because they are different things and each is load-bearing somewhere:
-  # every tool takes the id, and the spex directory a story's specs live in is
-  # `test/spex/<number>_<slug>/` — which `Parser.derive_story_number/1` reads
-  # back to decide whose story a failing spec belongs to.
-  #
-  # Nothing exposed the number until now, so an agent told to write spex for a
-  # story had no way to learn the one part of the path that identifies it, and
-  # a directory named from the id points the gate at a different story or at
-  # none. `story_id_from_path/2`'s own comment records that going wrong:
-  # `test/spex/811_…` derives 811, a real but unrelated story.
-  defp number_line(%{number: number}) when is_integer(number), do: " · story #{number}"
-  defp number_line(_story), do: ""
-
   defp notes_line(nil), do: ""
   defp notes_line(""), do: ""
   defp notes_line(notes), do: "\n\n**Notes:** #{notes}"
@@ -92,23 +77,31 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   defp epic_line(%{name: name}), do: "\n\n**Epic:** #{name}"
   defp epic_line(_), do: ""
 
-  def story_deleted_response(story) do
+  def story_restored_response(story) do
     Response.tool()
-    |> Response.text("Story deleted: \"#{story.title}\" (ID: #{story.id})")
+    |> Response.text(
+      "Story #{story.number} restored: \"#{story.title}\". " <>
+        "It is parked; release it with update_story(ready_for_dev: true) to put it back to work."
+    )
+  end
+
+  def story_retired_response(story) do
+    Response.tool()
+    |> Response.text("Story #{story.number} retired: \"#{story.title}\"")
   end
 
   def story_component_set_response(story) do
     data = story_data(story)
 
     summary =
-      "Component assigned to story: \"#{story.title}\" (ID: #{story.id}) -> Component #{story.component_id}"
+      "Component assigned to story #{story.number}: \"#{story.title}\" -> Component #{story.component_id}"
 
     hybrid_response(summary, data)
   end
 
   def story_component_cleared_response(story) do
     data = story_data(story)
-    summary = "Component cleared from story: \"#{story.title}\" (ID: #{story.id})"
+    summary = "Component cleared from story #{story.number}: \"#{story.title}\""
 
     hybrid_response(summary, data)
   end
@@ -126,7 +119,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         end
       else
         story_lines =
-          Enum.map_join(stories, "\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
+          Enum.map_join(stories, "\n", fn s -> "- Story #{s.number}: #{s.title}" end)
 
         range_start = offset + 1
         range_end = offset + count
@@ -160,7 +153,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         "No stories found."
       else
         title_lines =
-          Enum.map_join(titles, "\n", fn t -> "- #{t.title} (ID: #{t.id})" end)
+          Enum.map_join(titles, "\n", fn t -> "- Story #{t.number}: #{t.title}" end)
 
         "#{count} stories:\n#{title_lines}"
       end
@@ -178,20 +171,20 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   # ---------------------------------------------------------------------------
 
   def tag_added_response(story, tag) do
-    summary = "Tag '#{tag.name}' added to story \"#{story.title}\" (ID: #{story.id})"
-    data = %{story_id: story.id, tag: tag.name}
+    summary = "Tag '#{tag.name}' added to story #{story.number}: \"#{story.title}\""
+    data = %{story_number: story.number, tag: tag.name}
     hybrid_response(summary, data)
   end
 
   def tag_already_exists_response(story, tag) do
     summary = "Story \"#{story.title}\" already has tag '#{tag.name}'"
-    data = %{story_id: story.id, tag: tag.name, already_exists: true}
+    data = %{story_number: story.number, tag: tag.name, already_exists: true}
     hybrid_response(summary, data)
   end
 
   def tag_removed_response(story, tag_name) do
     Response.tool()
-    |> Response.text("Tag '#{tag_name}' removed from story \"#{story.title}\" (ID: #{story.id})")
+    |> Response.text("Tag '#{tag_name}' removed from story #{story.number}: \"#{story.title}\"")
   end
 
   def story_tags_response(story, tags) do
@@ -206,7 +199,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         "Story \"#{story.title}\" has #{count} tag(s): #{tag_list}"
       end
 
-    data = %{story_id: story.id, tags: tag_names, count: count}
+    data = %{story_number: story.number, tags: tag_names, count: count}
     hybrid_response(summary, data)
   end
 
@@ -218,7 +211,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         "No stories found with tag '#{tag_name}'."
       else
         story_lines =
-          Enum.map_join(stories, "\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
+          Enum.map_join(stories, "\n", fn s -> "- Story #{s.number}: #{s.title}" end)
 
         "#{count} stories with tag '#{tag_name}':\n#{story_lines}"
       end
@@ -226,7 +219,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     data = %{
       tag: tag_name,
       count: count,
-      stories: Enum.map(stories, fn s -> %{id: s.id, title: s.title} end)
+      stories: Enum.map(stories, fn s -> %{number: s.number, title: s.title} end)
     }
 
     hybrid_response(summary, data)
@@ -269,8 +262,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       tag: tag_name,
       success_count: success_count,
       failure_count: failure_count,
-      tagged_story_ids: successes,
-      not_found_ids: Enum.map(failures, fn {:error, id, _} -> id end)
+      tagged_story_numbers: successes,
+      not_found_numbers: Enum.map(failures, fn {:error, id, _} -> id end)
     }
 
     hybrid_response(summary, data)
@@ -298,12 +291,16 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   def criterion_retired_response(criterion) do
     Response.tool()
-    |> Response.text("Criterion retired (criterion #{criterion.number}): #{criterion.description}")
+    |> Response.text(
+      "Criterion retired (criterion #{criterion.number}): #{criterion.description}"
+    )
   end
 
   def criterion_restored_response(criterion) do
     Response.tool()
-    |> Response.text("Criterion restored (criterion #{criterion.number}): #{criterion.description}")
+    |> Response.text(
+      "Criterion restored (criterion #{criterion.number}): #{criterion.description}"
+    )
   end
 
   def criterion_response(criterion, story) do
@@ -311,7 +308,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
     Response.tool()
     |> Response.text("""
-    Criterion #{criterion.number} (#{status}) on "#{story.title}" (ID: #{story.id})
+    Criterion #{criterion.number} (#{status}) on story #{story.number}: "#{story.title}"
 
     #{criterion.description}
     """)
@@ -321,7 +318,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     data = criterion_data(criterion)
 
     summary =
-      "Criterion moved (criterion #{criterion.number}): \"#{from_story.title}\" (ID: #{from_story.id}) -> \"#{to_story.title}\" (ID: #{to_story.id})"
+      "Criterion moved (criterion #{criterion.number}): story #{from_story.number} -> story #{to_story.number} (\"#{to_story.title}\")"
 
     hybrid_response(summary, data)
   end
@@ -360,7 +357,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   def not_found_error do
     Response.tool()
-    |> Response.error("Story not found. Verify the story ID exists using list_stories.")
+    |> Response.error("Story not found. list_story_titles shows the story numbers.")
   end
 
   # ---------------------------------------------------------------------------
@@ -388,7 +385,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp story_data(story) do
     base = %{
-      id: story.id,
+      number: story.number,
       title: story.title,
       story: story.story || story.description,
       notes: story.notes,
@@ -410,7 +407,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp story_summary(story) do
     base = %{
-      id: story.id,
+      number: story.number,
       title: story.title,
       story: story.story || story.description,
       notes: story.notes,
@@ -464,7 +461,6 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     %{
       number: c.number,
       description: c.description,
-      story_id: c.story_id,
       verified: c.verified,
       verified_at: c.verified_at
     }

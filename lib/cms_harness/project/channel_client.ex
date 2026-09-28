@@ -988,7 +988,7 @@ defmodule CmsHarness.Project.ChannelClient do
     case reply do
       {:ok, %{"agents" => agents}} when is_list(agents) ->
         restore(agents)
-        {:ok, socket}
+        {:ok, assign(socket, :restored, true)}
 
       other ->
         # Not fatal: nothing is running yet, so the worst case is a harness that
@@ -1499,7 +1499,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # this copy needs to send behind one app booting.
   def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root, main?: msg["main"] == true)
+      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root,
+        main?: msg["main"] == true
+      )
     end)
 
     {:ok, socket}
@@ -1582,6 +1584,21 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
+
+  defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
+    merge = %{
+      before: payload["before"],
+      after: payload["after"],
+      version: payload["version"]
+    }
+
+    with_served_root(root, fn root ->
+      with_served_root(
+        source,
+        &Steps.sync_submodule(Environment.new(:local, root), root, &1, merge)
+      )
+    end)
+  end
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}
@@ -1676,6 +1693,10 @@ defmodule CmsHarness.Project.ChannelClient do
       [] -> :ok
     end
   end
+
+  # Once per harness process: a reconnect loses no agent, and every ask writes a
+  # "harness restarted" notice into each agent's thread (`00121aa6`).
+  defp ask_what_to_restore(%{assigns: %{restored: true}} = socket, _topic), do: socket
 
   defp ask_what_to_restore(socket, topic) do
     case transport().push(socket, topic, "agents_to_restore", %{}, decision_timeout()) do

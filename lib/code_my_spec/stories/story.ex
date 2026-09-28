@@ -141,6 +141,10 @@ defmodule CodeMySpec.Stories.Story do
     #
     # Unique per project, not globally.
     field :number, :integer
+
+    # Stories are retired, never deleted, so a number is never freed. A retired
+    # story leaves the backlog and the graph and stays readable by id and number.
+    field :retired_at, :utc_datetime_usec
     field :acceptance_criteria, {:array, :string}
     # No `status`. It was a cached projection of the requirement graph that
     # nothing ever advanced: `:completed` had no writer anywhere, so all 124

@@ -58,13 +58,15 @@ defmodule CodeMySpec.Architecture.ProposalProjectorTest do
           description: "Main dashboard"
         })
 
-      _story = story_fixture(scope, %{component_id: liveview.id, title: "View dashboard"})
+      _other = story_fixture(scope, %{title: "Unlinked"})
+      story = story_fixture(scope, %{component_id: liveview.id, title: "View dashboard"})
 
       result = ProposalProjector.project(scope)
 
       assert result =~ "### MyAppWeb.DashboardLive"
       assert result =~ "Main dashboard"
-      assert result =~ "**Stories:**"
+      assert result =~ "- **Stories:** #{story.number}\n"
+      refute result =~ "- **Stories:** #{story.id}\n"
     end
 
     test "includes dependencies between components", %{scope: scope} do

@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
 
       when_ "the architect declares a dependency on the existing Stories component", context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         # StoryLive.Index depends on Stories which already exists in the DB
         proposal = """
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
 
         - **Type:** liveview
         - **Description:** Story list page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

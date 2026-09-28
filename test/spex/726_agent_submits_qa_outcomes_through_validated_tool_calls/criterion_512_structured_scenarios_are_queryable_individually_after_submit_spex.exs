@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute list_response.isError
         text = response_text(list_response)

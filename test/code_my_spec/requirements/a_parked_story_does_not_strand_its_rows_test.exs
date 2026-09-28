@@ -88,14 +88,14 @@ defmodule CodeMySpec.Requirements.AParkedStoryDoesNotStrandItsRowsTest do
   #
   # Measured on the live database while this was written: 385 rows across 60
   # stories that no longer exist.
-  test "deleting a story reaps the rows it published", ctx do
-    {:ok, _deleted} = Stories.delete_story(ctx.scope, ctx.story)
+  test "retiring a story reaps the rows it published", ctx do
+    {:ok, _retired} = Stories.retire_story(ctx.scope, ctx.story)
 
     Requirements.recompute(ctx.scope)
 
     assert rows_for(ctx.story.id) == 0,
            """
-           A story was deleted and #{rows_for(ctx.story.id)} of its requirement
+           A story was retired and #{rows_for(ctx.story.id)} of its requirement
            rows survived the next pass.
 
            Nothing can ever resolve them again — the story is gone from the
@@ -104,7 +104,7 @@ defmodule CodeMySpec.Requirements.AParkedStoryDoesNotStrandItsRowsTest do
            later pass will visit an entity that does not exist.
 
            rows while the story existed: #{ctx.rows_while_ready}
-           rows after deleting it:       #{rows_for(ctx.story.id)}
+           rows after retiring it:       #{rows_for(ctx.story.id)}
            """
   end
 

@@ -13,14 +13,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetCriterion do
   alias CodeMySpec.Stories
 
   schema do
-    field :criterion_id, :string, required: true, doc: "Criterion number"
+    field :criterion_number, :integer, required: true, doc: "Criterion number"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          story when not is_nil(story) <- Stories.get_story(scope, criterion.story_id) do
       {:reply, StoriesMapper.criterion_response(criterion, story), frame}
     else

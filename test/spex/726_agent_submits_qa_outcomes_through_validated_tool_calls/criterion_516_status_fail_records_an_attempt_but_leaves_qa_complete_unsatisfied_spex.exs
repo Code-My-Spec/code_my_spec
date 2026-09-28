@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
               title: "QA-found blocking defect from criterion 6451 spex",
               severity: "high",
               scope: "app",
-              story_id: context.story.id,
+              story_number: context.story.number,
               description: "Discovered while probing the agent surface."
             },
             frame
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute list_response.isError
         text = response_text(list_response)

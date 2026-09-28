@@ -1,99 +1,98 @@
 defmodule CodeMySpec.Files.SpecBinding do
   @moduledoc """
-  Binds each spex file to the criterion its `spex` call names.
+  A spex file and the criterion its `spex` call names.
 
-  The scanner reads the number out of the file (`spex "…", criterion: 12`) and
-  carries it in `validation_errors["data"]`. This turns it into
-  `criterion_id`, and takes the file's story from the criterion, so neither
-  the filename nor the directory decides anything.
+  The scanner reads the number out of the file (`spex "…", criterion: 12`)
+  and carries it in `validation_errors["data"]`. At sync, `bind/2` records it
+  as `criterion_number` and takes the file's story from that criterion, so
+  neither the filename nor the directory decides anything.
 
-  A number that binds to nothing makes the file invalid, with a reason the
-  agent can act on: a number the project does not have, a retired criterion,
-  or a criterion another spex already covers. The file that held the criterion
-  first keeps it.
+  Which criterion a file covers is not stored: it is the join of
+  `criterion_number` and `criteria.number`. A criterion retired, restored or
+  created later changes the answer in its own transaction, with nothing to
+  re-project. For the same reason `problems/2` works out, when asked, which
+  files name a number that binds to nothing — unknown, retired, or already
+  covered by another file.
   """
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.ContentCheck
-  alias CodeMySpec.Files
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Bind the spex entries among `entries`; every other entry gets a nil
-  `criterion_id`.
-
-  `complete?` says `entries` is the whole of this working copy's tree, as a
-  manifest is. Then a file not among them is gone and holds nothing, which is
-  what lets a moved spec keep its criterion. An incremental sync passes
-  `false`, and every stored binding still counts.
+  Record the number each spex entry names, and its story when the project has
+  that criterion. Every other entry gets a nil `criterion_number`.
   """
-  @spec bind(Scope.t(), [map()], boolean()) :: [map()]
-  def bind(%Scope{} = scope, entries, complete?) do
-    criteria =
-      entries
-      |> Enum.flat_map(&List.wrap(named(&1)))
-      |> Enum.uniq()
-      |> then(&AcceptanceCriteria.list_criteria_by_number(scope, &1))
-      |> Map.new(&{&1.number, &1})
-
-    held = held(scope, criteria, entries, complete?)
-
-    {bound, _held} =
-      entries
-      |> Enum.sort_by(& &1.path)
-      |> Enum.map_reduce(held, &bind_entry(&1, criteria, &2))
-
-    bound
+  @spec bind(Scope.t(), [map()]) :: [map()]
+  def bind(%Scope{} = scope, entries) do
+    criteria = criteria_named(scope, entries)
+    Enum.map(entries, &bind_entry(&1, criteria))
   end
 
-  defp held(scope, criteria, entries, complete?) do
-    stored = Files.spec_paths_by_criterion(scope, criteria |> Map.values() |> Enum.map(& &1.id))
+  @doc """
+  Why each of `files` covers nothing although it names a criterion, as
+  `%{path => reason}`. `files` are one working copy's spex rows. A file absent
+  from the result either covers its criterion or is invalid for its content.
+  """
+  @spec problems(Scope.t(), [map()]) :: %{String.t() => String.t()}
+  def problems(%Scope{} = scope, files) do
+    named = Enum.filter(files, &(&1.role == :bdd_spec and is_integer(&1.criterion_number)))
+    criteria = criteria_named(scope, named)
 
-    if complete? do
-      present = MapSet.new(entries, & &1.path)
-      Map.filter(stored, fn {_id, path} -> MapSet.member?(present, path) end)
-    else
-      stored
+    {problems, _first} =
+      named
+      |> Enum.sort_by(&{recorded_at(&1), &1.path})
+      |> Enum.reduce({%{}, %{}}, fn file, {problems, first} ->
+        case problem(file, Map.get(criteria, file.criterion_number), first) do
+          nil -> {problems, Map.put_new(first, file.criterion_number, file.path)}
+          reason -> {Map.put(problems, file.path, ContentCheck.describe(reason, file.path)), first}
+        end
+      end)
+
+    problems
+  end
+
+  defp problem(file, nil, _first), do: {:unknown_criterion, file.criterion_number}
+  defp problem(file, %{retired_at: %DateTime{}}, _first), do: {:retired_criterion, file.criterion_number}
+
+  defp problem(file, _criterion, first) do
+    case Map.get(first, file.criterion_number) do
+      nil -> nil
+      covered_by -> {:duplicate_criterion, file.criterion_number, covered_by}
     end
   end
 
-  defp bind_entry(entry, criteria, held) do
+  defp bind_entry(entry, criteria) do
     case named(entry) do
-      nil -> {Map.put(entry, :criterion_id, nil), held}
-      number -> bind_number(entry, Map.get(criteria, number), number, held)
+      nil ->
+        Map.put(entry, :criterion_number, nil)
+
+      number ->
+        entry
+        |> Map.put(:criterion_number, number)
+        |> put_story(Map.get(criteria, number))
     end
   end
 
-  defp bind_number(entry, nil, number, held),
-    do: {invalid(entry, {:unknown_criterion, number}), held}
+  # The file that held the number first keeps it. A row not yet written sorts
+  # after every recorded one.
+  defp recorded_at(%{inserted_at: %NaiveDateTime{} = at}), do: NaiveDateTime.to_iso8601(at)
+  defp recorded_at(_file), do: "~"
 
-  defp bind_number(entry, %{retired_at: %DateTime{}}, number, held),
-    do: {invalid(entry, {:retired_criterion, number}), held}
+  defp put_story(entry, nil), do: entry
+  defp put_story(entry, criterion), do: Map.put(entry, :story_id, criterion.story_id)
 
-  defp bind_number(entry, criterion, number, held) do
-    case Map.get(held, criterion.id, entry.path) do
-      path when path == entry.path ->
-        {entry |> Map.put(:criterion_id, criterion.id) |> Map.put(:story_id, criterion.story_id),
-         Map.put(held, criterion.id, entry.path)}
-
-      covered_by ->
-        {invalid(entry, {:duplicate_criterion, number, covered_by}), held}
-    end
+  defp criteria_named(scope, entries) do
+    entries
+    |> Enum.flat_map(&List.wrap(Map.get(&1, :criterion_number) || named(&1)))
+    |> Enum.uniq()
+    |> then(&AcceptanceCriteria.list_criteria_by_number(scope, &1))
+    |> Map.new(&{&1.number, &1})
   end
 
-  defp invalid(entry, reason) do
-    entry
-    |> Map.put(:criterion_id, nil)
-    |> Map.put(:valid, false)
-    |> Map.put(:validation_errors, %{
-      "reason" => ContentCheck.describe(reason, entry.path),
-      "data" => entry.validation_errors["data"]
-    })
-  end
-
-  # The number a valid spex names. Keys arrive as strings: a harness's entry
-  # has crossed the wire as JSON.
-  defp named(%{role: :bdd_spec, valid: true, validation_errors: %{"data" => %{"criterion" => n}}})
+  # The number a spex names, valid or not. Keys arrive as strings: a harness's
+  # entry has crossed the wire as JSON.
+  defp named(%{role: :bdd_spec, validation_errors: %{"data" => %{"criterion" => n}}})
        when is_integer(n),
        do: n
 

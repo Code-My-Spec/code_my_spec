@@ -58,7 +58,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   # moduledoc has always said "an explicit story must agree with the working
   # copy's active assignment", and `selected/3`'s comment said a mismatch must
   # not widen the answer. Only the code disagreed.
-  describe "an explicit story_id never widens the answer" do
+  describe "an explicit story_number never widens the answer" do
     setup do
       scope = full_scope_fixture()
 
@@ -78,13 +78,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       assert {:reply, response, _} =
-               GetNextRequirement.execute(%{story_id: to_string(ctx.other.id)}, frame)
+               GetNextRequirement.execute(%{story_number: ctx.other.number}, frame)
 
       content = response_text(response)
 
       assert content =~ "Status: unavailable"
 
-      assert content =~ to_string(ctx.active.id),
+      assert content =~ "active story (#{ctx.active.number})",
              "the refusal has to name the story this copy is actually on, or the agent " <>
                "cannot tell a refusal from an empty project"
 
@@ -97,13 +97,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
              "a refusal must offer no work; the bug offered the project's entire queue"
     end
 
-    test "a story_id on a copy that has chosen nothing is refused, not answered for the project",
+    test "a story_number on a copy that has chosen nothing is refused, not answered for the project",
          ctx do
       {:ok, _} = WorkingCopies.set_active_story(ctx.scope, nil)
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       assert {:reply, response, _} =
-               GetNextRequirement.execute(%{story_id: to_string(ctx.other.id)}, frame)
+               GetNextRequirement.execute(%{story_number: ctx.other.number}, frame)
 
       content = response_text(response)
       assert content =~ "Status: unavailable"

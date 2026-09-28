@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   @script """
-  return assign_story_to_epic({ story_id = ARGS.story, epic_name = ARGS.epic })
+  return assign_story_to_epic({ story_number = ARGS.story, epic_name = ARGS.epic })
   """
 
   setup :register_log_in_setup_account
@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
 
         script =
           @script
-          |> String.replace("ARGS.story", ~s("#{context.story.id}"))
+          |> String.replace("ARGS.story", to_string(context.story.number))
           |> String.replace("ARGS.epic", ~s("#{context.epic.name}"))
 
         {:reply, as_coding, _frame} =

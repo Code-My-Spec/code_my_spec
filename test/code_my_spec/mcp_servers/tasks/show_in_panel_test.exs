@@ -40,7 +40,7 @@ defmodule CodeMySpec.McpServers.Tasks.ShowInPanelTest do
 
   test "pointing the panel at a story records it as an offer", ctx do
     {:reply, response, _frame} =
-      ShowInPanel.execute(%{view: "story", story_id: ctx.story.id}, ctx.frame)
+      ShowInPanel.execute(%{view: "story", story_number: ctx.story.number}, ctx.frame)
 
     refute response.isError
 

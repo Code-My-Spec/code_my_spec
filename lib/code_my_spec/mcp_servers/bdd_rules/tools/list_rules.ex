@@ -8,21 +8,22 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ListRules do
 
   alias CodeMySpec.BddRules
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :story_id, :integer,
+    field :story_number, :integer,
       required: true,
-      doc: "ID of the story whose rules should be listed."
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        rules = BddRules.list_rules_for_story(scope, get_param(params, :story_id))
-        {:reply, BddRulesMapper.rules_list_response(rules), frame}
-
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, story} <- StoryRefs.fetch_story(scope, get_param(params, :story_number)) do
+      rules = BddRules.list_rules_for_story(scope, story.id)
+      {:reply, BddRulesMapper.rules_list_response(rules), frame}
+    else
       {:error, reason} ->
         {:reply, BddRulesMapper.error(reason), frame}
     end

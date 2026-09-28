@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(story.id)
+              entity_id: to_string(story.number)
             },
             frame
           )
@@ -107,6 +107,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
          Map.merge(context, %{
            frame: frame,
            story_id: story.id,
+           story_number: story.number,
            task_id: task_id,
            question_id: question_id,
            tasks_before: response_text(tasks)
@@ -119,7 +120,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(context.story_id)
+              entity_id: to_string(context.story_number)
             },
             context.frame
           )
@@ -181,7 +182,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(story.id)
+              entity_id: to_string(story.number)
             },
             frame
           )
@@ -222,6 +223,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
          Map.merge(context, %{
            frame: frame,
            story_id: story.id,
+           story_number: story.number,
            task_id: task_id,
            question_id: question_id,
            tasks_before: response_text(tasks)
@@ -231,7 +233,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
       given_ "the story has been withdrawn from development after the answer", context do
         {:reply, updated, _} =
           UpdateStory.execute(
-            %{story_id: to_string(context.story_id), ready_for_dev: false},
+            %{story_number: context.story_number, ready_for_dev: false},
             context.frame
           )
 
@@ -247,7 +249,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(context.story_id)
+              entity_id: to_string(context.story_number)
             },
             context.frame
           )
@@ -306,7 +308,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(story.id)
+              entity_id: to_string(story.number)
             },
             frame
           )
@@ -347,6 +349,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
          Map.merge(context, %{
            frame: frame,
            story_id: story.id,
+           story_number: story.number,
            task_id: task_id,
            question_id: question_id,
            tasks_before: response_text(tasks)
@@ -368,7 +371,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(context.story_id)
+              entity_id: to_string(context.story_number)
             },
             context.other_frame
           )

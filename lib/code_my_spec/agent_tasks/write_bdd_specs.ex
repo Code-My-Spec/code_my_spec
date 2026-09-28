@@ -68,8 +68,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       nil ->
         {:error,
          {:story_not_found,
-          "Story #{story_id} was not found in this project. " <>
-            "Check the id with `list_stories` (the story may have been deleted, or you're " <>
+          "This task's story was not found in this project. " <>
+            "Check the story number with `list_stories` (the story may have been retired, or you're " <>
             "scoped to the wrong project)."}}
 
       story ->
@@ -80,16 +80,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp resolve_story(_scope, _task) do
     {:error,
      {:story_not_specified,
-      "The bdd_specs_exist task was started without a story_id. " <>
-        "Call `start_task` with `entity_type: \"story\"` and `entity_id: <story_id>`."}}
+      "The bdd_specs_exist task was started without a story. " <>
+        "Call `start_task` with `entity_type: \"story\"` and `entity_id: <story_number>`."}}
   end
 
   defp get_story_component(_scope, %{component_id: nil} = story) do
-    Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component linked")
+    Logger.warning(
+      "[WriteBddSpecs] Story #{story.number} (#{story.title}) has no component linked"
+    )
 
     {:error,
      {:component_not_linked,
-      "Story #{story.id} (#{story.title}) has no surface component linked, so the BDD spec " <>
+      "Story #{story.number} (#{story.title}) has no surface component linked, so the BDD spec " <>
         "writer can't tell which surface to drive in Given/When/Then steps.\n\n" <>
         "Resolutions:\n" <>
         "  - If the implementing component already exists in the architecture, call " <>
@@ -104,11 +106,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp get_story_component(scope, %{component_id: component_id} = story) do
     case Components.get_component(scope, component_id) do
       nil ->
-        Logger.warning("[WriteBddSpecs] Story #{story.id} component #{component_id} not found")
+        Logger.warning(
+          "[WriteBddSpecs] Story #{story.number} component #{component_id} not found"
+        )
 
         {:error,
          {:component_not_found,
-          "Story #{story.id} is linked to component #{component_id} but no such component exists. " <>
+          "Story #{story.number} is linked to component #{component_id} but no such component exists. " <>
             "The component may have been deleted; re-link the story via `set_story_component`."}}
 
       component ->
@@ -117,11 +121,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   defp get_story_component(_scope, story) do
-    Logger.warning("[WriteBddSpecs] Story #{inspect(story.id)} has no component_id field")
+    Logger.warning(
+      "[WriteBddSpecs] Story #{inspect(Map.get(story, :number))} has no component_id field"
+    )
 
     {:error,
      {:component_not_linked,
-      "Story #{inspect(story.id)} payload has no component_id field. " <>
+      "Story #{inspect(Map.get(story, :number))} payload has no component_id field. " <>
         "Refresh the story via `get_story` or link a component via `set_story_component`."}}
   end
 
@@ -155,7 +161,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
     # Write BDD Specs: #{story.title}
 
-    **Story ID**: #{story.id}
+    **Story**: #{story.number}
     **Description**: #{story.description || "No description"}
     **Component**: `#{component.module_name}` (#{component.type})\
     """
@@ -702,7 +708,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp uncovered(criterion, specs) do
     naming =
       Enum.filter(specs, fn spec ->
-        get_in(spec.validation_errors || %{}, ["data", "criterion"]) == criterion.number
+        spec.criterion_number == criterion.number
       end)
 
     why =

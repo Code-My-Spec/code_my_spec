@@ -197,7 +197,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # used to check only unlinked stories, so a task passed while an orphan kept
   # the requirement unmet and every role was offered it again.
   defp evaluate_patch_mode(scope) do
-    case {unlinked_story_ids(scope), ArchitectureChecker.orphans(scope)} do
+    case {unlinked_story_numbers(scope), ArchitectureChecker.orphans(scope)} do
       {[], []} -> {:ok, :valid}
       {[], orphans} -> {:ok, :invalid, format_orphans_section(orphans)}
       {ids, _orphans} -> {:ok, :invalid, unlinked_stories_feedback(ids)}
@@ -223,11 +223,19 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
-         {:ok, story_ids} <- get_story_ids(scope),
+         ids_by_number = Stories.list_story_ids_by_number(scope),
+         labels = Map.new(ids_by_number, fn {number, id} -> {id, number} end),
+         {:ok, linked} <- Proposal.link_story_numbers(proposal, ids_by_number),
+         {:ok, story_numbers} <- get_story_numbers(scope),
          db_components = list_db_component_names(scope),
          {:ok, _validated} <-
-           Proposal.validate(proposal, story_ids: story_ids, db_components: db_components),
-         {:ok, result} <- Proposal.execute(proposal, scope, env: env, working_dir: working_dir) do
+           Proposal.validate(proposal, story_ids: story_numbers, db_components: db_components),
+         {:ok, result} <-
+           Proposal.execute(linked, scope,
+             env: env,
+             working_dir: working_dir,
+             story_labels: labels
+           ) do
       case Map.get(result, :warnings, []) do
         [] -> {:ok, :valid}
         warnings -> {:ok, :valid, format_warnings(warnings)}
@@ -256,23 +264,23 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     end
   end
 
-  defp unlinked_story_ids(scope) do
+  defp unlinked_story_numbers(scope) do
     case Stories.list_project_stories(scope) do
       {:ok, stories} ->
         stories
         |> Enum.reject(&(&1.component_id != nil))
-        |> Enum.map(& &1.id)
+        |> Enum.map(& &1.number)
 
       {:error, _} ->
         []
     end
   end
 
-  defp unlinked_stories_feedback(ids) do
+  defp unlinked_stories_feedback(numbers) do
     """
     Some stories are not linked to a component:
 
-    #{Enum.map_join(ids, "\n", &"- Story #{&1}")}
+    #{Enum.map_join(numbers, "\n", &"- Story #{&1}")}
 
     Use `set_story_component` to link each story, or rewrite #{@proposal_path} and call `execute_proposal` to apply a fresh design.
     """
@@ -286,9 +294,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     end
   end
 
-  defp get_story_ids(scope) do
+  defp get_story_numbers(scope) do
     case Stories.list_project_stories(scope) do
-      {:ok, stories} -> {:ok, Enum.map(stories, & &1.id)}
+      {:ok, stories} -> {:ok, Enum.map(stories, & &1.number)}
       {:error, _} -> {:ok, []}
     end
   end
@@ -550,14 +558,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         end
 
       """
-      ### Story #{story.id}: #{story.title}
+      ### Story #{story.number}: #{story.title}
 
       #{story.description || "No description"}
 
       **Acceptance Criteria:**
       #{acceptance_criteria}
 
-      **Use story_id: #{story.id}** when mapping this story to components.
+      **Use story_number: #{story.number}** when mapping this story to components.
       """
       |> String.trim()
     end)

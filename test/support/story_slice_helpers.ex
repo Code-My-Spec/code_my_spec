@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   def activate(context) do
-    call(context, SetActiveStory, %{story_id: to_string(context.story.id)})
+    call(context, SetActiveStory, %{story_number: context.story.number})
     context
   end
 
@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
       [_, epic_id] = Regex.run(~r/ID: ([^,]+)/, result)
 
       call(context, CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic, %{
-        story_id: to_string(story.id),
+        story_number: story.number,
         epic_name: "Future work"
       })
 
@@ -131,7 +131,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   def offered?(text, entity_id), do: text =~ "entity_id=`#{entity_id}`"
 
   def assert_active(text, context, status) do
-    assert text =~ "# Story #{context.story.id}:"
+    assert text =~ "# Story #{context.story.number}:"
     assert text =~ "Status: #{status}"
     if context[:waiting], do: refute(offered?(text, context.waiting.id))
   end

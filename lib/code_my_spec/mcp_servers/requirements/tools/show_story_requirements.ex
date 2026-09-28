@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   @moduledoc """
-  Show all requirements for a specific story, identified by title or ID.
+  Show all requirements for a specific story, identified by number or title.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   alias CodeMySpec.Stories
 
   schema do
-    field :story, :string, required: true, description: "Story title or story ID"
+    field :story, :string, required: true, description: "Story number or title"
   end
 
   @impl true
@@ -44,11 +44,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   end
 
   defp resolve_story(scope, ref) do
-    cond do
-      match?({:ok, _}, UUID.info(ref)) -> Stories.get_story(scope, ref)
-      integer_id?(ref) -> Stories.get_story(scope, String.to_integer(ref))
-      true -> find_story_by_title(scope, ref)
-    end
+    if number?(ref),
+      do: Stories.get_story_by_number(scope, ref),
+      else: find_story_by_title(scope, ref)
   end
 
   defp find_story_by_title(scope, ref) do
@@ -61,7 +59,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
     end
   end
 
-  defp integer_id?(ref) do
+  defp number?(ref) do
     case Integer.parse(ref) do
       {_int, ""} -> true
       _ -> false

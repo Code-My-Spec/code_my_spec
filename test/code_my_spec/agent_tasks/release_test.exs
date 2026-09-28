@@ -88,23 +88,23 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     ]
   end
 
-  test "a manifest naming a longer id does not release the shorter id it's a prefix of", %{
+  test "a manifest naming a longer id does not release the shorter number it's a prefix of", %{
     root: root,
     scope: scope
   } do
     story = deploy_story!(scope)
-    # Appending a digit guarantees `story.id`'s decimal string is a true
+    # Appending a digit guarantees `story.number`'s decimal string is a true
     # prefix of `longer`, regardless of what the DB actually assigned —
     # reproducing the `story_12` contains `story_1` shape without needing
     # literal small ids.
-    longer = "#{story.id}9"
+    longer = "#{story.number}9"
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{longer}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
 
-    assert message =~ ~r/\bstory_#{story.id}\b/,
-           "story #{story.id} is on UAT and no manifest covers it; the substring match " <>
+    assert message =~ ~r/\bstory_#{story.number}\b/,
+           "story #{story.number} is on UAT and no manifest covers it; the substring match " <>
              "found it inside story_#{longer} and called it shipped: #{message}"
   end
 
@@ -113,10 +113,23 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     scope: scope
   } do
     story = deploy_story!(scope)
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
+  end
+
+  test "manifest tokens are story numbers, not database ids", %{root: root, scope: scope} do
+    for _ <- 1..2, do: StoriesFixtures.story_fixture(scope)
+    story = deploy_story!(scope)
+    assert story.id != story.number
+
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    tag(scope.environment, "1.0.0")
+
+    assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
+    assert message =~ ~r/\bstory_#{story.number}\b/
+    refute message =~ ~r/\bstory_#{story.id}\b/
   end
 
   test "a record with no matching tag does not release the story it names", %{
@@ -124,10 +137,10 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     scope: scope
   } do
     story = deploy_story!(scope)
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
-    assert message =~ "story_#{story.id}"
+    assert message =~ "story_#{story.number}"
   end
 
   test "a tagged record whose GitHub Release was never published stays unreleased", %{
@@ -135,11 +148,11 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     scope: scope
   } do
     story = deploy_story!(scope)
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(1))
-    assert message =~ "story_#{story.id}"
+    assert message =~ "story_#{story.number}"
   end
 
   test "a tag with the v-prefix the prompt names also satisfies coverage", %{
@@ -147,29 +160,29 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     scope: scope
   } do
     story = deploy_story!(scope)
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
     tag(scope.environment, "v1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
 
-  test "a shorter manifest token does not release a longer deployed id it's a prefix of", %{
+  test "a shorter manifest token does not release a longer deployed number it's a prefix of", %{
     root: root,
     scope: scope
   } do
-    # A single-digit id has no non-empty proper prefix. Nine filler stories
-    # first guarantees the id under test has at least two digits by the time
+    # A single-digit number has no non-empty proper prefix. Nine filler stories
+    # first guarantees the number under test has at least two digits by the time
     # it's created, regardless of what the sequence already stood at.
     for _ <- 1..9, do: StoriesFixtures.story_fixture(scope)
 
     story = deploy_story!(scope)
-    shorter = String.slice(to_string(story.id), 0..-2//1)
+    shorter = String.slice(to_string(story.number), 0..-2//1)
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{shorter}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
-    assert message =~ "story_#{story.id}"
+    assert message =~ "story_#{story.number}"
   end
 
   test "nothing deployed is nothing to release", %{scope: scope} do
@@ -182,7 +195,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = StoriesFixtures.story_fixture(scope)
     {:ok, _} = Deploys.record(scope, story.id, "uat")
-    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
+    released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
     tag(scope.environment, "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))

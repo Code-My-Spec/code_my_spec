@@ -12,13 +12,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string, required: true, doc: "Story ID to unlink from component"
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number),
          {:ok, updated_story} <- Stories.clear_story_component(scope, story) do
       {:reply, StoriesMapper.story_component_cleared_response(updated_story), frame}
     else

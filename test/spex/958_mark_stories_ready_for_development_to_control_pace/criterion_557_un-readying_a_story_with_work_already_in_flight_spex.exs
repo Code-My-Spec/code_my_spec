@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
         |> element("[data-test='toggle-story-ready']")
         |> render_click()
 
-        {:ok, Map.put(context, :story_id, story_id!(response))}
+        {:ok, Map.put(context, :story_number, story_number!(response))}
       end
 
       and_ "it is partway through implementation", context do
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
 
         {:reply, response, _frame} =
           SetStoryComponent.execute(
-            %{story_id: context.story_id, module_name: context.component.module_name},
+            %{story_number: context.story_number, module_name: context.component.module_name},
             frame
           )
 
@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          GetStory.execute(%{story_id: context.story_id}, frame)
+          GetStory.execute(%{story_number: context.story_number}, frame)
 
         body = response_text(response)
 
@@ -119,14 +119,14 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
     end
   end
 
-  # MCP responses carry record ids in the text footer.
-  defp story_id!(response) do
+  # MCP responses name the story by number.
+  defp story_number!(response) do
     body = response_text(response)
 
-    [_, id] =
-      Regex.run(~r/\(ID: (\d+)\)/, body) ||
-        raise("could not read story id from response: #{body}")
+    [_, number] =
+      Regex.run(~r/^Story (\d+) created/, body) ||
+        raise("could not read story number from response: #{body}")
 
-    id
+    String.to_integer(number)
   end
 end

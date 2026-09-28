@@ -2,14 +2,17 @@ defmodule CodeMySpecWeb.IssuesController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Issues
+  alias CodeMySpec.Stories
 
   action_fallback CodeMySpecWeb.FallbackController
 
   def index(conn, params) do
     scope = conn.assigns.current_scope
-    filters = build_filters(params)
-    issues = Issues.list_filtered(scope, filters)
-    render(conn, :index, issues: issues)
+
+    with {:ok, params} <- put_story_id(scope, params) do
+      issues = Issues.list_filtered(scope, build_filters(params))
+      render(conn, :index, issues: issues, story_numbers: Stories.story_numbers(scope))
+    end
   end
 
   def show(conn, %{"id" => id}) do
@@ -22,17 +25,18 @@ defmodule CodeMySpecWeb.IssuesController do
         |> json(%{status: "not_found", error: "Issue not found"})
 
       issue ->
-        render(conn, :show, issue: issue)
+        render(conn, :show, issue: issue, story_numbers: Stories.story_numbers(scope))
     end
   end
 
   def create(conn, %{"issue" => issue_params}) do
     scope = conn.assigns.current_scope
 
-    with {:ok, issue} <- Issues.create_issue(scope, issue_params) do
+    with {:ok, issue_params} <- put_story_id(scope, issue_params),
+         {:ok, issue} <- Issues.create_issue(scope, issue_params) do
       conn
       |> put_status(:created)
-      |> render(:show, issue: issue)
+      |> render(:show, issue: issue, story_numbers: Stories.story_numbers(scope))
     end
   end
 
@@ -46,8 +50,9 @@ defmodule CodeMySpecWeb.IssuesController do
         |> json(%{status: "not_found", error: "Issue not found"})
 
       issue ->
-        with {:ok, updated} <- dispatch_update(scope, issue, issue_params) do
-          render(conn, :show, issue: updated)
+        with {:ok, issue_params} <- put_story_id(scope, issue_params),
+             {:ok, updated} <- dispatch_update(scope, issue, issue_params) do
+          render(conn, :show, issue: updated, story_numbers: Stories.story_numbers(scope))
         end
     end
   end
@@ -68,6 +73,16 @@ defmodule CodeMySpecWeb.IssuesController do
   defp dispatch_update(_scope, _issue, _params) do
     {:error, :invalid_update}
   end
+
+  # `story_number` names the story the way people do; resolved to the id here.
+  defp put_story_id(scope, %{"story_number" => number} = params) when not is_nil(number) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, :not_found}
+      story -> {:ok, params |> Map.delete("story_number") |> Map.put("story_id", story.id)}
+    end
+  end
+
+  defp put_story_id(_scope, params), do: {:ok, params}
 
   defp build_filters(params) do
     %{}

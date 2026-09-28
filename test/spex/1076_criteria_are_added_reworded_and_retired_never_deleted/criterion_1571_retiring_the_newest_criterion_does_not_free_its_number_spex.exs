@@ -32,9 +32,9 @@ defmodule CodeMySpecSpex.Story1076.Criterion4695Spex do
       when_ "criterion 40 is retired and a new criterion is added", context do
         result =
           CriterionScript.run(context.scope, """
-          local retired, err = retire_criterion({ criterion_id = "40" })
+          local retired, err = retire_criterion({ criterion_number = 40 })
           if retired == nil then return "retire failed: " .. err.message end
-          return add_criterion({ story_id = "#{context.story}", description = "A newer thing happens" })
+          return add_criterion({ story_number = #{context.story}, description = "A newer thing happens" })
           """)
 
         refute result.error?, "the calls failed: #{result.text}"

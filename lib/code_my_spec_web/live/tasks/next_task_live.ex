@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
@@ -60,7 +61,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
     markdown =
       case RequirementGraph.next_actionable(scope) do
         [] -> nothing_left(scope)
-        nodes -> RequirementsMapper.format_next_requirements(nodes)
+        nodes -> RequirementsMapper.format_next_requirements(StoryRefs.number_nodes(scope, nodes))
       end
 
     assign(socket, markdown: markdown)
@@ -76,42 +77,44 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={!@error}>
-        <div class="mb-6 flex justify-between items-start gap-4">
-          <div>
-            <h1 class="text-3xl font-bold">Next Task</h1>
-            <p class="text-base-content/60 mt-1">Preview of what the agent sees from <code class="kbd kbd-sm">get_next_requirement</code>.</p>
-          </div>
-          <button
-            type="button"
-            phx-click="sync"
-            data-test="sync-button"
-            disabled={@sync_status == :running}
-            class="btn btn-secondary shrink-0"
-            title="Refresh files + components (skips embeddings)"
-          >
-            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-            {if @sync_status == :running, do: "Syncing…", else: "Sync"}
-          </button>
+    <div :if={!@error}>
+      <div class="mb-6 flex justify-between items-start gap-4">
+        <div>
+          <h1 class="text-3xl font-bold">Next Task</h1>
+          <p class="text-base-content/60 mt-1">
+            Preview of what the agent sees from <code class="kbd kbd-sm">get_next_requirement</code>.
+          </p>
         </div>
-
-        <div :if={@sync_status == :error} role="alert" class="alert alert-error alert-soft mb-4">
-          <span>Sync failed: <code class="font-mono text-xs">{@sync_error}</code></span>
-        </div>
-
-        <div
-          :if={@markdown}
-          class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
+        <button
+          type="button"
+          phx-click="sync"
+          data-test="sync-button"
+          disabled={@sync_status == :running}
+          class="btn btn-secondary shrink-0"
+          title="Refresh files + components (skips embeddings)"
         >
-          {md_html(@markdown)}
-        </div>
-
-        <div :if={!@markdown} class="text-base-content/50">Loading…</div>
+          <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+          {if @sync_status == :running, do: "Syncing…", else: "Sync"}
+        </button>
       </div>
+
+      <div :if={@sync_status == :error} role="alert" class="alert alert-error alert-soft mb-4">
+        <span>Sync failed: <code class="font-mono text-xs">{@sync_error}</code></span>
+      </div>
+
+      <div
+        :if={@markdown}
+        class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
+      >
+        {md_html(@markdown)}
+      </div>
+
+      <div :if={!@markdown} class="text-base-content/50">Loading…</div>
+    </div>
     """
   end
 end

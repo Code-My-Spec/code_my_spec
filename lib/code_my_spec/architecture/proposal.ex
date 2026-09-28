@@ -120,6 +120,71 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp parse_dependency_string(_), do: nil
 
   @doc """
+  Resolves the story numbers a parsed proposal names to story ids.
+
+  The document names stories by number, the way people read them; linking
+  needs the id. `ids_by_number` is `%{number => id}`. A number naming no story
+  is a validation error naming it, never silently dropped.
+  """
+  @spec link_story_numbers(t(), %{optional(integer()) => integer()}) ::
+          {:ok, t()} | {:error, [validation_error()]}
+  def link_story_numbers(%__MODULE__{} = proposal, ids_by_number) do
+    unknown =
+      proposal
+      |> story_numbers()
+      |> Enum.reject(&Map.has_key?(ids_by_number, &1))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    case unknown do
+      [] ->
+        {:ok, map_story_refs(proposal, &Map.fetch!(ids_by_number, &1))}
+
+      numbers ->
+        {:error,
+         [
+           %{
+             type: :unknown_story,
+             message: "No story numbered #{Enum.join(numbers, ", ")} in this project",
+             details: %{story_numbers: numbers}
+           }
+         ]}
+    end
+  end
+
+  defp story_numbers(proposal) do
+    components = proposal.contexts ++ proposal.surface_components
+
+    Enum.flat_map(components, fn comp ->
+      Map.get(comp, :story_ids, []) ++
+        Enum.flat_map(Map.get(comp, :children, []), &Map.get(&1, :story_ids, []))
+    end) ++ proposal.unmapped_story_ids
+  end
+
+  defp map_story_refs(proposal, fun) do
+    %{
+      proposal
+      | contexts: Enum.map(proposal.contexts, &map_component_stories(&1, fun)),
+        surface_components:
+          Enum.map(proposal.surface_components, &map_component_stories(&1, fun)),
+        unmapped_story_ids: Enum.map(proposal.unmapped_story_ids, fun)
+    }
+  end
+
+  defp map_component_stories(comp, fun) do
+    comp
+    |> update_existing(:story_ids, &Enum.map(&1, fun))
+    |> update_existing(
+      :children,
+      &Enum.map(&1, fn child -> map_component_stories(child, fun) end)
+    )
+  end
+
+  defp update_existing(map, key, fun) do
+    if Map.has_key?(map, key), do: Map.update!(map, key, fun), else: map
+  end
+
+  @doc """
   Validates a proposal for issues.
 
   Returns `{:ok, proposal}` if valid, or `{:error, errors}` with a list of issues.
@@ -151,6 +216,8 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   Options:
   - `:dry_run` - If true, returns what would be created without making changes
+  - `:story_labels` - `%{story_id => story_number}`, so warnings name stories
+    by number
   """
   @spec execute(t(), Scope.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def execute(%__MODULE__{} = proposal, scope, opts \\ []) do
@@ -363,10 +430,11 @@ defmodule CodeMySpec.Architecture.Proposal do
   Collects non-blocking warnings for a proposal.
 
   Returns a list of warning strings for surface-preference violations
-  (stories whose only links are to non-surface components).
+  (stories whose only links are to non-surface components). `labels` maps a
+  story id to the number the warning names it by.
   """
-  @spec collect_warnings(t()) :: [String.t()]
-  def collect_warnings(%__MODULE__{} = proposal) do
+  @spec collect_warnings(t(), %{optional(integer()) => integer()}) :: [String.t()]
+  def collect_warnings(%__MODULE__{} = proposal, labels \\ %{}) do
     surface_linked =
       proposal.surface_components
       |> Enum.flat_map(fn comp ->
@@ -386,7 +454,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     non_surface_links
     |> Enum.reject(fn {story_id, _} -> MapSet.member?(surface_linked, story_id) end)
     |> Enum.map(fn {story_id, component_name} ->
-      "Surface preference: story #{story_id} is linked to non-surface component #{component_name}. Surface components (LiveView, Controller, Channel, MCP tool) are preferred."
+      "Surface preference: story #{Map.get(labels, story_id, story_id)} is linked to non-surface component #{component_name}. Surface components (LiveView, Controller, Channel, MCP tool) are preferred."
     end)
   end
 
@@ -681,7 +749,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     case resolve_env(opts) do
       {:ok, env, owned?} ->
         try do
-          do_execute_with_env(proposal, scope, components, env)
+          do_execute_with_env(proposal, scope, components, env, opts)
         after
           if owned?, do: Environments.destroy(env)
         end
@@ -714,7 +782,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  defp do_execute_with_env(proposal, scope, components, env) do
+  defp do_execute_with_env(proposal, scope, components, env, opts) do
     pre_existing_db_names = list_db_component_names(scope)
 
     with {:ok, created_components} <- write_all_spec_files(env, components) do
@@ -723,7 +791,8 @@ defmodule CodeMySpec.Architecture.Proposal do
       Logger.debug("[Proposal] sync_and_link_components complete, linked_count: #{linked_count}")
 
       warnings =
-        collect_warnings(proposal) ++ removed_component_warnings(proposal, pre_existing_db_names)
+        collect_warnings(proposal, Keyword.get(opts, :story_labels, %{})) ++
+          removed_component_warnings(proposal, pre_existing_db_names)
 
       result =
         {:ok,

@@ -2,11 +2,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   @moduledoc """
   Updates a user story.
 
-  `acceptance_criteria` is optional; leave it out to keep the criteria as they
-  are. When sent, each description matching an existing criterion keeps that
-  criterion and its number, a new description adds one, and an existing one
-  left out is retired. Verified (locked) criteria are always kept. Prefer the
-  criterion tools (`add_criterion`, `update_criterion`, `retire_criterion`).
+  A story's criteria are not touched here. They change only through the
+  criterion tools (`add_criterion`, `update_criterion`, `retire_criterion`),
+  so each keeps its number for life.
 
   ## Tags
 
@@ -22,9 +20,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   alias CodeMySpec.Tags
 
   schema do
-    field :story_id, :string,
+    field :story_number, :integer,
       required: true,
-      doc: "Story ID to update (use list_story_titles to find IDs)"
+      doc: "Story number (list_story_titles shows them)"
 
     field :title, :string, doc: "New title (optional)"
 
@@ -45,17 +43,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
         "Release the story for development, or park it. Parked stories produce " <>
           "no requirements in the development graph (optional)"
 
-    field :acceptance_criteria, {:list, :string},
-      doc: "Replace unverified criteria with these (optional)"
-
     field :tags, {:list, :string}, doc: "Replace all tags with these (optional)"
 
     field :priority, :integer,
       doc: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
 
-    # Declared because it was already reaching the changeset — `transform_params/2`
-    # passes everything but `story_id` and `acceptance_criteria` straight
-    # through, and `Story.changeset/2` casts `:epic_id`. What was missing was
+    # Declared because it was already reaching the changeset — `execute/2`
+    # passes everything but `story_number` straight through, and
+    # `Story.changeset/2` casts `:epic_id`. What was missing was
     # this line, and Anubis drops an undeclared parameter in silence, so a
     # caller passing `epic_id` got a success and no change.
     #
@@ -70,9 +65,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
-         update_params <- transform_params(params, story),
-         {:ok, story} <- Stories.update_story(scope, story, update_params),
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number),
+         {:ok, story} <- Stories.update_story(scope, story, Map.drop(params, [:story_number])),
          {:ok, story} <- sync_tags_if_provided(scope, story, params) do
       {:reply, StoriesMapper.story_updated_response(story), frame}
     else
@@ -95,41 +89,5 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
     else
       {:ok, story}
     end
-  end
-
-  # Transform params, respecting verified (locked) criteria
-  defp transform_params(params, story) do
-    base_params = Map.drop(params, [:story_id, :acceptance_criteria])
-
-    # Only transform criteria if acceptance_criteria was provided
-    if Map.has_key?(params, :acceptance_criteria) do
-      criteria = build_criteria_params(params.acceptance_criteria, story.criteria)
-      Map.put(base_params, :criteria, criteria)
-    else
-      base_params
-    end
-  end
-
-  # Criteria are matched to the story's existing ones by wording, so an agent
-  # that sends back the list it read keeps every criterion and its number.
-  # Verified criteria are always kept. An unmatched description is a new
-  # criterion; an existing one not sent is retired by the story changeset.
-  defp build_criteria_params(new_descriptions, existing_criteria) do
-    {verified, unverified} = Enum.split_with(existing_criteria, & &1.verified)
-
-    kept_verified =
-      Enum.map(verified, fn c ->
-        %{id: c.id, description: c.description, verified: c.verified, verified_at: c.verified_at}
-      end)
-
-    {matched, _unused} =
-      Enum.map_reduce(new_descriptions, unverified, fn description, pool ->
-        case Enum.split_with(pool, &(&1.description == description)) do
-          {[hit | rest], others} -> {%{id: hit.id, description: description}, rest ++ others}
-          {[], _} -> {%{description: description}, pool}
-        end
-      end)
-
-    kept_verified ++ matched
   end
 end

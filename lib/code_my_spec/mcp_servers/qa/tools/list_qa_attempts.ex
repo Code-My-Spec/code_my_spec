@@ -20,38 +20,47 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Qa
+  alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :integer,
+    field :story_number, :integer,
       required: true,
-      doc: "Story id whose QA history you want to read"
+      doc: "Story number whose QA history you want to read"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         attempts <- Qa.list_qa_attempts(scope, params.story_id) do
-      {:reply, attempts_response(params.story_id, attempts), frame}
+         {:ok, story} <- fetch_story(scope, params.story_number) do
+      attempts = Qa.list_qa_attempts(scope, story.id)
+      {:reply, attempts_response(story.number, attempts), frame}
     else
       {:error, reason} ->
         {:reply, error_response(reason), frame}
     end
   end
 
-  defp attempts_response(story_id, []) do
+  defp fetch_story(scope, number) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, "Story #{number} not found in this project."}
+      story -> {:ok, story}
+    end
+  end
+
+  defp attempts_response(story_number, []) do
     Response.text(
       Response.tool(),
-      "No QA attempts recorded for story #{story_id}."
+      "No QA attempts recorded for story #{story_number}."
     )
   end
 
-  defp attempts_response(story_id, attempts) do
+  defp attempts_response(story_number, attempts) do
     body = Enum.map_join(attempts, "\n\n---\n\n", &render_attempt/1)
 
     Response.text(
       Response.tool(),
       """
-      QA history for story #{story_id} (#{length(attempts)} attempt#{if length(attempts) == 1, do: "", else: "s"}, most-recent first):
+      QA history for story #{story_number} (#{length(attempts)} attempt#{if length(attempts) == 1, do: "", else: "s"}, most-recent first):
 
       #{body}
       """
@@ -104,7 +113,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
 
   defp render_invalidation(_), do: ""
 
-  defp error_response(reason) when is_atom(reason),
+  defp error_response(reason) when is_atom(reason) or is_binary(reason),
     do: Response.error(Response.tool(), "list_qa_attempts failed: #{reason}")
 
   defp error_response(reason),

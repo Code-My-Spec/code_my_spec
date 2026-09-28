@@ -30,6 +30,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements
 
@@ -43,10 +44,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
     field :entity_id, :string,
       doc:
-        "Filter to one entity by id (a story id or a component id, as printed elsewhere — " <>
-          "accepts either a number or a string). Combine with `entity_type` to disambiguate " <>
-          "when ids collide across types. Previously accepted and silently ignored (`69b418e0`); " <>
-          "now actually narrows the result."
+        "Filter to one entity: a story's number or a component's id, as printed elsewhere. " <>
+          "Combine with `entity_type` to disambiguate."
 
     field :requirement_name, :string,
       doc:
@@ -81,7 +80,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
         {nodes, _computed_at} = Requirements.cached_all(scope)
 
         opts = parse_opts(params)
-        filtered = apply_filters(nodes, opts)
+        filtered = apply_filters(StoryRefs.number_nodes(scope, nodes), opts)
 
         response =
           if opts.summary do
@@ -147,14 +146,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   defp filter_by_entity_type(nodes, type) when is_binary(type),
     do: Enum.filter(nodes, &(&1.entity_type == type))
 
-  # Compared as strings on both sides: a story's entity_id is an integer and a
-  # component's is a UUID string, and a caller may pass either shape (`69b418e0`
-  # reproduced with both `965` and `"965"` to rule out a type-coercion cause).
+  # Compared as strings: a story is named by its number, a component by its
+  # uuid, and a caller may pass either as a string or a number (`69b418e0`).
   defp filter_by_entity_id(nodes, nil), do: nodes
 
-  defp filter_by_entity_id(nodes, id) do
-    id = to_string(id)
-    Enum.filter(nodes, &(to_string(&1.entity_id) == id))
+  defp filter_by_entity_id(nodes, ref) do
+    ref = to_string(ref)
+    Enum.filter(nodes, &(to_string(StoryRefs.entity_ref(&1)) == ref))
   end
 
   defp filter_by_requirement_name(nodes, nil), do: nodes

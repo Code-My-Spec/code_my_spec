@@ -10,7 +10,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def rule_response(rule) do
     summary = """
-    Rule added: "#{rule.statement}" (id: `#{rule.id}`, story_id: `#{rule.story_id}`)
+    Rule added: "#{rule.statement}" (id: `#{rule.id}`)
 
     Next steps:
     - Add at least one scenario via `add_scenario` (kind: `happy_path` for the normal flow; `failure_path` only when a genuine failure surface exists for this rule).
@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def rule_updated_response(rule) do
     summary =
-      "Rule updated: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`)."
+      "Rule updated: \"#{rule.statement}\" (id: `#{rule.id}`)."
 
     Response.tool()
     |> Response.text(summary)
@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def rule_deleted_response(rule) do
     summary =
-      "Rule deleted: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`). All linked scenarios were retired with it."
+      "Rule deleted: \"#{rule.statement}\" (id: `#{rule.id}`). All linked scenarios were retired with it."
 
     Response.tool()
     |> Response.text(summary)
@@ -55,7 +55,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def scenario_response(criterion) do
     summary = """
-    Scenario added: "#{criterion.description}" (criterion: `#{criterion.number}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)
+    Scenario added: "#{criterion.description}" (criterion #{criterion.number}, kind: `#{criterion.kind}`)
 
     Linked to rule_id: `#{criterion.rule_id}`.
     """
@@ -66,7 +66,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def scenario_updated_response(criterion) do
     summary =
-      "Scenario updated: \"#{criterion.description}\" (criterion: `#{criterion.number}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)."
+      "Scenario updated: \"#{criterion.description}\" (criterion #{criterion.number}, kind: `#{criterion.kind}`)."
 
     Response.tool()
     |> Response.text(summary)

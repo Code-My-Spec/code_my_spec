@@ -1,8 +1,8 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.GetStory do
   @moduledoc """
-  Gets a single story by ID with full details including acceptance criteria.
+  Gets a single story by number with full details including acceptance criteria.
 
-  Use list_story_titles to find story IDs if you don't know them.
+  Use list_story_titles to find story numbers if you don't know them.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -12,13 +12,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStory do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string, required: true, doc: "Story ID (use list_story_titles to find IDs)"
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id) do
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number) do
       {:reply, StoriesMapper.story_get_response(story), frame}
     else
       nil ->

@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2395Spex do
 
         {:reply, _assigned, _frame} =
           AssignStoryToEpic.execute(
-            %{story_id: to_string(context.story.id), epic_name: @epic_name},
+            %{story_number: context.story.number, epic_name: @epic_name},
             frame
           )
 

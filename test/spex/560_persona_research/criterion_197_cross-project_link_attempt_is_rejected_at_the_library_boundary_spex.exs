@@ -4,17 +4,15 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   Criterion 5155 — Cross-project link attempt is rejected at the library
   boundary.
 
-  Criterion 5158 covers the contract-level rejection at the MCP tool surface
-  (`LinkPersonaToStory` returning a cross-project error). This spec covers
-  the library-boundary angle: the MCP rejection message makes it explicit
-  that the project does not match, not just that the link failed.
+  The link is stored by id, and the library refuses an id from another
+  project. The MCP tool cannot reach this — it names stories by number, which
+  only ever resolves inside the active project (criterion 200). The persona
+  page can: its link event carries a story id.
   """
 
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -22,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   setup :setup_active_project
 
   spex "cross-project link attempt", criterion: 197 do
-    scenario "MCP response explicitly names the project boundary in its rejection" do
+    scenario "the persona page is asked to link another project's story id" do
       given_ :persona_exists
 
       given_ "a story exists on a different project (same account)", context do
@@ -48,26 +46,23 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
         {:ok, Map.put(context, :foreign_story_id, story.id)}
       end
 
-      when_ "the PM calls LinkPersonaToStory with the foreign story_id", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.foreign_story_id},
-            frame
+      when_ "the page's link event carries the foreign story's id", context do
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/personas/#{context.persona_slug}"
           )
 
-        {:ok, Map.put(context, :response, response)}
+        html = render_hook(view, "link", %{"story_id" => to_string(context.foreign_story_id)})
+
+        {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the rejection message explicitly names the project boundary", context do
-        body = response_text(context.response)
+      then_ "it is refused as crossing the project boundary", context do
+        assert context.html =~ "Could not link: :cross_project",
+               "expected a cross-project refusal, got: #{context.html}"
 
-        assert body =~ ~r/project/i,
-               "expected rejection to cite the project boundary, got #{inspect(context.response)}"
-
-        assert body =~ ~r/reject|does not belong|cross-project/i,
-               "expected an explicit rejection"
+        refute context.html =~ "Foreign story", "the foreign story must not appear as linked"
 
         {:ok, context}
       end

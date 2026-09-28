@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
   Fetches incoming issues and story titles, then returns a structured
   prompt guiding through triage decisions:
   - Obvious bug → accept the issue
-  - Requires story change → update/create story, accept with story_id
+  - Requires story change → update/create story, accept with story_number
   - Not valid → dismiss with reason
   """
 
@@ -18,7 +18,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
   alias CodeMySpec.Stories
 
   schema do
-    field :min_severity, :string, doc: "Minimum severity to triage: critical, high, medium (default), low, info"
+    field :min_severity, :string,
+      doc: "Minimum severity to triage: critical, high, medium (default), low, info"
   end
 
   @impl true
@@ -60,7 +61,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
     ## Available Tools
 
     **Issue tools:**
-    - `accept_issue` — accept a real issue (pass optional `story_id` to link it to a story)
+    - `accept_issue` — accept a real issue (pass optional `story_number` to link it to a story)
     - `dismiss_issue` — dismiss with a reason (duplicate, not a bug, etc.)
     - `get_issue` — read full issue details
     - `list_issues` — list issues with filters
@@ -87,7 +88,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
        **b) Requires story/requirements change**
        The issue reveals missing functionality or changed requirements.
        → Update the relevant story with `update_story` or create a new one with `create_story`
-       → Then `accept_issue` with both the issue ID and the `story_id`
+       → Then `accept_issue` with both the issue ID and the `story_number`
 
        **c) Not valid**
        Expected behavior, duplicate, or not actionable.
@@ -129,7 +130,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
   defp format_stories(stories) do
     stories
     |> Enum.map_join("\n", fn story ->
-      "- `#{story.id}` — #{story.title}"
+      "- Story #{story.number}: #{story.title}"
     end)
   end
 

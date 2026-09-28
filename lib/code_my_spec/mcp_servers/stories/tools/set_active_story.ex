@@ -5,12 +5,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
 
   schema do
-    field :story_id, :string,
+    field :story_number, :integer,
       description:
-        "Story database ID to work on. It must be ready for development and not assigned " <>
+        "Number of the story to work on. It must be ready for development and not assigned " <>
           "to another copy. Pointing a copy at a story releases whatever else it held, so a " <>
           "copy carries one story at a time. Omit to clear it and release them all."
   end
@@ -18,10 +19,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, copy} <- WorkingCopies.set_active_story(scope, Map.get(params, :story_id)) do
+         {:ok, story_id} <- story_id(scope, Map.get(params, :story_number)),
+         {:ok, copy} <- WorkingCopies.set_active_story(scope, story_id) do
       message =
         if copy.active_story_id do
-          "Story #{copy.active_story_id} is active for every agent on working copy #{copy.id}."
+          "Story #{params.story_number} is active for every agent on working copy #{copy.id}."
         else
           "Working copy #{copy.id} has no active story, and the stories it held are free " <>
             "for another copy to take."
@@ -31,6 +33,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
     else
       {:error, reason} ->
         {:reply, Response.error(Response.tool(), error_message(reason)), frame}
+    end
+  end
+
+  defp story_id(_scope, nil), do: {:ok, nil}
+
+  defp story_id(scope, number) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, :not_found}
+      story -> {:ok, story.id}
     end
   end
 

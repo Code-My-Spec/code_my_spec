@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
             ListRequirements.execute(
               %{
                 entity_type: "story",
-                entity_id: to_string(story.id),
+                entity_id: to_string(story.number),
                 requirement_name: "bdd_specs_exist",
                 status: "unsatisfied"
               },
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(first.id)
+              entity_id: to_string(first.number)
             },
             frame
           )
@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
         claim = %{
           requirement_name: "bdd_specs_exist",
           entity_type: "story",
-          entity_id: to_string(context.second_story.id)
+          entity_id: to_string(context.second_story.number)
         }
 
         responses =

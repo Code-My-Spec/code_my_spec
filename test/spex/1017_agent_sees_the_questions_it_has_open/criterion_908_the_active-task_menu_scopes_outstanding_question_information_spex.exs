@@ -39,7 +39,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
     :ok
   end
 
-  spex "The active task's disposition menu survives an unrelated unanswered question", criterion: 908 do
+  spex "The active task's disposition menu survives an unrelated unanswered question",
+    criterion: 908 do
     scenario "An unanswered question is identified with its blocked task, not used as a global gate" do
       given_ "the connected project has completed kickoff", context do
         context = given_a_staffed_checkout(context, "spex_2415")
@@ -75,7 +76,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(first.id)
+              entity_id: to_string(first.number)
             },
             agent_frame
           )
@@ -104,7 +105,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(second.id)
+              entity_id: to_string(second.number)
             },
             agent_frame
           )

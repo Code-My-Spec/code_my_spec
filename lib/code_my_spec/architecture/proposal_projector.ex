@@ -53,7 +53,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
     parts =
       if unsatisfied != [] do
         story_list =
-          Enum.map_join(unsatisfied, "\n", fn s -> "  - Story #{s.id}: #{s.title}" end)
+          Enum.map_join(unsatisfied, "\n", fn s -> "  - Story #{s.number}: #{s.title}" end)
 
         parts ++ ["**#{length(unsatisfied)} stories without surface components:**\n#{story_list}"]
       else
@@ -66,7 +66,9 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
           Enum.map_join(orphaned, "\n", fn c -> "  - #{c.module_name}" end)
 
         parts ++
-          ["**#{length(orphaned)} orphaned contexts** (no stories, not depended on):\n#{orphan_list}"]
+          [
+            "**#{length(orphaned)} orphaned contexts** (no stories, not depended on):\n#{orphan_list}"
+          ]
       else
         parts
       end
@@ -121,8 +123,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
     contexts = Enum.map(contexts, &attach_children(&1, children_by_parent))
     surface = Enum.map(surface, &attach_children(&1, children_by_parent))
 
-    {Enum.sort_by(contexts, & &1.module_name),
-     Enum.sort_by(surface, & &1.module_name)}
+    {Enum.sort_by(contexts, & &1.module_name), Enum.sort_by(surface, & &1.module_name)}
   end
 
   defp reject_children_of(components, emitted) do
@@ -212,7 +213,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
         lines
       end
 
-    # Story IDs from the component itself
+    # Story numbers from the component itself
     own_stories = Map.get(stories_by_component, component.id, [])
     children = component.child_components || []
 
@@ -220,15 +221,15 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
       children
       |> Enum.flat_map(fn child -> Map.get(stories_by_component, child.id, []) end)
 
-    all_story_ids =
+    all_story_numbers =
       (own_stories ++ child_stories)
-      |> Enum.map(& &1.id)
+      |> Enum.map(& &1.number)
       |> Enum.uniq()
       |> Enum.sort()
 
     lines =
-      if all_story_ids != [] do
-        lines ++ ["- **Stories:** #{Enum.join(all_story_ids, ", ")}"]
+      if all_story_numbers != [] do
+        lines ++ ["- **Stories:** #{Enum.join(all_story_numbers, ", ")}"]
       else
         lines
       end
@@ -249,7 +250,10 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
 
   defp format_surface_child(child, stories_by_component) do
     stories = Map.get(stories_by_component, child.id, [])
-    story_part = if stories != [], do: " [Stories: #{Enum.map_join(stories, ", ", & &1.id)}]", else: ""
+
+    story_part =
+      if stories != [], do: " [Stories: #{Enum.map_join(stories, ", ", & &1.number)}]", else: ""
+
     desc = if child.description && child.description != "", do: ": #{child.description}", else: ""
     "- #{child.module_name} (#{child.type})#{story_part}#{desc}"
   end

@@ -550,19 +550,19 @@ defmodule CodeMySpecSpex.GraphGivens do
 
     {:reply, _r, _f} =
       LinkPersonaToStory.execute(
-        %{persona_id: context.persona_id, story_id: story.id},
+        %{persona_id: context.persona_id, story_number: story.number},
         frame
       )
 
     rule_statement = "#{module_name} behaves correctly"
 
     {:reply, _r, _f} =
-      AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
+      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
 
     {:reply, _r, _f} =
       AddScenario.execute(
         %{
-          story_id: story.id,
+          story_number: story.number,
           rule_statement: rule_statement,
           kind: "happy_path",
           title: "Happy path",
@@ -575,7 +575,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     {:reply, _r, _f} =
       AddScenario.execute(
         %{
-          story_id: story.id,
+          story_number: story.number,
           rule_statement: rule_statement,
           kind: "failure_path",
           title: "Failure path",

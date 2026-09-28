@@ -80,6 +80,7 @@ defmodule CodeMySpec.Issues.Issue do
     field :resolution, :string
     field :source, :string
     field :story_id, :integer
+    belongs_to :story, CodeMySpec.Stories.Story, define_field: false
     field :source_path, :string
     field :project_id, :binary_id
     field :account_id, :binary_id

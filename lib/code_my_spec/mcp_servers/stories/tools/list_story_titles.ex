@@ -2,8 +2,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitles do
   @moduledoc """
   Lists story titles in a project (lightweight).
 
-  Returns just ID, title, and component_id - no criteria or full descriptions.
-  Use this for quick lookups, selection lists, or when you need to find a story ID.
+  Returns just number, title, and component_id - no criteria or full descriptions.
+  Use this for quick lookups, selection lists, or when you need to find a story number.
 
   From a script this answers with records rather than the listing, so the
   titles can be filtered and counted without parsing prose.
@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitles do
   # and a struct are not things that exist.
   defp row(title) do
     %{
-      "id" => title.id,
+      "number" => title.number,
       "title" => title.title,
       "component_id" => title.component_id
     }

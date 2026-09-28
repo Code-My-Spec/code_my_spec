@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
 
       when_ "the architect declares a three-way cycle among context components", context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         # Stories depends on AcceptanceCriteria depends on Rules depends on Stories
         # All three are typed as context — Rule 4 forbids this cycle
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
 
         - **Type:** liveview
         - **Description:** Story list page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

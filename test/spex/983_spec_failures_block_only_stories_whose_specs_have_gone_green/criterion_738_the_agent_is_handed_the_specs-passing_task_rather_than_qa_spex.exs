@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.id)}, frame)
+          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
 
         refute response.isError,
                "expected show_story_requirements to succeed, got: #{inspect(response)}"

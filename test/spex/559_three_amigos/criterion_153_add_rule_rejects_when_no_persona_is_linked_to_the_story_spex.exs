@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
         {:reply, response, _frame} =
           AddRule.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               statement: "Suspended cards cannot be used"
             },
             frame
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
 
         {:reply, list_response, _frame} =
           ListRules.execute(
-            %{story_id: context.story.id},
+            %{story_number: context.story.number},
             frame
           )
 

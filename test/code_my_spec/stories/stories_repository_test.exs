@@ -133,11 +133,15 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert story == StoriesRepository.get_story!(scope, story.id)
     end
 
-    test "delete_story/2 deletes the story" do
+    test "retire_story/2 keeps the story, out of the backlog and the graph" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
-      assert {:ok, %Story{}} = StoriesRepository.delete_story(scope, story)
-      assert_raise Ecto.NoResultsError, fn -> StoriesRepository.get_story!(scope, story.id) end
+      story = story_fixture(scope, %{ready_for_dev: true})
+      assert {:ok, %Story{} = retired} = StoriesRepository.retire_story(scope, story)
+
+      assert retired.retired_at
+      refute retired.ready_for_dev
+      assert StoriesRepository.get_story!(scope, story.id).retired_at
+      refute Enum.any?(StoriesRepository.list_stories(scope), &(&1.id == story.id))
     end
   end
 

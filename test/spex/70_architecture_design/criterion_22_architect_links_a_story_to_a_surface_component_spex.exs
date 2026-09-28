@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
       when_ "the architect writes a proposal linking the story to a LiveView surface component",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
 
         - **Type:** liveview
         - **Description:** Story list LiveView
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 
@@ -130,14 +130,14 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
       then_ "the evaluation feedback contains no surface-preference warnings for the story",
             context do
         body = response_text(context.evaluate_response)
-        story_id = to_string(context.story.id)
+        story_number = to_string(context.story.number)
 
         # A warning about non-surface linkage would mention the story ID alongside
         # "non-surface" or "warning" language. On a surface-linked story, no such
         # warning should appear.
         refute body =~
-                 ~r/non-surface.*#{Regex.escape(story_id)}|#{Regex.escape(story_id)}.*non-surface/i,
-               "expected no surface-preference warning for story #{story_id}, got: #{inspect(body)}"
+                 ~r/non-surface.*#{Regex.escape(story_number)}|#{Regex.escape(story_number)}.*non-surface/i,
+               "expected no surface-preference warning for story #{story_number}, got: #{inspect(body)}"
 
         {:ok, context}
       end

@@ -19,6 +19,7 @@ defmodule CodeMySpec.ArchitectureFixtures do
   alias CodeMySpec.Architecture.Proposal
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
+  alias CodeMySpec.Stories
 
   @doc """
   Returns proposal markdown declaring a single context component plus the
@@ -55,7 +56,7 @@ defmodule CodeMySpec.ArchitectureFixtures do
     * `:surface_description` — surface component description
     * `:context_name` — context name suffix (default `"Feature"`)
     * `:context_description` — context description
-    * `:story_id` — optional story id to map onto the surface component
+    * `:story_number` — optional story number to map onto the surface component
   """
   @spec proposal_with_surface_and_context(keyword()) :: String.t()
   def proposal_with_surface_and_context(opts \\ []) do
@@ -65,9 +66,9 @@ defmodule CodeMySpec.ArchitectureFixtures do
     surface_desc = Keyword.get(opts, :surface_description, "Feature LiveView")
     context = Keyword.get(opts, :context_name, "Feature")
     context_desc = Keyword.get(opts, :context_description, "Feature domain")
-    story_id = Keyword.get(opts, :story_id)
+    story_number = Keyword.get(opts, :story_number)
 
-    story_line = if story_id, do: "\n- **Stories:** #{story_id}", else: ""
+    story_line = if story_number, do: "\n- **Stories:** #{story_number}", else: ""
 
     """
     # Architecture Proposal
@@ -116,6 +117,9 @@ defmodule CodeMySpec.ArchitectureFixtures do
 
     :ok = Environments.write_file(env, Paths.proposal_path(), content)
     {:ok, proposal} = Proposal.from_markdown(content, app_name: app_name)
+
+    {:ok, proposal} =
+      Proposal.link_story_numbers(proposal, Stories.list_story_ids_by_number(scope))
 
     Proposal.execute(proposal, scope, env: env, working_dir: working_dir)
   end

@@ -24,7 +24,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The architect rewrites proposal in patch mode and triggers execution manually", criterion: 370 do
+  spex "The architect rewrites proposal in patch mode and triggers execution manually",
+    criterion: 370 do
     scenario "rewrite + manual execute creates new components and links stories" do
       given_ "the project has an existing component", context do
         proposal = Fixtures.proposal_with_context("MyApp", "Existing", "An existing context")
@@ -48,7 +49,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
 
       when_ "the architect rewrites the proposal end-to-end", context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
 
         - **Type:** liveview
         - **Description:** New feature LiveView for the new story
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

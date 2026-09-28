@@ -60,6 +60,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigosCommandTest do
                "about a task that already carries the answer."
 
       assert prompt =~ story.title
+      assert prompt =~ "Story #{story.number}: "
+      assert prompt =~ "story_number: #{story.number}"
+      refute prompt =~ "story_id"
     end
 
     test "the session URL points at that story", %{scope: scope, story: story} do
@@ -96,13 +99,13 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigosCommandTest do
       assert prompt =~ story.title
     end
 
-    test "the skill route threads the story id through requirement_name", %{
+    test "the skill route threads the story number through requirement_name", %{
       scope: scope,
       story: story
     } do
-      # `/codemyspec:product three-amigos <story_id>`, per the topic-task
+      # `/codemyspec:product three-amigos <story_number>`, per the topic-task
       # convention. Adding a story_id clause ahead of this must not shadow it.
-      task = %{requirement_name: to_string(story.id)}
+      task = %{requirement_name: to_string(story.number)}
 
       {:ok, prompt} = ThreeAmigos.command(scope, task)
       assert prompt =~ story.title

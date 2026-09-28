@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The architect links a story to a component via the component linker tool", criterion: 368 do
+  spex "The architect links a story to a component via the component linker tool",
+    criterion: 368 do
     scenario "an unlinked story is linked to an existing component" do
       given_ "an existing component is available", context do
         proposal =
@@ -54,7 +55,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
         }
 
         params = %{
-          story_id: Integer.to_string(context.story.id),
+          story_number: context.story.number,
           module_name: context.module_name
         }
 

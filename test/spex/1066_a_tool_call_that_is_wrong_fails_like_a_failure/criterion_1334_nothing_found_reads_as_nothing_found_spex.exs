@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3386Spex do
       when_ "a script asks for its rules", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        script = "return list_rules({ story_id = #{context.story.id} })"
+        script = "return list_rules({ story_number = #{context.story.number} })"
 
         {:reply, response, _frame} = RunScript.execute(%{script: script}, frame)
 

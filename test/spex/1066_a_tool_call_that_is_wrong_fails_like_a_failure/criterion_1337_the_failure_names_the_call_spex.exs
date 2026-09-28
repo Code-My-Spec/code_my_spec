@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3389Spex do
 
   Today's rejection does name the tool, the argument and the expected type:
 
-      invalid arguments: story_id expected type of :integer received "966" value
+      invalid arguments: story_number expected type of :integer received "966" value
 
   That is good, and it is the part of this story that is not broken. It is
   specified here because the fix for the rest of the story changes how failures
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3389Spex do
   spex "The failure names the call", criterion: 1337 do
     scenario "a call failed because an argument was the wrong type" do
       given_ "a script whose call passes the wrong type for a named argument", context do
-        {:ok, Map.put(context, :script, ~s|return list_rules({ story_id = "966" })|)}
+        {:ok, Map.put(context, :script, ~s|return list_rules({ story_number = "966" })|)}
       end
 
       when_ "the agent reads why", context do
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3389Spex do
       end
 
       then_ "and which argument was wrong, and what was expected", context do
-        assert context.text =~ "story_id",
+        assert context.text =~ "story_number",
                "the failure does not name the argument."
 
         assert context.text =~ ~r/integer/i,

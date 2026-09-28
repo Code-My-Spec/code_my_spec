@@ -58,15 +58,19 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   # The graph-dispatch route sets `entity_id` to the story id and
   # `requirement_name` to the requirement (e.g. "three_amigos_complete"),
   # so entity_id must win when both are present. The skill route
-  # (`/codemyspec:product three-amigos <story_id>`) threads the story_id
-  # through `requirement_name` instead per the topic-task convention.
+  # (`/codemyspec:product three-amigos <story_number>`) threads what was typed
+  # through `requirement_name` instead per the topic-task convention — the
+  # story number people use, not the id.
   defp resolve_command_story(scope, %{entity_id: entity_id}) when is_binary(entity_id) do
     fetch_story(scope, entity_id)
   end
 
   defp resolve_command_story(scope, %{requirement_name: requirement})
        when is_binary(requirement) do
-    fetch_story(scope, requirement)
+    case Integer.parse(requirement) do
+      {number, ""} -> Stories.get_story_by_number(scope, number)
+      _ -> nil
+    end
   end
 
   defp resolve_command_story(_scope, _task), do: nil
@@ -165,7 +169,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
     > **Story not provided.** This task should always be scoped to a single
     > story. Ask the PM which story the session is for, then call MCP tools
-    > with that `story_id`.
+    > with that `story_number`.
 
     #{playbook_section()}
     """
@@ -185,10 +189,10 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     quoted_description = String.replace(story.description || "(no description)", "\n", "\n> ")
 
     """
-    # Three Amigos — Story #{story.id}: #{story.title}
+    # Three Amigos — Story #{story.number}: #{story.title}
 
     You are running a **Three Amigos / Example Mapping** session with the
-    Product Manager on **story_id `#{story.id}`** — *#{story.title}*.
+    Product Manager on **story #{story.number}** — *#{story.title}*.
 
     Story description:
 
@@ -198,9 +202,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     **Developer** (constraints and dependencies), **QA** (failure modes
     and edge cases) — while the PM holds product intent.
 
-    Pass `story_id: #{story.id}` to every MCP tool call (`create_persona` is
+    Pass `story_number: #{story.number}` to every MCP tool call (`create_persona` is
     project-scoped and resolves the project from your working directory's
-    scope — it doesn't need a story_id; everything else does).
+    scope — it doesn't need a story_number; everything else does).
 
     **Session URL** (share with the PM so they can watch cards appear in
     real time): #{session_url}

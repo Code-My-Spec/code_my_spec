@@ -38,11 +38,11 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
 
         refute epic_response.isError, "expected create_epic to succeed"
 
-        released_id = file_story(frame, @released, "Stone Age")
-        _parked_id = file_story(frame, @parked, "Stone Age")
+        released = file_story(frame, @released, "Stone Age")
+        _parked = file_story(frame, @parked, "Stone Age")
 
         {:reply, update_response, _frame} =
-          UpdateStory.execute(%{story_id: released_id, ready_for_dev: true}, frame)
+          UpdateStory.execute(%{story_number: released, ready_for_dev: true}, frame)
 
         refute update_response.isError, "expected the released story to be released"
 
@@ -113,23 +113,23 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
 
     refute response.isError, "expected create_story to succeed for #{title}"
 
-    story_id = story_id!(response)
+    story_number = story_number!(response)
 
     {:reply, assign_response, _frame} =
-      AssignStoryToEpic.execute(%{story_id: story_id, epic_name: epic_name}, frame)
+      AssignStoryToEpic.execute(%{story_number: story_number, epic_name: epic_name}, frame)
 
     refute assign_response.isError, "expected #{title} to be filed into #{epic_name}"
 
-    story_id
+    story_number
   end
 
-  defp story_id!(response) do
+  defp story_number!(response) do
     body = response_text(response)
 
-    captured!(
-      Regex.run(~r/\(ID: (\d+)\)/, body),
-      "could not read story id from response: #{body}"
-    )
+    ~r/^Story (\d+) created/
+    |> Regex.run(body)
+    |> captured!("could not read story number from response: #{body}")
+    |> String.to_integer()
   end
 
   defp epic_id!(response) do

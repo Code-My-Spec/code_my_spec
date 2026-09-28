@@ -65,7 +65,7 @@ defmodule CodeMySpec.IssuesTest do
     end
   end
 
-  describe "create_from_qa_result/3" do
+  describe "create_from_qa_result/4" do
     defp qa_document(issues) do
       %{sections: %{"issues" => issues}}
     end
@@ -83,7 +83,9 @@ defmodule CodeMySpec.IssuesTest do
       scope = full_scope_fixture()
       doc = qa_document([qa_issue("Bug one"), qa_issue("Bug two", "low")])
 
-      assert {:ok, created} = Issues.create_from_qa_result(scope, 1, doc)
+      assert {:ok, created} =
+               Issues.create_from_qa_result(scope, 1, doc, ".code_my_spec/qa/1/result.md")
+
       assert length(created) == 2
     end
 
@@ -91,7 +93,9 @@ defmodule CodeMySpec.IssuesTest do
       scope = full_scope_fixture()
       doc = qa_document([qa_issue("A bug")])
 
-      assert {:ok, [issue]} = Issues.create_from_qa_result(scope, 42, doc)
+      assert {:ok, [issue]} =
+               Issues.create_from_qa_result(scope, 42, doc, ".code_my_spec/qa/42/result.md")
+
       assert issue.story_id == 42
     end
 
@@ -99,8 +103,11 @@ defmodule CodeMySpec.IssuesTest do
       scope = full_scope_fixture()
       doc = qa_document([qa_issue("Same bug")])
 
-      assert {:ok, [_]} = Issues.create_from_qa_result(scope, 1, doc)
-      assert {:ok, [_]} = Issues.create_from_qa_result(scope, 1, doc)
+      assert {:ok, [_]} =
+               Issues.create_from_qa_result(scope, 1, doc, ".code_my_spec/qa/1/result.md")
+
+      assert {:ok, [_]} =
+               Issues.create_from_qa_result(scope, 1, doc, ".code_my_spec/qa/1/result.md")
 
       assert length(Issues.list_issues(scope)) == 1
     end
@@ -109,7 +116,9 @@ defmodule CodeMySpec.IssuesTest do
       scope = full_scope_fixture()
       doc = qa_document([qa_issue("New bug")])
 
-      assert {:ok, [issue]} = Issues.create_from_qa_result(scope, 1, doc)
+      assert {:ok, [issue]} =
+               Issues.create_from_qa_result(scope, 1, doc, ".code_my_spec/qa/1/result.md")
+
       assert issue.status == :incoming
     end
 
@@ -117,7 +126,9 @@ defmodule CodeMySpec.IssuesTest do
       scope = full_scope_fixture()
       doc = qa_document([qa_issue("Path bug")])
 
-      assert {:ok, [issue]} = Issues.create_from_qa_result(scope, 5, doc)
+      assert {:ok, [issue]} =
+               Issues.create_from_qa_result(scope, 5, doc, ".code_my_spec/qa/5/result.md")
+
       assert issue.source_path == ".code_my_spec/qa/5/result.md"
     end
 
@@ -126,7 +137,8 @@ defmodule CodeMySpec.IssuesTest do
       doc = qa_document([qa_issue("Projected bug")])
 
       # No error means projection succeeded (actual file checks in projector tests)
-      assert {:ok, [_]} = Issues.create_from_qa_result(scope, 1, doc)
+      assert {:ok, [_]} =
+               Issues.create_from_qa_result(scope, 1, doc, ".code_my_spec/qa/1/result.md")
     end
   end
 

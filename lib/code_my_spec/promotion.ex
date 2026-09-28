@@ -210,7 +210,10 @@ defmodule CodeMySpec.Promotion do
     with {:ok, from} <- promoting_copy(scope, running),
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
-         {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id) do
+         {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id),
+         # Before stamping or restarting: a refusal here has rolled the merge back.
+         {:ok, _} <-
+           Runner.sync_submodule(scope, running.root, from.root, merge_result, from.id) do
       version = Map.get(merge_result, :version)
       stamp_version = Map.get(merge_result, :stamp_version)
 

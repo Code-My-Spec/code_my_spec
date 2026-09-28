@@ -89,9 +89,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
       when_ "the architect writes a proposal that links every story to a surface component",
             context do
         app = context.project.module_name || "MyApp"
-        story_a_id = context.story_a.id
-        story_b_id = context.story_b.id
-        story_c_id = context.story_c.id
+        story_a_number = context.story_a.number
+        story_b_number = context.story_b.number
+        story_c_number = context.story_c.number
 
         proposal = """
         # Architecture Proposal
@@ -102,13 +102,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
 
         - **Type:** liveview
         - **Description:** Feature one page
-        - **Stories:** #{story_a_id}
+        - **Stories:** #{story_a_number}
 
         ### #{app}Web.FeatureTwoLive
 
         - **Type:** liveview
         - **Description:** Feature two and three page
-        - **Stories:** #{story_b_id}, #{story_c_id}
+        - **Stories:** #{story_b_number}, #{story_c_number}
 
         ## Contexts
 

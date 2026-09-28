@@ -91,7 +91,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
       %{
         tag: tag.name,
         story_count: length(matching_stories),
-        stories: Enum.map(matching_stories, &%{id: &1.id, title: &1.title})
+        stories: Enum.map(matching_stories, &%{number: &1.number, title: &1.title})
       }
     end)
     |> Enum.filter(&(&1.story_count > 0))
@@ -104,7 +104,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
       tags = story.tags || []
       Enum.empty?(tags)
     end)
-    |> Enum.map(&%{id: &1.id, title: &1.title})
+    |> Enum.map(&%{number: &1.number, title: &1.title})
   end
 
   defp find_tag_co_occurrences(stories, all_tags) do
@@ -173,8 +173,8 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
 
   defp format_flat_tags(groupings) do
     Enum.map_join(groupings, "\n", fn g ->
-      ids = Enum.map_join(g.stories, ", ", & &1.id)
-      "- **#{g.tag}** (#{g.story_count}): #{ids}"
+      numbers = Enum.map_join(g.stories, ", ", & &1.number)
+      "- **#{g.tag}** (#{g.story_count}): stories #{numbers}"
     end)
   end
 
@@ -206,8 +206,8 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
         [name] -> name
       end
 
-    ids = Enum.map_join(g.stories, ", ", & &1.id)
-    "  - #{display_name} (#{g.story_count}): #{ids}"
+    numbers = Enum.map_join(g.stories, ", ", & &1.number)
+    "  - #{display_name} (#{g.story_count}): stories #{numbers}"
   end
 
   defp format_co_occurrences([]), do: ""
@@ -232,7 +232,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
     lines =
       untagged
       |> Enum.take(10)
-      |> Enum.map_join("\n", fn s -> "- [#{s.id}] #{s.title}" end)
+      |> Enum.map_join("\n", fn s -> "- Story #{s.number}: #{s.title}" end)
 
     more = if length(untagged) > 10, do: "\n_...and #{length(untagged) - 10} more_", else: ""
 

@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3391Spex do
     scenario "a script makes a tool call the sandbox rejects" do
       given_ "a script making a call the sandbox will refuse", context do
         {:ok,
-         Map.put(context, :script, ~s|return add_rule({ story_id = "1066", statement = 7 })|)}
+         Map.put(context, :script, ~s|return add_rule({ story_number = "1066", statement = 7 })|)}
       end
 
       when_ "the agent reads what came back", context do

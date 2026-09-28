@@ -142,7 +142,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
           surface_description: "Where the agent submits a QA result",
           context_name: "Qa",
           context_description: "QA attempt recording",
-          story_id: story.id
+          story_number: story.number
         )
 
       {:ok, _} =

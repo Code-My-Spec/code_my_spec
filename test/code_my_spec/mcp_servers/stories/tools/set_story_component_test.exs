@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       }
 
       params = %{
-        story_id: Integer.to_string(story.id),
+        story_number: story.number,
         module_name: component.module_name
       }
 
@@ -64,7 +64,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       }
 
       params = %{
-        story_id: "999999",
+        story_number: 99_999,
         module_name: component.module_name
       }
 
@@ -78,7 +78,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       story = story_fixture(scope)
 
       params = %{
-        story_id: Integer.to_string(story.id),
+        story_number: story.number,
         module_name: "NonExistent.Module"
       }
 

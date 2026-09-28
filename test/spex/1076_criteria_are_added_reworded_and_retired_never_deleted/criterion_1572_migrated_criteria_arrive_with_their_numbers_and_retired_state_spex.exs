@@ -29,7 +29,11 @@ defmodule CodeMySpecSpex.Story1076.Criterion4696Spex do
         payload =
           Fixtures.migration_payload(
             stories: [
-              %{local_id: 1, title: "Ship the thing", story: "As Sam, I want to ship so that it ships."}
+              %{
+                local_id: 1,
+                title: "Ship the thing",
+                story: "As Sam, I want to ship so that it ships."
+              }
             ],
             criteria: [
               %{local_id: "c12", story_local_id: 1, number: 12, description: "It ships once"},
@@ -54,7 +58,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4696Spex do
 
       then_ "the cloud project has active criterion 12", context do
         story = Fixtures.cloud_story(context.scope, "Ship the thing")
-        text = CriterionScript.story_text(context.scope, story.id)
+        text = CriterionScript.story_text(context.scope, story.number)
 
         assert CriterionScript.numbers(text) == [12],
                "expected criterion 12 active on the cloud, and 14 not among the active. get_story showed:\n#{text}"
@@ -65,12 +69,14 @@ defmodule CodeMySpecSpex.Story1076.Criterion4696Spex do
       and_ "retired criterion 14", context do
         result =
           CriterionScript.run(context.scope, """
-          return get_criterion({ criterion_id = "14" })
+          return get_criterion({ criterion_number = 14 })
           """)
 
         refute result.error?, "criterion 14 should be readable on the cloud. Got: #{result.text}"
         assert result.text =~ "It ships on Fridays"
-        assert result.text =~ ~r/retired/i, "criterion 14 should arrive retired. Got: #{result.text}"
+
+        assert result.text =~ ~r/retired/i,
+               "criterion 14 should arrive retired. Got: #{result.text}"
 
         {:ok, context}
       end

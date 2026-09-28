@@ -109,6 +109,23 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert html =~ to_string(issue.status)
     end
 
+    test "names a linked story by its number and links to it", %{
+      project: project,
+      conn: conn,
+      scope: scope
+    } do
+      for _ <- 1..2, do: CodeMySpec.StoriesFixtures.story_fixture(scope)
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{title: "Linked story"})
+      assert story.id != story.number
+      issue = issue_fixture(scope, %{title: "Linked bug", story_id: story.id})
+
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
+
+      assert html =~ "Story #{story.number} — Linked story"
+      assert html =~ "/stories/#{story.number}\""
+      refute html =~ "##{story.id}"
+    end
+
     test "shows accept and dismiss actions for incoming issue", %{
       project: project,
       conn: conn,

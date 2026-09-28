@@ -41,7 +41,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic do
   @impl CodeMySpec.McpServers.ScriptResult
   def script_result(_params, frame) do
     with {:ok, stories} <- orphans(frame) do
-      {:ok, Enum.map(stories, &%{"id" => &1.id, "title" => &1.title})}
+      {:ok, Enum.map(stories, &%{"number" => &1.number, "title" => &1.title})}
     end
   end
 

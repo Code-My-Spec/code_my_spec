@@ -697,10 +697,15 @@ refresh-harness port="4004" pull="true":
         echo "→ stopping harness $pid on {{port}}"
         echo "  in-flight analysis for every working copy dies with it"
         kill "$pid"
-        for _ in $(seq 1 30); do
-            lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1 || break
+        # The process, not the port: the endpoint stops listening early while the
+        # old harness's channels keep rejoining and restoring agents (2788588c).
+        for _ in $(seq 1 60); do
+            kill -0 "$pid" 2>/dev/null || break
             sleep 1
         done
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "  ! harness $pid is still shutting down after 60s; starting anyway"
+        fi
     else
         echo "→ nothing listening on {{port}}"
     fi

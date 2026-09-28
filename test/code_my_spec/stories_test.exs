@@ -18,11 +18,11 @@ defmodule CodeMySpec.StoriesTest do
       end
     end
 
-    test "delete_story/2 with invalid scope raises" do
+    test "retire_story/2 with invalid scope raises" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
       story = story_fixture(scope)
-      assert_raise MatchError, fn -> Stories.delete_story(other_scope, story) end
+      assert_raise MatchError, fn -> Stories.retire_story(other_scope, story) end
     end
 
     test "change_story/2 returns a story changeset" do

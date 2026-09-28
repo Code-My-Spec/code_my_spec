@@ -46,7 +46,7 @@ defmodule CodeMySpec.Documents.FrameworkScopeTest do
   end
 
   test "and it is fileable, not merely valid" do
-    # `Issues.create_from_qa_result/3` filters on `Issues.fileable?/1` before
+    # `Issues.create_from_qa_result/4` filters on `Issues.fileable?/1` before
     # it ever reaches `parse_scope/1`, so validity alone does not mean the
     # issue lands. `fileable?/1` moved to `Issues` (formerly a boundary
     # cycle) but still takes anything shaped like a QaIssue, so this keeps

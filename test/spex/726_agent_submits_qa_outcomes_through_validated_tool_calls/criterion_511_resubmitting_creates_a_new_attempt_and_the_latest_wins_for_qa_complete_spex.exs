@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
               title: "QA-found incomplete coverage from criterion 6446 spex",
               severity: "low",
               scope: "app",
-              story_id: context.story.id,
+              story_number: context.story.number,
               description: "First-pass partial submission discovered this gap."
             },
             frame
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute list_response.isError
         text = response_text(list_response)

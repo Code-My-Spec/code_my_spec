@@ -4,7 +4,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   Filter by status (incoming, accepted, dismissed, resolved),
   severity (critical, high, medium, low, info), scope (app, qa, docs,
-  framework), or story_id.
+  framework), or story_number.
 
   `framework` used to be excluded here, on the grounds that framework issues
   routed to the hosted server rather than being stored locally. That stopped
@@ -17,13 +17,14 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do
     field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
     field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
     field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
-    field :story_id, :integer, doc: "Filter by related story ID"
+    field :story_number, :integer, doc: "Filter by the related story's number"
   end
 
   # Atoms, not strings, and that is load-bearing rather than stylistic.
@@ -60,9 +61,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, filters} <- build_filters(params) do
-      issues = list(scope, filters)
-      {:reply, IssuesMapper.issues_list_response(issues, filters), frame}
+         {:ok, filters} <- build_filters(params),
+         {:ok, story_id} <- StoryRefs.story_id(scope, params[:story_number]) do
+      issues = list(scope, maybe_put(filters, :story_id, story_id))
+      shown = maybe_put(filters, :story_number, params[:story_number])
+      {:reply, IssuesMapper.issues_list_response(issues, shown), frame}
     else
       {:error, {:invalid_value, field, value, allowed}} ->
         {:reply,
@@ -124,7 +127,6 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
         |> maybe_put(:status, status)
         |> maybe_put(:severity, severity)
         |> maybe_put(:scope, scope)
-        |> maybe_put(:story_id, params[:story_id])
 
       {:ok, filters}
     end

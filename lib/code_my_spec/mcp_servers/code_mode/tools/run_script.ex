@@ -6,14 +6,14 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   read a list, look at each item, and return only what you needed. Every tool
   is a function taking one table:
 
-      local story = get_story({ story_id = 970 })
+      local story = get_story({ story_number = 970 })
       print("checking", story.title)
       return story.title
 
   A tool that ran and could not answer returns nil and an error table rather
   than stopping the script, so a loop can report what it could not find:
 
-      local story, err = get_story({ story_id = 12345 })
+      local story, err = get_story({ story_number = 12345 })
       if story == nil then return "missing: " .. err.message end
 
   A call the sandbox *rejects* — wrong argument type, missing required

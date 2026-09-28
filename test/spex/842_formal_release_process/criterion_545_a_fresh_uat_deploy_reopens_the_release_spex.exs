@@ -82,9 +82,9 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
         Fixtures.record_deploy(context.scope, already_shipped.id, "uat")
 
-        notes = "# #{@already_shipped_tag}\n\n## Stories\n\n- story_#{already_shipped.id}\n"
+        notes = "# #{@already_shipped_tag}\n\n## Stories\n\n- story_#{already_shipped.number}\n"
 
-        # `story_<id>`, the format the release prompt specifies and
+        # `story_<number>`, the format the release prompt specifies and
         # `released?/2` matches on a word boundary. Written with a space it
         # covers nothing, so the story reads unreleased and ships twice —
         # which is the failure this criterion is meant to catch, not stage.
@@ -169,10 +169,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       then_ "it is the uncovered story that reopened it", context do
-        assert context.prompt =~ to_string(context.new_story.id),
+        assert context.prompt =~ ~r/\bstory_#{context.new_story.number}\b/,
                "expected the release to be reopened by the story no release covers, got: #{context.prompt}"
 
-        refute context.prompt =~ to_string(context.already_shipped.id),
+        refute context.prompt =~ ~r/\bstory_#{context.already_shipped.number}\b/,
                "expected an already-shipped story to stay shipped rather than being released twice"
 
         {:ok, context}

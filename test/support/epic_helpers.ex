@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.EpicHelpers do
 
         {:reply, _resp, _frame} =
           AssignStoryToEpic.execute(
-            %{story_id: to_string(story.id), epic_name: title},
+            %{story_number: story.number, epic_name: title},
             frame
           )
 

@@ -141,7 +141,7 @@ After brief validation, the evaluate hook will give you feedback to execute:
    - **MCP tool surfaces** (the story's deliverable IS an MCP tool the agent calls) → call the MCP tool directly via its `mcp__<server>__<tool>` wrapper. Same JSON-RPC payload, typed client, same evidence value. Only fall back to `curl` against `/mcp` when you specifically need to verify the wire-protocol (e.g. the SSE initialize/notifications/initialized handshake itself is in scope).
    - REST/JSON API → `curl`
    - Shell scripts in `.code_my_spec/qa/scripts/` → run directly
-3. **Capture evidence** at each key state — screenshots for browser flows, tool responses for MCP/API flows, command transcripts for CLI flows. Save to `.code_my_spec/qa/{story_id}/screenshots/` (or `responses/` for non-image evidence).
+3. **Capture evidence** at each key state — screenshots for browser flows, tool responses for MCP/API flows, command transcripts for CLI flows. Save to `.code_my_spec/qa/{story_number}/screenshots/` (or `responses/` for non-image evidence).
 4. **Write `result.md`** with status, scenarios, evidence paths, and issues
 5. **Stop for validation** — the evaluate hook validates the result format
 
@@ -176,7 +176,7 @@ The DB attempt is the canonical satisfaction of `qa_complete` — `result.md` is
 If `submit_qa_result` appears missing from your tool list, do NOT skip submission — use `ToolSearch` with query `select:mcp__plugin_codemyspec_local__submit_qa_result` to load its schema explicitly before calling.
 
 Related tools (also fully-qualified):
-- `mcp__plugin_codemyspec_local__list_qa_attempts(story_id: <id>)` — attempt history for a story (lineage via `parent_attempt_id`)
+- `mcp__plugin_codemyspec_local__list_qa_attempts(story_number: <n>)` — attempt history for a story (lineage via `parent_attempt_id`)
 - `mcp__plugin_codemyspec_local__invalidate_qa_attempt(attempt_id: <uuid>, reason: "<why>")` — engineer-driven audit action that re-clamps `qa_complete` when a prior pass was shallow
 
 ## Testing Tools
@@ -191,7 +191,7 @@ Use the `mcp__vibium__browser_*` tools. These are MCP tool calls, not shell comm
 - `mcp__vibium__browser_navigate` — Navigate to a URL
 - `mcp__vibium__browser_fill` / `browser_type` — Fill form fields (`type` is more robust for some inputs)
 - `mcp__vibium__browser_click` — Click elements
-- `mcp__vibium__browser_screenshot` — Capture screenshots (save to `.code_my_spec/qa/{story_id}/screenshots/`)
+- `mcp__vibium__browser_screenshot` — Capture screenshots (save to `.code_my_spec/qa/{story_number}/screenshots/`)
 - `mcp__vibium__browser_get_text` / `browser_get_html` — Read content
 - `mcp__vibium__browser_find` / `browser_find_all` — Locate elements by selector, role, text, etc.
 - `mcp__vibium__browser_wait_for_load` / `browser_wait_for_text` — Wait for state
@@ -227,7 +227,7 @@ transport headers, error envelope shape, the handshake sequence.
 
 ### REST / JSON APIs and non-HTML controllers
 
-- `curl` — Direct HTTP requests; save response bodies to `.code_my_spec/qa/{story_id}/responses/` for evidence.
+- `curl` — Direct HTTP requests; save response bodies to `.code_my_spec/qa/{story_number}/responses/` for evidence.
 
 ### Supporting tools
 

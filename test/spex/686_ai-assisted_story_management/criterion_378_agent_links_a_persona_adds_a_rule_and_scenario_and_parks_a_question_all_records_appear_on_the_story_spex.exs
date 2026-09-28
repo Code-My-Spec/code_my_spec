@@ -57,19 +57,19 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
 
         {:reply, _, _frame} =
           LinkPersonaToStory.execute(
-            %{story_id: story.id, persona_id: persona_id},
+            %{story_number: story.number, persona_id: persona_id},
             frame
           )
 
         rule_statement = "Drivers must have a verified phone number."
 
         {:reply, _, _frame} =
-          AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
+          AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
 
         {:reply, _, _frame} =
           AddScenario.execute(
             %{
-              story_id: story.id,
+              story_number: story.number,
               rule_statement: rule_statement,
               title: "Driver finishes verification, account is activated",
               kind: "happy_path",
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
         {:reply, response, _frame} =
           AddQuestion.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               text: "Does verification time out after 24 hours?"
             },
             frame
@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ListRules.execute(%{story_id: context.story.id}, frame)
+          ListRules.execute(%{story_number: context.story.number}, frame)
 
         body = response_text(response)
 
@@ -121,7 +121,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ListQuestions.execute(%{story_id: context.story.id}, frame)
+          ListQuestions.execute(%{story_number: context.story.number}, frame)
 
         body = response_text(response)
 
@@ -135,7 +135,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          GetStoryGherkin.execute(%{story_id: context.story.id}, frame)
+          GetStoryGherkin.execute(%{story_number: context.story.number}, frame)
 
         body = response_text(response)
 

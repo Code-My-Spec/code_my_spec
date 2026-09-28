@@ -22,11 +22,16 @@ defmodule CodeMySpecSpex.Story1077.Criterion4673Spex do
   spex "A spec for a retired criterion is flagged for deletion", criterion: 1549 do
     scenario "a spec naming a retired criterion syncs" do
       given_ "a criterion is retired", context do
-        story = CriterionScript.create_story(context.scope, "Story A", ["A thing that was dropped"])
+        story =
+          CriterionScript.create_story(context.scope, "Story A", ["A thing that was dropped"])
+
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         result =
-          CriterionScript.run(context.scope, "return retire_criterion({ criterion_id = \"#{number}\" })")
+          CriterionScript.run(
+            context.scope,
+            "return retire_criterion({ criterion_number = #{number} })"
+          )
 
         refute result.error?, "retire_criterion failed: #{result.text}"
 
@@ -34,7 +39,13 @@ defmodule CodeMySpecSpex.Story1077.Criterion4673Spex do
       end
 
       and_ "a spec naming it is on disk", context do
-        :ok = Environments.write_file(context.environment, @path, CriterionScript.spex_naming(context.number))
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @path,
+            CriterionScript.spex_naming(context.number)
+          )
+
         {:ok, context}
       end
 
@@ -56,7 +67,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion4673Spex do
       and_ "the reason says the criterion is retired and the spec should be deleted", context do
         reason = context.view |> element("#{context.row} [data-test='file-reason']") |> render()
 
-        assert reason =~ "#{context.number}", "the reason should name the criterion. Got: #{reason}"
+        assert reason =~ "#{context.number}",
+               "the reason should name the criterion. Got: #{reason}"
+
         assert reason =~ ~r/retired/i, "the reason should say it is retired. Got: #{reason}"
         assert reason =~ ~r/delete/i, "the reason should say to delete the spec. Got: #{reason}"
 

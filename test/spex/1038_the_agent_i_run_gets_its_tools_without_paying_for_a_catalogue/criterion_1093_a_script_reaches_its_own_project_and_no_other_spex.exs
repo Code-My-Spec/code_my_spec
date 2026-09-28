@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3018Spex do
       end
 
       when_ "its script asks for something belonging to another", context do
-        script = "return get_story({ story_id = \"#{context.their_story.id}\" })"
+        script = "return get_story({ story_number = #{context.their_story.id} })"
         reply = Fixtures.run_script(script, agent_context(context))
 
         {:ok, Map.put(context, :reply, reply)}

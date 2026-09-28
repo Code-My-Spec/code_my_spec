@@ -25,7 +25,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths", criterion: 31 do
+  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths",
+    criterion: 31 do
     scenario "Architect classifies an orphaned framework module by adding its path to infrastructure_paths" do
       given_ "an unsatisfied story exists on the project", context do
         story =
@@ -76,7 +77,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
       when_ "the architect writes a proposal that includes a framework application module with no story or dep edge",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -87,7 +88,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
 
         - **Type:** liveview
         - **Description:** Feature page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

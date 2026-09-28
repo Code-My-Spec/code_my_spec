@@ -33,7 +33,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
     :ok
   end
 
-  spex "Finishing product work offers one existing coding agent an unassigned turn", criterion: 1167 do
+  spex "Finishing product work offers one existing coding agent an unassigned turn",
+    criterion: 1167 do
     scenario "The completed review and release unblock coding without staffing or claiming" do
       given_ "the connected project has completed kickoff", context do
         context = given_a_staffed_checkout(context, "spex_3108")
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
-              entity_id: to_string(story.id)
+              entity_id: to_string(story.number)
             },
             product_frame
           )
@@ -68,7 +69,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
 
         {:reply, parked, _} =
           UpdateStory.execute(
-            %{story_id: to_string(story.id), ready_for_dev: false},
+            %{story_number: story.number, ready_for_dev: false},
             product_frame
           )
 
@@ -112,7 +113,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
 
         {:reply, released, _} =
           UpdateStory.execute(
-            %{story_id: to_string(context.story.id), ready_for_dev: true},
+            %{story_number: context.story.number, ready_for_dev: true},
             context.product_frame
           )
 

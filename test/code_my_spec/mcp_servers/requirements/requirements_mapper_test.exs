@@ -46,7 +46,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
 
       execution = %{
         status: :ready,
-        story: %{id: 802, title: "Selected story"},
+        story: %{id: 802, number: 686, title: "Selected story"},
         actionable: [first, waiting],
         wave: [first],
         remaining: 1,
@@ -55,7 +55,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       }
 
       text = RequirementsMapper.format_story_execution(execution)
-      assert text =~ "# Story 802: Selected story"
+      assert text =~ "# Story 686: Selected story"
       assert text =~ "Status: ready"
       assert text =~ "Wave: 1 requirement(s)"
       assert text =~ "Remaining: 1"
@@ -66,9 +66,27 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       refute text =~ "waiting-component"
     end
 
+    test "a story's own requirement is handed out by the story's number" do
+      node = build_node(%{name: "bdd_specs_exist", entity_type: "story", entity_id: 802})
+
+      text =
+        RequirementsMapper.format_story_execution(%{
+          status: :ready,
+          story: %{id: 802, number: 686, title: "Selected story"},
+          actionable: [node],
+          wave: [node],
+          remaining: 1,
+          blockers: [],
+          reason: nil
+        })
+
+      assert text =~ "entity_type=`story`, entity_id=`686`"
+      refute text =~ "entity_id=`802`"
+    end
+
     test "blocked and unavailable outcomes explain the barrier without task directives" do
       for {status, story} <- [
-            {:blocked, %{id: 802, title: "Selected story"}},
+            {:blocked, %{id: 802, number: 686, title: "Selected story"}},
             {:unavailable, nil}
           ] do
         text =
@@ -94,7 +112,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       text =
         RequirementsMapper.format_story_execution(%{
           status: :complete,
-          story: %{id: 802, title: "Selected story"},
+          story: %{id: 802, number: 686, title: "Selected story"},
           actionable: [],
           wave: [],
           remaining: 0,
@@ -102,7 +120,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
           reason: nil
         })
 
-      assert text =~ "# Story 802: Selected story"
+      assert text =~ "# Story 686: Selected story"
       assert text =~ "Status: complete"
       assert text =~ "new assignment"
       refute text =~ "All requirements satisfied"

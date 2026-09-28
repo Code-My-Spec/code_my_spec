@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
+  alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,7 +41,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
             refute response.isError, "expected create_story to succeed for #{title}"
 
-            story_id!(response)
+            context.scope
+            |> Stories.get_story_by_number(story_number!(response))
+            |> Map.fetch!(:id)
           end
 
         {:ok, Map.put(context, :story_ids, story_ids)}
@@ -101,13 +104,13 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
     )
   end
 
-  defp story_id!(response) do
+  defp story_number!(response) do
     body = CodeMySpecSpex.TaskResponseHelpers.response_text(response)
 
-    captured!(
-      Regex.run(~r/\(ID: (\d+)\)/, body),
-      "could not read story id from response: #{body}"
-    )
+    ~r/^Story (\d+) created/
+    |> Regex.run(body)
+    |> captured!("could not read story number from response: #{body}")
+    |> String.to_integer()
   end
 
   # Two heads rather than a `case`: pattern matching in a function head is not

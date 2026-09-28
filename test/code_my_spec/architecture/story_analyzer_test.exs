@@ -46,8 +46,8 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       notification_group = Enum.find(groupings, &(&1.theme == "notification"))
       assert notification_group
       assert notification_group.story_count == 2
-      assert 1 in notification_group.story_ids
-      assert 2 in notification_group.story_ids
+      assert 1 in notification_group.story_numbers
+      assert 2 in notification_group.story_numbers
     end
 
     test "groups stories by dashboard keywords" do
@@ -126,7 +126,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
 
       dashboard_pattern = Enum.find(patterns, &(&1.pattern == "Real-time Dashboard"))
       assert dashboard_pattern
-      assert 1 in dashboard_pattern.story_ids
+      assert 1 in dashboard_pattern.story_numbers
     end
 
     test "detects file upload pattern" do
@@ -139,7 +139,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
 
       upload_pattern = Enum.find(patterns, &(&1.pattern == "File Upload"))
       assert upload_pattern
-      assert upload_pattern.story_ids != []
+      assert upload_pattern.story_numbers != []
     end
 
     test "detects notification pattern" do
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       assert Enum.all?(contexts, &String.starts_with?(&1.name, "Fuellytics."))
     end
 
-    test "includes story_ids in context suggestions" do
+    test "includes story_numbers in context suggestions" do
       stories = [
         build_story(1, "Verify 1", "Verification process"),
         build_story(2, "Validate 2", "Validate check"),
@@ -180,8 +180,8 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       contexts = StoryAnalyzer.suggest_contexts(stories)
 
       Enum.each(contexts, fn ctx ->
-        assert is_list(ctx.story_ids)
-        assert length(ctx.story_ids) >= 3
+        assert is_list(ctx.story_numbers)
+        assert length(ctx.story_numbers) >= 3
       end)
     end
   end
@@ -213,9 +213,11 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
   end
 
   # Helper function to build story structs
-  defp build_story(id, title, description) do
+  # Ids offset from numbers so an id leaking into the output would show.
+  defp build_story(number, title, description) do
     %Story{
-      id: id,
+      id: number + 1000,
+      number: number,
       title: title,
       description: description,
       acceptance_criteria: []

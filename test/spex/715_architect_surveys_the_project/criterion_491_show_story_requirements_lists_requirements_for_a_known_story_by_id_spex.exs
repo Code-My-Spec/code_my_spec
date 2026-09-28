@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6308Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing", criterion: 491 do
+  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing",
+    criterion: 491 do
     scenario "show_story_requirements lists requirements for a known story by ID" do
       given_ :story_with_liveview_surface
 
@@ -29,7 +30,7 @@ defmodule CodeMySpecSpex.Story715.Criterion6308Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.id)}, frame)
+          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
 
         {:ok, Map.put(context, :body, response_text(response))}
       end

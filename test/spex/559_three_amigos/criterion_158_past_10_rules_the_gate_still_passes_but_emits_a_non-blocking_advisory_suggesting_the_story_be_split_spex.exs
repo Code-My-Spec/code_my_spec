@@ -38,14 +38,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
 
           {:reply, _add_rule, _frame} =
             AddRule.execute(
-              %{story_id: context.story.id, statement: statement},
+              %{story_number: context.story.number, statement: statement},
               frame
             )
 
           {:reply, _happy, _frame} =
             AddScenario.execute(
               %{
-                story_id: context.story.id,
+                story_number: context.story.number,
                 rule_statement: statement,
                 title: "Happy path for rule #{n}",
                 kind: "happy_path",
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
           {:reply, _failure, _frame} =
             AddScenario.execute(
               %{
-                story_id: context.story.id,
+                story_number: context.story.number,
                 rule_statement: statement,
                 title: "Failure path for rule #{n}",
                 kind: "failure_path",

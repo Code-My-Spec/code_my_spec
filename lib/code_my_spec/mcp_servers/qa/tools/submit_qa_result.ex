@@ -34,6 +34,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.Evidence
+  alias CodeMySpec.Stories
 
   schema do
     field :task_id, :string,
@@ -71,19 +72,37 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         attrs <- build_attrs(params),
-         {:ok, attempt} <- Qa.submit_qa_result(scope, attrs) do
-      {:reply, attempt_response(attempt, evidence(frame, attempt)), frame}
-    else
+    case Validators.validate_local_scope(frame, params) do
+      {:ok, scope} -> submit(scope, params, frame)
+      {:error, reason} -> {:reply, error_response(reason), frame}
+    end
+  end
+
+  defp submit(scope, params, frame) do
+    case Qa.submit_qa_result(scope, build_attrs(params)) do
+      {:ok, attempt} ->
+        story_number = story_number(scope, attempt.story_id)
+
+        {:reply, attempt_response(attempt, story_number, evidence(frame, attempt, story_number)),
+         frame}
+
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, validation_error(changeset), frame}
 
       {:error, {:task_not_found, open}} ->
-        {:reply, error_response(task_not_found_message(open)), frame}
+        {:reply, error_response(task_not_found_message(scope, open)), frame}
 
       {:error, reason} ->
         {:reply, error_response(reason), frame}
+    end
+  end
+
+  defp story_number(_scope, nil), do: nil
+
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> nil
+      story -> story.number
     end
   end
 
@@ -93,18 +112,20 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # there: it had passed story 1000's id as the task id, was refused, and
   # reported "the task session is unavailable" — a diagnosis it could not act on
   # and that was not true. The id it needed was already open on its own agent.
-  defp task_not_found_message([]) do
+  defp task_not_found_message(_scope, []) do
     "No task with that id, and no QA task is open in this working copy. " <>
       "`start_task` on a `qa_complete` requirement opens one and returns its id."
   end
 
-  defp task_not_found_message(open) do
+  defp task_not_found_message(scope, open) do
+    numbers = Stories.story_numbers(scope)
+
     listed =
-      Enum.map_join(open, "\n", fn {id, story} ->
-        "  task_id #{inspect(id)} — story #{story}"
+      Enum.map_join(open, "\n", fn {id, story_id} ->
+        "  task_id #{inspect(id)} — story #{Map.get(numbers, story_id, "?")}"
       end)
 
-    "No task with that id. `task_id` is the task's own id, not a story id — " <>
+    "No task with that id. `task_id` is the task's own id, not a story number — " <>
       "these QA tasks are open here:\n\n" <> listed
   end
 
@@ -120,11 +141,11 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # So the row lands, and what the response does is refuse to let the agent walk
   # away believing the job is done. `qa_complete` is satisfied either way; the
   # gate here is the reader's attention, not the database.
-  defp evidence(frame, %{status: :pass, story_id: story_id}) do
-    frame |> Validators.mcp_environment() |> Evidence.committed?(story_id)
+  defp evidence(frame, %{status: :pass}, story_number) when not is_nil(story_number) do
+    frame |> Validators.mcp_environment() |> Evidence.committed?(story_number)
   end
 
-  defp evidence(_frame, _attempt), do: :skip
+  defp evidence(_frame, _attempt, _story_number), do: :skip
 
   # Pass params straight through to the changeset.
   #
@@ -135,7 +156,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # mixed-key map that crashed `Ecto.Changeset.cast/3`.
   defp build_attrs(params), do: params
 
-  defp attempt_response(attempt, evidence) do
+  defp attempt_response(attempt, story_number, evidence) do
     issue_ids = attempt.issue_ids || []
 
     issue_line =
@@ -150,7 +171,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       QA attempt submitted.
 
       attempt_id: #{attempt.id}
-      story_id:   #{attempt.story_id}
+      story:      #{story_number}
       status:     #{attempt.status}
       parent_attempt_id: #{attempt.parent_attempt_id || "none (first attempt)"}
       submitted_at: #{attempt.submitted_at}
@@ -159,7 +180,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       #{issue_line}
       #{tools_used_line(attempt.tools_used)}
 
-      #{satisfaction_note(attempt.status)}#{evidence_note(attempt, evidence)}
+      #{satisfaction_note(attempt.status)}#{evidence_note(story_number, evidence)}
       """
     )
   end
@@ -174,13 +195,13 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # backed had propagated to the server and closed `qa_complete`. One was for a
   # story that shipped that night. Nothing said so — a submodule takes writes
   # normally and this project suppresses the dirty-pointer notice everywhere.
-  defp evidence_note(_attempt, :skip), do: ""
-  defp evidence_note(_attempt, :ok), do: ""
+  defp evidence_note(_story_number, :skip), do: ""
+  defp evidence_note(_story_number, :ok), do: ""
 
-  defp evidence_note(attempt, {:uncommitted, paths}),
-    do: "\n\n" <> Evidence.refusal(attempt.story_id, paths)
+  defp evidence_note(story_number, {:uncommitted, paths}),
+    do: "\n\n" <> Evidence.refusal(story_number, paths)
 
-  defp evidence_note(_attempt, {:unknown, reason}), do: Evidence.unknown_note(reason)
+  defp evidence_note(_story_number, {:unknown, reason}), do: Evidence.unknown_note(reason)
 
   defp satisfaction_note(:pass),
     do: "Status pass — qa_complete is satisfied for the story."

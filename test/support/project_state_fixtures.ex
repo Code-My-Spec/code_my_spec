@@ -453,15 +453,15 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     {:reply, _response, _frame} =
-      LinkPersonaToStory.execute(%{persona_id: persona_id, story_id: story.id}, frame)
+      LinkPersonaToStory.execute(%{persona_id: persona_id, story_number: story.number}, frame)
 
     {:reply, _response, _frame} =
-      AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
+      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
 
     {:reply, _response, _frame} =
       AddScenario.execute(
         %{
-          story_id: story.id,
+          story_number: story.number,
           rule_statement: rule_statement,
           kind: "happy_path",
           title: happy_title,
@@ -473,7 +473,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     {:reply, _response, _frame} =
       AddScenario.execute(
         %{
-          story_id: story.id,
+          story_number: story.number,
           rule_statement: rule_statement,
           kind: "failure_path",
           title: failure_title,

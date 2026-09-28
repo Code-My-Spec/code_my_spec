@@ -49,10 +49,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   Build the full QA prompt for a story. Returns `{:ok, prompt_text}`.
   """
   def command(scope, task) do
-    with {:ok, story_id} <- get_story_id(task) do
+    with {:ok, story_id} <- get_story_id(scope, task) do
       env = scope.environment
       story = Stories.get_story!(scope, story_id)
-      ensure_qa_dirs(env, story_id)
+      ensure_qa_dirs(env, story.number)
       {:ok, build_prompt(scope, story)}
     end
   end
@@ -77,7 +77,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   checked by the requirement graph through `CodeMySpec.Qa.complete?/2`.
   """
   def evaluate(scope, task) do
-    with {:ok, story_id} <- get_story_id(task) do
+    with {:ok, story_id} <- get_story_id(scope, task) do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
@@ -125,23 +125,23 @@ defmodule CodeMySpec.AgentTasks.QaStory do
             "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
           )
 
-          {:ok, :invalid, resubmit_required_feedback(story_id, attempts)}
+          {:ok, :invalid, resubmit_required_feedback(story_number(scope, story_id), attempts)}
 
         true ->
-          do_evaluate(scope, env, story_id)
+          do_evaluate(scope, env, story_id, story_number(scope, story_id))
       end
     end
   end
 
-  defp resubmit_required_feedback(story_id, attempts) do
+  defp resubmit_required_feedback(story_number, attempts) do
     """
-    QA for story #{story_id} is not complete. #{describe_latest(List.first(attempts))}
+    QA for story #{story_number} is not complete. #{describe_latest(List.first(attempts))}
 
     QA completion is recorded in the database, not on disk — no file will
     satisfy this requirement. Re-run the QA scenarios against the real surface,
     then call `submit_qa_result` with the outcome.
 
-    Use `list_qa_attempts` with story_id=#{story_id} to see the history,
+    Use `list_qa_attempts` with story_number=#{story_number} to see the history,
     including why an attempt was invalidated.
     """
   end
@@ -165,15 +165,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp subagent_owns?(_), do: false
 
-  defp do_evaluate(scope, env, story_id) do
+  defp do_evaluate(scope, env, story_id, story_number) do
     with :ok <- check_plan(scope, env),
-         :ok <- check_brief(env, story_id),
-         :ok <- maybe_check_result(scope, env, story_id) do
+         :ok <- check_brief(env, story_number),
+         :ok <- maybe_check_result(scope, env, story_id, story_number) do
       # File-based artifacts validate, but `qa_complete?` was false so no DB
       # attempt exists. The DB attempt is canonical (issue 3dd4ec46) — without
       # it, `qa_complete` stays unsatisfied even though `evaluate_task` would
       # mark the Task completed. Force a submit instead of silently passing.
-      {:ok, :invalid, submit_required_feedback(story_id)}
+      {:ok, :invalid, submit_required_feedback(story_number)}
     else
       {:ok, :invalid, feedback} = result ->
         Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
@@ -181,9 +181,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp submit_required_feedback(story_id) do
+  defp submit_required_feedback(story_number) do
     """
-    Call `submit_qa_result` to land a DB attempt for story #{story_id} — the
+    Call `submit_qa_result` to land a DB attempt for story #{story_number} — the
     requirement graph reads completion from the qa_attempts table, not the
     filesystem. It is a code-mode tool, so it is called through `run_script`:
 
@@ -209,11 +209,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # readable evidence trail. When present, validate format and file
   # issues from it. When absent, accept silently — the agent will call
   # `submit_qa_result` to land the typed attempt (issue a15c252b).
-  defp maybe_check_result(scope, env, story_id) do
-    if result_exists?(env, story_id) do
-      case check_result(env, story_id) do
+  defp maybe_check_result(scope, env, story_id, story_number) do
+    if result_exists?(env, story_number) do
+      case check_result(env, story_number) do
         {:ok, document} ->
-          finalize_result(scope, story_id, document)
+          finalize_result(scope, story_id, story_number, document)
           :ok
 
         other ->
@@ -224,21 +224,23 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp result_exists?(env, story_id) do
-    case Environments.read_file(env, result_path(story_id)) do
+  defp result_exists?(env, story_number) do
+    case Environments.read_file(env, result_path(story_number)) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 -> true
       _ -> false
     end
   end
 
-  defp finalize_result(scope, story_id, document) do
-    ensure_issues_filed(scope, story_id, document)
+  defp finalize_result(scope, story_id, story_number, document) do
+    ensure_issues_filed(scope, story_id, story_number, document)
     Logger.info("[QaStory] evaluate(#{story_id}): artifacts valid, issues filed")
     {:ok, :valid}
   end
 
-  defp ensure_issues_filed(scope, story_id, document) do
-    {:ok, created} = Issues.create_from_qa_result(scope, story_id, document)
+  defp ensure_issues_filed(scope, story_id, story_number, document) do
+    {:ok, created} =
+      Issues.create_from_qa_result(scope, story_id, document, result_path(story_number))
+
     issues_in_result = Map.get(document.sections, "issues", [])
 
     if issues_in_result == [] or issues_in_result == "None" do
@@ -315,8 +317,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp check_brief(env, story_id) do
-    path = brief_path(story_id)
+  defp check_brief(env, story_number) do
+    path = brief_path(story_number)
 
     case Environments.read_file(env, path) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
@@ -335,8 +337,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp check_result(env, story_id) do
-    path = result_path(story_id)
+  defp check_result(env, story_number) do
+    path = result_path(story_number)
     result_spec = DocumentSpecProjector.project_spec("qa_result")
 
     case Environments.read_file(env, path) do
@@ -353,7 +355,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         end
 
       _ ->
-        screenshot_dir = screenshot_dir(story_id)
+        screenshot_dir = screenshot_dir(story_number)
 
         {:ok, :invalid,
          "Brief validated. Now execute the test plan from the brief and write the result to `#{path}`. " <>
@@ -368,10 +370,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp build_prompt(scope, story) do
     env = scope.environment
-    story_id = story.id
     endpoint_module = endpoint_module_name(scope)
     criteria_text = format_criteria(Map.get(story, :criteria, []))
-    spec_paths = collect_spec_file_paths(scope, story_id)
+    spec_paths = collect_spec_file_paths(scope, story.id)
     specs_text = format_spec_paths(spec_paths)
     existing_scripts = list_scripts(env)
     scripts_section = build_scripts_section(existing_scripts)
@@ -380,24 +381,24 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     sections =
       [
-        header_section(scope, story_id, story, endpoint_module, criteria_text, specs_text),
+        header_section(scope, story, endpoint_module, criteria_text, specs_text),
         component_section,
         scripts_section,
         plan_section(),
         single_use_repro_section(),
         interrupted_session_section(),
         playbook_section(),
-        document_specs_section(brief_spec, story_id),
-        done_signal_section(story_id)
+        document_specs_section(brief_spec, story.number),
+        done_signal_section()
       ]
       |> Enum.reject(&is_nil/1)
 
     Enum.join(sections, "\n\n")
   end
 
-  defp header_section(scope, story_id, story, endpoint_module, criteria_text, specs_text) do
+  defp header_section(scope, story, endpoint_module, criteria_text, specs_text) do
     """
-    # QA Story #{story_id}: #{story.title}
+    # QA Story #{story.number}: #{story.title}
 
     Run a full QA session for this story. Two phases: write a testing brief,
     then execute it. The playbook below has the detailed procedure.
@@ -558,18 +559,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp document_specs_section(brief_spec, story_id) do
+  defp document_specs_section(brief_spec, story_number) do
     """
     ## Brief format spec
 
-    Write the brief to `#{brief_path(story_id)}` matching this spec exactly.
+    Write the brief to `#{brief_path(story_number)}` matching this spec exactly.
     The evaluator validates the brief structure on stop.
 
     #{brief_spec}\
     """
   end
 
-  defp done_signal_section(_story_id) do
+  defp done_signal_section do
     """
     ## Findings and done signal
 
@@ -614,7 +615,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       the story's release until they're fixed. `framework`, `qa` and `docs`
       findings are about the tooling rather than the story, so they queue at
       the project level instead. If an issue belongs to a *different* story,
-      pass that `story_id` on the `create_issue` call — an explicit
+      pass that `story_number` on the `create_issue` call — an explicit
       attribution is never overwritten.
     - Don't write findings into a result.md file. The harness doesn't read it.
       Screenshots and other evidence still belong on disk, but the canonical
@@ -717,20 +718,28 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Path Helpers
   # ============================================================================
 
-  defp brief_path(story_id) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "brief.md"])
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> nil
+      story -> story.number
+    end
   end
 
-  defp result_path(story_id) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "result.md"])
+  # Evidence lives under the story number, the name agents and people use.
+  defp brief_path(story_number) do
+    Path.join([Paths.qa_dir(), to_string(story_number), "brief.md"])
   end
 
-  defp screenshot_dir(story_id) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "screenshots"])
+  defp result_path(story_number) do
+    Path.join([Paths.qa_dir(), to_string(story_number), "result.md"])
   end
 
-  defp ensure_qa_dirs(env, story_id) do
-    Environments.ensure_dir(env, screenshot_dir(story_id))
+  defp screenshot_dir(story_number) do
+    Path.join([Paths.qa_dir(), to_string(story_number), "screenshots"])
+  end
+
+  defp ensure_qa_dirs(env, story_number) do
+    Environments.ensure_dir(env, screenshot_dir(story_number))
     :ok
   end
 
@@ -741,32 +750,37 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Two routes reach this, and they name the story differently.
   #
   # The graph-dispatch route (`start_task`) sets `story_id` from the
-  # requirement's entity. The skill route (`/codemyspec:qa story <id>`) is a
+  # requirement's entity. The skill route (`/codemyspec:qa story <number>`) is a
   # topic task, and `run_topic_task/4` threads the topic through
   # `requirement_name` — the same convention `ThreeAmigos` follows and
-  # documents.
+  # documents. What is typed there is the story number people use.
   #
   # Only the first was handled, so every skill invocation fell through to the
   # "requires a story ID argument" clause regardless of what was passed. The
   # message named the one thing the caller had definitely done, which is why it
   # read as a usage error rather than a bug.
-  defp get_story_id(%{story_id: story_id}) when not is_nil(story_id),
-    do: parse_story_id(story_id)
+  defp get_story_id(_scope, %{story_id: story_id}) when not is_nil(story_id),
+    do: parse_integer(story_id)
 
-  defp get_story_id(%{requirement_name: requirement}) when is_binary(requirement),
-    do: parse_story_id(requirement)
-
-  defp get_story_id(_task) do
-    {:error, "QaStory requires a story ID argument. Usage: /qa-story <story_id>"}
+  defp get_story_id(scope, %{requirement_name: requirement}) when is_binary(requirement) do
+    with {:ok, number} <- parse_integer(requirement) do
+      case Stories.get_story_by_number(scope, number) do
+        nil -> {:error, "QaStory: no story numbered #{number} in this project"}
+        story -> {:ok, story.id}
+      end
+    end
   end
 
-  # `Integer.parse/1` alone accepts "892abc" as 892. On the graph route the value
-  # is already an id, but on the skill route it is whatever was typed after the
-  # topic, so the remainder has to be empty for this to be a story id at all.
-  defp parse_story_id(value) do
+  defp get_story_id(_scope, _task) do
+    {:error, "QaStory requires a story number argument. Usage: /qa-story <story_number>"}
+  end
+
+  # `Integer.parse/1` alone accepts "892abc" as 892. On the skill route the value
+  # is whatever was typed after the topic, so the remainder has to be empty.
+  defp parse_integer(value) do
     case Integer.parse(to_string(value)) do
-      {id, ""} -> {:ok, id}
-      _ -> {:error, "QaStory requires a numeric story ID, got: #{inspect(value)}"}
+      {int, ""} -> {:ok, int}
+      _ -> {:error, "QaStory requires a numeric story number, got: #{inspect(value)}"}
     end
   end
 

@@ -9,24 +9,26 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AcceptIssue do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do
     field :issue_id, :string, required: true, doc: "Issue ID to accept"
-    field :story_id, :integer, doc: "Optional story ID to link this issue to"
+    field :story_number, :integer, doc: "Optional number of the story to link this issue to"
 
     field :category, :string,
-      doc: "Disposition category: 'bug' (default) or 'requirements_change' (requires story_id)"
+      doc:
+        "Disposition category: 'bug' (default) or 'requirements_change' (requires story_number)"
   end
 
   @impl true
   def execute(params, frame) do
-    opts =
-      []
-      |> maybe_put(:story_id, params[:story_id])
-      |> maybe_put(:category, parse_category(params[:category]))
-
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         {:ok, story_id} <- StoryRefs.story_id(scope, params[:story_number]),
+         opts =
+           []
+           |> maybe_put(:story_id, story_id)
+           |> maybe_put(:category, parse_category(params[:category])),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          {:ok, updated} <- Issues.accept_issue(scope, issue, opts) do
       {:reply, IssuesMapper.issue_updated_response(updated, "accepted"), frame}

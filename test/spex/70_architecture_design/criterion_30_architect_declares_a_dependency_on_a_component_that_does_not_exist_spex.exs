@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
       when_ "the architect declares a dependency on Stroies (a typo — unknown component)",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         # StoryLive.Index depends on Stroies — a typo of Stories that neither exists
         # in the DB nor is defined in this proposal.
@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
 
         - **Type:** liveview
         - **Description:** Story list page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

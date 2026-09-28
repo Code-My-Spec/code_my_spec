@@ -26,7 +26,7 @@ color in the Example Mapping convention.
 Call `list_personas` to see what already exists on this project.
 
 - If a suitable persona exists → call `link_persona_to_story` with
-  the story_id and persona_id.
+  the story_number and persona_id.
 - If not → call `create_persona` to add a lightweight record
   (identity + metadata only — no research artifacts), then
   `link_persona_to_story`.
@@ -38,7 +38,7 @@ to do it inline.
 ### 2. Rules (blue cards)
 
 For each governing constraint or business rule the PM names, call
-`add_rule` with the story_id and the rule statement in business
+`add_rule` with the story_number and the rule statement in business
 terms. Rules are short — a single declarative sentence. If you need
 to qualify it with "but only when X", that's two rules.
 
@@ -53,7 +53,7 @@ For each rule, generate at least one scenario.
   different layer (e.g. infrastructure rather than the business
   rule), leave it out.
 
-Call `add_scenario` with story_id, `rule_statement`, a title, kind,
+Call `add_scenario` with story_number, `rule_statement`, a title, kind,
 and the Given/When/Then body in plain Gherkin (single-line per step
 is fine; this is example mapping, not full BDD spec writing —
 `write_bdd_specs` handles that downstream).

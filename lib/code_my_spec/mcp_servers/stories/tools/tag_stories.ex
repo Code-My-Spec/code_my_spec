@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   alias CodeMySpec.Tags
 
   schema do
-    field :story_ids, {:list, :string}, required: true, doc: "List of story IDs to tag"
+    field :story_numbers, {:list, :integer}, required: true, doc: "Story numbers to tag"
     field :tag, :string, required: true, doc: "Tag name to apply to all stories"
   end
 
@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        results = Enum.map(params.story_ids, &tag_one(scope, &1, params.tag))
+        results = Enum.map(params.story_numbers, &tag_one(scope, &1, params.tag))
 
         successes = Enum.filter(results, &match?({:ok, _}, &1)) |> Enum.map(&elem(&1, 1))
         failures = Enum.filter(results, &match?({:error, _, _}, &1))
@@ -41,17 +41,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
     end
   end
 
-  defp tag_one(scope, story_id, tag) do
-    case Stories.get_story(scope, story_id) do
-      nil -> {:error, story_id, :not_found}
-      story -> apply_tag(scope, story, story_id, tag)
+  defp tag_one(scope, number, tag) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, number, :not_found}
+      story -> apply_tag(scope, story, number, tag)
     end
   end
 
-  defp apply_tag(scope, story, story_id, tag) do
+  defp apply_tag(scope, story, number, tag) do
     case Tags.add_tag(scope, story, tag) do
       {:ok, _tagging} ->
-        {:ok, story_id}
+        {:ok, number}
 
       # Unique-constraint violation (already tagged) is the only
       # acceptable error here. Anything else — FK violations, type
@@ -59,9 +59,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
       # didn't land.
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_constraint?(errors) do
-          {:ok, story_id}
+          {:ok, number}
         else
-          {:error, story_id, changeset}
+          {:error, number, changeset}
         end
     end
   end

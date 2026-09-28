@@ -234,7 +234,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
   end
 
   defp header(nil), do: "# Story scope"
-  defp header(story), do: "# Story #{story.id}: #{story.title}"
+  defp header(story), do: "# Story #{story.number}: #{story.title}"
 
   defp body(%{status: :ready} = execution) do
     "Wave: #{length(execution.wave)} requirement(s)\nRemaining: #{execution.remaining}\n\n" <>

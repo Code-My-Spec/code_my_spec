@@ -23,7 +23,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5659Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths", criterion: 33 do
+  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths",
+    criterion: 33 do
     scenario "Architect attempts to execute a proposal that leaves a component as an orphan" do
       given_ "an unsatisfied story exists on the project", context do
         story =
@@ -70,7 +71,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5659Spex do
       when_ "the architect writes a proposal whose context list includes an unlinked, undepended component",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -81,7 +82,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5659Spex do
 
         - **Type:** liveview
         - **Description:** Feature page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

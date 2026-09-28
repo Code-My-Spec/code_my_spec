@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :criterion_id, :string,
+    field :criterion_number, :integer,
       required: true,
       doc: "Criterion number to relink (from get_story)"
 
@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          :ok <- check_not_verified(criterion),
          {:ok, updated} <-
            AcceptanceCriteria.update_criterion(scope, criterion, %{rule_id: params.rule_id}) do

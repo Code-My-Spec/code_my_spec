@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4693Spex do
 
         result =
           CriterionScript.run(context.scope, """
-          return retire_criterion({ criterion_id = "#{third}" })
+          return retire_criterion({ criterion_number = #{third} })
           """)
 
         refute result.error?, "retire_criterion failed: #{result.text}"
@@ -57,12 +57,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4693Spex do
       end
 
       then_ "story A's specs exist", context do
-        assert Fixtures.requirement_satisfied?(
-                 context.scope,
-                 "bdd_specs_exist",
-                 :story,
-                 String.to_integer(context.story)
-               ),
+        assert CriterionScript.specs_exist?(context.scope, context.story),
                "every active criterion has a spec; the retired one should not be asked for one"
 
         {:ok, context}

@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3571Spex do
         claim = %{
           requirement_name: "bdd_specs_exist",
           entity_type: "story",
-          entity_id: to_string(context.story.id)
+          entity_id: to_string(context.story.number)
         }
 
         {:reply, claimed, _} = StartTask.execute(claim, winner_frame)

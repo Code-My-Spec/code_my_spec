@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
         {:reply, response, _frame} =
           AddQuestion.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               text: "Does suspension affect mid-transaction cards or only new transactions?"
             },
             frame
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListQuestions.execute(%{story_id: context.story.id}, frame)
+          ListQuestions.execute(%{story_number: context.story.number}, frame)
 
         body = response_text(list_response)
 

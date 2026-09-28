@@ -48,13 +48,13 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     })
   end
 
-  # A spex bound to its criterion, as a sync leaves one that names it.
+  # A spex naming its criterion's number, as a sync records one.
   defp bdd_file!(scope, story, criterion, path) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
       working_copy_id: scope.active_working_copy_id,
       story_id: story.id,
-      criterion_id: criterion.id,
+      criterion_number: criterion.number,
       path: path,
       role: :bdd_spec,
       valid: true
@@ -209,10 +209,10 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
                )
     end
 
-    test "a spex on the story that is bound to no criterion covers none", %{scope: scope} do
+    test "a spex on the story that names no criterion covers none", %{scope: scope} do
       story = story_fixture(scope, %{criteria: []})
       criterion_fixture(scope, story)
-      bdd_file!(scope, story, %{id: nil}, "test/spex/unbound/one_test.exs")
+      bdd_file!(scope, story, %{number: nil}, "test/spex/unbound/one_test.exs")
 
       RequirementGraph.compute_graph(scope)
 

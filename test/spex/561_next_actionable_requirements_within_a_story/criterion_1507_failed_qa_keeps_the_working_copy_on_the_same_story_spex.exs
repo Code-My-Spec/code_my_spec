@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
             title: "Story fails QA",
             severity: "high",
             description: "Reservation is lost after saving",
-            story_id: context.story.id
+            story_number: context.story.number
           })
 
         [issue_id | _] =
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
       end
 
       then_ "the copy stays on the same story rather than treating it as done", context do
-        assert context.answer =~ "# Story #{context.story.id}:"
+        assert context.answer =~ "# Story #{context.story.number}:"
         refute context.answer =~ "Status: complete"
         refute Slice.offered?(context.answer, context.waiting.id)
         refute Slice.offered?(context.answer, Slice.component(context, "Waiting").id)

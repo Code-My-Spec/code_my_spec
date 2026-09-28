@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
 
         claim = %{
           entity_type: "story",
-          entity_id: to_string(story.id),
+          entity_id: to_string(story.number),
           requirement_name: "bdd_specs_exist"
         }
 

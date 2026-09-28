@@ -75,13 +75,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     """)
   end
 
-  defp write_story_brief(env, story_id, content \\ nil) do
+  defp write_story_brief(env, story_number, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}/brief.md",
+      ".code_my_spec/qa/#{story_number}/brief.md",
       content ||
         """
-        # QA Brief: Story #{story_id}
+        # QA Brief: Story #{story_number}
 
         ## Tool
 
@@ -103,18 +103,18 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
         ## Result Path
 
-        .code_my_spec/qa/#{story_id}/result.md
+        .code_my_spec/qa/#{story_number}/result.md
         """
     )
   end
 
-  defp write_story_result(env, story_id, content \\ nil) do
+  defp write_story_result(env, story_number, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}/result.md",
+      ".code_my_spec/qa/#{story_number}/result.md",
       content ||
         """
-        # QA Result: Story #{story_id}
+        # QA Result: Story #{story_number}
 
         ## Status
 
@@ -130,8 +130,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
         ## Evidence
 
-        - `.code_my_spec/qa/#{story_id}/screenshots/login.png` — login page
-        - `.code_my_spec/qa/#{story_id}/screenshots/dashboard.png` — after login
+        - `.code_my_spec/qa/#{story_number}/screenshots/login.png` — login page
+        - `.code_my_spec/qa/#{story_number}/screenshots/dashboard.png` — after login
 
         ## Issues
 
@@ -140,12 +140,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     )
   end
 
-  defp write_result_with_issues(env, story_id) do
+  defp write_result_with_issues(env, story_number) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}/result.md",
+      ".code_my_spec/qa/#{story_number}/result.md",
       """
-      # QA Result: Story #{story_id}
+      # QA Result: Story #{story_number}
 
       ## Status
 
@@ -203,21 +203,21 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     # The shape `StartAgentTask.run_topic_task/4` builds. Topic tasks thread
     # their argument through `requirement_name`, which is the convention
     # `ThreeAmigos` documents and follows — and which `QaStory` did not
-    # implement, so every `/codemyspec:qa story <id>` fell through to "requires
+    # implement, so every `/codemyspec:qa story <number>` fell through to "requires
     # a story ID argument" no matter what was passed.
     #
     # Every other test here builds `story_id`, the graph-dispatch shape, so the
     # whole skill route could be dead with the suite green.
-    test "a story id arriving as the topic reaches the story", %{scope: scope, story: story} do
+    test "a story number arriving as the topic reaches the story", %{scope: scope, story: story} do
       task = %{
         project_id: scope.active_project.id,
-        requirement_name: to_string(story.id)
+        requirement_name: to_string(story.number)
       }
 
       assert {:ok, prompt} = QaStory.command(scope, task)
 
       assert prompt =~ "User Authentication",
-             "the skill route passed a story id and the prompt does not carry " <>
+             "the skill route passed a story number and the prompt does not carry " <>
                "that story, so the argument never landed"
     end
 
@@ -226,7 +226,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:error, message} = QaStory.command(scope, task)
 
-      assert message =~ "numeric story ID",
+      assert message =~ "numeric story number",
              "a requirement name is not a story id, and reporting it as a " <>
                "missing argument names the one thing the caller did do"
     end
@@ -237,7 +237,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task = %{project_id: scope.active_project.id, requirement_name: "892-and-then-some"}
 
       assert {:error, message} = QaStory.command(scope, task)
-      assert message =~ "numeric story ID"
+      assert message =~ "numeric story number"
     end
   end
 
@@ -285,9 +285,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     } do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
-      assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
+      assert prompt =~ ".code_my_spec/qa/#{story.number}/brief.md"
+      assert prompt =~ "# QA Story #{story.number}: "
 
-      refute prompt =~ ".code_my_spec/qa/#{story.id}/result.md",
+      refute story.id != story.number and prompt =~ ".code_my_spec/qa/#{story.id}/",
+             "QA evidence directories are named by story number, never the id"
+
+      refute prompt =~ ".code_my_spec/qa/#{story.number}/result.md",
              "result.md path was removed from the prompt; findings flow via create_issue + submit_qa_result"
     end
 
@@ -295,7 +299,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert {:ok, prompt_before} = QaStory.command(scope, task)
 
       write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
       assert {:ok, prompt_after} = QaStory.command(scope, task)
       assert prompt_before == prompt_after
@@ -314,13 +318,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     test "returns error when story ID is missing", %{scope: scope} do
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
       assert {:error, message} = QaStory.command(scope, task)
-      assert message =~ "story ID"
+      assert message =~ "story number"
     end
 
     test "returns error when task has no story_id", %{scope: scope} do
       task = %{project_id: scope.active_project.id, component_id: nil}
       assert {:error, message} = QaStory.command(scope, task)
-      assert message =~ "story ID"
+      assert message =~ "story number"
     end
   end
 
@@ -369,7 +373,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # With plan valid but no brief, should get brief phase feedback
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
       assert feedback =~ "Brief not found"
-      assert feedback =~ ".code_my_spec/qa/#{story.id}/brief.md"
+      assert feedback =~ ".code_my_spec/qa/#{story.number}/brief.md"
     end
   end
 
@@ -390,7 +394,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id, """
+      write_story_brief(scope.environment, story.number, """
       # QA Brief
 
       ## Tool
@@ -424,7 +428,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # completion path. A brief with no result is a fine intermediate
       # state — the agent finished planning and either ran the tests in
       # the BEAM/browser or aborted (issue a15c252b).
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -434,9 +438,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
-      write_story_result(scope.environment, story.id, """
+      write_story_result(scope.environment, story.number, """
       # QA Result
 
       ## Status
@@ -461,9 +465,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
-      write_story_result(scope.environment, story.id, """
+      write_story_result(scope.environment, story.number, """
       # QA Result
 
       ## Status
@@ -488,8 +492,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_story_result(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -499,10 +503,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
-      write_story_result(scope.environment, story.id, """
-      # QA Result: Story #{story.id}
+      write_story_result(scope.environment, story.number, """
+      # QA Result: Story #{story.number}
 
       ## Status
 
@@ -550,8 +554,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
-      write_result_with_issues(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_result_with_issues(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -568,8 +572,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
-      write_result_with_issues(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_result_with_issues(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -578,7 +582,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert login_issue.severity == :high
       assert login_issue.description =~ "Invited users"
-      assert login_issue.source_path =~ "qa/#{story.id}/result.md"
+      assert login_issue.source_path =~ "qa/#{story.number}/result.md"
     end
 
     test "upsert doesn't duplicate existing issues", %{
@@ -586,15 +590,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
-      write_result_with_issues(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_result_with_issues(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_first = Issues.list_by_story(scope, story.id)
 
       # Write a new result and run evaluate again
-      write_result_with_issues(scope.environment, story.id)
+      write_result_with_issues(scope.environment, story.number)
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_second = Issues.list_by_story(scope, story.id)
@@ -616,8 +620,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
-      write_result_with_issues(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
+      write_result_with_issues(scope.environment, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -632,10 +636,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.id)
+      write_story_brief(scope.environment, story.number)
 
-      write_story_result(scope.environment, story.id, """
-      # QA Result: Story #{story.id}
+      write_story_result(scope.environment, story.number, """
+      # QA Result: Story #{story.number}
 
       ## Status
 

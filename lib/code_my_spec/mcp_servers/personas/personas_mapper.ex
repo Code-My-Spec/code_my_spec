@@ -28,7 +28,7 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
     Next steps, if not already done:
     - Write `.code_my_spec/personas/#{persona.slug}/summary.md` with required sections (Role, Goals, Pain Points, Context, Decision Drivers, Evidence).
     - Write `.code_my_spec/personas/#{persona.slug}/sources.md` with URL + title + access date per entry.
-    - Call `link_persona_to_story` with persona_id `#{persona.id}` and a story_id this persona applies to.
+    - Call `link_persona_to_story` with persona_id `#{persona.id}` and the story_number of a story this persona applies to.
     """
 
     Response.tool()
@@ -47,17 +47,17 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
 
   defp persona_type_note(_), do: "unknown tier — check the database schema for valid values."
 
-  def link_response(persona_story) do
+  def link_response(persona_story, story) do
     summary =
-      "Persona linked: persona_id `#{persona_story.persona_id}` ↔ story_id `#{persona_story.story_id}`."
+      "Persona linked: persona_id `#{persona_story.persona_id}` ↔ story #{story.number} (\"#{story.title}\")."
 
     Response.tool()
     |> Response.text(summary)
   end
 
-  def unlink_response(persona_id, story_id) do
+  def unlink_response(persona_id, story) do
     summary =
-      "Persona unlinked: persona_id `#{persona_id}` ↮ story_id `#{story_id}`."
+      "Persona unlinked: persona_id `#{persona_id}` ↮ story #{story.number} (\"#{story.title}\")."
 
     Response.tool()
     |> Response.text(summary)
@@ -109,6 +109,13 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
   end
 
   def error(%Ecto.Changeset{} = changeset), do: validation_error(changeset)
+
+  def error(:story_not_found) do
+    Response.tool()
+    |> Response.error(
+      "Story not found in the active project. list_story_titles shows the numbers."
+    )
+  end
 
   def error(:not_found) do
     Response.tool()

@@ -12,7 +12,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
   # another agent's at this checkout — before the wave is cut (467310a7).
-  def read(scope, role \\ nil, requested_story_id \\ nil, withheld? \\ fn _ -> false end) do
+  def read(scope, role \\ nil, requested_number \\ nil, withheld? \\ fn _ -> false end) do
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
          :ok <- GraphWatcher.settle(scope),
@@ -20,9 +20,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
          ctx = Map.put(ctx, :withheld?, withheld?),
          {{nodes, edges}, _actionable, _at} <-
            RequirementGraph.cached_graph_with_actionable(scope) do
-      case selected(scope, copy, requested_story_id) do
+      case selected(scope, copy, requested_number) do
         {:ok, story} ->
-          story_or_project(story, nodes, edges, ctx, role, requested_story_id)
+          story_or_project(story, nodes, edges, ctx, role, requested_number)
 
         {:refused, reason} ->
           result(:unavailable, nil, reason)
@@ -144,14 +144,17 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
-  defp selected(scope, copy, requested_story_id) do
-    with id when not is_nil(id) <- copy.active_story_id,
-         true <- to_string(requested_story_id) == to_string(id),
-         %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
-         true <- story.working_copy_id == copy.id do
-      {:ok, story}
+  # The caller names a story by its number; the copy holds it by id.
+  defp selected(scope, copy, requested_number) do
+    active = copy.active_story_id && Stories.get_story(scope, copy.active_story_id)
+
+    with %{} <- active,
+         true <- to_string(requested_number) == to_string(active.number),
+         true <- active.ready_for_dev == true,
+         true <- active.working_copy_id == copy.id do
+      {:ok, active}
     else
-      _ -> {:refused, refusal(requested_story_id, copy.active_story_id)}
+      _ -> {:refused, refusal(requested_number, active && active.number)}
     end
   end
 
