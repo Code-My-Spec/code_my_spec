@@ -23,6 +23,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
@@ -79,9 +80,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # or reworded after the first spex pass then has no spec and nothing asks
   # for one, because the other criteria's files keep the story looking done
   # (issue 644279a9).
-  defp check(%{check_type: :bdd_specs_covered, config: config}, scope, entity, files, _ctx) do
+  defp check(%{check_type: :bdd_specs_covered, config: config}, scope, entity, _files, ctx) do
     role = config_role(config)
-    check_bdd_specs_covered(scope, entity, files, role)
+    check_bdd_specs_covered(scope, entity, copy_files(scope, ctx), role)
   end
 
   defp check(%{check_type: :path_exists, config: config}, scope, _entity, _files, ctx) do
@@ -552,6 +553,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # Coverage matches files to criteria by number, so it reads the whole copy
+  # rather than the files a story happens to own.
+  defp copy_files(_scope, %{files_by_project: files}) when is_list(files), do: files
+  defp copy_files(scope, _ctx), do: Files.list_files(scope)
+
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
     scope
     |> AcceptanceCriteria.list_story_criteria(story_id)
@@ -561,8 +567,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   @doc """
   Whether every criterion on a story has a valid file of `role` naming it.
 
-  "Naming it" is `criterion_id`, bound at sync from the number the file's
-  `spex` call names — not a path. The evaluator for `write_bdd_specs` calls this
+  "Naming it" is the file's `criterion_number` — the number its `spex` call
+  names — matched against the criterion's number, not a path and not a stored
+  binding. `files` are every file on the working copy, not the story's: a file
+  covers a criterion by the number it names, whichever story that is on. The evaluator for `write_bdd_specs` calls this
   too, so the task and the requirement cannot disagree (94327fe2).
 
   The verdict on its own, separated from the query that feeds it, so
@@ -590,13 +598,13 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   def bdd_specs_covered(criteria, files, role) do
     covered =
       files
-      |> Enum.filter(&(&1.role == role and &1.valid == true and not is_nil(&1.criterion_id)))
-      |> MapSet.new(& &1.criterion_id)
+      |> Enum.filter(&(&1.role == role and &1.valid == true and is_integer(&1.criterion_number)))
+      |> MapSet.new(& &1.criterion_number)
 
     missing =
       criteria
-      |> Enum.reject(&MapSet.member?(covered, &1.id))
       |> Enum.map(& &1.number)
+      |> Enum.reject(&MapSet.member?(covered, &1))
 
     if missing == [] do
       {true, %{status: "a valid #{role} file names every criterion"}}

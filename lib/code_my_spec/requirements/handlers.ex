@@ -891,16 +891,13 @@ defmodule CodeMySpec.Requirements.Handlers do
   # Grouped by story rather than filtered to `:bdd_spec` here, because
   # `bdd_specs_covered/3` takes the entity's files and applies the role itself —
   # the same shape `RequirementCalculator` hands it.
+  # Every spex on the copy, not grouped by story: a file covers a criterion by
+  # the number it names.
   defp bdd_spec_verdicts(stories, files) do
-    by_story = Enum.group_by(Enum.filter(files.all, & &1.story_id), & &1.story_id)
+    specs = Enum.filter(files.all, &(&1.role == :bdd_spec))
 
     for {story_id, criteria} <- stories.amigos.criteria_by_story, criteria != [] do
-      {satisfied?, detail} =
-        RequirementCalculator.bdd_specs_covered(
-          criteria,
-          Map.get(by_story, story_id, []),
-          :bdd_spec
-        )
+      {satisfied?, detail} = RequirementCalculator.bdd_specs_covered(criteria, specs, :bdd_spec)
 
       change("story", story_id, "bdd_specs_exist", satisfied?, detail)
     end

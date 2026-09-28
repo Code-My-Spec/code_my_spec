@@ -702,7 +702,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp uncovered(criterion, specs) do
     naming =
       Enum.filter(specs, fn spec ->
-        get_in(spec.validation_errors || %{}, ["data", "criterion"]) == criterion.number
+        spec.criterion_number == criterion.number
       end)
 
     why =

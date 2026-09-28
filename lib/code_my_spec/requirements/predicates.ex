@@ -216,7 +216,8 @@ defmodule CodeMySpec.Requirements.Predicates do
               not exists(
                 from(f in File,
                   where: f.role == ^role and f.valid == true,
-                  where: f.criterion_id == parent_as(:criterion).id,
+                  where: f.project_id == parent_as(:criterion).project_id,
+                  where: f.criterion_number == parent_as(:criterion).number,
                   where: ^harness_filter(working_copy_id),
                   select: 1
                 )

@@ -34,6 +34,7 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -489,20 +490,21 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
-  Which spex file on this working copy already covers each of these
-  criteria, as `%{criterion_id => path}`.
+  Why each spex on this working copy covers nothing although it names a
+  criterion — an unknown or retired number, or one another spex already
+  covers — as `%{path => reason}`. Read from the numbers files name and the
+  criteria as they are now, not stored.
   """
-  @spec spec_paths_by_criterion(Scope.t(), [integer()]) :: %{integer() => String.t()}
-  def spec_paths_by_criterion(_scope, []), do: %{}
+  @spec spec_problems(Scope.t()) :: %{String.t() => String.t()}
+  def spec_problems(%Scope{active_project_id: project_id} = scope) do
+    specs =
+      File
+      |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
+      |> where([f], not is_nil(f.criterion_number))
+      |> scope_to_harness(scope)
+      |> Repo.all()
 
-  def spec_paths_by_criterion(%Scope{active_project_id: project_id} = scope, criterion_ids) do
-    File
-    |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
-    |> where([f], f.criterion_id in ^criterion_ids)
-    |> scope_to_harness(scope)
-    |> select([f], {f.criterion_id, f.path})
-    |> Repo.all()
-    |> Map.new()
+    SpecBinding.problems(scope, specs)
   end
 
   @doc "Get a file by path within the project."
@@ -569,7 +571,7 @@ defmodule CodeMySpec.Files do
     :fingerprint,
     :component_id,
     :story_id,
-    :criterion_id,
+    :criterion_number,
     :valid,
     :validation_errors
   ]
@@ -589,7 +591,7 @@ defmodule CodeMySpec.Files do
       Enum.map(file_attrs_list, fn attrs ->
         attrs
         |> Map.drop(@scanner_scratch)
-        |> Map.put_new(:criterion_id, nil)
+        |> Map.put_new(:criterion_number, nil)
         |> Map.put(:project_id, project_id)
         |> Map.put(:working_copy_id, working_copy_id)
         |> Map.put(:inserted_at, now)
@@ -650,7 +652,7 @@ defmodule CodeMySpec.Files do
           validation_errors: fragment("EXCLUDED.validation_errors"),
           component_id: fragment("COALESCE(EXCLUDED.component_id, ?)", f.component_id),
           story_id: fragment("EXCLUDED.story_id"),
-          criterion_id: fragment("EXCLUDED.criterion_id"),
+          criterion_number: fragment("EXCLUDED.criterion_number"),
           updated_at: fragment("EXCLUDED.updated_at")
         ]
       ],
@@ -660,7 +662,7 @@ defmodule CodeMySpec.Files do
           (?, ?, ?, ?, ?, ?, ?, ?, ?) IS DISTINCT FROM
           (EXCLUDED.role, EXCLUDED.mtime, EXCLUDED.size, EXCLUDED.fingerprint,
            EXCLUDED.valid, EXCLUDED.validation_errors,
-           COALESCE(EXCLUDED.component_id, ?), EXCLUDED.story_id, EXCLUDED.criterion_id)
+           COALESCE(EXCLUDED.component_id, ?), EXCLUDED.story_id, EXCLUDED.criterion_number)
           """,
           f.role,
           f.mtime,
@@ -670,7 +672,7 @@ defmodule CodeMySpec.Files do
           f.validation_errors,
           f.component_id,
           f.story_id,
-          f.criterion_id,
+          f.criterion_number,
           f.component_id
         )
     )
@@ -706,7 +708,7 @@ defmodule CodeMySpec.Files do
     entry =
       attrs
       |> Map.drop(@scanner_scratch)
-      |> Map.put_new(:criterion_id, nil)
+      |> Map.put_new(:criterion_number, nil)
       |> Map.put(:project_id, project_id)
       |> Map.put(
         :working_copy_id,
@@ -725,7 +727,7 @@ defmodule CodeMySpec.Files do
              :fingerprint,
              :component_id,
              :story_id,
-             :criterion_id,
+             :criterion_number,
              :valid,
              :validation_errors,
              :updated_at

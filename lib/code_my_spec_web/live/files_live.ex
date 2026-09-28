@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.FilesLive do
     page = parse_page(params["page"])
     filter = parse_filter(params["filter"])
     scope = scope_for(scope, params["harness"])
-    result = Files.list_files_paginated(scope, page: page, per_page: @per_page, filter: filter)
+    result = list_page(scope, page: page, per_page: @per_page, filter: filter)
 
     # The host re-resolves scope on every handle_params, so subscribe once.
     if connected?(socket) and !socket.assigns[:watching?] do
@@ -79,7 +79,7 @@ defmodule CodeMySpecWeb.FilesLive do
     socket =
       if socket.assigns.scope do
         result =
-          Files.list_files_paginated(socket.assigns.scope,
+          list_page(socket.assigns.scope,
             page: socket.assigns.page,
             per_page: @per_page,
             filter: socket.assigns.filter
@@ -115,7 +115,7 @@ defmodule CodeMySpecWeb.FilesLive do
     )
 
     result =
-      Files.list_files_paginated(scope,
+      list_page(scope,
         page: 1,
         per_page: @per_page,
         filter: socket.assigns.filter
@@ -138,7 +138,7 @@ defmodule CodeMySpecWeb.FilesLive do
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: embed?),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       result =
-        Files.list_files_paginated(scope,
+        list_page(scope,
           page: socket.assigns.page,
           per_page: @per_page,
           filter: socket.assigns.filter
@@ -348,14 +348,20 @@ defmodule CodeMySpecWeb.FilesLive do
             >
               <td class="font-mono text-xs" data-test="file-path">{file.path}</td>
               <td data-test="file-role">{format_role(file.role)}</td>
-              <td data-test="file-validity" data-validity={validity_label(file)}>
-                <.validity_badge file={file} />
+              <td
+                data-test="file-validity"
+                data-validity={validity_label(file, @result.spec_problems)}
+              >
+                <.validity_badge file={file} problems={@result.spec_problems} />
                 <div
-                  :if={file.valid == false and invalid_reason(file)}
+                  :if={
+                    invalid?(file, @result.spec_problems) and
+                      invalid_reason(file, @result.spec_problems)
+                  }
                   data-test="file-reason"
                   class="text-xs opacity-70 mt-1 max-w-xs break-words"
                 >
-                  {invalid_reason(file)}
+                  {invalid_reason(file, @result.spec_problems)}
                 </div>
               </td>
               <td>
@@ -419,12 +425,15 @@ defmodule CodeMySpecWeb.FilesLive do
   end
 
   attr :file, :any, required: true
+  attr :problems, :map, default: %{}
 
   defp validity_badge(assigns) do
+    assigns = assign(assigns, :label, validity_label(assigns.file, assigns.problems))
+
     ~H"""
-    <span :if={@file.valid == true} class="badge badge-success badge-sm">valid</span>
-    <span :if={@file.valid == false} class="badge badge-error badge-sm">invalid</span>
-    <span :if={is_nil(@file.valid)} class="badge badge-ghost badge-sm">unvalidated</span>
+    <span :if={@label == "valid"} class="badge badge-success badge-sm">valid</span>
+    <span :if={@label == "invalid"} class="badge badge-error badge-sm">invalid</span>
+    <span :if={@label == "unvalidated"} class="badge badge-ghost badge-sm">unvalidated</span>
     """
   end
 
@@ -452,14 +461,36 @@ defmodule CodeMySpecWeb.FilesLive do
     """
   end
 
-  defp validity_label(%{valid: true}), do: "valid"
-  defp validity_label(%{valid: false}), do: "invalid"
-  defp validity_label(_), do: "unvalidated"
+  defp validity_label(file, problems) do
+    cond do
+      invalid?(file, problems) -> "invalid"
+      file.valid == true -> "valid"
+      true -> "unvalidated"
+    end
+  end
 
-  defp invalid_reason(%{validation_errors: %{"reason" => reason}}) when is_binary(reason),
+  # A page of files, and why any spex on this copy names a criterion that
+  # covers nothing. That is read, not stored: which criterion a spex covers is a
+  # join on the number it names, so it is worked out when the page is.
+  defp list_page(scope, opts) do
+    scope
+    |> Files.list_files_paginated(opts)
+    |> Map.put(:spec_problems, Files.spec_problems(scope))
+  end
+
+  defp invalid?(file, problems), do: file.valid == false or Map.has_key?(problems, file.path)
+
+  defp invalid_reason(file, problems) do
+    case Map.get(problems, file.path) do
+      nil -> content_reason(file)
+      reason -> reason
+    end
+  end
+
+  defp content_reason(%{validation_errors: %{"reason" => reason}}) when is_binary(reason),
     do: reason
 
-  defp invalid_reason(_file), do: nil
+  defp content_reason(_file), do: nil
 
   defp format_role(role) when is_atom(role), do: Atom.to_string(role)
   defp format_role(role) when is_binary(role), do: role

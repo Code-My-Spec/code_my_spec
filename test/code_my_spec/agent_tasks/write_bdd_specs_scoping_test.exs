@@ -65,7 +65,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
 
   # The writer names its working copy through the scope, which is the same way
   # the harness's reconcile does it.
-  # Bound, as a sync leaves a spex that names its criterion.
+  # Naming its criterion's number, as a sync records a spex.
   defp record(scope, working_copy, specs) do
     %{scope | active_working_copy_id: working_copy.id}
     |> Files.upsert_files(
@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
           path: path,
           role: :bdd_spec,
           valid: true,
-          criterion_id: criterion.id,
+          criterion_number: criterion.number,
           story_id: criterion.story_id,
           validation_errors: %{"data" => %{"criterion" => criterion.number}},
           mtime: DateTime.utc_now(),
