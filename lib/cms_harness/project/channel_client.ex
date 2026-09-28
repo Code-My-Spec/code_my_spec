@@ -481,6 +481,14 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_continue(:connect, socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
+        # The one line that says which server this attempt is actually aimed
+        # at, before the outcome is known. `handle_disconnect/2` already logs
+        # the failure reason, but never the address that produced it — a
+        # harness dialing the wrong server (a stale `:harness_server_url`, an
+        # env var this process should not have inherited) reads identically
+        # to one dialing the right one and getting refused, and the two need
+        # opposite fixes. Token redacted: it is a credential, not a diagnostic.
+        Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
         {:noreply, connect!(socket, uri: uri)}
 
       {:error, :no_credential} ->
@@ -1969,6 +1977,10 @@ defmodule CmsHarness.Project.ChannelClient do
       {k, v} -> {k, v}
     end)
   end
+
+  # `token=` runs to the next `&` or the end of the query string — `vsn`
+  # follows it today, but nothing here should assume it always will.
+  defp redact_token(uri), do: String.replace(uri, ~r/token=[^&]*/, "token=[redacted]")
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do
