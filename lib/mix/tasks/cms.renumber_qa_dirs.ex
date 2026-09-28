@@ -2,29 +2,37 @@ defmodule Mix.Tasks.Cms.RenumberQaDirs do
   use Boundary, classify_to: CodeMySpec
 
   @moduledoc """
-  Rename QA evidence directories from story id to story number.
+  Move QA evidence directories from story id to story number.
 
       mix cms.renumber_qa_dirs --root <checkout>            # dry run: prints the plan
-      mix cms.renumber_qa_dirs --root <checkout> --apply    # renames
+      mix cms.renumber_qa_dirs --root <checkout> --apply    # moves
 
   `.code_my_spec/qa/<story_id>/` becomes `.code_my_spec/qa/<story_number>/`. The
   project comes from the checkout's `.code_my_spec/config.yml`.
 
-  One-off, and run it once: a directory name is read as an id, so a directory
-  already named by number would be read as an id on a second run. Directories
-  whose name is no story id here are left alone. A rename whose target already
-  exists (and is not itself being moved) is refused and reported. Renames go
-  through a temporary name so chains and swaps between ids and numbers settle
-  in one pass.
+  A checkout's directories are already a mix: some were named when ids and
+  numbers still coincided, some by number, most recent ones by id. So a name is
+  only moved when it can only be an id. A name that is one story's id and
+  another's number is decided by which story's title its brief carries, and
+  left alone when it carries neither or both. A move onto a directory that is
+  staying because it is already named by number merges into it; a file present
+  in both keeps the target's and lands beside it as `<name>.from-<id><ext>`. A
+  move onto a directory left alone is not made — whose evidence that is was
+  never settled.
   """
 
   use Mix.Task
 
+  import Ecto.Query
+
   alias CodeMySpec.Paths
   alias CodeMySpec.Projects
-  alias CodeMySpec.Stories
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.Story
 
-  @shortdoc "Rename .code_my_spec/qa/<id>/ directories to <story number>"
+  @shortdoc "Move .code_my_spec/qa/<id>/ directories to <story number>"
+
+  @heading_files ~w(brief.md prompt.md result.md result_complete.md)
 
   def run(args) do
     {opts, _, _} = OptionParser.parse(args, strict: [apply: :boolean, root: :string])
@@ -45,82 +53,153 @@ defmodule Mix.Tasks.Cms.RenumberQaDirs do
   end
 
   defp renumber(scope, qa_dir, apply?) do
-    names =
+    dirs =
       case File.ls(qa_dir) do
-        {:ok, entries} -> Enum.filter(entries, &File.dir?(Path.join(qa_dir, &1)))
-        {:error, _} -> []
+        {:ok, entries} ->
+          for name <- entries,
+              File.dir?(Path.join(qa_dir, name)),
+              do: {name, heading(qa_dir, name)}
+
+        {:error, _} ->
+          []
       end
 
-    plan = plan(names, Stories.story_numbers(scope))
+    plan = plan(dirs, stories(scope))
     report(plan)
 
     if apply?, do: carry_out(plan, qa_dir)
   end
 
-  @doc """
-  The rename plan for the directory `names` under the qa dir, given
-  `%{story_id => story_number}`.
+  # Retired stories included: their evidence is still theirs.
+  defp stories(scope) do
+    Repo.all(
+      from s in Story,
+        where: s.project_id == ^scope.active_project_id,
+        select: %{id: s.id, number: s.number, title: s.title}
+    )
+  end
 
-  Each entry is `%{action: :rename | :skip | :unknown | :collision, from: name}`,
-  with `:to` on `:rename` and `:collision`. Names that are not integers
-  (`scripts`, …) are not stories and do not appear.
+  # The opening of each brief-like file: enough to carry the story's title.
+  defp heading(qa_dir, name) do
+    Enum.map_join(@heading_files, "\n", fn file ->
+      case File.read(Path.join([qa_dir, name, file])) do
+        {:ok, body} -> String.slice(body, 0, 4000)
+        _ -> ""
+      end
+    end)
+  end
+
+  @doc """
+  The plan for `dirs` (`{name, brief_text}`) given the project's `stories`
+  (`%{id, number, title}`).
+
+  Each entry is `%{action: :move | :stay | :ambiguous | :unknown | :blocked,
+  from: name}`, with `:to` on `:move` and `:blocked`. Names that are not
+  integers (`scripts`, …) are not stories and do not appear.
   """
-  @spec plan([String.t()], %{optional(integer()) => integer()}) :: [map()]
-  def plan(names, numbers_by_id) do
-    candidates =
-      for name <- names, {id, ""} <- [Integer.parse(name)] do
-        case Map.fetch(numbers_by_id, id) do
-          {:ok, number} when number == id -> %{action: :skip, from: name}
-          {:ok, number} -> %{action: :rename, from: name, to: to_string(number)}
-          :error -> %{action: :unknown, from: name}
-        end
+  @spec plan([{String.t(), String.t()}], [map()]) :: [map()]
+  def plan(dirs, stories) do
+    by_id = Map.new(stories, &{&1.id, &1})
+    by_number = Map.new(stories, &{&1.number, &1})
+
+    plan =
+      for {name, heading} <- dirs, {n, ""} <- [Integer.parse(name)] do
+        classify(name, heading, Map.get(by_id, n), Map.get(by_number, n))
       end
 
-    moving = for %{action: :rename, from: from} <- candidates, into: MapSet.new(), do: from
-    staying = MapSet.difference(MapSet.new(names), moving)
+    unsettled =
+      for %{action: a, from: from} <- plan,
+          a in [:ambiguous, :unknown],
+          into: MapSet.new(),
+          do: from
 
-    Enum.map(candidates, fn
-      %{action: :rename, to: to} = entry ->
-        if MapSet.member?(staying, to), do: %{entry | action: :collision}, else: entry
+    Enum.map(plan, fn
+      %{action: :move, to: to} = entry ->
+        if MapSet.member?(unsettled, to), do: %{entry | action: :blocked}, else: entry
 
       entry ->
         entry
     end)
   end
 
+  defp classify(name, _heading, %{id: same, number: same}, _numbered),
+    do: %{action: :stay, from: name}
+
+  defp classify(name, _heading, %{number: number}, nil),
+    do: %{action: :move, from: name, to: to_string(number)}
+
+  defp classify(name, _heading, nil, %{}), do: %{action: :stay, from: name}
+  defp classify(name, _heading, nil, nil), do: %{action: :unknown, from: name}
+
+  defp classify(name, heading, by_id, numbered) do
+    case {names?(heading, by_id), names?(heading, numbered)} do
+      {true, false} -> %{action: :move, from: name, to: to_string(by_id.number)}
+      {false, true} -> %{action: :stay, from: name}
+      _ -> %{action: :ambiguous, from: name}
+    end
+  end
+
+  defp names?(heading, %{title: title}) when is_binary(title) and title != "",
+    do: String.contains?(String.downcase(heading), String.downcase(title))
+
+  defp names?(_heading, _story), do: false
+
   defp report(plan) do
     counts = Enum.frequencies_by(plan, & &1.action)
 
     Mix.shell().info(
-      "rename: #{counts[:rename] || 0}, already numbered: #{counts[:skip] || 0}, " <>
-        "no such story: #{counts[:unknown] || 0}, collisions: #{counts[:collision] || 0}"
+      "move: #{counts[:move] || 0}, stay: #{counts[:stay] || 0}, " <>
+        "ambiguous: #{counts[:ambiguous] || 0}, blocked: #{counts[:blocked] || 0}, " <>
+        "no such story: #{counts[:unknown] || 0}"
     )
 
-    for entry <- plan, entry.action in [:rename, :unknown, :collision] do
+    for entry <- plan, entry.action != :stay do
       Mix.shell().info("  #{describe(entry)}")
     end
   end
 
-  defp describe(%{action: :rename, from: from, to: to}), do: "rename qa/#{from} -> qa/#{to}"
-  defp describe(%{action: :unknown, from: from}), do: "leave  qa/#{from}: no story has id #{from}"
+  defp describe(%{action: :move, from: from, to: to}), do: "move   qa/#{from} -> qa/#{to}"
 
-  defp describe(%{action: :collision, from: from, to: to}),
-    do: "refuse qa/#{from} -> qa/#{to}: qa/#{to} already exists"
+  defp describe(%{action: :ambiguous, from: from}),
+    do: "leave  qa/#{from}: ambiguous — an id and a number, and its brief settles neither"
 
-  # Two phases so a target that is itself a source (id 5 -> 7 while id 7 -> 5)
-  # is vacated before anything lands on it.
+  defp describe(%{action: :blocked, from: from, to: to}),
+    do: "leave  qa/#{from}: blocked — its number's directory qa/#{to} is itself unsettled"
+
+  defp describe(%{action: :unknown, from: from}), do: "leave  qa/#{from}: no such story"
+
+  # Every source is vacated first, so a target that is itself a source is not
+  # mistaken for evidence already sitting there.
   defp carry_out(plan, qa_dir) do
-    renames = for %{action: :rename} = entry <- plan, do: entry
+    moves = for %{action: :move} = entry <- plan, do: entry
 
-    Enum.each(renames, fn %{from: from} ->
+    Enum.each(moves, fn %{from: from} ->
       File.rename!(Path.join(qa_dir, from), Path.join(qa_dir, temp_name(from)))
     end)
 
-    Enum.each(renames, fn %{from: from, to: to} ->
-      File.rename!(Path.join(qa_dir, temp_name(from)), Path.join(qa_dir, to))
+    Enum.each(moves, fn %{from: from, to: to} ->
+      source = Path.join(qa_dir, temp_name(from))
+      target = Path.join(qa_dir, to)
+
+      if File.exists?(target), do: merge(source, target, from), else: File.rename!(source, target)
     end)
 
-    Mix.shell().info("renamed #{length(renames)} directories")
+    Mix.shell().info("moved #{length(moves)} directories")
+  end
+
+  defp merge(source, target, from) do
+    for entry <- File.ls!(source) do
+      dest = Path.join(target, entry)
+      dest = if File.exists?(dest), do: beside(dest, from), else: dest
+      File.rename!(Path.join(source, entry), dest)
+    end
+
+    File.rmdir!(source)
+  end
+
+  defp beside(path, from) do
+    ext = Path.extname(path)
+    Path.rootname(path) <> ".from-#{from}" <> ext
   end
 
   defp temp_name(from), do: ".renumbering-#{from}"
