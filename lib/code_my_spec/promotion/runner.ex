@@ -1,9 +1,8 @@
 defmodule CodeMySpec.Promotion.Runner do
   @moduledoc """
-  Where a promotion's disk operations actually run.
+  Where a promotion's three disk operations actually run.
 
-  `precheck/3` and `merge/4` still split on the environment rather than being
-  configured:
+  Two answers, chosen by the environment rather than configured:
 
     * `:local` — the checkout is on this machine, so `Steps` is called directly.
       That is the suite, and the case where the server and the disk are the same
@@ -14,24 +13,14 @@ defmodule CodeMySpec.Promotion.Runner do
       module against a local environment.
 
   The split exists because the gate cannot move and the commands cannot stay.
-  `gate/1` and `gate_target/3` read the database; `git merge` needs the disk.
-  Sending the whole promotion to the harness would take the database away from
-  the gate, and keeping it all on the server is what shipped and crashed —
-  `Environments.Harness.cmd/4` answers `{:error, :not_supported_on_harness}`,
-  deliberately.
+  `gate/1` and `gate_target/3` read the database; `git merge` and `just restart`
+  need the disk. Sending the whole promotion to the harness would take the
+  database away from the gate, and keeping it all on the server is what shipped
+  and crashed — `Environments.Harness.cmd/4` answers
+  `{:error, :not_supported_on_harness}`, deliberately.
 
-  `restart/3` (story 1108, criterion 4663) no longer follows this split.
-  Bringing an application back up is a per-working-copy concern every copy
-  already has an answer for — `WorkingCopies.AppTransport.restart_app/2`,
-  reached through `Analysis.HarnessRegistry` by working copy id rather than
-  through `Environments` — so a promotion's restart is now the same call
-  `ensure_app_running`/every other app-lifecycle caller already makes, not a
-  second, promotion-only path to the same machine. What `just restart` used to
-  also do on this repo's own checkout — refresh the harness afterward, since
-  here server and harness are one codebase — is now `CmsHarness.AppInstance`'s
-  own optional `after-promote` recipe, run on the far side once the app is
-  confirmed serving, rather than a project-specific branch here that every
-  other project's promotion would also have to answer for.
+  So the server orchestrates and the machine executes, which is the same shape
+  analysis already has.
   """
 
   alias CodeMySpec.Analysis
@@ -39,14 +28,11 @@ defmodule CodeMySpec.Promotion.Runner do
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
-  alias CodeMySpec.WorkingCopies.AppTransport
 
-  # `just restart` used to compile, migrate and wait for the app to answer in
-  # one shelled-out call, and the analyzer timeout was the closest precedent
-  # for "long work on the far machine". `AppTransport.restart_app/2` now
-  # carries the same order of magnitude of work (the `serve` recipe it
-  # triggers still fetches deps, migrates and waits for health) over the
-  # channel instead of a shell, so the same ceiling applies.
+  # A restart compiles, migrates and waits for the app to answer. The analyzer
+  # timeout is the closest precedent for "long work on the far machine" and this
+  # is the same order of magnitude — `just restart` polls for 20s after a build
+  # that can run minutes on a cold tree.
   @restart_timeout 600_000
   @git_timeout 60_000
 
@@ -71,72 +57,18 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
-  @doc """
-  Bring the application at `root` back up — through the same start/restart
-  every working copy's own app already uses, harness included.
-
-  No working copy id to address means nothing to restart: refused rather
-  than guessed at, the same as `precheck/3` and `merge/4` refuse when a
-  harness environment is given none.
-  """
+  @doc "Bring the application at `root` back up, harness included."
   @spec restart(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
-  def restart(_scope, root, nil) do
-    {:error,
-     %{reason: "cannot restart #{root}: no working copy id was given to address its app with."}}
-  end
-
-  def restart(_scope, _root, copy_id) do
-    copy_id
-    |> AppTransport.restart_app(@restart_timeout)
-    |> decode_app_result()
-  end
-
-  # `AppTransport.restart_app/2`'s own shape — `%{status:, url:, commit:}` on
-  # success, one of a few atoms or `{:harness_gone, reason}` on failure —
-  # translated into the `%{revision:}` / `%{reason:}` shape
-  # `Promotion.classify_restart/1` (and `restart_acknowledgement_lost?/1`,
-  # which that caller already consults) expect, so neither needs to know
-  # this call stopped going through `Steps`.
-  #
-  # Worded per shape rather than a blanket `to_string/1`, on purpose:
-  # `:harness_not_connected` — nothing was ever registered for this working
-  # copy, so there was no channel to lose an acknowledgement from — is a
-  # real failure and reads as one ("could not reach…", matching the wording
-  # `Runner.decode/1` already uses for the same idea on `precheck`/`merge`).
-  # `{:harness_gone, reason}` is the opposite: the channel died *answering*
-  # this exact restart, which is what a restart that took its own connection
-  # down while draining looks like from here — worded so
-  # `restart_acknowledgement_lost?/1`'s "draining" check reads it as the
-  # unconfirmed success it is, not a failure to retry.
-  defp decode_app_result({:ok, %{status: "serving", commit: commit}}), do: {:ok, %{revision: commit}}
-
-  defp decode_app_result({:ok, %{status: status, commit: commit}}) do
-    {:error, %{reason: "the app answered #{status} after restarting" <> commit_suffix(commit)}}
-  end
-
-  defp decode_app_result({:error, :harness_not_connected}) do
-    {:error,
-     %{reason: "could not reach the machine holding this checkout: its harness is not connected"}}
-  end
-
-  defp decode_app_result({:error, :restart_timed_out}) do
-    {:error, %{reason: "the harness accepted the restart and did not answer within the timeout"}}
-  end
-
-  defp decode_app_result({:error, {:harness_gone, down}}) do
-    {:error,
-     %{
-       reason:
-         "the channel went down (#{inspect(down)}) before answering — if this restart just " <>
-           "took its own connection down, draining as it went, that is what success looks " <>
-           "like from here, not a failure"
-     }}
-  end
-
-  defp decode_app_result({:error, reason}), do: {:error, %{reason: inspect(reason)}}
-
-  defp commit_suffix(nil), do: ""
-  defp commit_suffix(commit), do: ", now on #{commit}"
+  def restart(scope, root, copy_id),
+    do:
+      run(
+        scope,
+        copy_id,
+        "promotion_restart",
+        %{"root" => root},
+        @restart_timeout,
+        fn env -> Steps.restart(env, root) end
+      )
 
   # The harness cannot be asked without knowing which working copy to ask, and
   # that is the id the channel is registered under — not the root, because two
