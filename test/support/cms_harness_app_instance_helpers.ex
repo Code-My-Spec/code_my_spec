@@ -18,7 +18,6 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
 
   import CmsHarnessTest.Projects, only: [ensure_harness_supervisor_started: 0]
 
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarnessTest.FakeAppInstanceRunner
   alias CmsHarnessTest.FakeServer
 
@@ -39,7 +38,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     root = project_root()
     working_copy_id = onboard(root)
 
-    await_connected(root)
+    await_connected(root, working_copy_id)
 
     %{root: root, working_copy_id: working_copy_id}
   end
@@ -163,21 +162,63 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
 
     {:ok, _identity} = CmsHarnessTest.Projects.ensure_started(root)
     on_exit(fn -> CmsHarnessTest.Projects.stop_project(root) end)
+    on_exit(fn -> stop_app_instance(root) end)
 
     working_copy_id
   end
 
-  defp await_connected(root, attempts \\ 200)
-
-  defp await_connected(_root, 0), do: flunk("the copy's harness never connected to the fake server")
-
-  defp await_connected(root, attempts) do
-    if ChannelClient.connected?(root) do
-      :ok
-    else
-      Process.sleep(10)
-      await_connected(root, attempts - 1)
+  # `AppInstance` deliberately lives outside the project's own `rest_for_one`
+  # chain (see its own moduledoc: it must survive a reconnect or a channel
+  # blip), so `stop_project/1` above never touches it — a test whose
+  # scenario actually started one (`ensure_app_running`/`restart_app`
+  # against a scripted "serving" runner) leaves it running with whatever
+  # idle timeout was live at the time, sometimes many minutes, sometimes
+  # milliseconds if a *later* test in the same run calls `set_idle_timeout/1`
+  # and this leftover reads the same global config on its next tick.
+  #
+  # Left alone, it fires its own `handle_info(:timeout, ...)` on its own
+  # schedule, calling into `FakeAppInstanceRunner` — a global, singleton
+  # fake this rig reconfigures per test rather than restarting — from a
+  # process nothing is asserting on any more. If a later test happens to be
+  # mid-teardown of that same fake right when it fires, the call raises
+  # `:noproc` and logs an unrelated `[error]` against whatever test happens
+  # to be running at that moment. Stopping it here, at the end of the test
+  # that started it, is what prevents it from outliving the fake it depends
+  # on.
+  defp stop_app_instance(root) do
+    case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
+      [{pid, _}] -> DynamicSupervisor.terminate_child(CmsHarness.AppInstanceSupervisor, pid)
+      [] -> :ok
     end
+  end
+
+  # Event-driven, not polled. `FakeServer.ProjectChannel.join/3` sends
+  # `{:joined, project_id, payload}` to whoever called `FakeServer.listen/1`
+  # (this test process, via `FakeServer.start/1`) the moment the real
+  # `ChannelClient`'s join actually lands, so this returns the instant that
+  # happens instead of on a fixed clock.
+  #
+  # The previous version polled `ChannelClient.connected?/1` on a 200×10ms
+  # (2s) budget — a sleep loop, and one this project's own rule forbids in
+  # tests. It also went red under Criterion Binding's full-suite branch
+  # sweep (run 52853, 14 of story 1108's spex, all "never connected"): the
+  # harness's own reconnect backoff is 1-2s a step, so a single lost first
+  # attempt under heavier load could eat the whole 2s budget on its own
+  # retry, cutting off a connection that was always going to land a moment
+  # later. A wait bounded by the event itself has no such ceiling to race.
+  #
+  # Matched on `harness_id`, not left a wildcard: every rig's `onboard/1`
+  # joins as project "1" (there is only ever one project id in this rig), so
+  # a stale reconnect from a *previous* test's not-yet-torn-down harness
+  # lands here too, and an unmatched `{:joined, _, _}` was satisfied by that
+  # one instead — this test's own join hadn't happened yet, `push_app_event`
+  # ran a moment later against a channel that was never actually set, and
+  # the failure read as "no channel has joined the fake server", not as the
+  # stale-message bug it was. `harness_id` is this rig's own working copy
+  # id, unique per call, so only this test's own join can satisfy it.
+  defp await_connected(root, working_copy_id) do
+    assert_receive {:joined, _project_id, %{"harness_id" => ^working_copy_id}}, 10_000,
+                   "the copy's harness never connected to the fake server (root: #{root})"
   end
 
   defp await_app_result(event, ref, timeout) do
