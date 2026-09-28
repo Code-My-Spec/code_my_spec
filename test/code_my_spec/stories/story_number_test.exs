@@ -36,25 +36,16 @@ defmodule CodeMySpec.Stories.StoryNumberTest do
     assert numbers == Enum.sort(numbers)
   end
 
-  test "deleting the highest story frees its number for reuse" do
-    # Asserted rather than left unsaid, because it is a deliberate trade and the
-    # opposite is the intuitive expectation.
-    #
-    # Preventing reuse needs a counter that outlives the rows, and the only
-    # place to keep one is the project — which makes every story insert lock the
-    # project row and mixes sequence state into it. That price is not worth
-    # paying now that attribution runs through `criteria.spec_path` rather than
-    # through the number in a directory name: a recycled number under a
-    # different title is a different directory, so nothing is misattributed.
-    #
-    # If this ever does bite, the fix is a dedicated counters table, not a
-    # column on projects.
+  test "retiring the highest story does not free its number" do
+    # Stories are retired, never deleted, so the highest number keeps its row
+    # and one above the highest never hands a number out twice — no counter
+    # needed.
     scope = full_scope_fixture()
     highest = story_fixture(scope)
 
-    {:ok, _} = Stories.delete_story(scope, highest)
+    {:ok, _} = Stories.retire_story(scope, highest)
 
-    assert story_fixture(scope).number == highest.number
+    assert story_fixture(scope).number == highest.number + 1
   end
 
   test "an explicitly supplied number is kept" do

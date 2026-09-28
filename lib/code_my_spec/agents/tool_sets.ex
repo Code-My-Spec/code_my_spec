@@ -156,7 +156,7 @@ defmodule CodeMySpec.Agents.ToolSets do
   # whether an issue is real is product's; declaring it fixed belongs to whoever
   # fixed it, which is coding — see the `@coding` comment.
   @product ~w(
-    list_stories get_story list_story_titles create_story update_story delete_story
+    list_stories get_story list_story_titles create_story update_story retire_story
     add_criterion update_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions

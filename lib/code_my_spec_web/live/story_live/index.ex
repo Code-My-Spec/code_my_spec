@@ -323,7 +323,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   def handle_event("delete", %{"id" => id}, socket) do
     scope = socket.assigns.scope
     story = Stories.get_story!(scope, id)
-    {:ok, _} = Stories.delete_story(scope, story)
+    {:ok, _} = Stories.retire_story(scope, story)
 
     {:noreply, stream_delete(socket, :stories, story)}
   end

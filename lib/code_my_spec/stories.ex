@@ -328,21 +328,13 @@ defmodule CodeMySpec.Stories do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
-  Deletes a story.
-
-  ## Examples
-
-      iex> delete_story(story)
-      {:ok, %Story{}}
-
-      iex> delete_story(story)
-      {:error, %Ecto.Changeset{}}
-
+  Retires a story. There is no delete: it keeps its row and number, leaves the
+  backlog and the graph, and its criteria retire with it.
   """
-  def delete_story(%Scope{} = scope, %Story{} = story) do
+  def retire_story(%Scope{} = scope, %Story{} = story) do
     true = story.account_id == scope.active_account_id
 
-    with {:ok, story = %Story{}} <- impl().delete_story(scope, story) do
+    with {:ok, story = %Story{}} <- impl().retire_story(scope, story) do
       broadcast(scope, {:deleted, story})
       {:ok, story}
     end

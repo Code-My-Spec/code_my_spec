@@ -92,9 +92,9 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   defp epic_line(%{name: name}), do: "\n\n**Epic:** #{name}"
   defp epic_line(_), do: ""
 
-  def story_deleted_response(story) do
+  def story_retired_response(story) do
     Response.tool()
-    |> Response.text("Story deleted: \"#{story.title}\" (ID: #{story.id})")
+    |> Response.text("Story retired: \"#{story.title}\" (ID: #{story.id})#{number_line(story)}")
   end
 
   def story_component_set_response(story) do

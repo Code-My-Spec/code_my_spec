@@ -87,7 +87,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd)
   component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
-  component(CodeMySpec.McpServers.Stories.Tools.DeleteStory)
+  component(CodeMySpec.McpServers.Stories.Tools.RetireStory)
   component(CodeMySpec.McpServers.Stories.Tools.GetStory)
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)
   component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)

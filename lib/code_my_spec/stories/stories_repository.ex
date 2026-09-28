@@ -22,9 +22,15 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   defp originator(%Scope{}), do: nil
 
   def list_stories(%Scope{} = scope) do
-    Story
-    |> Repo.all_by(project_id: scope.active_project.id)
+    scope
+    |> active_stories()
+    |> Repo.all()
     |> Repo.preload([:criteria, :tags])
+  end
+
+  # Retired stories are kept, never listed.
+  defp active_stories(%Scope{} = scope) do
+    from(s in Story, where: s.project_id == ^scope.active_project.id and is_nil(s.retired_at))
   end
 
   @doc """
@@ -132,8 +138,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_project_stories(%Scope{} = scope) do
     stories =
-      Story
-      |> Repo.all_by(project_id: scope.active_project.id)
+      scope
+      |> active_stories()
+      |> Repo.all()
       |> Repo.preload([:criteria, :tags])
 
     {:ok, stories}
@@ -158,7 +165,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     query =
       from(s in Story,
-        where: s.project_id == ^scope.active_project.id,
+        where: s.project_id == ^scope.active_project.id and is_nil(s.retired_at),
         order_by: [desc: s.updated_at]
       )
       |> filter_by_search(search)
@@ -274,7 +281,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     base_query =
       from(s in Story,
-        where: s.project_id == ^scope.active_project.id,
+        where: s.project_id == ^scope.active_project.id and is_nil(s.retired_at),
         order_by: [asc: s.title],
         select: %{id: s.id, title: s.title, component_id: s.component_id}
       )
@@ -292,7 +299,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_project_stories_by_priority(%Scope{} = scope) do
     from(s in Story,
-      where: s.project_id == ^scope.active_project.id,
+      where: s.project_id == ^scope.active_project.id and is_nil(s.retired_at),
       order_by: [
         asc_nulls_last: s.priority,
         asc: s.title
@@ -304,7 +311,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_unsatisfied_stories(%Scope{} = scope) do
     from(s in Story,
-      where: s.project_id == ^scope.active_project.id and is_nil(s.component_id),
+      where: s.project_id == ^scope.active_project.id and is_nil(s.component_id) and is_nil(s.retired_at),
       preload: [:criteria, :tags]
     )
     |> Repo.all()
@@ -312,7 +319,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_component_stories(%Scope{} = scope, component_id) do
     from(s in Story,
-      where: s.component_id == ^component_id and s.project_id == ^scope.active_project_id
+      where:
+        s.component_id == ^component_id and s.project_id == ^scope.active_project_id and
+          is_nil(s.retired_at)
     )
     |> Repo.all()
     |> Repo.preload([:criteria, :tags])
@@ -415,13 +424,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   # blocked each other, and the projects row carried sequence state that has
   # nothing to do with a project.
   #
-  # What that costs is reuse — delete the highest-numbered story and the next
-  # one takes its number back. That was a correctness bug when a directory
-  # number was how a spex found its story; it is not any more. Attribution goes
-  # through `criteria.spec_path`, which is exact, and directories are
-  # `<number>_<slug>`, so a recycled number under a different title is a
-  # different directory. What is left is a naming oddity in conversation, which
-  # is not worth locking a hot row for.
+  # Stories are retired, never deleted, so the highest number is never freed
+  # and a number is never handed out twice.
   #
   # The unique index on `(project_id, number)` is what catches a genuine
   # concurrent collision, rather than a lock preventing one.
@@ -454,18 +458,22 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
-  def delete_story(%Scope{} = scope, %Story{} = story) do
-    # `issues.story_id` is a plain integer (no FK constraint), so
-    # deleting a story without manually nilifying linked issues
-    # leaves orphan references that crash when the issue is later
-    # opened in the UI or surfaced through MCP tools (issue a400b815).
-    # Nilify in the same transaction as the delete so the two changes
-    # land atomically.
-    Repo.transaction(fn ->
-      from(i in CodeMySpec.Issues.Issue, where: i.story_id == ^story.id)
-      |> Repo.update_all(set: [story_id: nil])
+  # Retired, never deleted: the story keeps its row and number, leaves the
+  # backlog and the graph (a parked story produces no requirements), and its
+  # criteria retire with it. Linked issues keep their story reference.
+  def retire_story(%Scope{} = scope, %Story{} = story) do
+    now = DateTime.utc_now()
 
-      case PaperTrail.delete(story, originator: originator(scope)) do
+    Repo.transaction(fn ->
+      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+        where: c.story_id == ^story.id and is_nil(c.retired_at)
+      )
+      |> Repo.update_all(set: [retired_at: now])
+
+      story
+      |> Ecto.Changeset.change(retired_at: now, ready_for_dev: false)
+      |> PaperTrail.update(originator: originator(scope))
+      |> case do
         {:ok, %{model: model}} -> model
         {:error, changeset} -> Repo.rollback(changeset)
       end
