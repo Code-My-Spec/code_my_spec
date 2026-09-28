@@ -6,14 +6,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
 
   The link is stored by id, and the library refuses an id from another
   project. The MCP tool cannot reach this — it names stories by number, which
-  only ever resolves inside the active project (criterion 200) — so this is
-  the guard for every other caller that holds an id.
+  only ever resolves inside the active project (criterion 200). The persona
+  page can: its link event carries a story id.
   """
 
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Personas
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -21,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   setup :setup_active_project
 
   spex "cross-project link attempt", criterion: 197 do
-    scenario "the library refuses a story id from another project" do
+    scenario "the persona page is asked to link another project's story id" do
       given_ :persona_exists
 
       given_ "a story exists on a different project (same account)", context do
@@ -44,26 +43,26 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
             acceptance_criteria: ["Cross-project links are rejected"]
           )
 
-        {:ok,
-         context
-         |> Map.put(:foreign_story_id, story.id)
-         |> Map.put(:foreign_story_number, story.number)}
+        {:ok, Map.put(context, :foreign_story_id, story.id)}
       end
 
-      when_ "a link to the foreign story's id is asked of the library", context do
-        result =
-          Personas.link_persona_to_story(
-            context.scope,
-            context.persona_id,
-            context.foreign_story_id
+      when_ "the page's link event carries the foreign story's id", context do
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/personas/#{context.persona_slug}"
           )
 
-        {:ok, Map.put(context, :result, result)}
+        html = render_hook(view, "link", %{"story_id" => to_string(context.foreign_story_id)})
+
+        {:ok, Map.put(context, :html, html)}
       end
 
       then_ "it is refused as crossing the project boundary", context do
-        assert context.result == {:error, :cross_project},
-               "expected a cross-project refusal, got #{inspect(context.result)}"
+        assert context.html =~ "Could not link: :cross_project",
+               "expected a cross-project refusal, got: #{context.html}"
+
+        refute context.html =~ "Foreign story", "the foreign story must not appear as linked"
 
         {:ok, context}
       end
