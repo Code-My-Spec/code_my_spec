@@ -201,14 +201,8 @@ defmodule CmsHarness.AppInstance do
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
-      {:ok, new_state} ->
-        case after_promote(new_state) do
-          :ok -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-          {:error, reason} -> {:reply, {:error, reason}, new_state, idle_timeout()}
-        end
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, stopped, idle_timeout()}
+      {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+      {:error, reason} -> {:reply, {:error, reason}, stopped, idle_timeout()}
     end
   end
 
@@ -289,7 +283,7 @@ defmodule CmsHarness.AppInstance do
 
   defp start_app(state) do
     with :ok <- ensure_serve_recipe(state),
-         {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
+         {port, https_port, database} <- ensure_port_and_database(state),
          :ok <- ensure_database(state, database),
          {:ok, os_pid} <- launch(state, port, https_port, database) do
       new_state = %{
@@ -311,32 +305,6 @@ defmodule CmsHarness.AppInstance do
     if Runner.recipe?(state.root, "serve"), do: :ok, else: {:error, :no_start_recipe}
   end
 
-  # Story 1108, criterion 4663: the project-specific half of a promote's
-  # restart. `Promotion.Runner.restart/3` only ever calls the generic half
-  # (bring the app back up, the same as any other copy) — this repo's own
-  # need to also refresh its harness afterward, because server and harness
-  # here are the same codebase, cannot live in that shared module without
-  # every other project's promotion also having to answer for it. So it is
-  # an optional recipe instead: declared once, in this project's own
-  # justfile, run from here — the same `Runner.recipe?/2` check `serve`
-  # already uses — right after the app it names is confirmed serving.
-  #
-  # Only on `:restart`, never on `:ensure_running`'s "already running, just
-  # probe" or "never started before" branches — an agent asking for QA's
-  # app is not a promote, and running a recipe whose one declared use
-  # bounces this project's own harness on every such call would stop every
-  # other agent on it for no reason.
-  #
-  # A project with nothing declared pays nothing for a hook it never asked
-  # for — `recipe?/2` is the same one-line `just --list` check either way.
-  defp after_promote(state) do
-    if Runner.recipe?(state.root, "after-promote") do
-      Runner.run_after_promote(state.root)
-    else
-      :ok
-    end
-  end
-
   # Reused across restarts once allocated — a stable address is worth more
   # than a fresh one, and QA bookmarking a link should not have it move under
   # them on every restart.
@@ -348,27 +316,12 @@ defmodule CmsHarness.AppInstance do
   # `:eaddrinuse` against main's own dev server already holding it.
   defp ensure_port_and_database(%__MODULE__{port: port, https_port: https_port, database: database})
        when is_integer(port) and is_integer(https_port) and is_binary(database) do
-    {:ok, {port, https_port, database}}
-  end
-
-  # Main is not allocated a free port and a clone the way every other copy
-  # is — it is the one address every bookmark, browser tab and the MCP
-  # endpoint already point at, and its database is the real dev database,
-  # not a disposable copy of it. Both come from main's own `config/dev.exs`,
-  # the same source `Runner.main_database_name/1` already reads for cloning.
-  defp ensure_port_and_database(%__MODULE__{main?: true} = state) do
-    with {http, https} <- Runner.main_ports(state.root),
-         database when is_binary(database) <- Runner.main_database_name(state.root) do
-      {:ok, {state.port || http, state.https_port || https, state.database || database}}
-    else
-      _ -> {:error, {:cannot_resolve_main_address, state.root}}
-    end
+    {port, https_port, database}
   end
 
   defp ensure_port_and_database(state) do
-    {:ok,
-     {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
-      state.database || database_name(state)}}
+    {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
+     state.database || database_name(state)}
   end
 
   # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this

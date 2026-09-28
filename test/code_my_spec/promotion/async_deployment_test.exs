@@ -20,7 +20,6 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
 
@@ -42,10 +41,19 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   # so `story/x` already contains everything `running_root`'s HEAD has —
   # the fast-forward precondition holds by construction, since nothing
   # commits to `running_root`'s `main` afterward.
+  #
+  # The restart recipe writes a marker rather than doing anything that
+  # resembles a real restart: this project's own dev server must never be
+  # touched by a test.
   defp a_promotable_project do
     running_root = CodeMySpec.TempFile.dir("async-deployment-running")
     init_repo(running_root)
     File.write!(Path.join(running_root, "app.ex"), "defmodule App do\nend\n")
+
+    File.write!(Path.join(running_root, "justfile"), """
+    restart:
+        @date > {{justfile_directory()}}/.restarted
+    """)
 
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
@@ -68,35 +76,6 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     :ok
   end
 
-  # `Promotion.Runner.restart/3` now asks the running copy's own harness to
-  # restart its app through `WorkingCopies.AppTransport.restart_app/2` —
-  # the same channel verb every working copy's app already answers to,
-  # rather than shelling `just restart` in `running_root` directly. So the
-  # thing standing in for "the harness" here is a process registered in
-  # `HarnessRegistry` under the running copy's id, the same way a real
-  # `HarnessProjectChannel` registers itself on join — not a `justfile`
-  # recipe, which nothing calls any more.
-  #
-  # Writes `.restarted` itself, in place of what the old recipe did, so the
-  # rest of this test's "the restart actually ran, not just dispatched"
-  # assertion needs no other change.
-  defp a_running_harness_for(working_copy_id, running_root) do
-    test = self()
-
-    spawn(fn ->
-      :ok = HarnessRegistry.register_executor(working_copy_id, "test-harness", running_root)
-      send(test, :registered)
-
-      receive do
-        {:"$gen_call", from, {:restart_app, _request}} ->
-          File.write!(Path.join(running_root, ".restarted"), DateTime.to_string(DateTime.utc_now()))
-          GenServer.reply(from, {:ok, %{status: "serving", url: "http://127.0.0.1:4000", commit: "abc123"}})
-      end
-    end)
-
-    assert_receive :registered, 2_000
-  end
-
   test "reports merged-and-dispatched instead of waiting for the restart to answer" do
     scope = full_scope_fixture()
     {running_root, agent_root} = a_promotable_project()
@@ -108,7 +87,6 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
       )
 
     {:ok, running} = WorkingCopies.report_root(running, running_root)
-    a_running_harness_for(running.id, running_root)
 
     {:ok, agent} =
       WorkingCopies.issue(scope, nil,

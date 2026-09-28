@@ -440,25 +440,6 @@ serve:
 
     exec mix phx.server
 
-# Story 1108, criterion 4663: the project-specific half of a promote's
-# restart. `CmsHarness.AppInstance` runs this, if declared, right after
-# the app it just (re)started is confirmed serving — the generic half
-# (bringing the app back up at all) is `serve` above, the same for every
-# project; this is the one where server and harness are the same
-# codebase and have to land on the same commit together.
-#
-# Optional by construction: `AppInstance` checks for this recipe with the
-# same `just --list` probe `serve`'s own presence is checked with, and a
-# project that declares nothing pays nothing and gets nothing — which is
-# the right default for every project that is *not* also its own harness's
-# source, i.e. every generated project.
-#
-# `refresh-harness`'s own `pull=false`: this recipe runs after a promotion
-# has already merged the branch onto this checkout — there is nothing new
-# to pull, only a harness to bring current with what is already on disk.
-after-promote:
-    just refresh-harness 4004 false
-
 # Pull main into the running checkout without restarting — the code reloader takes it.
 pull:
     #!/usr/bin/env bash

@@ -54,21 +54,11 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
     test = self()
 
     spawn(fn ->
-      # `{instance, root}`, not a bare atom: `HarnessRegistry.executor_holder/1`
-      # (what `WorkingCopies.AppTransport` looks a working copy's channel up
-      # through) pattern-matches the registered value as that shape and
-      # raises a `CaseClauseError` on anything else. Every other test in this
-      # file reaches this channel through `Analysis.harness_fs_request/4`
-      # instead, which only matches `[{pid, _}]` and never looks at the value.
-      {:ok, _} = Registry.register(HarnessRegistry, id, {"test", nil})
+      {:ok, _} = Registry.register(HarnessRegistry, id, :test)
       send(test, {:registered, id})
 
-      # Any call, not just `{:fs_request, op, payload}`: this doubles as the
-      # channel `Runner.restart/3` calls through `AppTransport`, which sends
-      # `{:restart_app, %{}}` — a different message shape for the same
-      # "a channel that dies before answering" scenario.
       receive do
-        {:"$gen_call", _from, _msg} -> exit(reason)
+        {:"$gen_call", _from, {:fs_request, _op, _payload}} -> exit(reason)
       end
     end)
 
