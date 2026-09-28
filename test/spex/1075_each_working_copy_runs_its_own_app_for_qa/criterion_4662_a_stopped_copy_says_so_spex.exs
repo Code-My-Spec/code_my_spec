@@ -36,12 +36,20 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
       end
 
       given_ "the copy already reported serving", context do
-        report(context.socket, "ensure_app_running_result", %{
-          "status" => "ok",
-          "app_status" => "serving",
-          "app_url" => "http://127.0.0.1:51234",
-          "app_commit" => "abc1234"
-        })
+        # Phoenix.ChannelTest.push is the drive: a push over the joined
+        # channel is what makes the server call
+        # WorkingCopies.record_app_status/2, the same as a real harness's
+        # `_result` would.
+        ref =
+          Phoenix.ChannelTest.push(context.socket, "ensure_app_running_result", %{
+            "ref" => "unwaited",
+            "status" => "ok",
+            "app_status" => "serving",
+            "app_url" => "http://127.0.0.1:51234",
+            "app_commit" => "abc1234"
+          })
+
+        await_ok(ref)
 
         {:ok, copy} = WorkingCopies.fetch(context.scope.active_working_copy_id)
         assert copy.app_status == "serving"
@@ -83,11 +91,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
   # skipped.
   defp report(socket, event, payload) do
     ref = Phoenix.ChannelTest.push(socket, event, Map.put(payload, "ref", "unwaited"))
+    await_ok(ref)
+  end
 
+  defp await_ok(ref) do
     receive do
       %Phoenix.Socket.Reply{ref: ^ref, status: :ok} -> :ok
     after
-      1_000 -> flunk("#{event} was never acknowledged")
+      1_000 -> flunk("push #{ref} was never acknowledged")
     end
   end
 end

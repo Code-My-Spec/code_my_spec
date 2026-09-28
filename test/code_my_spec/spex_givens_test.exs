@@ -77,6 +77,17 @@ defmodule CodeMySpec.SpexGivensTest do
   # agent whose tools do not resolve must fail loudly — has no legal way to be
   # written at all.
   #
+  # Story 1108's own rig. `app_instance_rig` joins a real
+  # `HarnessProjectChannel` over the socket and installs
+  # `FakeAppInstanceRunner` — the drive, same precedent as
+  # `given_a_harnessed_checkout`: a checkout on the harness has no other way
+  # to say it. `push_app_event`/`push_app_event_as_main` push the request
+  # over that same channel and wait for its reply — the same precedent as
+  # `join_widget`/`join_and_send`. `set_idle_timeout` and
+  # `install_app_instance_runner` reconfigure the scripted runner and its
+  # timing, the same precedent as `Application.put_env`/`Req.Test.stub`: a
+  # provider seam, and the only legal way to say what it will answer.
+
   # Story 1052's two. `main_answers` calls `AnswerNotification.execute/2`, the main
   # agent's own tool, and `user_answers` goes through
   # `Notifications.answer_question_request/2` via the `Fixtures` bridge — what
@@ -236,6 +247,8 @@ defmodule CodeMySpec.SpexGivensTest do
     attach_recorded_analysis
     Projects.ensure_started await_connected SlotHolder.
     Application.put_env
+    app_instance_rig push_app_event push_app_event_as_main
+    set_idle_timeout install_app_instance_runner
   )
 
   # The failure message has always offered a second remedy — "if the

@@ -485,6 +485,17 @@ config :code_my_spec, CodeMySpecWeb.DevAnalysisLive,
 config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
   plug: {Req.Test, CodeMySpec.Workspaces.Runner.Local}
 
+# Same reasoning, same pin: an unpinned health probe would hit whatever is
+# actually listening on the port under test and read a real dev server's
+# answer as this instance's health. Story 1108's own spex never exercise
+# CmsHarness.AppInstance.Runner.Local directly (they run against
+# CmsHarnessTest.FakeAppInstanceRunner instead — this project's no-live-
+# shell-outs rule), so nothing stubs this plug today; it exists so this
+# module is accounted for by `HttpClientsAreStubbableTest` and safe by
+# construction if something ever does call it under test.
+config :code_my_spec, CmsHarness.AppInstance.Runner.Local,
+  plug: {Req.Test, CmsHarness.AppInstance.Runner.Local}
+
 # The platform deploy key, set once so tests that need one present do not have
 # to write it into application env themselves. `app_credential_test` and
 # `content_sync_controller_test` both did, with different values, which is
