@@ -36,8 +36,10 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       app_name: Keyword.get(opts, :app_name, Map.get(base, :app_name, "fakeapp")),
       database_exists?: Keyword.get(opts, :database_exists?, Map.get(base, :database_exists?, false)),
       main_database_name: Keyword.get(opts, :main_database_name, Map.get(base, :main_database_name, "fakeapp_dev")),
+      main_ports: Keyword.get(opts, :main_ports, Map.get(base, :main_ports, {4000, 4001})),
       clone_result: Keyword.get(opts, :clone_result, Map.get(base, :clone_result, :ok)),
       current_commit: Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
+      after_promote_result: Keyword.get(opts, :after_promote_result, Map.get(base, :after_promote_result, :ok)),
       launch_result: Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
       probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving))
@@ -101,6 +103,15 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
     Agent.get(__MODULE__, & &1.main_database_name)
   end
 
+  @doc "Sets what `main_ports/1` answers — `{http, https}` or `nil`."
+  def put_main_ports(ports), do: Agent.update(__MODULE__, &%{&1 | main_ports: ports})
+
+  @impl true
+  def main_ports(root) do
+    record(:main_ports, [root])
+    Agent.get(__MODULE__, & &1.main_ports)
+  end
+
   @impl true
   def clone_database(root, main_database, database) do
     record(:clone_database, [root, main_database, database])
@@ -126,6 +137,15 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   def current_commit(root) do
     record(:current_commit, [root])
     Agent.get(__MODULE__, & &1.current_commit)
+  end
+
+  @doc "Sets what `run_after_promote/1` answers — `:ok` or `{:error, reason}`."
+  def put_after_promote_result(result), do: Agent.update(__MODULE__, &%{&1 | after_promote_result: result})
+
+  @impl true
+  def run_after_promote(root) do
+    record(:run_after_promote, [root])
+    Agent.get(__MODULE__, & &1.after_promote_result)
   end
 
   @impl true
