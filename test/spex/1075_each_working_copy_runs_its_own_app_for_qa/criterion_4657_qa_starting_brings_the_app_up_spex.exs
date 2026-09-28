@@ -16,10 +16,10 @@ defmodule CodeMySpecSpex.Story1108.Criterion4657Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.ChannelTest
-  import CodeMySpec.DevicesFixtures
-  import CodeMySpec.StoriesFixtures
+  import CodeMySpecSpex.DeviceHelpers
 
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
 
@@ -31,8 +31,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4657Spex do
   spex "Building the QA prompt for a non-main copy asks the harness for its own app" do
     scenario "a story on a working copy that is not main" do
       given_ "a story, and this copy's harness connected", context do
-        story = story_fixture(context.scope, %{title: "Some feature"})
-        {:ok, _reply, socket} = join_harness_project(context.scope)
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Some feature",
+            description: "A feature this working copy is implementing.",
+            ready_for_dev: false
+          )
+
+        {:ok, _reply, socket} = join_harness_project(context)
 
         {:ok, context |> Map.put(:story, story) |> Map.put(:socket, socket)}
       end
@@ -67,12 +73,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4657Spex do
     end
   end
 
-  defp join_harness_project(scope) do
+  defp join_harness_project(context) do
+    scope = context.scope
+
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/app",
       "harness_id" => scope.active_working_copy_id,
-      "device" => %{"id" => device_fixture(scope).id}
+      "device" => %{"id" => device_id(context)}
     })
   end
 

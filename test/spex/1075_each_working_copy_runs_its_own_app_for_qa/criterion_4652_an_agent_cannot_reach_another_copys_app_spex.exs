@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.ChannelTest
-  import CodeMySpec.DevicesFixtures
+  import CodeMySpecSpex.DeviceHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning
@@ -33,9 +33,9 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
     scenario "a second copy is connected; the caller's own is not" do
       given_ "a second working copy, connected to the server", context do
         {:ok, other} =
-          WorkingCopies.issue(context.scope, nil, device: device_fixture(context.scope), root: "/a/second-copy")
+          WorkingCopies.issue(context.scope, nil, device: device_id(context), root: "/a/second-copy")
 
-        {:ok, _reply, _socket} = join_harness_project(context.scope, other.id)
+        {:ok, _reply, _socket} = join_harness_project(context, other.id)
 
         {:ok, Map.put(context, :other_copy_id, other.id)}
       end
@@ -64,12 +64,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
     end
   end
 
-  defp join_harness_project(scope, working_copy_id) do
+  defp join_harness_project(context, working_copy_id) do
+    scope = context.scope
+
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/other",
       "harness_id" => working_copy_id,
-      "device" => %{"id" => device_fixture(scope).id}
+      "device" => %{"id" => device_id(context)}
     })
   end
 

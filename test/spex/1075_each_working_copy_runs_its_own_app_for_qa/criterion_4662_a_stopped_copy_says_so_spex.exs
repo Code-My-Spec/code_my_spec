@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.ChannelTest
-  import CodeMySpec.DevicesFixtures
+  import CodeMySpecSpex.DeviceHelpers
 
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
   spex "Stopping the app clears its address, not just its status" do
     scenario "a copy that was serving, then stopped" do
       given_ "a working copy joined to its server channel", context do
-        {:ok, _reply, socket} = join_harness_project(context.scope)
+        {:ok, _reply, socket} = join_harness_project(context)
         {:ok, Map.put(context, :socket, socket)}
       end
 
@@ -76,12 +76,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
     end
   end
 
-  defp join_harness_project(scope) do
+  defp join_harness_project(context) do
+    scope = context.scope
+
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/app",
       "harness_id" => scope.active_working_copy_id,
-      "device" => %{"id" => device_fixture(scope).id}
+      "device" => %{"id" => device_id(context)}
     })
   end
 
