@@ -21,6 +21,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Utils
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.AppTransport
 
   @required_plan_sections ["app overview", "tools registry", "seed strategy"]
 
@@ -378,7 +380,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     sections =
       [
-        header_section(story_id, story, endpoint_module, criteria_text, specs_text),
+        header_section(scope, story_id, story, endpoint_module, criteria_text, specs_text),
         component_section,
         scripts_section,
         plan_section(),
@@ -393,14 +395,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Enum.join(sections, "\n\n")
   end
 
-  defp header_section(story_id, story, endpoint_module, criteria_text, specs_text) do
+  defp header_section(scope, story_id, story, endpoint_module, criteria_text, specs_text) do
     """
     # QA Story #{story_id}: #{story.title}
 
     Run a full QA session for this story. Two phases: write a testing brief,
     then execute it. The playbook below has the detailed procedure.
 
-    **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'`.
+    #{app_url_line(scope, endpoint_module)}
 
     ## Story description
 
@@ -415,6 +417,55 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     #{specs_text}\
     """
   end
+
+  # Story 1108: QA tests the working copy the story's fix actually landed
+  # on, not main's app wearing the story's name. A copy that never ran the
+  # fix answering as though it had is exactly how metric_flow's story 1103
+  # slipped through (issue 2d612ae8) — the copy's address silently served
+  # main's pre-fix code.
+  #
+  # Main keeps the existing instruction: its app is assumed already running,
+  # and every other story still QAs it there until phase 2 (revising story
+  # 1003) moves qa_complete before code_on_running_copy for every copy, not
+  # only non-main ones.
+  @app_start_timeout to_timeout(minute: 3)
+
+  defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
+       when is_binary(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{main: true}} -> main_app_url_line(endpoint_module)
+      {:ok, copy} -> own_copy_app_url_line(copy)
+      {:error, _} -> main_app_url_line(endpoint_module)
+    end
+  end
+
+  defp app_url_line(_scope, endpoint_module), do: main_app_url_line(endpoint_module)
+
+  defp main_app_url_line(endpoint_module) do
+    "**App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'`."
+  end
+
+  defp own_copy_app_url_line(copy) do
+    case AppTransport.ensure_app_running(copy.id, @app_start_timeout) do
+      {:ok, %{status: "serving", url: url, commit: commit}} ->
+        "**App URL:** #{url} — this working copy's own instance" <>
+          commit_suffix(commit) <> ", not main's. Test against this address."
+
+      {:ok, %{status: status, commit: commit}} ->
+        "**App URL:** this copy's own app is currently `#{status}`" <>
+          commit_suffix(commit) <>
+          ". Do not fall back to main's app instead — say so and investigate; " <>
+          "testing main would test different code than this story's fix."
+
+      {:error, reason} ->
+        "**App URL:** this copy's own app could not be started (#{inspect(reason)}). " <>
+          "Do not fall back to main's app — that would test different code than " <>
+          "this story's fix. Say so and investigate instead."
+    end
+  end
+
+  defp commit_suffix(nil), do: ""
+  defp commit_suffix(commit), do: " (serving #{String.slice(commit, 0, 8)})"
 
   defp plan_section do
     """

@@ -804,6 +804,30 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
+  def handle_in("ensure_app_running_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    result = decode_app_result(msg)
+    if from, do: GenServer.reply(from, result)
+    record_app_result(socket, result)
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
+  def handle_in("restart_app_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    result = decode_app_result(msg)
+    if from, do: GenServer.reply(from, result)
+    record_app_result(socket, result)
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
+  def handle_in("stop_app_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    result = decode_stop_result(msg)
+    if from, do: GenServer.reply(from, result)
+    if result == :ok, do: record_app_result(socket, {:ok, %{status: "down", url: nil, commit: nil}})
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
   def handle_in("tool_call_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_machine_tool(socket), ref)
     if from, do: GenServer.reply(from, decode_machine_tool_result(msg))
@@ -830,6 +854,21 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
   end
+
+  # The DB write behind every app verb's reply — never behind the reply
+  # itself, so the caller sees "ok" even on the store write's own failure:
+  # the far side really did start/stop the app either way, and a `from` still
+  # waiting must not be lied to about that over a WorkingCopies write.
+  defp record_app_result(socket, {:ok, %{status: _status} = info}) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
+      _ -> :ok
+    end
+
+    :ok
+  end
+
+  defp record_app_result(_socket, {:error, _reason}), do: :ok
 
   # The one moment we know what is running on this copy, which is the moment to
   # ask whether any of it should be working.
@@ -1033,6 +1072,43 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  # Story 1108: bring this copy's own app up, restart it, or stop it. Same
+  # shape as every request above — ref out, reply correlated back on the
+  # `_result` push — because the mechanism (find the pid holding the channel,
+  # ask it, wait for a correlated reply) is identical to asking the machine to
+  # start or stop an agent.
+  def handle_call({:ensure_app_running, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "ensure_app_running", request |> put_main(socket) |> Map.put("ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
+  def handle_call({:restart_app, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "restart_app", request |> put_main(socket) |> Map.put("ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
+  def handle_call({:stop_app, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "stop_app", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
+  # Story 1108: main's app is never stopped for idling. The harness has no
+  # way to know it is main on its own — only the server designates one — so
+  # it is told fresh on every start/restart rather than asked to remember.
+  defp put_main(request, socket), do: Map.put(request, "main", socket.assigns.harness.main == true)
+
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 
   defp pending_agent_stop(socket), do: socket.assigns[:pending_agent_stop] || %{}
@@ -1146,6 +1222,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # clear `os_pid` on a process that is still running, which is the state
   # nothing can recover from.
   defp decode_stop_result(other), do: {:error, {:unexpected_stop_result, other}}
+
+  # Story 1108. `app_url`/`app_commit` are optional in the reply — a report
+  # that only confirmed the app is still serving has neither reason to
+  # change, same as `WorkingCopies.record_app_status/2` treats them.
+  # `Map.get/2` rather than a second clause: a map pattern matches on "at
+  # least these keys," so a stricter-looking clause added below this one
+  # would never be reached.
+  defp decode_app_result(%{"status" => "ok", "app_status" => status} = msg)
+       when status in ~w(serving erroring down) do
+    {:ok, %{status: status, url: Map.get(msg, "app_url"), commit: Map.get(msg, "app_commit")}}
+  end
+
+  defp decode_app_result(%{"status" => "error", "reason" => reason}),
+    do: {:error, decode_reason(reason)}
+
+  defp decode_app_result(other), do: {:error, {:unexpected_app_result, other}}
 
   # Every deferred reply on this channel, and the promise that one arrives.
   #

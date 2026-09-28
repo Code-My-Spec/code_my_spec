@@ -20,7 +20,10 @@ config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "code_my_spec_dev",
+  # Story 1108: a working copy's own app runs on its own database, named by
+  # the harness and passed in rather than assumed. The default keeps every
+  # existing checkout — nothing sets this variable — unchanged.
+  database: System.get_env("DATABASE_NAME") || "code_my_spec_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10

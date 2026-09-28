@@ -9,6 +9,11 @@ defmodule CodeMySpecSpex do
       # `fa6d31bf`). None of this is a new crossing — every one of these was
       # already being called from a spex file; only the declaration was stale.
       CodeMySpec.Agents,
+      # Story 1108, criterion 4657 calls `QaStory.command/2` directly — it is
+      # the module under test (the prompt `start_task` hands a QA agent), the
+      # same reason `CodeMySpec.McpServers` is a dep for spex that call a tool
+      # module's `execute/2` directly rather than going in behind it.
+      CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Conversations,
       CodeMySpec.EpicDispatch,

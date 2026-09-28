@@ -27,6 +27,8 @@ defmodule CmsHarnessTest do
       Projects,
       FakeServer,
       BlockingProject,
-      SlotHolder
+      SlotHolder,
+      AppInstanceHelpers,
+      FakeAppInstanceRunner
     ]
 end

@@ -179,6 +179,41 @@ defmodule CmsHarnessTest.FakeServer do
     end
   end
 
+  @doc """
+  Story 1108: push one of `ensure_app_running`/`restart_app`/`stop_app` to the
+  harness, the way `HarnessProjectChannel`'s own `handle_call` clauses do —
+  ref included, since the real server always includes one for the harness to
+  echo back on the matching `_result`.
+  """
+  def push_app_event(event, payload \\ %{}) when event in ~w(ensure_app_running restart_app stop_app) do
+    ref = payload["ref"] || Integer.to_string(System.unique_integer([:positive]))
+
+    case :persistent_term.get({__MODULE__, :channel}, nil) do
+      nil ->
+        raise "no channel has joined the fake server yet — push_app_event can't reach a harness"
+
+      pid ->
+        send(pid, {:push_app_event, event, Map.put(payload, "ref", ref)})
+    end
+
+    ref
+  end
+
+  @doc """
+  Push any event with no reply expected — `"offboard"`, in particular, which
+  `ChannelClient` answers with a fire-and-forget `Task.start`, not a
+  `_result` push. Raises the same way `push_app_event/2` does when nothing
+  has joined yet.
+  """
+  def push_event(event, payload \\ %{}) do
+    case :persistent_term.get({__MODULE__, :channel}, nil) do
+      nil -> raise "no channel has joined the fake server yet — push_event can't reach a harness"
+      pid -> send(pid, {:push_app_event, event, payload})
+    end
+
+    :ok
+  end
+
   def notify(message) do
     case listener() do
       nil -> :ok
@@ -301,6 +336,25 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
     end
   end
 
+  # Story 1108. The real server persists app_status here
+  # (`WorkingCopies.record_app_status/2`) and replies `:ok` regardless of
+  # what the harness reported — a real harness's report of its own app's
+  # state is never itself a reason to refuse the round trip.
+  def handle_in("ensure_app_running_result", payload, socket) do
+    FakeServer.notify({:ensure_app_running_result, payload})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("restart_app_result", payload, socket) do
+    FakeServer.notify({:restart_app_result, payload})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("stop_app_result", payload, socket) do
+    FakeServer.notify({:stop_app_result, payload})
+    {:reply, :ok, socket}
+  end
+
   def handle_in(_event, _payload, socket), do: {:noreply, socket}
 
   # What the real channel replies: the manifest is taken, and reconciled after
@@ -314,6 +368,11 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
   @impl true
   def handle_info({:push_run_analysis, runs}, socket) do
     push(socket, "run_analysis", %{"runs" => runs})
+    {:noreply, socket}
+  end
+
+  def handle_info({:push_app_event, event, payload}, socket) do
+    push(socket, event, payload)
     {:noreply, socket}
   end
 
