@@ -79,7 +79,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   def handle_info({:question_deleted, _q}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:deleted, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ─── PM admin events ─────────────────────────────────────────────────
@@ -182,12 +181,12 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     criterion = AcceptanceCriteria.get_criterion(socket.assigns.scope, id)
 
     if criterion do
-      case AcceptanceCriteria.delete_criterion(socket.assigns.scope, criterion) do
-        {:ok, _deleted} ->
+      case AcceptanceCriteria.retire_criterion(socket.assigns.scope, criterion) do
+        {:ok, _retired} ->
           {:noreply,
            socket
            |> assign(menu_open: nil, confirming_delete: nil)
-           |> put_flash(:info, "Scenario deleted")}
+           |> put_flash(:info, "Scenario retired")}
 
         {:error, _reason} ->
           {:noreply,

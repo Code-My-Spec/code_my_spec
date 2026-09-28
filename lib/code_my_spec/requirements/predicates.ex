@@ -203,23 +203,24 @@ defmodule CodeMySpec.Requirements.Predicates do
       query,
       [node: n],
       exists(
-        from(c in Criterion, where: c.story_id == parent_as(:node).story_id, select: 1)
+        from(c in Criterion,
+          where: c.story_id == parent_as(:node).story_id and is_nil(c.retired_at),
+          select: 1
+        )
       ) and
         not exists(
           from(c in Criterion,
             as: :criterion,
-            where: c.story_id == parent_as(:node).story_id,
+            where: c.story_id == parent_as(:node).story_id and is_nil(c.retired_at),
             where:
-              is_nil(c.spec_path) or c.spec_path == "" or
-                not exists(
-                  from(f in File,
-                    where: f.role == ^role,
-                    where: f.path == parent_as(:criterion).spec_path,
-                    where: f.story_id == parent_as(:criterion).story_id,
-                    where: ^harness_filter(working_copy_id),
-                    select: 1
-                  )
-                ),
+              not exists(
+                from(f in File,
+                  where: f.role == ^role and f.valid == true,
+                  where: f.criterion_id == parent_as(:criterion).id,
+                  where: ^harness_filter(working_copy_id),
+                  select: 1
+                )
+              ),
             select: 1
           )
         )

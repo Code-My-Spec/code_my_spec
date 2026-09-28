@@ -2,9 +2,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   @moduledoc """
   Updates a user story.
 
-  Include all acceptance criteria in the input. Non-verified criteria will be
-  replaced with your input. Verified (locked) criteria are preserved and cannot
-  be modified or deleted via this tool - they are protected from LLM changes.
+  `acceptance_criteria` is optional; leave it out to keep the criteria as they
+  are. When sent, each description matching an existing criterion keeps that
+  criterion and its number, a new description adds one, and an existing one
+  left out is retired. Verified (locked) criteria are always kept. Prefer the
+  criterion tools (`add_criterion`, `update_criterion`, `retire_criterion`).
 
   ## Tags
 
@@ -108,22 +110,26 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
     end
   end
 
-  # Build criteria params that preserve verified criteria and replace unverified ones
+  # Criteria are matched to the story's existing ones by wording, so an agent
+  # that sends back the list it read keeps every criterion and its number.
+  # Verified criteria are always kept. An unmatched description is a new
+  # criterion; an existing one not sent is retired by the story changeset.
   defp build_criteria_params(new_descriptions, existing_criteria) do
-    # Keep verified criteria with their IDs (so they're preserved via cast_assoc)
-    verified_criteria =
-      existing_criteria
-      |> Enum.filter(& &1.verified)
-      |> Enum.map(fn c ->
+    {verified, unverified} = Enum.split_with(existing_criteria, & &1.verified)
+
+    kept_verified =
+      Enum.map(verified, fn c ->
         %{id: c.id, description: c.description, verified: c.verified, verified_at: c.verified_at}
       end)
 
-    # Transform new descriptions to criteria params (these will replace unverified criteria)
-    new_criteria =
-      new_descriptions
-      |> Enum.map(fn description -> %{description: description} end)
+    {matched, _unused} =
+      Enum.map_reduce(new_descriptions, unverified, fn description, pool ->
+        case Enum.split_with(pool, &(&1.description == description)) do
+          {[hit | rest], others} -> {%{id: hit.id, description: description}, rest ++ others}
+          {[], _} -> {%{description: description}, pool}
+        end
+      end)
 
-    # Verified criteria come first, then new criteria
-    verified_criteria ++ new_criteria
+    kept_verified ++ matched
   end
 end

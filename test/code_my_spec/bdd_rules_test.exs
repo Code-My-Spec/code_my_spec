@@ -11,7 +11,7 @@ defmodule CodeMySpec.BddRulesTest do
   import CodeMySpec.AcceptanceCriteriaFixtures
 
   describe "delete_rule/2 cascade" do
-    test "removes scenarios linked to the rule, leaving standalone criteria" do
+    test "retires scenarios linked to the rule, leaving standalone criteria" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{criteria: []})
       rule = insert_rule(scope, story)
@@ -22,13 +22,12 @@ defmodule CodeMySpec.BddRulesTest do
       assert {:ok, deleted} = BddRules.delete_rule(scope, rule)
       assert deleted.id == rule.id
 
-      # Regression: the linked scenario must be deleted, not orphaned with a
-      # nil rule_id (the criteria FK is on_delete: :nilify_all). Orphans kept
-      # inflating the story's acceptance-criteria count and survived a delete
-      # that claimed to cascade.
-      refute Repo.get(Criterion, scenario.id)
+      # The linked scenario must leave the story, not linger active with a nil
+      # rule_id — orphans inflated the story's criteria count. It is retired
+      # rather than deleted, so its number is never reused.
+      assert Repo.get(Criterion, scenario.id).retired_at
       # A criterion never linked to the rule is untouched.
-      assert Repo.get(Criterion, standalone.id)
+      refute Repo.get(Criterion, standalone.id).retired_at
       refute Repo.get(Rule, rule.id)
     end
 
@@ -103,7 +102,7 @@ defmodule CodeMySpec.BddRulesTest do
       scenario = criterion_fixture(scope, story, %{rule_id: rule.id})
 
       assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
-      refute Repo.get(Criterion, scenario.id)
+      assert Repo.get(Criterion, scenario.id).retired_at
     end
   end
 

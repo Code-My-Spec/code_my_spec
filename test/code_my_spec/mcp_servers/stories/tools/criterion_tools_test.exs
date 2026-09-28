@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.AcceptanceCriteria
-  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, DeleteCriterion, UpdateCriterion}
+  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, RetireCriterion, UpdateCriterion}
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -53,7 +53,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
         AcceptanceCriteria.create_criterion(scope, story, %{description: "Original"})
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.id), description: "Updated description"}
+      params = %{criterion_id: to_string(criterion.number), description: "Updated description"}
 
       assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
       assert response.type == :tool
@@ -76,7 +76,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       {:ok, _verified} = AcceptanceCriteria.mark_verified(scope, criterion)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.id), description: "Trying to change"}
+      params = %{criterion_id: to_string(criterion.number), description: "Trying to change"}
 
       assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
       assert response.isError == true
@@ -103,32 +103,31 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
     end
   end
 
-  describe "DeleteCriterion" do
-    test "deletes criterion" do
+  describe "RetireCriterion" do
+    test "retires criterion" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{title: "Test Story"})
 
       {:ok, criterion} =
-        AcceptanceCriteria.create_criterion(scope, story, %{description: "To delete"})
+        AcceptanceCriteria.create_criterion(scope, story, %{description: "To retire"})
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.id)}
+      params = %{criterion_id: to_string(criterion.number)}
 
-      assert {:reply, response, ^frame} = DeleteCriterion.execute(params, frame)
+      assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.type == :tool
       refute response.isError
 
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
 
-      assert content =~ "Criterion deleted"
-      assert content =~ "To delete"
+      assert content =~ "Criterion retired"
+      assert content =~ "To retire"
 
-      # Verify it's actually deleted
-      assert AcceptanceCriteria.get_criterion(scope, criterion.id) == nil
+      assert AcceptanceCriteria.get_criterion(scope, criterion.id).retired_at
     end
 
-    test "prevents deleting verified criterion" do
+    test "prevents retiring verified criterion" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{title: "Test Story"})
 
@@ -138,15 +137,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       {:ok, _verified} = AcceptanceCriteria.mark_verified(scope, criterion)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_id: to_string(criterion.id)}
+      params = %{criterion_id: to_string(criterion.number)}
 
-      assert {:reply, response, ^frame} = DeleteCriterion.execute(params, frame)
+      assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.isError == true
 
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
 
-      assert content =~ "Cannot delete verified"
+      assert content =~ "Cannot retire a verified"
     end
 
     test "returns error for non-existent criterion" do
@@ -155,7 +154,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
 
       params = %{criterion_id: "99999"}
 
-      assert {:reply, response, ^frame} = DeleteCriterion.execute(params, frame)
+      assert {:reply, response, ^frame} = RetireCriterion.execute(params, frame)
       assert response.isError == true
     end
   end

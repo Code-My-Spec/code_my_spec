@@ -39,7 +39,8 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
 
       spex "complete specification",
         description: "A complete spec with all metadata fields",
-        tags: [:integration, :authentication] do
+        tags: [:integration, :authentication],
+        criterion: 200 do
         scenario "user authentication flow", context do
           given_ "the user is not logged in", context do
             Map.put(context, :user, nil)
@@ -259,12 +260,21 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       assert spec.story_number == 123
     end
 
-    test "extracts criterion_id from filename pattern criterion_{id}_spex.exs" do
-      path = temp_story_criterion_file(valid_minimal_spex(), 123, 456)
+    test "takes criterion_id from the spex call, not the filename" do
+      content = String.replace(valid_minimal_spex(), ~s(spex "minimal spec" do), ~s(spex "minimal spec", criterion: 456 do))
+      path = temp_story_criterion_file(content, 123, 999)
       on_exit(fn -> cleanup_file(path) end)
 
       assert {:ok, spec} = Parser.parse(File.read!(path), path)
       assert spec.criterion_id == 456
+    end
+
+    test "a spex call that names no criterion leaves criterion_id nil" do
+      path = temp_story_criterion_file(valid_minimal_spex(), 123, 456)
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, spec} = Parser.parse(File.read!(path), path)
+      assert is_nil(spec.criterion_id)
     end
 
     test "handles spex files without story/criterion linking" do

@@ -1,0 +1,39 @@
+defmodule CodeMySpecSpex.Story124.Criterion5267Spex do
+  @moduledoc """
+  Story 124 — Project Setup
+  Criterion 5267 — Happy path renders without an error banner.
+
+  Step command errors propagate to the caller. With every step
+  satisfied, no `[data-role=setup-error]` banner is rendered.
+
+  Surface: `/app/projects/:project_id/setup`.
+  """
+
+  use CodeMySpecSpex.Case
+  alias CodeMySpecSpex.Fixtures
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Step command errors propagate to the caller", criterion: 74 do
+    scenario "happy path renders without error banner" do
+      given_ "every setup step is satisfied", context do
+        Fixtures.reset_setup_env(context.environment)
+        Fixtures.satisfy_setup_steps(context.scope, Fixtures.setup_steps())
+        {:ok, context}
+      end
+
+      when_ "developer views the project setup page", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
+
+        {:ok, Map.put(context, :view, view)}
+      end
+
+      then_ "no setup-error banner is rendered", context do
+        refute has_element?(context.view, "[data-role=setup-error]")
+        {:ok, context}
+      end
+    end
+  end
+end

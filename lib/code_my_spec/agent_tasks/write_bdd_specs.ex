@@ -7,11 +7,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   """
 
   alias CodeMySpec.BddSpecs
-  alias CodeMySpec.BddSpecs.ContentCheck
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Stories
 
   require Logger
@@ -423,11 +423,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         # written file kept it as an underscore, and following this line broke
         # a file that was fine.
         """
-        ### Criterion #{criterion.id}: #{criterion.description}
+        ### Criterion #{criterion.number}: #{criterion.description}
         #{criterion_body(criterion)}
+        **Names it**: `spex "…", criterion: #{criterion.number} do` — this is
+        what binds the file to the criterion.
         **Suggested file path**: `#{spec_path}`
-        Any path under the story's directory works — whatever you write is
-        adopted, and this line reports it back once it exists.\
+        The path is cosmetic; any file under `test/spex/` works.\
         #{criterion_surface_line(criterion)}\
         """
       end)
@@ -531,15 +532,17 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     For each criterion:
 
     1. Create the spec file at the path shown above.
-    2. Module name under the `#{spex_module}` namespace.
-    3. `use #{spex_module}.Case` (NOT `<App>Web.ConnCase` directly —
+    2. Put `criterion: <number>` on the `spex` call, as shown above. A spec
+       that names no criterion is invalid and covers nothing.
+    3. Module name under the `#{spex_module}` namespace.
+    4. `use #{spex_module}.Case` (NOT `<App>Web.ConnCase` directly —
        the case template wires up SexySpex + ConnTest + LiveViewTest +
        DB sandbox).
-    4. Drive the real interaction surface from `given_` / `when_` /
+    5. Drive the real interaction surface from `given_` / `when_` /
        `then_` steps. Never call context functions or `Repo` directly.
        Never read the DB from `then_`.
-    5. Run `mix compile` to verify.
-    6. **Stop and wait for validation** before starting the next spec.\
+    6. Run `mix compile` to verify.
+    7. **Stop and wait for validation** before starting the next spec.\
     """
   end
 
@@ -661,162 +664,63 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Validation (evaluate)
   # ============================================================================
 
+  # The requirement's own verdict, from the same function and the same rows,
+  # so the task cannot pass while `bdd_specs_exist` stays unsatisfied — the
+  # spin in 94327fe2, where this checked a derived path on any working copy and
+  # the requirement checked this copy's bound files.
   defp validate_story_specs(scope, story) do
     criteria = story.criteria || []
-    check = spec_checker(scope)
+    specs = scope |> Files.list_files() |> Enum.filter(&(&1.role == :bdd_spec))
 
-    errors =
-      criteria
-      |> Enum.map(fn criterion ->
-        spec_path = BddSpecs.spec_file_path(story, criterion)
-        {criterion, spec_path, check.(spec_path)}
-      end)
-      |> Enum.reject(fn {_, _, result} -> result == :ok end)
-      |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{ContentCheck.describe(reason, spec_path)}\n  Expected: `#{spec_path}`#{where(reason, scope)}"
-      end)
+    case RequirementCalculator.bdd_specs_covered(criteria, specs, :bdd_spec) do
+      {true, _details} ->
+        {:ok, :valid}
 
-    if Enum.empty?(errors) do
-      {:ok, :valid}
-    else
-      {:ok, :invalid, "Spec issues:\n\n#{Enum.join(errors, "\n\n")}"}
+      {false, %{missing_criteria: missing}} ->
+        errors =
+          criteria
+          |> Enum.filter(&(&1.number in missing))
+          |> Enum.map(&uncovered(&1, specs))
+
+        {:ok, :invalid, "Spec issues:\n\n#{Enum.join(errors, "\n\n")}#{looked_in(scope)}"}
+
+      {false, %{reason: reason}} ->
+        {:ok, :invalid, "Spec issues:\n\n#{reason}#{looked_in(scope)}"}
     end
   end
 
-  # Read the disk when there is one; otherwise read what the harness reported.
-  #
-  # There is no third option. A light harness's server has no working copy, and
-  # the version of this that only knew how to read a disk answered "Spec file
-  # not found" for every criterion — six of them, in a stop no edit could clear,
-  # while `bdd_specs_exist` read the harness's file report in the same second
-  # and correctly reported the same specs present. Two halves of one system
-  # disagreeing about one fact, because only one of them was looking.
-  # Across every checkout of the project, not just the one asking.
-  #
-  # A spec file is a fact about the story. Whether it exists does not depend on
-  # which copy you happen to be sitting in, and scoping it to the requesting one
-  # made `bdd_specs_exist` gate on *have you pushed* rather than on *have you
-  # written the spec*: an agent working in a worktree wrote six specs, was told
-  # all six were missing, and then told they were fine — with no change to any
-  # of them — because a `just refresh` had pulled them into a second checkout in
-  # between. Measured on story 967.
-  #
-  # Deliberately unlike problems and analyzer results, which `DeployKeyOrOAuth`
-  # narrows to the asking copy for good reason: those *are* per-checkout facts,
-  # and showing an agent 1138 credo problems from a worktree it cannot fix is
-  # the failure that scoping exists to prevent. A file's existence is not that.
-  #
-  # The best verdict wins where copies disagree — one that has scanned and
-  # approved the file outranks one that has not caught up, because a spec that
-  # is valid somewhere is written.
-  defp best_report(scope, spec_path) do
-    %{scope | active_working_copy_id: nil}
-    |> Files.get_by_paths([spec_path])
-    |> Enum.sort_by(fn
-      %{valid: true} -> 0
-      %{valid: false} -> 1
-      _ -> 2
-    end)
-    |> List.first()
-  end
-
-  # "Not found" is also what this says when the file is present and the lookup
-  # could not see it — wrong project, wrong working copy, or a scope carrying
-  # neither. Three separate defects have now hidden behind that one sentence
-  # (dca0bea9, d5fd302e, 6b2810a8), and each cost a diagnosis because the
-  # message named the file, which is the one thing that was never wrong.
-  #
-  # So it says where it looked. A refusal that names its own scope can be
-  # checked against the row in one step instead of five.
-  defp where(:file_not_found, scope) do
-    "\n  Looked in: project #{inspect(scope.active_project_id)}" <>
+  # Where it looked, so a refusal can be checked against the rows in one step.
+  # "Not found" once hid three unrelated scoping defects (dca0bea9, d5fd302e,
+  # 6b2810a8) because it named the file and not the scope.
+  defp looked_in(scope) do
+    "\n\nLooked in: project #{inspect(scope.active_project_id)}" <>
       ", working copy #{inspect(scope.active_working_copy_id)}"
   end
 
-  defp where(_reason, _scope), do: ""
+  # Why a criterion is uncovered: the reason on a spec that names it and could
+  # not bind, or that nothing names it.
+  defp uncovered(criterion, specs) do
+    naming =
+      Enum.filter(specs, fn spec ->
+        get_in(spec.validation_errors || %{}, ["data", "criterion"]) == criterion.number
+      end)
 
-  # The harness's verdict wins wherever it exists, and the disk is the fallback
-  # rather than the other way round.
-  #
-  # Keying on `environment: nil` was the wrong test. It asks whether a scope has
-  # an environment, when the question is whether *this server* can read one — and
-  # those differ exactly when a scope carries an environment that lives on
-  # another machine. There `Environments.read_file/2` fails, the catch-all below
-  # turns that into `:file_not_found`, and every criterion is reported missing
-  # for specs that are on disk and that the harness has already scanned and
-  # approved.
-  #
-  # Measured on story 966: eleven criteria reported "Spec file not found" while
-  # `files` held all eleven at exactly those paths with `valid: true`, and
-  # `bdd_specs_exist` was satisfied by the same rows in the same second. The
-  # agent could not clear it by any edit, because the answer never depended on
-  # the file's contents.
-  #
-  # Inverting the order fixes that and keeps the older-scanner case: a harness
-  # that sends no verdict (`:no_verdict`) or has no row yet falls through to the
-  # disk, which is what the environment branch is actually for.
-  defp spec_checker(scope) do
-    fn spec_path ->
-      case from_file_report(scope, spec_path) do
-        {:error, reason} when reason in [:file_not_found, :no_verdict] ->
-          from_disk(scope, spec_path, reason)
+    why =
+      case naming do
+        [] ->
+          "No valid spec names it. Put `criterion: #{criterion.number}` on a `spex` call."
 
-        result ->
-          result
+        files ->
+          Enum.map_join(files, "\n  ", &"`#{&1.path}`: #{reported_reason(&1)}")
       end
-    end
-  end
 
-  defp from_disk(%{environment: nil}, _spec_path, reported), do: {:error, reported}
-
-  defp from_disk(%{environment: env}, spec_path, reported) do
-    case validate_single_spec(env, spec_path) do
-      # No disk here either. The file report's answer is the better of the two,
-      # because it at least describes a machine that has one.
-      {:error, :no_environment} -> {:error, reported}
-      result -> result
-    end
-  end
-
-  # The manifest is the whole truth — a path absent from it is a deletion, not
-  # an omission — so no row here really is "not found", and says so.
-  defp from_file_report(scope, spec_path) do
-    case best_report(scope, spec_path) do
-      nil -> {:error, :file_not_found}
-      %{valid: true} -> :ok
-      %{valid: false} = file -> {:error, reported_reason(file)}
-      # Present, but this harness sent no verdict for it — an older scanner that
-      # does not check spex content. Existence is all that is known, and this
-      # must not be dressed up as either a pass or a failure.
-      %{valid: nil} -> {:error, :no_verdict}
-    end
+    "Criterion #{criterion.number} (#{criterion.description}): #{why}"
   end
 
   defp reported_reason(%{validation_errors: %{"reason" => reason}}) when is_binary(reason),
     do: reason
 
-  defp reported_reason(%{validation_errors: errors}) when is_map(errors) and map_size(errors) > 0,
-    do: inspect(errors)
-
   defp reported_reason(_file), do: "the harness reported this spec invalid without saying why"
-
-  defp validate_single_spec(env, spec_path) do
-    case Environments.read_file(env, spec_path) do
-      {:ok, content} ->
-        ContentCheck.check(content, spec_path)
-
-      # Not the same as absence, and collapsing them is what made this
-      # unresolvable. A light harness's server holds no working copy, so this
-      # read cannot succeed for any file — and every criterion came back "Spec
-      # file not found" for specs that were on the agent's disk, in a stop no
-      # edit could clear.
-      {:error, :no_environment} ->
-        {:error, :no_environment}
-
-      _ ->
-        {:error, :file_not_found}
-    end
-  end
 
   # ============================================================================
   # Helpers

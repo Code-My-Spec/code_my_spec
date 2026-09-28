@@ -2,6 +2,7 @@ defmodule CodeMySpec.BddSpecsTest do
   use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.BddSpecs.Stamp
   alias CodeMySpec.Environments.Environment
 
   import CodeMySpec.UsersFixtures
@@ -22,7 +23,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story_dir = Path.join(spex_dir, "#{story_number}_user_story")
       File.mkdir_p!(story_dir)
       file_path = Path.join(story_dir, "criterion_#{criterion_id}_spex.exs")
-      File.write!(file_path, content)
+      File.write!(file_path, names_criterion(content, criterion_id))
     end
 
     # Update the project's code_repo to point to this temp directory
@@ -30,6 +31,19 @@ defmodule CodeMySpec.BddSpecsTest do
     project = Map.put(scope.active_project, :code_repo, dir)
     %{scope | active_project: project}
   end
+
+  # A spec says which criterion it covers on its `spex` call; the filename is
+  # a convention. Content that already names one, or cannot, is left as is.
+  defp names_criterion(content, criterion_id),
+    do: stamp_unless_named(content, String.contains?(content, "criterion:"), criterion_id)
+
+  defp stamp_unless_named(content, true, _criterion_id), do: content
+
+  defp stamp_unless_named(content, false, criterion_id),
+    do: stamped(Stamp.stamp(content, criterion_id), content)
+
+  defp stamped({:ok, stamped}, _content), do: stamped
+  defp stamped(:error, content), do: content
 
   defp create_environment(scope) do
     %Environment{
@@ -69,14 +83,15 @@ defmodule CodeMySpec.BddSpecsTest do
     """
   end
 
-  defp complete_spex_content do
+  defp complete_spex_content(criterion \\ 1) do
     """
     defmodule CompleteSpex do
       use SexySpex
 
       spex "complete specification",
         description: "A complete spec with metadata",
-        tags: [:integration, :acceptance] do
+        tags: [:integration, :acceptance],
+        criterion: #{criterion} do
         scenario "first scenario", context do
           given_ "setup step", context do
             context
@@ -343,7 +358,7 @@ defmodule CodeMySpec.BddSpecsTest do
   # ============================================================================
 
   describe "list_specs_for_criterion/2" do
-    test "returns specs matching criterion filename pattern" do
+    test "returns specs whose spex call names the criterion" do
       scope = full_scope_fixture()
 
       specs = [
@@ -383,7 +398,7 @@ defmodule CodeMySpec.BddSpecsTest do
       assert result == []
     end
 
-    test "extracts criterion_id from filename convention" do
+    test "takes criterion_id from the spex call" do
       scope = full_scope_fixture()
 
       specs = [{1, 456, valid_spex_content("test spec")}]
@@ -400,7 +415,7 @@ defmodule CodeMySpec.BddSpecsTest do
     test "handles criterion spec with multiple scenarios" do
       scope = full_scope_fixture()
 
-      specs = [{1, 10, complete_spex_content()}]
+      specs = [{1, 10, complete_spex_content(10)}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -425,7 +440,7 @@ defmodule CodeMySpec.BddSpecsTest do
       # Embed criteria in story for coverage check
       story = %{story | criteria: [criterion]}
 
-      specs = [{story.number, criterion.id, valid_spex_content("coverage spec")}]
+      specs = [{story.number, criterion.number, valid_spex_content("coverage spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -449,8 +464,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story2 = %{story2 | criteria: [criterion2]}
 
       specs = [
-        {story1.number, criterion1.id, valid_spex_content("story1 spec")},
-        {story2.number, criterion2.id, valid_spex_content("story2 spec")}
+        {story1.number, criterion1.number, valid_spex_content("story1 spec")},
+        {story2.number, criterion2.number, valid_spex_content("story2 spec")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -473,7 +488,7 @@ defmodule CodeMySpec.BddSpecsTest do
       # Embed criteria in story
       story = %{story | criteria: [criterion1, criterion2]}
 
-      specs = [{story.number, criterion1.id, valid_spex_content("covered criterion")}]
+      specs = [{story.number, criterion1.number, valid_spex_content("covered criterion")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -514,7 +529,7 @@ defmodule CodeMySpec.BddSpecsTest do
       criterion2 = criterion_fixture(scope, story)
       story = %{story | criteria: [criterion1, criterion2]}
 
-      specs = [{story.number, criterion1.id, valid_spex_content("spec")}]
+      specs = [{story.number, criterion1.number, valid_spex_content("spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -540,8 +555,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
-        {story.number, criterion1.id, valid_spex_content("covered 1")},
-        {story.number, criterion2.id, valid_spex_content("covered 2")}
+        {story.number, criterion1.number, valid_spex_content("covered 1")},
+        {story.number, criterion2.number, valid_spex_content("covered 2")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -554,8 +569,8 @@ defmodule CodeMySpec.BddSpecsTest do
       assert Map.has_key?(result, :covered)
       assert Map.has_key?(result, :missing)
 
-      assert criterion1.id in result.covered
-      assert criterion2.id in result.covered
+      assert criterion1.number in result.covered
+      assert criterion2.number in result.covered
     end
 
     test "returns missing criteria IDs without specs" do
@@ -567,15 +582,15 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       # Only create spec for criterion1
-      specs = [{story.number, criterion1.id, valid_spex_content("only one")}]
+      specs = [{story.number, criterion1.number, valid_spex_content("only one")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
       on_exit(fn -> cleanup_test_directory(scope) end)
 
       result = BddSpecs.check_story_coverage(env, story)
-      assert criterion1.id in result.covered
-      assert criterion2.id in result.missing
+      assert criterion1.number in result.covered
+      assert criterion2.number in result.missing
     end
 
     test "handles story with full coverage (empty missing list)" do
@@ -587,8 +602,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
-        {story.number, criterion1.id, valid_spex_content("spec 1")},
-        {story.number, criterion2.id, valid_spex_content("spec 2")}
+        {story.number, criterion1.number, valid_spex_content("spec 1")},
+        {story.number, criterion2.number, valid_spex_content("spec 2")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -620,8 +635,8 @@ defmodule CodeMySpec.BddSpecsTest do
 
       result = BddSpecs.check_story_coverage(env, story)
       assert result.covered == []
-      assert criterion1.id in result.missing
-      assert criterion2.id in result.missing
+      assert criterion1.number in result.missing
+      assert criterion2.number in result.missing
     end
 
     test "handles story with no criteria" do
@@ -794,7 +809,7 @@ defmodule CodeMySpec.BddSpecsTest do
       criterion = criterion_fixture(scope, story)
 
       # Create project WITH spec for the criterion
-      specs = [{story.number, criterion.id, valid_spex_content("complete spec")}]
+      specs = [{story.number, criterion.number, valid_spex_content("complete spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -816,7 +831,7 @@ defmodule CodeMySpec.BddSpecsTest do
       _criterion2 = criterion_fixture(scope, story2)
 
       # Create spec only for story1
-      specs = [{story1.number, criterion1.id, valid_spex_content("story1 spec")}]
+      specs = [{story1.number, criterion1.number, valid_spex_content("story1 spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -866,7 +881,7 @@ defmodule CodeMySpec.BddSpecsTest do
       # stories they were written for — a uniform drift of 51 on this project.
       assert String.contains?(result, "#{story.number}_")
       # Filename includes criterion ID and slugified description
-      assert String.contains?(result, "criterion_#{criterion.id}_")
+      assert String.contains?(result, "criterion_#{criterion.number}_")
       assert String.ends_with?(result, "_spex.exs")
     end
 
@@ -899,7 +914,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result = BddSpecs.spec_file_path(story, criterion)
 
       # Filename is criterion_<id>_<slug>_spex.exs
-      assert String.contains?(result, "criterion_#{criterion.id}_")
+      assert String.contains?(result, "criterion_#{criterion.number}_")
       assert String.ends_with?(result, "_spex.exs")
     end
 

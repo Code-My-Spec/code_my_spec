@@ -39,7 +39,6 @@ defmodule CodeMySpec.AcceptanceCriteria do
 
     * {:created, %Criterion{}}
     * {:updated, %Criterion{}}
-    * {:deleted, %Criterion{}}
   """
   def subscribe_criteria(%Scope{} = scope) do
     key = scope.active_account_id
@@ -92,11 +91,11 @@ defmodule CodeMySpec.AcceptanceCriteria do
     end
   end
 
-  @doc "Deletes an acceptance criterion."
-  def delete_criterion(%Scope{} = scope, %Criterion{} = criterion) do
-    case impl().delete_criterion(scope, criterion) do
-      {:ok, deleted} = ok ->
-        broadcast(scope, {:deleted, deleted})
+  @doc "Retires a criterion. There is no delete: a retired one keeps its number."
+  def retire_criterion(%Scope{} = scope, %Criterion{} = criterion) do
+    case impl().retire_criterion(scope, criterion) do
+      {:ok, retired} = ok ->
+        broadcast(scope, {:updated, retired})
         ok
 
       other ->
@@ -104,24 +103,35 @@ defmodule CodeMySpec.AcceptanceCriteria do
     end
   end
 
+  @doc "Brings a retired criterion back under its number."
+  def restore_criterion(%Scope{} = scope, %Criterion{} = criterion) do
+    case impl().restore_criterion(scope, criterion) do
+      {:ok, restored} = ok ->
+        broadcast(scope, {:updated, restored})
+        ok
+
+      other ->
+        other
+    end
+  end
+
+  @doc "A story's criteria, retired ones included."
+  def list_all_story_criteria(%Scope{} = scope, story_id),
+    do: impl().list_all_story_criteria(scope, story_id)
+
+  @doc "The project's criteria with these numbers, retired ones included."
+  def list_criteria_by_number(%Scope{} = scope, numbers),
+    do: impl().list_criteria_by_number(scope, numbers)
+
+  @doc "A criterion by its number, retired or not. Returns nil if not found."
+  def get_criterion_by_number(%Scope{} = scope, number),
+    do: impl().get_criterion_by_number(scope, number)
+
   @doc "Returns an `%Ecto.Changeset{}` for tracking criterion changes."
   def change_criterion(%Scope{} = scope, %Criterion{} = criterion, attrs \\ %{}) do
     true = criterion.project_id == scope.active_project.id
     Criterion.changeset(criterion, attrs)
   end
-
-  @doc """
-  Record where each criterion's spex file lives, for criteria that do not
-  already say. See `AcceptanceCriteriaRepository.claim_spec_paths/3`.
-
-  `recorded_paths` are the files already recorded for this checkout. The caller
-  supplies them — it is `Files` that syncs files, and reading them back from
-  here made the two contexts depend on each other.
-  """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
-          {:ok, non_neg_integer()}
-  def claim_spec_paths(%Scope{} = scope, paths, recorded_paths),
-    do: impl().claim_spec_paths(scope, paths, recorded_paths)
 
   @doc "Every claimed spec path in the project, mapped to the story that owns it."
   @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}

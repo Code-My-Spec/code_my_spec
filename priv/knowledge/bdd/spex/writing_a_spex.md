@@ -26,6 +26,21 @@ same number:
 defmodule <App>Spex.Story<story_number>.Criterion<criterion_number>Spex do
 ```
 
+## The file names its criterion
+
+**The `spex` call says which criterion the file covers**, by the number
+`get_story` shows as `(criterion N)`:
+
+```elixir
+spex "<engineer/agent> does <action>", criterion: 12 do
+```
+
+That line is the binding. The path above is a convention, not an identity: a
+spec moved or renamed still covers criterion 12. A spec with no `criterion:`
+is invalid and covers nothing; one naming a number the project does not have,
+a retired criterion, or a criterion another spec already covers is invalid
+too, and the Files page and `evaluate_task` say which.
+
 ## Minimal template
 
 ```elixir
@@ -42,7 +57,7 @@ defmodule <App>Spex.Story<id>.Criterion<id>Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "<engineer/agent> does <action>" do
+  spex "<engineer/agent> does <action>", criterion: <criterion_number> do
     scenario "<observable outcome>" do
       given_ :synced_context_component
       given_ :on_configuration_page

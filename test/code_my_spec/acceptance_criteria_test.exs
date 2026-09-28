@@ -17,7 +17,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       assert :ok = AcceptanceCriteria.subscribe_criteria(scope)
     end
 
-    test "receives {:created, criterion}, {:updated, criterion}, {:deleted, criterion} messages" do
+    test "receives {:created, criterion} and {:updated, criterion} messages, retiring included" do
       scope = full_scope_fixture()
       story = story_without_criteria(scope)
 
@@ -41,11 +41,11 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       assert_receive {:updated, received_updated}
       assert received_updated.id == updated_criterion.id
 
-      # Test deleted event
-      {:ok, deleted_criterion} = AcceptanceCriteria.delete_criterion(scope, updated_criterion)
+      # Retiring is an update: the criterion keeps its row and number.
+      {:ok, retired_criterion} = AcceptanceCriteria.retire_criterion(scope, updated_criterion)
 
-      assert_receive {:deleted, received_deleted}
-      assert received_deleted.id == deleted_criterion.id
+      assert_receive {:updated, %{retired_at: %DateTime{}} = received_retired}
+      assert received_retired.id == retired_criterion.id
     end
   end
 
@@ -170,15 +170,15 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
     end
   end
 
-  describe "delete_criterion/2" do
-    test "deletes criterion successfully" do
+  describe "retire_criterion/2" do
+    test "retires the criterion and keeps it readable by number" do
       scope = full_scope_fixture()
       story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert {:ok, deleted} = AcceptanceCriteria.delete_criterion(scope, criterion)
-      assert deleted.id == criterion.id
-      assert is_nil(AcceptanceCriteria.get_criterion(scope, criterion.id))
+      assert {:ok, retired} = AcceptanceCriteria.retire_criterion(scope, criterion)
+      assert retired.id == criterion.id
+      assert AcceptanceCriteria.get_criterion_by_number(scope, criterion.number).retired_at
     end
 
     test "verifies ownership via project_id" do
@@ -188,20 +188,20 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       criterion = criterion_fixture(scope, story)
 
       assert {:error, :cross_project} =
-               AcceptanceCriteria.delete_criterion(other_scope, criterion)
+               AcceptanceCriteria.retire_criterion(other_scope, criterion)
     end
 
-    test "broadcasts deleted event on success" do
+    test "broadcasts an updated event on success" do
       scope = full_scope_fixture()
       story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       AcceptanceCriteria.subscribe_criteria(scope)
 
-      assert {:ok, deleted} = AcceptanceCriteria.delete_criterion(scope, criterion)
+      assert {:ok, retired} = AcceptanceCriteria.retire_criterion(scope, criterion)
 
-      assert_receive {:deleted, received_criterion}
-      assert received_criterion.id == deleted.id
+      assert_receive {:updated, received_criterion}
+      assert received_criterion.id == retired.id
     end
   end
 

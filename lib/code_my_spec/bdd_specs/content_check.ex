@@ -23,21 +23,47 @@ defmodule CodeMySpec.BddSpecs.ContentCheck do
           :no_scenarios
           | :missing_steps
           | :missing_spex_case
+          | :no_criterion
           | {:syntax_error, %{optional(:line) => integer() | nil, message: String.t()}}
           | {:parse_error, term()}
 
   @doc """
-  Check spec text. `:ok`, or `{:error, reason}` naming the first thing wrong.
+  Check spec text. `{:ok, criterion}` with the criterion number the file's
+  `spex` call names, or `{:error, reason}` naming the first thing wrong.
 
   `path` is used only for compiler messages, so it can be any label — nothing
   reads it back off a disk.
   """
-  @spec check(String.t(), String.t()) :: :ok | {:error, reason()}
+  @spec check(String.t(), String.t()) :: {:ok, pos_integer()} | {:error, reason()}
   def check(content, path) when is_binary(content) do
     with :ok <- compiles(content, path),
          {:ok, spec} <- parsed(content, path),
-         :ok <- uses_spex_case(content) do
-      has_scenarios_with_steps(spec)
+         :ok <- uses_spex_case(content),
+         :ok <- has_scenarios_with_steps(spec) do
+      names_criterion(spec)
+    end
+  end
+
+  @doc """
+  The criterion number a spec's `spex` call names, whether or not the spec
+  passes `check/2` — so a spec that names its criterion and is broken can be
+  reported against that criterion.
+  """
+  @spec named_criterion(String.t(), String.t()) :: pos_integer() | nil
+  def named_criterion(content, path) do
+    case Parser.parse(content, path) do
+      {:ok, %{criterion_id: number}} -> number
+      _ -> named_on_spex_line(content)
+    end
+  end
+
+  # A file that does not compile cannot be parsed, and its compile error is
+  # exactly what the agent needs reported against the criterion — so read the
+  # number off the `spex` line itself.
+  defp named_on_spex_line(content) do
+    case Regex.run(~r/^\s*spex\s+"[^\n]*?\bcriterion:\s*(\d+)/m, content) do
+      [_, number] -> String.to_integer(number)
+      nil -> nil
     end
   end
 
@@ -66,6 +92,20 @@ defmodule CodeMySpec.BddSpecs.ContentCheck do
       "validation verdict for it — so its contents have not been checked here. " <>
       "Upgrade the harness to have spex files validated where the disk is."
   end
+
+  def describe(:no_criterion, _path) do
+    "Spec names no criterion. Add `criterion: <number>` to the `spex` call — " <>
+      ~s(`spex "…", criterion: 12 do` — using the number `get_story` shows.)
+  end
+
+  def describe({:unknown_criterion, number}, _path),
+    do: "Criterion #{number} is not in this project, so this spec covers nothing."
+
+  def describe({:retired_criterion, number}, _path),
+    do: "Criterion #{number} is retired. Delete this spec."
+
+  def describe({:duplicate_criterion, number, covered_by}, _path),
+    do: "Criterion #{number} is already covered by #{covered_by}. One spec per criterion."
 
   def describe(:no_scenarios, _path), do: "Must contain at least one scenario"
 
@@ -151,6 +191,9 @@ defmodule CodeMySpec.BddSpecs.ContentCheck do
       true -> :ok
     end
   end
+
+  defp names_criterion(%{criterion_id: number}) when is_integer(number), do: {:ok, number}
+  defp names_criterion(_spec), do: {:error, :no_criterion}
 
   defp has_steps?(scenario) do
     not Enum.empty?(scenario.given_steps) or

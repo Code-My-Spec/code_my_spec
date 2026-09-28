@@ -74,7 +74,6 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   def handle_info({:question_deleted, _}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:deleted, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp refresh(%{assigns: %{story: nil}} = socket), do: socket

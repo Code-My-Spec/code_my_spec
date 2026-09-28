@@ -185,7 +185,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
     criterion_sections =
       criteria
       |> Enum.map(fn criterion ->
-        criterion_specs = Map.get(specs_by_criterion, criterion.id, [])
+        criterion_specs = Map.get(specs_by_criterion, criterion.number, [])
         format_criterion_coverage(criterion, criterion_specs)
       end)
 
@@ -291,7 +291,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
   end
 
   defp format_criterion_line(criterion, covered_criterion_ids) do
-    marker = if criterion.id in covered_criterion_ids, do: "✓", else: "❌"
+    marker = if criterion.number in covered_criterion_ids, do: "✓", else: "❌"
     "- #{marker} #{criterion.description}"
   end
 

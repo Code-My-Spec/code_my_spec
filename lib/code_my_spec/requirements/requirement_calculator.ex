@@ -559,7 +559,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   @doc """
-  Whether every criterion on a story has a file of `role` behind it.
+  Whether every criterion on a story has a valid file of `role` naming it.
+
+  "Naming it" is `criterion_id`, bound at sync from the number the file's
+  `spex` call names — not a path. The evaluator for `write_bdd_specs` calls this
+  too, so the task and the requirement cannot disagree (94327fe2).
 
   The verdict on its own, separated from the query that feeds it, so
   `Requirements.Handlers` can settle this requirement across every story from
@@ -584,26 +588,25 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     do: {false, %{reason: "no acceptance criteria on this story"}}
 
   def bdd_specs_covered(criteria, files, role) do
-    covered_paths =
+    covered =
       files
-      |> Enum.filter(&(&1.role == role))
-      |> MapSet.new(& &1.path)
+      |> Enum.filter(&(&1.role == role and &1.valid == true and not is_nil(&1.criterion_id)))
+      |> MapSet.new(& &1.criterion_id)
 
     missing =
       criteria
-      |> Enum.filter(fn c ->
-        is_nil(c.spec_path) or c.spec_path == "" or
-          not MapSet.member?(covered_paths, c.spec_path)
-      end)
-      |> Enum.map(& &1.id)
+      |> Enum.reject(&MapSet.member?(covered, &1.id))
+      |> Enum.map(& &1.number)
 
     if missing == [] do
-      {true, %{status: "#{role} file exists for every criterion"}}
+      {true, %{status: "a valid #{role} file names every criterion"}}
     else
       {false,
        %{
-         reason: "#{length(missing)} of #{length(criteria)} criteria missing #{role} file",
-         missing_criteria_ids: missing
+         reason:
+           "#{length(missing)} of #{length(criteria)} criteria have no valid #{role} file naming them: " <>
+             Enum.map_join(missing, ", ", &"criterion #{&1}"),
+         missing_criteria: missing
        }}
     end
   end

@@ -17,7 +17,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
   Both directions are pinned. A file recorded only for the working copy the
   request names has to satisfy the check, and a file recorded only for a
   *different* copy must not — otherwise one agent's worktree would satisfy
-  another's requirement.
+  another's requirement. The evaluator asks exactly what `bdd_specs_exist`
+  asks (story 1077), so neither can pass while the other refuses.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -57,24 +58,34 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
     {:ok, theirs} =
       WorkingCopies.issue(scope, nil, label: "theirs", device: device_fixture(scope))
 
-    paths = Enum.map(story.criteria, &BddSpecs.spec_file_path(story, &1))
+    specs = Enum.map(story.criteria, &{BddSpecs.spec_file_path(story, &1), &1})
 
-    %{scope: scope, story: story, paths: paths, mine: mine, theirs: theirs}
+    %{scope: scope, story: story, specs: specs, mine: mine, theirs: theirs}
   end
 
   # The writer names its working copy through the scope, which is the same way
   # the harness's reconcile does it.
-  defp record(scope, working_copy, paths) do
+  # Bound, as a sync leaves a spex that names its criterion.
+  defp record(scope, working_copy, specs) do
     %{scope | active_working_copy_id: working_copy.id}
     |> Files.upsert_files(
-      Enum.map(paths, fn path ->
-        %{path: path, role: :bdd_spec, valid: true, mtime: DateTime.utc_now(), size: 1}
+      Enum.map(specs, fn {path, criterion} ->
+        %{
+          path: path,
+          role: :bdd_spec,
+          valid: true,
+          criterion_id: criterion.id,
+          story_id: criterion.story_id,
+          validation_errors: %{"data" => %{"criterion" => criterion.number}},
+          mtime: DateTime.utc_now(),
+          size: 1
+        }
       end)
     )
   end
 
   test "a spec recorded for the working copy the request names counts", ctx do
-    record(ctx.scope, ctx.mine, ctx.paths)
+    record(ctx.scope, ctx.mine, ctx.specs)
 
     scope = %{ctx.scope | active_working_copy_id: ctx.mine.id}
 
@@ -84,23 +95,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsScopingTest do
              "having pushed rather than on having written the spec."
   end
 
-  test "a spec recorded in another checkout of the same project also counts", ctx do
-    record(ctx.scope, ctx.theirs, ctx.paths)
+  # Reversed by story 1077. Counting another checkout's spec here while
+  # `bdd_specs_exist` counted only this one's is the disagreement behind
+  # 94327fe2: the task passed, the requirement stayed open, and it was offered
+  # again, forever.
+  test "a spec recorded only in another checkout does not count here", ctx do
+    record(ctx.scope, ctx.theirs, ctx.specs)
 
     scope = %{ctx.scope | active_working_copy_id: ctx.mine.id}
 
-    assert {:ok, :valid} = WriteBddSpecs.evaluate(scope, %{story_id: ctx.story.id}),
-           "a spec written in a sibling checkout of this project was treated as missing. " <>
-             "That is what made this requirement gate on having pushed: the file exists, " <>
-             "the story has it, and which copy the request came from is not part of the " <>
-             "question."
+    assert {:ok, :invalid, _message} = WriteBddSpecs.evaluate(scope, %{story_id: ctx.story.id}),
+           "a spec on a sibling checkout satisfied this checkout's task, while the " <>
+             "requirement it evaluates would still be unsatisfied"
   end
 
   test "a project with no spec recorded anywhere is still refused, and says where it looked",
        ctx do
     assert {:ok, :invalid, message} = WriteBddSpecs.evaluate(ctx.scope, %{story_id: ctx.story.id}),
-           "a story with no spec file recorded in any checkout passed. Widening the lookup " <>
-             "to the project must not widen it to everything."
+           "a story with no spec file recorded in any checkout passed"
 
     assert message =~ "Looked in:",
            "the refusal does not say where it looked, which is what let one sentence " <>

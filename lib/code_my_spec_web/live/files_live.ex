@@ -350,6 +350,13 @@ defmodule CodeMySpecWeb.FilesLive do
               <td data-test="file-role">{format_role(file.role)}</td>
               <td data-test="file-validity" data-validity={validity_label(file)}>
                 <.validity_badge file={file} />
+                <div
+                  :if={file.valid == false and invalid_reason(file)}
+                  data-test="file-reason"
+                  class="text-xs opacity-70 mt-1 max-w-xs break-words"
+                >
+                  {invalid_reason(file)}
+                </div>
               </td>
               <td>
                 <.component_cell file={file} slug={@slug} socket={@socket} />
@@ -448,6 +455,11 @@ defmodule CodeMySpecWeb.FilesLive do
   defp validity_label(%{valid: true}), do: "valid"
   defp validity_label(%{valid: false}), do: "invalid"
   defp validity_label(_), do: "unvalidated"
+
+  defp invalid_reason(%{validation_errors: %{"reason" => reason}}) when is_binary(reason),
+    do: reason
+
+  defp invalid_reason(_file), do: nil
 
   defp format_role(role) when is_atom(role), do: Atom.to_string(role)
   defp format_role(role) when is_binary(role), do: role

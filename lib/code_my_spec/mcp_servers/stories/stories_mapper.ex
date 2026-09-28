@@ -284,35 +284,51 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     data = criterion_data(criterion)
 
     summary =
-      "Criterion added to \"#{story.title}\" (ID: #{criterion.id}): #{criterion.description}"
+      "Criterion added to \"#{story.title}\" (criterion #{criterion.number}): #{criterion.description}"
 
     hybrid_response(summary, data)
   end
 
   def criterion_updated_response(criterion) do
     data = criterion_data(criterion)
-    summary = "Criterion updated (ID: #{criterion.id}): #{criterion.description}"
+    summary = "Criterion updated (criterion #{criterion.number}): #{criterion.description}"
 
     hybrid_response(summary, data)
   end
 
-  def criterion_deleted_response(criterion) do
+  def criterion_retired_response(criterion) do
     Response.tool()
-    |> Response.text("Criterion deleted (ID: #{criterion.id}): #{criterion.description}")
+    |> Response.text("Criterion retired (criterion #{criterion.number}): #{criterion.description}")
+  end
+
+  def criterion_restored_response(criterion) do
+    Response.tool()
+    |> Response.text("Criterion restored (criterion #{criterion.number}): #{criterion.description}")
+  end
+
+  def criterion_response(criterion, story) do
+    status = if criterion.retired_at, do: "retired", else: "active"
+
+    Response.tool()
+    |> Response.text("""
+    Criterion #{criterion.number} (#{status}) on "#{story.title}" (ID: #{story.id})
+
+    #{criterion.description}
+    """)
   end
 
   def criterion_moved_response(criterion, from_story, to_story) do
     data = criterion_data(criterion)
 
     summary =
-      "Criterion moved (ID: #{criterion.id}): \"#{from_story.title}\" (ID: #{from_story.id}) -> \"#{to_story.title}\" (ID: #{to_story.id})"
+      "Criterion moved (criterion #{criterion.number}): \"#{from_story.title}\" (ID: #{from_story.id}) -> \"#{to_story.title}\" (ID: #{to_story.id})"
 
     hybrid_response(summary, data)
   end
 
   def criterion_not_found_error do
     Response.tool()
-    |> Response.error("Criterion not found. Use get_story to see criteria IDs.")
+    |> Response.error("Criterion not found. Use get_story to see criterion numbers.")
   end
 
   # ---------------------------------------------------------------------------
@@ -432,7 +448,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   defp format_criteria_text(criteria) when is_list(criteria) and criteria != [] do
     Enum.map_join(criteria, "\n", fn c ->
       status = if c.verified, do: "[x]", else: "[ ]"
-      "- #{status} #{c.description} (criterion #{c.id})"
+      "- #{status} #{c.description} (criterion #{c.number})"
     end)
   end
 
@@ -446,7 +462,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp criterion_data(c) do
     %{
-      id: c.id,
+      number: c.number,
       description: c.description,
       story_id: c.story_id,
       verified: c.verified,

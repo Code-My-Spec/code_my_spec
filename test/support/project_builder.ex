@@ -274,7 +274,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
     defmodule CodeMySpecSpex.Story#{story_id}.Criterion#{criterion_id}Spex do
       use CodeMySpecSpex.Case, async: false
 
-      spex "built by ProjectBuilder" do
+      spex "built by ProjectBuilder", criterion: #{criterion_id} do
         scenario "placeholder", context do
           given_ "a project exists", context do
             {:ok, context}

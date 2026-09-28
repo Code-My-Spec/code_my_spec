@@ -284,13 +284,18 @@ defmodule CodeMySpec.Files.Scanner do
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         case ContentCheck.check(content, entry.path) do
-          :ok ->
-            Map.merge(entry, %{valid: true, validation_errors: %{}})
+          # The number rides in `data`, as `module_name` does for
+          # implementations, so the server can bind the file to its criterion
+          # without the harness knowing what criteria exist.
+          {:ok, criterion} ->
+            Map.merge(entry, %{valid: true, validation_errors: %{"data" => %{"criterion" => criterion}}})
 
           {:error, reason} ->
             Map.merge(entry, %{
               valid: false,
-              validation_errors: %{"reason" => ContentCheck.describe(reason, entry.path)}
+              validation_errors:
+                %{"reason" => ContentCheck.describe(reason, entry.path)}
+                |> put_named_criterion(ContentCheck.named_criterion(content, entry.path))
             })
         end
 
@@ -1396,4 +1401,7 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   defp strip_convention_dirs(segments), do: segments
+
+  defp put_named_criterion(errors, nil), do: errors
+  defp put_named_criterion(errors, number), do: Map.put(errors, "data", %{"criterion" => number})
 end
