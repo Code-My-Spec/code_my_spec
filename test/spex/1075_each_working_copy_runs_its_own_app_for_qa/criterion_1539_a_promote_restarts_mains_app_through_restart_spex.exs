@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Promotion's restart step goes through the same channel verb every copy's app uses" do
+  spex "Promotion's restart step goes through the same channel verb every copy's app uses", criterion: 1539 do
     scenario "the project's designated main copy" do
       given_ "this copy is the project's designated main, harness connected", context do
         {:ok, main_copy} = WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)
