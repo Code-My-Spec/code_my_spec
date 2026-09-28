@@ -16,13 +16,26 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   tagged `main: true` the way `HarnessProjectChannel.put_main/2` already
   tags it for every other app verb, and a successful reply is read back as
   the revision now serving.
+
+  A second scenario covers this repo's own optional after-promote hook
+  (`AppInstance.after_promote/1`): it runs only when the restart is main's —
+  the recipe lives in the shared justfile every working copy's checkout has,
+  so running it for an ordinary copy's own "HEAD moved" restart would bounce
+  the one shared harness on every agent's commit, not just a promote. Its
+  own failure, and why that can only be logged rather than replied, is
+  proven separately in `test/cms_harness/app_instance_test.exs` — asserting
+  it here would trip this project's spex-wide "no error-level log during a
+  spex" rule (`SexySpex.ErrorCapture`) on a failure this scenario means to
+  provoke on purpose, not one it means to catch by surprise.
   """
 
   use CodeMySpecSpex.Case
 
   import Phoenix.ChannelTest
   import CodeMySpecSpex.DeviceHelpers
+  import CmsHarnessTest.AppInstanceHelpers
 
+  alias CmsHarnessTest.FakeAppInstanceRunner
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -65,6 +78,56 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
         })
 
         assert {:ok, %{revision: "cafef00d"}} = Task.await(context.task)
+
+        {:ok, context}
+      end
+    end
+
+    scenario "a project that declares an after-promote recipe" do
+      given_ "a working copy whose project declares an after-promote recipe", context do
+        rig =
+          app_instance_rig(
+            current_commit: "cafef00d",
+            recipe: %{"after-promote" => true}
+          )
+
+        {:ok, Map.merge(context, rig)}
+      end
+
+      when_ "the server asks this copy, marked main, to restart", context do
+        {:ok, Map.put(context, :main_result, push_app_event_as_main("restart_app"))}
+      end
+
+      then_ "the restart reports the commit now serving", context do
+        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "cafef00d"} =
+                 context.main_result
+
+        {:ok, context}
+      end
+
+      then_ "the after-promote recipe was actually run, not skipped", context do
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) == 1,
+               "a successful restart with the recipe declared should still have run it"
+
+        {:ok, context}
+      end
+
+      when_ "the server later asks the same copy to restart again, this time not marked main",
+            context do
+        {:ok, Map.put(context, :ordinary_result, push_app_event("restart_app"))}
+      end
+
+      then_ "that restart still reports success", context do
+        assert %{"status" => "ok", "app_status" => "serving"} = context.ordinary_result
+        {:ok, context}
+      end
+
+      then_ "the after-promote recipe was not run a second time — a promote is main's alone",
+            context do
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) == 1,
+               "the recipe lives in the shared justfile every working copy's checkout has; " <>
+                 "running it for an ordinary copy's own restart would bounce the one shared " <>
+                 "harness on every agent's commit, not just a promote"
 
         {:ok, context}
       end

@@ -196,16 +196,24 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_call({:restart, main?}, _from, state) do
+  def handle_call({:restart, main?}, from, state) do
     state = %{state | main?: main?}
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
+      {:ok, new_state} when main? ->
+        # Replied before the hook runs, not after: this repo's own
+        # after-promote recipe (`just refresh-harness`) kills the very
+        # harness BEAM that is answering this call, partway through running
+        # it. Nothing queued behind that kill ever leaves this process, so
+        # the confirmation has to already be handed off — reply first, then
+        # run the hook and only log what it does.
+        GenServer.reply(from, {:ok, result(new_state)})
+        after_promote(new_state)
+        {:noreply, new_state, idle_timeout()}
+
       {:ok, new_state} ->
-        case after_promote(new_state) do
-          :ok -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-          {:error, reason} -> {:reply, {:error, reason}, new_state, idle_timeout()}
-        end
+        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
       {:error, reason} ->
         {:reply, {:error, reason}, stopped, idle_timeout()}
@@ -321,19 +329,41 @@ defmodule CmsHarness.AppInstance do
   # justfile, run from here — the same `Runner.recipe?/2` check `serve`
   # already uses — right after the app it names is confirmed serving.
   #
-  # Only on `:restart`, never on `:ensure_running`'s "already running, just
-  # probe" or "never started before" branches — an agent asking for QA's
-  # app is not a promote, and running a recipe whose one declared use
-  # bounces this project's own harness on every such call would stop every
-  # other agent on it for no reason.
+  # Only called for `main?`, and only from `:restart` — never `:ensure_running`'s
+  # "already running, just probe" or "never started before" branches, and
+  # never for a non-main copy's own "HEAD moved" restart. The recipe lives in
+  # this project's *shared* justfile, so every working copy's checkout has it
+  # — calling it unconditionally would bounce the one shared harness every
+  # time any agent's ordinary commit restarted their own copy's app, taking
+  # every other agent's in-flight hooks down with it for no reason. A promote
+  # is main's alone, so the hook is too.
+  #
+  # Its own failure can only be logged, never replied: by the time it runs,
+  # `handle_call` has already handed the success reply to `from` (see above)
+  # — the one case this hook exists for is a recipe that kills this very
+  # process before anything queued after that reply could go out.
   #
   # A project with nothing declared pays nothing for a hook it never asked
   # for — `recipe?/2` is the same one-line `just --list` check either way.
   defp after_promote(state) do
-    if Runner.recipe?(state.root, "after-promote") do
-      Runner.run_after_promote(state.root)
-    else
-      :ok
+    result =
+      if Runner.recipe?(state.root, "after-promote") do
+        Runner.run_after_promote(state.root)
+      else
+        :ok
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[CmsHarness] after-promote failed for #{state.root}: #{inspect(reason)} " <>
+            "— the app itself is already serving; only the after-promote hook did not."
+        )
+
+        {:error, reason}
     end
   end
 
