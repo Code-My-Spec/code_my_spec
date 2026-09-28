@@ -65,6 +65,28 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  @impl true
+  def main_ports(root) do
+    with main when is_binary(main) <- main_checkout_path(root),
+         {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
+         http when is_integer(http) <- port_fallback(content, "PORT"),
+         https when is_integer(https) <- port_fallback(content, "HTTPS_PORT") do
+      {http, https}
+    else
+      _ -> nil
+    end
+  end
+
+  defp port_fallback(content, env_var) do
+    case Regex.run(
+           ~r/port:\s*String\.to_integer\(System\.get_env\("#{env_var}"\)\s*\|\|\s*"(\d+)"\)/,
+           content
+         ) do
+      [_, port] -> String.to_integer(port)
+      nil -> nil
+    end
+  end
+
   defp main_checkout_path(root) do
     case Environments.cmd(local(root), "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], []) do
       {out, 0} -> out |> String.trim() |> Path.dirname()

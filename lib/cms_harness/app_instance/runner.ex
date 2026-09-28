@@ -30,6 +30,16 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "The database name main's own `config/dev.exs` declares, or `nil`."
   @callback main_database_name(root :: String.t()) :: String.t() | nil
 
+  @doc """
+  The `{http, https}` ports main's own `config/dev.exs` falls back to, or
+  `nil`. Main's app cannot be allocated a free port the way every other
+  copy's is — it is the one address every bookmark, browser tab and the MCP
+  endpoint already point at — so it has to be read off the same file that
+  configures it, the same way `main_database_name/1` already does for the
+  database.
+  """
+  @callback main_ports(root :: String.t()) :: {pos_integer(), pos_integer()} | nil
+
   @doc "Clone `main_database` into a fresh `database` — dump and restore, not a template."
   @callback clone_database(root :: String.t(), main_database :: String.t(), database :: String.t()) ::
               :ok | {:error, term()}
@@ -78,6 +88,9 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec main_database_name(String.t()) :: String.t() | nil
   def main_database_name(root), do: impl().main_database_name(root)
+
+  @spec main_ports(String.t()) :: {pos_integer(), pos_integer()} | nil
+  def main_ports(root), do: impl().main_ports(root)
 
   @spec clone_database(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
   def clone_database(root, main_database, database), do: impl().clone_database(root, main_database, database)

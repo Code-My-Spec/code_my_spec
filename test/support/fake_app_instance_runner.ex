@@ -36,6 +36,7 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       app_name: Keyword.get(opts, :app_name, Map.get(base, :app_name, "fakeapp")),
       database_exists?: Keyword.get(opts, :database_exists?, Map.get(base, :database_exists?, false)),
       main_database_name: Keyword.get(opts, :main_database_name, Map.get(base, :main_database_name, "fakeapp_dev")),
+      main_ports: Keyword.get(opts, :main_ports, Map.get(base, :main_ports, {4000, 4001})),
       clone_result: Keyword.get(opts, :clone_result, Map.get(base, :clone_result, :ok)),
       current_commit: Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
       launch_result: Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
@@ -99,6 +100,15 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   def main_database_name(root) do
     record(:main_database_name, [root])
     Agent.get(__MODULE__, & &1.main_database_name)
+  end
+
+  @doc "Sets what `main_ports/1` answers — `{http, https}` or `nil`."
+  def put_main_ports(ports), do: Agent.update(__MODULE__, &%{&1 | main_ports: ports})
+
+  @impl true
+  def main_ports(root) do
+    record(:main_ports, [root])
+    Agent.get(__MODULE__, & &1.main_ports)
   end
 
   @impl true

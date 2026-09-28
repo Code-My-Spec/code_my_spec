@@ -283,7 +283,7 @@ defmodule CmsHarness.AppInstance do
 
   defp start_app(state) do
     with :ok <- ensure_serve_recipe(state),
-         {port, https_port, database} <- ensure_port_and_database(state),
+         {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
          :ok <- ensure_database(state, database),
          {:ok, os_pid} <- launch(state, port, https_port, database) do
       new_state = %{
@@ -316,12 +316,27 @@ defmodule CmsHarness.AppInstance do
   # `:eaddrinuse` against main's own dev server already holding it.
   defp ensure_port_and_database(%__MODULE__{port: port, https_port: https_port, database: database})
        when is_integer(port) and is_integer(https_port) and is_binary(database) do
-    {port, https_port, database}
+    {:ok, {port, https_port, database}}
+  end
+
+  # Main is not allocated a free port and a clone the way every other copy
+  # is — it is the one address every bookmark, browser tab and the MCP
+  # endpoint already point at, and its database is the real dev database,
+  # not a disposable copy of it. Both come from main's own `config/dev.exs`,
+  # the same source `Runner.main_database_name/1` already reads for cloning.
+  defp ensure_port_and_database(%__MODULE__{main?: true} = state) do
+    with {http, https} <- Runner.main_ports(state.root),
+         database when is_binary(database) <- Runner.main_database_name(state.root) do
+      {:ok, {state.port || http, state.https_port || https, state.database || database}}
+    else
+      _ -> {:error, {:cannot_resolve_main_address, state.root}}
+    end
   end
 
   defp ensure_port_and_database(state) do
-    {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
-     state.database || database_name(state)}
+    {:ok,
+     {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
+      state.database || database_name(state)}}
   end
 
   # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this
