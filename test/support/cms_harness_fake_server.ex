@@ -59,13 +59,27 @@ defmodule CmsHarnessTest.FakeServer do
     port = bound_port()
 
     previous_url = Application.get_env(:code_my_spec, :harness_server_url)
+    previous_override = Application.get_env(:code_my_spec, :harness_server_url_override)
     previous_token = Application.get_env(:code_my_spec, :harness_token)
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:#{port}")
+
+    # `:harness_server_url_override` too, not just `:harness_server_url` —
+    # `CmsHarness.Config.server_url/0`'s own priority order puts the override
+    # above `CMS_SERVER_URL`, but `:harness_server_url` below it. Setting only
+    # the lower one meant a `CMS_SERVER_URL` this process inherited (a live
+    # harness's own real one, when `mix spex` runs as its analyzer child; a
+    # leaked one from a different test's `CodeMySpecLocalWeb.Application`
+    # elsewhere in the same run) still outranked this rig's own port, and a
+    # 1075 spex's harness dialed the real server instead of this one — a
+    # story 1108 branch sweep's exact failure (403 on the websocket upgrade,
+    # "the copy's harness never connected to the fake server"), reproduced by
+    # exporting a real-looking `CMS_SERVER_URL` before a manual run. The
+    # override always wins now, regardless of what the env var holds.
+    Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:#{port}")
     Application.put_env(:code_my_spec, :harness_token, "test-token")
 
-    # The environment wins over application config in `CmsHarness.Config`, so a
-    # developer with CMS_SERVER_URL exported would otherwise have the suite
-    # quietly connect to their real server.
+    # Still cleared too — belt and suspenders, and the env var is what
+    # `mix cms.harness.onboard --server-url`-style tooling reads elsewhere.
     env_url = System.get_env("CMS_SERVER_URL")
     env_token = System.get_env("CMS_TOKEN")
     env_key = System.get_env("CMS_DEPLOY_KEY")
@@ -76,6 +90,7 @@ defmodule CmsHarnessTest.FakeServer do
       restore("CMS_TOKEN", env_token)
       restore("CMS_DEPLOY_KEY", env_key)
       Application.put_env(:code_my_spec, :harness_server_url, previous_url)
+      Application.put_env(:code_my_spec, :harness_server_url_override, previous_override)
       Application.put_env(:code_my_spec, :harness_token, previous_token)
       stop(current_endpoint())
       stop(pubsub)
