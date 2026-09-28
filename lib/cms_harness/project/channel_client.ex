@@ -1499,7 +1499,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # this copy needs to send behind one app booting.
   def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root, main?: msg["main"] == true)
+      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root,
+        main?: msg["main"] == true
+      )
     end)
 
     {:ok, socket}
@@ -1582,6 +1584,21 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
+
+  defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
+    merge = %{
+      before: payload["before"],
+      after: payload["after"],
+      version: payload["version"]
+    }
+
+    with_served_root(root, fn root ->
+      with_served_root(
+        source,
+        &Steps.sync_submodule(Environment.new(:local, root), root, &1, merge)
+      )
+    end)
+  end
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}

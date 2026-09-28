@@ -477,6 +477,153 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
+  @submodule ".code_my_spec"
+
+  @doc """
+  Check out, in `root`'s own `.code_my_spec`, the commit the merge just pinned.
+
+  Runs only when the merge moved the gitlink. The pinned commit usually exists
+  only in the promoting copy's submodule, so it is fetched from `source`'s
+  `HEAD` — a bare SHA is refused ("not our ref") unless it is a ref tip.
+
+  On failure the merge is rolled back (`reset --keep` to `before`, and the tag
+  it minted deleted), so the refusal leaves main as it found it and a retry
+  runs the whole promotion again rather than a no-op merge onto stale docs.
+  """
+  @spec sync_submodule(Environments.Environment.t(), String.t(), String.t(), map()) :: result()
+  def sync_submodule(env, root, source, %{before: before, after: after_sha} = merge) do
+    with {:moved, pinned} <- gitlink_moved(env, root, before, after_sha),
+         :ok <- check_out_pinned(env, Path.join(root, @submodule), source, pinned) do
+      {:ok, %{submodule: pinned}}
+    else
+      :unchanged -> {:ok, %{submodule: nil}}
+      {:error, pinned, why} -> roll_back(env, root, merge, pinned, source, why)
+    end
+  end
+
+  defp gitlink_moved(_env, _root, same, same), do: :unchanged
+  defp gitlink_moved(_env, _root, nil, _after), do: :unchanged
+
+  defp gitlink_moved(env, root, before, after_sha) do
+    case {gitlink(env, root, before), gitlink(env, root, after_sha)} do
+      {_, nil} -> :unchanged
+      {same, same} -> :unchanged
+      {_, pinned} -> {:moved, pinned}
+    end
+  end
+
+  defp gitlink(env, root, commit) do
+    case git(env, root, ["rev-parse", "--verify", "--quiet", "#{commit}:#{@submodule}"]) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  # The superproject check matters: in an uninitialised submodule directory
+  # `git -C` would find the superproject and check the SHA out *there*.
+  defp check_out_pinned(env, sub, source, pinned) do
+    with :ok <- ensure_submodule(env, sub, pinned),
+         :ok <- ensure_present(env, sub, source, pinned),
+         {:ok, _} <- sub_git(env, sub, ["checkout", "--quiet", pinned], pinned),
+         {:ok, ^pinned} <- sub_git(env, sub, ["rev-parse", "HEAD"], pinned) do
+      :ok
+    else
+      {:ok, other} -> {:error, pinned, "checked out, but HEAD is #{other}"}
+      {:error, _, _} = error -> error
+    end
+  end
+
+  defp ensure_submodule(env, sub, pinned) do
+    case sub_git(env, sub, ["rev-parse", "--show-superproject-working-tree"], pinned) do
+      {:ok, ""} -> {:error, pinned, "#{sub} is not an initialised submodule checkout"}
+      {:ok, _} -> :ok
+      error -> error
+    end
+  end
+
+  defp ensure_present(env, sub, source, pinned) do
+    case git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
+      {_, 0} ->
+        :ok
+
+      _ ->
+        with {:ok, _} <-
+               sub_git(
+                 env,
+                 sub,
+                 ["fetch", "--quiet", Path.join(source, @submodule), "HEAD"],
+                 pinned
+               ),
+             {_, 0} <- git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
+          :ok
+        else
+          {:error, _, _} = error -> error
+          {_, _} -> {:error, pinned, "fetched #{source}'s HEAD, which does not contain it"}
+        end
+    end
+  end
+
+  defp sub_git(env, sub, args, pinned) do
+    case git(env, sub, args) do
+      {out, 0} -> {:ok, String.trim(out)}
+      {out, _} -> {:error, pinned, "`git #{Enum.join(args, " ")}` failed: #{String.trim(out)}"}
+    end
+  end
+
+  defp roll_back(env, root, merge, pinned, source, why) do
+    undone = undo_merge(env, root, merge)
+
+    {:error,
+     %{
+       reason:
+         "the merge moved #{root}'s #{@submodule} to #{pinned}, but that commit " <>
+           "could not be fetched from #{Path.join(source, @submodule)} and checked " <>
+           "out: #{why}. #{undone} The application was not restarted. Make sure " <>
+           "#{pinned} is committed in the promoting copy's #{@submodule}, then promote again."
+     }}
+  end
+
+  # Only this promote's own commit is undone: if anything has moved HEAD since,
+  # resetting would discard someone else's work, which is worse than stale docs.
+  defp undo_merge(env, root, %{before: before} = merge) do
+    made = promoted_head(env, root, merge)
+
+    case head(env, root) do
+      ^made when is_binary(made) ->
+        reset_to(env, root, before, merge)
+
+      other ->
+        "#{root} has moved to #{other || "an unreadable HEAD"} since this promote " <>
+          "left it on #{made}, so the merge was NOT rolled back; #{root} still has a " <>
+          "stale #{@submodule}."
+    end
+  end
+
+  # The version commit when one was minted, else the fast-forwarded head.
+  defp promoted_head(_env, _root, %{version: nil, after: after_sha}), do: after_sha
+
+  defp promoted_head(env, root, %{version: version}) do
+    case git(env, root, ["rev-parse", "v#{version}^{commit}"]) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  defp reset_to(env, root, before, merge) do
+    case git(env, root, ["reset", "--keep", before]) do
+      {_, 0} ->
+        drop_tag(env, root, Map.get(merge, :version))
+        "The merge was rolled back — #{root} is back on #{before}."
+
+      {out, _} ->
+        "Rolling the merge back also failed (#{String.trim(out)}), so #{root} " <>
+          "is still on the merged commit with a stale #{@submodule}."
+    end
+  end
+
+  defp drop_tag(_env, _root, nil), do: :ok
+  defp drop_tag(env, root, version), do: git(env, root, ["tag", "-d", "v#{version}"])
+
   # Story 1108, criterion 4663: bringing the application back up after a
   # promotion no longer runs through here. `Promotion.Runner.restart/3` calls
   # `WorkingCopies.AppTransport.restart_app/2` directly — the same per-copy

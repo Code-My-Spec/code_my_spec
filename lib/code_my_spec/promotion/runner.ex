@@ -71,6 +71,29 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
+  @doc "Check out in `root`'s `.code_my_spec` the commit a merge pinned, fetched from `source`."
+  @spec sync_submodule(Scope.t(), String.t(), String.t(), map(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def sync_submodule(scope, root, source, merge, copy_id) do
+    moved = %{
+      before: Map.get(merge, :before),
+      after: Map.get(merge, :after),
+      version: Map.get(merge, :version)
+    }
+
+    payload = %{
+      "root" => root,
+      "source" => source,
+      "before" => moved.before,
+      "after" => moved.after,
+      "version" => moved.version
+    }
+
+    run(scope, copy_id, "promotion_submodule", payload, @git_timeout, fn env ->
+      Steps.sync_submodule(env, root, source, moved)
+    end)
+  end
+
   @doc """
   Bring the application at `root` back up — through the same start/restart
   every working copy's own app already uses, harness included.
@@ -108,7 +131,8 @@ defmodule CodeMySpec.Promotion.Runner do
   # down while draining looks like from here — worded so
   # `restart_acknowledgement_lost?/1`'s "draining" check reads it as the
   # unconfirmed success it is, not a failure to retry.
-  defp decode_app_result({:ok, %{status: "serving", commit: commit}}), do: {:ok, %{revision: commit}}
+  defp decode_app_result({:ok, %{status: "serving", commit: commit}}),
+    do: {:ok, %{revision: commit}}
 
   defp decode_app_result({:ok, %{status: status, commit: commit}}) do
     {:error, %{reason: "the app answered #{status} after restarting" <> commit_suffix(commit)}}
