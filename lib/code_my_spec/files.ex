@@ -34,8 +34,8 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
