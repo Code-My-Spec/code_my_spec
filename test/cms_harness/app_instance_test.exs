@@ -21,7 +21,7 @@ defmodule CmsHarness.AppInstanceTest do
     end
 
     test "a serving copy reports its own local address and commit" do
-      state = %AppInstance{status: "serving", port: 51234, commit: "abc123"}
+      state = %AppInstance{status: "serving", port: 51_234, commit: "abc123"}
 
       assert AppInstance.result(state) == %{
                status: "serving",
@@ -31,7 +31,7 @@ defmodule CmsHarness.AppInstanceTest do
     end
 
     test "an erroring copy still reports the address a 500 is coming from" do
-      state = %AppInstance{status: "erroring", port: 51234, commit: "abc123"}
+      state = %AppInstance{status: "erroring", port: 51_234, commit: "abc123"}
 
       assert %{status: "erroring", url: "http://127.0.0.1:51234"} = AppInstance.result(state)
     end
@@ -39,7 +39,7 @@ defmodule CmsHarness.AppInstanceTest do
     test "a stopped copy never carries the address it used to answer on" do
       # The exact failure story 1108 exists to prevent: a stale link on a
       # copy nothing is running any more, read as though it were live.
-      state = %AppInstance{status: "down", port: 51234, commit: "abc123"}
+      state = %AppInstance{status: "down", port: 51_234, commit: "abc123"}
 
       assert AppInstance.result(state).url == nil
     end

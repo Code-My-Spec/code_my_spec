@@ -828,21 +828,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
-  # The DB write behind every app verb's reply — never behind the reply
-  # itself, so the caller sees "ok" even on the store write's own failure:
-  # the far side really did start/stop the app either way, and a `from` still
-  # waiting must not be lied to about that over a WorkingCopies write.
-  defp record_app_result(socket, {:ok, %{status: _status} = info}) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
-      _ -> :ok
-    end
-
-    :ok
-  end
-
-  defp record_app_result(_socket, {:error, _reason}), do: :ok
-
   def handle_in("tool_call_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_machine_tool(socket), ref)
     if from, do: GenServer.reply(from, decode_machine_tool_result(msg))
@@ -869,6 +854,21 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
   end
+
+  # The DB write behind every app verb's reply — never behind the reply
+  # itself, so the caller sees "ok" even on the store write's own failure:
+  # the far side really did start/stop the app either way, and a `from` still
+  # waiting must not be lied to about that over a WorkingCopies write.
+  defp record_app_result(socket, {:ok, %{status: _status} = info}) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
+      _ -> :ok
+    end
+
+    :ok
+  end
+
+  defp record_app_result(_socket, {:error, _reason}), do: :ok
 
   # The one moment we know what is running on this copy, which is the moment to
   # ask whether any of it should be working.
