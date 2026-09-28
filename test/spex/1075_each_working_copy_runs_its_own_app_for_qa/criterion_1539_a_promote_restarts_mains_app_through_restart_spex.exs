@@ -27,6 +27,14 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   it here would trip this project's spex-wide "no error-level log during a
   spex" rule (`SexySpex.ErrorCapture`) on a failure this scenario means to
   provoke on purpose, not one it means to catch by surprise.
+
+  The same scenario also covers main's port already being held by an
+  untracked process — the first unified restart ever run against a checkout
+  whose dev server predates story 1108, or was ever started by hand.
+  `running?/1` only tracks a *persisted* `os_pid`, so that old process would
+  otherwise sit on the port forever. It's adopted (killed) once its own cwd
+  is confirmed to be this checkout's root, and the restart is refused
+  loudly, not killed, when it isn't.
   """
 
   use CodeMySpecSpex.Case
@@ -128,6 +136,41 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
                "the recipe lives in the shared justfile every working copy's checkout has; " <>
                  "running it for an ordinary copy's own restart would bounce the one shared " <>
                  "harness on every agent's commit, not just a promote"
+
+        {:ok, context}
+      end
+
+      when_ "the server asks this copy, marked main, to restart while its own port is still held by an untracked process — the first restart ever run against a checkout whose dev server predates story 1108",
+            context do
+        FakeAppInstanceRunner.configure(listener_pid: 99_999, process_root: context.root)
+        {:ok, Map.put(context, :adopt_result, push_app_event_as_main("restart_app"))}
+      end
+
+      then_ "the restart still succeeds — the old process is adopted (killed), not left holding the port next to the new one",
+            context do
+        assert %{"status" => "ok", "app_status" => "serving"} = context.adopt_result
+
+        assert Enum.any?(FakeAppInstanceRunner.calls(), &match?({:stop_process, [99_999]}, &1)),
+               "an untracked listener, once its own cwd is confirmed to be this checkout's " <>
+                 "root, has to be killed before serve runs next to it"
+
+        {:ok, context}
+      end
+
+      when_ "the server asks the same copy to restart again while its port is held by a process that turns out not to be this checkout at all",
+            context do
+        FakeAppInstanceRunner.configure(listener_pid: 88_888, process_root: "/some/other/checkout")
+        {:ok, Map.put(context, :refuse_result, push_app_event_as_main("restart_app"))}
+      end
+
+      then_ "the restart is refused loudly instead of killing a stranger's process on the strength of the port number alone",
+            context do
+        assert %{"status" => "error", "reason" => reason} = context.refuse_result
+        assert reason =~ "port_held_by_untracked_process"
+
+        refute Enum.any?(FakeAppInstanceRunner.calls(), &match?({:stop_process, [88_888]}, &1)),
+               "a listener whose cwd doesn't match this checkout is never killed, whatever " <>
+                 "it's doing on the port"
 
         {:ok, context}
       end

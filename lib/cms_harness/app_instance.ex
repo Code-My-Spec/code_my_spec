@@ -298,6 +298,7 @@ defmodule CmsHarness.AppInstance do
   defp start_app(state) do
     with :ok <- ensure_serve_recipe(state),
          {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
+         :ok <- ensure_port_free(state, port),
          :ok <- ensure_database(state, database),
          {:ok, os_pid} <- launch(state, port, https_port, database) do
       new_state = %{
@@ -400,6 +401,43 @@ defmodule CmsHarness.AppInstance do
      {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
       state.database || database_name(state)}}
   end
+
+  # Main's port is fixed — read off `config/dev.exs`, not freshly allocated
+  # the way every other copy's is — so it can already be held by a process
+  # this instance never launched and holds no tracked `os_pid` for: this
+  # checkout's own pre-story-1108 dev server, still running from before the
+  # first unified restart or ensure ever ran against it. `running?/1` only
+  # ever tracks a *persisted* `os_pid` (see `stop_process/1`), so that old
+  # server would otherwise sit on the port forever — `launch/5`'s
+  # `mix phx.server` either fails `:eaddrinuse` next to it, or somehow
+  # answers alongside it.
+  #
+  # Adopted (killed) only once its own working directory is confirmed to be
+  # this checkout's own root — never assumed from the port number alone,
+  # since something entirely unrelated could be squatting on 4000. Anything
+  # that fails that check is refused loudly instead of killed: `launch/5`
+  # was never going to succeed next to it either way, and guessing wrong
+  # here means killing a stranger's process.
+  #
+  # Never reached for a non-main copy: its port came from `free_port/0`
+  # a moment ago, allocated by binding it and immediately closing it again,
+  # so nothing else has had the chance to take it in between.
+  defp ensure_port_free(%__MODULE__{main?: true} = state, port) do
+    case Runner.listener_pid(port) do
+      nil ->
+        :ok
+
+      pid ->
+        if Runner.process_root(pid) == Path.expand(state.root) do
+          Runner.stop_process(pid)
+          :ok
+        else
+          {:error, {:port_held_by_untracked_process, port, pid}}
+        end
+    end
+  end
+
+  defp ensure_port_free(_state, _port), do: :ok
 
   # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this
   # same checkout, distinct from every other copy of the same project without

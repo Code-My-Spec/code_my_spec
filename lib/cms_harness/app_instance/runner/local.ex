@@ -214,5 +214,44 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     :ok
   end
 
+  @impl true
+  def listener_pid(port) do
+    case System.cmd("lsof", ["-nP", "-iTCP:#{port}", "-sTCP:LISTEN", "-t"], stderr_to_stdout: true) do
+      {out, 0} ->
+        out
+        |> String.split("\n", trim: true)
+        |> List.first()
+        |> parse_pid()
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_pid(nil), do: nil
+
+  defp parse_pid(pid_str) do
+    case Integer.parse(pid_str) do
+      {pid, _} -> pid
+      :error -> nil
+    end
+  end
+
+  @impl true
+  def process_root(os_pid) do
+    case System.cmd("lsof", ["-a", "-p", Integer.to_string(os_pid), "-d", "cwd", "-Fn"], stderr_to_stdout: true) do
+      {out, 0} ->
+        out
+        |> String.split("\n", trim: true)
+        |> Enum.find_value(fn
+          "n" <> path -> path
+          _ -> nil
+        end)
+
+      _ ->
+        nil
+    end
+  end
+
   defp local(root), do: %Environment{type: :local, cwd: root}
 end

@@ -40,6 +40,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       clone_result: Keyword.get(opts, :clone_result, Map.get(base, :clone_result, :ok)),
       current_commit: Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
       after_promote_result: Keyword.get(opts, :after_promote_result, Map.get(base, :after_promote_result, :ok)),
+      listener_pid: Keyword.get(opts, :listener_pid, Map.get(base, :listener_pid, nil)),
+      process_root: Keyword.get(opts, :process_root, Map.get(base, :process_root, nil)),
       launch_result: Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
       probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving))
@@ -171,5 +173,23 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
     record(:stop_process, [os_pid])
     put_alive(false)
     :ok
+  end
+
+  @doc "Sets what `listener_pid/1` answers — an os_pid, or `nil` for \"nothing is listening\"."
+  def put_listener_pid(pid), do: Agent.update(__MODULE__, &%{&1 | listener_pid: pid})
+
+  @impl true
+  def listener_pid(port) do
+    record(:listener_pid, [port])
+    Agent.get(__MODULE__, & &1.listener_pid)
+  end
+
+  @doc "Sets what `process_root/1` answers for whatever `listener_pid/1` returns."
+  def put_process_root(root), do: Agent.update(__MODULE__, &%{&1 | process_root: root})
+
+  @impl true
+  def process_root(os_pid) do
+    record(:process_root, [os_pid])
+    Agent.get(__MODULE__, & &1.process_root)
   end
 end

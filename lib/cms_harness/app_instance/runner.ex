@@ -81,6 +81,26 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "Take the whole process tree rooted at `os_pid` down."
   @callback stop_process(os_pid :: pos_integer()) :: :ok
 
+  @doc """
+  The `os_pid` of whatever is listening on `port` right now, or `nil` if
+  nothing is. Main's port is fixed, not freshly allocated the way every
+  other copy's is, so it can already be held by a process this instance
+  never launched and holds no tracked `os_pid` for — the checkout's own
+  pre-story-1108 dev server, still running from before the first unified
+  restart ever ran against it.
+  """
+  @callback listener_pid(port :: pos_integer()) :: pos_integer() | nil
+
+  @doc """
+  The working directory of `os_pid`, or `nil` if it can't be read (the
+  process is already gone, or this platform has no way to ask). Compared
+  against a copy's own `root` before that copy's app instance ever adopts
+  (kills) whatever it finds holding its port — a match confirms the
+  listener is this checkout's own old process; anything else is refused
+  rather than assumed and killed.
+  """
+  @callback process_root(os_pid :: pos_integer()) :: String.t() | nil
+
   @spec recipe?(String.t(), String.t()) :: boolean()
   def recipe?(root, name), do: impl().recipe?(root, name)
 
@@ -127,6 +147,12 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec stop_process(pos_integer()) :: :ok
   def stop_process(os_pid), do: impl().stop_process(os_pid)
+
+  @spec listener_pid(pos_integer()) :: pos_integer() | nil
+  def listener_pid(port), do: impl().listener_pid(port)
+
+  @spec process_root(pos_integer()) :: String.t() | nil
+  def process_root(os_pid), do: impl().process_root(os_pid)
 
   defp impl do
     :code_my_spec

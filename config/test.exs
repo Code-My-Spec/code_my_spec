@@ -618,6 +618,23 @@ config :code_my_spec,
        :pi_config_root,
        Path.join([System.tmp_dir!(), "codemyspec-test", "pi"])
 
+# Never `~/.codemyspec/app-instances` — the same reasoning as `:pi_config_root`
+# above, for story 1108's `CmsHarness.AppInstance`. Every `app_instance_rig`
+# spex and test calls `persist!/1` on a successful start, and without this
+# override each one wrote a real state dir onto the operator's own machine —
+# 1,094 of them found on this one, with fake content like
+# `{"os_pid":107,"port":4000,"database":"fakeapp_dev"}` sitting next to real
+# app instances' own state, and a fake `os_pid` is not inert: `AppInstance`'s
+# `:stop`/`:discard` handlers `kill -TERM` whatever `os_pid` a state file
+# holds, and 107 was somebody else's real process. Static rather than a
+# per-test dir for the same reason `:pi_config_root` is: every rig's root is
+# already a fresh temp dir of its own (`instance_key/1` hashes it into a
+# subdirectory), so nothing here collides even across concurrent worktrees
+# sharing this one base path.
+config :code_my_spec,
+       :app_instances_root,
+       Path.join([System.tmp_dir!(), "codemyspec-test", "app-instances"])
+
 # Assent's HTTP adapter, pinned so an OAuth call in a test cannot leave the
 # machine. Without this it defaults to a live adapter: story 1018's criterion
 # 2822 reached `https://auth.openai.com/oauth/token` from the suite and came
