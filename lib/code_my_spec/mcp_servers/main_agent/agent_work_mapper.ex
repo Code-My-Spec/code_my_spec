@@ -119,15 +119,19 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
   defp in_flight(%AgentWork{turn_started_at: at}),
     do: "a turn opened #{moment(at)} and has not finished"
 
-  defp blocked(%AgentWork{tapped_out?: true, blocked_reasons: []}), do: tapped_out()
+  # The provider refusing comes first: while it does, nothing else can move.
+  defp blocked(%AgentWork{} = work) do
+    case provider_block(work) ++ tapped(work) ++ Enum.map(work.blocked_reasons, &quoted/1) do
+      [] -> "nothing"
+      blocks -> Enum.join(blocks, "; ")
+    end
+  end
 
-  defp blocked(%AgentWork{tapped_out?: true} = work),
-    do: tapped_out() <> "; " <> Enum.map_join(work.blocked_reasons, "; ", &quoted/1)
+  defp provider_block(work),
+    do: if(AgentWork.provider_blocked?(work), do: [AgentWork.provider_block(work)], else: [])
 
-  defp blocked(%AgentWork{blocked_reasons: []}), do: "nothing"
-
-  defp blocked(%AgentWork{blocked_reasons: reasons}),
-    do: Enum.map_join(reasons, "; ", &quoted/1)
+  defp tapped(%AgentWork{tapped_out?: true}), do: [tapped_out()]
+  defp tapped(%AgentWork{}), do: []
 
   defp tapped_out,
     do: "tapped out — it asked to leave the loop and a person has not answered yet"

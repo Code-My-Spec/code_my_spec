@@ -187,6 +187,13 @@ defmodule CodeMySpec.Agents.Agent do
     field :declined_offer_at, :utc_datetime_usec
     field :declined_offer_count, :integer
 
+    # The provider's own words refusing this agent's last turn (usage limit,
+    # auth, model), when, and the retry time if they named one. Nil once a turn
+    # ends without a refusal. Issue 044599cc.
+    field :provider_refusal, :string
+    field :provider_refused_at, :utc_datetime_usec
+    field :provider_retry_at, :utc_datetime_usec
+
     # The work this agent has claimed.
     #
     # Story 538's direction, and the end of an agent that could take turns and
@@ -291,6 +298,9 @@ defmodule CodeMySpec.Agents.Agent do
       :declined_offer,
       :declined_offer_at,
       :declined_offer_count,
+      :provider_refusal,
+      :provider_refused_at,
+      :provider_retry_at,
       :working_copy_id,
       :project_id,
       :account_id
