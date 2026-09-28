@@ -32,6 +32,12 @@ defmodule CodeMySpecSpex do
       # beside the module that owns it is how a fixture quietly stops being
       # synced when the convention moves.
       CodeMySpec.Paths,
+      # Story 1108, criterion 4663 calls `Promotion.Runner.restart/3`
+      # directly — it is the module under test (does a promote's restart
+      # reach the harness through the same channel verb every other
+      # working copy's app already uses), the same reasoning as
+      # `CodeMySpec.AgentTasks` above.
+      CodeMySpec.Promotion,
       CodeMySpec.Problems,
       CodeMySpec.RecordingLock,
       # A submodule of `Requirements`, not its own boundary — `GraphInputs`

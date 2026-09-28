@@ -65,6 +65,28 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  @impl true
+  def main_ports(root) do
+    with main when is_binary(main) <- main_checkout_path(root),
+         {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
+         http when is_integer(http) <- port_fallback(content, "PORT"),
+         https when is_integer(https) <- port_fallback(content, "HTTPS_PORT") do
+      {http, https}
+    else
+      _ -> nil
+    end
+  end
+
+  defp port_fallback(content, env_var) do
+    case Regex.run(
+           ~r/port:\s*String\.to_integer\(System\.get_env\("#{env_var}"\)\s*\|\|\s*"(\d+)"\)/,
+           content
+         ) do
+      [_, port] -> String.to_integer(port)
+      nil -> nil
+    end
+  end
+
   defp main_checkout_path(root) do
     case Environments.cmd(local(root), "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], []) do
       {out, 0} -> out |> String.trim() |> Path.dirname()
@@ -114,6 +136,14 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     case Environments.cmd(local(root), "git", ["rev-parse", "HEAD"], []) do
       {out, 0} -> String.trim(out)
       _ -> nil
+    end
+  end
+
+  @impl true
+  def run_after_promote(root) do
+    case Environments.cmd(local(root), "just", ["after-promote"], stderr_to_stdout: true) do
+      {_out, 0} -> :ok
+      {out, status} -> {:error, "`just after-promote` failed (#{status}): #{out}"}
     end
   end
 
@@ -182,6 +212,45 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     System.cmd("pkill", ["-TERM", "-P", Integer.to_string(os_pid)], stderr_to_stdout: true)
     System.cmd("kill", ["-TERM", Integer.to_string(os_pid)], stderr_to_stdout: true)
     :ok
+  end
+
+  @impl true
+  def listener_pid(port) do
+    case System.cmd("lsof", ["-nP", "-iTCP:#{port}", "-sTCP:LISTEN", "-t"], stderr_to_stdout: true) do
+      {out, 0} ->
+        out
+        |> String.split("\n", trim: true)
+        |> List.first()
+        |> parse_pid()
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_pid(nil), do: nil
+
+  defp parse_pid(pid_str) do
+    case Integer.parse(pid_str) do
+      {pid, _} -> pid
+      :error -> nil
+    end
+  end
+
+  @impl true
+  def process_root(os_pid) do
+    case System.cmd("lsof", ["-a", "-p", Integer.to_string(os_pid), "-d", "cwd", "-Fn"], stderr_to_stdout: true) do
+      {out, 0} ->
+        out
+        |> String.split("\n", trim: true)
+        |> Enum.find_value(fn
+          "n" <> path -> path
+          _ -> nil
+        end)
+
+      _ ->
+        nil
+    end
   end
 
   defp local(root), do: %Environment{type: :local, cwd: root}

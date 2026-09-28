@@ -83,7 +83,7 @@ defmodule CodeMySpec.Agents.Work do
   defp stranded?(agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id)
+      not is_nil(agent.working_copy_id) and not refused_until_later?(agent)
   end
 
   defp resume(scope, agent) do
@@ -360,8 +360,16 @@ defmodule CodeMySpec.Agents.Work do
   defp runnable_state?(agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent)
+      not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent) and
+      not refused_until_later?(agent)
   end
+
+  # The provider refused its last turn and named when to come back (044599cc).
+  # A turn offered before then would only be refused again.
+  defp refused_until_later?(%{provider_retry_at: %DateTime{} = at}),
+    do: DateTime.compare(at, DateTime.utc_now()) == :gt
+
+  defp refused_until_later?(_agent), do: false
 
   @doc """
   Whether this agent has a tap-out waiting on a person.

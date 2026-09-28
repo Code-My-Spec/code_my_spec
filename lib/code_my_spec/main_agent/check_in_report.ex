@@ -40,7 +40,7 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
 
     #{agents(digest.work)}
 
-    #{machinery(digest.machinery)}
+    #{machinery(digest.machinery, digest.work)}
 
     #{questions(digest.questions)}
 
@@ -64,7 +64,14 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   # be a wall of text seventy-two times a day, and the one agent that needed
   # attention would be somewhere in the middle of it.
   defp agent_line(%AgentWork{} = entry) do
-    "  #{entry.agent_id} (#{entry.role}) — #{doing(entry)}; last said #{moment(entry.last_said_at)}"
+    "  #{entry.agent_id} (#{entry.role}) — #{doing(entry)}#{provider(entry)}; " <>
+      "last said #{moment(entry.last_said_at)}"
+  end
+
+  defp provider(%AgentWork{} = entry) do
+    if AgentWork.provider_blocked?(entry),
+      do: "; blocked on: " <> AgentWork.provider_block(entry),
+      else: ""
   end
 
   defp doing(%AgentWork{task_name: nil} = entry) do
@@ -76,6 +83,18 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   end
 
   defp doing(%AgentWork{} = entry), do: "task: #{entry.task_name}"
+
+  # A machine answering is not an agent working: when every provider refuses,
+  # nothing runs whatever the machines say (044599cc).
+  defp machinery(machinery, [_ | _] = work) do
+    if Enum.all?(work, &AgentWork.provider_blocked?/1),
+      do:
+        "machinery: BLOCKED — every agent's provider is refusing its turns; nothing " <>
+          "can run until it accepts them again.",
+      else: machinery(machinery)
+  end
+
+  defp machinery(machinery, []), do: machinery(machinery)
 
   defp machinery(nil), do: "machinery: not read."
 

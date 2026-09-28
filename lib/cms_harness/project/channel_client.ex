@@ -1499,7 +1499,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # this copy needs to send behind one app booting.
   def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root, main?: msg["main"] == true)
+      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root,
+        main?: msg["main"] == true
+      )
     end)
 
     {:ok, socket}
@@ -1572,16 +1574,31 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # One clause per named operation, and no general `cmd`. That route was refused
   # deliberately — `analysis/run` already owns command execution here along with
-  # the run ledger, single-flight and `_build` — so promotion gets three named
-  # things it may do rather than the ability to run anything.
+  # the run ledger, single-flight and `_build` — so promotion gets named things
+  # it may do rather than the ability to run anything. Restart used to be a
+  # third one; story 1108's criterion 4663 moved it onto the same
+  # `ensure_app_running`/`restart_app` channel verbs every working copy's app
+  # already answers to, so it no longer reaches here at all.
   defp apply_promotion("promotion_precheck", %{"root" => root}),
     do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1))
 
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
-  defp apply_promotion("promotion_restart", %{"root" => root}),
-    do: with_served_root(root, &Steps.restart(Environment.new(:local, &1), &1))
+  defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
+    merge = %{
+      before: payload["before"],
+      after: payload["after"],
+      version: payload["version"]
+    }
+
+    with_served_root(root, fn root ->
+      with_served_root(
+        source,
+        &Steps.sync_submodule(Environment.new(:local, root), root, &1, merge)
+      )
+    end)
+  end
 
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}

@@ -196,13 +196,27 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_call({:restart, main?}, _from, state) do
+  def handle_call({:restart, main?}, from, state) do
     state = %{state | main?: main?}
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
-      {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-      {:error, reason} -> {:reply, {:error, reason}, stopped, idle_timeout()}
+      {:ok, new_state} when main? ->
+        # Replied before the hook runs, not after: this repo's own
+        # after-promote recipe (`just refresh-harness`) kills the very
+        # harness BEAM that is answering this call, partway through running
+        # it. Nothing queued behind that kill ever leaves this process, so
+        # the confirmation has to already be handed off — reply first, then
+        # run the hook and only log what it does.
+        GenServer.reply(from, {:ok, result(new_state)})
+        after_promote(new_state)
+        {:noreply, new_state, idle_timeout()}
+
+      {:ok, new_state} ->
+        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, stopped, idle_timeout()}
     end
   end
 
@@ -283,7 +297,8 @@ defmodule CmsHarness.AppInstance do
 
   defp start_app(state) do
     with :ok <- ensure_serve_recipe(state),
-         {port, https_port, database} <- ensure_port_and_database(state),
+         {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
+         :ok <- ensure_port_free(state, port),
          :ok <- ensure_database(state, database),
          {:ok, os_pid} <- launch(state, port, https_port, database) do
       new_state = %{
@@ -305,6 +320,54 @@ defmodule CmsHarness.AppInstance do
     if Runner.recipe?(state.root, "serve"), do: :ok, else: {:error, :no_start_recipe}
   end
 
+  # Story 1108, criterion 4663: the project-specific half of a promote's
+  # restart. `Promotion.Runner.restart/3` only ever calls the generic half
+  # (bring the app back up, the same as any other copy) — this repo's own
+  # need to also refresh its harness afterward, because server and harness
+  # here are the same codebase, cannot live in that shared module without
+  # every other project's promotion also having to answer for it. So it is
+  # an optional recipe instead: declared once, in this project's own
+  # justfile, run from here — the same `Runner.recipe?/2` check `serve`
+  # already uses — right after the app it names is confirmed serving.
+  #
+  # Only called for `main?`, and only from `:restart` — never `:ensure_running`'s
+  # "already running, just probe" or "never started before" branches, and
+  # never for a non-main copy's own "HEAD moved" restart. The recipe lives in
+  # this project's *shared* justfile, so every working copy's checkout has it
+  # — calling it unconditionally would bounce the one shared harness every
+  # time any agent's ordinary commit restarted their own copy's app, taking
+  # every other agent's in-flight hooks down with it for no reason. A promote
+  # is main's alone, so the hook is too.
+  #
+  # Its own failure can only be logged, never replied: by the time it runs,
+  # `handle_call` has already handed the success reply to `from` (see above)
+  # — the one case this hook exists for is a recipe that kills this very
+  # process before anything queued after that reply could go out.
+  #
+  # A project with nothing declared pays nothing for a hook it never asked
+  # for — `recipe?/2` is the same one-line `just --list` check either way.
+  defp after_promote(state) do
+    result =
+      if Runner.recipe?(state.root, "after-promote") do
+        Runner.run_after_promote(state.root)
+      else
+        :ok
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[CmsHarness] after-promote failed for #{state.root}: #{inspect(reason)} " <>
+            "— the app itself is already serving; only the after-promote hook did not."
+        )
+
+        {:error, reason}
+    end
+  end
+
   # Reused across restarts once allocated — a stable address is worth more
   # than a fresh one, and QA bookmarking a link should not have it move under
   # them on every restart.
@@ -316,13 +379,65 @@ defmodule CmsHarness.AppInstance do
   # `:eaddrinuse` against main's own dev server already holding it.
   defp ensure_port_and_database(%__MODULE__{port: port, https_port: https_port, database: database})
        when is_integer(port) and is_integer(https_port) and is_binary(database) do
-    {port, https_port, database}
+    {:ok, {port, https_port, database}}
+  end
+
+  # Main is not allocated a free port and a clone the way every other copy
+  # is — it is the one address every bookmark, browser tab and the MCP
+  # endpoint already point at, and its database is the real dev database,
+  # not a disposable copy of it. Both come from main's own `config/dev.exs`,
+  # the same source `Runner.main_database_name/1` already reads for cloning.
+  defp ensure_port_and_database(%__MODULE__{main?: true} = state) do
+    with {http, https} <- Runner.main_ports(state.root),
+         database when is_binary(database) <- Runner.main_database_name(state.root) do
+      {:ok, {state.port || http, state.https_port || https, state.database || database}}
+    else
+      _ -> {:error, {:cannot_resolve_main_address, state.root}}
+    end
   end
 
   defp ensure_port_and_database(state) do
-    {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
-     state.database || database_name(state)}
+    {:ok,
+     {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
+      state.database || database_name(state)}}
   end
+
+  # Main's port is fixed — read off `config/dev.exs`, not freshly allocated
+  # the way every other copy's is — so it can already be held by a process
+  # this instance never launched and holds no tracked `os_pid` for: this
+  # checkout's own pre-story-1108 dev server, still running from before the
+  # first unified restart or ensure ever ran against it. `running?/1` only
+  # ever tracks a *persisted* `os_pid` (see `stop_process/1`), so that old
+  # server would otherwise sit on the port forever — `launch/5`'s
+  # `mix phx.server` either fails `:eaddrinuse` next to it, or somehow
+  # answers alongside it.
+  #
+  # Adopted (killed) only once its own working directory is confirmed to be
+  # this checkout's own root — never assumed from the port number alone,
+  # since something entirely unrelated could be squatting on 4000. Anything
+  # that fails that check is refused loudly instead of killed: `launch/5`
+  # was never going to succeed next to it either way, and guessing wrong
+  # here means killing a stranger's process.
+  #
+  # Never reached for a non-main copy: its port came from `free_port/0`
+  # a moment ago, allocated by binding it and immediately closing it again,
+  # so nothing else has had the chance to take it in between.
+  defp ensure_port_free(%__MODULE__{main?: true} = state, port) do
+    case Runner.listener_pid(port) do
+      nil ->
+        :ok
+
+      pid ->
+        if Runner.process_root(pid) == Path.expand(state.root) do
+          Runner.stop_process(pid)
+          :ok
+        else
+          {:error, {:port_held_by_untracked_process, port, pid}}
+        end
+    end
+  end
+
+  defp ensure_port_free(_state, _port), do: :ok
 
   # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this
   # same checkout, distinct from every other copy of the same project without

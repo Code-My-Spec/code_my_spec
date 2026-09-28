@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import Phoenix.ChannelTest
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -66,6 +67,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
         response = promote(context)
 
         {head, 0} = git(context, context.running_root, ["rev-parse", "main"])
+
+        # The restart is dispatched, never awaited (54aa534c, phase two), so
+        # `promote/1` has already answered by the time this runs — but it
+        # dispatches through `WorkingCopies.AppTransport.restart_app/2` now,
+        # the same channel verb every working copy's app already answers to,
+        # not a direct `just restart` shell-out. Something has to be on the
+        # other end of that channel to answer it, the same way a real
+        # harness would — this is that harness, answering as the running
+        # copy's own.
+        answer_restart_app(context.running_socket, context.running_root)
 
         {:ok,
          context
@@ -178,7 +189,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
 
     _ = out
 
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
+    {running, running_socket} =
+      join_working_copy_socket(context, running_root, "the checkout the dev app runs in")
+
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
 
     # The running checkout joined first and so holds the designation: the
@@ -197,6 +210,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
     |> Map.put(:running_root, running_root)
     |> Map.put(:agent_root, agent_root)
     |> Map.put(:running, running)
+    |> Map.put(:running_socket, running_socket)
     |> Map.put(:agent, agent)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
@@ -212,6 +226,38 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
     {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
     response
+  end
+
+  # Standing in for the harness on the other end of `restart_app` — the
+  # channel verb `Promotion.Runner.restart/3` now dispatches through
+  # `WorkingCopies.AppTransport.restart_app/2`, the same one every working
+  # copy's own app already answers to. Writing `.restarted` here, rather
+  # than through a real `just restart`, is what `serve`'s own harness-side
+  # launch would have done; a spec's job is proving the promotion asked for
+  # it, not re-implementing the harness that answers.
+  #
+  # Dispatched detached (54aa534c, phase two), so this push can arrive a
+  # moment after `promote/1` has already answered — the timeout is
+  # generous for that gap, not for anything slow.
+  defp answer_restart_app(socket, running_root) do
+    assert_push "restart_app", %{"ref" => ref}, 5_000
+
+    write(running_root, ".restarted", DateTime.to_string(DateTime.utc_now()))
+
+    reply_ref =
+      Phoenix.ChannelTest.push(socket, "restart_app_result", %{
+        "ref" => ref,
+        "status" => "ok",
+        "app_status" => "serving",
+        "app_url" => "http://127.0.0.1:4000",
+        "app_commit" => "cafef00d"
+      })
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
+    after
+      1_000 -> flunk("restart_app_result was never acknowledged")
+    end
   end
 
   # An explicit `:cd` wins over the environment's own cwd

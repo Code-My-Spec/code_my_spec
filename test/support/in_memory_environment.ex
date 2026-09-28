@@ -39,7 +39,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
      %Environment{
        type: :memory,
        cwd: working_dir,
-       ref: %{agent: agent, recorded: %{}},
+       ref: %{agent: agent, recorded: %{}, shell: Keyword.get(opts, :shell)},
        metadata: Keyword.get(opts, :metadata, %{})
      }}
   end
@@ -163,6 +163,11 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
       "CodeMySpecSpex.RecordedAnalysis.attach_recorded_analysis/2 " <>
       "(tests never start a real analyzer)"
   end
+
+  # A `:shell` given to `create/1` scripts this one environment, so async tests need no global.
+  defp shell(%Environment{ref: %{shell: shell}} = env, command, args, opts)
+       when is_function(shell, 3),
+       do: shell.(command, args, Keyword.put_new(opts, :cd, env.cwd))
 
   defp shell(env, command, args, opts) do
     case Application.get_env(:code_my_spec, :memory_shell) do

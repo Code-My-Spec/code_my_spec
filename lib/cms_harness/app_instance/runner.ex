@@ -30,6 +30,16 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "The database name main's own `config/dev.exs` declares, or `nil`."
   @callback main_database_name(root :: String.t()) :: String.t() | nil
 
+  @doc """
+  The `{http, https}` ports main's own `config/dev.exs` falls back to, or
+  `nil`. Main's app cannot be allocated a free port the way every other
+  copy's is — it is the one address every bookmark, browser tab and the MCP
+  endpoint already point at — so it has to be read off the same file that
+  configures it, the same way `main_database_name/1` already does for the
+  database.
+  """
+  @callback main_ports(root :: String.t()) :: {pos_integer(), pos_integer()} | nil
+
   @doc "Clone `main_database` into a fresh `database` — dump and restore, not a template."
   @callback clone_database(root :: String.t(), main_database :: String.t(), database :: String.t()) ::
               :ok | {:error, term()}
@@ -42,6 +52,13 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc "The commit `root`'s checkout is on, or `nil`."
   @callback current_commit(root :: String.t()) :: String.t() | nil
+
+  @doc """
+  Run `root`'s `after-promote` recipe. Only called once `recipe?/2` has
+  already confirmed it exists — a project that declares nothing never
+  reaches this.
+  """
+  @callback run_after_promote(root :: String.t()) :: :ok | {:error, term()}
 
   @doc """
   Launch `root`'s `serve` recipe, detached, with `PORT`/`HTTPS_PORT`/
@@ -64,6 +81,26 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "Take the whole process tree rooted at `os_pid` down."
   @callback stop_process(os_pid :: pos_integer()) :: :ok
 
+  @doc """
+  The `os_pid` of whatever is listening on `port` right now, or `nil` if
+  nothing is. Main's port is fixed, not freshly allocated the way every
+  other copy's is, so it can already be held by a process this instance
+  never launched and holds no tracked `os_pid` for — the checkout's own
+  pre-story-1108 dev server, still running from before the first unified
+  restart ever ran against it.
+  """
+  @callback listener_pid(port :: pos_integer()) :: pos_integer() | nil
+
+  @doc """
+  The working directory of `os_pid`, or `nil` if it can't be read (the
+  process is already gone, or this platform has no way to ask). Compared
+  against a copy's own `root` before that copy's app instance ever adopts
+  (kills) whatever it finds holding its port — a match confirms the
+  listener is this checkout's own old process; anything else is refused
+  rather than assumed and killed.
+  """
+  @callback process_root(os_pid :: pos_integer()) :: String.t() | nil
+
   @spec recipe?(String.t(), String.t()) :: boolean()
   def recipe?(root, name), do: impl().recipe?(root, name)
 
@@ -79,6 +116,9 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec main_database_name(String.t()) :: String.t() | nil
   def main_database_name(root), do: impl().main_database_name(root)
 
+  @spec main_ports(String.t()) :: {pos_integer(), pos_integer()} | nil
+  def main_ports(root), do: impl().main_ports(root)
+
   @spec clone_database(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
   def clone_database(root, main_database, database), do: impl().clone_database(root, main_database, database)
 
@@ -90,6 +130,9 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec current_commit(String.t()) :: String.t() | nil
   def current_commit(root), do: impl().current_commit(root)
+
+  @spec run_after_promote(String.t()) :: :ok | {:error, term()}
+  def run_after_promote(root), do: impl().run_after_promote(root)
 
   @spec launch(String.t(), pos_integer(), pos_integer(), String.t(), String.t()) ::
           {:ok, pos_integer()} | {:error, term()}
@@ -104,6 +147,12 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec stop_process(pos_integer()) :: :ok
   def stop_process(os_pid), do: impl().stop_process(os_pid)
+
+  @spec listener_pid(pos_integer()) :: pos_integer() | nil
+  def listener_pid(port), do: impl().listener_pid(port)
+
+  @spec process_root(pos_integer()) :: String.t() | nil
+  def process_root(os_pid), do: impl().process_root(os_pid)
 
   defp impl do
     :code_my_spec
