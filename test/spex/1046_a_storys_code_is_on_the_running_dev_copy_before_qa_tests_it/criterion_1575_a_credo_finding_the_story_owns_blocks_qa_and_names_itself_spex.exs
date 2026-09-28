@@ -143,7 +143,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1575Spex do
         %{
           requirement_name: "problems_resolved",
           entity_type: "story",
-          entity_id: to_string(context.story.id),
+          entity_id: to_string(context.story.number),
           session_id: "spex-1575-#{System.unique_integer([:positive])}"
         },
         frame

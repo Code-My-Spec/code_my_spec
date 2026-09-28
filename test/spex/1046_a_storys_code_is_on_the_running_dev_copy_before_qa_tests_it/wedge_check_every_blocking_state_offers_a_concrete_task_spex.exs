@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
       end
 
       then_ "the specs-red story is offered FixBddSpecs", context do
-        text = ask_for_next_work(context, context.story.id)
+        text = ask_for_next_work(context, context.story.number)
 
         assert text =~ "FixBddSpecs",
                "a story whose specs have never gone green should be offered " <>
@@ -115,7 +115,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
       end
 
       then_ "the issue-blocked story is offered FixStoryIssues", context do
-        text = ask_for_next_work(context, context.issue_story.id)
+        text = ask_for_next_work(context, context.issue_story.number)
 
         assert text =~ "FixStoryIssues",
                "a story with an open accepted issue should be offered the " <>
@@ -142,7 +142,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
         # this story's own `working_copy_id` — done here via `activate/2`
         # directly, so the credo finding lands on the same copy the story
         # now carries.
-        activate(context, story.id)
+        activate(context, story.number)
 
         {:ok, [_problem]} =
           Problems.create_problems(context.scope, [
@@ -164,7 +164,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
 
       then_ "the problem-blocked story is offered FixStoryIssues naming problems_resolved",
             context do
-        text = ask_for_next_work(context, context.problem_story.id)
+        text = ask_for_next_work(context, context.problem_story.number)
 
         assert text =~ "FixStoryIssues",
                "a story blocked only by an analyzer finding should still be " <>
@@ -192,7 +192,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
       end
 
       then_ "the QA-ready story is offered QaStory", context do
-        text = ask_for_next_work(context, context.qa_story.id)
+        text = ask_for_next_work(context, context.qa_story.number)
 
         assert text =~ "QaStory",
                "a story with clean specs, no issues and no problems should be " <>
@@ -219,7 +219,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
       end
 
       then_ "the unpromoted story is offered PromoteWork", context do
-        text = ask_for_next_work(context, context.unpromoted_story.id)
+        text = ask_for_next_work(context, context.unpromoted_story.number)
 
         assert text =~ "PromoteWork",
                "a story that has passed QA but was never promoted should be " <>
@@ -261,7 +261,7 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
         # this one story and requirement, is where the main role's own
         # discovery actually reads this — a concrete, named, unsatisfied
         # requirement, not an empty list.
-        text = deploy_status(context, context.promoted_story.id)
+        text = deploy_status(context, context.promoted_story.number)
 
         assert text =~ "[ ] **deploy**",
                "a promoted story ready for UAT should still show deploy as " <>
@@ -329,14 +329,17 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
   # The surface an agent actually calls before asking for work: one working
   # copy carries one active story at a time, so switching is how the copy's
   # own "which story am I on" answer changes — not a direct column write.
-  defp activate(context, story_id) do
+  # Stories are named by number at the tool boundary; only fixtures writing
+  # domain rows directly (`Issues.create_issue`, `Stories.get_story`) take
+  # the id.
+  defp activate(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, _response, _frame} = SetActiveStory.execute(%{story_id: to_string(story_id)}, frame)
+    {:reply, _response, _frame} = SetActiveStory.execute(%{story_number: story_number}, frame)
     context
   end
 
-  defp ask_for_next_work(context, story_id) do
-    context = activate(context, story_id)
+  defp ask_for_next_work(context, story_number) do
+    context = activate(context, story_number)
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
     {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
     response_text(response)
@@ -349,14 +352,14 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
   # model over whatever the last settle left). `ask_for_next_work/2` is what
   # actually processed this story's creation and every state change since —
   # called here for that side effect, its own answer unused.
-  defp deploy_status(context, story_id) do
-    _ = ask_for_next_work(context, story_id)
+  defp deploy_status(context, story_number) do
+    _ = ask_for_next_work(context, story_number)
 
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
     {:reply, response, _frame} =
       ListRequirements.execute(
-        %{entity_type: "story", entity_id: to_string(story_id), requirement_name: "deploy"},
+        %{entity_type: "story", entity_id: to_string(story_number), requirement_name: "deploy"},
         frame
       )
 

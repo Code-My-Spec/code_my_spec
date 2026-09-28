@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
         %{
           requirement_name: "qa_complete",
           entity_type: "story",
-          entity_id: to_string(context.story.id),
+          entity_id: to_string(context.story.number),
           session_id: "spex-1169-#{System.unique_integer([:positive])}"
         },
         frame

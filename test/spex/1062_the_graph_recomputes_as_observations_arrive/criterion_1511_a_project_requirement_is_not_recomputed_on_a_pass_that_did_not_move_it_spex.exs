@@ -126,9 +126,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
         # that actually blocks a story — a second, genuinely-moving kind in
         # the same drain — does.
         story = Stories.get_story(context.scope, context.story_id)
-        {:ok, story} = Stories.update_story(context.scope, story, %{
-          working_copy_id: context.scope.active_working_copy_id
-        })
+
+        {:ok, _story} =
+          Stories.update_story(context.scope, story, %{
+            working_copy_id: context.scope.active_working_copy_id
+          })
 
         :ok =
           Fixtures.replace_problems(context.scope, context.component.id, "credo", [
