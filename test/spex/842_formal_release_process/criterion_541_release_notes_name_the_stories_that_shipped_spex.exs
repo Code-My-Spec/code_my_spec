@@ -1,0 +1,96 @@
+defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
+  @moduledoc """
+  Story 842 — Formal release process
+  Criterion 1972 — Release notes name the stories that shipped.
+
+  Notes that say "various fixes" are not notes. The point of the ceremony is
+  that someone reading the release can tell which work is in it, which means
+  the stories have to be named rather than counted.
+
+  Surface: HTTP `POST /api/agent-tasks/start`. The release task compiles its
+  notes from the stories on UAT since the last release, so what it is working
+  from has to name them.
+  """
+
+  use CodeMySpecSpex.Case
+
+  alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
+
+  @release_type "release"
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+  setup :devops_on
+
+  spex "Release notes name the stories that shipped", criterion: 541 do
+    scenario "two stories rode to UAT since the last release" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists, so a spec about
+        # what the release *says* has to get past that gate first.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
+      given_ "two named stories have been deployed to UAT and not released", context do
+        first =
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 first shipped thing",
+            description: "A story for spex testing"
+          )
+
+        second =
+          StoryHelpers.create_story(context.scope,
+            title: "Story 842 second shipped thing",
+            description: "A story for spex testing"
+          )
+
+        # Deploy tracking reads and writes the deploys table now, not a file
+        # the agent wrote for itself (a46f3ec5) — "on UAT" is a row with
+        # health_verified_at set, not a markdown file with the word
+        # "verified" in it.
+        for story <- [first, second], do: Fixtures.record_deploy(context.scope, story.id, "uat")
+
+        {:ok, context |> Map.put(:first, first) |> Map.put(:second, second)}
+      end
+
+      when_ "the agent starts the release", context do
+        response =
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> post("/api/agent-tasks/start", %{
+            "session_type" => @release_type,
+            "external_id" => "spex-#{System.unique_integer([:positive])}"
+          })
+          |> Phoenix.ConnTest.json_response(200)
+
+        {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}
+      end
+
+      then_ "both stories are named", context do
+        assert context.prompt =~ context.first.title,
+               "expected the first shipped story to be named, got: #{context.prompt}"
+
+        assert context.prompt =~ context.second.title,
+               "expected the second shipped story to be named, got: #{context.prompt}"
+
+        {:ok, context}
+      end
+
+      then_ "they are named rather than counted", context do
+        refute context.prompt =~ ~r/2 stories\b(?!.*Story 842)/,
+               "a count is not a name — the reader has to be able to tell what shipped"
+
+        {:ok, context}
+      end
+    end
+  end
+end

@@ -48,19 +48,17 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     })
   end
 
-  defp bdd_file!(scope, story, path) do
+  # A spex bound to its criterion, as a sync leaves one that names it.
+  defp bdd_file!(scope, story, criterion, path) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
       working_copy_id: scope.active_working_copy_id,
       story_id: story.id,
+      criterion_id: criterion.id,
       path: path,
       role: :bdd_spec,
       valid: true
     })
-  end
-
-  defp claim!(criterion, path) do
-    criterion |> Ecto.Changeset.change(spec_path: path) |> Repo.update!()
   end
 
   # What the query says, as a set of story ids.
@@ -177,16 +175,13 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       covered = story_fixture(scope, %{criteria: []})
       c1 = criterion_fixture(scope, covered)
       c2 = criterion_fixture(scope, covered)
-      claim!(c1, "test/spex/covered/one_test.exs")
-      claim!(c2, "test/spex/covered/two_test.exs")
-      bdd_file!(scope, covered, "test/spex/covered/one_test.exs")
-      bdd_file!(scope, covered, "test/spex/covered/two_test.exs")
+      bdd_file!(scope, covered, c1, "test/spex/covered/one_test.exs")
+      bdd_file!(scope, covered, c2, "test/spex/covered/two_test.exs")
 
       partial = story_fixture(scope, %{criteria: []})
       p1 = criterion_fixture(scope, partial)
       _p2 = criterion_fixture(scope, partial)
-      claim!(p1, "test/spex/partial/one_test.exs")
-      bdd_file!(scope, partial, "test/spex/partial/one_test.exs")
+      bdd_file!(scope, partial, p1, "test/spex/partial/one_test.exs")
 
       RequirementGraph.compute_graph(scope)
 
@@ -214,10 +209,10 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
                )
     end
 
-    test "a criterion's file existing is not enough without being claimed", %{scope: scope} do
+    test "a spex on the story that is bound to no criterion covers none", %{scope: scope} do
       story = story_fixture(scope, %{criteria: []})
       criterion_fixture(scope, story)
-      bdd_file!(scope, story, "test/spex/unclaimed/one_test.exs")
+      bdd_file!(scope, story, %{id: nil}, "test/spex/unbound/one_test.exs")
 
       RequirementGraph.compute_graph(scope)
 

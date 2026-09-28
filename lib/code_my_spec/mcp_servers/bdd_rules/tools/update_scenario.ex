@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   @moduledoc """
   Updates an existing Scenario (green card) — the Given/When/Then body,
   title, and/or kind. Unlike `add_scenario` this never re-links to a
-  different rule; use `delete_criterion` + `add_scenario` if the
+  different rule; use `retire_criterion` + `add_scenario` if the
   scenario belongs under a different Rule.
 
   Refuses to edit verified (locked) scenarios — once a criterion has
@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   schema do
     field :criterion_id, :string,
       required: true,
-      doc: "Criterion ID of the scenario to update (from `get_story` or `get_story_gherkin`)."
+      doc: "Criterion number of the scenario to update (from `get_story` or `get_story_gherkin`)."
 
     field :title, :string,
       doc: "New scenario title (one-line, in domain language). Omit to leave unchanged."
@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion(scope, get_param(params, :criterion_id)),
+           AcceptanceCriteria.get_criterion_by_number(scope, get_param(params, :criterion_id)),
          :ok <- check_not_verified(criterion),
          {:ok, attrs} <- build_attrs(params),
          {:ok, updated} <- AcceptanceCriteria.update_criterion(scope, criterion, attrs) do

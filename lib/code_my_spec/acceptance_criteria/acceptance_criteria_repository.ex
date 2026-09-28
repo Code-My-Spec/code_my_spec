@@ -7,334 +7,14 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  require Logger
-
-  @doc """
-  Record where each criterion's spex file lives, for criteria that do not
-  already say.
-
-  The convention writes the association into a filename —
-  `criterion_<id>_<slug>_spex.exs` — and the scan reads the ids back out of it,
-  so the link is derived in two directions from four things that all move. When
-  they stop agreeing the symptom is silent: a criterion whose file cannot be
-  matched reads as work not done, and coverage that exists stops counting.
-
-  Reconciling one project measured the cost: 841 spex files against 921
-  criteria, 97 unmatched purely because ids had been renumbered and files never
-  renamed. 73 recovered by slug, 5 by similarity, 2 by hand.
-
-  Claiming on sight turns the filename into a name rather than an identifier.
-  Only criteria with no recorded path are touched, so a file that is later
-  renamed keeps pointing where it was recorded rather than being re-derived —
-  which is the whole point.
-  """
-  @spec claim_spec_paths(Scope.t(), %{integer() => String.t() | [String.t()]}, Enumerable.t()) ::
-          {:ok, non_neg_integer()}
-  def claim_spec_paths(_scope, paths, _recorded_paths) when map_size(paths) == 0, do: {:ok, 0}
-
-  def claim_spec_paths(%Scope{active_project_id: project_id}, paths, recorded_paths) do
-    # Every file naming an id, not the last one: after a renumbering a legacy
-    # directory reuses ids that now belong to other stories.
-    paths = Map.new(paths, fn {id, found} -> {id, List.wrap(found)} end)
-    ids = Map.keys(paths)
-
-    # Which files this checkout actually has.
-    #
-    # Read once, by the caller, rather than asked per path — and read from the
-    # record rather than the disk. See `stale?/2`.
-    present = present_paths(paths, recorded_paths)
-
-    # Unclaimed, plus claimed-but-stale.
-    #
-    # It only ever filled empties, on the reasoning that a recorded path is a
-    # decision and a scan should not overrule it. True while a file keeps its
-    # name — and a spex gets renamed whenever its criterion is reworded, which
-    # is the normal way a criterion changes. The record then points at a
-    # filename nobody will create again, `bdd_specs_exist` reads the record,
-    # finds nothing, and reports a spec that is sitting right there in the same
-    # directory. Silently, because a missing file is a legitimate answer.
-    #
-    # Overruling is safe here in a way it would not be generally: the id comes
-    # from the observed filename, so a row is only rewritten when a file
-    # claiming to be that criterion's spec is on disk *and* the path it holds
-    # is not. Nothing is taken from a record that still resolves.
-    # Which numbers name a story here, so the guard below can tell "this
-    # directory belongs to another story" from "this directory names nothing".
-    story_numbers = project_story_numbers(project_id)
-    dir_owners = directory_owners(project_id)
-
-    by_row_id =
-      from(c in Criterion,
-        join: s in "stories",
-        on: s.id == c.story_id,
-        where: c.project_id == ^project_id and c.id in ^ids,
-        select: {c.id, c.spec_path, s.number, c.story_id}
-      )
-      |> Repo.all()
-      |> Enum.filter(fn {_id, path, _number, _story_id} -> stale?(path, present) end)
-      |> Enum.flat_map(fn {id, previous, number, story_id} ->
-        paths
-        |> Map.fetch!(id)
-        |> Enum.filter(fn observed ->
-          names_this_story?(observed, number, story_numbers) and
-            not owned_by_another_story?(observed, story_id, dir_owners)
-        end)
-        |> case do
-          [observed | _] -> [{id, previous, observed}]
-          [] -> []
-        end
-      end)
-
-    # And the ones the filename cannot name.
-    #
-    # The id in a filename is the criterion's id *at the time the file was
-    # written*, and this project renumbered its criteria. So a row whose
-    # recorded path reads `criterion_8010_…` is row 2033, and matching the
-    # observed file's `8010` against row ids finds nothing — the repair above
-    # reaches every criterion except the ones that have been through a
-    # renumbering, which are exactly the oldest and least likely to be looked at.
-    #
-    # Bridged through the stale record itself: it is the only thing that still
-    # remembers which id the file was named for. Matched on the directory too,
-    # so an id reused under a different story cannot pull a path across.
-    already = MapSet.new(by_row_id, fn {id, _, _} -> id end)
-
-    by_recorded_id =
-      from(c in Criterion,
-        where: c.project_id == ^project_id,
-        where: not is_nil(c.spec_path) and c.spec_path != "",
-        select: {c.id, c.spec_path}
-      )
-      |> Repo.all()
-      |> Enum.reject(fn {id, _} -> MapSet.member?(already, id) end)
-      |> Enum.filter(fn {_id, path} -> stale?(path, present) end)
-      |> Enum.flat_map(&repair_candidate(&1, paths))
-
-    claims = by_row_id ++ by_recorded_id
-
-    count =
-      claims
-      |> Enum.reduce(0, fn {id, previous, recorded}, acc ->
-        {n, _} =
-          from(c in Criterion, where: c.id == ^id and c.project_id == ^project_id)
-          |> Repo.update_all(set: [spec_path: recorded, updated_at: DateTime.utc_now()])
-
-        log_repair(id, previous, recorded)
-
-        acc + n
-      end)
-
-    announce_claimed(project_id, Enum.map(claims, &elem(&1, 0)))
-    {:ok, count}
-  end
-
-  # A claim changes no file, so the manifest's file-change recompute never sees
-  # it; without this the story's bdd_specs_exist stayed unsatisfied after the
-  # criteria were bound.
-  defp announce_claimed(_project_id, []), do: :ok
-
-  defp announce_claimed(project_id, criterion_ids) do
-    stories =
-      from(c in Criterion,
-        where: c.id in ^criterion_ids and not is_nil(c.story_id),
-        distinct: true,
-        select: c.story_id
-      )
-      |> Repo.all()
-      |> Enum.map(&{"story", &1})
-
-    GraphInputs.announce(project_id, "AcceptanceCriteria", stories, :project_wide)
-  end
-
-  defp repair_candidate({id, previous}, paths) do
-    with embedded when not is_nil(embedded) <- embedded_id(previous),
-         found when not is_nil(found) <-
-           paths |> Map.get(embedded, []) |> Enum.find(&same_dir?(previous, &1)) do
-      [{id, previous, found}]
-    else
-      _ -> []
-    end
-  end
-
-  # Whether a recorded path has gone, asked of the checkout the manifest came
-  # from rather than of whatever disk this process is sitting on.
-  #
-  # It used to be `not File.exists?(path)`, and `spec_path` is project-relative,
-  # so the question resolved against the server's own cwd — the main checkout.
-  # A manifest from any other working copy was therefore judged against a
-  # checkout it has nothing to do with. For a worktree whose spec files are not
-  # committed, every criterion read as stale, was repointed at the same relative
-  # path, and read as stale again on the next manifest: a repair that could not
-  # stick, because nothing it wrote could make `File.exists?` true somewhere
-  # else. `bdd_specs_exist` never satisfied, and restarting or re-running the
-  # task changed nothing, because the record was never what was wrong.
-  # Found by devops-q-ec; issue `5b538c8b`.
-  #
-  # The server owns the projection and has no business consulting a filesystem
-  # about a checkout it may not be in — the same mistake as `Setup.Context`
-  # deciding a project's app name from whichever checkout's mix.exs sorted last
-  # (`282428a3`).
-  defp stale?(path, _present) when is_nil(path) or path == "", do: true
-
-  # Evidence is additive: the record, then the disk. A path is gone only when
-  # neither can find it — and the disk is only allowed to answer where it can
-  # answer for the right checkout.
-  #
-  # Consulting it for a *project-relative* path reintroduces the whole bug
-  # above from the other side. Such a path resolves against this process's cwd,
-  # which is the server's own checkout, and that checkout still holds whatever
-  # every other working copy has renamed or deleted on its own branch.
-  # Measured 2026-09-20: story 1017's nine spex were renamed on
-  # `phx-new-generator`, the manifest carried the nine new names, and every
-  # repair was refused because the nine old names were sitting in the main
-  # checkout — `bdd_specs_exist` reported "9 of 9 criteria missing" against a
-  # directory holding nine matching files, and no amount of rescanning could
-  # change it.
-  #
-  # An absolute path is a different case and keeps the disk clause. It is
-  # outside every scanned tree, so the record cannot speak for it at all — a
-  # spex somebody moved somewhere deliberate, which `claim_spec_paths_test.exs`
-  # asserts must not be undone by the next scan.
-  defp stale?(path, present) do
-    not MapSet.member?(present, path) and not outside_every_checkout?(path)
-  end
-
-  defp outside_every_checkout?(path), do: Path.type(path) == :absolute and File.exists?(path)
-
-  # Two sources, because neither alone is the whole picture at this moment.
-  #
-  # `recorded_paths` (the caller's `Files.list_files/1`, scoped to its working
-  # copy) is the durable record — but this runs *before* the manifest it is
-  # processing is upserted, so a file appearing for the first time is not in it
-  # yet. The observations are that missing half: a path in this manifest is a
-  # file the harness has just seen on that checkout's disk.
-  #
-  # Union rather than either one, so a first sync does not read every existing
-  # criterion as stale, and a file present but not in this manifest is not
-  # mistaken for a deletion.
-  defp present_paths(paths, recorded_paths) do
-    paths
-    |> Map.values()
-    |> List.flatten()
-    |> MapSet.new()
-    |> MapSet.union(MapSet.new(recorded_paths))
-  end
-
-  defp embedded_id(path) do
-    case Regex.run(~r/criterion_(\d+)_/, Path.basename(path)) do
-      [_, id] -> String.to_integer(id)
-      _ -> nil
-    end
-  end
-
-  defp same_dir?(a, b), do: Path.dirname(a) == Path.dirname(b)
-
-  # The directory names a story; the filename names a criterion. Both have to
-  # mean the same story, or the claim is refused.
-  #
-  # `criterion_<id>` is a **project-wide** id and `test/spex/<number>_<slug>/` is
-  # a story, and nothing checked they agreed — so a file written into story A's
-  # directory claimed whichever criterion held that id, wherever it lived.
-  #
-  # Measured by QA on 2026-09-11 against the sandbox project: a probe spex at
-  # `test/spex/29_qa1063_attempt_story_a/criterion_1_probe_spex.exs` stamped its
-  # path onto criterion 1, which belongs to story 7 (number 5). Story 7's
-  # `bdd_specs_exist` then flipped satisfied on a file written for story 29,
-  # whose own stayed open. Both halves wrong, and silent: the right story never
-  # gets credited and the wrong one gets a gate it did not earn (3cec218f).
-  #
-  # The repair path below already matched on the directory, saying in as many
-  # words that "an id reused under a different story cannot pull a path across".
-  # It was right and this path did not do it.
-  #
-  # Only a directory that names a *different, existing* story is refused.
-  #
-  # Not "a number that differs", which is the same over-reach twice: a path
-  # naming no number at all is somebody's deliberate naming, and a number
-  # matching no story is the renumbered-project case this repair exists for —
-  # `criterion_8010_…` on a row that is now 2033, in a directory whose number
-  # went with it. Refusing those would break the recovery that recovered 73
-  # criteria by slug on one project.
-  #
-  # What is refused is the case with a real victim: the directory names story A,
-  # the criterion belongs to story B, and both exist. Then the claim is provably
-  # crossing stories rather than merely looking odd.
-  defp names_this_story?(path, story_number, story_numbers) do
-    case story_number_in(path) do
-      nil -> true
-      ^story_number -> true
-      other -> not MapSet.member?(story_numbers, other)
-    end
-  end
-
-  # A directory with no story number is judged by who already has specs in it.
-  # The id in a legacy filename is from before a renumbering, so on metric_flow
-  # (2026-09-27) new criteria 4112-4115 of a subscription story claimed
-  # correlation-analysis files that happened to carry those old ids.
-  defp owned_by_another_story?(path, story_id, dir_owners) do
-    case Map.get(dir_owners, Path.dirname(path)) do
-      nil -> false
-      owners -> not MapSet.member?(owners, story_id)
-    end
-  end
-
-  defp directory_owners(project_id) do
-    from(c in Criterion,
-      where: c.project_id == ^project_id,
-      where: not is_nil(c.spec_path) and c.spec_path != "",
-      select: {c.spec_path, c.story_id}
-    )
-    |> Repo.all()
-    |> Enum.group_by(fn {path, _} -> Path.dirname(path) end, fn {_, story} -> story end)
-    |> Map.new(fn {dir, stories} -> {dir, MapSet.new(stories)} end)
-  end
-
-  defp project_story_numbers(project_id) do
-    from(s in "stories",
-      where: s.project_id == type(^project_id, :binary_id) and not is_nil(s.number),
-      select: s.number
-    )
-    |> Repo.all()
-    |> MapSet.new()
-  end
-
-  defp story_number_in(path) do
-    path
-    |> String.replace_prefix("test/spex/", "")
-    |> String.split("/")
-    |> hd()
-    |> String.split("_")
-    |> hd()
-    |> Integer.parse()
-    |> case do
-      {number, ""} -> number
-      _ -> nil
-    end
-  end
-
-  # A repair is worth a line; a first claim is not. The two are different
-  # events -- one records something new, the other corrects a record that was
-  # wrong -- and only the second says anything about a file having moved out
-  # from under the project.
-  defp log_repair(_id, previous, _recorded) when is_nil(previous) or previous == "", do: :ok
-
-  defp log_repair(id, previous, recorded) do
-    Logger.info(
-      "[AcceptanceCriteria] criterion #{id} pointed at #{previous}, which is gone; " <>
-        "repointed at #{recorded}, found on disk carrying the same criterion id"
-    )
-  end
-
   @doc """
   Every claimed spec path in the project, mapped to the story that owns it.
 
-  The counterpart to `claim_spec_paths/3`: that records which file a criterion
-  is checked by, this reads it back. Anything deciding what a spex failure
+  Recorded paths predate criteria numbers in spex files; this reads them back. Anything deciding what a spex failure
   belongs to should ask here rather than parse the filename — the leading number
   in `test/spex/<n>_.../` is a directory name, not a story id, and the two have
   drifted apart.
@@ -362,9 +42,41 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   # agent, so a shuffle reorders the work.
   def list_story_criteria(%Scope{active_project: %{id: project_id}}, story_id) do
     from(c in Criterion,
+      where: c.story_id == ^story_id and c.project_id == ^project_id and is_nil(c.retired_at),
+      order_by: [asc: c.inserted_at, asc: c.id]
+    )
+    |> Repo.all()
+  end
+
+  @doc "A story's criteria, retired ones included. Migration carries both."
+  @spec list_all_story_criteria(Scope.t(), integer()) :: [Criterion.t()]
+  def list_all_story_criteria(%Scope{active_project: %{id: project_id}}, story_id) do
+    from(c in Criterion,
       where: c.story_id == ^story_id and c.project_id == ^project_id,
       order_by: [asc: c.inserted_at, asc: c.id]
     )
+    |> Repo.all()
+  end
+
+  @doc "A criterion by its number, retired or not."
+  @spec get_criterion_by_number(Scope.t(), integer() | String.t()) :: Criterion.t() | nil
+  def get_criterion_by_number(%Scope{active_project: %{id: project_id}}, number)
+      when is_integer(number),
+      do: Repo.get_by(Criterion, number: number, project_id: project_id)
+
+  def get_criterion_by_number(%Scope{} = scope, number) when is_binary(number) do
+    case Integer.parse(number) do
+      {n, ""} -> get_criterion_by_number(scope, n)
+      _ -> nil
+    end
+  end
+
+  @doc "The project's criteria with these numbers, retired ones included."
+  @spec list_criteria_by_number(Scope.t(), [integer()]) :: [Criterion.t()]
+  def list_criteria_by_number(_scope, []), do: []
+
+  def list_criteria_by_number(%Scope{active_project_id: project_id}, numbers) do
+    from(c in Criterion, where: c.project_id == ^project_id and c.number in ^numbers)
     |> Repo.all()
   end
 
@@ -461,20 +173,25 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   defp restart_specs_chain_on_move(other, _scope, _criterion), do: other
 
-  @spec delete_criterion(Scope.t(), Criterion.t()) ::
+  @spec retire_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def delete_criterion(
-        %Scope{active_project: %{id: project_id}},
-        %Criterion{
-          project_id: cp_id
-        } = criterion
-      ) do
-    if cp_id == project_id do
-      Repo.delete(criterion)
-    else
-      {:error, :cross_project}
-    end
+  def retire_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
+    do: criterion |> Criterion.retire_changeset() |> Repo.update()
+
+  def retire_criterion(_scope, _criterion), do: {:error, :cross_project}
+
+  # Coming back is a criterion arriving on its story, so the story restarts
+  # the same way it does for a new one.
+  @spec restore_criterion(Scope.t(), Criterion.t()) ::
+          {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
+  def restore_criterion(%Scope{active_project: %{id: project_id}} = scope, %Criterion{project_id: project_id} = criterion) do
+    criterion
+    |> Criterion.restore_changeset()
+    |> Repo.update()
+    |> restart_specs_chain(scope, Repo.get!(Story, criterion.story_id))
   end
+
+  def restore_criterion(_scope, _criterion), do: {:error, :cross_project}
 
   @spec mark_verified(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}

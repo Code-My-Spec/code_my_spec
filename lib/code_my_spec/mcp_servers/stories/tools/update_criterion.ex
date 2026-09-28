@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   Updates the description of an existing acceptance criterion.
 
   Cannot update verified (locked) criteria - they are protected from changes.
-  Use get_story to see criteria IDs and their verification status.
+  Use get_story to see criterion numbers and their verification status.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   schema do
     field :criterion_id, :string,
       required: true,
-      doc: "Criterion ID to update (from get_story response)"
+      doc: "Criterion number to update (from get_story)"
 
     field :description, :string, required: true, doc: "New description text"
   end
@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
          :ok <- check_not_verified(criterion),
          {:ok, updated} <-
            AcceptanceCriteria.update_criterion(scope, criterion, %{

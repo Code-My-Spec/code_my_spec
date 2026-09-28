@@ -131,6 +131,8 @@ defmodule CodeMySpec.SpexGivensTest do
   #   * `StoryHelpers.` — its own moduledoc says it "drives the same MCP tools
   #     the agent uses in production", which is the definition this list is
   #     for. `Fixtures.` is here on the same grounds.
+  #   * `CriterionScript.` — drives the story and criterion tools by name
+  #     through `run_script`, as an agent does. Same grounds as `StoryHelpers.`.
   #   * `Artifacts.` — writes through the `Environments` seam, which is listed
   #     one line up, so listing the wrapper and not the wrapped was arbitrary.
   #   * `story_for` — story 460's local wrapper around
@@ -230,7 +232,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
     assign put_session seed_cookies
-    StoryHelpers. Artifacts. story_for register_and_log_in_user
+    StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
@@ -273,11 +275,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # (963-974, 985) is deliberately absent — it was cleared, and this test is
   # what keeps it cleared.
   @baseline [
-    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5493_first_google_signup_creates_a_user_with_confirmed_at_set_spex.exs",
-    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5495_second_google_sign-in_returns_the_same_user_with_no_duplicate_records_spex.exs",
-    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5496_same_email_from_a_different_oauth_provider_links_to_the_existing_user_instead_of_creating_a_new_one_spex.exs",
-    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8161_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",
-    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8168_reaching_specs-ready_releases_qa_on_the_story_spex.exs"
+    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_267_oauth_signup_is_treated_as_a_confirmed_account_from_the_moment_the_callback_completes_no_separate_spex.exs",
+    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_269_repeat_oauth_sign-ins_are_idempotent_the_same_provider_identity_reuses_the_existing_user_row_and_spex.exs",
+    "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_270_same_email_from_a_different_oauth_provider_links_to_the_existing_user_instead_of_creating_a_spex.exs",
+    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_732_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",
+    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_739_reaching_specs-ready_releases_qa_on_the_story_spex.exs"
   ]
 
   test "no new given_ block states a precondition without establishing it" do

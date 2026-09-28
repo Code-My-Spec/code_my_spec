@@ -608,7 +608,7 @@ defmodule CodeMySpecSpex.GraphGivens do
 
         use CodeMySpecSpex.Case
 
-        spex "#{story.title}" do
+        spex "#{story.title}", criterion: #{Map.get(criterion, :number) || criterion.id} do
           scenario "the criterion holds" do
             then_ "the placeholder assertion passes" do
               assert true

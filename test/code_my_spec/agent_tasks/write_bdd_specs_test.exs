@@ -4,6 +4,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -67,7 +68,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     defmodule MyAppSpex.UserLoginSpex do
       use MyAppSpex.Case
 
-      spex "user login" do
+      spex "user login", criterion: #{criterion.number} do
         scenario "valid credentials" do
           given_ "setup", _context do
             {:ok, %{user: "test"}}
@@ -274,8 +275,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, %{story_id: story.id})
 
-      mcp_block = criterion_block(prompt, mcp.id)
-      live_block = criterion_block(prompt, live.id)
+      mcp_block = criterion_block(prompt, mcp.number)
+      live_block = criterion_block(prompt, live.number)
 
       assert mcp_block =~ "MCP tool"
 
@@ -302,15 +303,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, %{story_id: story.id})
 
-      refute criterion_block(prompt, criterion.id) =~ "**Surface**",
+      refute criterion_block(prompt, criterion.number) =~ "**Surface**",
              "a wrong surface is worse than none — the agent trusts it"
     end
   end
 
-  defp criterion_block(prompt, criterion_id) do
+  defp criterion_block(prompt, number) do
     prompt
     |> String.split(~r/^### Criterion /m)
-    |> Enum.find("", &String.starts_with?(&1, "#{criterion_id}:"))
+    |> Enum.find("", &String.starts_with?(&1, "#{number}:"))
   end
 
   # ============================================================================
@@ -327,6 +328,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
         write_valid_spec!(tmp_dir, story, criterion)
       end
 
+      FileSync.sync(scope)
+
       assert {:ok, :valid} = WriteBddSpecs.evaluate(scope, task)
     end
 
@@ -337,9 +340,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       # Write only the first criterion's spec
       write_valid_spec!(tmp_dir, story, hd(story.criteria))
+      FileSync.sync(scope)
 
       assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, task)
-      assert feedback =~ "Spec file not found"
+      [_first, second] = story.criteria
+      assert feedback =~ "Criterion #{second.number}"
+      assert feedback =~ "No valid spec names it"
     end
 
     test "returns :invalid when spec has no scenarios", %{tmp_dir: tmp_dir} do
@@ -355,11 +361,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
         File.write!(full_path, """
         defmodule MyAppSpex.EmptySpex do
           use MyAppSpex.Case
-          spex "empty" do
+          spex "empty", criterion: #{criterion.number} do
           end
         end
         """)
       end
+
+      FileSync.sync(scope)
 
       assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, task)
       assert feedback =~ "at least one scenario"

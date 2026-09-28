@@ -28,7 +28,7 @@ defmodule CodeMySpec.BddSpecs.ContentCheckTest do
   end
 
   @scenario """
-    spex "publishing" do
+    spex "publishing", criterion: 7 do
       scenario "one command", %{} do
         given_ "a repo", %{} = context do
           {:ok, context}
@@ -46,8 +46,15 @@ defmodule CodeMySpec.BddSpecs.ContentCheckTest do
   """
 
   describe "check/2" do
+    test "a spec whose spex call names no criterion is refused" do
+      unnamed = String.replace(@scenario, ~s(spex "publishing", criterion: 7 do), ~s(spex "publishing" do))
+
+      assert {:error, :no_criterion} = ContentCheck.check(spec(unnamed), "a_spex.exs")
+      assert ContentCheck.describe(:no_criterion, "a_spex.exs") =~ "criterion:"
+    end
+
     test "a well-formed spec passes" do
-      assert :ok = ContentCheck.check(spec(@scenario), "a_spex.exs")
+      assert {:ok, 7} = ContentCheck.check(spec(@scenario), "a_spex.exs")
     end
 
     test "a file that does not parse is a syntax error, located" do
@@ -87,7 +94,7 @@ defmodule CodeMySpec.BddSpecs.ContentCheckTest do
     # Pure by construction: a path that exists nowhere must not change the
     # answer, because nothing here is allowed to go and look.
     test "the path is a label, not something read" do
-      assert :ok =
+      assert {:ok, 7} =
                ContentCheck.check(spec(@scenario), "/nonexistent/definitely/not/here_spex.exs")
     end
   end

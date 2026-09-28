@@ -188,26 +188,43 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
     end
   end
 
-  describe "delete_criterion/2" do
-    test "deletes criterion successfully" do
+  describe "retire_criterion/2" do
+    test "keeps the row and its number, marked retired" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert {:ok, %Criterion{}} = AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
+      assert {:ok, %Criterion{} = retired} =
+               AcceptanceCriteriaRepository.retire_criterion(scope, criterion)
 
-      assert is_nil(AcceptanceCriteriaRepository.get_criterion(scope, criterion.id))
+      assert retired.retired_at
+
+      assert AcceptanceCriteriaRepository.get_criterion_by_number(scope, criterion.number).id ==
+               criterion.id
     end
 
-    test "returns deleted criterion" do
+    test "drops it from the story's criteria" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert {:ok, deleted} = AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
+      {:ok, _} = AcceptanceCriteriaRepository.retire_criterion(scope, criterion)
 
-      assert deleted.id == criterion.id
-      assert deleted.description == criterion.description
+      refute Enum.any?(
+               AcceptanceCriteriaRepository.list_story_criteria(scope, story.id),
+               &(&1.id == criterion.id)
+             )
+    end
+
+    test "does not free its number" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+      criterion = criterion_fixture(scope, story)
+
+      {:ok, _} = AcceptanceCriteriaRepository.retire_criterion(scope, criterion)
+      next = criterion_fixture(scope, story)
+
+      assert next.number == criterion.number + 1
     end
 
     test "rejects cross-project criteria" do
@@ -217,7 +234,21 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       criterion = criterion_fixture(other_scope, story)
 
       assert {:error, :cross_project} =
-               AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
+               AcceptanceCriteriaRepository.retire_criterion(scope, criterion)
+    end
+  end
+
+  describe "restore_criterion/2" do
+    test "brings it back under the same number" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+      criterion = criterion_fixture(scope, story)
+      {:ok, retired} = AcceptanceCriteriaRepository.retire_criterion(scope, criterion)
+
+      assert {:ok, restored} = AcceptanceCriteriaRepository.restore_criterion(scope, retired)
+
+      assert is_nil(restored.retired_at)
+      assert restored.number == criterion.number
     end
   end
 

@@ -488,6 +488,23 @@ defmodule CodeMySpec.Files do
     |> Map.new()
   end
 
+  @doc """
+  Which spex file on this working copy already covers each of these
+  criteria, as `%{criterion_id => path}`.
+  """
+  @spec spec_paths_by_criterion(Scope.t(), [integer()]) :: %{integer() => String.t()}
+  def spec_paths_by_criterion(_scope, []), do: %{}
+
+  def spec_paths_by_criterion(%Scope{active_project_id: project_id} = scope, criterion_ids) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
+    |> where([f], f.criterion_id in ^criterion_ids)
+    |> scope_to_harness(scope)
+    |> select([f], {f.criterion_id, f.path})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   @doc "Get a file by path within the project."
   @spec get_by_path(Scope.t(), String.t()) :: File.t() | nil
   # `limit(1)` because a path is unique per *working copy*, not per project: two
@@ -552,6 +569,7 @@ defmodule CodeMySpec.Files do
     :fingerprint,
     :component_id,
     :story_id,
+    :criterion_id,
     :valid,
     :validation_errors
   ]
@@ -571,6 +589,7 @@ defmodule CodeMySpec.Files do
       Enum.map(file_attrs_list, fn attrs ->
         attrs
         |> Map.drop(@scanner_scratch)
+        |> Map.put_new(:criterion_id, nil)
         |> Map.put(:project_id, project_id)
         |> Map.put(:working_copy_id, working_copy_id)
         |> Map.put(:inserted_at, now)
@@ -631,16 +650,17 @@ defmodule CodeMySpec.Files do
           validation_errors: fragment("EXCLUDED.validation_errors"),
           component_id: fragment("COALESCE(EXCLUDED.component_id, ?)", f.component_id),
           story_id: fragment("EXCLUDED.story_id"),
+          criterion_id: fragment("EXCLUDED.criterion_id"),
           updated_at: fragment("EXCLUDED.updated_at")
         ]
       ],
       where:
         fragment(
           """
-          (?, ?, ?, ?, ?, ?, ?, ?) IS DISTINCT FROM
+          (?, ?, ?, ?, ?, ?, ?, ?, ?) IS DISTINCT FROM
           (EXCLUDED.role, EXCLUDED.mtime, EXCLUDED.size, EXCLUDED.fingerprint,
            EXCLUDED.valid, EXCLUDED.validation_errors,
-           COALESCE(EXCLUDED.component_id, ?), EXCLUDED.story_id)
+           COALESCE(EXCLUDED.component_id, ?), EXCLUDED.story_id, EXCLUDED.criterion_id)
           """,
           f.role,
           f.mtime,
@@ -650,6 +670,7 @@ defmodule CodeMySpec.Files do
           f.validation_errors,
           f.component_id,
           f.story_id,
+          f.criterion_id,
           f.component_id
         )
     )
@@ -685,6 +706,7 @@ defmodule CodeMySpec.Files do
     entry =
       attrs
       |> Map.drop(@scanner_scratch)
+      |> Map.put_new(:criterion_id, nil)
       |> Map.put(:project_id, project_id)
       |> Map.put(
         :working_copy_id,
@@ -703,6 +725,7 @@ defmodule CodeMySpec.Files do
              :fingerprint,
              :component_id,
              :story_id,
+             :criterion_id,
              :valid,
              :validation_errors,
              :updated_at

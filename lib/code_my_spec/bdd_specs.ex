@@ -119,7 +119,7 @@ defmodule CodeMySpec.BddSpecs do
         }
   def check_story_coverage(%Environment{} = env, %Story{} = story) do
     criteria = story.criteria || []
-    all_criterion_ids = Enum.map(criteria, & &1.id)
+    all_criterion_ids = Enum.map(criteria, & &1.number)
 
     specs = list_specs_for_story(env, story.number)
 
@@ -223,7 +223,7 @@ defmodule CodeMySpec.BddSpecs do
       when is_integer(number) do
     story_dir = "#{number}_#{slugify(title)}"
     criterion_slug = slugify(criterion.description)
-    filename = "criterion_#{criterion.id}_#{criterion_slug}_spex.exs"
+    filename = "criterion_#{criterion_number(criterion)}_#{criterion_slug}_spex.exs"
 
     Path.join(["test/spex", story_dir, filename])
   end
@@ -249,6 +249,11 @@ defmodule CodeMySpec.BddSpecs do
     a parsed MCP response.
     """
   end
+
+  # The filename carries the number an agent sees, though nothing binds by it:
+  # the `spex` call's `criterion:` does that.
+  defp criterion_number(%{number: number}) when is_integer(number), do: number
+  defp criterion_number(%{id: id}), do: id
 
   @doc """
   Execute BDD specs for the given file paths.

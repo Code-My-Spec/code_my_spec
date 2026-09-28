@@ -285,10 +285,15 @@ defmodule CodeMySpec.Migration do
     spex = spex_files(scope)
 
     scope
-    |> AcceptanceCriteria.list_story_criteria(story.id)
+    |> AcceptanceCriteria.list_all_story_criteria(story.id)
     |> Enum.map(
       &%{
         "local_id" => &1.id,
+        # The criterion's name for life. Specs on disk name it, so it crosses
+        # unchanged where `local_id` does not. Retired ones cross too, so their
+        # numbers stay taken.
+        "number" => &1.number,
+        "retired_at" => &1.retired_at,
         "story_local_id" => story.id,
         "rule_local_id" => &1.rule_id,
         "description" => &1.description,
@@ -774,7 +779,7 @@ defmodule CodeMySpec.Migration do
     snapshots =
       stories
       |> Map.values()
-      |> Map.new(&{&1.id, AcceptanceCriteria.list_story_criteria(scope, &1.id)})
+      |> Map.new(&{&1.id, AcceptanceCriteria.list_all_story_criteria(scope, &1.id)})
 
     criteria
     |> Enum.reduce_while({:ok, %{}, snapshots}, fn criterion, {:ok, acc, snaps} ->
@@ -809,7 +814,7 @@ defmodule CodeMySpec.Migration do
     resync(
       already,
       criterion,
-      [:kind, :verified, :verified_at, :spec_path],
+      [:kind, :verified, :verified_at, :spec_path, :number, :retired_at],
       &AcceptanceCriteria.update_criterion(scope, &1, &2)
     )
   end

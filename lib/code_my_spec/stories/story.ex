@@ -168,9 +168,13 @@ defmodule CodeMySpec.Stories.Story do
     # fixture that wrote a spec for criterion A was followed by a test that
     # deleted "the first criterion"'s spec and got criterion B. Nothing errored;
     # the file simply stayed and the requirement stayed satisfied.
+    #
+    # Active criteria only. A retired one keeps its row and number, and is
+    # read by number rather than through the story.
     has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion,
       on_replace: :delete,
-      preload_order: [asc: :id]
+      preload_order: [asc: :id],
+      where: [retired_at: nil]
 
     many_to_many :tags, CodeMySpec.Tags.Tag,
       join_through: CodeMySpec.Tags.StoryTag,
@@ -236,8 +240,29 @@ defmodule CodeMySpec.Stories.Story do
       sort_param: :criteria_sort,
       drop_param: :criteria_drop
     )
+    |> retire_dropped_criteria()
     |> unique_constraint([:title, :project_id])
   end
+
+  # A criterion dropped from the list is retired, not deleted, so its number
+  # is never freed. `cast_assoc` marks it `:replace`, which `on_replace:
+  # :delete` would carry out; turning it into an update that sets
+  # `retired_at` keeps the row. Written into `changes` directly because
+  # `put_change` would run the relation diff again and re-mark it.
+  defp retire_dropped_criteria(changeset) do
+    case get_change(changeset, :criteria) do
+      nil ->
+        changeset
+
+      criteria ->
+        %{changeset | changes: Map.put(changeset.changes, :criteria, Enum.map(criteria, &retire_if_replaced/1))}
+    end
+  end
+
+  defp retire_if_replaced(%Ecto.Changeset{action: :replace} = criterion),
+    do: %{Criterion.retire_changeset(criterion.data) | action: :update}
+
+  defp retire_if_replaced(criterion), do: criterion
 
   # Transitional: `description` and `story` hold the same user-story
   # sentence while both columns exist. New callers write `story`, legacy

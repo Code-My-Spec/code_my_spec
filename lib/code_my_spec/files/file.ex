@@ -105,6 +105,10 @@ defmodule CodeMySpec.Files.File do
     field :valid, :boolean
     field :validation_errors, :map
 
+    # The criterion a spex file covers, bound from the number its `spex` call
+    # names. Nil for every other role, and for a spex that binds to nothing.
+    field :criterion_id, :id
+
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
@@ -130,6 +134,7 @@ defmodule CodeMySpec.Files.File do
     :validation_errors,
     :component_id,
     :story_id,
+    :criterion_id,
     :project_id,
     :working_copy_id
   ]
