@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4657Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Building the QA prompt for a non-main copy asks the harness for its own app" do
+  spex "Building the QA prompt for a non-main copy asks the harness for its own app", criterion: 1533 do
     scenario "a story on a working copy that is not main" do
       given_ "a story, and this copy's harness connected", context do
         story =

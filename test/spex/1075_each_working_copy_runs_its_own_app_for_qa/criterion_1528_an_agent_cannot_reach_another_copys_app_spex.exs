@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The tool never reaches a copy other than the caller's own" do
+  spex "The tool never reaches a copy other than the caller's own", criterion: 1528 do
     scenario "a second copy is connected; the caller's own is not" do
       given_ "a second working copy, connected to the server", context do
         {:ok, other} =

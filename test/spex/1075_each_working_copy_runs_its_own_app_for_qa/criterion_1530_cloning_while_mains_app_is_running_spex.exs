@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4654Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Cloning happens once, straight through — nothing waits for main to be idle" do
+  spex "Cloning happens once, straight through — nothing waits for main to be idle", criterion: 1530 do
     scenario "a working copy cloning main's data on first start" do
       given_ "a working copy with no database of its own yet", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")

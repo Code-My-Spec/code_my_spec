@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4660Spex do
 
   import CmsHarnessTest.AppInstanceHelpers
 
-  spex "The app reports the exact commit it was started on" do
+  spex "The app reports the exact commit it was started on", criterion: 1536 do
     scenario "a copy starting for the first time" do
       given_ "a working copy about to start on a known commit", context do
         rig = app_instance_rig(current_commit: "feedface")

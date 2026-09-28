@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4666Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "A copy with no serve recipe is refused, not guessed at" do
+  spex "A copy with no serve recipe is refused, not guessed at", criterion: 1542 do
     scenario "the project's justfile declares no serve recipe" do
       given_ "a working copy whose justfile has no serve recipe", context do
         rig = app_instance_rig(recipe: %{"serve" => false})

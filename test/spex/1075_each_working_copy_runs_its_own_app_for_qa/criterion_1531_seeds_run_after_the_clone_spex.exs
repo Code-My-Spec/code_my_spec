@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4655Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Seeds run after the clone, not before" do
+  spex "Seeds run after the clone, not before", criterion: 1531 do
     scenario "a project whose justfile declares a seed recipe" do
       given_ "a working copy with no database yet, whose project seeds itself", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")

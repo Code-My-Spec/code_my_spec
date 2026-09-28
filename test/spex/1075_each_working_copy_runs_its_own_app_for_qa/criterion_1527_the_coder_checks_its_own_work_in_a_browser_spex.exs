@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4651Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The tool reaches the caller's own copy and reports it serving" do
+  spex "The tool reaches the caller's own copy and reports it serving", criterion: 1527 do
     scenario "an agent on a copy whose harness is connected" do
       given_ "the agent's own working copy joined to the server", context do
         {:ok, _reply, socket} = join_harness_project(context)

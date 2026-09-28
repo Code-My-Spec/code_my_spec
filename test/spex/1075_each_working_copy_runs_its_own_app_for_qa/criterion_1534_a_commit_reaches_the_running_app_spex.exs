@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4658Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "A restart brings the app up on the copy's current commit" do
+  spex "A restart brings the app up on the copy's current commit", criterion: 1534 do
     scenario "HEAD has moved to a new commit since the app last started" do
       given_ "a working copy already serving an older commit", context do
         rig = app_instance_rig(current_commit: "old0000")

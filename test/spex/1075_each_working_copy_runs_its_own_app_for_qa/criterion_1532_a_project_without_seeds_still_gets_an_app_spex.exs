@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4656Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Seeding being a no-op does not stop the app from coming up" do
+  spex "Seeding being a no-op does not stop the app from coming up", criterion: 1532 do
     scenario "a working copy whose project has nothing to seed" do
       given_ "a working copy with no database yet", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")

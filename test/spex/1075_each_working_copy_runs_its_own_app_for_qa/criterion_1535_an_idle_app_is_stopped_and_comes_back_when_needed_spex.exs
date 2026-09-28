@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4659Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "An idle app stops on its own, and a later request brings it back" do
+  spex "An idle app stops on its own, and a later request brings it back", criterion: 1535 do
     scenario "the idle window elapses with nothing touching the app" do
       given_ "a working copy with a very short idle window", context do
         rig = app_instance_rig(probe: :serving)

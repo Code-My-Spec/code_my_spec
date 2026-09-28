@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4665Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Launch is handed a port, an https port and a database name" do
+  spex "Launch is handed a port, an https port and a database name", criterion: 1541 do
     scenario "an ordinary copy starting for the first time" do
       given_ "a working copy with a serve recipe", context do
         rig = app_instance_rig(database_exists?: true)

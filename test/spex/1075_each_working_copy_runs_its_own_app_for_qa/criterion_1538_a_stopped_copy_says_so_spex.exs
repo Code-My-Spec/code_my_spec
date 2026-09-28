@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Stopping the app clears its address, not just its status" do
+  spex "Stopping the app clears its address, not just its status", criterion: 1538 do
     scenario "a copy that was serving, then stopped" do
       given_ "a working copy joined to its server channel", context do
         {:ok, _reply, socket} = join_harness_project(context)

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4667Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Main's app outlives the idle window that would stop any other copy's" do
+  spex "Main's app outlives the idle window that would stop any other copy's", criterion: 1543 do
     scenario "the designated copy, started as main, sits idle" do
       given_ "main's working copy, with a very short idle window", context do
         rig = app_instance_rig(probe: :serving)

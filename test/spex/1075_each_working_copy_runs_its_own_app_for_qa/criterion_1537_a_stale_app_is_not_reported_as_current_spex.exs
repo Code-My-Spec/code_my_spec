@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4661Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "An app that never restarted still reports the commit it actually started on" do
+  spex "An app that never restarted still reports the commit it actually started on", criterion: 1537 do
     scenario "HEAD moves after the app is already up, with no restart requested" do
       given_ "a working copy already running an older commit", context do
         rig = app_instance_rig(current_commit: "old0000")

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4664Spex do
   alias CmsHarnessTest.FakeAppInstanceRunner
   alias CmsHarnessTest.FakeServer
 
-  spex "Offboarding stops the app and drops its cloned database" do
+  spex "Offboarding stops the app and drops its cloned database", criterion: 1540 do
     scenario "a copy with a running, cloned app is offboarded" do
       given_ "a working copy whose app is up, on its own cloned database", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")

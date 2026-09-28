@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4649Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "The harness starts a copy's app, then stops it" do
+  spex "The harness starts a copy's app, then stops it", criterion: 1525 do
     scenario "a copy whose app comes up cleanly" do
       given_ "a working copy connected to its harness", context do
         rig = app_instance_rig(probe: :serving, current_commit: "deadbeef")

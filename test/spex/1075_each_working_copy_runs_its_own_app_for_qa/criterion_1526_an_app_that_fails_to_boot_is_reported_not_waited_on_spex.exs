@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4650Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "An app that never answers is reported down, not waited on forever" do
+  spex "An app that never answers is reported down, not waited on forever", criterion: 1526 do
     scenario "the process starts but nothing ever answers its health check" do
       given_ "a working copy whose app never answers", context do
         rig = app_instance_rig(probe: :down)

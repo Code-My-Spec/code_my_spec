@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4653Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "A copy with no database yet gets one cloned from main on first start" do
+  spex "A copy with no database yet gets one cloned from main on first start", criterion: 1529 do
     scenario "database_exists? starts false" do
       given_ "a working copy with no database of its own yet", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")
