@@ -36,6 +36,8 @@ defmodule CodeMySpec.MainAgent.AgentWork do
           blocked_reasons: [String.t()],
           tapped_out?: boolean(),
           turn_started_at: DateTime.t() | nil,
+          provider_refusal: String.t() | nil,
+          provider_retry_at: DateTime.t() | nil,
           idle?: boolean(),
           machine_tools: [String.t()] | nil,
           problems: [map()]
@@ -53,6 +55,8 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     :story_title,
     :last_said_at,
     :turn_started_at,
+    :provider_refusal,
+    :provider_retry_at,
     :machine_tools,
     blocked_reasons: [],
     tapped_out?: false,
@@ -75,6 +79,23 @@ defmodule CodeMySpec.MainAgent.AgentWork do
   def toolless?(%AgentWork{}), do: false
 
   @doc """
+  Whether the provider refused this agent's last turn (044599cc).
+
+  One predicate for the check-in line, the machinery line, `quiet?/1` and
+  `list_agent_work`, so none of them can call a refused agent working.
+  """
+  @spec provider_blocked?(t()) :: boolean()
+  def provider_blocked?(%AgentWork{provider_refusal: refusal}), do: is_binary(refusal)
+
+  @doc "What a provider-blocked agent is blocked on, in the provider's words."
+  @spec provider_block(t()) :: String.t()
+  def provider_block(%AgentWork{provider_refusal: refusal, provider_retry_at: nil}),
+    do: "provider — #{refusal}"
+
+  def provider_block(%AgentWork{provider_refusal: refusal, provider_retry_at: at}),
+    do: "provider — #{refusal} (retry after #{DateTime.to_iso8601(at)})"
+
+  @doc """
   What an agent with no task is doing while its role's queue holds work.
 
   One phrase for both `check_in` and `list_agent_work`, and it names the
@@ -89,6 +110,9 @@ defmodule CodeMySpec.MainAgent.AgentWork do
 
   def unclaimed_work(%AgentWork{agent_status: status}) when status != :running,
     do: "#{status}, though the graph holds work for its role"
+
+  def unclaimed_work(%AgentWork{provider_refusal: refusal}) when is_binary(refusal),
+    do: "refused by its provider, though the graph holds work for its role"
 
   def unclaimed_work(%AgentWork{turn_started_at: %DateTime{} = at}),
     do: "mid-turn since #{DateTime.to_iso8601(at)}, no task claimed yet"

@@ -65,7 +65,8 @@ defmodule CodeMySpec.MainAgent.Digest do
   # agent holding a task it has not spoken about for hours is neither.
   defp settled?(%AgentWork{} = entry) do
     entry.blocked_reasons == [] and entry.problems == [] and
-      not AgentWork.toolless?(entry) and not stalled?(entry)
+      not AgentWork.toolless?(entry) and not AgentWork.provider_blocked?(entry) and
+      not stalled?(entry)
   end
 
   # An agent with nothing in hand and a queue that is not empty is the one state
@@ -102,7 +103,8 @@ defmodule CodeMySpec.MainAgent.Digest do
          task_status: nil,
          idle?: false,
          turn_started_at: nil,
-         tapped_out?: false
+         tapped_out?: false,
+         provider_refusal: nil
        }),
        do: true
 

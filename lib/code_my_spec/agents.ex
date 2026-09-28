@@ -66,6 +66,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.ModelSetting
+  alias CodeMySpec.Agents.ProviderRefusal
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ToolSets
@@ -1865,7 +1866,12 @@ defmodule CodeMySpec.Agents do
         # what destroys it.
         turn_started_at = agent.turn_started_at
 
-        {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+        {:ok, agent} =
+          AgentsRepository.update_agent(
+            scope,
+            agent,
+            Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, turn_started_at))
+          )
 
         # Before the stop menu, because `deliver/3` is what produces the
         # observation that fires `Work.consider_project/2` — recording the
@@ -1928,6 +1934,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
       record_edit(agent, event)
+      record_refusal(scope, agent, event)
       write_turn_event(conversation, agent, event)
     else
       # An agent that is not ours, or a step for one nobody can find. Dropped
@@ -1937,6 +1944,32 @@ defmodule CodeMySpec.Agents do
       _ -> :ok
     end
   end
+
+  # A failed turn the provider refused, kept on the row as state (044599cc).
+  # The transcript still gets the text; this is what `check_in` and `Work` read.
+  defp record_refusal(scope, agent, %{"kind" => "turn_failed", "text" => text}) do
+    now = DateTime.utc_now()
+
+    case ProviderRefusal.read(text, now) do
+      nil ->
+        :ok
+
+      refusal ->
+        AgentsRepository.update_agent(scope, agent, Map.put(refusal, :provider_refused_at, now))
+    end
+  end
+
+  defp record_refusal(_scope, _agent, _event), do: :ok
+
+  # A turn that ended without being refused clears the last refusal. A failed
+  # turn also ends, so one refused *during* this turn stands.
+  defp refusal_outlived(%{provider_refused_at: %DateTime{} = refused_at}, %DateTime{} = started) do
+    if DateTime.compare(refused_at, started) == :lt,
+      do: %{provider_refusal: nil, provider_refused_at: nil, provider_retry_at: nil},
+      else: %{}
+  end
+
+  defp refusal_outlived(_agent, _turn_started_at), do: %{}
 
   # A compaction is not a step either. It is what the agent will resume from,
   # and it goes in its own table: a row in the transcript would have to be

@@ -73,6 +73,8 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         blocked_reasons: Map.get(questions, agent.id, []),
         tapped_out?: MapSet.member?(tapped_out, agent.id),
         turn_started_at: agent.turn_started_at,
+        provider_refusal: agent.provider_refusal,
+        provider_retry_at: agent.provider_retry_at,
         # A claimed task means there is work whatever the queue says; idle is
         # only ever about an agent with nothing in hand.
         idle?: is_nil(task) and nothing_claimable?(scope, agent, owners),
