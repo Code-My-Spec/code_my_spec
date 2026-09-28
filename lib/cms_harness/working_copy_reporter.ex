@@ -98,7 +98,11 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   @impl GenServer
   def init(opts) do
-    schedule(@first_report)
+    # `:never` leaves every report to the caller, for a rig that drives them.
+    case Keyword.get(opts, :first_report, @first_report) do
+      :never -> :ok
+      delay -> schedule(delay)
+    end
 
     # `known` is seedable because it is genuinely restorable state — "copies
     # this harness has served, and where" — rather than a test hook. A caller

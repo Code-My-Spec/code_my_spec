@@ -48,7 +48,10 @@ defmodule CmsHarnessTest.Machine do
   @spec reporter(map()) :: {Supervisor.child_spec(), module()}
   def reporter(copies) do
     name = Module.concat(WorkingCopyReporter, "Spex#{System.unique_integer([:positive])}")
-    {Supervisor.child_spec({WorkingCopyReporter, name: name, known: copies}, id: name), name}
+    # Reports only when the spex asks, so its first report is its first exchange.
+    {Supervisor.child_spec({WorkingCopyReporter, name: name, known: copies, first_report: :never},
+       id: name
+     ), name}
   end
 
   @doc """
