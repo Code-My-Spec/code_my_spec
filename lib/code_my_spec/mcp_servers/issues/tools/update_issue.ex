@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
   / `resolve_issue` tools — those flows enforce transition rules
   this tool deliberately skips.
 
-  Allowed fields: `severity`, `story_id`, `category`, `source_path`,
+  Allowed fields: `severity`, `story_number`, `category`, `source_path`,
   and `append`.
 
   ## Why `append` and not `description`
@@ -41,6 +41,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do
@@ -48,7 +49,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
     field :severity, :string, doc: "New severity: critical, high, medium, low, or info"
 
-    field :story_id, :integer, doc: "Re-link the issue to this story id"
+    field :story_number, :integer, doc: "Re-link the issue to the story with this number"
 
     field :detach_from_story, :boolean,
       doc:
@@ -75,6 +76,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
     with {:ok, attrs} <- build_attrs(params),
          {:ok, scope} <- Validators.validate_local_scope(frame, params),
          :ok <- ensure_some_field(attrs, params[:append]),
+         {:ok, attrs} <- StoryRefs.put_story_id(scope, attrs),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          attrs = maybe_append(attrs, issue, params[:append]),
          {:ok, updated} <- Issues.update_issue(scope, issue, attrs) do
@@ -83,7 +85,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
       :empty ->
         {:reply,
          IssuesMapper.error(
-           "No updatable fields provided. Pass at least one of: severity, story_id, " <>
+           "No updatable fields provided. Pass at least one of: severity, story_number, " <>
              "detach_from_story, category, source_path, append."
          ), frame}
 
@@ -112,7 +114,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
          {:ok, attrs} <- put_parsed(attrs, :category, params[:category], &parse_category/1) do
       attrs =
         attrs
-        |> maybe_put(:story_id, params[:story_id])
+        |> maybe_put(:story_number, params[:story_number])
         |> maybe_put(:source_path, params[:source_path])
         |> maybe_detach(params[:detach_from_story])
 
@@ -135,8 +137,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
   defp refusal(:category, raw),
     do: "#{inspect(raw)} is not a category. Use one of: bug, requirements_change."
 
-  # Explicit rather than `story_id: null`, which is not expressible from a Lua
-  # table — `story_id = nil` removes the key and reads as "not provided", so the
+  # Explicit rather than `story_number: null`, which is not expressible from a Lua
+  # table — `story_number = nil` removes the key and reads as "not provided", so the
   # call reported success and left the attribution alone.
   defp maybe_detach(attrs, true), do: Map.put(attrs, :story_id, nil)
   defp maybe_detach(attrs, _not_true), do: attrs

@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2991Spex do
 
       when_ "the script asks for the other project's story by id", context do
         script =
-          ~s[local s, err = get_story({ story_id = "#{context.other_story.id}" })\nif s == nil then return "refused" end\nreturn s.title]
+          ~s[local s, err = get_story({ story_number = #{context.other_story.id} })\nif s == nil then return "refused" end\nreturn s.title]
 
         {:reply, response, _frame} = RunScript.execute(%{script: script}, context.frame)
 

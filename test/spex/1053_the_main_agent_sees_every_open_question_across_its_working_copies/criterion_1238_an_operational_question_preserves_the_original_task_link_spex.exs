@@ -159,7 +159,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
           StartTask.execute(
             %{
               entity_type: "story",
-              entity_id: to_string(context.other_story.id),
+              entity_id: to_string(context.other_story.number),
               requirement_name: "bdd_specs_exist"
             },
             context.coding_frame

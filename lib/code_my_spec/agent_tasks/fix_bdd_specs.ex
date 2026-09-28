@@ -305,7 +305,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
     # Specs Passing — evaluate to latch it
 
-    Story #{story.id} (#{story.title}) has no failing spex problems recorded. The
+    Story #{story.number} (#{story.title}) has no failing spex problems recorded. The
     work looks done; what is missing is the evaluation that records it.
 
     `bdd_specs_passing` reads the story's `specs_ready` latch, and only
@@ -326,7 +326,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
     # Specs Passing — not yet
 
-    Story #{story.id} (#{story.title}) has no BDD spec files on disk, so there is
+    Story #{story.number} (#{story.title}) has no BDD spec files on disk, so there is
     nothing for a spex run to prove. Write the story's specs first
     (`bdd_specs_exist`), then come back to this gate.
     """
@@ -339,7 +339,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
     # Specs Passing — analysis pending
 
-    Story #{story.id} (#{story.title}) cannot be flipped to specs-ready yet: the
+    Story #{story.number} (#{story.title}) cannot be flipped to specs-ready yet: the
     latest spex run does not cover the current state of the code. This is
     **not** a spec failure — nothing is known to be broken.
 
@@ -474,7 +474,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       end)
 
     """
-    ## Story: #{story.title} (ID: #{story.id})
+    ## Story #{story.number}: #{story.title}
 
     **Component**: #{if component, do: component.module_name, else: "unknown"}
     #{if files[:code_file], do: "**Implementation**: `#{files[:code_file]}`", else: ""}

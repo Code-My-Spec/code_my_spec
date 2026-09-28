@@ -183,7 +183,7 @@ defmodule CodeMySpec.Qa.EvidenceTest do
 
       assert note =~ "not independently verified"
       assert note =~ "expected, not"
-      assert note =~ "qa/<story_id>"
+      assert note =~ "qa/<story_number>"
     end
 
     # The harness note is the one that fires on nearly every real pass, and the

@@ -212,7 +212,7 @@ Testing the running app and managing the issues that come out of it.
 | Subcommand | Maps to | Notes |
 |---|---|---|
 | *(no args)* | qa_app | Full app QA |
-| `story <story_id>` | qa_story | Test one story |
+| `story <story_number>` | qa_story | Test one story |
 | `integrations` | qa_integration_plan | Plan third-party integration testing |
 | `triage [min_severity]` | triage_issues | Review + accept/dismiss issues |
 | `fix [min_severity]` | fix_issues | Code fixes for accepted issues |

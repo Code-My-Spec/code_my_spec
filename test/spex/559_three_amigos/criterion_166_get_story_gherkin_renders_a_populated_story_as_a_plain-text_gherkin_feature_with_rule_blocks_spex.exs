@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
         for {rule_statement, scenarios} <- rules do
           {:reply, _add_rule, _frame} =
             AddRule.execute(
-              %{story_id: context.story.id, statement: rule_statement},
+              %{story_number: context.story.number, statement: rule_statement},
               frame
             )
 
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
             {:reply, _add_scenario, _frame} =
               AddScenario.execute(
                 %{
-                  story_id: context.story.id,
+                  story_number: context.story.number,
                   rule_statement: rule_statement,
                   title: title,
                   kind: kind,
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          GetStoryGherkin.execute(%{story_id: context.story.id}, frame)
+          GetStoryGherkin.execute(%{story_number: context.story.number}, frame)
 
         {:ok, Map.put(context, :gherkin_response, response)}
       end

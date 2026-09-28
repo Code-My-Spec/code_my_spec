@@ -37,7 +37,13 @@ defmodule CodeMySpecSpex.Story1076.Criterion4690Spex do
           )
 
         {:ok,
-         Map.merge(context, %{story: story, view: view, first: first, second: second, third: third})}
+         Map.merge(context, %{
+           story: story,
+           view: view,
+           first: first,
+           second: second,
+           third: third
+         })}
       end
 
       when_ "the PM removes the second one and saves", context do
@@ -51,7 +57,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4690Spex do
       then_ "the second one is retired", context do
         result =
           CriterionScript.run(context.scope, """
-          return get_criterion({ criterion_id = "#{context.second}" })
+          return get_criterion({ criterion_number = #{context.second} })
           """)
 
         refute result.error?,

@@ -35,13 +35,14 @@ defmodule CodeMySpecSpex.Story686.Criterion7950Spex do
 
         refute response.isError, "expected create_story to succeed"
 
-        {:ok, context |> Map.put(:frame, frame) |> Map.put(:story_id, story_id!(response))}
+        {:ok,
+         context |> Map.put(:frame, frame) |> Map.put(:story_number, story_number!(response))}
       end
 
       when_ "the agent marks it ready for development", context do
         {:reply, response, _frame} =
           UpdateStory.execute(
-            %{story_id: context.story_id, ready_for_dev: true},
+            %{story_number: context.story_number, ready_for_dev: true},
             context.frame
           )
 
@@ -53,7 +54,7 @@ defmodule CodeMySpecSpex.Story686.Criterion7950Spex do
 
       then_ "the story is ready for development", context do
         {:reply, response, _frame} =
-          GetStory.execute(%{story_id: context.story_id}, context.frame)
+          GetStory.execute(%{story_number: context.story_number}, context.frame)
 
         body = response_text(response)
 
@@ -68,15 +69,16 @@ defmodule CodeMySpecSpex.Story686.Criterion7950Spex do
     end
   end
 
-  # MCP responses carry record ids in the text footer.
-  defp story_id!(response) do
-    response |> response_text() |> story_id_from()
+  # MCP responses name the story by number.
+  defp story_number!(response) do
+    response |> response_text() |> story_number_from()
   end
 
-  defp story_id_from(body), do: story_id_match(Regex.run(~r/\(ID: (\d+)\)/, body), body)
+  defp story_number_from(body),
+    do: story_number_match(Regex.run(~r/^Story (\d+) (?:created|updated)/, body), body)
 
-  defp story_id_match([_, id], _body), do: id
+  defp story_number_match([_, n], _body), do: String.to_integer(n)
 
-  defp story_id_match(_no_match, body),
-    do: raise("could not read story id from response: #{body}")
+  defp story_number_match(_no_match, body),
+    do: raise("could not read story number from response: #{body}")
 end

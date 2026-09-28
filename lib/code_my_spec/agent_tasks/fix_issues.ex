@@ -90,7 +90,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     ## QA context
 
     - **QA plan**: `#{Paths.qa_plan()}` — server startup, seeds, auth.
-    - **QA evidence**: `#{Paths.qa_dir()}/<story_id>/` — failed results,
+    - **QA evidence**: `#{Paths.qa_dir()}/<story_number>/` — failed results,
       screenshots, briefs per story.
 
     ## MCP tools

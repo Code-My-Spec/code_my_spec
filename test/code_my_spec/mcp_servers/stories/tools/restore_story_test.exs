@@ -17,13 +17,22 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreStoryTest do
     test "restores a retired story with the criteria retired alongside it" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{criteria: []})
-      {:ok, earlier} = AcceptanceCriteria.create_criterion(scope, story, %{description: "Retired before"})
+
+      {:ok, earlier} =
+        AcceptanceCriteria.create_criterion(scope, story, %{description: "Retired before"})
+
       {:ok, _} = AcceptanceCriteria.retire_criterion(scope, earlier)
-      {:ok, kept} = AcceptanceCriteria.create_criterion(scope, story, %{description: "Retired with it"})
+
+      {:ok, kept} =
+        AcceptanceCriteria.create_criterion(scope, story, %{description: "Retired with it"})
+
       {:ok, _} = Stories.retire_story(scope, Stories.get_story(scope, story.id))
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      assert {:reply, response, ^frame} = RestoreStory.execute(%{story_id: story.id}, frame)
+
+      assert {:reply, response, ^frame} =
+               RestoreStory.execute(%{story_number: story.number}, frame)
+
       refute response.isError
 
       restored = Stories.get_story(scope, story.id)
@@ -38,7 +47,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreStoryTest do
       story = story_fixture(scope)
 
       frame = %Frame{assigns: %{current_scope: scope}}
-      assert {:reply, response, ^frame} = RestoreStory.execute(%{story_id: story.id}, frame)
+
+      assert {:reply, response, ^frame} =
+               RestoreStory.execute(%{story_number: story.number}, frame)
+
       assert response.isError
     end
   end

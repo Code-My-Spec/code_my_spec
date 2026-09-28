@@ -41,7 +41,8 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
     :ok
   end
 
-  spex "A remembered view whose subject is gone falls back instead of breaking", criterion: 1045 do
+  spex "A remembered view whose subject is gone falls back instead of breaking",
+    criterion: 1045 do
     scenario "A story that was retired does not take the screen with it" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_967")}
@@ -72,7 +73,9 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
         alias CodeMySpec.McpServers.Stories.Tools.RetireStory
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RetireStory.execute(%{story_id: context.story.id}, frame)
+
+        {:reply, response, _frame} =
+          RetireStory.execute(%{story_number: context.story.number}, frame)
 
         refute response.isError,
                "the story was not retired, so what follows tests nothing: " <>

@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4685Spex do
       when_ "the agent adds a criterion to story B", context do
         result =
           CriterionScript.run(context.scope, """
-          return add_criterion({ story_id = "#{context.story_b}", description = "B's first thing happens" })
+          return add_criterion({ story_number = #{context.story_b}, description = "B's first thing happens" })
           """)
 
         refute result.error?, "add_criterion failed: #{result.text}"

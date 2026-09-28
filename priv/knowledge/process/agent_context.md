@@ -7,10 +7,10 @@ Status: **design**. Nothing below is built.
 
 ## The problem
 
-`story_id` is an optional parameter on the tools that take it, and agents leave
-it out. `QaAttempts.submit/2` says so in its own comment:
+`story_number` is an optional parameter on the tools that take it, and agents
+leave it out. `QaAttempts.submit/2` says so in its own comment:
 
-> asking the agent to remember `story_id` on every `create_issue` call did not
+> asking the agent to remember `story_number` on every `create_issue` call did not
 > work — every accepted issue on this project reached triage with none.
 
 So attribution was moved to submission time: `Issues.attribute_to_story/3` runs
@@ -74,11 +74,11 @@ nothing has yet needed it at call time.
 An agent that gets a story it did not ask for has to be told, or the next thing
 it files lands somewhere it did not intend and it has no way to know.
 
-So a tool that resolved `story_id` from context says so in its own response:
+So a tool that resolved `story_number` from context says so in its own response:
 
     Issue 4f9c2a11 filed against story 1053 ("Clearing the calculator starts a
-    fresh calculation"), taken from the task you are working. Pass `story_id`
-    explicitly if it belongs to a different story, or `story_id: null` for an
+    fresh calculation"), taken from the task you are working. Pass `story_number`
+    explicitly if it belongs to a different story, or `story_number: null` for an
     issue that is not story-specific.
 
 **Text, not JSON, and this is not a style preference.** `structured_content` on
@@ -89,7 +89,7 @@ content while the work prompt went unread. The announcement's entire job is to
 be read and acted on. Returning the story as JSON is the one shape guaranteed
 to make the agent skip the sentence telling it how to override.
 
-So: `Response.text/1`, with the story id and title in the prose, like every
+So: `Response.text/1`, with the story number and title in the prose, like every
 other mapper here.
 
 A default that does not announce itself is the `devops_status` failure in
@@ -99,7 +99,7 @@ were exactly that.
 
 ## What changes at the call sites
 
-Tools stop treating `story_id` as something the caller must remember:
+Tools stop treating `story_number` as something the caller must remember:
 
 - absent from params and resolvable from context → use it, and say so
 - present in params → use that, say nothing, never override
@@ -111,7 +111,7 @@ which story they are on.
 
 ## `null` means deliberately none
 
-An explicit `story_id: null` is "this is not about a story", and is honoured —
+An explicit `story_number: null` is "this is not about a story", and is honoured —
 distinct from omitting it, which means "you work it out". A project-level issue
 raised by an agent that happens to be mid-story is a real case, and without the
 distinction the implicit default would capture it.
@@ -120,7 +120,7 @@ So three states, not two:
 
 | caller passes | means |
 |---|---|
-| a story id | that story, no announcement, never overridden |
+| a story number | that story, no announcement, never overridden |
 | nothing | resolve from context, and say so |
 | `null` | deliberately not story-specific, resolve nothing |
 

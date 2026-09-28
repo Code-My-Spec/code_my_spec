@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(first.id)
+              entity_id: to_string(first.number)
             },
             frame
           )
@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(context.second_story.id)
+              entity_id: to_string(context.second_story.number)
             },
             context.agent_frame
           )

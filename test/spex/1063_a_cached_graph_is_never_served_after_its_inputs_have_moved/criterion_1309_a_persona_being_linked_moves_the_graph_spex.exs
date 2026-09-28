@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3345Spex do
 
         {:reply, response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.new_story.id},
+            %{persona_id: context.persona_id, story_number: context.new_story.number},
             frame
           )
 

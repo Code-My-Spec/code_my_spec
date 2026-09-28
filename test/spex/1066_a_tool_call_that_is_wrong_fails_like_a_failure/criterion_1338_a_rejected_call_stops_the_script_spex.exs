@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3390Spex do
 
   ## The failure this is written from
 
-  On 2026-09-12 an agent called `list_rules({ story_id = "966" })` — a string
+  On 2026-09-12 an agent called `list_rules({ story_number = "966" })` — a string
   where the tool wants an integer. The sandbox rejected it and the script
   carried on, returning the rejection as the script's own value. Rendered, that
   is `[null, {"message": "...expected type of :integer..."}]`, which at a glance
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3390Spex do
       given_ "a script whose first call is malformed and which does more afterwards",
              context do
         script = """
-        local _ignored = list_rules({ story_id = "not-an-integer" })
+        local _ignored = list_rules({ story_number = "not-an-integer" })
         return "#{@marker}"
         """
 

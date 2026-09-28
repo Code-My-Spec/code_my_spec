@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute response.isError
         {:ok, Map.put(context, :list_response, response)}
@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
           title: "QA-found #{status} finding from criterion 6455 spex",
           severity: "low",
           scope: "app",
-          story_id: context.story.id,
+          story_number: context.story.number,
           description: "Seeded during list_qa_attempts test setup."
         },
         frame

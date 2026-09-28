@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Architecture design is re-runnable; execution applies an incremental diff (never delete)", criterion: 24 do
+  spex "Architecture design is re-runnable; execution applies an incremental diff (never delete)",
+    criterion: 24 do
     scenario "Architect removes a component from the proposal" do
       given_ "the project has a persisted component", context do
         app = context.project.module_name || "MyApp"
@@ -101,7 +102,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
 
         - **Type:** liveview
         - **Description:** Story list page
-        - **Stories:** #{new_story.id}
+        - **Stories:** #{new_story.number}
 
         ## Contexts
 

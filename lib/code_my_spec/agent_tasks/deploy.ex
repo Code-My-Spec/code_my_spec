@@ -10,6 +10,7 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   """
 
   alias CodeMySpec.Deploys
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -26,12 +27,12 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   Generate the prompt for the UAT deploy session.
   """
   @spec command(Scope.t(), map()) :: {:ok, String.t()}
-  def command(%Scope{} = _scope, task) do
-    story_id = story_id_of(task)
+  def command(%Scope{} = scope, task) do
+    story_number = story_number(scope, story_id_of(task))
 
     {:ok,
      """
-     # UAT Deploy Session#{if story_id, do: " — story #{story_id}", else: ""}
+     # UAT Deploy Session#{if story_number, do: " — story #{story_number}", else: ""}
 
      The story has cleared QA — release the build to UAT. Prod is NOT part
      of this session: prod promotion happens in the cycle-end release
@@ -74,16 +75,25 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   def evaluate(%Scope{} = scope, entity) do
     case story_id_of(entity) do
       nil ->
-        {:ok, :invalid, "No story to check — the deploy task needs a story_id."}
+        {:ok, :invalid, "No story to check — the deploy task needs a story."}
 
       story_id ->
         if Deploys.deployed?(scope, story_id, "uat") do
           {:ok, :valid}
         else
           {:ok, :invalid,
-           "Story #{story_id} has no health-verified UAT deploy yet. Run the deploy " <>
+           "Story #{story_number(scope, story_id)} has no health-verified UAT deploy yet. Run the deploy " <>
              "step — it records the `deploys` row itself once the health check passes."}
         end
+    end
+  end
+
+  defp story_number(_scope, nil), do: nil
+
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> nil
+      story -> story.number
     end
   end
 

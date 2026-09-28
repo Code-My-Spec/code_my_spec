@@ -18,16 +18,16 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :integer,
+    field :story_number, :integer,
       required: true,
-      doc: "ID of the story whose Three Amigos artifacts should be rendered as Gherkin."
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:story, %Stories.Story{} = story} <-
-           {:story, Stories.get_story(scope, get_param(params, :story_id))} do
+           {:story, Stories.get_story_by_number(scope, get_param(params, :story_number))} do
       gherkin = GherkinRenderer.render(scope, story)
 
       {:reply, Response.tool() |> Response.text(gherkin), frame}

@@ -16,23 +16,23 @@ defmodule CodeMySpec.McpServers.Stories.Tools.MoveCriterion do
   alias CodeMySpec.Stories
 
   schema do
-    field :criterion_id, :string,
+    field :criterion_number, :integer,
       required: true,
       doc: "Criterion number to move (from get_story)"
 
-    field :target_story_id, :string,
+    field :target_story_number, :integer,
       required: true,
-      doc: "Story ID to move the criterion to"
+      doc: "Number of the story to move the criterion to"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          :ok <- check_not_verified(criterion),
          target_story when not is_nil(target_story) <-
-           Stories.get_story(scope, params.target_story_id),
+           Stories.get_story_by_number(scope, params.target_story_number),
          from_story when not is_nil(from_story) <-
            Stories.get_story(scope, criterion.story_id),
          {:ok, updated} <-

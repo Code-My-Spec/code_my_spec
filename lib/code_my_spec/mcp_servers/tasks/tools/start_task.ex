@@ -20,6 +20,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Tasks.TasksMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
@@ -37,7 +38,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       required: true,
       doc: "Entity type: component, story, or project"
 
-    field :entity_id, :string, doc: "ID of the entity that owns this requirement"
+    field :entity_id, :string,
+      doc:
+        "The entity that owns this requirement: a story's number, or a component's or project's id"
 
     field :module_name, :string,
       doc: "Component module name (alternative to entity_id for component requirements)"
@@ -74,9 +77,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp resolve_requirement(scope, %{requirement_name: name, entity_type: type, entity_id: id})
-       when is_binary(name) and is_binary(type) and is_binary(id) do
-    resolve_from_graph(scope, name, type, id)
+  defp resolve_requirement(scope, %{requirement_name: name, entity_type: type, entity_id: ref})
+       when is_binary(name) and is_binary(type) and is_binary(ref) do
+    case StoryRefs.entity_id(scope, type, ref) do
+      nil -> {:error, "Story #{ref} not found"}
+      id -> resolve_from_graph(scope, name, type, id)
+    end
   end
 
   defp resolve_requirement(scope, %{requirement_name: name, module_name: module_name})

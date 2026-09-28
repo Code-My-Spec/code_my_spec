@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5914Spex do
 
         {:reply, response, _frame} =
           StartThreeAmigosSession.execute(
-            %{story_id: to_string(context.story.id)},
+            %{story_number: context.story.number},
             frame
           )
 

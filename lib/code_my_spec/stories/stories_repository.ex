@@ -59,7 +59,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   `list_specs_ready_story_ids/1` — this is called from the same blocking-check
   path, and the caller already knows which ids it needs.
   """
-  def specs_ready_stamps(%Scope{active_project_id: project_id}, story_ids) when is_list(story_ids) do
+  def specs_ready_stamps(%Scope{active_project_id: project_id}, story_ids)
+      when is_list(story_ids) do
     Story
     |> where([s], s.project_id == ^project_id and s.id in ^story_ids)
     |> select([s], {s.id, s.specs_ready_at, s.specs_ready_commit})
@@ -283,7 +284,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       from(s in Story,
         where: s.project_id == ^scope.active_project.id and is_nil(s.retired_at),
         order_by: [asc: s.title],
-        select: %{id: s.id, title: s.title, component_id: s.component_id}
+        select: %{id: s.id, number: s.number, title: s.title, component_id: s.component_id}
       )
 
     query =
@@ -311,7 +312,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_unsatisfied_stories(%Scope{} = scope) do
     from(s in Story,
-      where: s.project_id == ^scope.active_project.id and is_nil(s.component_id) and is_nil(s.retired_at),
+      where:
+        s.project_id == ^scope.active_project.id and is_nil(s.component_id) and
+          is_nil(s.retired_at),
       preload: [:criteria, :tags]
     )
     |> Repo.all()

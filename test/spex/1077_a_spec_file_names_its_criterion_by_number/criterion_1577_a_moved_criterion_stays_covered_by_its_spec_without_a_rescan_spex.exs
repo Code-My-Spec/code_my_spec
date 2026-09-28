@@ -22,7 +22,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion1577Spex do
       given_ "a spec naming the criterion covers it on story A", context do
         story_a = CriterionScript.create_story(context.scope, "Story A", ["A thing that moves"])
         story_b = CriterionScript.create_story(context.scope, "Story B", [])
-        [number] = context.scope |> CriterionScript.story_text(story_a) |> CriterionScript.numbers()
+
+        [number] =
+          context.scope |> CriterionScript.story_text(story_a) |> CriterionScript.numbers()
 
         :ok =
           Environments.write_file(
@@ -36,10 +38,11 @@ defmodule CodeMySpecSpex.Story1077.Criterion1577Spex do
         {:ok, Map.merge(context, %{story_b: story_b, number: number})}
       end
 
-      when_ "the agent moves the criterion to story B, and the spec file is not touched", context do
+      when_ "the agent moves the criterion to story B, and the spec file is not touched",
+            context do
         result =
           CriterionScript.run(context.scope, """
-          return move_criterion({ criterion_id = "#{context.number}", target_story_id = "#{context.story_b}" })
+          return move_criterion({ criterion_number = #{context.number}, target_story_number = #{context.story_b} })
           """)
 
         refute result.error?, "move_criterion failed: #{result.text}"

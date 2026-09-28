@@ -8,14 +8,21 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.RequirementsFormatter
 
   schema do
-    field :name, :string, required: true, description: "The requirement name (e.g. 'spec_written', 'tests_written')"
-    field :entity_type, :string, description: "Entity type filter: 'component', 'story', or 'project'"
-    field :entity_id, :string, description: "Entity ID to scope the requirement lookup"
+    field :name, :string,
+      required: true,
+      description: "The requirement name (e.g. 'spec_written', 'tests_written')"
+
+    field :entity_type, :string,
+      description: "Entity type filter: 'component', 'story', or 'project'"
+
+    field :entity_id, :string,
+      description: "The entity to scope the lookup to: a story's number, or a component's id"
   end
 
   @impl true
@@ -35,6 +42,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
     matches =
       nodes
       |> Enum.filter(&(&1.name == name))
+      |> then(&StoryRefs.number_nodes(scope, &1))
       |> maybe_filter_entity(params)
 
     case matches do
@@ -45,7 +53,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
   end
 
   defp maybe_filter_entity(nodes, %{entity_type: type, entity_id: id}) do
-    Enum.filter(nodes, fn n -> n.entity_type == type and to_string(n.entity_id) == id end)
+    Enum.filter(nodes, fn n ->
+      n.entity_type == type and to_string(StoryRefs.entity_ref(n)) == id
+    end)
   end
 
   defp maybe_filter_entity(nodes, _), do: nodes

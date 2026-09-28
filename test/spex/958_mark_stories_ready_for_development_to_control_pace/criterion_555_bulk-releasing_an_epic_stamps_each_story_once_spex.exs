@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
 
     {:reply, assign_response, _frame} =
       AssignStoryToEpic.execute(
-        %{story_id: story_id!(response), epic_name: "Stone Age"},
+        %{story_number: story_number!(response), epic_name: "Stone Age"},
         frame
       )
 
@@ -122,13 +122,13 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
     html |> String.split("data-test=\"story-ready\"") |> length() |> Kernel.-(1)
   end
 
-  defp story_id!(response) do
+  defp story_number!(response) do
     body = response_text(response)
 
-    captured!(
-      Regex.run(~r/\(ID: (\d+)\)/, body),
-      "could not read story id from response: #{body}"
-    )
+    ~r/^Story (\d+) created/
+    |> Regex.run(body)
+    |> captured!("could not read story number from response: #{body}")
+    |> String.to_integer()
   end
 
   # Two heads rather than a `case`: pattern matching in a function head is not

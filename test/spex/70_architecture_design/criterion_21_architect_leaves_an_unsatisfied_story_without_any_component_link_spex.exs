@@ -87,8 +87,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
       when_ "the architect writes a proposal that links only two of three stories",
             context do
         app = context.project.module_name || "MyApp"
-        story_a_id = context.story_a.id
-        story_b_id = context.story_b.id
+        story_a_number = context.story_a.number
+        story_b_number = context.story_b.number
 
         # story_c is intentionally omitted from all surface component mappings
 
@@ -101,13 +101,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
 
         - **Type:** liveview
         - **Description:** Feature one page
-        - **Stories:** #{story_a_id}
+        - **Stories:** #{story_a_number}
 
         ### #{app}Web.FeatureTwoLive
 
         - **Type:** liveview
         - **Description:** Feature two page
-        - **Stories:** #{story_b_id}
+        - **Stories:** #{story_b_number}
 
         ## Contexts
 
@@ -155,10 +155,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
 
       then_ "the rejection feedback names the unlinked story", context do
         body = response_text(context.evaluate_response)
-        story_c_id = to_string(context.story_c.id)
+        story_c = to_string(context.story_c.number)
 
-        assert body =~ story_c_id,
-               "expected rejection feedback to name story #{story_c_id}, got: #{inspect(body)}"
+        assert body =~ story_c,
+               "expected rejection feedback to name story #{story_c}, got: #{inspect(body)}"
+
+        refute body =~ to_string(context.story_c.id),
+               "the rejection should not carry the story's id: #{inspect(body)}"
 
         {:ok, context}
       end

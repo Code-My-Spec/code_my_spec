@@ -18,11 +18,13 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :integer, required: true, doc: "ID of the story to add the scenario to."
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
 
     field :rule_statement, :string,
       required: true,
@@ -36,7 +38,8 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
 
     field :kind, :string,
       required: true,
-      doc: "`happy_path` or `failure_path`. Use `happy_path` for the normal flow; add `failure_path` only when a genuine failure surface exists for this rule."
+      doc:
+        "`happy_path` or `failure_path`. Use `happy_path` for the normal flow; add `failure_path` only when a genuine failure surface exists for this rule."
 
     field :body, :string,
       required: true,
@@ -46,10 +49,9 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story_id <- get_param(params, :story_id),
-         {:ok, story} <- find_story(scope, story_id),
+         {:ok, story} <- StoryRefs.fetch_story(scope, get_param(params, :story_number)),
          {:ok, rule} <-
-           find_rule_by_statement(scope, story_id, get_param(params, :rule_statement)),
+           find_rule_by_statement(scope, story.id, get_param(params, :rule_statement)),
          {:ok, kind} <- parse_kind(get_param(params, :kind)),
          {:ok, criterion} <-
            AcceptanceCriteria.create_criterion(scope, story, %{
@@ -65,13 +67,6 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
 
       {:error, reason} ->
         {:reply, BddRulesMapper.error(reason), frame}
-    end
-  end
-
-  defp find_story(scope, story_id) do
-    case Stories.get_story(scope, story_id) do
-      nil -> {:error, :story_not_found}
-      story -> {:ok, story}
     end
   end
 

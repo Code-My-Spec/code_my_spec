@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Generate prompt files and orchestration instructions for the QA session.
 
   For each story:
-  1. Calls QaStory.command to build the prompt, writes to `.code_my_spec/qa/{story_id}/prompt.md`
+  1. Calls QaStory.command to build the prompt, writes to `.code_my_spec/qa/{story_number}/prompt.md`
   2. Collects the prompt file paths
 
   Then writes an orchestration prompt instructing the agent to smoke-test
@@ -80,9 +80,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     stories = list_stories(scope)
     summary_exists = summary_exists?(env)
 
-    Logger.info(
-      "[QaApp] evaluate: #{length(stories)} story(s), summary_exists=#{summary_exists}"
-    )
+    Logger.info("[QaApp] evaluate: #{length(stories)} story(s), summary_exists=#{summary_exists}")
 
     if Enum.empty?(stories) and summary_exists do
       {:ok, :valid}
@@ -103,12 +101,12 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
       case QaStory.command(scope, child_task) do
         {:ok, prompt} ->
-          prompt_path = Path.join([Paths.qa_dir(), to_string(story.id), "prompt.md"])
+          prompt_path = Path.join([Paths.qa_dir(), to_string(story.number), "prompt.md"])
           :ok = Environments.write_file(env, prompt_path, prompt)
-          %{story_id: story.id, story_title: story.title, prompt_path: prompt_path}
+          %{story_number: story.number, story_title: story.title, prompt_path: prompt_path}
 
         {:error, reason} ->
-          Logger.warning("[QaApp] Failed to generate prompt for story #{story.id}: #{reason}")
+          Logger.warning("[QaApp] Failed to generate prompt for story #{story.number}: #{reason}")
           nil
       end
     end)
@@ -273,7 +271,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     story_list =
       Enum.map_join(stories, "\n", fn story ->
         criteria_text = format_criteria(Map.get(story, :criteria, []))
-        "### Story #{story.id} — #{story.title}\n\n#{story.description || ""}\n\n#{criteria_text}"
+
+        "### Story #{story.number} — #{story.title}\n\n#{story.description || ""}\n\n#{criteria_text}"
       end)
 
     """
@@ -325,18 +324,18 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
         prompts ->
           Enum.map_join(prompts, "\n", fn sp ->
-            "  - Story #{sp.story_id} (#{sp.story_title}): `#{sp.prompt_path}`"
+            "  - Story #{sp.story_number} (#{sp.story_title}): `#{sp.prompt_path}`"
           end)
       end
 
-    story_id_list =
+    story_number_list =
       case stories do
         [] ->
           "  _(no stories)_"
 
         stories ->
           Enum.map_join(stories, "\n", fn story ->
-            "  - Story #{story.id}: #{story.title}"
+            "  - Story #{story.number}: #{story.title}"
           end)
       end
 
@@ -367,7 +366,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
     All stories:
 
-    #{story_id_list}
+    #{story_number_list}
 
     ### Step 4: Write Summary
 
@@ -391,9 +390,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
         child_task = %{story_id: story.id}
 
         case QaStory.evaluate(scope, child_task) do
-          {:ok, :valid} -> {story.id, :valid}
-          {:ok, :invalid, feedback} -> {story.id, {:invalid, feedback}}
-          {:error, reason} -> {story.id, {:invalid, reason}}
+          {:ok, :valid} -> {story.number, :valid}
+          {:ok, :invalid, feedback} -> {story.number, {:invalid, feedback}}
+          {:error, reason} -> {story.number, {:invalid, reason}}
         end
       end)
 
@@ -428,8 +427,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
       end
 
     parts =
-      Enum.reduce(incomplete_stories, parts, fn {story_id, {:invalid, feedback}}, acc ->
-        ["- Story #{story_id}: #{String.slice(feedback, 0..120)}" | acc]
+      Enum.reduce(incomplete_stories, parts, fn {story_number, {:invalid, feedback}}, acc ->
+        ["- Story #{story_number}: #{String.slice(feedback, 0..120)}" | acc]
       end)
 
     issue_list = parts |> Enum.reverse() |> Enum.join("\n")

@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Three Amigos task prompt enumerates MCP tools and points to knowledge MCP", criterion: 160 do
+  spex "Three Amigos task prompt enumerates MCP tools and points to knowledge MCP",
+    criterion: 160 do
     scenario "start_task response prompt names the expected tools" do
       given_ "a story exists in the active project", context do
         story =
@@ -61,7 +62,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
-              entity_id: to_string(context.story.id),
+              entity_id: to_string(context.story.number),
               session_id: context.session_id
             },
             frame

@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4687Spex do
       when_ ~s(the agent rewords it to "A user signs in with a magic link"), context do
         result =
           CriterionScript.run(context.scope, """
-          return update_criterion({ criterion_id = "#{context.number}", description = "A user signs in with a magic link" })
+          return update_criterion({ criterion_number = #{context.number}, description = "A user signs in with a magic link" })
           """)
 
         refute result.error?, "update_criterion failed: #{result.text}"

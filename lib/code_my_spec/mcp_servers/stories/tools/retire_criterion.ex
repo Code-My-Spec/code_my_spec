@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RetireCriterion do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :criterion_id, :string,
+    field :criterion_number, :integer,
       required: true,
       doc: "Criterion number to retire (from get_story)"
   end
@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RetireCriterion do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          :ok <- check_not_verified(criterion),
          {:ok, retired} <- AcceptanceCriteria.retire_criterion(scope, criterion) do
       {:reply, StoriesMapper.criterion_retired_response(retired), frame}

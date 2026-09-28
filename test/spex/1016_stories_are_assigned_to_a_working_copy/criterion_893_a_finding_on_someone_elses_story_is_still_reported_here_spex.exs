@@ -68,7 +68,8 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
     :ok
   end
 
-  spex "A working copy surfaces every finding about it, regardless of assignment", criterion: 893 do
+  spex "A working copy surfaces every finding about it, regardless of assignment",
+    criterion: 893 do
     scenario "A finding on someone else's story is still reported here" do
       given_ :synced_context_component
       given_ :story_linked_to_component
@@ -96,7 +97,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
 
         {:reply, _assigned, _frame} =
           AssignStoryToEpic.execute(
-            %{story_id: to_string(context.story.id), epic_name: @epic_name},
+            %{story_number: context.story.number, epic_name: @epic_name},
             frame
           )
 

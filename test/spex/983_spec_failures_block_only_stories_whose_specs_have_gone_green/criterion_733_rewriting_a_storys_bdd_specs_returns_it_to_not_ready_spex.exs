@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.id)}, frame)
+          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
 
         body = response_text(response)
 

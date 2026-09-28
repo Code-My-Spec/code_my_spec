@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
             %{
               requirement_name: "qa_complete",
               entity_type: "story",
-              entity_id: to_string(context.story.id)
+              entity_id: to_string(context.story.number)
             },
             agent_frame
           )

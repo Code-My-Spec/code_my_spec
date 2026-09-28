@@ -95,6 +95,18 @@ defmodule CodeMySpecWeb.IssuesControllerTest do
       assert length(data) == 1
       assert hd(data)["severity"] == "critical"
     end
+
+    test "filters by story number", %{conn: conn, scope: scope} do
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope)
+      issue = issue_fixture(scope, %{story_id: story.id})
+      issue_fixture(scope)
+
+      conn = get(conn, ~p"/api/issues?story_number=#{story.number}")
+
+      assert [data] = json_response(conn, 200)["data"]
+      assert data["id"] == issue.id
+      assert data["story_number"] == story.number
+    end
   end
 
   describe "show/2" do
@@ -167,6 +179,33 @@ defmodule CodeMySpecWeb.IssuesControllerTest do
       assert %{"data" => data} = json_response(conn, 201)
       assert data["scope"] == "qa"
       assert data["story_id"] == 42
+    end
+
+    test "links a story by its number and reports the number back", %{conn: conn, scope: scope} do
+      for _ <- 1..2, do: CodeMySpec.StoriesFixtures.story_fixture(scope)
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope)
+      assert story.id != story.number
+
+      params = %{
+        title: "Linked by number",
+        description: "Attributed to a story",
+        severity: "low",
+        story_number: story.number
+      }
+
+      conn = post(conn, ~p"/api/issues", issue: params)
+
+      assert %{"data" => data} = json_response(conn, 201)
+      assert data["story_id"] == story.id
+      assert data["story_number"] == story.number
+    end
+
+    test "an unknown story number is refused", %{conn: conn} do
+      params = %{title: "Nowhere", description: "d", severity: "low", story_number: 999_999}
+
+      conn = post(conn, ~p"/api/issues", issue: params)
+
+      assert json_response(conn, 404)
     end
 
     test "returns 422 with missing required fields", %{conn: conn} do

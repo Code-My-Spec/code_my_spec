@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
 
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       when_ "an observation of a kind the graph knows how to apply is drained", context do
@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
               title: "something the graph knows how to settle",
               description: "issue_created has a handler, so both paths answer it",
               severity: "medium",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )

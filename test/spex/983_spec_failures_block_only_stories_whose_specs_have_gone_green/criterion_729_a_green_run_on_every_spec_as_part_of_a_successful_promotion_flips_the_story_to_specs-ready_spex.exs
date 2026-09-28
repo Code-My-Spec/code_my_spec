@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
             %{
               requirement_name: "bdd_specs_passing",
               entity_type: "story",
-              entity_id: to_string(context.story.id),
+              entity_id: to_string(context.story.number),
               session_id: session_id
             },
             frame
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.id)}, frame)
+          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
 
         body = response_text(response)
 

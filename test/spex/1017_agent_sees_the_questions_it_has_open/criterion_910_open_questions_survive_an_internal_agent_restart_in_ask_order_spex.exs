@@ -33,7 +33,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
     :ok
   end
 
-  spex "A restarted internal agent recovers its own open questions and task links", criterion: 910 do
+  spex "A restarted internal agent recovers its own open questions and task links",
+    criterion: 910 do
     scenario "Two questions remain in ask order after the local process is replaced" do
       given_ "a connected checkout has completed kickoff", context do
         context = given_a_staffed_checkout(context, "spex_2417")
@@ -69,7 +70,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
                 %{
                   requirement_name: "bdd_specs_exist",
                   entity_type: "story",
-                  entity_id: to_string(story.id)
+                  entity_id: to_string(story.number)
                 },
                 frame
               )

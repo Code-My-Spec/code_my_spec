@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3020Spex do
       end
 
       when_ "its script calls a tool its type does not carry", context do
-        script = "return retire_story({ story_id = \"#{context.story.id}\" })"
+        script = "return retire_story({ story_number = #{context.story.id} })"
         reply = Fixtures.run_script(script, agent_context(context))
 
         {:ok, Map.put(context, :reply, reply)}

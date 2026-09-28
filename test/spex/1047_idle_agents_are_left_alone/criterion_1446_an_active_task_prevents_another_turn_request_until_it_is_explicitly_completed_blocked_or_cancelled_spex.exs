@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
-              entity_id: to_string(context.story.id)
+              entity_id: to_string(context.story.number)
             },
             context.agent_frame
           )

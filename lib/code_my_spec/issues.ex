@@ -92,6 +92,10 @@ defmodule CodeMySpec.Issues do
 
   def attribute_to_story(_scope, _issue_ids, _story_id), do: 0
 
+  @doc "Loads each issue's story, so it can be named by number."
+  def with_story(%Issue{} = issue), do: CodeMySpec.Repo.preload(issue, :story)
+  def with_story(issue), do: issue
+
   def get_issue(%Scope{} = scope, id) do
     IssuesRepository.get_issue(scope, id)
   end
@@ -233,9 +237,10 @@ defmodule CodeMySpec.Issues do
   Creates issues from a validated QA result document.
 
   Parses the issues section, upserts each issue (skipping duplicates by title + story_id),
-  and projects all created issues to the filesystem.
+  and projects all created issues to the filesystem. `source_path` is the result
+  file the issues were read from.
   """
-  def create_from_qa_result(%Scope{} = scope, story_id, document) do
+  def create_from_qa_result(%Scope{} = scope, story_id, document, source_path) do
     issues = Map.get(document.sections, "issues", [])
 
     created =
@@ -248,7 +253,7 @@ defmodule CodeMySpec.Issues do
           scope: parse_scope(qa_issue.scope),
           description: qa_issue.description,
           story_id: story_id,
-          source_path: ".code_my_spec/qa/#{story_id}/result.md"
+          source_path: source_path
         }
 
         case upsert_or_create(scope, attrs) do

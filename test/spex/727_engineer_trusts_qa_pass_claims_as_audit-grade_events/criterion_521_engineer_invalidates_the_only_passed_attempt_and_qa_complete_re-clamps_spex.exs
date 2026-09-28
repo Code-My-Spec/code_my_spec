@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
   setup :setup_active_project
   setup :setup_qa_story_task
 
-  spex "Invalidating a pass with a reason re-clamps qa_complete and preserves the original", criterion: 521 do
+  spex "Invalidating a pass with a reason re-clamps qa_complete and preserves the original",
+    criterion: 521 do
     scenario "Engineer invalidates the only passed attempt and qa_complete re-clamps" do
       given_ "a story with one passed QA attempt and qa_complete satisfied", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
@@ -82,7 +83,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_id: context.story.id}, frame)
+          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
 
         refute list_response.isError
         text = response_text(list_response)

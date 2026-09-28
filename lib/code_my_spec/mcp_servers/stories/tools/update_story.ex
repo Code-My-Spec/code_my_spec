@@ -20,9 +20,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   alias CodeMySpec.Tags
 
   schema do
-    field :story_id, :string,
+    field :story_number, :integer,
       required: true,
-      doc: "Story ID to update (use list_story_titles to find IDs)"
+      doc: "Story number (list_story_titles shows them)"
 
     field :title, :string, doc: "New title (optional)"
 
@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
       doc: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
 
     # Declared because it was already reaching the changeset — `execute/2`
-    # passes everything but `story_id` straight through, and
+    # passes everything but `story_number` straight through, and
     # `Story.changeset/2` casts `:epic_id`. What was missing was
     # this line, and Anubis drops an undeclared parameter in silence, so a
     # caller passing `epic_id` got a success and no change.
@@ -65,8 +65,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
-         {:ok, story} <- Stories.update_story(scope, story, Map.drop(params, [:story_id])),
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number),
+         {:ok, story} <- Stories.update_story(scope, story, Map.drop(params, [:story_number])),
          {:ok, story} <- sync_tags_if_provided(scope, story, params) do
       {:reply, StoriesMapper.story_updated_response(story), frame}
     else

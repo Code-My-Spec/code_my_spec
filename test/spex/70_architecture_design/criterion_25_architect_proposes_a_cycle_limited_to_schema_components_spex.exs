@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Cyclic dependencies among schemas are permitted (Ecto bidirectional associations)", criterion: 25 do
+  spex "Cyclic dependencies among schemas are permitted (Ecto bidirectional associations)",
+    criterion: 25 do
     scenario "Architect proposes a cycle limited to schema components" do
       given_ "an unsatisfied story exists on the project", context do
         story =
@@ -67,7 +68,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
       when_ "the architect declares a bidirectional schema cycle (User has_many Account, Account belongs_to User)",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         # Accounts.User has_many Accounts.Account
         # Accounts.Account belongs_to Accounts.User
@@ -82,7 +83,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
 
         - **Type:** liveview
         - **Description:** Account management LiveView
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

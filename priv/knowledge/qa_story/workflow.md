@@ -11,7 +11,7 @@ they're uncovered and linked into the attempt by id.
 
 ## Phase 1: Testing brief
 
-**Artifact:** `.code_my_spec/qa/<story_id>/brief.md`
+**Artifact:** `.code_my_spec/qa/<story_number>/brief.md`
 
 The brief is the concrete plan for testing this story — which tools to use,
 how to authenticate, what scenarios to test, and what to assert.
@@ -27,7 +27,7 @@ Procedure:
    test data, and assertions.
 5. If a linked component is listed in the prompt, read its source and
    spec to understand the feature.
-6. Write the brief to `.code_my_spec/qa/<story_id>/brief.md` matching
+6. Write the brief to `.code_my_spec/qa/<story_number>/brief.md` matching
    the `qa_story_brief` document spec from the prompt.
 
 ## Phase 2: Execute tests
@@ -52,7 +52,7 @@ There is no `result.md` artifact in this phase. Findings flow through
 
 - Capture a screenshot at each key state (initial load, after
   interactions, success/error states). Save to
-  `.code_my_spec/qa/<story_id>/screenshots/`. Screenshots are evidence
+  `.code_my_spec/qa/<story_number>/screenshots/`. Screenshots are evidence
   and remain valuable — attach the path in the issue description for
   any finding that ships a screenshot.
 - After scripted scenarios, explore freely: unexpected inputs, edge
@@ -73,7 +73,7 @@ into a markdown file. The DB issue is the canonical record.
   problems; `docs` for docs gaps; (`framework` is a server-side concept and
   not selectable from the local list_issues filter, but `create_issue`
   itself supports it for harness issues).
-- `story_id` — the story this finding relates to, when relevant.
+- `story_number` — the story this finding relates to, when relevant.
 - `description` — the reproduction, the expected vs actual, file paths,
   and any screenshot or evidence path.
 
@@ -82,7 +82,7 @@ prompt's "Existing Issues" section), don't refile.
 
 ### Procedure
 
-1. Read the brief at `.code_my_spec/qa/<story_id>/brief.md` for the
+1. Read the brief at `.code_my_spec/qa/<story_number>/brief.md` for the
    complete plan.
 2. Read `.code_my_spec/qa/plan.md` for auth strategy and seed commands.
 3. Read `priv/knowledge/qa-tooling.md` and `priv/knowledge/qa-tooling/`
@@ -104,7 +104,7 @@ The evaluator runs a thin check chain:
 
 1. Validates that `.code_my_spec/qa/plan.md` exists with required sections.
    (If missing, returns invalid pointing at `qa_setup`.)
-2. Validates that `.code_my_spec/qa/<story_id>/brief.md` exists and parses.
+2. Validates that `.code_my_spec/qa/<story_number>/brief.md` exists and parses.
 3. Checks whether a DB-backed pass attempt exists via
    `CodeMySpec.Qa.qa_complete?/2`. If yes, the requirement is satisfied
    and the session ends.

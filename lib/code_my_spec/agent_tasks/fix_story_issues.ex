@@ -15,7 +15,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   the project queue.
   """
 
-  alias CodeMySpec.{Configurations, Issues, Paths}
+  alias CodeMySpec.{Configurations, Issues, Paths, Stories}
 
   def dispatch(_node) do
     "Resolve the accepted issues QA filed against this story, at or above " <>
@@ -31,7 +31,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     with {:ok, story_id} <- get_story_id(task) do
       threshold = Configurations.fix_issues_min_severity(scope)
       issues = blocking_issues(scope, story_id, threshold)
-      {:ok, build_prompt(story_id, issues, threshold)}
+      {:ok, build_prompt(story_number(scope, story_id), issues, threshold)}
     end
   end
 
@@ -52,7 +52,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
 
           {:ok, :invalid,
            """
-           #{length(issues)} unresolved accepted issue(s) on story #{story_id} at #{threshold}+ severity:
+           #{length(issues)} unresolved accepted issue(s) on story #{story_number(scope, story_id)} at #{threshold}+ severity:
 
            #{names}
 
@@ -66,33 +66,43 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     Issues.list_by_story_status_and_min_severity(scope, story_id, :accepted, threshold)
   end
 
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> "?"
+      story -> story.number
+    end
+  end
+
   defp get_story_id(%{story_id: story_id}) when not is_nil(story_id) do
     case Integer.parse(to_string(story_id)) do
-      {id, _} -> {:ok, id}
-      :error -> {:error, {:invalid_story_id, "Expected a numeric story ID, got #{inspect(story_id)}."}}
+      {id, _} ->
+        {:ok, id}
+
+      :error ->
+        {:error, {:invalid_story_id, "Expected a numeric story, got #{inspect(story_id)}."}}
     end
   end
 
   defp get_story_id(_task) do
     {:error,
      {:story_id_required,
-      "FixStoryIssues is a story-scoped requirement. Call `start_task` with entity_type=`story` and the story's id."}}
+      "FixStoryIssues is a story-scoped requirement. Call `start_task` with entity_type=`story` and the story's number as entity_id."}}
   end
 
-  defp build_prompt(story_id, [], threshold) do
+  defp build_prompt(story_number, [], threshold) do
     """
-    # Fix Story Issues — story #{story_id}
+    # Fix Story Issues — story #{story_number}
 
     No unresolved accepted issues on this story at #{threshold}+ severity.
     Call `evaluate_task` to record it and move on.
     """
   end
 
-  defp build_prompt(story_id, issues, threshold) do
+  defp build_prompt(story_number, issues, threshold) do
     listing = Enum.map_join(issues, "\n", &"- `#{&1.id}` — [#{&1.severity}] #{&1.title}")
 
     """
-    # Fix Story Issues — story #{story_id}
+    # Fix Story Issues — story #{story_number}
 
     This story has cleared QA and carries **#{length(issues)} accepted
     issue(s)** at or above `#{threshold}`. Fix them before it is released.
@@ -112,7 +122,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
 
     ## QA context
 
-    - **QA evidence for this story**: `#{Paths.qa_dir()}/#{story_id}/` —
+    - **QA evidence for this story**: `#{Paths.qa_dir()}/#{story_number}/` —
       the brief, the failed result, and any screenshots that produced these
       issues.
 

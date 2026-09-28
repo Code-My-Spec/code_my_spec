@@ -36,21 +36,21 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
 
         {:reply, response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.second_story.id},
+            %{persona_id: context.persona_id, story_number: context.second_story.number},
             frame
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the MCP response confirms the link with persona_id and story_id", context do
+      then_ "the MCP response confirms the link with persona_id and story number", context do
         body = response_text(context.response)
 
         assert body =~ "linked",
                "expected MCP response to confirm the link, got #{inspect(context.response)}"
 
-        assert body =~ to_string(context.second_story.id),
-               "expected MCP response to name the story_id in the confirmation"
+        assert body =~ "story #{context.second_story.number}",
+               "expected MCP response to name the story in the confirmation"
 
         {:ok, context}
       end

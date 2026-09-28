@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.MainAgent.EpicsMapper do
     |> Response.text("""
     #{length(stories)} ready story(s) belong to no epic:
 
-    #{Enum.map_join(stories, "\n", &"  #{&1.title} (#{&1.id})")}
+    #{Enum.map_join(stories, "\n", &"  Story #{&1.number}: #{&1.title}")}
     """)
   end
 

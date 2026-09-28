@@ -34,18 +34,24 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
               title: "Onboarding step is confusing",
               severity: "medium",
               description: "User reported the step copy was unclear.",
-              story_id: story
+              story_number: story
             },
             frame
           )
 
         [_, issue_id] = Regex.run(~r/\(ID:\s*([^\)\s]+)\)/, response_text(issue_response))
 
-        {:ok, Map.merge(context, %{story: story, sibling: sibling, number: number, issue_id: issue_id})}
+        {:ok,
+         Map.merge(context, %{story: story, sibling: sibling, number: number, issue_id: issue_id})}
       end
 
       when_ "the agent retires the story", context do
-        result = CriterionScript.run(context.scope, "return retire_story({ story_id = \"#{context.story}\" })")
+        result =
+          CriterionScript.run(
+            context.scope,
+            "return retire_story({ story_number = #{context.story} })"
+          )
+
         refute result.error?, "retire_story failed: #{result.text}"
         {:ok, context}
       end
@@ -61,9 +67,14 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
 
       and_ "its criterion is retired and still readable by its number", context do
         text =
-          CriterionScript.run(context.scope, "return get_criterion({ criterion_id = \"#{context.number}\" })").text
+          CriterionScript.run(
+            context.scope,
+            "return get_criterion({ criterion_number = #{context.number} })"
+          ).text
 
-        assert text =~ "A thing happens", "criterion #{context.number} should still be readable. Got: #{text}"
+        assert text =~ "A thing happens",
+               "criterion #{context.number} should still be readable. Got: #{text}"
+
         assert text =~ ~r/retired/i, "criterion #{context.number} should be retired. Got: #{text}"
 
         {:ok, context}
@@ -75,7 +86,9 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
         body = response_text(response)
 
         assert body =~ "Onboarding step is confusing"
-        assert body =~ "**Story:** #{context.story}", "the issue lost its story link. Got: #{body}"
+
+        assert body =~ "**Story:** #{context.story}",
+               "the issue lost its story link. Got: #{body}"
 
         {:ok, context}
       end

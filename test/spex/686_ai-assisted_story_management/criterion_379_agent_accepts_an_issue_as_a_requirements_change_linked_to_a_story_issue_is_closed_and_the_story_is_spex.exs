@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
 
         params = %{
           issue_id: context.issue_id,
-          story_id: context.story.id,
+          story_number: context.story.number,
           category: "requirements_change"
         }
 
@@ -90,8 +90,8 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
         assert body =~ ~r/accepted/i,
                "expected issue status accepted, got: #{inspect(body)}"
 
-        assert body =~ to_string(context.story.id),
-               "expected issue linked to story #{context.story.id}, got: #{inspect(body)}"
+        assert body =~ "**Story:** #{context.story.number}",
+               "expected issue linked to story #{context.story.number}, got: #{inspect(body)}"
 
         {:ok, context}
       end

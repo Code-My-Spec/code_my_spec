@@ -37,20 +37,20 @@ defmodule CodeMySpecSpex.Story686.Criterion7954Spex do
 
         refute create_response.isError, "expected create_story to succeed"
 
-        story_id = story_id!(create_response)
+        story_number = story_number!(create_response)
 
         {:reply, update_response, _frame} =
-          UpdateStory.execute(%{story_id: story_id, ready_for_dev: true}, frame)
+          UpdateStory.execute(%{story_number: story_number, ready_for_dev: true}, frame)
 
         refute update_response.isError,
                "expected update_story to accept ready_for_dev, got: #{inspect(update_response)}"
 
-        {:ok, context |> Map.put(:frame, frame) |> Map.put(:story_id, story_id)}
+        {:ok, context |> Map.put(:frame, frame) |> Map.put(:story_number, story_number)}
       end
 
       when_ "the agent reads that story", context do
         {:reply, response, _frame} =
-          GetStory.execute(%{story_id: context.story_id}, context.frame)
+          GetStory.execute(%{story_number: context.story_number}, context.frame)
 
         refute response.isError, "expected get_story to succeed, got: #{inspect(response)}"
 
@@ -71,15 +71,16 @@ defmodule CodeMySpecSpex.Story686.Criterion7954Spex do
     end
   end
 
-  # MCP responses carry record ids in the text footer.
-  defp story_id!(response) do
-    response |> response_text() |> story_id_from()
+  # MCP responses name the story by number.
+  defp story_number!(response) do
+    response |> response_text() |> story_number_from()
   end
 
-  defp story_id_from(body), do: story_id_match(Regex.run(~r/\(ID: (\d+)\)/, body), body)
+  defp story_number_from(body),
+    do: story_number_match(Regex.run(~r/^Story (\d+) (?:created|updated)/, body), body)
 
-  defp story_id_match([_, id], _body), do: id
+  defp story_number_match([_, n], _body), do: String.to_integer(n)
 
-  defp story_id_match(_no_match, body),
-    do: raise("could not read story id from response: #{body}")
+  defp story_number_match(_no_match, body),
+    do: raise("could not read story number from response: #{body}")
 end

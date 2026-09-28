@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
         {:reply, _link_response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: second_persona_id, story_id: second_story.id},
+            %{persona_id: second_persona_id, story_number: second_story.number},
             frame
           )
 

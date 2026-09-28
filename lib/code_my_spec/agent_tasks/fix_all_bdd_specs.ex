@@ -16,7 +16,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   alias CodeMySpec.Utils
 
   def dispatch(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{Map.get(node, :entity_number, node.entity_id)}` (#{node.entity_name})"
   end
 
   @doc """
@@ -208,7 +208,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
       end)
 
     """
-    ## Story: #{story.title} (ID: #{story.id})
+    ## Story #{story.number}: #{story.title}
 
     **Component**: #{if component, do: component.module_name, else: "unknown"}
     #{if files[:code_file], do: "**Implementation**: `#{files[:code_file]}`", else: ""}

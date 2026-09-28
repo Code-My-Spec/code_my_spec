@@ -30,7 +30,8 @@ defmodule CodeMySpec.AgentTasks.DeployTest do
   describe "evaluate/2 — task-evaluator shape" do
     test "invalid when the story has no deploy at all", %{scope: scope, story: story} do
       assert {:ok, :invalid, message} = Deploy.evaluate(scope, %{story_id: story.id})
-      assert message =~ "#{story.id}"
+      assert message =~ "Story #{story.number} "
+      refute message =~ "Story #{story.id} "
     end
 
     test "invalid when the deploy exists but never health-verified", %{

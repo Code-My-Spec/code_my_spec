@@ -816,7 +816,7 @@ defmodule CodeMySpec.Documents.Registry do
   Content:
   - Each context represents a bounded domain (e.g., Accounts, Orders, Billing)
   - Module names must be fully qualified (e.g., MyApp.Accounts, not just Accounts)
-  - Stories field lists story IDs that this context satisfies (for dual mapping)
+  - Stories field lists the story numbers this context satisfies (for dual mapping)
   - Children are schemas/modules within the context
 
   Example:
@@ -844,7 +844,7 @@ defmodule CodeMySpec.Documents.Registry do
   Content:
   - Surface components are LiveViews, Controllers, Live Contexts, or Plugs (the UI layer)
   - Module names must start with AppNameWeb
-  - Stories field lists story IDs that this surface handles (for dual mapping)
+  - Stories field lists the story numbers this surface handles (for dual mapping)
   - Type should be: liveview, liveview_component, live_context, controller, or module
   - Use `live_context` when a feature has multiple related LiveViews and/or shared LiveComponents
     under a namespace (e.g., UserLive with UserLive.Index, UserLive.Show, UserLive.FormComponent)
@@ -1108,7 +1108,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "qa_story_brief" => %{
-      overview: "Per-story QA testing brief. Written by the QA planner after reading the story's prompt file and the QA plan. Gives the tester exact instructions — tool, auth, seeds, what to test.",
+      overview:
+        "Per-story QA testing brief. Written by the QA planner after reading the story's prompt file and the QA plan. Gives the tester exact instructions — tool, auth, seeds, what to test.",
       required_sections: ["tool", "auth", "seeds", "what to test", "result path"],
       optional_sections: ["setup notes"],
       allowed_additional_sections: [],
@@ -1122,7 +1123,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "qa_result" => %{
-      overview: "Per-story QA test result. Written by the QA agent after executing the test scenarios from the brief. Records status, scenario outcomes, evidence, and issues found.",
+      overview:
+        "Per-story QA test result. Written by the QA agent after executing the test scenarios from the brief. Records status, scenario outcomes, evidence, and issues found.",
       required_sections: ["status", "scenarios"],
       optional_sections: ["evidence", "issues"],
       allowed_additional_sections: [],
@@ -1134,7 +1136,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "qa_plan" => %{
-      overview: "Overall QA testing strategy document. Written by the QA planner after analyzing the running app's routes, authentication, and configuration. Serves as the foundation for per-story QA briefs.",
+      overview:
+        "Overall QA testing strategy document. Written by the QA planner after analyzing the running app's routes, authentication, and configuration. Serves as the foundation for per-story QA briefs.",
       required_sections: ["app overview", "tools registry", "seed strategy"],
       optional_sections: ["system issues", "notes"],
       allowed_additional_sections: [],
@@ -1163,7 +1166,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "qa_journey_plan" => %{
-      overview: "End-to-end QA journey plan. Defines user journeys through the app from empty instance to functioning software, with prerequisites and step-by-step scenarios.",
+      overview:
+        "End-to-end QA journey plan. Defines user journeys through the app from empty instance to functioning software, with prerequisites and step-by-step scenarios.",
       required_sections: ["journeys", "prerequisites"],
       optional_sections: ["notes"],
       allowed_additional_sections: [],
@@ -1201,7 +1205,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "qa_journey_result" => %{
-      overview: "End-to-end QA journey execution result. Records the outcome of each journey from the plan, with pass/fail status, details, and evidence.",
+      overview:
+        "End-to-end QA journey execution result. Records the outcome of each journey from the plan, with pass/fail status, details, and evidence.",
       required_sections: ["status", "journey results"],
       optional_sections: ["issues", "evidence"],
       allowed_additional_sections: [],
@@ -1260,7 +1265,8 @@ defmodule CodeMySpec.Documents.Registry do
       }
     },
     "integration_spec" => %{
-      overview: "Per-integration configuration spec. Defines auth type, required credentials, verify scripts, and current status for a third-party integration.",
+      overview:
+        "Per-integration configuration spec. Defines auth type, required credentials, verify scripts, and current status for a third-party integration.",
       required_sections: ["auth type", "required credentials", "verify script", "status"],
       optional_sections: ["token exchange script", "notes"],
       allowed_additional_sections: [],

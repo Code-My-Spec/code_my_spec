@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
           StartTask.execute(
             %{
               entity_type: "story",
-              entity_id: to_string(story.id),
+              entity_id: to_string(story.number),
               requirement_name: "three_amigos_complete"
             },
             main.frame

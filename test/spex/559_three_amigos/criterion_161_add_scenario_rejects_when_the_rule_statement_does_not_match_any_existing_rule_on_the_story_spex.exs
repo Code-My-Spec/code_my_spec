@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "add_scenario rejects when rule_statement does not match any rule on the story", criterion: 161 do
+  spex "add_scenario rejects when rule_statement does not match any rule on the story",
+    criterion: 161 do
     scenario "MCP tool returns an error naming the rule lookup failure" do
       given_ :persona_exists
 
@@ -36,7 +37,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
         {:reply, _add_rule, _frame} =
           AddRule.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               statement: "The exactly known rule statement"
             },
             frame
@@ -51,7 +52,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
         {:reply, response, _frame} =
           AddScenario.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               rule_statement: "Some rule that was never added",
               title: "Should not be created",
               kind: "happy_path",

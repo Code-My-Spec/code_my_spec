@@ -25,7 +25,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion1576Spex do
         story = CriterionScript.create_story(context.scope, "Story A", ["A thing happens"])
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
-        :ok = Environments.write_file(context.environment, @path, CriterionScript.spex_naming(number))
+        :ok =
+          Environments.write_file(context.environment, @path, CriterionScript.spex_naming(number))
+
         Fixtures.deliver_manifest(context.scope)
 
         {:ok, Map.put(context, :number, number)}
@@ -33,7 +35,10 @@ defmodule CodeMySpecSpex.Story1077.Criterion1576Spex do
 
       when_ "the agent retires the criterion, and the spec file is not touched", context do
         result =
-          CriterionScript.run(context.scope, "return retire_criterion({ criterion_id = \"#{context.number}\" })")
+          CriterionScript.run(
+            context.scope,
+            "return retire_criterion({ criterion_number = #{context.number} })"
+          )
 
         refute result.error?, "retire_criterion failed: #{result.text}"
         {:ok, context}

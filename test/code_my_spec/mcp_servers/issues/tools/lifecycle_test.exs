@@ -2,6 +2,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
   use ExUnit.Case, async: true
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures
+  import CodeMySpec.StoriesFixtures
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
@@ -240,10 +241,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
     test "clears the story a report was wrongly attributed to" do
       scope = full_scope_fixture()
       issue = issue_fixture(scope)
+      story = story_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, story_id: 950}, frame)
-      assert Issues.get_issue(scope, issue.id).story_id == 950
+      {:reply, _, ^frame} =
+        UpdateIssue.execute(%{issue_id: issue.id, story_number: story.number}, frame)
+
+      assert Issues.get_issue(scope, issue.id).story_id == story.id
 
       assert {:reply, response, ^frame} =
                UpdateIssue.execute(%{issue_id: issue.id, detach_from_story: true}, frame)
@@ -257,9 +261,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
     test "false leaves the attribution alone" do
       scope = full_scope_fixture()
       issue = issue_fixture(scope)
+      story = story_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, story_id: 950}, frame)
+      {:reply, _, ^frame} =
+        UpdateIssue.execute(%{issue_id: issue.id, story_number: story.number}, frame)
 
       assert {:reply, response, ^frame} =
                UpdateIssue.execute(
@@ -268,7 +274,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
                )
 
       assert response.isError == false
-      assert Issues.get_issue(scope, issue.id).story_id == 950
+      assert Issues.get_issue(scope, issue.id).story_id == story.id
     end
   end
 end

@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
         }
 
         params = %{
-          story_id: Integer.to_string(context.story.id),
+          story_number: context.story.number,
           module_name: "MyApp.NewFeature"
         }
 

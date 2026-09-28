@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files.ReconcileTimingTest do
   test "a reconcile that raises is named before it crashes, and still crashes", %{scope: scope} do
     log =
       capture_log(fn ->
-        assert_raise KeyError, fn ->
+        assert_raise Postgrex.Error, fn ->
           FileSync.reconcile_and_project(scope, [%{}])
         end
       end)

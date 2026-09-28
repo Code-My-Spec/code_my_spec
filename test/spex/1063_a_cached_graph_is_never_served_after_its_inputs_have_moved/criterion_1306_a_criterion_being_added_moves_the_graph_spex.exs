@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
 
         {:reply, link_response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: story.id},
+            %{persona_id: context.persona_id, story_number: story.number},
             frame
           )
 
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
 
         {:reply, rule_response, _frame} =
           AddRule.execute(
-            %{story_id: to_string(story.id), statement: "The thing holds."},
+            %{story_number: story.number, statement: "The thing holds."},
             frame
           )
 
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
         {:reply, response, _frame} =
           AddScenario.execute(
             %{
-              story_id: to_string(context.new_story.id),
+              story_number: context.new_story.number,
               rule_statement: "The thing holds.",
               title: "The thing holds in the ordinary case",
               kind: "happy_path",

@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
     test "executes with valid params and scope" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      params = %{story_id: story.id}
+      params = %{story_number: story.number}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      assert {:reply, response, ^frame} = GetStory.execute(%{story_id: story.id}, frame)
+      assert {:reply, response, ^frame} = GetStory.execute(%{story_number: story.number}, frame)
 
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      assert {:reply, response, ^frame} = GetStory.execute(%{story_id: story.id}, frame)
+      assert {:reply, response, ^frame} = GetStory.execute(%{story_number: story.number}, frame)
 
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
@@ -54,7 +54,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
 
     test "returns not found error for non-existent story" do
       scope = full_scope_fixture()
-      params = %{story_id: "99999"}
+      params = %{story_number: 99_999}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 

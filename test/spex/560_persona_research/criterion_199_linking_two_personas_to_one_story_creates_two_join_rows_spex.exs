@@ -49,13 +49,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
 
         {:reply, r1, _} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.target_story.id},
+            %{persona_id: context.persona_id, story_number: context.target_story.number},
             frame
           )
 
         {:reply, r2, _} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.second_persona_id, story_id: context.target_story.id},
+            %{persona_id: context.second_persona_id, story_number: context.target_story.number},
             frame
           )
 
@@ -72,9 +72,9 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
         assert first_body =~ "linked"
         assert second_body =~ "linked"
 
-        story_id = to_string(context.target_story.id)
-        assert first_body =~ story_id
-        assert second_body =~ story_id
+        story = "story #{context.target_story.number}"
+        assert first_body =~ story
+        assert second_body =~ story
 
         assert first_body =~ to_string(context.persona_id)
         assert second_body =~ to_string(context.second_persona_id)

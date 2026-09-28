@@ -12,10 +12,13 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddRule do
 
   alias CodeMySpec.BddRules
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :story_id, :integer, required: true, doc: "ID of the story to add the rule to."
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
 
     field :statement, :string,
       required: true,
@@ -26,8 +29,9 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddRule do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, story} <- StoryRefs.fetch_story(scope, get_param(params, :story_number)),
          {:ok, rule} <-
-           BddRules.create_rule(scope, get_param(params, :story_id), %{
+           BddRules.create_rule(scope, story.id, %{
              statement: get_param(params, :statement)
            }) do
       {:reply, BddRulesMapper.rule_response(rule), frame}

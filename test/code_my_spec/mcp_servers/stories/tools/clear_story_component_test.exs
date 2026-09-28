@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponentTest do
       assert story.component_id == component.id
 
       assert {:reply, response, ^frame} =
-               ClearStoryComponent.execute(%{story_id: to_string(story.id)}, frame)
+               ClearStoryComponent.execute(%{story_number: story.number}, frame)
 
       refute response.isError
       content = response_text(response)
@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponentTest do
       assert is_nil(story.component_id)
 
       assert {:reply, response, ^frame} =
-               ClearStoryComponent.execute(%{story_id: to_string(story.id)}, frame)
+               ClearStoryComponent.execute(%{story_number: story.number}, frame)
 
       refute response.isError
     end
@@ -49,7 +49,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponentTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
-               ClearStoryComponent.execute(%{story_id: "999999"}, frame)
+               ClearStoryComponent.execute(%{story_number: 99_999}, frame)
 
       assert response.isError
       assert response_text(response) =~ "not found"

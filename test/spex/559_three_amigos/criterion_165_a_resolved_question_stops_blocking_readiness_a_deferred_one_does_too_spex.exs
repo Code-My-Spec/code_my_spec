@@ -40,14 +40,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
 
         {:reply, _add_rule, _frame} =
           AddRule.execute(
-            %{story_id: context.story.id, statement: rule_statement},
+            %{story_number: context.story.number, statement: rule_statement},
             frame
           )
 
         {:reply, _happy, _frame} =
           AddScenario.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               rule_statement: rule_statement,
               title: "Driver attempts purchase with suspended card",
               kind: "happy_path",
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
         {:reply, _failure, _frame} =
           AddScenario.execute(
             %{
-              story_id: context.story.id,
+              story_number: context.story.number,
               rule_statement: rule_statement,
               title: "Suspension status fails to load",
               kind: "failure_path",
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
             {:reply, response, _frame} =
               AddQuestion.execute(
                 %{
-                  story_id: context.story.id,
+                  story_number: context.story.number,
                   text: "Open question #{n}"
                 },
                 frame

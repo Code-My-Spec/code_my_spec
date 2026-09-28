@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8166Spex do
             %{
               requirement_name: "bdd_specs_passing",
               entity_type: "story",
-              entity_id: to_string(context.story.id),
+              entity_id: to_string(context.story.number),
               session_id: session_id
             },
             frame
@@ -118,7 +118,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8166Spex do
       end
 
       then_ "story A's specs are ready", context do
-        body = requirements_body(context.scope, context.story.id)
+        body = requirements_body(context.scope, context.story.number)
 
         assert body =~ ~r/\[x\]\s+\*\*bdd_specs_passing\*\*/,
                "story A must reach ready on its own green specs, got: #{body}"
@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8166Spex do
       end
 
       then_ "story B's failure has no bearing on story A", context do
-        body = requirements_body(context.scope, context.other_story.id)
+        body = requirements_body(context.scope, context.other_story.number)
 
         # Anchor: story B really is in the graph, so the assertion below
         # is about its own red specs and not a missing story.
@@ -144,11 +144,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8166Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
-  defp requirements_body(scope, story_id) do
+  defp requirements_body(scope, number) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     {:reply, response, _frame} =
-      ShowStoryRequirements.execute(%{story: to_string(story_id)}, frame)
+      ShowStoryRequirements.execute(%{story: to_string(number)}, frame)
 
     response_text(response)
   end

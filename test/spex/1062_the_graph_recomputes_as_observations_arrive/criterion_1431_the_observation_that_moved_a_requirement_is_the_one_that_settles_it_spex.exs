@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3523Spex do
                issues_triaged: #{inspect(satisfaction_of(before, "issues_triaged"))}
                """
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       when_ "an observation that moves a requirement is applied", context do
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3523Spex do
               title: "something is wrong on this story",
               description: "filed at the severity the graph gates on",
               severity: "medium",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )

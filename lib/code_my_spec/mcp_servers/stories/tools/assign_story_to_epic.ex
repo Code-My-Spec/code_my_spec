@@ -18,7 +18,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string, required: true, doc: "Story to move"
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
 
     field :epic_name, :string,
       doc: "Destination epic name. Omit to remove the story from its epic."
@@ -27,7 +29,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, story} <- fetch_story(scope, params.story_id),
+         {:ok, story} <- fetch_story(scope, params.story_number),
          {:ok, epic} <- fetch_epic(scope, params[:epic_name]),
          {:ok, _story} <- Epics.assign_story(scope, story, epic) do
       {:reply, render(story, epic), frame}
@@ -40,8 +42,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
     end
   end
 
-  defp fetch_story(scope, story_id) do
-    case Stories.get_story(scope, story_id) do
+  defp fetch_story(scope, number) do
+    case Stories.get_story_by_number(scope, number) do
       nil -> {:error, :not_found}
       story -> {:ok, story}
     end
@@ -59,11 +61,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
 
   defp render(story, nil) do
     Response.tool()
-    |> Response.text("Story \"#{story.title}\" (ID: #{story.id}) removed from its epic.")
+    |> Response.text("Story \"#{story.title}\" (story #{story.number}) removed from its epic.")
   end
 
   defp render(story, epic) do
     Response.tool()
-    |> Response.text(~s[Story "#{story.title}" (ID: #{story.id}) moved into epic "#{epic.name}".])
+    |> Response.text(
+      ~s[Story "#{story.title}" (story #{story.number}) moved into epic "#{epic.name}".]
+    )
   end
 end

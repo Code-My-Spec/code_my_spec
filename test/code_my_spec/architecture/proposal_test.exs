@@ -189,6 +189,10 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       warnings = Proposal.collect_warnings(proposal)
       assert Enum.any?(warnings, &(&1 =~ "story 1" and &1 =~ "Fuellytics.A.X"))
       assert Enum.any?(warnings, &(&1 =~ "story 2" and &1 =~ "Fuellytics.A.X"))
+
+      labelled = Proposal.collect_warnings(proposal, %{1 => 41, 2 => 42})
+      assert Enum.any?(labelled, &(&1 =~ "story 41 "))
+      refute Enum.any?(labelled, &(&1 =~ "story 1 "))
     end
 
     test "accepts stories mapped to both surface and context" do
@@ -278,6 +282,43 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert error != nil
       assert error.message =~ "must be one of"
       assert Enum.any?(error.details.invalid, &(&1 =~ "liveview (existing)"))
+    end
+  end
+
+  describe "link_story_numbers/2" do
+    test "resolves every story number the document names to its id" do
+      proposal =
+        Proposal.new(%{
+          app_name: "App",
+          contexts: [
+            %{
+              name: "App.A",
+              story_ids: [3],
+              children: [%{name: "App.A.X", type: "schema", story_ids: [4]}]
+            }
+          ],
+          surface_components: [%{name: "AppWeb.ALive", type: "liveview", story_ids: [3, 4]}]
+        })
+
+      assert {:ok, linked} = Proposal.link_story_numbers(proposal, %{3 => 903, 4 => 904})
+
+      [ctx] = linked.contexts
+      assert ctx.story_ids == [903]
+      assert hd(ctx.children).story_ids == [904]
+      assert hd(linked.surface_components).story_ids == [903, 904]
+    end
+
+    test "a number naming no story is refused by number" do
+      proposal =
+        Proposal.new(%{
+          app_name: "App",
+          surface_components: [%{name: "AppWeb.ALive", type: "liveview", story_ids: [3, 77]}]
+        })
+
+      assert {:error, [error]} = Proposal.link_story_numbers(proposal, %{3 => 903})
+      assert error.type == :unknown_story
+      assert error.message =~ "77"
+      refute error.message =~ "903"
     end
   end
 

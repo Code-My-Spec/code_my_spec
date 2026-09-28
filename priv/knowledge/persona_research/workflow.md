@@ -98,7 +98,7 @@ All three must exist before stopping:
 
 ### 5. Link to a story, when there is one
 
-`link_persona_to_story` with the persona's id and a story id. Optional
+`link_persona_to_story` with the persona's id and a story number. Optional
 and often deferred: personas are researched before stories exist, and
 `PersonasChecker` does not look at links — Three Amigos enforces persona
 coverage per story later, which is where the linkage actually matters.

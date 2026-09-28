@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3340Spex do
 
         {:reply, response, _frame} =
           UpdateStory.execute(
-            %{story_id: to_string(context.new_story.id), ready_for_dev: true},
+            %{story_number: context.new_story.number, ready_for_dev: true},
             frame
           )
 

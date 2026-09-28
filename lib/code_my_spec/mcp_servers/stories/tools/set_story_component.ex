@@ -11,8 +11,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string, required: true, doc: "Story ID (use list_story_titles to find)"
-    field :module_name, :string, required: true, doc: "Component module name, e.g. \"MyApp.Accounts\""
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
+
+    field :module_name, :string,
+      required: true,
+      doc: "Component module name, e.g. \"MyApp.Accounts\""
   end
 
   @impl true
@@ -30,13 +35,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
     with component when not is_nil(component) <-
            Components.get_component_by_module_name(scope, params.module_name),
          story when not is_nil(story) <-
-           Stories.get_story(scope, params.story_id),
+           Stories.get_story_by_number(scope, params.story_number),
          {:ok, updated} <-
            Stories.set_story_component(scope, story, component.id) do
       {:reply, StoriesMapper.story_component_set_response(updated), frame}
     else
       nil ->
-        {:reply, StoriesMapper.error("Component or story not found: #{params.module_name}"), frame}
+        {:reply, StoriesMapper.error("Component or story not found: #{params.module_name}"),
+         frame}
 
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}

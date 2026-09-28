@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
             description: "so that linking it is a change with somewhere to go"
           )
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       given_ "a second checkout on the same project", context do
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
 
         {:reply, reply, _frame} =
           SetStoryComponent.execute(
-            %{story_id: context.story_id, module_name: "ExampleContext"},
+            %{story_number: context.story_number, module_name: "ExampleContext"},
             frame
           )
 

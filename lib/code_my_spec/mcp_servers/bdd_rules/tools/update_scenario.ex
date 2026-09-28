@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :criterion_id, :string,
+    field :criterion_number, :integer,
       required: true,
       doc: "Criterion number of the scenario to update (from `get_story` or `get_story_gherkin`)."
 
@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion_by_number(scope, get_param(params, :criterion_id)),
+           AcceptanceCriteria.get_criterion_by_number(scope, get_param(params, :criterion_number)),
          :ok <- check_not_verified(criterion),
          {:ok, attrs} <- build_attrs(params),
          {:ok, updated} <- AcceptanceCriteria.update_criterion(scope, criterion, attrs) do

@@ -41,7 +41,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
             acceptance_criteria: ["Cross-project links are rejected at creation"]
           )
 
-        {:ok, Map.put(context, :foreign_story_id, story.id)}
+        {:ok,
+         context
+         |> Map.put(:foreign_story_id, story.id)
+         |> Map.put(:foreign_story_number, story.number)}
       end
 
       when_ "the PM calls LinkPersonaToStory with the foreign story_id", context do
@@ -49,7 +52,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
 
         {:reply, response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.foreign_story_id},
+            %{persona_id: context.persona_id, story_number: context.foreign_story_number},
             frame
           )
 

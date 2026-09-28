@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story1052.Criterion3223Spex do
     :ok
   end
 
-  spex "An answer survives an explicit restart without starting the agent itself", criterion: 1203 do
+  spex "An answer survives an explicit restart without starting the agent itself",
+    criterion: 1203 do
     scenario "The same continuous agent reads its saved answer and deliberately resumes" do
       given_ "the connected project has completed kickoff", context do
         context = given_a_staffed_checkout(context, "spex_3223")
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3223Spex do
 
         claim = %{
           entity_type: "story",
-          entity_id: to_string(story.id),
+          entity_id: to_string(story.number),
           requirement_name: "bdd_specs_exist"
         }
 

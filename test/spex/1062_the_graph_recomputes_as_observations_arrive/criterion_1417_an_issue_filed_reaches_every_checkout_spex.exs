@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
             description: "so the issue has somewhere to land"
           )
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       given_ "a second checkout on the same project", context do
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
               title: "something is wrong on this story",
               description: "filed from one checkout, true from all of them",
               severity: "high",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )
@@ -110,7 +110,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
         refute filed.isError, inspect(filed)
 
         {:reply, accepted, _frame} =
-          AcceptIssue.execute(%{issue_id: issue_id(filed), story_id: context.story_id}, frame)
+          AcceptIssue.execute(
+            %{issue_id: issue_id(filed), story_number: context.story_number},
+            frame
+          )
 
         refute accepted.isError, inspect(accepted)
 

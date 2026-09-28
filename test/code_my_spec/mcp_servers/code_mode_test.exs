@@ -133,7 +133,7 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
 
     test "a tool that refuses gives the script an error to handle", %{frame: frame} do
       script = ~S"""
-      local story, err = get_story({ story_id = "00000000-0000-0000-0000-000000000000" })
+      local story, err = get_story({ story_number = 99999999 })
       if story == nil then return "handled: " .. err.message end
       return "unexpectedly found it"
       """
@@ -186,7 +186,7 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
 
       body = text(response)
       assert body =~ "# get_story"
-      assert body =~ "story_id"
+      assert body =~ "story_number"
     end
 
     test "search finds a tool by what it does", %{frame: frame} do

@@ -173,7 +173,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       task = %{story_id: 999_999, component_id: nil, project_id: nil}
 
       assert {:error, {:story_not_found, message}} = WriteBddSpecs.command(scope, task)
-      assert message =~ "999999"
+      assert message =~ "not found"
+      refute message =~ "999999"
     end
 
     test "returns error when no story_id", %{tmp_dir: tmp_dir} do
@@ -181,7 +182,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       task = %{story_id: nil, component_id: nil, project_id: nil}
 
       assert {:error, {:story_not_specified, message}} = WriteBddSpecs.command(scope, task)
-      assert message =~ "story_id"
+      assert message =~ "<story_number>"
     end
 
     test "returns error when story has no component linked", %{tmp_dir: tmp_dir} do

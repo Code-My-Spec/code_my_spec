@@ -19,8 +19,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :story_id, :string,
-      doc: "Optional story id; must match this working copy's active story"
+    field :story_number, :integer,
+      doc: "Optional story number; must match this working copy's active story"
   end
 
   @impl true
@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
           Requirements.story_execution(
             scope,
             agent && agent.role,
-            requested["story_id"],
+            requested["story_number"],
             withheld(scope, agent)
           )
 

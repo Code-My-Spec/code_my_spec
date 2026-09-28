@@ -67,10 +67,10 @@ defmodule CodeMySpec.Requirements do
   def story_execution(
         scope,
         role \\ nil,
-        requested_story_id \\ nil,
+        requested_number \\ nil,
         withheld? \\ fn _ -> false end
       ),
-      do: StoryExecution.read(scope, role, requested_story_id, withheld?)
+      do: StoryExecution.read(scope, role, requested_number, withheld?)
 
   @doc """
   How many requirements this role can act on for this working copy.

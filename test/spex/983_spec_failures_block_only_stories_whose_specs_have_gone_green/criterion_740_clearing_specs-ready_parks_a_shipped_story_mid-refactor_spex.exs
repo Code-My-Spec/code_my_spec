@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
             %{
               requirement_name: "bdd_specs_passing",
               entity_type: "story",
-              entity_id: to_string(context.story.id),
+              entity_id: to_string(context.story.number),
               session_id: session_id
             },
             frame

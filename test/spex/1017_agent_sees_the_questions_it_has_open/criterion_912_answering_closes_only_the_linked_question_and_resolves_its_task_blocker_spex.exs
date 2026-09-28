@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
                 %{
                   requirement_name: "bdd_specs_exist",
                   entity_type: "story",
-                  entity_id: to_string(story.id)
+                  entity_id: to_string(story.number)
                 },
                 frame
               )
@@ -101,6 +101,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
               id: question_id,
               task_id: task_id,
               story_id: story.id,
+              story_number: story.number,
               text: "Which #{title} should we use?"
             }
           end)
@@ -158,7 +159,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(second.story_id)
+              entity_id: to_string(second.story_number)
             },
             context.frame
           )
@@ -177,7 +178,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(first.story_id)
+              entity_id: to_string(first.story_number)
             },
             context.frame
           )

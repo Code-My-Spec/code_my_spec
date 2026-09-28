@@ -7,6 +7,7 @@ defmodule CodeMySpecWeb.SessionsLive do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Stories
 
   @impl true
   def mount(_params, _session, socket) do
@@ -16,6 +17,7 @@ defmodule CodeMySpecWeb.SessionsLive do
        sessions: [],
        session: nil,
        task: nil,
+       task_story: nil,
        error: nil
      )}
   end
@@ -81,6 +83,7 @@ defmodule CodeMySpecWeb.SessionsLive do
               project: project,
               session: session,
               task: task,
+              task_story: task_story(scope, task),
               page_title: "#{project.name} — Task",
               error: nil
             )
@@ -88,24 +91,28 @@ defmodule CodeMySpecWeb.SessionsLive do
     end
   end
 
+  defp task_story(_scope, %{story_id: nil}), do: nil
+  defp task_story(scope, %{story_id: story_id}), do: Stories.get_story(scope, story_id)
+  defp task_story(_scope, _task), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={@live_action == :index && !@error}>
-        {render_index(assigns)}
-      </div>
+    <div :if={@live_action == :index && !@error}>
+      {render_index(assigns)}
+    </div>
 
-      <div :if={@live_action == :show && @session && !@error}>
-        {render_show(assigns)}
-      </div>
+    <div :if={@live_action == :show && @session && !@error}>
+      {render_show(assigns)}
+    </div>
 
-      <div :if={@live_action == :task_show && @task && !@error}>
-        {render_task(assigns)}
-      </div>
+    <div :if={@live_action == :task_show && @task && !@error}>
+      {render_task(assigns)}
+    </div>
     """
   end
 
@@ -124,7 +131,10 @@ defmodule CodeMySpecWeb.SessionsLive do
       </h1>
     </div>
 
-    <div :if={@sessions == []} class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box">
+    <div
+      :if={@sessions == []}
+      class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box"
+    >
       No sessions found.
     </div>
 
@@ -144,13 +154,17 @@ defmodule CodeMySpecWeb.SessionsLive do
             class="hover cursor-pointer"
             phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/sessions/#{session.id}"))}
           >
-            <td><span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span></td>
+            <td>
+              <span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span>
+            </td>
             <td class="font-medium">{format_type(session.type)}</td>
             <td class="hidden md:table-cell text-sm opacity-70">
               {task_summary(session)}
             </td>
             <td class="hidden sm:table-cell text-sm opacity-50">
-              <span :if={session.inserted_at}>{Calendar.strftime(session.inserted_at, "%b %d, %H:%M")}</span>
+              <span :if={session.inserted_at}>
+                {Calendar.strftime(session.inserted_at, "%b %d, %H:%M")}
+              </span>
             </td>
           </tr>
         </tbody>
@@ -162,7 +176,10 @@ defmodule CodeMySpecWeb.SessionsLive do
   defp render_show(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions")} class="btn btn-ghost btn-sm gap-1">
+      <.link
+        navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions")}
+        class="btn btn-ghost btn-sm gap-1"
+      >
         ← Sessions
       </.link>
     </div>
@@ -175,23 +192,32 @@ defmodule CodeMySpecWeb.SessionsLive do
     <div class="card bg-base-200 border border-base-300 mb-6">
       <div class="card-body text-sm">
         <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
-          <dt :if={@session.external_conversation_id} class="font-semibold opacity-70">External ID</dt>
-          <dd :if={@session.external_conversation_id} class="font-mono">{@session.external_conversation_id}</dd>
+          <dt :if={@session.external_conversation_id} class="font-semibold opacity-70">
+            External ID
+          </dt>
+          <dd :if={@session.external_conversation_id} class="font-mono">
+            {@session.external_conversation_id}
+          </dd>
 
           <dt :if={@session.component_module_name} class="font-semibold opacity-70">Component</dt>
           <dd :if={@session.component_module_name}>{@session.component_module_name}</dd>
 
           <dt :if={@session.inserted_at} class="font-semibold opacity-70">Started</dt>
-          <dd :if={@session.inserted_at}>{Calendar.strftime(@session.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+          <dd :if={@session.inserted_at}>
+            {Calendar.strftime(@session.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}
+          </dd>
 
           <dt :if={@session.updated_at} class="font-semibold opacity-70">Updated</dt>
-          <dd :if={@session.updated_at}>{Calendar.strftime(@session.updated_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+          <dd :if={@session.updated_at}>
+            {Calendar.strftime(@session.updated_at, "%Y-%m-%d %H:%M:%S UTC")}
+          </dd>
         </dl>
       </div>
     </div>
 
     <h2 class="text-lg font-semibold mb-3" data-test="registered-subagents-heading">
-      Registered Sub-agents <span class="text-base-content/50 font-normal">({length(@active_subagents)})</span>
+      Registered Sub-agents
+      <span class="text-base-content/50 font-normal">({length(@active_subagents)})</span>
     </h2>
 
     <p :if={@active_subagents == []} class="text-base-content/50 mb-6">No registered sub-agents.</p>
@@ -211,7 +237,9 @@ defmodule CodeMySpecWeb.SessionsLive do
             <td class="font-medium">{sa.agent_name || "—"}</td>
             <td class="hidden md:table-cell text-xs font-mono opacity-70">{sa.agent_id}</td>
             <td class="hidden sm:table-cell text-xs opacity-50">
-              <span :if={sa.last_heartbeat_at}>{Calendar.strftime(sa.last_heartbeat_at, "%H:%M:%S")}</span>
+              <span :if={sa.last_heartbeat_at}>
+                {Calendar.strftime(sa.last_heartbeat_at, "%H:%M:%S")}
+              </span>
             </td>
             <td class="text-sm">
               {subagent_assignment(@session, sa.agent_id)}
@@ -222,7 +250,10 @@ defmodule CodeMySpecWeb.SessionsLive do
     </div>
 
     <h2 class="text-lg font-semibold mb-3">
-      Tasks <span class="text-base-content/50 font-normal">({task_completed_count(@session)}/{task_count(@session)})</span>
+      Tasks
+      <span class="text-base-content/50 font-normal">
+        ({task_completed_count(@session)}/{task_count(@session)})
+      </span>
     </h2>
 
     <p :if={(@session.tasks || []) == []} class="text-base-content/50">No tasks recorded.</p>
@@ -242,15 +273,25 @@ defmodule CodeMySpecWeb.SessionsLive do
           <tr
             :for={task <- @session.tasks || []}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}/tasks/#{task.id}"))}
+            phx-click={
+              JS.navigate(
+                path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}/tasks/#{task.id}")
+              )
+            }
           >
             <td><span class={"badge badge-sm #{status_class(task.status)}"}>{task.status}</span></td>
             <td class="font-medium">{format_type(task.session_type)}</td>
-            <td class="hidden md:table-cell text-sm opacity-70">{task.component_module_name || "—"}</td>
+            <td class="hidden md:table-cell text-sm opacity-70">
+              {task.component_module_name || "—"}
+            </td>
             <td class="hidden lg:table-cell text-sm opacity-70">{task.requirement_name || "—"}</td>
             <td class="hidden sm:table-cell text-xs opacity-50">
-              <span :if={task.completed_at}>done {Calendar.strftime(task.completed_at, "%H:%M:%S")}</span>
-              <span :if={!task.completed_at && task.started_at}>started {Calendar.strftime(task.started_at, "%H:%M:%S")}</span>
+              <span :if={task.completed_at}>
+                done {Calendar.strftime(task.completed_at, "%H:%M:%S")}
+              </span>
+              <span :if={!task.completed_at && task.started_at}>
+                started {Calendar.strftime(task.started_at, "%H:%M:%S")}
+              </span>
             </td>
           </tr>
         </tbody>
@@ -267,7 +308,10 @@ defmodule CodeMySpecWeb.SessionsLive do
   defp render_task(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}")} class="btn btn-ghost btn-sm gap-1">
+      <.link
+        navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}")}
+        class="btn btn-ghost btn-sm gap-1"
+      >
         ← Session
       </.link>
     </div>
@@ -281,12 +325,38 @@ defmodule CodeMySpecWeb.SessionsLive do
       <div class="card-body p-0">
         <table class="table table-sm">
           <tbody>
-            <tr><td class="font-semibold opacity-70 w-40">Requirement</td><td>{@task.requirement_name || "—"}</td></tr>
-            <tr><td class="font-semibold opacity-70">Component</td><td>{@task.component_module_name || "—"}</td></tr>
-            <tr><td class="font-semibold opacity-70">Story ID</td><td>{@task.story_id || "—"}</td></tr>
-            <tr><td class="font-semibold opacity-70">Agent ID</td><td class="font-mono">{@task.agent_id || "not assigned"}</td></tr>
-            <tr><td class="font-semibold opacity-70">Started</td><td>{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
-            <tr><td class="font-semibold opacity-70">Completed</td><td>{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
+            <tr>
+              <td class="font-semibold opacity-70 w-40">Requirement</td>
+              <td>{@task.requirement_name || "—"}</td>
+            </tr>
+            <tr>
+              <td class="font-semibold opacity-70">Component</td>
+              <td>{@task.component_module_name || "—"}</td>
+            </tr>
+            <tr>
+              <td class="font-semibold opacity-70">Story</td>
+              <td>{if @task_story, do: @task_story.number, else: "—"}</td>
+            </tr>
+            <tr>
+              <td class="font-semibold opacity-70">Agent ID</td>
+              <td class="font-mono">{@task.agent_id || "not assigned"}</td>
+            </tr>
+            <tr>
+              <td class="font-semibold opacity-70">Started</td>
+              <td>
+                {if @task.started_at,
+                  do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"),
+                  else: "—"}
+              </td>
+            </tr>
+            <tr>
+              <td class="font-semibold opacity-70">Completed</td>
+              <td>
+                {if @task.completed_at,
+                  do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"),
+                  else: "—"}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -310,7 +380,10 @@ defmodule CodeMySpecWeb.SessionsLive do
   defp status_class(_), do: "badge-ghost"
 
   defp format_type(nil), do: "Unknown"
-  defp format_type(type) when is_atom(type), do: type |> Atom.to_string() |> String.split(".") |> List.last()
+
+  defp format_type(type) when is_atom(type),
+    do: type |> Atom.to_string() |> String.split(".") |> List.last()
+
   defp format_type(type) when is_binary(type), do: type
 
   defp task_summary(%{tasks: tasks}) when is_list(tasks) and tasks != [] do
@@ -340,5 +413,4 @@ defmodule CodeMySpecWeb.SessionsLive do
       task -> "assigned: #{task.requirement_name || task.id}"
     end
   end
-
 end

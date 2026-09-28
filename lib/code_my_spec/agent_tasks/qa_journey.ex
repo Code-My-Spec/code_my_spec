@@ -68,7 +68,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
         criteria = format_criteria(Map.get(story, :criteria, []))
 
         """
-        ## Story #{story.id} — #{story.title}
+        ## Story #{story.number} — #{story.title}
 
         #{story.description || "(no description)"}
 
@@ -155,7 +155,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   end
 
   defp build_stories_section(%{stories: stories}) do
-    titles = Enum.map_join(stories, "\n", fn s -> "- Story #{s.id} — #{s.title}" end)
+    titles = Enum.map_join(stories, "\n", fn s -> "- Story #{s.number} — #{s.title}" end)
 
     """
     ## Stories

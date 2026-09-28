@@ -68,7 +68,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   end
 
   defp release_command(%Scope{} = scope, _task) do
-    unreleased = unreleased_story_ids(scope)
+    unreleased = unreleased_story_numbers(scope)
     manifest = manifest_section(scope, unreleased)
 
     {:ok,
@@ -105,7 +105,7 @@ defmodule CodeMySpec.AgentTasks.Release do
           `https://<domain>/health` answers 200 over TLS.
      5. **Record it** — write `.code_my_spec/releases/<version>.md` with the
         notes, the verified prod health check, and a `## Stories` section
-        listing every deploy this release covers (one `story_<id>` per
+        listing every deploy this release covers (one `story_<number>` per
         line). The record's manifest is what closes the requirement — an
         uncovered UAT deploy reopens it.
 
@@ -121,7 +121,7 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   Called as the requirement's delegate (entity = Project) and as the task
   evaluator. Content-based recurrence: no timestamps, just coverage — a
-  deploy record whose `story_<id>` appears in no release manifest means
+  deploy record whose `story_<number>` appears in no release manifest means
   unreleased work on UAT.
 
   No deploy records at all is satisfied: nothing shipped, nothing to release.
@@ -129,7 +129,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   @spec evaluate(Scope.t(), map() | struct(), keyword()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(%Scope{} = scope, _entity, opts \\ []) do
-    case unreleased_story_ids(scope, opts) do
+    case unreleased_story_numbers(scope, opts) do
       [] ->
         {:ok, :valid}
 
@@ -143,14 +143,14 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   # ── Coverage ─────────────────────────────────────────────────────────
 
-  defp unreleased_story_ids(%Scope{} = scope), do: unreleased_story_ids(scope, [])
+  defp unreleased_story_numbers(%Scope{} = scope), do: unreleased_story_numbers(scope, [])
 
   # `opts[:cmd]`, a `(env, command, args) -> {output, status}` override, exists
   # only so a fast unit test can let real `git` run (a real repo, a real tag)
   # while faking `gh` — no network, no GitHub account, in an `async: true`
   # test. Every real caller gets `Environments.cmd/4` for both.
-  defp unreleased_story_ids(%Scope{environment: env} = scope, opts) do
-    deployed = deployed_story_ids(scope)
+  defp unreleased_story_numbers(%Scope{environment: env} = scope, opts) do
+    deployed = deployed_story_numbers(scope)
     released = published_release_manifest(env, opts)
 
     Enum.reject(deployed, &released?(released, &1))
@@ -169,11 +169,16 @@ defmodule CodeMySpec.AgentTasks.Release do
     Regex.match?(~r/\bstory_#{Regex.escape(to_string(id))}\b/, released)
   end
 
-  defp deployed_story_ids(%Scope{} = scope) do
+  # Manifests name stories by number (`story_<number>`), the name people use.
+  defp deployed_story_numbers(%Scope{} = scope) do
+    numbers = Stories.story_numbers(scope)
+
     scope
     |> Deploys.list()
     |> Enum.filter(&(&1.environment == "uat" and Deploys.healthy?(&1)))
-    |> Enum.map(& &1.story_id)
+    |> Enum.map(&Map.get(numbers, &1.story_id))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
     |> Enum.sort()
   end
 
@@ -255,22 +260,22 @@ defmodule CodeMySpec.AgentTasks.Release do
     "No unreleased deploys found on UAT — a release with nothing in it is a no-op."
   end
 
-  defp manifest_section(scope, story_ids) do
-    Enum.map_join(story_ids, "\n", fn id ->
-      title = story_title(scope, id)
-      "- `story_#{id}` — #{title}"
+  defp manifest_section(scope, story_numbers) do
+    Enum.map_join(story_numbers, "\n", fn number ->
+      title = story_title(scope, number)
+      "- `story_#{number}` — #{title}"
     end)
   end
 
-  defp story_title(scope, id) do
-    case Stories.get_story(scope, id) do
+  defp story_title(scope, number) do
+    case Stories.get_story_by_number(scope, number) do
       %{title: title, description: description} ->
         "#{title}: #{description}"
 
       _ ->
-        "(story not found — include it by id)"
+        "(story not found — include it by number)"
     end
   rescue
-    _ -> "(story lookup failed — include it by id)"
+    _ -> "(story lookup failed — include it by number)"
   end
 end

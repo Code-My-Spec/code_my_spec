@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
     {:reply, response, _frame} = CreateStory.execute(params, frame)
 
-    story_id = extract_id(response)
+    number = extract_number(response)
 
     # Stories are created parked — they produce no requirements until they
     # are released for development. Spex that set up a story are describing
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
     if Keyword.get(attrs, :ready_for_dev, true) do
       {:reply, _resp, _frame} =
         UpdateStory.execute(
-          %{story_id: to_string(story_id), ready_for_dev: true},
+          %{story_number: number, ready_for_dev: true},
           frame
         )
     end
@@ -81,12 +81,12 @@ defmodule CodeMySpecSpex.StoryHelpers do
     Enum.each(Keyword.get(attrs, :acceptance_criteria, []), fn description ->
       {:reply, _resp, _frame} =
         AddCriterion.execute(
-          %{story_id: to_string(story_id), description: description},
+          %{story_number: number, description: description},
           frame
         )
     end)
 
-    fetch(scope, story_id)
+    fetch_by_number(scope, number)
   end
 
   @doc """
@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
     {:reply, _response, _frame} =
       SetStoryComponent.execute(
-        %{story_id: to_string(story_id), module_name: module_name},
+        %{story_number: number_of(scope, story_id), module_name: module_name},
         frame
       )
 
@@ -122,25 +122,30 @@ defmodule CodeMySpecSpex.StoryHelpers do
   carries `:id` and `:description`).
   """
   @spec fetch(map(), term()) :: map()
-  def fetch(scope, story_id) do
+  def fetch(scope, story_id), do: fetch_by_number(scope, number_of(scope, story_id))
+
+  defp fetch_by_number(scope, number) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, response, _frame} =
-      GetStory.execute(%{story_id: to_string(story_id)}, frame)
+    {:reply, response, _frame} = GetStory.execute(%{story_number: number}, frame)
 
-    parse_story(response)
+    story = parse_story(response)
+    Map.put(story, :id, CodeMySpec.Stories.get_story_by_number(scope, story.number).id)
   end
 
-  defp extract_id(response) do
-    case Regex.run(~r/\(ID:\s*(\d+)\)/, response_text(response)) do
-      [_, id_str] -> String.to_integer(id_str)
+  # Tools name a story by number; callers here still hold the id.
+  defp number_of(scope, story_id), do: CodeMySpec.Stories.get_story(scope, story_id).number
+
+  defp extract_number(response) do
+    case Regex.run(~r/^Story (\d+) created/, response_text(response)) do
+      [_, n] -> String.to_integer(n)
       _ -> nil
     end
   end
 
   # GetStory's text format (StoriesMapper.story_get_response):
   #
-  #     ## <title> (ID: <id>)
+  #     ## Story <number>: <title>
   #
   #     <description>
   #
@@ -150,24 +155,13 @@ defmodule CodeMySpecSpex.StoryHelpers do
   #     - [x] <description> (criterion <id>)
   defp parse_story(response) do
     text = response_text(response)
-    [_, title, id_str] = Regex.run(~r/^##\s+(.+?)\s+\(ID:\s*(\d+)\)/m, text)
+    [_, number, title] = Regex.run(~r/^## Story (\d+): (.+)$/m, text)
 
     %{
-      id: String.to_integer(id_str),
-      number: parse_number(text),
+      number: String.to_integer(number),
       title: title,
       criteria: parse_criteria(text)
     }
-  end
-
-  # The durable number, which is what names a story's spex directory. Separate
-  # from the id and not interchangeable with it — see `number_line/1` in
-  # `StoriesMapper`.
-  defp parse_number(text) do
-    case Regex.run(~r/·\s*story\s*(\d+)/, text) do
-      [_, number] -> String.to_integer(number)
-      nil -> nil
-    end
   end
 
   # `(criterion N)` is the criterion's number, the only id the agent sees and

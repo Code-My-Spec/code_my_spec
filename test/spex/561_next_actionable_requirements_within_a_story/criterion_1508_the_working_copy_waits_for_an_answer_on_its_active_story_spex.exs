@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3610Spex do
       when_ "the agent asks what to work on", context do
         response =
           Slice.call(context, CodeMySpec.McpServers.BddRules.Tools.AddQuestion, %{
-            story_id: context.story.id,
+            story_number: context.story.number,
             text: "Must a booking have a customer?"
           })
 

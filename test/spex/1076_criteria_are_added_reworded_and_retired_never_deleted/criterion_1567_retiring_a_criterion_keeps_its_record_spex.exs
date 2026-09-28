@@ -16,7 +16,9 @@ defmodule CodeMySpecSpex.Story1076.Criterion4691Spex do
   spex "Retiring keeps the record", criterion: 1567 do
     scenario "a retired criterion still exists, marked retired, on its story" do
       given_ "a criterion is active on story A", context do
-        story = CriterionScript.create_story(context.scope, "Story A", ["A thing that will be retired"])
+        story =
+          CriterionScript.create_story(context.scope, "Story A", ["A thing that will be retired"])
+
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         {:ok, context |> Map.put(:story, story) |> Map.put(:number, number)}
@@ -25,7 +27,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4691Spex do
       when_ "the agent retires it", context do
         result =
           CriterionScript.run(context.scope, """
-          return retire_criterion({ criterion_id = "#{context.number}" })
+          return retire_criterion({ criterion_number = #{context.number} })
           """)
 
         refute result.error?, "retire_criterion failed: #{result.text}"
@@ -35,7 +37,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4691Spex do
       then_ "the criterion still exists, marked retired, on story A", context do
         result =
           CriterionScript.run(context.scope, """
-          return get_criterion({ criterion_id = "#{context.number}" })
+          return get_criterion({ criterion_number = #{context.number} })
           """)
 
         refute result.error?,

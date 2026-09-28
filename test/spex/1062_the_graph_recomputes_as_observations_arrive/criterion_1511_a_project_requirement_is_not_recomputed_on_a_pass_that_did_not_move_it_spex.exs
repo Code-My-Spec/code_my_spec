@@ -60,7 +60,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
 
   @moduletag timeout: 60_000
 
-  spex "A pass recomputes what moved, and the project's requirements are not that", criterion: 1511 do
+  spex "A pass recomputes what moved, and the project's requirements are not that",
+    criterion: 1511 do
     scenario "an observation bearing only on one story" do
       given_ :synced_context_component
 
@@ -78,7 +79,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
         assert read_graph(context)["nodes"] != [],
                "nothing is stored, so no pass can reuse anything"
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       when_ "an observation arrives that bears only on one component", context do
@@ -117,7 +118,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
               title: "something the project requirements read",
               description: "issues_triaged is a project requirement",
               severity: "medium",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )

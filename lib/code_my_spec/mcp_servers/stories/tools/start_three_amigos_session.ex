@@ -13,19 +13,25 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession do
   alias CodeMySpec.AgentTasks.ThreeAmigos
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string,
+    field :story_number, :integer,
       required: true,
-      doc: "Story ID to host the Three Amigos session"
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, prompt} <- ThreeAmigos.command(scope, %{entity_type: :story, entity_id: params.story_id}) do
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number),
+         {:ok, prompt} <-
+           ThreeAmigos.command(scope, %{entity_type: :story, entity_id: to_string(story.id)}) do
       {:reply, StoriesMapper.prompt_response(prompt), frame}
     else
+      nil ->
+        {:reply, StoriesMapper.not_found_error(), frame}
+
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}
     end

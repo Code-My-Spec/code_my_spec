@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
             description: "so the observation names something"
           )
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       given_ "an observation recorded but not yet applied", context do
@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
               title: "something is wrong on this story",
               description: "recorded while nothing was running to apply it",
               severity: "medium",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )

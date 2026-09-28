@@ -68,7 +68,7 @@ of the following:
    - https://modelcontextprotocol.io/ — MCP spec, what agents
      expect from a tool surface
 4. **Observed behavior**:
-   - QA briefs and results under `.code_my_spec/qa/<story_id>/`
+   - QA briefs and results under `.code_my_spec/qa/<story_number>/`
    - Task transcripts in `~/.codemyspec/server.log` (search
      `request_id=` + `mfa=`)
    - Failing patterns in framework-scoped issues (`list_issues

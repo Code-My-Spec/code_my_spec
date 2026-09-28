@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RetireStoryTest do
     test "retires the story" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      params = %{story_id: story.id}
+      params = %{story_number: story.number}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 

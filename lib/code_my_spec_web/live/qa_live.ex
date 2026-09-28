@@ -118,109 +118,109 @@ defmodule CodeMySpecWeb.QaLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
+
+    <div :if={!@error && @project}>
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold">
+          QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
+        </h1>
       </div>
 
-      <div :if={!@error && @project}>
-        <div class="flex items-center justify-between mb-6">
-          <h1 class="text-3xl font-bold">
-            QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
-          </h1>
-        </div>
+      <div class="flex flex-wrap gap-3 mb-6">
+        <label class="label cursor-pointer gap-2">
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            data-role="qa-index-filter-older"
+            phx-click="toggle_older"
+            checked={@include_older}
+          />
+          <span class="label-text">Include older attempts</span>
+        </label>
 
-        <div class="flex flex-wrap gap-3 mb-6">
-          <label class="label cursor-pointer gap-2">
-            <input
-              type="checkbox"
-              class="checkbox checkbox-sm"
-              data-role="qa-index-filter-older"
-              phx-click="toggle_older"
-              checked={@include_older}
-            />
-            <span class="label-text">Include older attempts</span>
-          </label>
-
-          <label class="label cursor-pointer gap-2">
-            <input
-              type="checkbox"
-              class="checkbox checkbox-sm"
-              data-role="qa-index-filter-invalidated"
-              phx-click="toggle_invalidated"
-              checked={@include_invalidated}
-            />
-            <span class="label-text">Include invalidated</span>
-          </label>
-        </div>
-
-        <div
-          :if={@attempts == []}
-          class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box"
-        >
-          No QA attempts recorded.
-        </div>
-
-        <div :if={@attempts != []} class="overflow-x-auto rounded-box border border-base-300">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Story</th>
-                <th>Agent</th>
-                <th class="hidden md:table-cell">Scenarios</th>
-                <th>Issues</th>
-                <th>Submitted</th>
-              </tr>
-            </thead>
-            <tbody>
-              <.attempt_row
-                :for={attempt <- @page_attempts}
-                attempt={attempt}
-                project={@project}
-                socket={@socket}
-                slug={@slug}
-              />
-            </tbody>
-          </table>
-        </div>
-
-        <nav
-          :if={@total_pages > 1}
-          class="flex items-center justify-between mt-4"
-          aria-label="QA index pagination"
-          data-role="qa-index-pagination"
-        >
-          <div class="text-sm text-base-content/60">
-            Showing {page_first(@page, @per_page, @total)}–{page_last(@page, @per_page, @total)} of {@total}
-          </div>
-
-          <div class="join">
-            <button
-              type="button"
-              class="btn btn-sm join-item"
-              data-role="qa-index-page-prev"
-              phx-click="go_to_page"
-              phx-value-page={@page - 1}
-              disabled={@page <= 1}
-            >
-              Prev
-            </button>
-            <span class="btn btn-sm join-item btn-disabled no-animation">
-              Page {@page} / {@total_pages}
-            </span>
-            <button
-              type="button"
-              class="btn btn-sm join-item"
-              data-role="qa-index-page-next"
-              phx-click="go_to_page"
-              phx-value-page={@page + 1}
-              disabled={@page >= @total_pages}
-            >
-              Next
-            </button>
-          </div>
-        </nav>
+        <label class="label cursor-pointer gap-2">
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            data-role="qa-index-filter-invalidated"
+            phx-click="toggle_invalidated"
+            checked={@include_invalidated}
+          />
+          <span class="label-text">Include invalidated</span>
+        </label>
       </div>
+
+      <div
+        :if={@attempts == []}
+        class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box"
+      >
+        No QA attempts recorded.
+      </div>
+
+      <div :if={@attempts != []} class="overflow-x-auto rounded-box border border-base-300">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Story</th>
+              <th>Agent</th>
+              <th class="hidden md:table-cell">Scenarios</th>
+              <th>Issues</th>
+              <th>Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            <.attempt_row
+              :for={attempt <- @page_attempts}
+              attempt={attempt}
+              project={@project}
+              socket={@socket}
+              slug={@slug}
+            />
+          </tbody>
+        </table>
+      </div>
+
+      <nav
+        :if={@total_pages > 1}
+        class="flex items-center justify-between mt-4"
+        aria-label="QA index pagination"
+        data-role="qa-index-pagination"
+      >
+        <div class="text-sm text-base-content/60">
+          Showing {page_first(@page, @per_page, @total)}–{page_last(@page, @per_page, @total)} of {@total}
+        </div>
+
+        <div class="join">
+          <button
+            type="button"
+            class="btn btn-sm join-item"
+            data-role="qa-index-page-prev"
+            phx-click="go_to_page"
+            phx-value-page={@page - 1}
+            disabled={@page <= 1}
+          >
+            Prev
+          </button>
+          <span class="btn btn-sm join-item btn-disabled no-animation">
+            Page {@page} / {@total_pages}
+          </span>
+          <button
+            type="button"
+            class="btn btn-sm join-item"
+            data-role="qa-index-page-next"
+            phx-click="go_to_page"
+            phx-value-page={@page + 1}
+            disabled={@page >= @total_pages}
+          >
+            Next
+          </button>
+        </div>
+      </nav>
+    </div>
     """
   end
 
@@ -249,11 +249,13 @@ defmodule CodeMySpecWeb.QaLive do
       </td>
       <td class="font-medium">
         <.link
+          :if={story_number(@attempt)}
           navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story_number(@attempt)}")}
           class="link link-hover"
         >
           {story_title(@attempt)}
         </.link>
+        <span :if={!story_number(@attempt)}>{story_title(@attempt)}</span>
       </td>
       <td><code class="text-xs">{@attempt.agent_id}</code></td>
       <td class="hidden md:table-cell text-sm text-base-content/70">
@@ -282,14 +284,12 @@ defmodule CodeMySpecWeb.QaLive do
   defp status_badge(_), do: "badge-neutral"
 
   defp story_title(%{story: %{title: title}}) when is_binary(title), do: title
-  defp story_title(%{story_id: id}), do: "story ##{id}"
+  defp story_title(_attempt), do: "Unknown story"
 
-  # The route is keyed by number (1ab62ffd); `story_id` is the id and falling
-  # back to it here would send the link to a story number that likely names a
-  # different story, or none. The story association not being loaded is the
-  # same "nothing to link to usefully" case `story_title/1` already accepts.
+  # The route is keyed by number (1ab62ffd). Without a loaded story there is
+  # nothing to link to — `story_id` would name a different story, or none.
   defp story_number(%{story: %{number: number}}) when not is_nil(number), do: number
-  defp story_number(%{story_id: id}), do: id
+  defp story_number(_attempt), do: nil
 
   defp format_dt(nil), do: ""
 

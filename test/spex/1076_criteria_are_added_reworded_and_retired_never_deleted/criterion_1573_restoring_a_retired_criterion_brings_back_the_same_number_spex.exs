@@ -22,7 +22,9 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
   spex "Restoring brings the same criterion back", criterion: 1573 do
     scenario "a restored criterion is active under its number and its spec covers it" do
       given_ "a criterion on story A with a spec naming it was retired", context do
-        story = CriterionScript.create_story(context.scope, "Story A", ["A thing retired by mistake"])
+        story =
+          CriterionScript.create_story(context.scope, "Story A", ["A thing retired by mistake"])
+
         text = CriterionScript.story_text(context.scope, story)
         [number] = CriterionScript.numbers(text)
 
@@ -37,7 +39,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
 
         result =
           CriterionScript.run(context.scope, """
-          return retire_criterion({ criterion_id = "#{number}" })
+          return retire_criterion({ criterion_number = #{number} })
           """)
 
         refute result.error?, "retire_criterion failed: #{result.text}"
@@ -48,7 +50,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
       when_ "the agent restores it", context do
         result =
           CriterionScript.run(context.scope, """
-          return restore_criterion({ criterion_id = "#{context.number}" })
+          return restore_criterion({ criterion_number = #{context.number} })
           """)
 
         refute result.error?, "restore_criterion failed: #{result.text}"
@@ -65,12 +67,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
       end
 
       and_ "the spec naming it covers it again", context do
-        assert Fixtures.requirement_satisfied?(
-                 context.scope,
-                 "bdd_specs_exist",
-                 :story,
-                 String.to_integer(context.story)
-               ),
+        assert CriterionScript.specs_exist?(context.scope, context.story),
                "the spec on disk names criterion #{context.number}; restoring it should make it count again"
 
         {:ok, context}

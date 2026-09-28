@@ -22,7 +22,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths", criterion: 32 do
+  spex "Every component must be linked to a story, transitively depended on, or in infrastructure_paths",
+    criterion: 32 do
     scenario "Architect resolves an orphan by adding a dependency edge from a story-linked component" do
       given_ "an unsatisfied story exists on the project", context do
         story =
@@ -69,7 +70,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
       when_ "the architect writes a proposal that wires SharedKit as a transitive dep of the story-linked surface",
             context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -80,7 +81,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
 
         - **Type:** liveview
         - **Description:** Feature page
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

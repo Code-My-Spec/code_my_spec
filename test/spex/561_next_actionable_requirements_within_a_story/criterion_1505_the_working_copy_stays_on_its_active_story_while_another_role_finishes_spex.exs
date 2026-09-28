@@ -8,7 +8,8 @@ defmodule CodeMySpecSpex.Story561.Criterion3607Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The working copy stays on its active story while another role finishes", criterion: 1505 do
+  spex "The working copy stays on its active story while another role finishes",
+    criterion: 1505 do
     scenario "The working copy stays on its active story while another role finishes" do
       given_ "a story whose remaining work belongs to another role", context do
         context =
@@ -33,7 +34,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3607Spex do
       then_ "this copy stays on the same story rather than moving on", context do
         Slice.assert_active(context.answer, context, "ready")
         assert context.answer =~ "qa_complete"
-        assert context.coding_answer =~ "# Story #{context.story.id}:"
+        assert context.coding_answer =~ "# Story #{context.story.number}:"
         refute Slice.offered?(context.coding_answer, context.waiting.id)
         refute context.coding_answer =~ "Status: complete"
         {:ok, context}

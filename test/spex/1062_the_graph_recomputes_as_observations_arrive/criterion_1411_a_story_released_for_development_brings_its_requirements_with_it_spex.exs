@@ -49,7 +49,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3496Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Releasing a story puts its work in the graph, and parking it takes it out", criterion: 1411 do
+  spex "Releasing a story puts its work in the graph, and parking it takes it out",
+    criterion: 1411 do
     scenario "a parked story is released, then parked again" do
       given_ "a story that exists but is not released for development", context do
         # Parked deliberately. `create_story/2` releases by default, because
@@ -67,6 +68,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3496Spex do
         {:ok,
          context
          |> Map.put(:story_id, story.id)
+         |> Map.put(:story_number, story.number)
          |> Map.put(:parked, read_settled_graph(context))}
       end
 
@@ -143,7 +145,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3496Spex do
 
     {:reply, updated, _frame} =
       UpdateStory.execute(
-        %{story_id: to_string(context.story_id), ready_for_dev: ready?},
+        %{story_number: context.story_number, ready_for_dev: ready?},
         frame
       )
 

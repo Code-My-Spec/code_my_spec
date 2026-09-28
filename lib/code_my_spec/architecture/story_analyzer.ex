@@ -19,14 +19,14 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
   @type domain_grouping :: %{
           theme: String.t(),
           keywords: [String.t()],
-          story_ids: [integer()],
+          story_numbers: [integer()],
           story_count: non_neg_integer()
         }
 
   @type surface_pattern :: %{
           pattern: String.t(),
           description: String.t(),
-          story_ids: [integer()],
+          story_numbers: [integer()],
           suggestion: String.t()
         }
 
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
           name: String.t(),
           description: String.t(),
           entities: [String.t()],
-          story_ids: [integer()]
+          story_numbers: [integer()]
         }
 
   @domain_keywords %{
@@ -119,7 +119,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
       %{
         theme: theme,
         keywords: keywords,
-        story_ids: Enum.map(matching, & &1.id),
+        story_numbers: Enum.map(matching, & &1.number),
         story_count: length(matching)
       }
     end)
@@ -153,12 +153,12 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
       %{
         pattern: pattern_def.pattern,
         description: pattern_def.suggestion,
-        story_ids: Enum.map(matching, & &1.id),
+        story_numbers: Enum.map(matching, & &1.number),
         suggestion: pattern_def.suggestion
       }
     end)
-    |> Enum.filter(&(&1.story_ids != []))
-    |> Enum.sort_by(&length(&1.story_ids), :desc)
+    |> Enum.filter(&(&1.story_numbers != []))
+    |> Enum.sort_by(&length(&1.story_numbers), :desc)
   end
 
   @doc """
@@ -180,7 +180,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
         name: context_name,
         description: build_context_description(grouping.theme),
         entities: context_entities,
-        story_ids: grouping.story_ids
+        story_numbers: grouping.story_numbers
       }
     end)
   end
@@ -276,9 +276,14 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     "#{app_name}.#{module_part}"
   end
 
-  defp build_context_description("verification"), do: "Handles verification workflows and photo validation"
+  defp build_context_description("verification"),
+    do: "Handles verification workflows and photo validation"
+
   defp build_context_description("notification"), do: "Manages SMS, email, and push notifications"
-  defp build_context_description("authentication"), do: "User authentication and session management"
+
+  defp build_context_description("authentication"),
+    do: "User authentication and session management"
+
   defp build_context_description("dashboard"), do: "Real-time dashboard and monitoring interfaces"
   defp build_context_description("reporting"), do: "Analytics, reports, and audit trail exports"
   defp build_context_description("configuration"), do: "System configuration and rules management"
@@ -293,7 +298,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
   defp find_related_entities(grouping, all_entities, stories) do
     grouping_stories =
       stories
-      |> Enum.filter(&(&1.id in grouping.story_ids))
+      |> Enum.filter(&(&1.number in grouping.story_numbers))
 
     grouping_text =
       grouping_stories
@@ -309,7 +314,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
 
   defp format_domain_groupings(groupings) do
     Enum.map_join(groupings, "\n\n", fn g ->
-      "**#{String.capitalize(g.theme)}** (#{g.story_count} stories)\n- Story IDs: #{Enum.join(g.story_ids, ", ")}"
+      "**#{String.capitalize(g.theme)}** (#{g.story_count} stories)\n- Stories: #{Enum.join(g.story_numbers, ", ")}"
     end)
   end
 
@@ -320,20 +325,20 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
       entities_str =
         if ctx.entities == [], do: "None detected", else: Enum.join(ctx.entities, ", ")
 
-      story_ids_str = Enum.join(ctx.story_ids, ", ")
+      story_numbers_str = Enum.join(ctx.story_numbers, ", ")
 
       """
       #{idx}. **#{ctx.name}** - #{ctx.description}
          - Entities: #{entities_str}
-         - Stories: #{story_ids_str}
+         - Stories: #{story_numbers_str}
       """
     end)
   end
 
   defp format_surface_patterns(patterns) do
     Enum.map_join(patterns, "\n\n", fn p ->
-      story_ids = Enum.join(p.story_ids, ", ")
-      "- **#{p.pattern}** (Stories: #{story_ids})\n  → Suggest: #{p.suggestion}"
+      story_numbers = Enum.join(p.story_numbers, ", ")
+      "- **#{p.pattern}** (Stories: #{story_numbers})\n  → Suggest: #{p.suggestion}"
     end)
   end
 

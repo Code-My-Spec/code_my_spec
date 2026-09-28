@@ -22,11 +22,12 @@ defmodule CodeMySpecSpex.Story1076.Criterion4694Spex do
             "A thing that was dropped"
           ])
 
-        [kept, retired] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
+        [kept, retired] =
+          context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         result =
           CriterionScript.run(context.scope, """
-          return retire_criterion({ criterion_id = "#{retired}" })
+          return retire_criterion({ criterion_number = #{retired} })
           """)
 
         refute result.error?, "retire_criterion failed: #{result.text}"
@@ -48,7 +49,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4694Spex do
       and_ "the retired criterion can still be read by its number", context do
         result =
           CriterionScript.run(context.scope, """
-          return get_criterion({ criterion_id = "#{context.retired}" })
+          return get_criterion({ criterion_number = #{context.retired} })
           """)
 
         refute result.error?,

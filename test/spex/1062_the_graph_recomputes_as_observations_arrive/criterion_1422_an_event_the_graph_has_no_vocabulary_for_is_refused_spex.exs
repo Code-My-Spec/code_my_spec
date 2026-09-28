@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3513Spex do
               title: "an issue arriving",
               description: "issue_created",
               severity: "medium",
-              story_id: story.id
+              story_number: story.number
             },
             frame
           )

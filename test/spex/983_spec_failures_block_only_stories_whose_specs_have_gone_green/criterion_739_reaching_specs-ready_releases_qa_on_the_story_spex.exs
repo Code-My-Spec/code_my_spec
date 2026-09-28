@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
       end
 
       given_ "QA is not reachable yet", context do
-        body = requirements_body(context.scope, context.story.id)
+        body = requirements_body(context.scope, context.story.number)
 
         assert body =~ ~r/\[ \]\s+\*\*qa_complete\*\*/,
                "expected QA to start unsatisfied, got: #{body}"
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
             %{
               requirement_name: "bdd_specs_passing",
               entity_type: "story",
-              entity_id: to_string(context.story.id),
+              entity_id: to_string(context.story.number),
               session_id: session_id
             },
             frame
@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
       end
 
       then_ "the specs-passing gate is done", context do
-        body = requirements_body(context.scope, context.story.id)
+        body = requirements_body(context.scope, context.story.number)
 
         assert body =~ ~r/\[x\]\s+\*\*bdd_specs_passing\*\*/,
                "expected the gate to be satisfied, got: #{body}"
@@ -124,11 +124,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
-  defp requirements_body(scope, story_id) do
+  defp requirements_body(scope, number) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     {:reply, response, _frame} =
-      ShowStoryRequirements.execute(%{story: to_string(story_id)}, frame)
+      ShowStoryRequirements.execute(%{story: to_string(number)}, frame)
 
     response_text(response)
   end

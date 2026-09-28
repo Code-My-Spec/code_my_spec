@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1490Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(story.id)
+              entity_id: to_string(story.number)
             },
             agent_frame
           )

@@ -8,8 +8,9 @@ defmodule CodeMySpecSpex.CriterionScript do
   exist until the story that asks for them is built. A missing tool comes back
   as a failed call the spex can report, not as a module that does not compile.
 
-  Criterion numbers are read off the text the agent reads — `(criterion N)` in
-  `get_story` — because that is the only number the agent ever sees.
+  Story and criterion numbers are read off the text the agent reads —
+  `Story N` and `(criterion N)` in `get_story` — because those are the only
+  numbers the agent ever sees.
   """
 
   alias Anubis.Server.Frame
@@ -26,32 +27,32 @@ defmodule CodeMySpecSpex.CriterionScript do
 
   @doc """
   Create a released story with one criterion per description, in order.
-  Returns the story's id as a string.
+  Returns the story's number.
   """
   def create_story(scope, title, descriptions) do
     adds =
       Enum.map_join(descriptions, "\n", fn description ->
-        "add_criterion({ story_id = id, description = #{lua_string(description)} })"
+        "add_criterion({ story_number = n, description = #{lua_string(description)} })"
       end)
 
     %{text: text} =
       run(scope, """
       local created = create_story({ title = #{lua_string(title)}, story = "As an agent, I want this so that that." })
-      local id = created:match("%(ID: (%d+)%)")
-      update_story({ story_id = id, ready_for_dev = true })
+      local n = tonumber(created:match("^Story (%d+) created"))
+      update_story({ story_number = n, ready_for_dev = true })
       #{adds}
-      return "story=" .. id
+      return "story=" .. n
       """)
 
     case Regex.run(~r/story=(\d+)/, text) do
-      [_, id] -> id
+      [_, n] -> String.to_integer(n)
       _ -> raise "could not create story #{inspect(title)}: #{text}"
     end
   end
 
   @doc "What the agent reads for a story."
-  def story_text(scope, story_id),
-    do: run(scope, "return get_story({ story_id = #{lua_string(story_id)} })").text
+  def story_text(scope, number),
+    do: run(scope, "return get_story({ story_number = #{number} })").text
 
   @doc "The criterion numbers `get_story` shows, in order."
   def numbers(text) do
@@ -60,9 +61,9 @@ defmodule CodeMySpecSpex.CriterionScript do
     |> Enum.map(fn [_, n] -> String.to_integer(n) end)
   end
 
-  @doc "The story's number, off the `· story N` in `get_story`'s heading."
+  @doc "The story's number, off the `Story N:` in `get_story`'s heading."
   def story_number(text) do
-    [_, n] = Regex.run(~r/· story (\d+)/, text)
+    [_, n] = Regex.run(~r/## Story (\d+):/, text)
     String.to_integer(n)
   end
 
@@ -97,15 +98,15 @@ defmodule CodeMySpecSpex.CriterionScript do
   end
 
   @doc "What `show_requirement` tells the agent about a story's `bdd_specs_exist`."
-  def specs_requirement(scope, story_id) do
+  def specs_requirement(scope, number) do
     run(scope, """
-    return show_requirement({ name = "bdd_specs_exist", entity_type = "story", entity_id = #{lua_string(story_id)} })
+    return show_requirement({ name = "bdd_specs_exist", entity_type = "story", entity_id = "#{number}" })
     """).text
   end
 
   @doc "Whether `show_requirement` reports the story's specs as existing."
-  def specs_exist?(scope, story_id),
-    do: specs_requirement(scope, story_id) =~ "**Status:** Satisfied"
+  def specs_exist?(scope, number),
+    do: specs_requirement(scope, number) =~ "**Status:** Satisfied"
 
   @doc "A Lua string literal for `value`."
   def lua_string(value), do: "[==[" <> to_string(value) <> "]==]"

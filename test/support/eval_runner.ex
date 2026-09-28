@@ -1182,12 +1182,18 @@ defmodule CodeMySpec.Support.EvalRunner do
     end
   end
 
+  # A story is handed to `start_task` by its number.
+  defp entity_ref(world, requirement) do
+    [numbered] = CodeMySpec.McpServers.StoryRefs.number_nodes(world.scope, [requirement])
+    CodeMySpec.McpServers.StoryRefs.entity_ref(numbered)
+  end
+
   defp aim(world, agent_id, requirement) do
     case StartTask.execute(
            %{
              requirement_name: requirement.name,
              entity_type: to_string(requirement.entity_type),
-             entity_id: to_string(requirement.entity_id),
+             entity_id: to_string(entity_ref(world, requirement)),
              agent_id: agent_id
            },
            frame(world)

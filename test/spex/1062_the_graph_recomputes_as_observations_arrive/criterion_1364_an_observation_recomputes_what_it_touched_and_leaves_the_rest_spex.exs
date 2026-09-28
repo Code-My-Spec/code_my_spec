@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
 
         {:reply, link, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: touched.id},
+            %{persona_id: context.persona_id, story_number: touched.number},
             frame
           )
 
@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
 
         {:reply, rule, _frame} =
           AddRule.execute(
-            %{story_id: to_string(touched.id), statement: "The thing holds."},
+            %{story_number: touched.number, statement: "The thing holds."},
             frame
           )
 
@@ -118,6 +118,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
         {:ok,
          context
          |> Map.put(:touched_id, touched.id)
+         |> Map.put(:touched_number, touched.number)
          |> Map.put(:other_id, other.id)
          |> Map.put(:before, before)}
       end
@@ -128,7 +129,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
         {:reply, added, _frame} =
           AddScenario.execute(
             %{
-              story_id: to_string(context.touched_id),
+              story_number: context.touched_number,
               rule_statement: "The thing holds.",
               title: "The thing holds in the ordinary case",
               kind: "happy_path",

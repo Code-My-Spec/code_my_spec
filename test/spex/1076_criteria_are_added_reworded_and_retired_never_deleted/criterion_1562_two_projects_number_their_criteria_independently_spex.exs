@@ -27,7 +27,9 @@ defmodule CodeMySpecSpex.Story1076.Criterion4686Spex do
       end
 
       and_ "project Y has none", context do
-        project_y = Fixtures.project_fixture(context.scope, %{name: "Project Y", module_name: "ProjectY"})
+        project_y =
+          Fixtures.project_fixture(context.scope, %{name: "Project Y", module_name: "ProjectY"})
+
         Fixtures.select_active_project(context.scope, project_y.id)
 
         scope_y = %{context.scope | active_project: project_y, active_project_id: project_y.id}
@@ -39,7 +41,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4686Spex do
       when_ "a criterion is added to project Y", context do
         result =
           CriterionScript.run(context.scope_y, """
-          return add_criterion({ story_id = "#{context.story_y}", description = "Y's first thing happens" })
+          return add_criterion({ story_number = #{context.story_y}, description = "Y's first thing happens" })
           """)
 
         refute result.error?, "add_criterion failed: #{result.text}"

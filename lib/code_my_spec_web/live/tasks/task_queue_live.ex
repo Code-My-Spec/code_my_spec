@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
 
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   # Per story 811 question resolution: top 25 in the upcoming list.
@@ -31,6 +32,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
        page_title: "Tasks",
        active: nil,
        upcoming: [],
+       story_numbers: %{},
        error: nil
      )}
   end
@@ -94,7 +96,11 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
         [head | rest] -> {head, Enum.take(rest, @upcoming_cap)}
       end
 
-    assign(socket, active: active, upcoming: upcoming)
+    assign(socket,
+      active: active,
+      upcoming: upcoming,
+      story_numbers: Stories.story_numbers(scope)
+    )
   end
 
   @impl true
@@ -117,7 +123,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
         <section
           data-test="active-task"
           data-requirement={requirement_name(@active)}
-          data-entity-id={requirement_entity_id(@active)}
+          data-entity-id={requirement_entity_id(@active, @story_numbers)}
           class="mb-8 bg-base-200 border border-primary rounded-box p-6"
         >
           <div class="text-xs uppercase tracking-wider text-primary mb-2">
@@ -129,7 +135,8 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
           </div>
           <div class="text-xs text-base-content/50 mt-3 font-mono">
             {requirement_name(@active)} · {requirement_entity_kind(@active)} · {requirement_entity_id(
-              @active
+              @active,
+              @story_numbers
             )}
           </div>
         </section>
@@ -152,7 +159,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
                 :for={req <- @upcoming}
                 data-test="upcoming-task-item"
                 data-requirement={requirement_name(req)}
-                data-entity-id={requirement_entity_id(req)}
+                data-entity-id={requirement_entity_id(req, @story_numbers)}
                 class="flex items-baseline gap-3 border-l-2 border-base-300 pl-3 py-1"
               >
                 <span class="text-xs text-base-content/40 font-mono shrink-0">
@@ -185,7 +192,11 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   # -- Render helpers -------------------------------------------------------
 
   defp requirement_name(%{name: name}), do: name
-  defp requirement_entity_id(%{entity_id: id}), do: to_string(id)
+  # Stories are named by number; the id never reaches the page.
+  defp requirement_entity_id(%{entity_type: "story", entity_id: id}, numbers),
+    do: to_string(Map.get(numbers, id, ""))
+
+  defp requirement_entity_id(%{entity_id: id}, _numbers), do: to_string(id)
   defp requirement_entity_kind(%{entity_type: t}), do: t
 
   defp requirement_label(%{entity_name: entity_name, name: name}) do

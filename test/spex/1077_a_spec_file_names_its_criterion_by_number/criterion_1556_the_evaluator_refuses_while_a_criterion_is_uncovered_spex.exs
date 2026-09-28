@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4680Spex do
       end
 
       and_ "the requirement is unsatisfied too", context do
-        refute CriterionScript.specs_exist?(context.scope, to_string(context.story.id)),
+        refute CriterionScript.specs_exist?(context.scope, context.story.number),
                "the requirement and the evaluator must give the same answer"
 
         {:ok, context}

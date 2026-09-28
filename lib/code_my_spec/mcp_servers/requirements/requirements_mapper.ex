@@ -3,6 +3,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   Maps requirements data to MCP tool responses.
   """
 
+  alias CodeMySpec.McpServers.StoryRefs
   alias Anubis.Server.Response
   alias CodeMySpec.Requirements.Requirement
 
@@ -15,12 +16,26 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   def format_story_execution(execution, active_subagents \\ %{}) do
+    execution = number_wave(execution)
+
     "#{story_header(execution.story)}\n\nStatus: #{execution.status}\n\n" <>
       execution_body(execution, active_subagents)
   end
 
+  # A story node in the wave is the selected story's own.
+  defp number_wave(%{story: %{number: number, id: id}, wave: wave} = execution) do
+    %{execution | wave: Enum.map(wave, &number_node(&1, id, number))}
+  end
+
+  defp number_wave(execution), do: execution
+
+  defp number_node(%{entity_type: "story", entity_id: id} = node, id, number),
+    do: Map.put(node, :entity_number, number)
+
+  defp number_node(node, _id, _number), do: node
+
   defp story_header(nil), do: "# Story scope"
-  defp story_header(story), do: "# Story #{story.id}: #{story.title}"
+  defp story_header(story), do: "# Story #{story.number}: #{story.title}"
 
   defp execution_body(%{status: :ready} = execution, active_subagents) do
     wave = execution.wave
@@ -48,7 +63,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp execution_metadata(node) do
-    "- #{node.name} (#{node.entity_type} #{node.entity_id}): " <>
+    "- #{node.name} (#{node.entity_type} #{StoryRefs.entity_ref(node)}): " <>
       "role=#{Map.get(node, :role) || "any"}, runs_in=#{Requirement.runs_in(node.execution_type)}, " <>
       "orchestrated_by=#{node.orchestrated_by || "none"}, " <>
       "validation_type=#{node.validation_type}"
@@ -389,7 +404,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp sig(node) do
-    "requirement_name=`#{node.name}`, entity_type=`#{node.entity_type}`, entity_id=`#{node.entity_id}`"
+    "requirement_name=`#{node.name}`, entity_type=`#{node.entity_type}`, entity_id=`#{StoryRefs.entity_ref(node)}`"
   end
 
   # ---------------------------------------------------------------------------

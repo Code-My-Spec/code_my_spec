@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
       story = story_fixture(scope)
 
       params = %{
-        story_id: story.id,
+        story_number: story.number,
         title: "Updated User Login",
         description: "Updated description"
       }
@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        story_id: story.id,
+        story_number: story.number,
         tags: ["accounts", "notifications"]
       }
 
@@ -56,7 +56,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
 
       # Replace with new set
       params = %{
-        story_id: story.id,
+        story_number: story.number,
         tags: ["keep-tag", "new-tag"]
       }
 
@@ -75,7 +75,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
 
       # Clear all tags
       params = %{
-        story_id: story.id,
+        story_number: story.number,
         tags: []
       }
 
@@ -124,7 +124,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
-               UpdateStory.execute(%{story_id: story.id, epic_id: epic.id}, frame)
+               UpdateStory.execute(%{story_number: story.number, epic_id: epic.id}, frame)
 
       assert response.isError == false
       assert CodeMySpec.Stories.get_story(scope, story.id).epic_id == epic.id

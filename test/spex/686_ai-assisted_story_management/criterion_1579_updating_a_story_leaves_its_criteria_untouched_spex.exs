@@ -23,7 +23,12 @@ defmodule CodeMySpecSpex.Story686.Criterion1579Spex do
   spex "update_story does not touch criteria", criterion: 1579 do
     scenario "the agent updates a story's title and description" do
       given_ "story A has two criteria", context do
-        story = CriterionScript.create_story(context.scope, "Story A", ["A first thing", "A second thing"])
+        story =
+          CriterionScript.create_story(context.scope, "Story A", [
+            "A first thing",
+            "A second thing"
+          ])
+
         numbers = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
         {:ok, context |> Map.put(:story, story) |> Map.put(:numbers, numbers)}
       end
@@ -31,7 +36,7 @@ defmodule CodeMySpecSpex.Story686.Criterion1579Spex do
       when_ "the agent updates story A's title and description", context do
         result =
           CriterionScript.run(context.scope, """
-          return update_story({ story_id = "#{context.story}", title = "Story A, renamed", description = "Clearer" })
+          return update_story({ story_number = #{context.story}, title = "Story A, renamed", description = "Clearer" })
           """)
 
         refute result.error?, "update_story failed: #{result.text}"

@@ -21,12 +21,19 @@ defmodule CodeMySpecSpex.Story686.Criterion1578Spex do
         CriterionScript.create_story(context.scope, "First story", [])
         newest = CriterionScript.create_story(context.scope, "Newest story", [])
 
-        number = context.scope |> CriterionScript.story_text(newest) |> CriterionScript.story_number()
+        number =
+          context.scope |> CriterionScript.story_text(newest) |> CriterionScript.story_number()
+
         {:ok, Map.merge(context, %{newest: newest, highest: number})}
       end
 
       when_ "that story is retired and a new story is created", context do
-        result = CriterionScript.run(context.scope, "return retire_story({ story_id = \"#{context.newest}\" })")
+        result =
+          CriterionScript.run(
+            context.scope,
+            "return retire_story({ story_number = #{context.newest} })"
+          )
+
         refute result.error?, "retire_story failed: #{result.text}"
 
         created = CriterionScript.create_story(context.scope, "Story after the retire", [])
@@ -34,7 +41,10 @@ defmodule CodeMySpecSpex.Story686.Criterion1578Spex do
       end
 
       then_ "the new story takes the next number, not the retired one", context do
-        number = context.scope |> CriterionScript.story_text(context.created) |> CriterionScript.story_number()
+        number =
+          context.scope
+          |> CriterionScript.story_text(context.created)
+          |> CriterionScript.story_number()
 
         assert number == context.highest + 1,
                "expected story #{context.highest + 1}; got #{number}, reusing a retired story's number"

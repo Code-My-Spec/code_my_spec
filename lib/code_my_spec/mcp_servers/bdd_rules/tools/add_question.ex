@@ -11,11 +11,14 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddQuestion do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Questions
 
   schema do
-    field :story_id, :integer, required: true, doc: "ID of the story to add the question to."
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
 
     field :text, :string,
       required: true,
@@ -26,8 +29,9 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddQuestion do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, story} <- StoryRefs.fetch_story(scope, get_param(params, :story_number)),
          {:ok, question} <-
-           Questions.create_question(scope, get_param(params, :story_id), %{
+           Questions.create_question(scope, story.id, %{
              text: get_param(params, :text)
            }) do
       {:reply, BddRulesMapper.question_response(question), frame}

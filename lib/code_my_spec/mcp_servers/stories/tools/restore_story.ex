@@ -14,13 +14,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreStory do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_id, :string, required: true, doc: "ID of the retired story to restore"
+    field :story_number, :integer,
+      required: true,
+      doc: "Story number (list_story_titles shows them)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number),
          {:ok, story} <- Stories.restore_story(scope, story) do
       {:reply, StoriesMapper.story_restored_response(story), frame}
     else
@@ -28,7 +30,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreStory do
         {:reply, StoriesMapper.not_found_error(), frame}
 
       {:error, :not_retired} ->
-        {:reply, StoriesMapper.error("That story is not retired, so there is nothing to restore."), frame}
+        {:reply,
+         StoriesMapper.error("That story is not retired, so there is nothing to restore."), frame}
 
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, StoriesMapper.validation_error(changeset), frame}

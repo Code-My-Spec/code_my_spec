@@ -72,7 +72,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "An observation about one story's issues costs one story's requirements", criterion: 1396 do
+  spex "An observation about one story's issues costs one story's requirements",
+    criterion: 1396 do
     scenario "an issue is filed against one of two stories" do
       given_ "two stories in the graph", context do
         touched = create_story(context.scope, title: "The story it is about", description: "one")
@@ -93,6 +94,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
         {:ok,
          context
          |> Map.put(:touched_id, touched.id)
+         |> Map.put(:touched_number, touched.number)
          |> Map.put(:other_id, other.id)
          |> Map.put(:before, before)}
       end
@@ -106,7 +108,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
               title: "something is wrong on this story",
               description: "filed against one story and not the other",
               severity: "high",
-              story_id: context.touched_id
+              story_number: context.touched_number
             },
             frame
           )
@@ -115,7 +117,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
 
         {:reply, accepted, _frame} =
           AcceptIssue.execute(
-            %{issue_id: extract_issue_id!(filed), story_id: context.touched_id},
+            %{issue_id: extract_issue_id!(filed), story_number: context.touched_number},
             frame
           )
 

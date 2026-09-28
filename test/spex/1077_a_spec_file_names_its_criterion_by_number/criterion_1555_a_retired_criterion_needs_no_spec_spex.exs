@@ -40,7 +40,10 @@ defmodule CodeMySpecSpex.Story1077.Criterion4679Spex do
         end
 
         result =
-          CriterionScript.run(context.scope, "return retire_criterion({ criterion_id = \"#{dropped}\" })")
+          CriterionScript.run(
+            context.scope,
+            "return retire_criterion({ criterion_number = #{dropped} })"
+          )
 
         refute result.error?, "retire_criterion failed: #{result.text}"
 
@@ -54,7 +57,10 @@ defmodule CodeMySpecSpex.Story1077.Criterion4679Spex do
 
       then_ "bdd_specs_exist is satisfied", context do
         text = CriterionScript.specs_requirement(context.scope, context.story)
-        assert text =~ "**Status:** Satisfied", "the retired criterion needs no spec. Got:\n#{text}"
+
+        assert text =~ "**Status:** Satisfied",
+               "the retired criterion needs no spec. Got:\n#{text}"
+
         {:ok, context}
       end
     end

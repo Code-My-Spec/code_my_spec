@@ -63,7 +63,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Three Amigos creates lightweight persona; personas_complete surfaces next", criterion: 155 do
+  spex "Three Amigos creates lightweight persona; personas_complete surfaces next",
+    criterion: 155 do
     scenario "agent adds persona inline, finishes Three Amigos, graph advances to personas_complete" do
       given_ "the project's upstream chain is satisfied", context do
         # Without this, qa_setup → component_linked → three_amigos_complete
@@ -129,7 +130,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
 
         {:reply, _link_response, _frame} =
           LinkPersonaToStory.execute(
-            %{persona_id: context.persona_id, story_id: context.story.id},
+            %{persona_id: context.persona_id, story_number: context.story.number},
             frame
           )
 
@@ -144,7 +145,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         {:reply, _add_rule_response, _frame} =
           AddRule.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "statement" => rule_statement
             },
             frame
@@ -153,7 +154,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         {:reply, _happy_response, _frame} =
           AddScenario.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "rule_statement" => rule_statement,
               "title" => "Driver attempts purchase with suspended card",
               "kind" => "happy_path",
@@ -169,7 +170,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         {:reply, _failure_response, _frame} =
           AddScenario.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "rule_statement" => rule_statement,
               "title" => "Suspension status fails to load at point of sale",
               "kind" => "failure_path",

@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
-              entity_id: to_string(context.story.id)
+              entity_id: to_string(context.story.number)
             },
             context.coding_frame
           )

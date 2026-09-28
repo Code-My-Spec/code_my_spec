@@ -44,7 +44,7 @@ too, and the Files page and `evaluate_task` say which.
 ## Minimal template
 
 ```elixir
-defmodule <App>Spex.Story<id>.Criterion<id>Spex do
+defmodule <App>Spex.Story<n>.Criterion<n>Spex do
   @moduledoc """
   Story <n> — <story title>
   Criterion <n> — <what this criterion asserts in plain language>

@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4689Spex do
         result =
           CriterionScript.run(context.scope, """
           return update_story({
-            story_id = "#{context.story}",
+            story_number = #{context.story},
             title = "Story A, renamed",
             description = "A clearer description",
             acceptance_criteria = { "A first thing happens", "A second thing happens" }

@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
 
         :ok = Fixtures.settle_graph(context.scope)
 
-        {:ok, Map.put(context, :story_id, story.id)}
+        {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
 
       when_ "an issue is filed, by a writer whose change is about no checkout", context do
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
               title: "something is wrong on this story",
               description: "filed from one checkout and true of all of them",
               severity: "medium",
-              story_id: context.story_id
+              story_number: context.story_number
             },
             frame
           )

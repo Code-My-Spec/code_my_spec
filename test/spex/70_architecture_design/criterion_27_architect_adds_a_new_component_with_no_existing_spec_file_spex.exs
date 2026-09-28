@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
 
       when_ "the architect adds Stories.RemoteSync as a new component and submits", context do
         app = context.project.module_name || "MyApp"
-        story_id = context.story.id
+        story_number = context.story.number
 
         proposal = """
         # Architecture Proposal
@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
 
         - **Type:** liveview
         - **Description:** Story list LiveView
-        - **Stories:** #{story_id}
+        - **Stories:** #{story_number}
 
         ## Contexts
 

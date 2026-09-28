@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
         {:reply, _add_rule_response, _frame} =
           AddRule.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "statement" => "Suspended cards cannot be used for purchases"
             },
             frame
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
         {:reply, _happy_response, _frame} =
           AddScenario.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "rule_statement" => "Suspended cards cannot be used for purchases",
               "title" => "Driver attempts purchase with suspended card",
               "kind" => "happy_path",
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
         {:reply, _failure_response, _frame} =
           AddScenario.execute(
             %{
-              "story_id" => to_string(context.story.id),
+              "story_number" => context.story.number,
               "rule_statement" => "Suspended cards cannot be used for purchases",
               "title" => "Suspension status fails to load at point of sale",
               "kind" => "failure_path",

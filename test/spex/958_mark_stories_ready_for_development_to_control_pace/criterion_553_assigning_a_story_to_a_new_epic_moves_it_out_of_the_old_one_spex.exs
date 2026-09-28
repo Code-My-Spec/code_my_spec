@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
@@ -37,7 +38,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
           )
 
         refute story_response.isError, "expected create_story to succeed"
-        story_id = story_id!(story_response)
+        story_number = story_number!(story_response)
 
         epic_ids =
           Map.new(["Political Systems", "Stone Age"], fn name ->
@@ -51,13 +52,19 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
 
         {:reply, assign_response, _frame} =
           AssignStoryToEpic.execute(
-            %{story_id: story_id, epic_name: "Political Systems"},
+            %{story_number: story_number, epic_name: "Political Systems"},
             frame
           )
 
         refute assign_response.isError, "expected the story to start in Political Systems"
 
-        {:ok, context |> Map.put(:story_id, story_id) |> Map.put(:epic_ids, epic_ids)}
+        story_id = Stories.get_story_by_number(context.scope, story_number).id
+
+        {:ok,
+         context
+         |> Map.put(:story_number, story_number)
+         |> Map.put(:story_id, story_id)
+         |> Map.put(:epic_ids, epic_ids)}
       end
 
       when_ "the user drags it into epic \"Stone Age\"", context do
@@ -100,13 +107,13 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
     end
   end
 
-  defp story_id!(response) do
+  defp story_number!(response) do
     body = response_text(response)
 
-    captured!(
-      Regex.run(~r/\(ID: (\d+)\)/, body),
-      "could not read story id from response: #{body}"
-    )
+    ~r/^Story (\d+) created/
+    |> Regex.run(body)
+    |> captured!("could not read story number from response: #{body}")
+    |> String.to_integer()
   end
 
   defp epic_id!(response) do

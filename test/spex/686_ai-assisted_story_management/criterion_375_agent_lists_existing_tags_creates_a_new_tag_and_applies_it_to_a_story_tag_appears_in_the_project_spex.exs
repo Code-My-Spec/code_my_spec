@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         params = %{
-          story_ids: [to_string(context.story.id)],
+          story_numbers: [context.story.number],
           tag: context.tag
         }
 
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, get_response, _frame} =
-          GetStory.execute(%{story_id: to_string(context.story.id)}, frame)
+          GetStory.execute(%{story_number: context.story.number}, frame)
 
         body = response_text(get_response)
 

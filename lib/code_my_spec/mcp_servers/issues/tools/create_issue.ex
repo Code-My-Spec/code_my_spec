@@ -34,6 +34,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils
 
@@ -52,7 +53,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
     field(:scope, :string, description: "Issue scope: app (default), qa, docs, or framework")
 
-    field(:story_id, :integer, description: "Related user story ID, if applicable")
+    field(:story_number, :integer, description: "Number of the related story, if applicable")
 
     field(:source_path, :string,
       description: "File path where the issue was found, if applicable"
@@ -62,7 +63,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         attrs <- build_attrs(params),
+         {:ok, attrs} <- StoryRefs.put_story_id(scope, build_attrs(params)),
          {:ok, issue} <- create(scope, attrs) do
       {:reply, IssuesMapper.issue_created_response(issue), frame}
     else

@@ -61,7 +61,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StoryTagToolsTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        story_ids: [to_string(story1.id), to_string(story2.id), to_string(story3.id)],
+        story_numbers: [story1.number, story2.number, story3.number],
         tag: "bulk-tag"
       }
 
@@ -79,7 +79,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StoryTagToolsTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        story_ids: [to_string(story.id), "99999", "88888"],
+        story_numbers: [story.number, 99999, 88888],
         tag: "partial-tag"
       }
 

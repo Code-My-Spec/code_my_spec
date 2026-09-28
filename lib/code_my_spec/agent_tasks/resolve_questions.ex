@@ -43,7 +43,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
   def evaluate(scope, task) do
     case resolve_story(scope, task) do
       nil ->
-        {:ok, :invalid, "Story not provided — evaluate_task needs a resolvable story_id."}
+        {:ok, :invalid, "Story not provided — evaluate_task needs a resolvable story."}
 
       story ->
         case BddRulesChecker.questions_answered?(scope, story) do
@@ -87,7 +87,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
     # Clear Open Questions
 
     > **Story not provided.** This task should always be scoped to a single
-    > story. Ask which story, then call MCP tools with that `story_id`.
+    > story. Ask which story, then call MCP tools with that `story_number`.
     """
   end
 
@@ -98,7 +98,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
       |> Enum.filter(&(&1.status == :open))
 
     """
-    # Clear Open Questions — Story #{story.id}: #{story.title}
+    # Clear Open Questions — Story #{story.number}: #{story.title}
 
     This story's Three Amigos session is already sealed. It still carries
     #{length(open)} open question(s), and nothing else on the graph will ever

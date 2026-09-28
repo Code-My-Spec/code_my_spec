@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   """
 
   def dispatch(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{Map.get(node, :entity_number, node.entity_id)}` (#{node.entity_name})"
   end
 
   alias CodeMySpec.AgentTasks.Setup
@@ -52,7 +52,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   @doc "Derive a human-readable name from a step module name."
   def step_name(mod) do
-    mod |> Module.split() |> List.last() |> Macro.underscore() |> String.replace("_", " ") |> String.capitalize()
+    mod
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+    |> String.replace("_", " ")
+    |> String.capitalize()
   end
 
   @doc """
@@ -82,16 +87,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
           end
         end)
 
-      {:ok, """
-      # Project Setup (#{done}/#{total})
+      {:ok,
+       """
+       # Project Setup (#{done}/#{total})
 
-      Configure this Phoenix project for CodeMySpec integration.
-      Complete all unchecked steps below. Order does not matter.
+       Configure this Phoenix project for CodeMySpec integration.
+       Complete all unchecked steps below. Order does not matter.
 
-      #{checklist}
+       #{checklist}
 
-      When all steps are complete, use `evaluate_task` to validate.
-      """}
+       When all steps are complete, use `evaluate_task` to validate.
+       """}
     end
   end
 

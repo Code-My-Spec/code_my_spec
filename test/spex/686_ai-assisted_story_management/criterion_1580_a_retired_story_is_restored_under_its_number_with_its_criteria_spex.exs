@@ -24,7 +24,9 @@ defmodule CodeMySpecSpex.Story686.Criterion1580Spex do
         text = CriterionScript.story_text(context.scope, story)
         [criterion] = CriterionScript.numbers(text)
 
-        result = CriterionScript.run(context.scope, "return retire_story({ story_id = \"#{story}\" })")
+        result =
+          CriterionScript.run(context.scope, "return retire_story({ story_number = #{story} })")
+
         refute result.error?, "retire_story failed: #{result.text}"
 
         {:ok,
@@ -36,7 +38,12 @@ defmodule CodeMySpecSpex.Story686.Criterion1580Spex do
       end
 
       when_ "the agent restores story A", context do
-        result = CriterionScript.run(context.scope, "return restore_story({ story_id = \"#{context.story}\" })")
+        result =
+          CriterionScript.run(
+            context.scope,
+            "return restore_story({ story_number = #{context.story} })"
+          )
+
         refute result.error?, "restore_story failed: #{result.text}"
         {:ok, context}
       end
@@ -50,7 +57,8 @@ defmodule CodeMySpecSpex.Story686.Criterion1580Spex do
         assert CriterionScript.story_number(text) == context.story_number,
                "expected story #{context.story_number}. Got:\n#{text}"
 
-        assert text =~ "Ready for development: false", "a restored story should come back parked. Got:\n#{text}"
+        assert text =~ "Ready for development: false",
+               "a restored story should come back parked. Got:\n#{text}"
 
         {:ok, context}
       end
