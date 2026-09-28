@@ -54,6 +54,13 @@ defmodule CmsHarness.AppInstance.Runner do
   @callback current_commit(root :: String.t()) :: String.t() | nil
 
   @doc """
+  Run `root`'s `after-promote` recipe. Only called once `recipe?/2` has
+  already confirmed it exists — a project that declares nothing never
+  reaches this.
+  """
+  @callback run_after_promote(root :: String.t()) :: :ok | {:error, term()}
+
+  @doc """
   Launch `root`'s `serve` recipe, detached, with `PORT`/`HTTPS_PORT`/
   `DATABASE_NAME` set and its output redirected to `log_path`.
   """
@@ -103,6 +110,9 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec current_commit(String.t()) :: String.t() | nil
   def current_commit(root), do: impl().current_commit(root)
+
+  @spec run_after_promote(String.t()) :: :ok | {:error, term()}
+  def run_after_promote(root), do: impl().run_after_promote(root)
 
   @spec launch(String.t(), pos_integer(), pos_integer(), String.t(), String.t()) ::
           {:ok, pos_integer()} | {:error, term()}

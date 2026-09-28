@@ -477,58 +477,17 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  @doc """
-  Bring the application at `root` back up on whatever is now checked out.
-
-  Through the project's own `just restart`, which is the seam. A promotion does
-  not know how to start a Phoenix app, and should not learn.
-
-  Always the whole of it, harness included. Skipping the harness refresh when
-  a merge provably left the channel contract alone (376e3356) was removed:
-  the harness hot-reloads its own code from this checkout, so any merge can
-  swap its modules under live processes, and a promote that did not restart it
-  left it crashed (08744186).
-  """
-  @spec restart(Environments.Environment.t(), String.t()) :: result()
-  def restart(env, root) do
-    env
-    |> Environments.exec_file_exists?(Path.join(root, "justfile"))
-    |> run_restart(env, root)
-  end
-
-  defp run_restart(false, _env, root) do
-    {:error,
-     %{
-       reason:
-         "#{root} has no justfile, so there is no `just restart` to bring the " <>
-           "application back up on the merged code. The merge is done; the app " <>
-           "is still serving what it was."
-     }}
-  end
-
-  # `stderr_to_stdout: true`, and it is the difference between a refusal an
-  # agent can act on and one it cannot.
-  #
-  # Compilers, migrations and the shell all write their failures to stderr.
-  # Without this the promotion caught a broken build correctly — non-zero exit,
-  # nothing merged onward — and then reported "`just restart` failed (1):" with
-  # an empty body, telling the agent its promotion failed and not one word about
-  # what broke.
-  defp run_restart(true, env, root) do
-    opts = [cd: root, stderr_to_stdout: true]
-
-    case normalize(Environments.cmd(env, "just", ["restart"], opts)) do
-      {out, 0} -> serving(env, root, out)
-      {out, code} -> {:error, %{reason: "`just restart` failed (#{code}):\n#{String.trim(out)}"}}
-    end
-  end
-
-  defp serving(env, root, out) do
-    case git(env, root, ["rev-parse", "--short", "HEAD"]) do
-      {sha, 0} -> {:ok, %{revision: String.trim(sha), output: String.trim(out)}}
-      {_, _} -> {:ok, %{revision: nil, output: String.trim(out)}}
-    end
-  end
+  # Story 1108, criterion 4663: bringing the application back up after a
+  # promotion no longer runs through here. `Promotion.Runner.restart/3` calls
+  # `WorkingCopies.AppTransport.restart_app/2` directly — the same per-copy
+  # app mechanism every working copy already uses, reached through
+  # `Analysis.HarnessRegistry` rather than through `Environments`. What used
+  # to be `just restart`'s own harness-refresh tail call on this repo (this
+  # repo's own `refresh-harness`, keeping server and harness on one commit)
+  # is now an optional `after-promote` recipe `CmsHarness.AppInstance` runs
+  # on the far side after the app is confirmed serving — declared once, in
+  # this project's own justfile, rather than as a branch here that every
+  # other project's promotion would also have to answer for.
 
   # An explicit `:cd` beats the environment's own cwd, which is what lets one
   # environment drive both checkouts.

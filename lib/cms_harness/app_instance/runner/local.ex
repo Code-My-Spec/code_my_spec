@@ -140,6 +140,14 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
+  def run_after_promote(root) do
+    case Environments.cmd(local(root), "just", ["after-promote"], stderr_to_stdout: true) do
+      {_out, 0} -> :ok
+      {out, status} -> {:error, "`just after-promote` failed (#{status}): #{out}"}
+    end
+  end
+
+  @impl true
   def launch(root, port, https_port, database, log_path) do
     File.mkdir_p!(Path.dirname(log_path))
 

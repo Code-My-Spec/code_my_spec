@@ -56,11 +56,24 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
     end
   end
 
+  # A callee that dies is not a callee that hung, and the two want opposite
+  # readings — `Analysis.harness_fs_request/4` already tells them apart for
+  # the same reason (see `FsRequestChannelDeathTest`'s own moduledoc): a
+  # `restart_app` call whose target is the very app about to go down for the
+  # restart it was just asked to run exits with the app's own shutdown
+  # reason, not `:timeout`, seconds before the timeout could ever fire.
+  # Folding both into one atom would make `Promotion.restart_acknowledgement_lost?/1`
+  # unable to tell "it hung" from "it worked and took the channel down with
+  # it" — the one distinction that call exists to make.
   defp call(pid, message, timeout, timeout_reason) do
     GenServer.call(pid, message, timeout + call_grace_ms())
   catch
     :exit, {:timeout, _} -> {:error, timeout_reason}
+    :exit, reason -> {:error, {:harness_gone, down_reason(reason)}}
   end
+
+  defp down_reason(reason) when is_tuple(reason) and tuple_size(reason) > 0, do: elem(reason, 0)
+  defp down_reason(reason), do: reason
 
   # Same floor as `Agents.Transport.Harness.call/4` — "the machine is there
   # and did not finish" has to be distinguished from "no harness."
