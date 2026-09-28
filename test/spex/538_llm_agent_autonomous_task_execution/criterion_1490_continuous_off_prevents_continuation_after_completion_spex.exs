@@ -95,6 +95,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1490Spex do
             Environments.write_file(context.environment, path, valid_spec_content(criterion.id))
         end)
 
+        Fixtures.deliver_manifest(context.scope)
+
         {:reply, evaluated, _} = EvaluateTask.execute(%{task_id: task_id}, agent_frame)
         refute evaluated.isError, response_text(evaluated)
         assert response_text(evaluated) =~ "Passed"
@@ -145,7 +147,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1490Spex do
     """
     defmodule MyAppSpex.Criterion#{criterion_id}Spex do
       use MyAppSpex.Case
-      spex "fixture feature" do
+      spex "fixture feature", criterion: #{criterion_id} do
         scenario "fixture scenario" do
           given_ "a value", context do
             {:ok, Map.put(context, :value, 1)}

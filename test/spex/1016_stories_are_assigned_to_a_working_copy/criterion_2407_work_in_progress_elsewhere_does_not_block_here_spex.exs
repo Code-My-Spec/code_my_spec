@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2407Spex do
         [criterion | _] = context.story.criteria
         path = spex_path(context.story, criterion)
 
-        :ok = Environments.write_file(context.environment, path, failing_spex())
+        :ok = Environments.write_file(context.environment, path, failing_spex(criterion.id))
 
         {:ok, Map.put(context, :spex_path, path)}
       end
@@ -226,12 +226,12 @@ defmodule CodeMySpecSpex.Story895.Criterion2407Spex do
   # `use <App>Spex.Case` or has a scenario without Given/When/Then, and that
   # refusal is its own blocking finding — which would block this stop for a
   # reason that has nothing to do with assignment.
-  defp failing_spex do
+  defp failing_spex(number) do
     """
     defmodule ExampleContextSpex do
       use ExampleSpex.Case
 
-      spex "intentional failure" do
+      spex "intentional failure", criterion: #{number} do
         scenario "asserts false" do
           given_ "a fixture that is set up", context do
             {:ok, context}

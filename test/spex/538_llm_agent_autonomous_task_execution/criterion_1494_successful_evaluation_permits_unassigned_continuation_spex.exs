@@ -122,6 +122,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
       end
 
       when_ "the agent explicitly evaluates the ready task", context do
+        Fixtures.deliver_manifest(context.scope)
+
         {:reply, evaluated, _} =
           EvaluateTask.execute(%{task_id: context.task_id}, context.agent_frame)
 
@@ -171,7 +173,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
     """
     defmodule MyAppSpex.Criterion#{criterion_id}Spex do
       use MyAppSpex.Case
-      spex "fixture feature" do
+      spex "fixture feature", criterion: #{criterion_id} do
         scenario "fixture scenario" do
           given_ "a value", context do
             {:ok, Map.put(context, :value, 1)}

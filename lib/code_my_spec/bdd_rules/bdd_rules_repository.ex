@@ -155,7 +155,10 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   defp do_cascade_delete_rule(rule, rule_id) do
     Repo.transaction(fn ->
-      Repo.delete_all(from c in Criterion, where: c.rule_id == ^rule_id)
+      # Retired, not deleted: a criterion's number is never freed.
+      Repo.update_all(from(c in Criterion, where: c.rule_id == ^rule_id),
+        set: [retired_at: DateTime.utc_now(), rule_id: nil]
+      )
       delete_or_rollback(rule)
     end)
   end

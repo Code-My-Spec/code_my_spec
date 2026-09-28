@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
           Environments.write_file(
             context.environment,
             path,
-            "defmodule Sample do\n  use CodeMySpecSpex.Case\nend\n"
+            CodeMySpecSpex.CriterionScript.spex_naming(criterion.id)
           )
 
         Fixtures.deliver_manifest(context.scope)

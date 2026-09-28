@@ -47,7 +47,10 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
       given_ "a spec file exists with a scenario that has no Given/When/Then steps", context do
         [criterion] = context.story.criteria
         spec_path = Fixtures.spec_file_path(context.story, criterion)
-        :ok = Environments.write_file(context.environment, spec_path, stepless_spec_content())
+        :ok =
+          Environments.write_file(context.environment, spec_path, stepless_spec_content(criterion.id))
+
+        Fixtures.deliver_manifest(context.scope)
 
         {:ok, context}
       end
@@ -83,12 +86,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
     end
   end
 
-  defp stepless_spec_content do
+  defp stepless_spec_content(number) do
     """
     defmodule MyAppSpex.SteplessSpex do
       use MyAppSpex.Case
 
-      spex "feature" do
+      spex "feature", criterion: #{number} do
         scenario "scenario without any steps" do
         end
       end

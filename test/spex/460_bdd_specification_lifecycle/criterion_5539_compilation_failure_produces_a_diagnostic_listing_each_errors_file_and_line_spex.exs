@@ -48,7 +48,10 @@ defmodule CodeMySpecSpex.Story460.Criterion5539Spex do
       given_ "a syntactically broken spec file is staged in the env", context do
         [criterion] = context.story.criteria
         spec_path = Fixtures.spec_file_path(context.story, criterion)
-        :ok = Environments.write_file(context.environment, spec_path, broken_spec_content())
+        :ok =
+          Environments.write_file(context.environment, spec_path, broken_spec_content(criterion.id))
+
+        Fixtures.deliver_manifest(context.scope)
 
         {:ok, Map.put(context, :spec_path, spec_path)}
       end
@@ -88,12 +91,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5539Spex do
 
   # Missing the closing `end` for the `do` block on line 3 — `Code.string_to_quoted/2`
   # rejects this with a `TokenMissingError` whose meta carries `line:`.
-  defp broken_spec_content do
+  defp broken_spec_content(number) do
     """
     defmodule MyAppSpex.BrokenSpex do
       use MyAppSpex.Case
 
-      spex "broken feature" do
+      spex "broken feature", criterion: #{number} do
         scenario "missing end" do
           given_ "setup", _context do
             :ok

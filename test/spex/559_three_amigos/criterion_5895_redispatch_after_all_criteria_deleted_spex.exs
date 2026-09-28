@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-  alias CodeMySpec.McpServers.Stories.Tools.DeleteCriterion
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
+  alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         {:ok, context}
       end
 
-      when_ "the PM deletes every acceptance criterion on the story", context do
+      when_ "the PM retires every acceptance criterion on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, get_response, _frame} =
@@ -85,11 +85,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
           |> Enum.map(fn [_, id] -> id end)
 
         assert criterion_ids != [],
-               "expected at least one acceptance criterion to delete, got none"
+               "expected at least one acceptance criterion to retire, got none"
 
         for id <- criterion_ids do
           {:reply, _resp, _frame} =
-            DeleteCriterion.execute(%{criterion_id: id}, frame)
+            RetireCriterion.execute(%{criterion_id: id}, frame)
         end
 
         {:ok, context}
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         body = response_text(response)
 
         assert body =~ ~r/\[ \]\s+\*\*three_amigos_complete\*\*/,
-               "expected three_amigos_complete to be unsatisfied after deleting all criteria, got #{inspect(response)}"
+               "expected three_amigos_complete to be unsatisfied after retiring all criteria, got #{inspect(response)}"
 
         {:ok, context}
       end

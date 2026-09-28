@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
 
         refute response.isError, response_text(response)
         assert response_text(response) =~ "Needs work"
-        assert response_text(response) =~ "Spec file not found"
+        assert response_text(response) =~ "No valid spec names it"
         {:ok, context}
       end
 

@@ -4029,9 +4029,11 @@ defmodule CodeMySpecSpex.Fixtures do
   is actually asking: where will the harness look?
   """
   @spec spec_file_path(map(), map()) :: String.t()
+  #
+  # `criterion_id` is what `GetStory` shows the agent, which is the number.
   def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
-    criterion = Enum.find(story.criteria, &(&1.id == criterion_id))
+    criterion = Enum.find(story.criteria, &(&1.number == criterion_id))
 
     unless criterion do
       raise ArgumentError,

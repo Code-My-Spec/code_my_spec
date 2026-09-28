@@ -1,4 +1,4 @@
-defmodule CodeMySpecSpex.Story993.RealInvoiceShapeSpex do
+defmodule CodeMySpecSpex.Story993.Criterion4683Spex do
   @moduledoc """
   Story 993 — regression, found in QA against real Stripe.
 

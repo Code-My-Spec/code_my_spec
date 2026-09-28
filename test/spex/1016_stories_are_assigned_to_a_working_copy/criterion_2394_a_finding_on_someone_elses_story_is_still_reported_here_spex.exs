@@ -27,12 +27,11 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
 
   ## Why the finding is named by criterion id
 
-  A spex file is tied back to its story by its **file name** —
-  `Parser.derive_criterion_id/1` reads `criterion_<id>_` and `FileSync` claims
-  the path onto that criterion. That is the same route the gate uses to decide
-  whose story a failure belongs to, so a scenario that invented a path outside
-  the convention would produce a finding attached to no story at all, and the
-  note under test would correctly stay silent.
+  A spex file is tied back to its story by the criterion its `spex` call
+  names (`criterion: N`), which sync binds to that criterion's story. That is
+  the route the gate uses to decide whose story a failure belongs to, so a
+  spec naming no criterion would produce a finding attached to no story at all,
+  and the note under test would correctly stay silent.
 
   The run's JSONL is therefore generated here rather than taken from a fixture:
   the criterion id is only known once the story exists.
@@ -120,7 +119,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
         [criterion | _] = context.story.criteria
         path = spex_path(context.story, criterion)
 
-        :ok = Environments.write_file(context.environment, path, failing_spex())
+        :ok = Environments.write_file(context.environment, path, failing_spex(criterion.id))
 
         {:ok, Map.put(context, :spex_path, path)}
       end
@@ -251,12 +250,12 @@ defmodule CodeMySpecSpex.Story895.Criterion2394Spex do
   # refusal is its own blocking finding — one that has nothing to do with
   # assignment and would hide the finding this criterion is about behind an
   # unrelated one.
-  defp failing_spex do
+  defp failing_spex(number) do
     """
     defmodule ExampleContextSpex do
       use ExampleSpex.Case
 
-      spex "intentional failure" do
+      spex "intentional failure", criterion: #{number} do
         scenario "asserts false" do
           given_ "a fixture that is set up", context do
             {:ok, context}

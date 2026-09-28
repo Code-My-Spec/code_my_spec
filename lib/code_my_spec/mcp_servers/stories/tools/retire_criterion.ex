@@ -1,9 +1,10 @@
-defmodule CodeMySpec.McpServers.Stories.Tools.DeleteCriterion do
+defmodule CodeMySpec.McpServers.Stories.Tools.RetireCriterion do
   @moduledoc """
-  Deletes an acceptance criterion from a story.
+  Retires an acceptance criterion. There is no delete.
 
-  Cannot delete verified (locked) criteria - they are protected from removal.
-  Use get_story to see criteria IDs and their verification status.
+  A retired criterion keeps its number, which is never given to another, and
+  drops out of its story's coverage. `restore_criterion` brings it back.
+  A spec file naming it is not touched; delete it if it no longer applies.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -15,26 +16,25 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteCriterion do
   schema do
     field :criterion_id, :string,
       required: true,
-      doc: "Criterion ID to delete (from get_story response)"
+      doc: "Criterion number to retire (from get_story)"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
          :ok <- check_not_verified(criterion),
-         {:ok, deleted} <- AcceptanceCriteria.delete_criterion(scope, criterion) do
-      {:reply, StoriesMapper.criterion_deleted_response(deleted), frame}
+         {:ok, retired} <- AcceptanceCriteria.retire_criterion(scope, criterion) do
+      {:reply, StoriesMapper.criterion_retired_response(retired), frame}
     else
       nil ->
         {:reply, StoriesMapper.criterion_not_found_error(), frame}
 
       {:error, :criterion_verified} ->
         {:reply,
-         StoriesMapper.error(
-           "Cannot delete verified criterion. Verified criteria are locked and protected from removal."
-         ), frame}
+         StoriesMapper.error("Cannot retire a verified criterion. Verified criteria are locked."),
+         frame}
 
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, StoriesMapper.validation_error(changeset), frame}

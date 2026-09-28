@@ -1,4 +1,4 @@
-defmodule CodeMySpecSpex.Story993.UnappliedEventSpex do
+defmodule CodeMySpecSpex.Story993.Criterion4684Spex do
   @moduledoc """
   Story 993 — regression, from the same QA session as the invoice-shape bug.
 

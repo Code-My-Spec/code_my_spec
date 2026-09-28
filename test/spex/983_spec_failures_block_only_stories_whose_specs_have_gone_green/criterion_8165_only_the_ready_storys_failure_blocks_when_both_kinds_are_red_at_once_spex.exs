@@ -85,40 +85,40 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
       end
 
       given_ "each story has a BDD spec file at its own path", context do
-        ready_path = spec_path(context.scope, context.story.id)
-        mid_build_path = spec_path(context.scope, context.mid_build_story.id)
+        {ready_path, ready_number} = spec_path(context.scope, context.story.id)
+        {mid_build_path, mid_build_number} = spec_path(context.scope, context.mid_build_story.id)
 
-        :ok = Environments.write_file(context.environment, ready_path, passing_spex())
-        :ok = Environments.write_file(context.environment, mid_build_path, failing_spex())
+        :ok = Environments.write_file(context.environment, ready_path, passing_spex(ready_number))
+        :ok = Environments.write_file(context.environment, mid_build_path, failing_spex(mid_build_number))
 
-        {:ok, Map.merge(context, %{ready_path: ready_path, mid_build_path: mid_build_path})}
+        # Synced now, so the latch set below is not cleared by the next sync
+        # reading these as freshly rewritten specs (criterion 2193).
+        Fixtures.deliver_manifest(context.scope)
+
+        {:ok,
+         Map.merge(context, %{
+           ready_path: ready_path,
+           mid_build_path: mid_build_path
+         })}
       end
 
-      given_ "a fresh green run has flipped the first story to specs-ready", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => green_fixture("compile.jsonl"),
-                "exunit" => green_fixture("exunit.json"),
-                "spex" => green_fixture("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+      # By hand, through the project UI (criterion 8170). A green stop does not
+      # flip the latch — only the specs-passing evaluation and the UI do — and
+      # this scenario is about what happens once one story is ready, not how
+      # it got there.
+      given_ "the first story is specs-ready", context do
+        {:ok, index_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/stories")
 
-        {:ok, Map.put(context, :green_response, response)}
-      end
+        index_live
+        |> element("[data-test='toggle-story-specs-ready'][phx-value-id='#{context.story.id}']")
+        |> render_click()
 
-      given_ "the specs-ready story then regresses too", context do
-        :ok = Environments.write_file(context.environment, context.ready_path, failing_spex())
         {:ok, context}
       end
 
+      # The ready story regresses without its spec being edited — its
+      # implementation broke. Editing the spec would be a rewrite, and a
+      # rewrite un-readies the story (criterion 2193).
       when_ "a run reports both stories red and the stop hook fires", context do
         jsonl =
           Fixtures.spex_run_report([
@@ -170,18 +170,19 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
 
   defp green_fixture(name), do: Path.expand(Path.join(@green_fixture_dir, name))
 
+  # The path, and the criterion number the spec names on its `spex` call.
   defp spec_path(scope, story_id) do
     story = StoryHelpers.fetch(scope, story_id)
     [criterion | _] = story.criteria
-    Fixtures.spec_file_path(story, criterion)
+    {Fixtures.spec_file_path(story, criterion), criterion.id}
   end
 
-  defp passing_spex do
+  defp passing_spex(number) do
     """
     defmodule ExampleContextSpex do
-      use SexySpex
+      use CodeMySpecSpex.Case
 
-      spex "example context behaves" do
+      spex "example context behaves", criterion: #{number} do
         scenario "the happy path holds" do
           then_ "it succeeds", context do
             assert 1 == 1
@@ -193,12 +194,12 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
     """
   end
 
-  defp failing_spex do
+  defp failing_spex(number) do
     """
     defmodule ExampleContextSpex do
-      use SexySpex
+      use CodeMySpecSpex.Case
 
-      spex "intentional failure" do
+      spex "intentional failure", criterion: #{number} do
         scenario "asserts false" do
           then_ "fails", context do
             assert 1 == 2, "spex failure fixture"

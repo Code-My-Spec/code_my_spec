@@ -59,9 +59,10 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
           Environments.write_file(
             context.environment,
             spec_path,
-            conncase_only_spec_content()
+            conncase_only_spec_content(criterion.id)
           )
 
+        Fixtures.deliver_manifest(context.scope)
         {:ok, context}
       end
 
@@ -100,7 +101,7 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
     end
   end
 
-  defp conncase_only_spec_content do
+  defp conncase_only_spec_content(number) do
     """
     defmodule MyAppSpex.ConnCaseOnlySpex do
       # The agent forgot `use MyAppSpex.Case` and reached for the
@@ -109,7 +110,7 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
       # `use SexySpex`), `spex/2` is undefined.
       use MyAppWeb.ConnCase
 
-      spex "feature" do
+      spex "feature", criterion: #{number} do
         scenario "happy path" do
           given_ "setup", _context do
             :ok

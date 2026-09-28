@@ -81,7 +81,11 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
       account_id: Ecto.UUID.generate()
     }
 
-    struct(Criterion, Map.merge(defaults, attrs))
+    attrs = Map.merge(defaults, attrs)
+
+    # A spec names its criterion by number; here the number follows the id
+    # unless a test says otherwise.
+    struct(Criterion, Map.put_new(attrs, :number, attrs.id))
   end
 
   # ============================================================================

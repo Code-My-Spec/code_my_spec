@@ -53,9 +53,11 @@ defmodule CodeMySpecSpex.Story460.Criterion5531Spex do
 
         for criterion <- [c1, c2] do
           spec_path = Fixtures.spec_file_path(context.story, criterion)
-          :ok = Environments.write_file(context.environment, spec_path, valid_spec_content())
+          :ok =
+            Environments.write_file(context.environment, spec_path, valid_spec_content(criterion.id))
         end
 
+        Fixtures.deliver_manifest(context.scope)
         {:ok, context}
       end
 
@@ -75,13 +77,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5531Spex do
             context do
         text = response_text(context.evaluate_response)
         [_c1, _c2, c3] = context.story.criteria
-        missing_path = Fixtures.spec_file_path(context.story, c3)
 
         assert text =~ ~r/Needs work/i,
                "expected needs-work response, got: #{text}"
 
-        assert text =~ "Spec file not found",
-               "expected feedback to mention 'Spec file not found', got: #{text}"
+        assert text =~ "No valid spec names it",
+               "expected feedback to say no spec names the criterion, got: #{text}"
 
         assert text =~ "Criterion #{c3.id}",
                "expected feedback to name criterion #{c3.id}, got: #{text}"
@@ -89,20 +90,20 @@ defmodule CodeMySpecSpex.Story460.Criterion5531Spex do
         assert text =~ c3.description,
                "expected feedback to include criterion description, got: #{text}"
 
-        assert text =~ missing_path,
-               "expected feedback to include expected path `#{missing_path}`, got: #{text}"
+        assert text =~ "criterion: #{c3.id}",
+               "expected feedback to give the `criterion: #{c3.id}` line to add, got: #{text}"
 
         {:ok, context}
       end
     end
   end
 
-  defp valid_spec_content do
+  defp valid_spec_content(number) do
     """
     defmodule MyAppSpex.ExampleSpex do
       use MyAppSpex.Case
 
-      spex "example feature" do
+      spex "example feature", criterion: #{number} do
         scenario "happy path" do
           given_ "setup", _context do
             :ok

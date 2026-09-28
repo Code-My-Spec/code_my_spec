@@ -46,7 +46,14 @@ defmodule CodeMySpecSpex.Story460.Criterion5537Spex do
       given_ "a spec file exists with a `spex` block but no scenarios", context do
         [criterion] = context.story.criteria
         spec_path = Fixtures.spec_file_path(context.story, criterion)
-        :ok = Environments.write_file(context.environment, spec_path, scenarioless_spec_content())
+        :ok =
+          Environments.write_file(
+            context.environment,
+            spec_path,
+            scenarioless_spec_content(criterion.id)
+          )
+
+        Fixtures.deliver_manifest(context.scope)
 
         {:ok, context}
       end
@@ -82,12 +89,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5537Spex do
     end
   end
 
-  defp scenarioless_spec_content do
+  defp scenarioless_spec_content(number) do
     """
     defmodule MyAppSpex.ScenarioLessSpex do
       use MyAppSpex.Case
 
-      spex "feature with no scenarios" do
+      spex "feature with no scenarios", criterion: #{number} do
       end
     end
     """

@@ -52,9 +52,11 @@ defmodule CodeMySpecSpex.Story460.Criterion5536Spex do
       given_ "valid spec files have been written in the env for every criterion", context do
         for criterion <- context.story.criteria do
           spec_path = Fixtures.spec_file_path(context.story, criterion)
-          :ok = Environments.write_file(context.environment, spec_path, valid_spec_content())
+          :ok =
+            Environments.write_file(context.environment, spec_path, valid_spec_content(criterion.id))
         end
 
+        Fixtures.deliver_manifest(context.scope)
         {:ok, context}
       end
 
@@ -84,12 +86,12 @@ defmodule CodeMySpecSpex.Story460.Criterion5536Spex do
     end
   end
 
-  defp valid_spec_content do
+  defp valid_spec_content(number) do
     """
     defmodule MyAppSpex.ExampleSpex do
       use MyAppSpex.Case
 
-      spex "example feature" do
+      spex "example feature", criterion: #{number} do
         scenario "happy path" do
           given_ "setup", _context do
             :ok

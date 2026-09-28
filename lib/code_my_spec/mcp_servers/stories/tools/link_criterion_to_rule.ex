@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule do
   schema do
     field :criterion_id, :string,
       required: true,
-      doc: "Criterion ID to relink (from get_story or list_story_titles)"
+      doc: "Criterion number to relink (from get_story)"
 
     field :rule_id, :string,
       required: true,
@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
          :ok <- check_not_verified(criterion),
          {:ok, updated} <-
            AcceptanceCriteria.update_criterion(scope, criterion, %{rule_id: params.rule_id}) do

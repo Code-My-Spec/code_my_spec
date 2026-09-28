@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def rule_deleted_response(rule) do
     summary =
-      "Rule deleted: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`). All linked scenarios were removed by cascade."
+      "Rule deleted: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`). All linked scenarios were retired with it."
 
     Response.tool()
     |> Response.text(summary)
@@ -55,7 +55,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def scenario_response(criterion) do
     summary = """
-    Scenario added: "#{criterion.description}" (id: `#{criterion.id}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)
+    Scenario added: "#{criterion.description}" (criterion: `#{criterion.number}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)
 
     Linked to rule_id: `#{criterion.rule_id}`.
     """
@@ -66,7 +66,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def scenario_updated_response(criterion) do
     summary =
-      "Scenario updated: \"#{criterion.description}\" (id: `#{criterion.id}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)."
+      "Scenario updated: \"#{criterion.description}\" (criterion: `#{criterion.number}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)."
 
     Response.tool()
     |> Response.text(summary)
@@ -174,7 +174,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
         "them with it — orphaning any spec file already claimed by one, unclaimable by " <>
         "anything afterward.\n\n#{list}\n\n" <>
         "If the rule is genuinely superseded, resolve or remove the spec files for these " <>
-        "scenarios first (or unverify them), then delete the rule. `delete_criterion` still " <>
+        "scenarios first (or unverify them), then delete the rule. `retire_criterion` still " <>
         "refuses a verified one individually for the same reason."
     )
   end

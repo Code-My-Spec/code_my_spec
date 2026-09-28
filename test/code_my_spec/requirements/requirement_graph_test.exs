@@ -618,10 +618,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       bdd_content = """
       defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-        use ExUnit.Case, async: true
+        use CodeMySpecSpex.Case
 
-        test "placeholder" do
-          assert true
+        spex "placeholder", criterion: #{criterion.id} do
+          scenario "it holds" do
+            then_ "it holds", context do
+              {:ok, context}
+            end
+          end
         end
       end
       """

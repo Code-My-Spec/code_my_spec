@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
 
       use CodeMySpecSpex.Case
 
-      spex "#{story.title}" do
+      spex "#{story.title}", criterion: #{criterion.id} do
         scenario "the criterion holds" do
           then_ "the implementation is not written yet" do
             assert false

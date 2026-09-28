@@ -170,11 +170,13 @@ defmodule CodeMySpecSpex.StoryHelpers do
     end
   end
 
+  # `(criterion N)` is the criterion's number, the only id the agent sees and
+  # the one every criterion tool takes, so it is the `:id` here too.
   defp parse_criteria(text) do
     ~r/- \[[ x]\] (.+?) \(criterion (\d+)\)/
     |> Regex.scan(text)
-    |> Enum.map(fn [_, description, id_str] ->
-      %{id: String.to_integer(id_str), description: description}
+    |> Enum.map(fn [_, description, number] ->
+      %{id: String.to_integer(number), description: description}
     end)
   end
 end

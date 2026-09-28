@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.MoveCriterion do
   Cannot move verified (locked) criteria - they are protected from changes.
   Any existing rule link is cleared during the move, since BDD rules are
   story-scoped and would otherwise point across story boundaries.
-  Use get_story to see criteria IDs and their verification status.
+  Use get_story to see criterion numbers and their verification status.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.MoveCriterion do
   schema do
     field :criterion_id, :string,
       required: true,
-      doc: "Criterion ID to move (from get_story response)"
+      doc: "Criterion number to move (from get_story)"
 
     field :target_story_id, :string,
       required: true,
@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.MoveCriterion do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
-           AcceptanceCriteria.get_criterion(scope, params.criterion_id),
+           AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_id),
          :ok <- check_not_verified(criterion),
          target_story when not is_nil(target_story) <-
            Stories.get_story(scope, params.target_story_id),

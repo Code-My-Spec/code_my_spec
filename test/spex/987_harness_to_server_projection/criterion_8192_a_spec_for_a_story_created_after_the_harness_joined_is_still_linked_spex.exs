@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
             context.environment,
             # `number`, not `id` — see the note in criterion_8186.
             "test/spex/#{story.number}_capture_a_task/criterion_#{criterion.id}_a_task_is_captured_spex.exs",
-            "defmodule Sample do\nend\n"
+            CodeMySpecSpex.CriterionScript.spex_naming(criterion.id)
           )
 
         Fixtures.deliver_manifest(context.scope)

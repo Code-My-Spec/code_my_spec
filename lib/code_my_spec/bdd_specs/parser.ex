@@ -13,7 +13,8 @@ defmodule CodeMySpec.BddSpecs.Parser do
   @doc """
   Parse Spex DSL content into a Spec struct.
 
-  Takes the file content (string) and the file path (for story_number/criterion_id derivation).
+  Takes the file content (string) and the file path (for story_number derivation).
+  `criterion_id` is the number the file's `spex` call names.
   Callers are responsible for reading the file (via Environment or otherwise).
   """
   @spec parse(String.t(), String.t()) :: {:ok, Spec.t()} | {:error, term()}
@@ -61,12 +62,13 @@ defmodule CodeMySpec.BddSpecs.Parser do
       ...>   end
       ...> end
       iex> extract_spex_metadata(spex_ast)
-      %{name: "test", description: "desc", tags: [:unit]}
+      %{name: "test", description: "desc", tags: [:unit], criterion: nil}
   """
   @spec extract_spex_metadata(tuple()) :: %{
           name: String.t(),
           description: String.t() | nil,
-          tags: [atom()]
+          tags: [atom()],
+          criterion: pos_integer() | nil
         }
   def extract_spex_metadata(spex_ast) do
     case spex_ast do
@@ -76,11 +78,12 @@ defmodule CodeMySpec.BddSpecs.Parser do
         %{
           name: name,
           description: Keyword.get(opts, :description),
-          tags: Keyword.get(opts, :tags, [])
+          tags: Keyword.get(opts, :tags, []),
+          criterion: criterion_number(Keyword.get(opts, :criterion))
         }
 
       _ ->
-        %{name: "", description: nil, tags: []}
+        %{name: "", description: nil, tags: [], criterion: nil}
     end
   end
 
@@ -190,7 +193,6 @@ defmodule CodeMySpec.BddSpecs.Parser do
 
   defp build_spec(metadata, file_path) do
     story_number = derive_story_number(file_path)
-    criterion_id = derive_criterion_id(file_path)
 
     scenario_maps =
       Enum.map(metadata.scenarios, fn scenario ->
@@ -211,7 +213,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
         tags: metadata.tags,
         file_path: file_path,
         story_number: story_number,
-        criterion_id: criterion_id,
+        criterion_id: metadata.criterion,
         scenarios: scenario_maps
       })
 
@@ -245,6 +247,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
                name: metadata.name,
                description: metadata.description,
                tags: metadata.tags,
+               criterion: metadata.criterion,
                scenarios: scenarios
              }}
         end
@@ -343,6 +346,11 @@ defmodule CodeMySpec.BddSpecs.Parser do
   end
 
   defp collect_step(_, acc), do: acc
+
+  # The criterion a spec covers, as the file names it: `spex "…", criterion: 12`.
+  # Only a literal counts — the scanner reads it without running the file.
+  defp criterion_number(number) when is_integer(number) and number > 0, do: number
+  defp criterion_number(_), do: nil
 
   defp extract_opts_from_args(args) do
     Enum.find_value(args, [], fn

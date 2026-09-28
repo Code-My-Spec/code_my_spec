@@ -120,6 +120,8 @@ defmodule CodeMySpec.SpexGivensTest do
   #   * `StoryHelpers.` — its own moduledoc says it "drives the same MCP tools
   #     the agent uses in production", which is the definition this list is
   #     for. `Fixtures.` is here on the same grounds.
+  #   * `CriterionScript.` — drives the story and criterion tools by name
+  #     through `run_script`, as an agent does. Same grounds as `StoryHelpers.`.
   #   * `Artifacts.` — writes through the `Environments` seam, which is listed
   #     one line up, so listing the wrapper and not the wrapped was arbitrary.
   #   * `story_for` — story 460's local wrapper around
@@ -219,7 +221,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
     assign put_session seed_cookies
-    StoryHelpers. Artifacts. story_for register_and_log_in_user
+    StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!

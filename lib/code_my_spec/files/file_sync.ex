@@ -15,15 +15,14 @@ defmodule CodeMySpec.Files.FileSync do
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Analysis.Freshness
-  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
   alias CodeMySpec.Repo
@@ -227,16 +226,11 @@ defmodule CodeMySpec.Files.FileSync do
     # Re-resolving here costs one read-model build per manifest and removes the
     # whole class: the harness reports what a file *is*, and the server, which
     # owns the database, decides what it *belongs to*.
+    # A manifest is the whole tree, so a spex that is not in it holds nothing.
     observations =
       observations
       |> Scanner.resolve_owners(Files.read_model(scope))
-
-    # And record where each spex file is, for criteria that do not already say.
-    # The same reasoning as re-resolving ownership above: the association should
-    # live in the database rather than be re-derived from a filename every time,
-    # because the filename is built from four things that all move and the two
-    # directions can silently stop agreeing.
-    claim_spec_paths(scope, observations)
+      |> then(&SpecBinding.bind(scope, &1, true))
 
     # One statement, and it is both the write and the answer to what moved.
     #
@@ -601,39 +595,6 @@ defmodule CodeMySpec.Files.FileSync do
   defp working_copy(%Scope{active_working_copy_id: id}) when is_binary(id), do: "harness #{id}"
   defp working_copy(_scope), do: "an unnamed working copy"
 
-  # Entries whose fingerprint differs from the existing DB row (or that
-  # have no row yet) — i.e., files whose content actually changed since
-  # the last sync. Used to drive embedding work and to populate the
-  # user-visible "Changed files" count on the /files page.
-  # Only files whose name still yields a criterion id, which is every file the
-  # convention produced. One that does not is either a criterion that has been
-  # cut or a file named by hand, and neither should have a path invented for it.
-  defp claim_spec_paths(scope, observations) do
-    paths =
-      observations
-      |> Enum.filter(&(Map.get(&1, :role) == :bdd_spec))
-      |> Enum.flat_map(fn entry ->
-        case Parser.derive_criterion_id(entry.path) do
-          nil -> []
-          id -> [{id, entry.path}]
-        end
-      end)
-      |> Map.new()
-
-    recorded = scope |> Files.list_files() |> Enum.map(& &1.path)
-
-    case AcceptanceCriteria.claim_spec_paths(scope, paths, recorded) do
-      {:ok, 0} ->
-        :ok
-
-      {:ok, n} ->
-        Logger.info(
-          "[FileSync] recorded the spex path for #{n} criteri#{if n == 1, do: "on", else: "a"} " <>
-            "that had none — their files are now found by record rather than by name"
-        )
-    end
-  end
-
   @doc """
   Run the embedding side of sync against the currently-tracked corpus,
   without re-walking the filesystem or upserting File records.
@@ -854,7 +815,7 @@ defmodule CodeMySpec.Files.FileSync do
           # The upsert says what moved. `validated_entries` is everything whose
           # mtime bumped; the rows that come back are the ones whose content,
           # role, ownership or validity actually differs.
-          Files.upsert_files(scope, validated_entries)
+          Files.upsert_files(scope, SpecBinding.bind(scope, validated_entries, false))
       end
 
     # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
@@ -985,7 +946,9 @@ defmodule CodeMySpec.Files.FileSync do
               read_model = Files.read_model(scope)
               [entry] = Scanner.resolve_owners([entry], read_model)
               [entry] = Scanner.fingerprint_entries(env, [entry])
-              Scanner.validate_entry(entry, env, read_model.component_by_id, read_model.strict?)
+              entry = Scanner.validate_entry(entry, env, read_model.component_by_id, read_model.strict?)
+              [entry] = SpecBinding.bind(scope, [entry], false)
+              entry
 
             setup_validated_role?(role) ->
               # Setup-config-style files (claude_md, mix_exs, credo_exs,
