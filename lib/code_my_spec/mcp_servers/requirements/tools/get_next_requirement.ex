@@ -13,6 +13,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
@@ -40,12 +41,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         agent = my_agent(frame, scope)
 
         execution =
-          Requirements.story_execution(
-            scope,
+          scope
+          |> Requirements.story_execution(
             agent && agent.role,
             requested["story_number"],
             withheld(scope, agent)
           )
+          |> then(&StoryRefs.number_execution(scope, &1))
 
         {:reply, RequirementsMapper.story_execution_response(execution, active_subagents), frame}
 
