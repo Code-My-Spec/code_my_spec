@@ -11,6 +11,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
 
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import Phoenix.ChannelTest
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
@@ -48,15 +49,41 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-        {:reply, claim, _} =
-          StartTask.execute(
-            %{
-              requirement_name: "qa_complete",
-              entity_type: "story",
-              entity_id: to_string(context.story.number)
-            },
-            agent_frame
-          )
+        # `qa_complete`'s prompt resolves this checkout's own app via a live
+        # `ensure_app_running` dispatch (story 1108/1003 — main is just
+        # another working copy now, so it is no longer skipped). This
+        # criterion is about task concurrency, not app-serving, so the
+        # answer only needs to unblock the prompt build, not be meaningful.
+        claim_task =
+          Task.async(fn ->
+            StartTask.execute(
+              %{
+                requirement_name: "qa_complete",
+                entity_type: "story",
+                entity_id: to_string(context.story.number)
+              },
+              agent_frame
+            )
+          end)
+
+        assert_push "ensure_app_running", %{"ref" => ref}, 5_000
+
+        reply_ref =
+          Phoenix.ChannelTest.push(context.harness_socket, "ensure_app_running_result", %{
+            "ref" => ref,
+            "status" => "ok",
+            "app_status" => "serving",
+            "app_url" => "http://127.0.0.1:4000",
+            "app_commit" => "cafef00d"
+          })
+
+        receive do
+          %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
+        after
+          1_000 -> flunk("ensure_app_running_result was never acknowledged")
+        end
+
+        {:reply, claim, _} = Task.await(claim_task, 5_000)
 
         refute claim.isError, response_text(claim)
         {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, agent_frame)
