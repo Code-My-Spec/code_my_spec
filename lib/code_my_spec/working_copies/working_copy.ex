@@ -165,10 +165,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # report yet. `down` always clears `app_url` — a stale address pointing
     # at nothing running is the exact failure story 1108 exists to prevent
     # (issue 2d612ae8: QA silently served main's code through a stale link).
-    #
-    # `starting` is a fourth, narrower state: a first start's cold
-    # `npm install`/compile still running in the background past
-    # `AppInstance`'s own short inline wait. See `WorkingCopies.record_app_status/2`.
     field :app_status, :string
     field :app_checked_at, :utc_datetime_usec
     field :app_url, :string

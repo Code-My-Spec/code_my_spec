@@ -51,7 +51,6 @@ defmodule CmsHarness.AppInstance do
   require Logger
 
   alias CmsHarness.AppInstance.Runner
-  alias CmsHarness.Project.ChannelClient
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real
@@ -73,17 +72,6 @@ defmodule CmsHarness.AppInstance do
     :state_path,
     :tunnel_pid,
     :tunnel_id,
-    # Monotonic `System.monotonic_time(:millisecond)` deadline for a first
-    # start's 10-minute ceiling — `nil` outside that window. Deliberately
-    # never persisted: it only drives the in-BEAM `Process.send_after/3`
-    # polling loop below, and a harness restart mid-first-start loses that
-    # loop's timer along with everything else in this BEAM anyway. The next
-    # explicit `ensure_running` call after such a restart still finds the
-    # detached `just serve` process alive (`os_pid`/`port` *are* persisted)
-    # and probes it fresh — losing the exact "exceeded 10 min" wording on a
-    # restart this rare is an accepted trade against persisting a deadline
-    # nothing else needs to survive one.
-    :first_start_deadline,
     main?: false,
     tunnel_held_by_harness?: false
   ]
@@ -259,24 +247,19 @@ defmodule CmsHarness.AppInstance do
   def handle_call({:ensure_running, main?, tunnel}, _from, state) do
     state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
 
-    cond do
-      running?(state) ->
-        new_state = state |> probe() |> ensure_tunnel(main?, tunnel)
-        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+    if running?(state) do
+      new_state = state |> probe() |> ensure_tunnel(main?, tunnel)
+      {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+    else
+      case start_app(state) do
+        {:ok, new_state} ->
+          new_state = ensure_tunnel(new_state, main?, tunnel)
+          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
-      first_start?(state) ->
-        start_first_run(state, main?, tunnel)
-
-      true ->
-        case start_app(state) do
-          {:ok, new_state} ->
-            new_state = ensure_tunnel(new_state, main?, tunnel)
-            {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-
-          {:error, reason} ->
-            new_state = ensure_tunnel(state, main?, tunnel)
-            {:reply, {:error, reason}, new_state, idle_timeout()}
-        end
+        {:error, reason} ->
+          new_state = ensure_tunnel(state, main?, tunnel)
+          {:reply, {:error, reason}, new_state, idle_timeout()}
+      end
     end
   end
 
@@ -324,47 +307,6 @@ defmodule CmsHarness.AppInstance do
   @impl true
   def handle_cast(:touch, state), do: {:noreply, state, idle_timeout()}
 
-  # A first start's background watch, past its own short inline reply
-  # window (see `start_first_run/3`). Guarded on `first_start_deadline` so a
-  # stray message reaching a copy that has since actually started (a
-  # concurrent `ensure_running` call already saw it serving and cleared the
-  # deadline) or been stopped is simply ignored rather than re-armed forever.
-  @impl true
-  def handle_info(:first_start_check, %__MODULE__{first_start_deadline: deadline} = state)
-      when is_integer(deadline) do
-    probed = probe(state)
-
-    cond do
-      probed.status == "serving" ->
-        new_state = %{probed | first_start_deadline: nil}
-        persist!(new_state)
-        deliver_app_status(new_state)
-        {:noreply, new_state, idle_timeout()}
-
-      System.monotonic_time(:millisecond) >= deadline ->
-        Logger.warning(
-          "[CmsHarness] #{state.root}: first start exceeded " <>
-            "#{first_start_ceiling_minutes()} min; see #{state.log_path}"
-        )
-
-        new_state = %{probed | status: "erroring", first_start_deadline: nil}
-        persist!(new_state)
-        deliver_app_status(new_state)
-        {:noreply, new_state, idle_timeout()}
-
-      true ->
-        # Neither settled nor out of time — still `starting`, regardless of
-        # what this probe's raw HTTP answer was; a `down`/`erroring` reading
-        # mid-compile is not a real failure yet.
-        new_state = %{probed | status: "starting"}
-        persist!(new_state)
-        schedule_first_start_check()
-        {:noreply, new_state, idle_timeout()}
-    end
-  end
-
-  def handle_info(:first_start_check, state), do: {:noreply, state, idle_timeout()}
-
   @impl true
   def handle_info(:timeout, %{main?: true} = state) do
     # Main's app is never stopped for idling — rule, not a longer timeout.
@@ -395,22 +337,6 @@ defmodule CmsHarness.AppInstance do
   @doc "A stopped copy never reports the address it used to answer on."
   def url(_port, status) when status in [nil, "down"], do: nil
   def url(port, _status), do: "http://127.0.0.1:#{port}"
-
-  # Pushed unprompted — the one case nothing is calling back to ask: a first
-  # start whose result (`starting` → `serving`, or `starting` → `erroring`)
-  # is discovered by this copy's own background watch, well after the
-  # `ensure_app_running` call that started it already got its own `starting`
-  # reply and returned. `WorkingCopies.record_app_status/2`'s own shape —
-  # `record_app_result/2` on the server side reads the exact same three keys
-  # from an `_result` reply, so this is not a new contract, just a new way
-  # to reach it.
-  defp deliver_app_status(state) do
-    ChannelClient.deliver_app_status(state.root, %{
-      "status" => state.status,
-      "url" => url(state.port, state.status),
-      "commit" => state.commit
-    })
-  end
 
   # A recycled pid is the hazard, not a hypothetical one. `os_pid` can come
   # from disk (`restore_persisted/1`, on every fresh `init/1`) as easily as
@@ -455,17 +381,6 @@ defmodule CmsHarness.AppInstance do
   # --- Internals: start/stop ---
 
   defp start_app(state) do
-    with {:ok, launched_state} <- launch_process(state) do
-      {:ok, wait_for_health(launched_state)}
-    end
-  end
-
-  # The half `start_app/1` and `start_first_run/3` share: get the OS process
-  # running and the state persisted, before either decides how long to wait
-  # on it. `status: "starting"` here is only ever the value `wait_for_health/1,2`
-  # sees on its own first (always-taken) probe — real `probe/1` output
-  # overwrites it before either caller's own reply is built.
-  defp launch_process(state) do
     with :ok <- ensure_serve_recipe(state),
          {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
          :ok <- ensure_port_free(state, port),
@@ -478,73 +393,13 @@ defmodule CmsHarness.AppInstance do
           database: database,
           os_pid: os_pid,
           commit: current_commit(state),
-          status: "starting"
+          status: "serving"
       }
 
       persist!(new_state)
-      {:ok, new_state}
+      {:ok, wait_for_health(new_state)}
     end
   end
-
-  # A copy that has never once come up — `commit` is set only once `launch_process/1`
-  # succeeds, so its absence means exactly "no successful start yet," never
-  # "started a while ago and idled out" (that copy's last-persisted commit
-  # survives a stop). Only this case gets the long, backgrounded first-start
-  # treatment below; an ordinary restart (`:restart`, or `ensure_running` on a
-  # copy that has run before) keeps today's synchronous `start_app/1` path and
-  # its existing, unchanged timeout.
-  defp first_start?(%__MODULE__{commit: nil}), do: true
-  defp first_start?(_state), do: false
-
-  # Harness session, live QA defect: a cold `npm install` plus compile can
-  # legitimately outrun the 120s ceiling every other `ensure_running` call
-  # gets, and a `GenServer.call` that does not reply within its own timeout
-  # reads as a crash to its caller — an agent's own tool-call timeout, not
-  # just this one. So a first start never blocks past a short inline window
-  # (`first_start_probe_attempts/0`, ~30s): if the app is not yet serving by
-  # then, this replies `starting` right away — with the address, so the
-  # caller knows where it will be — and keeps polling in the background
-  # toward its own 10-minute ceiling (`first_start_ceiling_ms/0`), pushing
-  # `app_status` unprompted the moment it actually resolves (see
-  # `handle_info(:first_start_check, ...)`), rather than making the next
-  # `ensure_app_running` call respond stale or wait through the launch again.
-  defp start_first_run(state, main?, tunnel) do
-    case launch_process(state) do
-      {:ok, launched_state} ->
-        settled_state = wait_for_health(launched_state, first_start_probe_attempts())
-
-        if settled_state.status == "serving" do
-          new_state = ensure_tunnel(settled_state, main?, tunnel)
-          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-        else
-          # Not yet serving after the short window — reported as `starting`,
-          # not whatever the raw probe answered (`down`/`erroring` mid-compile
-          # is not a real failure yet), and never re-launched by a concurrent
-          # `ensure_running` call in the meantime: `os_pid` is already set, so
-          # `running?/1` is already true.
-          deadline = System.monotonic_time(:millisecond) + first_start_ceiling_ms()
-          new_state = %{settled_state | status: "starting", first_start_deadline: deadline}
-          persist!(new_state)
-          schedule_first_start_check()
-          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-        end
-
-      {:error, reason} ->
-        new_state = ensure_tunnel(state, main?, tunnel)
-        {:reply, {:error, reason}, new_state, idle_timeout()}
-    end
-  end
-
-  defp schedule_first_start_check,
-    do: Process.send_after(self(), :first_start_check, health_wait_interval_ms())
-
-  defp first_start_probe_attempts,
-    do: Application.get_env(:code_my_spec, :app_instance_first_start_probe_attempts, 30)
-
-  defp first_start_ceiling_ms,
-    do: Application.get_env(:code_my_spec, :app_instance_first_start_ceiling_ms, to_timeout(minute: 10))
-
-  defp first_start_ceiling_minutes, do: div(first_start_ceiling_ms(), 60_000)
 
   defp ensure_serve_recipe(state) do
     if Runner.recipe?(state.root, "serve"), do: :ok, else: {:error, :no_start_recipe}

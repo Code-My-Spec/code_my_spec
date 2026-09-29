@@ -432,15 +432,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # survives only as the fallback for the two cases where there is no copy id
   # to resolve at all (no active working copy on the scope, or the id it
   # names does not exist) — there is nothing else to ask in either case.
-  #
-  # Harness session, 2026-09-29: dropped from 3 minutes. `AppInstance.ensure_running/2`
-  # no longer blocks a first start through its own cold `npm install`/compile
-  # — past its own short (~30s) inline window it replies `starting` and keeps
-  # working in the background, reporting the real outcome later through
-  # `app_status`. Waiting minutes *here* for a reply that arrives in ~30s
-  # either way just held this call, and the agent, idle. Comfortably above
-  # `AppInstance`'s own budget for the round trip and the channel hop.
-  @app_start_timeout to_timeout(second: 35)
+  @app_start_timeout to_timeout(minute: 3)
 
   defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
        when is_binary(id) do
@@ -461,13 +453,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       {:ok, %{status: "serving", url: url, commit: commit}} ->
         "**App URL:** #{url} — this working copy's own instance" <>
           commit_suffix(commit) <> ", not main's. Test against this address."
-
-      {:ok, %{status: "starting", commit: commit}} ->
-        "**App URL:** this copy's app is still building" <>
-          commit_suffix(commit) <>
-          " — a first start can take several minutes (installing dependencies, " <>
-          "compiling). Call ensure_app_running again in a minute or two. Don't " <>
-          "test against it yet; there is nothing serving there."
 
       {:ok, %{status: status, commit: commit}} ->
         "**App URL:** this copy's own app is currently `#{status}`" <>
