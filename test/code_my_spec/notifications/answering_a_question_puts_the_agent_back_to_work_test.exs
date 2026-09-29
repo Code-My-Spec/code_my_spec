@@ -58,7 +58,7 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
       )
 
     {:ok, agent} =
-      TaskOwner.add_task(ctx.scope, agent, %{requirement_name: "code_on_running_copy"})
+      TaskOwner.add_task(ctx.scope, agent, %{requirement_name: "story_promoted"})
 
     [task] = agent.tasks
     {:ok, agent} = TaskOwner.activate_task(ctx.scope, agent, task.id)

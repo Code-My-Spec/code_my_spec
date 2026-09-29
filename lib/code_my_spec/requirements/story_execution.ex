@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   alias CodeMySpec.Requirements.{GraphWatcher, Preloader, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
-  @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing code_on_running_copy qa_complete story_issues_resolved problems_resolved)
+  @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing story_promoted qa_complete story_issues_resolved problems_resolved)
 
   # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
   # another agent's at this checkout — before the wave is cut (467310a7).

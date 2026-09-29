@@ -71,6 +71,14 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
+  @doc "The checkout at `root`'s HEAD and current version, moving nothing."
+  @spec current(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  def current(scope, root, copy_id),
+    do:
+      run(scope, copy_id, "promotion_current", %{"root" => root}, @git_timeout, fn env ->
+        Steps.current(env, root)
+      end)
+
   @doc "Check out in `root`'s `.code_my_spec` the commit a merge pinned, fetched from `source`."
   @spec sync_submodule(Scope.t(), String.t(), String.t(), map(), Ecto.UUID.t() | nil) ::
           Steps.result()

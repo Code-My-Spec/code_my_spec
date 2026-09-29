@@ -481,7 +481,7 @@ defmodule CodeMySpec.PromotionTest do
   # looking clean — is now unrepresentable, and the claim they make is
   # structural. They are kept because the claim is still the one that matters:
   # the stamp decides, and it is the only thing that can.
-  describe "code_on_running_copy reads the story's stamp, not the checkout's live state" do
+  describe "story_promoted reads the story's stamp, not the checkout's live state" do
     setup do
       scope = full_scope_fixture()
       device = device_fixture(scope)
@@ -521,7 +521,7 @@ defmodule CodeMySpec.PromotionTest do
       assert {false, %{reason: reason, promoted: false}} =
                Promotion.running_copy_check(scope, story)
 
-      assert reason =~ "has not been promoted yet",
+      assert reason =~ "no promotion stamp" and reason =~ "Promote this story",
              "an in-sync checkout is not the same claim as a promoted story — " <>
                "the checkout can be clean for a reason that has nothing to do " <>
                "with this story ever having promoted. Got: #{reason}"

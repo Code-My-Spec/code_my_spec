@@ -288,10 +288,9 @@ defmodule CodeMySpec.Stories do
   Sets or clears the story's specs-ready latch.
 
   The latch is what `bdd_specs_passing` checks and what the stop hook
-  consults before letting a spex failure block. Three callers write it:
-  the specs-passing gate sets it on a fresh green run, the chain-restart
-  path clears it when the story's BDD specs are rewritten, and the user
-  flips it by hand from the project UI.
+  consults before letting a spex failure block. Only a promote of the story
+  sets it (`mark_story_promoted/4`, e1174640); rewriting the story's BDD
+  specs, editing its criteria, and the story page's Unenforce clear it.
 
   Deliberately narrower than `update_story/3` — the latch carries
   enforcement consequences, so the write path is named rather than
@@ -312,6 +311,7 @@ defmodule CodeMySpec.Stories do
       %{specs_ready: true}
       |> maybe_put(:specs_ready_at, Keyword.get(opts, :at))
       |> maybe_put(:specs_ready_commit, Keyword.get(opts, :commit))
+      |> maybe_put(:promoted_version, Keyword.get(opts, :promoted_version))
 
     update_story(scope, story, attrs)
   end
@@ -322,6 +322,23 @@ defmodule CodeMySpec.Stories do
       specs_ready_at: nil,
       specs_ready_commit: nil
     })
+  end
+
+  @doc """
+  Latches `story`'s specs and stamps it with the version its promote carried
+  onto main, in one write.
+
+  The only writer of `promoted_version`. Called from `CodeMySpec.Promotion`
+  once a promote named this story, its spex passed on the promoting copy's
+  certifying run, and the merge landed. No other story is touched.
+
+  A story already stamped keeps its version: the promote that first carried
+  it is the answer to "which promotion put this on main". `nil` (no version
+  to stamp) latches without stamping. `opts` are `:at` and `:commit`.
+  """
+  def mark_story_promoted(%Scope{} = scope, %Story{} = story, version, opts \\ []) do
+    stamp = story.promoted_version || version
+    set_specs_ready(scope, story, true, Keyword.put(opts, :promoted_version, stamp))
   end
 
   defp maybe_put(map, _key, nil), do: map
@@ -415,35 +432,6 @@ defmodule CodeMySpec.Stories do
   """
   def bulk_set_story_component(%Scope{} = scope, links) when is_list(links) do
     with {:ok, stories} <- impl().bulk_set_story_component(scope, links) do
-      Enum.each(stories, &broadcast(scope, {:updated, &1}))
-      {:ok, stories}
-    end
-  end
-
-  @doc """
-  Stamps every story in this project that has reached `code_on_running_copy`
-  but has not yet been promoted, with the version a promotion just
-  originated.
-
-  "Reached" means `specs_ready`: `code_on_running_copy`'s own prerequisite is
-  `bdd_specs_passing`, so a story with specs not yet green cannot be the
-  subject of the question this stamp answers. Not scoped to a working copy —
-  `stories.working_copy_id` is set only by epic dispatch and is nil for
-  ordinary work, and `code_on_running_copy` never checked it either: the
-  check it replaces answered from whichever copy asked, the same answer for
-  every qualifying story in the project. This keeps that shape and only
-  changes when the answer is taken — once, at promotion, instead of live on
-  every read — which is what stops a checkout dirtied afterward for
-  unrelated work from un-answering a question that already had its answer.
-
-  The only writer of `promoted_version`. Called once, from
-  `CodeMySpec.Promotion`, after a merge into main has already landed. Already
-  a `nil` promoted_version is required — a promoted story keeps the version
-  it was actually promoted at rather than being bumped to whatever a later,
-  unrelated promotion happens to originate.
-  """
-  def mark_ready_stories_promoted(%Scope{} = scope, version) when is_binary(version) do
-    with {:ok, stories} <- impl().mark_ready_stories_promoted(scope, version) do
       Enum.each(stories, &broadcast(scope, {:updated, &1}))
       {:ok, stories}
     end

@@ -17,10 +17,12 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
 
@@ -62,6 +64,23 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     {running_root, agent_root}
   end
 
+  defp a_story_with_linked_spex(scope) do
+    story = story_fixture(scope)
+
+    {_n, _} =
+      Files.upsert_files(scope, [
+        %{
+          path: "test/spex/#{story.number}_x/criterion_1_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
+    story
+  end
+
   defp analyzers_are_current(scope, running) do
     AnalysisFixtures.fresh_analysis_runs_fixture(scope)
     AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
@@ -89,8 +108,15 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
 
       receive do
         {:"$gen_call", from, {:restart_app, _request}} ->
-          File.write!(Path.join(running_root, ".restarted"), DateTime.to_string(DateTime.utc_now()))
-          GenServer.reply(from, {:ok, %{status: "serving", url: "http://127.0.0.1:4000", commit: "abc123"}})
+          File.write!(
+            Path.join(running_root, ".restarted"),
+            DateTime.to_string(DateTime.utc_now())
+          )
+
+          GenServer.reply(
+            from,
+            {:ok, %{status: "serving", url: "http://127.0.0.1:4000", commit: "abc123"}}
+          )
       end
     end)
 
@@ -126,9 +152,10 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     git!(agent_root, ["commit", "-qam", "the story's work"])
 
     scope = %{scope | active_working_copy_id: agent.id}
+    story = a_story_with_linked_spex(scope)
     :ok = analyzers_are_current(scope, running)
 
-    result = Promotion.promote(scope)
+    result = Promotion.promote(scope, story.number)
 
     assert {:ok, %{merged: "story/x", serving: %{unconfirmed: reason}}} = result,
            "an ordinary promotion has to answer merged-and-dispatched, not wait " <>

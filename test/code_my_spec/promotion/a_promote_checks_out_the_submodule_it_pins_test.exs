@@ -11,10 +11,12 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
@@ -115,10 +117,23 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script(overrides))
     scope = %{scope | active_working_copy_id: agent.id, environment: env}
 
+    story = story_fixture(scope)
+
+    {_n, _} =
+      Files.upsert_files(scope, [
+        %{
+          path: "test/spex/#{story.number}_x/criterion_1_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
     AnalysisFixtures.fresh_analysis_runs_fixture(scope)
     AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
 
-    Promotion.promote(scope)
+    Promotion.promote(scope, story.number)
   end
 
   test "a merge that moves the gitlink fetches the pinned commit, checks it out, and restarts" do

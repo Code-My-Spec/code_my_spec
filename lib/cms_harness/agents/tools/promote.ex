@@ -7,7 +7,7 @@ defmodule CmsHarness.Agents.Tools.Promote do
   bind that to a script — so without this module it is reachable by no route at
   all from an agent we run.
 
-  Which is exactly what happened. `code_on_running_copy` is a coding
+  Which is exactly what happened. `story_promoted` is a coding
   requirement, the orchestrator hands it to the coding role, and the agent found
   `promote` documented by `tool_docs`, granted to its role in `ToolSets`, listed
   on `LocalServer` — and still got `Unknown tool: promote`, because an Alloy
@@ -42,8 +42,10 @@ defmodule CmsHarness.Agents.Tools.Promote do
     — the outcome is delivered to you as a message when it lands, because the
     analyzer sweep it waits on takes minutes.
 
-    Takes no arguments. The target is the project's designated main working
-    copy: there is one place work goes, so there is no branch to name.
+    Takes the story number you are promoting. The target is always the
+    project's designated main working copy. That story is latched and stamped
+    promoted only if all of its spex pass on this copy; otherwise the promote
+    is refused and names the failing spex.
 
     Commit first. It refuses a copy with uncommitted work, by design. Untracked
     files do not block it — they are listed in the result so you can see
@@ -53,6 +55,12 @@ defmodule CmsHarness.Agents.Tools.Promote do
 
   @impl true
   def input_schema do
-    %{type: "object", properties: %{}, required: []}
+    %{
+      type: "object",
+      properties: %{
+        story_number: %{type: "integer", description: "The story being promoted."}
+      },
+      required: ["story_number"]
+    }
   end
 end

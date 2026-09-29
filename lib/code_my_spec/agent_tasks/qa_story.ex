@@ -427,7 +427,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   #
   # Story 1003, revised 2026-09-28 (phase 2): main is just another working
   # copy under story 1108's model now — `qa_complete` moved ahead of
-  # `code_on_running_copy` for every copy, not only non-main ones, so main no
+  # `story_promoted` for every copy, not only non-main ones, so main no
   # longer gets to assume its app is already running. `main_app_url_line/1`
   # survives only as the fallback for the two cases where there is no copy id
   # to resolve at all (no active working copy on the scope, or the id it

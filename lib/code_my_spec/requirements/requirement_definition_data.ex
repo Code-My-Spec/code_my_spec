@@ -200,7 +200,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       }),
       new!(%{
         id: 18,
-        name: "code_on_running_copy",
+        name: "story_promoted",
         role: :coding,
         node_scope: :self,
         # A question about state, not about an act. That is what lets an agent
@@ -212,26 +212,15 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         config: %{module: CodeMySpec.Promotion.RunningCopy, function: :running_copy_check},
         satisfied_by: AgentTasks.PromoteWork,
         artifact_type: :code,
-        # Named for the state QA depends on rather than for the merge, because
-        # the merge is one way to reach it and not the only one.
-        #
-        # f4786ba1: the name still reads as a git fact, and `Promotion.promoted/2`
-        # reads one column (`stories.promoted_version`) — a stamp written by a
-        # promote sweep, not a live ancestry check. The two usually agree because
-        # a promote runs the sweep right after merging, but they can miss each
-        # other: a story whose specs went fresh-green moments after a promote's
-        # stamp sweep already ran has its code on main and no stamp yet. An agent
-        # that verifies git ancestry directly, sees the code is there, and reads
-        # this as unsatisfied has correctly found a stamp that hasn't caught up —
-        # not a lying gate. The description says so because the name does not,
-        # and cannot without a rename wide enough (cache-invalidation profiles,
-        # `@completion_names`, a story titled after this exact name) to be its
-        # own change.
+        # f4786ba1: was `code_on_running_copy`, a name that read as a git fact.
+        # An agent that verified ancestry, found the code on main, and concluded
+        # the gate lied had answered a different question. Named for what it
+        # reads: one column, `stories.promoted_version`, written only by a
+        # `promote` that names this story.
         description:
-          "Story's code is on the checkout the application runs from — reads " <>
-            "the promotion stamp (a story is marked promoted once a promote " <>
-            "sweep runs), not a live git-ancestry check. The two can briefly " <>
-            "disagree with what `git log` shows on the running checkout.",
+          "This story carries a promotion stamp (`promoted_version`), written only " <>
+            "by `promote` naming this story. Not a git check: code already on " <>
+            "main does not satisfy it. Satisfy it by promoting this story.",
         # Story 1003, revised 2026-09-28: was [3], straight off
         # `bdd_specs_passing` — promotion used to be what QA tested. Now [4]:
         # story 1108 gave every working copy its own app, so QA tests the
@@ -261,7 +250,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # qa because that's the logical progression." The deadlock that forced
         # it is on `story_issues_resolved` below.
         #
-        # Story 1003, revised 2026-09-28: `code_on_running_copy` (18) is no
+        # Story 1003, revised 2026-09-28: `story_promoted` (18) is no
         # longer upstream of this node at all — it moved to *depend on*
         # `qa_complete` instead (story 1108 gave every copy its own app, so
         # QA no longer needs the story's code on main first). Added `19`
@@ -354,8 +343,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # only decides when the work is *offered*, and offering it before QA
         # spends a pass on a story with known blockers is the better trade.
         #
-        # Story 1003, revised 2026-09-28: was [18] (`code_on_running_copy`).
-        # `code_on_running_copy` moved to depend on `qa_complete`, which
+        # Story 1003, revised 2026-09-28: was [18] (`story_promoted`).
+        # `story_promoted` moved to depend on `qa_complete`, which
         # depends on this node — leaving the prerequisite at [18] would have
         # closed a cycle (4 needs 6, 6 needs 18, 18 needs 4), the exact
         # deadlock shape this node exists to avoid. Repointed straight to [3]
@@ -408,7 +397,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # last in the story chain; the node it waits on is now the QA pass.
         #
         # Story 1003, revised 2026-09-28: was [4] (`qa_complete`) — no longer
-        # enough on its own. `code_on_running_copy` moved to depend on
+        # enough on its own. `story_promoted` moved to depend on
         # `qa_complete` rather than the reverse, so staying on [4] would have
         # silently decoupled deploy from promotion: a story could clear QA
         # and be offered for UAT deploy before its code ever reached the

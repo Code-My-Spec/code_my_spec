@@ -12,11 +12,13 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
@@ -98,17 +100,30 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     git!(agent_root, ["commit", "-qam", "the story's work"])
 
     scope = %{scope | active_working_copy_id: agent_copy.id}
+    story = story_fixture(scope)
+
+    {_n, _} =
+      Files.upsert_files(scope, [
+        %{
+          path: "test/spex/#{story.number}_x/criterion_1_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
     AnalysisFixtures.fresh_analysis_runs_fixture(scope)
     AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
 
-    {scope, agent, running_root}
+    {scope, agent, running_root, %{story_number: story.number}}
   end
 
   test "a confirmed restart is messaged to the agent that called promote" do
-    {scope, agent, running_root} = ready_to_promote()
+    {scope, agent, running_root, params} = ready_to_promote()
     frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-    assert {:reply, _response, _frame} = Promote.execute(%{}, frame)
+    assert {:reply, _response, _frame} = Promote.execute(params, frame)
 
     agent_id = agent.id
 
@@ -124,10 +139,10 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   end
 
   test "a promote with no agent behind it messages nobody" do
-    {scope, _agent, _running_root} = ready_to_promote()
+    {scope, _agent, _running_root, params} = ready_to_promote()
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    assert {:reply, _response, _frame} = Promote.execute(%{}, frame)
+    assert {:reply, _response, _frame} = Promote.execute(params, frame)
 
     assert settled?()
     refute_received {:agent_dispatch, _, _, _}

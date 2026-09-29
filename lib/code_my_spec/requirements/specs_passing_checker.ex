@@ -30,6 +30,10 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
 
   Matching is by `files.story_id`, resolved at sync time from the spec itself,
   which was correct for every directory of both conventions.
+
+  e1174640: only a promote of the story sets the latch now, and the promote is
+  downstream of this requirement. An unlatched story is therefore satisfied by
+  a fresh run showing its own linked specs green, not by the field.
   """
 
   alias CodeMySpec.Analysis
@@ -42,8 +46,8 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   Returns `{boolean, details}` for `RequirementCalculator`.
   """
   @spec passing?(term(), term()) :: {boolean(), map()}
-  def passing?(_scope, %{specs_ready: ready}) when ready != true do
-    {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
+  def passing?(scope, %{specs_ready: ready, id: story_id}) when ready != true do
+    unlatched(scope, story_id, Analysis.fresh?(scope, "spex"))
   end
 
   def passing?(scope, %{id: story_id}) do
@@ -74,8 +78,9 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   `passing?/2` remains the fallback for a caller with none.
   """
   @spec passing?(term(), term(), map()) :: {boolean(), map()}
-  def passing?(_scope, %{specs_ready: ready}, _ctx) when ready != true do
-    {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
+  def passing?(scope, %{specs_ready: ready, id: story_id}, %{analysis_fresh: fresh})
+      when ready != true and is_map(fresh) do
+    unlatched(scope, story_id, Map.get(fresh, "spex", false))
   end
 
   def passing?(scope, %{id: story_id}, %{analysis_fresh: fresh}) when is_map(fresh) do
@@ -103,19 +108,48 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
     end
   end
 
-  defp failing_own_specs(scope, story_id) do
-    story_paths =
-      scope
-      |> Files.list_story_files(story_id)
-      |> Enum.filter(&(&1.role == :bdd_spec))
-      |> MapSet.new(& &1.path)
+  # Not latched. Since e1174640 only a promote of the story latches it, and
+  # the promote sits downstream of this requirement — so reading the latch
+  # alone here would make the chain unsatisfiable. A fresh run showing the
+  # story's own specs green satisfies it; a stale run, no linked specs, or a
+  # red one does not.
+  defp unlatched(_scope, _story_id, false),
+    do: {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
 
-    if Enum.empty?(story_paths) do
-      []
-    else
-      scope
-      |> Problems.list_project_problems(source: "spex", severity: :error)
-      |> Enum.filter(&MapSet.member?(story_paths, &1.file_path))
+  defp unlatched(scope, story_id, true) do
+    paths = own_spec_paths(scope, story_id)
+
+    cond do
+      Enum.empty?(paths) ->
+        {false, %{reason: "No spec files are linked to this story"}}
+
+      failing(scope, paths) == [] ->
+        {true, %{status: "Specs green on the current spex run (latched when promoted)"}}
+
+      true ->
+        {false, %{reason: "This story's own specs fail on the current spex run"}}
     end
+  end
+
+  defp failing_own_specs(scope, story_id) do
+    case own_spec_paths(scope, story_id) do
+      [] -> []
+      paths -> failing(scope, paths)
+    end
+  end
+
+  defp own_spec_paths(scope, story_id) do
+    scope
+    |> Files.list_story_files(story_id)
+    |> Enum.filter(&(&1.role == :bdd_spec))
+    |> Enum.map(& &1.path)
+  end
+
+  defp failing(scope, paths) do
+    paths = MapSet.new(paths)
+
+    scope
+    |> Problems.list_project_problems(source: "spex", severity: :error)
+    |> Enum.filter(&MapSet.member?(paths, &1.file_path))
   end
 end

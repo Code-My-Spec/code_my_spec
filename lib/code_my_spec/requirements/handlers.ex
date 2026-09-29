@@ -227,7 +227,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
     "questions_answered" => [:stories],
-    "code_on_running_copy" => [:stories],
+    "story_promoted" => [:stories],
     "qa_complete" => [:qa],
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
@@ -613,13 +613,13 @@ defmodule CodeMySpec.Requirements.Handlers do
   # project — which copy is running, whether it is serving — and only the stamp
   # is per story, which is what `running_copy_verdicts/2` exists to say in two
   # reads rather than two per story.
-  defp settle("code_on_running_copy", %{stories: profile}, scope) do
+  defp settle("story_promoted", %{stories: profile}, scope) do
     {{default?, default_details}, promoted} =
       RunningCopy.running_copy_verdicts(scope, profile.stories)
 
     %{
       entity_type: "story",
-      name: "code_on_running_copy",
+      name: "story_promoted",
       default: default?,
       default_details: details(default_details),
       except: promoted_verdicts(promoted)
@@ -926,7 +926,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # there is nothing for QA to test.
   defp promoted_verdicts(promoted) do
     for {story_id, {satisfied?, detail}} <- promoted,
-        do: change("story", story_id, "code_on_running_copy", satisfied?, detail)
+        do: change("story", story_id, "story_promoted", satisfied?, detail)
   end
 
   # One verdict per story that has criteria, from the files that vantage can see.

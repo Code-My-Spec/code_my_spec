@@ -4,7 +4,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
   gate: whether its application is answering.
 
   The bug this exists to stop, and it is the reason this file is here rather
-  than an assertion tucked into a join test: `code_on_running_copy` shipped
+  than an assertion tucked into a join test: `story_promoted` shipped
   reading a `working_copies` column while nothing anywhere wrote it. The
   gate was correct, the columns were correct, the migration was correct, and
   every story on every non-main checkout was blocked by a fact no agent could
@@ -133,7 +133,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
       assert recorded.preview_checked_at
     end
 
-    # The gate's own half. `code_on_running_copy` proved the code was on the
+    # The gate's own half. `story_promoted` proved the code was on the
     # running copy and said nothing about whether anything served it, so QA was
     # sent to a checkout whose app was down and met a connection refused.
     test "and the gate then refuses a running copy that is down", %{scope: scope} do

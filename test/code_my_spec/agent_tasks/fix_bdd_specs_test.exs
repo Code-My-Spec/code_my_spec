@@ -191,8 +191,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       mine = create_story_with_component(scope, create_implemented_component(scope), "My Story")
 
       assert {:ok, prompt} = FixBddSpecs.command(scope, story_task(mine))
-      assert prompt =~ "evaluate to latch it"
-      assert prompt =~ "re-running the sweep will not change this requirement"
+      assert prompt =~ "evaluate to confirm"
+      assert prompt =~ "latch is set when this story is promoted"
       refute prompt =~ "Elsewhere"
     end
 
@@ -232,14 +232,15 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   # ============================================================================
   # evaluate/2 — the specs-passing gate
   #
-  # `evaluate/2` is scoped to ONE story (the task's entity) and is a latch:
-  # it requires a fresh green spex run for that story and, on a pass, sets
-  # `specs_ready`. This is deliberately narrower than `command/2`, which
-  # still builds a project-wide fix prompt.
+  # `evaluate/2` is scoped to ONE story (the task's entity): it requires a
+  # fresh green spex run for that story and reports it. It no longer latches
+  # `specs_ready` — only a promote of the story does (e1174640). This is
+  # deliberately narrower than `command/2`, which still builds a project-wide
+  # fix prompt.
   # ============================================================================
 
   describe "evaluate/2" do
-    test "sets specs_ready when the story's specs are green on a fresh run", %{
+    test "reports green without latching specs_ready", %{
       tmp_dir: tmp_dir
     } do
       scope = scope_with_env(tmp_dir)
@@ -252,7 +253,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
 
       assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(story))
 
-      assert Stories.get_story(scope, story.id).specs_ready == true
+      refute Stories.get_story(scope, story.id).specs_ready == true,
+             "evaluating reports green; only a promote of the story latches it"
     end
 
     test "reports pending, not failure, when the spex run is stale", %{tmp_dir: tmp_dir} do
@@ -378,7 +380,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       fresh_analysis_runs_fixture(scope, ["spex"])
 
       assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(green_story))
-      assert Stories.get_story(scope, green_story.id).specs_ready == true
 
       assert {:ok, :invalid, _feedback} = FixBddSpecs.evaluate(scope, story_task(red_story))
       refute Stories.get_story(scope, red_story.id).specs_ready == true

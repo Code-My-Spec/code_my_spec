@@ -511,7 +511,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # twice in one drain reaches the same answer and pays for it twice.
   #
   # Marks arrive in bulk more often than the design assumed.
-  # `Stories.mark_ready_stories_promoted/2` broadcasts per story, so one
+  # `Stories.mark_ready_stories_promoted/2` (gone since e1174640) broadcast per story, so one
   # promotion stamping 130 stories emitted 130 `story_changed` marks — and this
   # settled each of them: four profile loads and eleven sweeps apiece, with
   # `ArchitectureChecker.orphans/1` preloading every component's stories on

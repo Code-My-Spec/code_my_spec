@@ -151,7 +151,7 @@ defmodule CmsHarness.Sync do
 
   Measured: Broken Oaths' preview answered 200 on both the port and the tunnel
   while `preview_status` still said `down`, because the row was last written by
-  a sync and no file had changed since. `code_on_running_copy` refuses on that
+  a sync and no file had changed since. `story_promoted` refuses on that
   column, so the story stayed shut on a fact that had stopped being true — and
   the inverse is worse, an app that died after the last sync reads as serving
   and QA is sent to it.
@@ -162,7 +162,7 @@ defmodule CmsHarness.Sync do
   end
 
   @doc """
-  Re-measure what `code_on_running_copy` reads, independent of a scan.
+  Re-measure what `story_promoted` reads, independent of a scan.
 
   Both facts the gate reads change without any file changing, and only one of
   them was on a clock. Preview health got its own timer because an application
@@ -418,7 +418,7 @@ defmodule CmsHarness.Sync do
   end
 
   # Whether this checkout's work is on main, main's work is on it, and its tree
-  # is clean — the three facts `code_on_running_copy` gates on.
+  # is clean — the three facts `story_promoted` gates on.
   #
   # Measured here for the same reason `report_head_commit/2` is: this machine
   # can run `git` in the real checkout, and the server cannot. A requirement
@@ -441,7 +441,7 @@ defmodule CmsHarness.Sync do
   # drafted, a screenshot captured, `prompt.md` regenerated on every task. None
   # of that touches this superproject's own tracked files, but plain
   # `git status` reports a dirty submodule as a modified path here regardless,
-  # which is what made `tree_dirty` true (and `code_on_running_copy` refuse)
+  # which is what made `tree_dirty` true (and `story_promoted` refuse)
   # for a copy's entire QA session (c97bb142). The superproject's own merge
   # safety was never in question — a submodule's internal working tree is not
   # part of what `git merge` here would touch.

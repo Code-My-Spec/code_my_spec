@@ -48,7 +48,7 @@ defmodule CodeMySpec.Promotion.Steps do
   them.
 
   Without it the two disagreed, and the disagreement was a trap rather than an
-  inconsistency. `code_on_running_copy` passed a checkout whose only dirt was
+  inconsistency. `story_promoted` passed a checkout whose only dirt was
   untracked, told the agent its remedy was `promote`, and `promote` then refused
   that same checkout — measured on Broken Oaths, where an untracked
   `code_my_spec_test_repos` directory belonging to nobody on the team would have
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Promotion.Steps do
   one-to-two hours it works — a brief drafted, a screenshot captured,
   `prompt.md` regenerated on every task — none of which touches anything this
   checkout's own merge would carry. Without the flag here too, the two checks
-  would disagree again the moment one of them dropped it: `code_on_running_copy`
+  would disagree again the moment one of them dropped it: `story_promoted`
   waving a copy through while `promote` refused the same submodule dirt it had
   just ignored (c97bb142).
   """
@@ -334,15 +334,9 @@ defmodule CodeMySpec.Promotion.Steps do
   # committed: `mix.exs` is not rewritten, no tag moves, `version` stays nil,
   # and the log line still reads "version none".
   #
-  # This widens an exposure that already exists rather than adding a new one.
-  # `mark_ready_stories_promoted/2` stamps every qualifying story in the
-  # project, not only those on the merged branch — deliberately, per its own
-  # docstring — so a story whose specs are green while its code sits unmerged
-  # on a *different* copy can be stamped early. That was already true of every
-  # real promotion; this makes it true of no-op promotions too. The narrower
-  # predicate is a story's code actually being on main, which this module
-  # deliberately stopped asking git about; changing that is a larger decision
-  # than this fix and is tracked separately.
+  # e1174640 closed the exposure this used to widen: a promote now stamps only
+  # the story it names (`Stories.mark_story_promoted/4`), not every specs-ready
+  # story in the project.
   defp current_version(env, root) do
     with {contents, 0} <- git(env, root, ["show", "HEAD:mix.exs"]),
          {:ok, current, _next} <- next_version(contents) do
@@ -451,6 +445,16 @@ defmodule CodeMySpec.Promotion.Steps do
   # before anything is known to be safe, and a checkout with no commits yet
   # (or a transient git failure) must not take the merge down over a value
   # that only ever feeds an optimization, never a correctness check.
+  @doc """
+  The checkout's HEAD and the version its `mix.exs` carries, moving nothing.
+
+  What a promote from the running copy stamps a story with: the merge path's
+  rule for a no-op merge, without the merge (e1174640).
+  """
+  @spec current(Environments.Environment.t(), String.t()) :: result()
+  def current(env, root),
+    do: {:ok, %{head: head(env, root), version: current_version(env, root)}}
+
   defp head(env, root) do
     case git(env, root, ["rev-parse", "HEAD"]) do
       {sha, 0} -> String.trim(sha)

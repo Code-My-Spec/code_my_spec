@@ -16,7 +16,7 @@ still fail QA, and that is the point of having both.
 
 ## Before QA can run at all
 
-`qa_complete` has one prerequisite: **`code_on_running_copy`**. The
+`qa_complete` has one prerequisite: **`story_promoted`**. The
 story's code has to be on the checkout the app runs from, or QA is testing
 a stale application and reporting on code nobody wrote. See
 `process/devops.md`.
@@ -90,7 +90,7 @@ Two things about invalidation that matter more than the mechanism:
   attempt is **not** invalidated when the code under test changes. No
   attempt carries a commit or a fingerprint, so nothing could notice.
 - **What re-clamps QA automatically is the prerequisite, not the row.**
-  When the running copy drifts, `code_on_running_copy` goes unsatisfied and
+  When the running copy drifts, `story_promoted` goes unsatisfied and
   QA stops being offered. The attempt row is untouched and still says
   `pass`. So a story can hold a genuine pass and still not be done.
 

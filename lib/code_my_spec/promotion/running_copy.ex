@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Promotion.RunningCopy do
   @moduledoc """
   Whether a story's code is on the running copy, and whether that copy is
-  serving — the `code_on_running_copy` verdict.
+  serving — the `story_promoted` verdict.
 
   A read of the main working copy and of each story's `promoted_version` stamp,
   nothing more. Its own leaf boundary so that the requirement graph can read it
@@ -115,7 +115,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   #
   # Story 1003, revised 2026-09-28: this check no longer gates what QA is
   # about to test — QA now runs against a story's own working copy before
-  # promotion (story 1108), and `code_on_running_copy` moved to depend on
+  # promotion (story 1108), and `story_promoted` moved to depend on
   # `qa_complete` rather than the reverse. This verdict answers "has this
   # landed on main and is main serving it," a promotion-completeness fact,
   # not a precondition QA is waiting on.
@@ -125,7 +125,10 @@ defmodule CodeMySpec.Promotion.RunningCopy do
          _entity,
          _local
        ),
-       do: serving(running, %{status: "Working on the running copy"})
+       do:
+         serving(running, %{
+           status: "Working on the running copy: the promotion stamp is not read here"
+         })
 
   defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity, _local),
     do: {true, %{status: "No checkout on this scope"}}
@@ -177,13 +180,16 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   # and names what to do. A mirrored copy could only ever disagree with it, and
   # `Sync` recorded it doing so: "at 06:01 git said `ahead=0 behind=0` and the
   # row still said `ahead=3`".
+  # f4786ba1: says what is read and how to satisfy it, because an agent that
+  # checked git instead found the code on main and concluded the gate lied.
   defp not_yet_promoted(%WorkingCopy{}) do
     {false,
      %{
        reason:
-         "this story has not been promoted yet. `promote` merges this checkout's " <>
-           "branch into main and stamps every story still on it with the version " <>
-           "that lands; it reports anything holding that merge up.",
+         "this story has no promotion stamp: `promoted_version` is unset. It is " <>
+           "written only by a `promote` that names this story, once its spex pass " <>
+           "on the promoting copy — code already on main does not count, and this " <>
+           "is not a git check. Promote this story (`promote` with its number).",
        promoted: false
      }}
   end
@@ -201,7 +207,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   # Whether the application QA browses is answering.
   #
-  # `code_on_running_copy` proved the code was on the running copy and stopped
+  # `story_promoted` proved the code was on the running copy and stopped
   # there, and the two came apart within a day: Broken Oaths' preview was down,
   # this gate was satisfied, and a QA agent stood in front of a connection
   # refused with the graph reporting the story ready to test. It then asked to

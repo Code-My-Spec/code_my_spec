@@ -486,7 +486,7 @@ defmodule CodeMySpec.WorkingCopies do
         # is `main`, and therefore whose `preview_status` and `preview_url` are
         # the *running* copy's. It announced nothing — the broadcast above is on
         # this context's own topic and never reached `GraphInputs` — so moving
-        # the designation left `code_on_running_copy` answering from the old
+        # the designation left `story_promoted` answering from the old
         # copy until something unrelated moved the graph.
         #
         # Not caught by `announce_graph_change/2` either: the clearing half is

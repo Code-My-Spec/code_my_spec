@@ -337,11 +337,15 @@ defmodule CmsHarness.Project.ChannelClient do
   the promotion decided, including a refusal. `{:error, …}` only when it could
   not be attempted.
   """
-  @spec await_promotion(String.t()) :: {:ok, map()} | {:error, term()}
-  def await_promotion(root) do
+  @spec await_promotion(String.t(), integer() | String.t() | nil) ::
+          {:ok, map()} | {:error, term()}
+  def await_promotion(root, story_number) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
-      [{pid, _}] -> GenServer.call(pid, :await_promotion, promotion_timeout() + 5_000)
-      [] -> {:error, :not_connected}
+      [{pid, _}] ->
+        GenServer.call(pid, {:await_promotion, story_number}, promotion_timeout() + 5_000)
+
+      [] ->
+        {:error, :not_connected}
     end
   catch
     :exit, _ -> {:error, :no_reply}
@@ -788,7 +792,7 @@ defmodule CmsHarness.Project.ChannelClient do
   #
   # Everything else the sync reports changes only when the disk changes. An
   # application does not: it crashes while nobody is editing and recovers while
-  # nobody is editing, and `code_on_running_copy` refuses on the result. Tied to
+  # nobody is editing, and `story_promoted` refuses on the result. Tied to
   # the scan, a recovered app stayed `down` until someone touched a file, and a
   # crashed one read `serving` for exactly as long.
   @preview_check_ms 60_000
@@ -1651,6 +1655,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_precheck", %{"root" => root}),
     do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1))
 
+  defp apply_promotion("promotion_current", %{"root" => root}),
+    do: with_served_root(root, &Steps.current(Environment.new(:local, &1), &1))
+
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
@@ -2419,7 +2426,7 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  def handle_call(:await_promotion, _from, %{assigns: %{joined: false}} = socket) do
+  def handle_call({:await_promotion, _story}, _from, %{assigns: %{joined: false}} = socket) do
     reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
     {:reply, {:error, reason}, socket}
   end
@@ -2429,8 +2436,10 @@ defmodule CmsHarness.Project.ChannelClient do
   # straight back down this channel as `fs_request`. Blocking this process on
   # the reply would leave nothing to answer the merge and the restart, and the
   # promotion would wait on a process that is waiting on it.
-  def handle_call(:await_promotion, from, socket) do
-    case push(socket, socket.assigns.topic, "promotion_run", %{}, promotion_timeout()) do
+  def handle_call({:await_promotion, story_number}, from, socket) do
+    payload = %{"story_number" => story_number}
+
+    case push(socket, socket.assigns.topic, "promotion_run", payload, promotion_timeout()) do
       {:ok, ref} ->
         timer = Process.send_after(self(), {:reply_timeout, ref}, promotion_timeout())
         {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}

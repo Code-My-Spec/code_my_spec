@@ -23,7 +23,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
@@ -87,17 +86,13 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   end
 
   @doc """
-  Evaluate the specs-passing gate for the task's story and, on a pass,
-  set the story's specs-ready latch.
+  Evaluate the specs-passing gate for the task's story. Reports green; does
+  not latch.
 
-  The gate is a latch, not a running tally. It requires a *fresh* spex
-  run showing every one of the story's own specs green; once that lands,
-  `Stories.set_specs_ready/3` records it and `bdd_specs_passing` reads
-  the field from then on. A later edit that stales the run leaves the
-  latch alone — that asymmetry is the whole reason the node can exist
-  again. bab2f792 removed it because freshness was re-evaluated forever,
-  so nearly any edit dropped it back to "analysis pending" and clamped
-  qa_complete behind it.
+  It requires a *fresh* spex run showing every one of the story's own specs
+  green. Since e1174640 the `specs_ready` latch is set only by a promote of
+  the story (`Stories.mark_story_promoted/4`); once latched, a later edit
+  that stales the run leaves it alone.
 
   Staleness is reported as *pending*, never as *failure*: an agent told
   its specs failed goes hunting for a bug that isn't there.
@@ -148,36 +143,16 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
         {:ok, :invalid, analysis_pending_message(story, scope, owner)}
 
       true ->
+        # Green is reported, not latched: only a promote of this story sets
+        # `specs_ready` (e1174640).
         case story_spex_problems(scope, story) do
           [] ->
-            {:ok, _story} =
-              Stories.set_specs_ready(scope, story, true,
-                at: DateTime.utc_now(),
-                commit: current_commit(scope)
-              )
-
             {:ok, :valid}
 
           problems ->
             {:ok, :invalid, build_feedback(Enum.map(problems, &{&1, story}))}
         end
     end
-  end
-
-  # Display data only (`51e319db`) — never read back for ancestry, only shown
-  # in a *different* checkout's stop-hook refusal so its reader can tell an
-  # old, earned-elsewhere latch from a fresh regression. `nil` on any
-  # failure, the same as `Promotion.Steps`' own `head/2`: this is a courtesy
-  # for a later message, never a correctness check, so a checkout with no
-  # commits yet or a transient git failure must not take the gate down over
-  # it.
-  defp current_commit(scope) do
-    case Environments.cmd(scope.environment, "git", ["rev-parse", "HEAD"], cd: scope.cwd) do
-      {sha, 0} -> String.trim(sha)
-      _ -> nil
-    end
-  rescue
-    _ -> nil
   end
 
   # The same question `bdd_specs_passing` asks, asked the same way, because an
@@ -299,19 +274,18 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # theories were built to explain it and one was filed as an issue that had to
   # be withdrawn.
   #
-  # Saying so is the cheap half of that fix. Making a completed sweep flip the
-  # latch is the real one and is not done here.
+  # e1174640: the latch moved to promote. A fresh green run now satisfies
+  # `bdd_specs_passing` for an unlatched story; evaluating only reports it.
   defp green_message(story) do
     """
-    # Specs Passing — evaluate to latch it
+    # Specs Passing — evaluate to confirm
 
     Story #{story.number} (#{story.title}) has no failing spex problems recorded. The
-    work looks done; what is missing is the evaluation that records it.
+    work looks done.
 
-    `bdd_specs_passing` reads the story's `specs_ready` latch, and only
-    evaluating this task sets it. A green spex run does **not** set it on its
-    own, so re-running the sweep will not change this requirement no matter how
-    many times it passes.
+    `bdd_specs_passing` is satisfied by a fresh spex run showing this story's
+    own specs green. Evaluating does not latch anything: the `specs_ready`
+    latch is set when this story is promoted.
 
     Call `evaluate_task` on this task. If the latest spex run does not yet cover
     the current code the evaluation will say so and ask you to wait — that is a

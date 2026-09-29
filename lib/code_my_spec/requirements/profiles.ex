@@ -261,7 +261,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # read from.
   #
   # One slice, four requirements: `three_amigos_complete` reads the seal and —
-  # for the unsealed few — the gap, `code_on_running_copy` reads
+  # for the unsealed few — the gap, `story_promoted` reads
   # `promoted_version`, and `stories_exist` and `work_dispatched` are about the
   # set rather than about any row.
   #

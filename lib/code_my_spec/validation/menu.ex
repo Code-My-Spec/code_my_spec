@@ -361,7 +361,7 @@ defmodule CodeMySpec.Validation.Menu do
   # and only the transcript-only copies ever carried it: the text an agent was
   # actually sent named the open task and never what was holding it. Watched
   # live on 2026-09-10: a coding agent nudged every 90 seconds about
-  # `code_on_running_copy` while the gate refused on "uncommitted changes —
+  # `story_promoted` while the gate refused on "uncommitted changes —
   # commit them", and the message never said so.
   defp obstacle(scope, task) do
     case Requirements.open_reason(scope, task.requirement_name, entity_ids(task)) do

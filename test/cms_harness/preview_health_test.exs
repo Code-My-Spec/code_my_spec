@@ -2,7 +2,7 @@ defmodule CmsHarness.PreviewHealthTest do
   @moduledoc """
   What a status code from a preview address means.
 
-  The gate `code_on_running_copy` refuses a story whose application is `down`
+  The gate `story_promoted` refuses a story whose application is `down`
   and lets one through whose application is `erroring`, on the grounds that a
   500 is the application answering and failing — which is what QA exists to
   meet — while a refused connection is nothing to test.

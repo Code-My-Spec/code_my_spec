@@ -450,7 +450,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   describe "qa_complete prerequisites" do
     # Story 1003, revised 2026-09-28: QA now runs against the story's own
     # working copy (story 1108), not against main after a promotion — so
-    # `code_on_running_copy` moved from *before* `qa_complete` to *after* it.
+    # `story_promoted` moved from *before* `qa_complete` to *after* it.
     # Promotion records verified work landing; it no longer gates what QA can
     # test. `story_issues_resolved` and `problems_resolved` sit ahead of
     # `qa_complete` instead, straight off `bdd_specs_passing`: a story's own
@@ -463,7 +463,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # up live as part of starting, and a graph-level refusal that redirected
     # to `PromoteWork` instead would have let `promoted_version` get stamped
     # before `qa_complete` was satisfied. See criterion 1169's spex.
-    test "qa_complete waits on issues and problems clearing; code_on_running_copy waits on qa_complete" do
+    test "qa_complete waits on issues and problems clearing; story_promoted waits on qa_complete" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -497,17 +497,17 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert edge?.("problems_resolved", "qa_complete"),
              "qa_complete should wait on the story's own working copy carrying no problems"
 
-      assert edge?.("qa_complete", "code_on_running_copy"),
+      assert edge?.("qa_complete", "story_promoted"),
              "promotion should follow QA, not the other way round"
 
       refute edge?.("bdd_specs_passing", "qa_complete"),
              "the direct edge would let QA start on a story whose code has not " <>
                "left the coding agent's worktree"
 
-      refute edge?.("code_on_running_copy", "qa_complete"),
+      refute edge?.("story_promoted", "qa_complete"),
              "the old direction — promotion gating QA — must not survive the reorder"
 
-      refute edge?.("bdd_specs_passing", "code_on_running_copy"),
+      refute edge?.("bdd_specs_passing", "story_promoted"),
              "promotion is no longer reached straight off bdd_specs_passing; it " <>
                "waits on qa_complete now"
     end

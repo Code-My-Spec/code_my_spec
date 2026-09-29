@@ -363,7 +363,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
                "ready ones serves a graph saying the project has none"
     end
 
-    # `code_on_running_copy` asks `Promotion.running_copy_check/2`, which reads
+    # `story_promoted` asks `Promotion.running_copy_check/2`, which reads
     # the project's working copies: whether this checkout's work is on main, and
     # whether the running one is answering. No other input touches that table,
     # and nothing in the tree changes when it moves — the harness measures it on
@@ -392,8 +392,8 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     # hour: `working_copies` took 22 distinct digests while every other shared
     # input took 2 to 6.
     #
-    # `Stories.mark_ready_stories_promoted/2` is explicit that this is the
-    # intent — the stamp exists to stop "a checkout dirtied afterward for
+    # The promotion stamp (`Stories.mark_story_promoted/4`) exists for this:
+    # to stop "a checkout dirtied afterward for
     # unrelated work from un-answering a question that already had its answer".
     # The fingerprint was doing precisely that un-answering.
     #
@@ -409,11 +409,11 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
           ready_for_dev: true
         })
 
-      {:ok, _} = CodeMySpec.Stories.update_story(scope, story, %{specs_ready: true})
+      {:ok, story} = CodeMySpec.Stories.update_story(scope, story, %{specs_ready: true})
 
       unpromoted = current_fingerprint(scope)
 
-      {:ok, [_ | _]} = CodeMySpec.Stories.mark_ready_stories_promoted(scope, "v1.2.3")
+      {:ok, _} = CodeMySpec.Stories.mark_story_promoted(scope, story, "v1.2.3")
 
       refute current_fingerprint(scope) == unpromoted,
              "the promotion landed and stamped the story; a fingerprint blind to " <>

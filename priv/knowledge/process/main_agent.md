@@ -45,7 +45,7 @@ Before chasing agent behaviour, check the things that silently gate whole
 phases. Measured on two projects in one session; each was worth dozens of
 requirements:
 
-**The app has to be running.** `code_on_running_copy` reads the main working
+**The app has to be running.** `story_promoted` reads the main working
 copy's `preview_status`, and `down` refuses. On Broken Oaths, 54 requirements
 across 53 stories were unsatisfied for one reason: nobody had started the app.
 Starting it cleared all 54 in a single sync.
