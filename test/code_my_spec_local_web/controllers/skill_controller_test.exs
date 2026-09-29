@@ -1,10 +1,12 @@
 defmodule CodeMySpecLocalWeb.SkillControllerTest do
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
   import Plug.Conn
   import Plug.Test
 
+  alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.SkillController
 
   setup do
@@ -27,12 +29,37 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
       refute body["error"] && body["error"] =~ "Unknown"
     end
 
-    test "implement stop returns stopped signal", %{scope: scope} do
-      conn = build_post(scope, %{"skill" => "implement", "subcommand" => "stop"})
+    # 027a974a: stop answered `stopped: true` and left `continuous` on.
+    test "implement stop clears the session's continuous flag", %{scope: scope} do
+      session =
+        session_fixture(scope, %{external_conversation_id: "ext-stop", continuous: true})
+
+      conn =
+        build_post(scope, %{
+          "skill" => "implement",
+          "subcommand" => "stop",
+          "external_id" => "ext-stop"
+        })
+
       conn = SkillController.start_skill(conn, conn.body_params)
 
       assert conn.status == 200
       assert %{"stopped" => true} = Jason.decode!(conn.resp_body)
+      refute Sessions.get_session(scope, session.id).continuous
+    end
+
+    test "implement stop without a resolvable session says so", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "skill" => "implement",
+          "subcommand" => "stop",
+          "external_id" => "no-such-session"
+        })
+
+      conn = SkillController.start_skill(conn, conn.body_params)
+
+      assert conn.status == 400
+      refute Map.has_key?(Jason.decode!(conn.resp_body), "stopped")
     end
   end
 

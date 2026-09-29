@@ -243,13 +243,19 @@ defmodule CmsHarness.HookDecision do
   # A hook that named no working copy at all. There is deliberately nothing to
   # fall back on: resolving it from the directory it fired in is what this
   # replaced, and that guessed wrong in every way a guess can.
-  defp explain(:no_harness, _working_dir) do
+  #
+  # Hooks are resolved from the payload's `cwd` (`ResolveWorkingCopy`); no
+  # plugin dir is involved, so the remedy is where the agent runs (47a60277).
+  defp explain(:no_harness, working_dir) do
     """
-    This hook did not say which working copy it is about.
+    This hook did not say which working copy it is about: it named no harness \
+    id, and #{no_harness_where(working_dir)}.
 
-    Hooks are addressed to a harness id. Run `mix cms.harness.onboard` in the \
-    checkout to generate a plugin whose hooks carry one, and start the agent \
-    with `--plugin-dir <checkout>/.claude/plugin-dev`.
+    A hook is resolved by walking up from the `cwd` in its payload to the \
+    checkout's `.cms_harness.json`, so the agent must run inside the checkout. \
+    If that file already exists, re-running `mix cms.harness.onboard` will not \
+    help: start the agent from the checkout. If it does not, run \
+    `mix cms.harness.onboard <checkout>`.
     """
     |> String.trim()
   end
@@ -492,6 +498,11 @@ defmodule CmsHarness.HookDecision do
       "be read (a rebase can leave the booted commit unreachable). If in doubt, " <>
       "restart with `just refresh-harness`."
   end
+
+  defp no_harness_where(dir) when dir in [nil, "", "(none given)"],
+    do: "its payload carried no `cwd`"
+
+  defp no_harness_where(dir), do: "it fired in #{dir}, which is inside no onboarded checkout"
 
   defp summarize_disconnected(status) do
     "channel down, server answering #{status} — this harness cannot hold a socket; " <>

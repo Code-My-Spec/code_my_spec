@@ -36,6 +36,18 @@ defmodule CmsHarness.Agents.ProviderTest do
     end
   end
 
+  describe "where a subprocess provider runs" do
+    # 5001c099: codex got no workdir and ran in Alloy's temp dir.
+    test "codex and claude-code both run in the working copy" do
+      for provider <- ["openai-codex", "claude-code"] do
+        {:ok, opts} = Provider.options(provider, %{}, working_copy: "/tmp/copy")
+        {_module, config} = Keyword.fetch!(opts, :provider)
+
+        assert config.workdir == "/tmp/copy", "#{provider} did not get the working copy"
+      end
+    end
+  end
+
   describe "which model an agent asks for" do
     test "a codex agent names none unless one was asked for" do
       {:ok, opts} = Provider.options("openai-codex", %{})

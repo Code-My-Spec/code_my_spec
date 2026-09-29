@@ -1143,31 +1143,24 @@ defmodule CodeMySpec.MainAgent do
   # `file_gap_once/2`'s `%{issue_id: nil}` clause goes on matching and goes on
   # failing, forever.
   #
-  # So this is logged and swallowed, the same shape and for the same reason as
-  # `Promotion.stamp_promoted_stories/2` — reporting a bookkeeping failure as
-  # the operation's failure sends an agent to redo the operation, and the
-  # operation is the part that already worked.
+  # So a failure is logged, never returned. The raises are fixed at their
+  # causes rather than rescued: the title is truncated to its column
+  # (`gap_title/1`) and an over-long capability is a changeset error rather
+  # than a btree overflow (`CapabilityGap.changeset/2`).
   defp note_gap(scope, question, capability) do
     with {:ok, gap} <-
-           GapRepository.record(scope.active_project_id, question.agent_role, capability) do
-      file_gap_once(scope, gap)
+           GapRepository.record(scope.active_project_id, question.agent_role, capability),
+         :ok <- file_gap_once(scope, gap) do
+      :ok
+    else
+      error ->
+        Logger.warning(
+          "[MainAgent] answered #{question.id} but could not record the capability gap: " <>
+            inspect(error)
+        )
+
+        :ok
     end
-  rescue
-    error ->
-      Logger.warning(
-        "[MainAgent] answered #{question.id} but could not record the capability gap: " <>
-          Exception.message(error)
-      )
-
-      :ok
-  catch
-    :exit, reason ->
-      Logger.warning(
-        "[MainAgent] answered #{question.id} but could not record the capability gap: " <>
-          inspect(reason)
-      )
-
-      :ok
   end
 
   # Filed once, and the count carried on the issue that exists.
@@ -1195,10 +1188,12 @@ defmodule CodeMySpec.MainAgent do
         :ok
 
       issue ->
-        Issues.update_issue(scope, issue, %{
-          title: gap_title(gap),
-          description: gap_description(gap)
-        })
+        with {:ok, _issue} <-
+               Issues.update_issue(scope, issue, %{
+                 title: gap_title(gap),
+                 description: gap_description(gap)
+               }),
+             do: :ok
     end
   end
 

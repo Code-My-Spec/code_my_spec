@@ -573,4 +573,50 @@ defmodule CmsHarness.ChannelClientTransportTest do
              """
     end
   end
+
+  # b5f7fdb4: a refused read model was re-asked every refresh tick, each at error.
+  describe "an unmatched-topic read model refusal" do
+    test "stops the refresh until the next join" do
+      ref = make_ref()
+      sock = socket(%{read_model_ref: ref, read_model_reason: :refresh})
+
+      {:ok, refused} =
+        capture_log_result(fn ->
+          ChannelClient.handle_reply(ref, {:error, %{"reason" => "unmatched topic"}}, sock)
+        end)
+
+      assert {:noreply, _} = ChannelClient.handle_info(:refresh_read_model, refused)
+      refute_receive {:transport_push, _, "read_model", _, _}, 50
+    end
+
+    test "a join asks again" do
+      root = Path.join(System.tmp_dir!(), "refused-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
+      sock =
+        socket(%{
+          read_model_refused: true,
+          project: %{id: "p1", root: root, working_copy_id: "h1"}
+        })
+
+      {:ok, joined} = ChannelClient.handle_join("harness_project:p1", %{}, sock)
+      assert_receive {:transport_push, _, "read_model", _, _}, 1_000
+
+      assert {:noreply, _} = ChannelClient.handle_info(:refresh_read_model, joined)
+      assert_receive {:transport_push, _, "read_model", _, _}, 1_000
+    end
+
+    test "logs at error once, then below error" do
+      ref = make_ref()
+      sock = socket(%{read_model_ref: ref, read_model_reason: :join})
+      refusal = {:error, %{"reason" => "unmatched topic"}}
+
+      {{:ok, out}, first} = with_log(fn -> ChannelClient.handle_reply(ref, refusal, sock) end)
+      assert first =~ "[error]"
+
+      {_, again} = with_log(fn -> ChannelClient.handle_reply(ref, refusal, out) end)
+      refute again =~ "[error]"
+    end
+  end
 end

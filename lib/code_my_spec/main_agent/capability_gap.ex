@@ -44,6 +44,9 @@ defmodule CodeMySpec.MainAgent.CapabilityGap do
     gap
     |> cast(attrs, [:project_id, :role, :capability, :occurrences, :issue_id])
     |> validate_required([:project_id, :role, :capability, :occurrences])
+    # The unique btree index caps an entry at 2704 bytes; past it the insert
+    # raises 54000 instead of returning an error.
+    |> validate_length(:capability, max: 2000, count: :bytes)
     |> unique_constraint([:project_id, :role, :capability])
   end
 end

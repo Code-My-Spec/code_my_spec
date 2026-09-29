@@ -51,6 +51,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Mcp.Transport
+  alias CodeMySpec.Agents.ToolIndex
 
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
@@ -814,62 +815,20 @@ defmodule CmsHarness.Agents.Engine.Impl do
   `turn_off_agent` and the rest) is not here: it is scriptable, and granted to
   main alone.
 
-  Public because "what does this agent carry" is a question about a running
-  agent, not about a list in this file. A constant naming five modules is true
-  of the constant.
+  One list for the index and the engine: the direct tools are
+  `ToolIndex.carried/0`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
+  its MCP name. Two hand-kept lists drifted: the index named `health` and
+  `promote_sync` and this answered `Unknown tool` (1a7b1e4c).
   """
   @spec tools(keyword()) :: [module()]
   def tools(_opts) do
-    [
-      Alloy.Tool.Core.Read,
-      Alloy.Tool.Core.Write,
-      Alloy.Tool.Core.Edit,
-      Alloy.Tool.Core.Bash,
-      CmsHarness.Agents.Tools.RunScript,
-      CmsHarness.Agents.Tools.RunBrowserScript,
-      CmsHarness.Agents.Tools.ToolDocs,
-      # The spine. `LocalServer` mounts these four for a Claude Code agent and
-      # `CodeMode.Catalog` refuses to bind them to a script — telling the agent
-      # "you already have them directly", which was true over there and false
-      # here until now. See `Tools.GetNextRequirement`.
-      CmsHarness.Agents.Tools.GetNextRequirement,
-      CmsHarness.Agents.Tools.SyncProject,
-      CmsHarness.Agents.Tools.StartTask,
-      CmsHarness.Agents.Tools.EvaluateTask,
-      # The fourth disposition. The open-task menu offers complete, ask, tap
-      # out and cancel; without this the last one named a tool the agent could
-      # not call.
-      CmsHarness.Agents.Tools.CancelTask,
-      # The way to a person. Excluded from scripts for a reason about scripts,
-      # and absent here — so every refusal that said "call `ask_user`" named a
-      # tool the agent did not have. `ask_user_question` is the whole surface
-      # now: `send_message` is gone, because an agent asking a person is
-      # creating a durable blocker rather than sending prose.
-      # Begins a sweep and returns; the result arrives as a message.
-      CmsHarness.Agents.Tools.StartAnalysis,
-      # The same shape, for the other long-running thing an agent starts.
-      # `code_on_running_copy` is handed to the coding role, and without this
-      # the agent could read about `promote` everywhere it looked and still get
-      # `Unknown tool` — `ToolSets` governs Claude Code's MCP surface, this list
-      # governs ours, and a tool added to one is missing from half the fleet.
-      CmsHarness.Agents.Tools.Promote,
-      CmsHarness.Agents.Tools.AskUserQuestion,
-      # The collecting half of the two tools just above. `Validation.Menu`'s
-      # offer names both of these on every refusal ("`list_user_questions`
-      # shows them, `check_answer` collects a reply once one lands") and
-      # neither was carried until now — the same gap `AskUserQuestion` and
-      # `SendMessage` themselves closed.
-      CmsHarness.Agents.Tools.ListUserQuestions,
-      CmsHarness.Agents.Tools.CheckAnswer,
-      # Offered on every refusal inside the loop by `Menu.tap_out_offer/1`, and
-      # carried by nothing until now.
-      CmsHarness.Agents.Tools.TapOut,
-      # The panel beside the conversation. Excluded from scripts because a
-      # script has nobody watching it; an agent does.
-      CmsHarness.Agents.Tools.ShowInPanel,
-      CmsHarness.Agents.Tools.AssignSubagent
-    ]
+    [Alloy.Tool.Core.Read, Alloy.Tool.Core.Write, Alloy.Tool.Core.Edit, Alloy.Tool.Core.Bash] ++
+      Enum.map(ToolIndex.carried(), &direct_tool/1)
   end
+
+  @doc false
+  @spec direct_tool(String.t()) :: module()
+  def direct_tool(name), do: Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
 
   # One session per agent, started with it.
   #
@@ -975,11 +934,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
              # Machine-local, like `on_stop` and `on_event`: it is a function,
              # so it cannot cross the wire and nothing on the wire sets it.
              req_options: Keyword.get(opts, :req_options),
-             # Only `claude-code` reads this today, to pin its subprocess to a
-             # stable directory across the agent's calls instead of the
-             # provider's own default of a fresh temp dir per call — see
-             # `Provider.options/3`'s "claude-code" clause for why that
-             # matters.
+             # The subprocess providers (`claude-code`, `openai-codex`) run
+             # in it instead of their default of a fresh temp dir per call.
              working_copy: working_copy
            ) do
       {:ok,

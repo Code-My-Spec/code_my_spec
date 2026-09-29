@@ -90,7 +90,7 @@ defmodule CmsHarness.Web.HooksController do
   defp no_harness(hook, params) do
     Logger.warning("[CmsHarness] #{hook} arrived naming no harness")
 
-    HookDecision.unreachable(hook, :no_harness, "(none given)", params)
+    HookDecision.unreachable(hook, :no_harness, params["cwd"] || "(none given)", params)
   end
 
   defp decide(hook, working_dir, params) do
