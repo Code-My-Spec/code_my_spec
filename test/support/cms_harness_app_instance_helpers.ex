@@ -72,6 +72,21 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   defp put_or_delete(key, value), do: Application.put_env(:code_my_spec, key, value)
 
   @doc """
+  Shrink a first start's 10-minute ceiling to `ms`, restored on exit — for a
+  criterion about what happens once that ceiling passes, where the
+  production default would mean actually waiting 10 minutes. Combined with
+  `app_instance_rig/1`'s own fast health-wait interval (0ms), the background
+  check this schedules fires on its very next tick, so a spex can
+  `assert_receive` the resulting `app_status` push instead of sleeping for
+  either duration.
+  """
+  def set_first_start_ceiling(ms) do
+    previous = Application.get_env(:code_my_spec, :app_instance_first_start_ceiling_ms)
+    Application.put_env(:code_my_spec, :app_instance_first_start_ceiling_ms, ms)
+    on_exit(fn -> put_or_delete(:app_instance_first_start_ceiling_ms, previous) end)
+  end
+
+  @doc """
   Shrink `AppInstance`'s idle timeout and re-check interval to real
   milliseconds, restored on exit — for a criterion about the idle-stop
   itself, where `app_instance_rig/1`'s own defaults (fast health polling,

@@ -426,6 +426,22 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  @doc """
+  A working copy's own app_status transition its background first-start
+  watch just observed — starting → serving, or starting → erroring with a
+  reason. Story 1108's `ensure_app_running`/`restart_app` replies already
+  carry `app_status` on every call; this is the same fact, pushed
+  unprompted for the one case nothing is calling back to ask — a first
+  start left running in the background after its own short reply window.
+  """
+  @spec deliver_app_status(String.t(), map()) :: :ok
+  def deliver_app_status(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:app_status, payload})
+      [] -> :ok
+    end
+  end
+
   @doc "What the machine this checkout runs on is carrying, measured on its own clock."
   @spec deliver_machine_load(String.t(), map()) :: :ok
   def deliver_machine_load(root, load) do
@@ -2690,6 +2706,19 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:preview_status, _status}, socket), do: {:noreply, socket}
+
+  def handle_cast({:app_status, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(socket, socket.assigns.topic, "app_status", payload, decision_timeout()) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send app_status: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:app_status, _payload}, socket), do: {:noreply, socket}
 
   def handle_cast({:promotion_result, topic, ref, result}, %{assigns: %{joined: true}} = socket) do
     push(socket, topic, "fs_result", Map.put(encode_fs_result(result), "ref", ref))

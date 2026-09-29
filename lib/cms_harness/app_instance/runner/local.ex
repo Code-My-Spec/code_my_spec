@@ -13,6 +13,8 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   @behaviour CmsHarness.AppInstance.Runner
 
+  require Logger
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
 
@@ -204,18 +206,49 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  # Harness session, live QA defect on metric_flow: a copy's own
+  # `assets/node_modules` was never installed, so its JS bundle built to
+  # nothing — no compile error, no boot failure, `GET /` still answers 200.
+  # This read as "serving" while every `phx-click` on the page was inert,
+  # and QA found it only by hand. `/assets/js/app.js` is Phoenix 1.8's own
+  # dev-mode path (unhashed, unlike a prod digest) for exactly the bundle a
+  # missing `node_modules` leaves empty or absent — checking it is
+  # toolchain-agnostic: it asks "does this URL answer," not "did esbuild
+  # print an error."
   @impl true
   def probe(port) do
     case health_get(port) do
-      {:ok, %{status: code}} when code < 500 -> :serving
+      {:ok, %{status: code}} when code < 500 -> js_bundle_probe(port)
       {:ok, %{status: _code}} -> :erroring
       _ -> :down
+    end
+  end
+
+  defp js_bundle_probe(port) do
+    case js_bundle_get(port) do
+      {:ok, %{status: 200}} ->
+        :serving
+
+      _ ->
+        Logger.warning(
+          "[CmsHarness] #{port} is up but its JS bundle is not served " <>
+            "(assets never built) — reporting erroring, not serving"
+        )
+
+        :erroring
     end
   end
 
   defp health_get(port) do
     Req.get(
       "http://127.0.0.1:#{port}/",
+      [retry: false, receive_timeout: 3_000, connect_options: [timeout: 1_500]] ++ req_plug()
+    )
+  end
+
+  defp js_bundle_get(port) do
+    Req.get(
+      "http://127.0.0.1:#{port}/assets/js/app.js",
       [retry: false, receive_timeout: 3_000, connect_options: [timeout: 1_500]] ++ req_plug()
     )
   end

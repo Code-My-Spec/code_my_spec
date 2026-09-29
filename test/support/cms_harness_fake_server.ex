@@ -320,6 +320,13 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
     {:reply, :ok, socket}
   end
 
+  # A first start's background watch reporting a transition unprompted — see
+  # `CmsHarness.Project.ChannelClient.deliver_app_status/2`.
+  def handle_in("app_status", payload, socket) do
+    FakeServer.notify({:app_status, payload})
+    {:reply, :ok, socket}
+  end
+
   def handle_in("hook_decision", payload, socket) do
     FakeServer.notify({:hook_decision, payload})
 

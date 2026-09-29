@@ -631,11 +631,18 @@ defmodule CodeMySpec.WorkingCopies do
   `app_url` regardless of what's passed — a stopped copy has no address to
   serve, and a stale one pointing at nothing running is the exact failure
   this story exists to prevent.
+
+  `starting` is the fourth state, alongside the three above: a first start
+  whose cold `npm install`/compile outran the short window
+  `AppInstance.ensure_running/2` waits inline for, still running in the
+  background toward its own 10-minute ceiling. Unlike `down`, it keeps
+  `app_url` — the address is real, just not answering yet — so a caller
+  reading the row knows where the app will be once it comes up.
   """
   @spec record_app_status(WorkingCopy.t(), map()) ::
           {:ok, WorkingCopy.t()} | {:error, term()}
   def record_app_status(%WorkingCopy{} = harness, %{status: status} = attrs)
-      when status in ~w(serving erroring down) do
+      when status in ~w(serving erroring down starting) do
     url = if status == "down", do: nil, else: Map.get(attrs, :url, harness.app_url)
 
     harness

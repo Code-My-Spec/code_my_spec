@@ -438,15 +438,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
   end
 
   # `WorkingCopy.app_status` follows `preview_status`'s three states
-  # (`serving` | `erroring` | `down`) — see that field's own moduledoc note
-  # for why a 500 (erroring) reads differently from nothing answering (down).
+  # (`serving` | `erroring` | `down`), plus `starting` — a first start's
+  # cold install/compile still running in the background — see that field's
+  # own moduledoc note for why a 500 (erroring) reads differently from
+  # nothing answering (down).
   defp app_status_badge_class("serving"), do: "badge-success"
   defp app_status_badge_class("erroring"), do: "badge-warning"
   defp app_status_badge_class("down"), do: "badge-error"
+  defp app_status_badge_class("starting"), do: "badge-info"
   defp app_status_badge_class(_other), do: "badge-ghost"
 
   defp app_status_icon("serving"), do: "hero-check-circle"
   defp app_status_icon("erroring"), do: "hero-exclamation-triangle"
   defp app_status_icon("down"), do: "hero-signal-slash"
+  defp app_status_icon("starting"), do: "hero-arrow-path"
   defp app_status_icon(_other), do: "hero-question-mark-circle"
 end
