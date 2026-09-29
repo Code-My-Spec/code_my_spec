@@ -119,7 +119,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          working_copy_id: harness.id,
          harness_id: harness.id,
          device_id: device && device.id,
-         sops_age_keys: local_age_keys(scope)
+         sops_age_keys: local_age_keys(scope),
+         # `harness` here is exactly the "fresh at join" value `put_tunnel/2`
+         # warns its own `socket.assigns.harness` is not guaranteed to stay —
+         # so this is the one place it is safe to read `main` straight off it
+         # rather than re-fetching. See `tunnel_for/1`, shared with that path.
+         tunnel: tunnel_for(harness)
        },
        socket
        |> assign(:scope, scope)
@@ -1141,25 +1146,41 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the server already manages via Cloudflare's API.
   defp put_tunnel(request, socket) do
     case WorkingCopies.fetch(socket.assigns.harness.id) do
-      {:ok, %{main: true} = copy} -> put_tunnel_from(request, copy)
-      _ -> request
+      {:ok, copy} ->
+        case tunnel_for(copy) do
+          nil -> request
+          tunnel -> Map.put(request, "tunnel", tunnel)
+        end
+
+      _ ->
+        request
     end
   end
 
-  defp put_tunnel_from(request, copy) do
+  # The one place that decides whether a copy holds a tunnel and what its
+  # credentials are — shared by `put_tunnel/2` (the long-lived
+  # `ensure_app_running`/`restart_app` path) and the join reply below, so the
+  # two can never compute a different answer for the same copy. `nil` for
+  # anything but the designated main, and for main itself the moment
+  # `PreviewTunnel.stored_credentials/1` finds nothing DB-backed for it (this
+  # repo's own main today — its dev tunnel is still `config/dev.exs`'s
+  # hardcoded bootstrap).
+  defp tunnel_for(%{main: true} = copy) do
     case PreviewTunnel.stored_credentials(copy) do
       {:ok, creds} ->
-        Map.put(request, "tunnel", %{
+        %{
           "hostname" => creds.hostname,
           "tunnel_id" => creds.tunnel_id,
           "tunnel_secret" => creds.tunnel_secret,
           "account_tag" => creds.account_tag
-        })
+        }
 
       :error ->
-        request
+        nil
     end
   end
+
+  defp tunnel_for(_copy), do: nil
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 

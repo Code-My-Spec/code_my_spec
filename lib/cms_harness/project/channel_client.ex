@@ -655,6 +655,7 @@ defmodule CmsHarness.Project.ChannelClient do
     # backing off, which is the correct behaviour for a harness that cannot
     # resolve owners and is therefore not scanning anyway.
     install_age_keys(reply)
+    ensure_join_tunnel(reply, socket.assigns.project.root)
 
     socket =
       socket
@@ -697,6 +698,21 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   defp install_age_keys(_reply), do: :ok
+
+  # The join reply carries the same "told fresh" `tunnel` an
+  # `ensure_app_running`/`restart_app` push does — added because a join is
+  # neither of those, and a harness restart (this project's own
+  # after-promote recipe causes one 13-30s after every promote) used to take
+  # a main copy's connector down with nothing to bring it back except a
+  # further `ensure_app_running`, which nothing calls on its own. Reuses
+  # `tunnel_opt/1`'s own parsing so the two paths can never disagree about
+  # the shape.
+  defp ensure_join_tunnel(reply, root) do
+    case Keyword.get(tunnel_opt(reply), :tunnel) do
+      nil -> :ok
+      tunnel -> CmsHarness.AppInstance.ensure_tunnel_only(root, tunnel)
+    end
+  end
 
   # The id the server issued for this working copy, written down so a restart
   # presents the same one rather than being issued a second.

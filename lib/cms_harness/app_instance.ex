@@ -120,6 +120,58 @@ defmodule CmsHarness.AppInstance do
   defp tunnel(opts), do: Keyword.get(opts, :tunnel)
 
   @doc """
+  Bring this copy's tunnel connector up if it should hold one, without
+  starting or touching the app itself.
+
+  2026-09-29 follow-up: a join is not an `ensure_app_running`/`restart_app`
+  call, and used to carry no tunnel — so a harness restart (which this
+  project's own after-promote recipe causes 13-30s after every promote, see
+  `ensure_tunnel/3`'s own moduledoc) took a main copy's connector down with
+  nothing to bring it back except a further `ensure_app_running`, which
+  nothing calls on its own. That left a promoted copy's public preview down
+  until an operator or agent happened to ask for its app again. The join
+  reply now carries the same "told fresh" `tunnel` an app-ensure does, and
+  this is where the harness acts on it.
+
+  Resolved from `Runner.main_ports/1` rather than a running `AppInstance`'s
+  own state, because there may be no running `AppInstance` for this root yet
+  at join — a main copy's port is fixed by its own `config/dev.exs` rather
+  than assigned like a QA copy's, so nothing here needs the app already
+  launched, tracked, or even known about by this module.
+
+  Idempotent by way of `Runner.start_tunnel/2`'s own `DynamicSupervisor`
+  child id: calling this against a tunnel already running under
+  `CmsHarness.TunnelSupervisor` finds it rather than duplicating it, the
+  same guarantee `ensure_tunnel/3`'s own tunnel path relies on.
+  """
+  @spec ensure_tunnel_only(String.t(), map()) :: :ok
+  def ensure_tunnel_only(root, tunnel) do
+    case Runner.main_ports(root) do
+      {http, _https} ->
+        case Runner.start_tunnel(tunnel, "http://127.0.0.1:#{http}") do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "[CmsHarness] could not start #{tunnel.hostname}'s tunnel at join: " <>
+                "#{inspect(reason)}"
+            )
+
+            :ok
+        end
+
+      nil ->
+        Logger.warning(
+          "[CmsHarness] could not resolve #{root}'s own address; " <>
+            "#{tunnel.hostname}'s tunnel was not started at join"
+        )
+
+        :ok
+    end
+  end
+
+  @doc """
   Stop this copy's app. A copy with nothing running answers `:ok` too — there
   is nothing to stop, which is success, not a failure to report.
   """
