@@ -1,4 +1,4 @@
-defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
 
@@ -60,7 +60,8 @@ defmodule CodeMySpecSpex.Story1046.WedgeCheckSpex do
     :ok
   end
 
-  spex "Every blocking state along the story chain offers a concrete, actionable task" do
+  spex "Every blocking state along the story chain offers a concrete, actionable task",
+       criterion: 1595 do
     scenario "one story per state, none left with nothing to do" do
       given_ "a project with the shared setup every story below builds on", context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
