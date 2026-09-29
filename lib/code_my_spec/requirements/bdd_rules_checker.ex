@@ -325,7 +325,7 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   end
 
   defp format_gaps(story, gaps) do
-    title = story.title || "story #{story.id}"
+    title = story.title || "story #{story.number}"
     bullets = Enum.map_join(gaps, "\n", &"- #{&1}")
     "Three Amigos incomplete on \"#{title}\":\n\n#{bullets}"
   end
