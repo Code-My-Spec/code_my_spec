@@ -1499,8 +1499,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # this copy needs to send behind one app booting.
   def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(socket.assigns.project.root,
-        main?: msg["main"] == true
+      CmsHarness.AppInstance.ensure_running(
+        socket.assigns.project.root,
+        [main?: msg["main"] == true] ++ tunnel_opt(msg)
       )
     end)
 
@@ -1509,7 +1510,10 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_message(_topic, "restart_app", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "restart_app_result", fn ->
-      CmsHarness.AppInstance.restart(socket.assigns.project.root, main?: msg["main"] == true)
+      CmsHarness.AppInstance.restart(
+        socket.assigns.project.root,
+        [main?: msg["main"] == true] ++ tunnel_opt(msg)
+      )
     end)
 
     {:ok, socket}
@@ -1562,6 +1566,19 @@ defmodule CmsHarness.Project.ChannelClient do
       send(parent, {:app_call_result, topic, ref, event, fun.()})
     end)
   end
+
+  # `msg["tunnel"]` carries main's own credentials, string-keyed off the
+  # wire, exactly when `HarnessProjectChannel.put_tunnel/2` decided this
+  # copy holds one — absent otherwise, including for every non-main copy and
+  # a sharing sibling alike (criterion 1586). Converted to the atom-keyed
+  # shape `CmsHarness.AppInstance.Runner.start_tunnel/2` already declares, so
+  # nothing downstream of this module ever touches a string key.
+  defp tunnel_opt(%{"tunnel" => %{"hostname" => h, "tunnel_id" => id, "tunnel_secret" => secret} = t})
+       when is_binary(h) and is_binary(id) and is_binary(secret) do
+    [tunnel: %{hostname: h, tunnel_id: id, tunnel_secret: secret, account_tag: t["account_tag"] || ""}]
+  end
+
+  defp tunnel_opt(_msg), do: []
 
   # An error stays an error across the wire. A browser that refused and one that
   # answered "no such element" are different things to an agent deciding what to

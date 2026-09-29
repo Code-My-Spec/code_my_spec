@@ -112,6 +112,34 @@ defmodule CmsHarness.AppInstance.Runner do
   """
   @callback process_root(os_pid :: pos_integer()) :: String.t() | nil
 
+  @doc """
+  Start a named Cloudflare tunnel for this copy's own credentials, pointed at
+  `origin_url`. Unlinked from the caller on purpose (`GenServer.start/1`, not
+  `start_link/1`) — `AppInstance` holds the pid it gets back and re-checks
+  `Process.alive?/1` on every later call rather than trapping an exit, the
+  same reasoning `running?/1` already applies to the app's own OS process:
+  a dead tunnel should read as "not running," not crash the process
+  supervising it.
+
+  Only ever called for a copy confirmed main, right now, by the server —
+  see `CmsHarness.HarnessProjectChannel.put_tunnel/2`'s own comment. Never
+  called for a copy sharing another's tunnel (criterion 1586); that hostname
+  reaches the shared tunnel through main's own connector, not one of its
+  own.
+  """
+  @callback start_tunnel(
+              credentials :: %{
+                hostname: String.t(),
+                tunnel_id: String.t(),
+                tunnel_secret: String.t(),
+                account_tag: String.t()
+              },
+              origin_url :: String.t()
+            ) :: {:ok, pid()} | {:error, term()}
+
+  @doc "Stop a tunnel this same runner started. Never fails on an already-dead pid."
+  @callback stop_tunnel(pid()) :: :ok
+
   @spec recipe?(String.t(), String.t()) :: boolean()
   def recipe?(root, name), do: impl().recipe?(root, name)
 
@@ -164,6 +192,12 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec process_root(pos_integer()) :: String.t() | nil
   def process_root(os_pid), do: impl().process_root(os_pid)
+
+  @spec start_tunnel(map(), String.t()) :: {:ok, pid()} | {:error, term()}
+  def start_tunnel(credentials, origin_url), do: impl().start_tunnel(credentials, origin_url)
+
+  @spec stop_tunnel(pid()) :: :ok
+  def stop_tunnel(pid), do: impl().stop_tunnel(pid)
 
   defp impl do
     :code_my_spec

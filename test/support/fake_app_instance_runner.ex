@@ -44,7 +44,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       process_root: Keyword.get(opts, :process_root, Map.get(base, :process_root, nil)),
       launch_result: Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
-      probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving))
+      probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving)),
+      start_tunnel_result: Keyword.get(opts, :start_tunnel_result, Map.get(base, :start_tunnel_result, :ok))
     }
   end
 
@@ -201,5 +202,32 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   def process_root(os_pid) do
     record(:process_root, [os_pid])
     Agent.get(__MODULE__, & &1.process_root)
+  end
+
+  @doc "Sets what `start_tunnel/2` answers — `:ok` (a real, checkable fake pid) or `{:error, reason}`."
+  def put_start_tunnel_result(result), do: Agent.update(__MODULE__, &%{&1 | start_tunnel_result: result})
+
+  @impl true
+  def start_tunnel(credentials, origin_url) do
+    record(:start_tunnel, [credentials, origin_url])
+
+    case Agent.get(__MODULE__, & &1.start_tunnel_result) do
+      :ok ->
+        # A real, if trivial, process — `AppInstance.ensure_tunnel/3` calls
+        # `Process.alive?/1` on what this returns, and that has to answer
+        # honestly for a pid nothing here actually made a tunnel out of.
+        {:ok, pid} = Agent.start(fn -> :ok end)
+        {:ok, pid}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def stop_tunnel(pid) do
+    record(:stop_tunnel, [pid])
+    if Process.alive?(pid), do: Agent.stop(pid)
+    :ok
   end
 end

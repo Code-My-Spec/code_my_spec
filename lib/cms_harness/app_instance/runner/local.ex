@@ -239,6 +239,38 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  # `ClientUtils.CloudflareTunnel`'s named mode calls `Keyword.fetch!(opts,
+  # :endpoint)` / `:otp_app` unconditionally, then uses them to
+  # `Application.put_env/3` a Phoenix endpoint's `:url` in *this* process —
+  # meaningful when the tunnel runs inside the app's own BEAM, meaningless
+  # here, where it runs inside the harness's. There is no real endpoint to
+  # configure: the app learns its own public hostname a different way (its
+  # own `PREVIEW_HOSTNAME`-from-env config, read at its own boot). A
+  # nonexistent app/module pair keeps that write inert rather than reaching
+  # for a bare `nil`, which the callee never asked to handle.
+  @dummy_otp_app :cms_harness_tunnel
+  @dummy_endpoint CmsHarness.NoEndpoint
+
+  @impl true
+  def start_tunnel(credentials, origin_url) do
+    GenServer.start(ClientUtils.CloudflareTunnel,
+      mode: :named,
+      hostname: credentials.hostname,
+      tunnel_id: credentials.tunnel_id,
+      account_tag: credentials.account_tag,
+      tunnel_secret: credentials.tunnel_secret,
+      origin_url: origin_url,
+      endpoint: @dummy_endpoint,
+      otp_app: @dummy_otp_app
+    )
+  end
+
+  @impl true
+  def stop_tunnel(pid) do
+    if Process.alive?(pid), do: GenServer.stop(pid)
+    :ok
+  end
+
   @impl true
   def process_root(os_pid) do
     case System.cmd("lsof", ["-a", "-p", Integer.to_string(os_pid), "-d", "cwd", "-Fn"], stderr_to_stdout: true) do

@@ -68,6 +68,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces.PreviewTunnel
 
   @impl true
   def join("harness_project:" <> project_id, payload, socket) do
@@ -1084,7 +1085,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_call({:ensure_app_running, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
-    push(socket, "ensure_app_running", request |> put_main(socket) |> Map.put("ref", ref))
+    push(
+      socket,
+      "ensure_app_running",
+      request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
+    )
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1093,7 +1098,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_call({:restart_app, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
-    push(socket, "restart_app", request |> put_main(socket) |> Map.put("ref", ref))
+    push(
+      socket,
+      "restart_app",
+      request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
+    )
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1113,6 +1122,44 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # it is told fresh on every start/restart rather than asked to remember.
   defp put_main(request, socket),
     do: Map.put(request, "main", socket.assigns.harness.main == true)
+
+  # The harness holds the tunnel, not the app it launches (2026-09-29, John:
+  # "the harness should hold the tunnel, not the generated app" — an app
+  # restart no longer needs to bounce cloudflared with it). Same "told fresh,
+  # never remembered" reasoning as `put_main/2`: main-ness can be
+  # redesignated, and only the copy confirmed main *right now* may ever be
+  # told to run a connector — a stale cached answer here is a stray
+  # connector, the exact hazard this project has already shipped a fix for
+  # once. Read straight from the row rather than `socket.assigns.harness`,
+  # which was only ever guaranteed fresh at join.
+  #
+  # A sibling sharing another copy's tunnel (criterion 1586) holds the same
+  # `preview_tunnel_id`/`secret` on its own row — `stored_credentials/1` alone
+  # cannot tell the two apart, which is exactly why the `main: true` guard is
+  # here and not there. It must never run a connector of its own; its
+  # hostname reaches the shared tunnel through main's, over the ingress rule
+  # the server already manages via Cloudflare's API.
+  defp put_tunnel(request, socket) do
+    case WorkingCopies.fetch(socket.assigns.harness.id) do
+      {:ok, %{main: true} = copy} -> put_tunnel_from(request, copy)
+      _ -> request
+    end
+  end
+
+  defp put_tunnel_from(request, copy) do
+    case PreviewTunnel.stored_credentials(copy) do
+      {:ok, creds} ->
+        Map.put(request, "tunnel", %{
+          "hostname" => creds.hostname,
+          "tunnel_id" => creds.tunnel_id,
+          "tunnel_secret" => creds.tunnel_secret,
+          "account_tag" => creds.account_tag
+        })
+
+      :error ->
+        request
+    end
+  end
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 

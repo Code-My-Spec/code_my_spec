@@ -70,6 +70,8 @@ defmodule CmsHarness.AppInstance do
     :status,
     :log_path,
     :state_path,
+    :tunnel_pid,
+    :tunnel_id,
     main?: false
   ]
 
@@ -90,11 +92,18 @@ defmodule CmsHarness.AppInstance do
   is never stopped for idling — told fresh on every call rather than
   remembered, since only the server knows who holds the designation and it
   can change while this process is alive.
+
+  `tunnel:` carries main's own tunnel credentials when it holds one — same
+  "told fresh, never remembered" reasoning as `main?`, and for the same
+  underlying hazard: a copy that kept running a connector after losing the
+  designation (or a copy that never held one running one anyway) is exactly
+  the stray-connector bug this project has already shipped one fix for. See
+  `ensure_tunnel/3`.
   """
   @spec ensure_running(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def ensure_running(root, opts \\ []) do
     with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, {:ensure_running, main?(opts)}, op_timeout())
+      GenServer.call(pid, {:ensure_running, main?(opts), tunnel(opts)}, op_timeout())
     end
   end
 
@@ -102,11 +111,12 @@ defmodule CmsHarness.AppInstance do
   @spec restart(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def restart(root, opts \\ []) do
     with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, {:restart, main?(opts)}, op_timeout())
+      GenServer.call(pid, {:restart, main?(opts), tunnel(opts)}, op_timeout())
     end
   end
 
   defp main?(opts), do: Keyword.get(opts, :main?, false)
+  defp tunnel(opts), do: Keyword.get(opts, :tunnel)
 
   @doc """
   Stop this copy's app. A copy with nothing running answers `:ok` too — there
@@ -181,27 +191,33 @@ defmodule CmsHarness.AppInstance do
   end
 
   @impl true
-  def handle_call({:ensure_running, main?}, _from, state) do
+  def handle_call({:ensure_running, main?, tunnel}, _from, state) do
     state = %{state | main?: main?}
 
     if running?(state) do
-      new_state = probe(state)
+      new_state = state |> probe() |> ensure_tunnel(main?, tunnel)
       {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
     else
       case start_app(state) do
-        {:ok, new_state} -> {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-        {:error, reason} -> {:reply, {:error, reason}, state, idle_timeout()}
+        {:ok, new_state} ->
+          new_state = ensure_tunnel(new_state, main?, tunnel)
+          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+
+        {:error, reason} ->
+          new_state = ensure_tunnel(state, main?, tunnel)
+          {:reply, {:error, reason}, new_state, idle_timeout()}
       end
     end
   end
 
   @impl true
-  def handle_call({:restart, main?}, from, state) do
+  def handle_call({:restart, main?, tunnel}, from, state) do
     state = %{state | main?: main?}
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
       {:ok, new_state} when main? ->
+        new_state = ensure_tunnel(new_state, main?, tunnel)
         # Replied before the hook runs, not after: this repo's own
         # after-promote recipe (`just refresh-harness`) kills the very
         # harness BEAM that is answering this call, partway through running
@@ -213,9 +229,11 @@ defmodule CmsHarness.AppInstance do
         {:noreply, new_state, idle_timeout()}
 
       {:ok, new_state} ->
+        new_state = ensure_tunnel(new_state, main?, tunnel)
         {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
       {:error, reason} ->
+        stopped = ensure_tunnel(stopped, main?, tunnel)
         {:reply, {:error, reason}, stopped, idle_timeout()}
     end
   end
@@ -582,6 +600,91 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp stop_process(state), do: %{state | status: "down"}
+
+  # --- Internals: tunnel ---
+  #
+  # 2026-09-29, John: "the harness should hold the tunnel, not the generated
+  # app." An app restart (a promote, a crash, `just serve` bouncing) no
+  # longer needs to take the connector down with it — this process's own
+  # lifetime, not the OS child it launches and relaunches, is what the
+  # tunnel's lifetime now follows. Only ever reached for `main?: true`; see
+  # `ensure_running/2`'s doc and `CmsHarness.HarnessProjectChannel.put_tunnel/2`
+  # for why a sharing sibling (criterion 1586) must never run a connector of
+  # its own.
+
+  # Not main any more, or never was — relinquish whatever tunnel this
+  # process might still be holding from an earlier call, told back when it
+  # still was main. A demoted main must stop being the one Cloudflare hears
+  # from, the same "told fresh" reasoning `main?` itself already gets.
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
+    Runner.stop_tunnel(pid)
+    %{state | tunnel_pid: nil, tunnel_id: nil}
+  end
+
+  defp ensure_tunnel(state, false, _tunnel), do: state
+
+  # Main, but holds no tunnel of its own — nothing to run.
+  defp ensure_tunnel(state, true, nil), do: state
+
+  # Already running this exact tunnel — re-checked on every call rather than
+  # trusted once: a connector this process did not itself stop can still
+  # have died on its own, and `start_tunnel/2` starts it unlinked for
+  # exactly this reason (see its own doc) — a dead tunnel should read as
+  # "not running," not crash the process supervising it.
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
+       when is_pid(pid) do
+    if Process.alive?(pid), do: state, else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
+  end
+
+  # Holding a tunnel already, but for different credentials — re-provisioned
+  # under us. Swap to the new ones rather than leaving a connector answering
+  # for a tunnel this copy no longer holds the secret for.
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
+    Runner.stop_tunnel(pid)
+    start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
+  end
+
+  defp ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
+
+  defp start_tunnel(state, tunnel) do
+    case tunnel_origin(state) do
+      nil ->
+        Logger.warning(
+          "[CmsHarness] could not resolve this copy's own port; " <>
+            "#{tunnel.hostname}'s tunnel was not started"
+        )
+
+        state
+
+      origin ->
+        case Runner.start_tunnel(tunnel, origin) do
+          {:ok, pid} ->
+            %{state | tunnel_pid: pid, tunnel_id: tunnel.tunnel_id}
+
+          {:error, reason} ->
+            Logger.warning(
+              "[CmsHarness] could not start #{tunnel.hostname}'s tunnel: #{inspect(reason)}. " <>
+                "The app is unaffected; only the public address is not reachable."
+            )
+
+            state
+        end
+    end
+  end
+
+  # A running copy already has its own port persisted. An `ensure_running`/
+  # `restart` whose `start_app` itself failed still reaches here — main's
+  # port is fixed and known from its own `config/dev.exs` regardless of
+  # whether its app ever came up, the same source `ensure_port_and_database/1`
+  # already reads it from.
+  defp tunnel_origin(%__MODULE__{port: port}) when is_integer(port), do: "http://127.0.0.1:#{port}"
+
+  defp tunnel_origin(%__MODULE__{root: root}) do
+    case Runner.main_ports(root) do
+      {http, _https} -> "http://127.0.0.1:#{http}"
+      _ -> nil
+    end
+  end
 
   # --- Internals: persistence ---
 

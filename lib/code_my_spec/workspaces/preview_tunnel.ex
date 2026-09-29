@@ -117,6 +117,53 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   end
 
   @doc """
+  This account's Cloudflare tag, or `nil` if unconfigured.
+
+  Public because `credentials()` needs it wherever they are assembled without
+  reaching Cloudflare — see `stored_credentials/1`.
+  """
+  @spec account_tag() :: String.t() | nil
+  def account_tag do
+    case account_id() do
+      {:ok, value} -> value
+      {:error, _} -> nil
+    end
+  end
+
+  @doc """
+  This copy's own tunnel credentials, exactly as already stored — never
+  provisions, never reaches Cloudflare.
+
+  For the harness-holds-the-tunnel design: a working copy's app is (re)started
+  far more often than its tunnel should ever change, so whatever tells the
+  harness to run one has to ask this on every restart without risking
+  creating one, or reaching Cloudflare, each time. `ensure/1` does both and is
+  the wrong call for that; this is read-only on purpose.
+
+  Answers for any copy holding a tunnel id and secret — main's own or a
+  sibling's shared one alike (criterion 1586 records the same pair onto both
+  rows). Whether *running a connector* for what this returns is main's job
+  alone is a decision for the caller, not this function.
+  """
+  @spec stored_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
+  def stored_credentials(%WorkingCopy{
+        preview_tunnel_id: id,
+        preview_tunnel_secret: secret
+      } = copy)
+      when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
+    {:ok,
+     %{
+       hostname: PreviewAddress.host(copy.id),
+       tunnel_id: id,
+       tunnel_secret: secret,
+       account_tag: account_tag() || "",
+       embedder: embedder()
+     }}
+  end
+
+  def stored_credentials(%WorkingCopy{}), do: :error
+
+  @doc """
   The tunnel serving this working copy's preview, making it exist if it does
   not.
 

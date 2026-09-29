@@ -465,4 +465,60 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
                    100,
                    "a worktree reached Cloudflare before being refused"
   end
+
+  describe "stored_credentials/1" do
+    test "answers from the stored row alone, reaching Cloudflare for nothing", %{copy: copy} do
+      # No stub at all — a live call here would raise (Req.Test refuses an
+      # unpinned request), so this is the test that nothing was made.
+      {:ok, copy} =
+        WorkingCopies.record_preview_tunnel(copy, %{
+          preview_url: PreviewAddress.url(copy.id),
+          preview_tunnel_id: @tunnel_id,
+          preview_tunnel_secret: "s3cret"
+        })
+
+      assert {:ok, creds} = PreviewTunnel.stored_credentials(copy)
+      assert creds.tunnel_id == @tunnel_id
+      assert creds.tunnel_secret == "s3cret"
+      assert creds.hostname == PreviewAddress.host(copy.id)
+      assert creds.account_tag == "test-account"
+    end
+
+    test "answers :error for a copy holding no tunnel" do
+      assert PreviewTunnel.stored_credentials(%CodeMySpec.WorkingCopies.WorkingCopy{
+               id: Ecto.UUID.generate()
+             }) == :error
+    end
+
+    # Same shape a sharing sibling's row carries (criterion 1586) — this
+    # function has no opinion on whether *running a connector* for what it
+    # returns is main's job alone; that decision belongs to its caller.
+    test "answers for a sibling sharing another copy's tunnel too", %{scope: scope} do
+      {:ok, sibling} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      {:ok, sibling} =
+        WorkingCopies.record_app_status(sibling, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      {:ok, sibling} =
+        WorkingCopies.record_preview_tunnel(sibling, %{
+          preview_url: PreviewAddress.url(sibling.id),
+          preview_tunnel_id: @tunnel_id,
+          preview_tunnel_secret: "s3cret"
+        })
+
+      assert {:ok, creds} = PreviewTunnel.stored_credentials(sibling)
+      assert creds.tunnel_id == @tunnel_id
+      assert creds.hostname == PreviewAddress.host(sibling.id)
+    end
+  end
+
+  describe "account_tag/0" do
+    test "answers the configured account id" do
+      assert PreviewTunnel.account_tag() == "test-account"
+    end
+  end
 end
