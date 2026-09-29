@@ -1198,15 +1198,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp permissions_for(nil), do: []
 
-  # No session-shaped counterpart to fall back to, unlike `questions_for/1`:
-  # `tap_out`/tool-approval requests are an agent-we-run concept from the
-  # start — an external Claude Code session's tap-out lives on its own
-  # `session.state`, not a `PermissionRequest` row, so a conversation with no
-  # agent has nothing here to show either way.
+  # Same split as `questions_for/1`: an agent's requests by agent, a Claude
+  # Code session's tap-outs by the session they were raised from.
   defp permissions_for(%{agent_id: agent_id}) when is_binary(agent_id),
     do: Notifications.list_permission_requests_for_agent(agent_id)
 
-  defp permissions_for(_conversation), do: []
+  defp permissions_for(conversation),
+    do: Notifications.list_permission_requests_for_session(conversation.session_external_id)
 
   # A plain assign, not a stream.
   #

@@ -9,12 +9,8 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
 
   ## Surface
 
-  In production the approval rides Claude Code's
-  `PermissionRequest` → `approve` binary flow already wired in
-  `hooks.json`. For test, the spex drives the approval through the
-  bridge fixture `Fixtures.respond_to_tap_out/4`, which wraps the
-  same `Permissions.TapOut.respond/4` function the production
-  webhook will call.
+  The session's tap-out is a permission request in the person's inbox; the
+  spex approves it on `/app/permissions/:id`, the page that inbox links to.
   """
 
   use CodeMySpecSpex.Case
@@ -59,14 +55,9 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
       end
 
       when_ "the human approves the pending tap-out request", context do
-        {:ok, _session} =
-          Fixtures.respond_to_tap_out(
-            context.scope,
-            context.session_id,
-            context.request_id,
-            :approve
-          )
-
+        {:ok, view, _} = live(context.conn, "/app/permissions/#{context.request_id}")
+        view |> element("[data-test='approve-permission']") |> render_click()
+        assert has_element?(view, "[data-test='permission-resolved']", "approved")
         {:ok, context}
       end
 
