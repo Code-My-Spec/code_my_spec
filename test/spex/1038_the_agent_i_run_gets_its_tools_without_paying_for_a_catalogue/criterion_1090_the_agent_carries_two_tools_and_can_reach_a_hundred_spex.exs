@@ -96,8 +96,10 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # the agent is holding. The open-task menu offers complete, ask, tap
         # out and cancel, and until it was carried the last of those named a
         # tool no internal agent held.
+        # The agent lifecycle left this list on 2026-09-29: it is scriptable
+        # and granted to main alone.
         unscriptable = ~w(
-          start_agent turn_off_agent assign_subagent
+          assign_subagent
           get_next_requirement sync_project start_task evaluate_task cancel_task
           ask_user_question tap_out show_in_panel start_analysis
           promote check_answer list_user_questions

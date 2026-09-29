@@ -807,12 +807,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   in its own project guide and find them in no catalogue: *"it isn't available
   in the active tool catalog, despite being listed in the project guide."*
 
-  Three more that a script may not have. `CodeMode.Catalog` excludes
-  `start_agent`, `turn_off_agent` and `assign_subagent` because a loop around a
-  spawn is a fleet — an argument about loops, not about an agent making one
-  call. Carried here, the agent that story 963 says hands work over can actually
-  hand it over; left out, it described the hand-over accurately and named a
-  coordinator that was itself. See `CmsHarness.Agents.Tools.Direct`.
+  `assign_subagent` is carried for the same reason: `CodeMode.Catalog` excludes
+  it because a loop around a spawn is a fleet. Left out, an agent described the
+  hand-over accurately and named a coordinator that was itself. See
+  `CmsHarness.Agents.Tools.Direct`. The agent lifecycle (`start_agent`,
+  `turn_off_agent` and the rest) is not here: it is scriptable, and granted to
+  main alone.
 
   Public because "what does this agent carry" is a question about a running
   agent, not about a list in this file. A constant naming five modules is true
@@ -867,8 +867,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
       # The panel beside the conversation. Excluded from scripts because a
       # script has nobody watching it; an agent does.
       CmsHarness.Agents.Tools.ShowInPanel,
-      CmsHarness.Agents.Tools.StartAgent,
-      CmsHarness.Agents.Tools.TurnOffAgent,
       CmsHarness.Agents.Tools.AssignSubagent
     ]
   end

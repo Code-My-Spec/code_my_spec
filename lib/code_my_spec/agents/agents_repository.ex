@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.ModelSetting
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -306,16 +307,22 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   It is also what lets `agent_id` carry sub-agent labels (`aqa-1013-…`) through
   callers that try an agent lookup first and fall back: a label is simply not
   found, rather than an exception from three layers down.
+
+  An agent conversation's id names its agent (`aeb22e38`). The cockpit URL
+  carries `?conversation=<id>`, so that is the id a person hands over; it was
+  read as an agent id, not found, and reported as another project's agent.
+  Resolved within the same scope, so another tenant's conversation is still
+  not found.
   """
   @spec fetch_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, :not_found}
-  def fetch_agent(%Scope{active_project_id: project_id}, id)
+  def fetch_agent(%Scope{active_project_id: project_id} = scope, id)
       when is_binary(project_id) and is_binary(id) do
     case Ecto.UUID.cast(id) do
       {:ok, uuid} ->
-        Agent
-        |> where([a], a.project_id == ^project_id and a.id == ^uuid)
-        |> Repo.one()
-        |> wrap_agent()
+        case get_in_project(project_id, uuid) || agent_of_conversation(scope, uuid) do
+          nil -> {:error, :not_found}
+          %Agent{} = agent -> {:ok, agent}
+        end
 
       :error ->
         {:error, :not_found}
@@ -324,8 +331,21 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def fetch_agent(%Scope{}, _id), do: {:error, :not_found}
 
-  defp wrap_agent(nil), do: {:error, :not_found}
-  defp wrap_agent(%Agent{} = agent), do: {:ok, agent}
+  defp get_in_project(project_id, id) do
+    Agent
+    |> where([a], a.project_id == ^project_id and a.id == ^id)
+    |> Repo.one()
+  end
+
+  defp agent_of_conversation(scope, conversation_id) do
+    case Conversations.get_agent_conversation_by_id(scope, conversation_id) do
+      %{agent_id: agent_id} when is_binary(agent_id) ->
+        get_in_project(scope.active_project_id, agent_id)
+
+      _ ->
+        nil
+    end
+  end
 
   @spec create_agent(Scope.t(), map()) ::
           {:ok, Agent.t()}

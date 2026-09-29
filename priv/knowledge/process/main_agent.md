@@ -116,7 +116,7 @@ An agent taking a turn every few seconds is burning tokens until someone stops
 it. Treat it as a production incident:
 
 1. **Stop the bleeding first** — `set_agent_continuous(continuous: false)`,
-   then `stop_agent`. Diagnose afterwards.
+   then `turn_off_agent`, both from `run_script`. Diagnose afterwards.
 2. **Measure before reporting.** Group by minute. `now()` is local and
    `inserted_at` is naive UTC; compare with `(now() at time zone 'UTC')` or a
    mild spin reads as a catastrophe.

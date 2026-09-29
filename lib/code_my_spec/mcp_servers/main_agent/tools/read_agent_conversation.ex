@@ -40,7 +40,10 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field(:agent_id, :string, doc: "From `list_agent_work`. One of this or `agent_ids`.")
+    field(:agent_id, :string,
+      doc: "From `list_agent_work`, or its conversation id. One of this or `agent_ids`."
+    )
+
     field(:agent_ids, {:list, :string}, doc: "Several agents, merged onto one timeline.")
     field(:limit, :integer, doc: "Most recent N turns. Defaults to a page.")
     field(:since, :string, doc: "ISO8601 — only turns at or after this time.")
@@ -74,6 +77,9 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation do
       target ->
         case MainAgent.read_agent_conversation(scope, target, opts(params)) do
           {:ok, result} -> MainAgentMapper.conversation(result)
+          # `:not_found` alone reads as the escalation clause, which blamed
+          # another project (aeb22e38).
+          {:error, :not_found} -> MainAgentMapper.error(:no_such_agent)
           {:error, reason} -> MainAgentMapper.error(reason)
         end
     end

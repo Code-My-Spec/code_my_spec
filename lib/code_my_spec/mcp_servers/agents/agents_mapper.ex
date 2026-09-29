@@ -328,7 +328,8 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
-  def error(:not_found, _provider), do: refuse("Agent not found on this project.")
+  def error(:not_found, _provider),
+    do: refuse("No agent or conversation with that id exists here.")
 
   def error(:missing_active_project, _provider),
     do: refuse("No active project, so there is nothing to start an agent on.")

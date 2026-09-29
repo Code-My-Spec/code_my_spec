@@ -123,7 +123,9 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
   end
 
   def error(:not_mine) do
-    refuse("That is not one of your agents. `list_agent_work` has the ones that are.")
+    refuse(
+      "No agent or conversation with that id exists here. `list_agent_work` has the agent ids."
+    )
   end
 
   def error(reason), do: refuse("Could not do that: #{inspect(reason)}")

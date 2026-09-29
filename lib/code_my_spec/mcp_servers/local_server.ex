@@ -62,7 +62,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
 
   # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
-  # `ask_user` waits on a person, `start_agent` spawns — and a tool excluded
+  # `ask_user` waits on a person, `start_analysis` spawns — and a tool excluded
   # from scripts *and* absent from here would be reachable by no route at all.
   component(CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion)
   component(CodeMySpec.McpServers.Tasks.Tools.StartAnalysis)
@@ -72,8 +72,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
   component(CodeMySpec.McpServers.Health.Tools.Health)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
-  component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.TurnOffAgent)
 
   # Both promotion doors, and neither can be a script.
   #
