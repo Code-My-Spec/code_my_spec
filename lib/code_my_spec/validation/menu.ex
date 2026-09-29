@@ -291,7 +291,7 @@ defmodule CodeMySpec.Validation.Menu do
   defp directive(scope, {:task, count}, _role, owner) do
     task = newest_active_task(owner)
 
-    "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(task)}." <>
+    "\n\nNext: you have #{open_tasks(count)}, most recently#{task_subject(scope, task)}." <>
       obstacle(scope, task) <>
       " Nothing closes a task for you — when the work is done, call " <>
       "`evaluate_task` with task_id \"#{task.id}\". Otherwise block it with " <>
@@ -412,12 +412,18 @@ defmodule CodeMySpec.Validation.Menu do
 
   # What the task is about, when the row says. Both fields are nullable and a
   # task with neither is still worth naming as open.
-  defp task_subject(%{requirement_name: name, story_id: story_id})
-       when is_binary(name) and is_integer(story_id),
-       do: " — `#{name}` on story #{story_id}"
+  # Named by the story's number, which is what every tool takes; the task row
+  # only carries the id.
+  defp task_subject(scope, %{requirement_name: name, story_id: story_id})
+       when is_binary(name) and is_integer(story_id) do
+    case CodeMySpec.Stories.get_story(scope, story_id) do
+      %{number: number} -> " — `#{name}` on story #{number}"
+      nil -> " — `#{name}`"
+    end
+  end
 
-  defp task_subject(%{requirement_name: name}) when is_binary(name), do: " — `#{name}`"
-  defp task_subject(_task), do: ""
+  defp task_subject(_scope, %{requirement_name: name}) when is_binary(name), do: " — `#{name}`"
+  defp task_subject(_scope, _task), do: ""
 
   defp tally([]), do: ""
 
