@@ -44,12 +44,8 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
              "the stories need ids that differ from their numbers"
 
       # The projection carries integer ids and the shadow carries text.
-      nodes =
-        stories
-        |> Enum.with_index()
-        |> Enum.map(fn {story, i} ->
-          story_node(if rem(i, 2) == 0, do: story.id, else: to_string(story.id))
-        end)
+      [a, b, c] = stories
+      nodes = [story_node(a.id), story_node(to_string(b.id)), story_node(c.id)]
 
       text =
         RequirementsMapper.format_story_execution(
