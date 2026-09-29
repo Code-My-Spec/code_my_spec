@@ -19,22 +19,12 @@ defmodule CodeMySpecTest.WorkspaceWatchers do
   `HarnessProjectChannel` all start children there, so that line kills other
   tests' work as readily as its own.
 
-  It is harmless today only because both callers are `async: false` and
-  ExUnit finishes the async phase before the sync one begins — there is
-  nothing else running to hit. That is not a property either file states or
-  can enforce, and this pass has been moving files *to* async. A landmine
-  that arms itself when someone adds `async: true` is worth defusing while
-  the reason is still in front of us: `Task.Supervisor.start_child/2` leaves
-  the task unlinked, so what a stray kill produces is not a crash but a
-  missing result — an assertion failing in a file that has nothing to do with
-  the one that fired.
-
-  Taking the difference is not airtight either: a child another test starts
-  between the snapshot and the teardown looks new. It is bounded to that
-  window rather than to the whole supervisor, and the pid is never handed
-  back — `Workspaces.watch/1` is private and returns nothing to a caller —
-  so the difference is what is available without changing production code to
-  suit a test.
+  Taking the difference since a snapshot is not enough either: a child
+  another async test starts inside the window looks new. The async
+  `FakeWorkspaceRunnerReinstallTest` killed `CodeModeTest`'s eval tasks that
+  way — `"the script died: :killed"`. So a new child is killed only if it is
+  a watcher, told by the `$initial_call` `Task.Supervisor` records: a fun
+  defined in `CodeMySpec.Workspaces`, where `watch/1` starts it.
   """
 
   @supervisor CodeMySpec.TaskSupervisor
@@ -62,6 +52,7 @@ defmodule CodeMySpecTest.WorkspaceWatchers do
   def kill_since(started_before) do
     children()
     |> Kernel.--(started_before)
+    |> Enum.filter(&watcher?/1)
     |> Enum.each(&Process.exit(&1, :kill))
   end
 
@@ -71,6 +62,19 @@ defmodule CodeMySpecTest.WorkspaceWatchers do
   """
   @spec running() :: [pid()]
   def running, do: children()
+
+  # `Task.Supervisor` records the spawning fun as the task's `$initial_call`;
+  # for a watcher that is `{CodeMySpec.Workspaces, :"-watch/1-fun-0-", 0}`.
+  # `nil` is a task that already exited.
+  defp watcher?(pid) do
+    case Process.info(pid, :dictionary) do
+      {:dictionary, dictionary} ->
+        match?({CodeMySpec.Workspaces, _, _}, dictionary[:"$initial_call"])
+
+      nil ->
+        false
+    end
+  end
 
   defp children do
     Task.Supervisor.children(@supervisor)
