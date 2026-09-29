@@ -469,6 +469,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # Unprompted, from a first start's background watch — `AppInstance` keeps
+  # polling after its own short inline reply window, and pushes this the
+  # moment `starting` resolves to `serving` or `erroring`, rather than
+  # waiting for the next `ensure_app_running`/`restart_app` call to ask.
+  # Same three-plus-one states `record_app_status/2` accepts.
+  def handle_in("app_status", %{"status" => status} = payload, socket)
+      when status in ~w(serving erroring down starting) do
+    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
+      {:ok, copy} ->
+        WorkingCopies.record_app_status(copy, %{
+          status: status,
+          url: payload["url"],
+          commit: payload["commit"]
+        })
+
+        {:reply, :ok, socket}
+
+      _ ->
+        {:reply, :ok, socket}
+    end
+  end
+
   # Which of this checkout's agents are actually alive, from the process table.
   #
   # `agents.status` is written on a clean start and a clean stop, so it is a
