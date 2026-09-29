@@ -159,10 +159,13 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
-  component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
-  # Beside restart: it acts on one existing agent, so a loop is bounded (39af5611).
+  # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
+  # any of these.
+  component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
+  component(CodeMySpec.McpServers.Agents.Tools.TurnOffAgent)
   component(CodeMySpec.McpServers.Agents.Tools.TurnOnAgent)
   component(CodeMySpec.McpServers.Agents.Tools.RetireAgent)
+  component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
   component(CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
   component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)
@@ -172,9 +175,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckIn)
   component(CodeMySpec.McpServers.MainAgent.Tools.Cadence)
 
-  # Here rather than on the spine, unlike its neighbours `start_agent` and
-  # `turn_off_agent`. Agents are given work by role rather than spawned on request,
-  # so what one needs of another is a message, not a handle on its lifecycle.
+  # Agents are given work by role rather than spawned on request, so what one
+  # needs of another is a message, not a handle on its lifecycle.
   component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
   component(CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis)
   component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)

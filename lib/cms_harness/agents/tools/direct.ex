@@ -3,13 +3,12 @@ defmodule CmsHarness.Agents.Tools.Direct do
   The plumbing under the tools an agent carries because a script may not have
   them.
 
-  `CodeMode.Catalog` refuses to bind `start_agent`, `turn_off_agent` and
-  `assign_subagent` to a script, and the reason it gives is about scripts: "it
-  spawns background work, and a loop around it is a fleet". That is an argument
-  against looping over a spawn, not against an agent making one — and until
-  story 963's QA the difference had no consequence, because an agent carried six
-  tools and none of them was these. It could describe a hand-over in detail and
-  never make one:
+  `CodeMode.Catalog` refuses to bind `assign_subagent` to a script, and the
+  reason it gives is about scripts: "it spawns background work, and a loop
+  around it is a fleet". That is an argument against looping over a spawn, not
+  against an agent making one — and until story 963's QA the difference had no
+  consequence, because an agent carried six tools and none of them was these.
+  It could describe a hand-over in detail and never make one:
 
       Nothing has been assigned yet: this session has no start_agent or
       assign_subagent tool available. The next step is for a coordinator with

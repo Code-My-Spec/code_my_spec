@@ -39,7 +39,7 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       refute Map.has_key?(catalog, "ask_user"),
              "a loop over ask_user is questions nobody agreed to"
 
-      refute Map.has_key?(catalog, "start_agent"), "a loop over start_agent is a fleet"
+      refute Map.has_key?(catalog, "assign_subagent"), "a loop over assign_subagent is a fleet"
 
       refute Map.has_key?(catalog, "run_script"), """
       A script could call run_script, and that one could call it again — each

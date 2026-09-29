@@ -309,7 +309,10 @@ defmodule CodeMySpec.CodeModeTest do
 
       assert Result.failed?(result)
 
-      assert result.printed == ["step 1: about to check rules", "step 2: calling get_story with a bad id"],
+      assert result.printed == [
+               "step 1: about to check rules",
+               "step 2: calling get_story with a bad id"
+             ],
              "the script's progress lines must not die with the exception that stopped it"
     end
 
@@ -384,8 +387,18 @@ defmodule CodeMySpec.CodeModeTest do
       built =
         catalog([
           %{name: "get_story", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
-          %{name: "ask_user_question", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
-          %{name: "start_agent", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end}
+          %{
+            name: "ask_user_question",
+            description: "",
+            input_schema: %{},
+            invoke: fn _ -> {:ok, 1} end
+          },
+          %{
+            name: "assign_subagent",
+            description: "",
+            input_schema: %{},
+            invoke: fn _ -> {:ok, 1} end
+          }
         ])
 
       assert Catalog.names(built) == ["get_story"]
@@ -394,7 +407,12 @@ defmodule CodeMySpec.CodeModeTest do
     test "and an excluded tool is simply not there to call" do
       built =
         catalog([
-          %{name: "ask_user_question", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end}
+          %{
+            name: "ask_user_question",
+            description: "",
+            input_schema: %{},
+            invoke: fn _ -> {:ok, 1} end
+          }
         ])
 
       result = CodeMode.eval(built, ~S[return ask_user_question({ question = "hi" })])
