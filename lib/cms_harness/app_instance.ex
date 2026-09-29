@@ -346,26 +346,55 @@ defmodule CmsHarness.AppInstance do
   #
   # A project with nothing declared pays nothing for a hook it never asked
   # for — `recipe?/2` is the same one-line `just --list` check either way.
+  #
+  # Logged on both sides because this repo's recipe restarts the harness
+  # 13-30s later with nothing else saying so, and an old harness pid read
+  # in that window looked like a restart that never happened (bf5fe2a4).
+  # The recipe runs synchronously under this BEAM and kills it, so the
+  # "done" line never lands here — the start line says what confirms it
+  # instead, and is flushed to disk before the recipe can kill anything.
   defp after_promote(state) do
-    result =
-      if Runner.recipe?(state.root, "after-promote") do
-        Runner.run_after_promote(state.root)
-      else
-        :ok
-      end
+    if Runner.recipe?(state.root, "after-promote") do
+      run_after_promote(state.root)
+    else
+      :ok
+    end
+  end
+
+  defp run_after_promote(root) do
+    Logger.info(
+      "[CmsHarness] after-promote: running `just after-promote` in #{root}. " <>
+        "If it restarts the harness, no done line follows; the next boot line confirms it."
+    )
+
+    sync_log_files()
+    started = System.monotonic_time(:millisecond)
+    result = Runner.run_after_promote(root)
+    elapsed = System.monotonic_time(:millisecond) - started
 
     case result do
       :ok ->
-        :ok
+        Logger.info("[CmsHarness] after-promote done in #{root}: exit 0 in #{elapsed}ms")
 
       {:error, reason} ->
-        Logger.error(
-          "[CmsHarness] after-promote failed for #{state.root}: #{inspect(reason)} " <>
-            "— the app itself is already serving; only the after-promote hook did not."
+        Logger.warning(
+          "[CmsHarness] after-promote failed in #{root} after #{elapsed}ms: #{inspect(reason)}. " <>
+            "The app is serving; only the hook failed."
         )
-
-        {:error, reason}
     end
+
+    result
+  end
+
+  # `:logger_std_h` buffers writes (`delayed_write`, up to 2s); a kill inside
+  # that window loses the line. `filesync/1` is a call, so it lands after the
+  # event this process just logged.
+  defp sync_log_files do
+    for %{id: id, module: :logger_std_h} <- :logger.get_handler_config() do
+      :logger_std_h.filesync(id)
+    end
+
+    :ok
   end
 
   # Reused across restarts once allocated — a stable address is worth more
