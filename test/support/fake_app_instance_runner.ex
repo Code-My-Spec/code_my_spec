@@ -153,6 +153,16 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   @impl true
   def launch(root, port, https_port, database, log_path, main?) do
     record(:launch, [root, port, https_port, database, log_path, main?])
+
+    # `running?/1` in real `AppInstance` now checks `process_root(pid) ==
+    # root` before trusting `alive?/1` — see criterion 1589. Defaulting to
+    # "yes, still this copy" here is what every *other* criterion needs:
+    # they exercise the ordinary path, not the recycled-pid one, and would
+    # otherwise all have to configure this just to keep `running?/1` true
+    # after a launch that plainly just happened. A criterion about the
+    # mismatch itself calls `put_process_root/1` afterward to override it.
+    Agent.update(__MODULE__, &%{&1 | process_root: root})
+
     Agent.get(__MODULE__, & &1.launch_result)
   end
 

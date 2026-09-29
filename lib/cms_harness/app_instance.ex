@@ -267,8 +267,22 @@ defmodule CmsHarness.AppInstance do
   def url(_port, status) when status in [nil, "down"], do: nil
   def url(port, _status), do: "http://127.0.0.1:#{port}"
 
+  # A recycled pid is the hazard, not a hypothetical one. `os_pid` can come
+  # from disk (`restore_persisted/1`, on every fresh `init/1`) as easily as
+  # from a launch this same process watched happen, and between a stop and
+  # the next check the OS is free to hand that number to anything. `alive?/1`
+  # alone cannot tell "still ours" from "reassigned" — only that *something*
+  # answers to it — so a stale `state.json` naming a dead process's old pid
+  # reads as running the moment the OS reissues it, and a subsequent stop
+  # would `kill -TERM` a stranger. Same check `ensure_port_free/2` already
+  # makes before adopting a port: alive is necessary, the cwd matching this
+  # copy's own root is what makes it *this* process rather than merely *a*
+  # process.
   defp running?(%__MODULE__{os_pid: nil}), do: false
-  defp running?(%__MODULE__{os_pid: pid}), do: Runner.alive?(pid)
+
+  defp running?(%__MODULE__{os_pid: pid, root: root}) do
+    Runner.alive?(pid) and Runner.process_root(pid) == Path.expand(root)
+  end
 
   # Requests count as activity by way of the log file `just serve` redirects
   # into — its mtime moving inside the idle window is read as "not idle."
