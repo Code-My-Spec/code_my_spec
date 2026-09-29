@@ -178,6 +178,7 @@ defmodule CodeMySpec.Agents do
          attrs =
            attrs |> Map.put(:role, role) |> Map.put(:provider, provider) |> Map.put(:model, model),
          {:ok, attrs} <- put_destination(scope, attrs),
+         :ok <- seat_is_on(scope, attrs),
          :ok <- machine_serves_tools(attrs),
          {:ok, credential} <- Credential.fetch(scope, provider),
          :ok <- copy_is_free(scope, attrs),
@@ -248,7 +249,8 @@ defmodule CodeMySpec.Agents do
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(fn agent ->
-      agent.status == :stopped and agent.working_copy_id == copy_id and
+      agent.status == :stopped and not Agent.retired?(agent) and
+        agent.working_copy_id == copy_id and
         to_string(agent.role) == to_string(role) and unfinished(agent) != []
     end)
     |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
@@ -256,6 +258,132 @@ defmodule CodeMySpec.Agents do
 
   defp unfinished(%Agent{} = agent),
     do: Enum.filter(agent.tasks || [], &(&1.status in [:active, :blocked]))
+
+  @doc "Every agent on the project somebody turned off, most recent first."
+  @spec off_agents(Scope.t()) :: [Agent.t()]
+  def off_agents(%Scope{} = scope) do
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&Agent.off?/1)
+    |> Enum.sort_by(& &1.off_at, {:desc, DateTime})
+  end
+
+  @doc """
+  Who is acting, as an off record names them: the calling agent when there is
+  one, otherwise the scope's person.
+  """
+  @spec actor(Scope.t(), Ecto.UUID.t() | nil) :: String.t()
+  def actor(%Scope{} = scope, calling_agent_id \\ nil) do
+    with id when is_binary(id) <- calling_agent_id,
+         {:ok, caller} <- AgentsRepository.fetch_agent(scope, id) do
+      "the #{caller.role} agent #{caller.id}"
+    else
+      _ -> person(scope.user)
+    end
+  end
+
+  defp person(%{email: email}) when is_binary(email), do: email
+  defp person(_user), do: "a person"
+
+  @doc "`:ok` for an agent that is on; `{:error, {:off | :retired, agent}}` otherwise."
+  @spec refuse_unless_on(Agent.t()) :: :ok | {:error, {:off | :retired, Agent.t()}}
+  def refuse_unless_on(%Agent{} = agent) do
+    cond do
+      Agent.retired?(agent) -> {:error, {:retired, agent}}
+      Agent.off?(agent) -> {:error, {:off, agent}}
+      true -> :ok
+    end
+  end
+
+  # A seat (copy and role) whose agent is off is not empty: starting beside it
+  # would staff a role somebody turned off (39af5611).
+  defp seat_is_on(scope, %{working_copy_id: copy_id, role: role}) do
+    case off_in_seat(scope, copy_id, role) do
+      nil -> :ok
+      agent -> {:error, {:off, agent}}
+    end
+  end
+
+  defp seat_is_on(_scope, _attrs), do: :ok
+
+  defp off_in_seat(scope, copy_id, role) do
+    scope
+    |> off_agents()
+    |> Enum.find(&(&1.working_copy_id == copy_id and to_string(&1.role) == to_string(role)))
+  end
+
+  @doc """
+  Turn an agent on: clear its off record and start it again.
+
+  The only way back from off (39af5611). Start, restart and message never do
+  it implicitly; they refuse. A retired agent cannot be turned on.
+  """
+  @spec turn_on_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
+  def turn_on_agent(%Scope{} = scope, id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <- refuse_retired(agent),
+         {:ok, on} <-
+           AgentsRepository.update_agent(scope, agent, %{
+             off_at: nil,
+             off_by: nil,
+             off_reason: nil
+           }) do
+      start_unless_running(scope, on)
+    end
+  end
+
+  defp start_unless_running(_scope, %Agent{status: status} = agent)
+       when status in [:running, :starting],
+       do: {:ok, agent}
+
+  defp start_unless_running(scope, %Agent{} = agent), do: restart_agent(scope, agent.id)
+
+  defp refuse_retired(%Agent{} = agent),
+    do: if(Agent.retired?(agent), do: {:error, {:retired, agent}}, else: :ok)
+
+  @doc """
+  Retire an agent: record who, when and why, end its process, and free its seat.
+
+  Not off (39af5611). Off keeps the seat and can be turned back on; retired is
+  gone for good. Nothing is ever delivered to it again, it is never turned on,
+  and a new agent may be started in its seat. The row and its transcript stay.
+
+  A machine that cannot be reached does not stop the retire: it is recorded and
+  the seat freed, the gate keeps the stranded process inert, and the answer is
+  `{:ok, agent, {:unreachable, machine}}` so the caller can say so.
+  """
+  @spec retire_agent(Scope.t(), Ecto.UUID.t(), keyword()) ::
+          {:ok, Agent.t()} | {:ok, Agent.t(), {:unreachable, String.t()}} | {:error, term()}
+  def retire_agent(%Scope{} = scope, id, opts \\ []) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         {:ok, retired} <- record_retired(scope, agent, opts) do
+      case end_process(scope, retired) do
+        :ok ->
+          {:ok, stopped} = record_stopped(scope, retired, :stopped)
+          broadcast(scope, {:agent_stopped, stopped})
+          {:ok, stopped}
+
+        {:error, _reason} ->
+          broadcast(scope, {:agent_stopped, retired})
+          {:ok, retired, {:unreachable, machine_of(retired)}}
+      end
+    end
+  end
+
+  defp machine_of(%Agent{} = agent),
+    do:
+      WorkingCopies.machine_name(agent.working_copy_id) || "the machine at #{agent.working_copy}"
+
+  # Retiring twice keeps the first record.
+  defp record_retired(_scope, %Agent{retired_at: %DateTime{}} = agent, _opts), do: {:ok, agent}
+
+  defp record_retired(scope, agent, opts) do
+    AgentsRepository.update_agent(scope, agent, %{
+      retired_at: DateTime.utc_now(),
+      retired_by: trimmed(Keyword.get(opts, :by)) || "someone",
+      retired_reason: trimmed(Keyword.get(opts, :reason))
+    })
+  end
 
   # A machine that answered, and answered with nothing.
   #
@@ -449,6 +577,7 @@ defmodule CodeMySpec.Agents do
   @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
   def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         :ok <- refuse_unless_on(agent),
          {:ok, credential} <- Credential.fetch(scope, agent.provider),
          :ok <- halt_for_restart(agent),
          {:ok, starting} <-
@@ -757,7 +886,7 @@ defmodule CodeMySpec.Agents do
   # unstartable whenever its machine happened to be offline, and would discard
   # the config directory that was just minted for it.
   defp launch(scope, %Agent{} = agent) do
-    case Transport.impl().start_agent(agent.working_copy_id, agent, @start_timeout_ms) do
+    case Transport.start_agent(agent.working_copy_id, agent, @start_timeout_ms) do
       {:ok, report} -> {:ok, record_or_keep(scope, agent, report)}
       {:error, reason} -> keep_starting(agent, reason)
     end
@@ -859,7 +988,7 @@ defmodule CodeMySpec.Agents do
       when is_binary(text) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id) do
       agent.working_copy_id
-      |> Transport.impl().message_agent(agent, text, timeout)
+      |> Transport.message_agent(agent, text, timeout)
       |> delivered_or_working()
     end
   end
@@ -900,7 +1029,7 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Stop one agent by id, resolving its project from its own row.
+  Turn one agent off by id, resolving its project from its own row.
 
   The counterpart to `message_any_agent/3`, and it exists for the same reason:
   somebody looking at the fleet is not inside any one project's scope, and the
@@ -908,28 +1037,45 @@ defmodule CodeMySpec.Agents do
   Only one of those was reachable, so a working copy that had accumulated three
   coding agents could be observed and not thinned.
 
-  Scoped `stop_agent/2` remains the only stop an agent itself can reach. This
-  one sits behind the dev-only router scope that is compiled out of production,
-  beside the message route that already crosses projects there.
+  Off, like every deliberate stop (39af5611). Behind the dev-only router scope
+  that is compiled out of production.
 
   The project comes off the agent's row rather than from the caller, so this
   cannot stop an agent while a wrong project id claims the write — the
   repository's `:cross_project` guard is doing its job, not being worked around.
   """
 
-  @spec stop_any_agent(Ecto.UUID.t()) ::
+  @spec turn_off_any_agent(Ecto.UUID.t()) ::
           {:ok, Agent.t()} | {:error, :no_such_agent | term()}
-  def stop_any_agent(agent_id) when is_binary(agent_id) do
+  def turn_off_any_agent(agent_id) when is_binary(agent_id) do
     case Repo.get(Agent, agent_id) do
-      nil -> {:error, :no_such_agent}
-      agent -> stop_agent(%Scope{active_project_id: agent.project_id}, agent.id)
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        turn_off_agent(%Scope{active_project_id: agent.project_id}, agent.id, by: "the dev tools")
+    end
+  end
+
+  @doc "Turn any agent on by id, for the dev tools. The counterpart to `turn_off_any_agent/1`."
+  @spec turn_on_any_agent(Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
+  def turn_on_any_agent(agent_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      nil ->
+        {:error, :no_such_agent}
+
+      agent ->
+        turn_on_agent(
+          %Scope{active_project_id: agent.project_id, active_account_id: agent.account_id},
+          agent.id
+        )
     end
   end
 
   @doc """
   Restart any agent by id, for the dev tools.
 
-  The counterpart to `stop_any_agent/1`, and the gap that made these tools
+  The counterpart to `turn_off_any_agent/1`, and the gap that made these tools
   one-way: `/dev/agents` could observe an agent and stop it, and nothing there
   could start one again. A stopped agent had exactly one route back — the play
   control on its own conversation page — and when that control was itself broken
@@ -975,7 +1121,7 @@ defmodule CodeMySpec.Agents do
   and restarting one of those would override a decision this sweep has no
   business overriding. Only a row `record_stopped/2` itself marked `:reaped`
   -- no report confirmed it, or the machine could not be asked -- is this
-  sweep's to touch.
+  sweep's to touch. An agent that is off is refused by `restart_agent/2` itself.
 
   `restart_agent/2` already rings both bells once the process is back
   (`resume_held_tasks/2` if it comes back holding a task, otherwise
@@ -1013,7 +1159,7 @@ defmodule CodeMySpec.Agents do
     record_operator_message(agent, text)
     ref = "dev-" <> Ecto.UUID.generate()
 
-    Transport.impl().dispatch_message(
+    Transport.dispatch_message(
       agent.working_copy_id,
       agent,
       ref,
@@ -1026,7 +1172,7 @@ defmodule CodeMySpec.Agents do
     record_operator_message(agent, text)
 
     agent.working_copy_id
-    |> Transport.impl().message_agent(agent, text, timeout)
+    |> Transport.message_agent(agent, text, timeout)
     |> delivered_or_working()
   end
 
@@ -1135,7 +1281,7 @@ defmodule CodeMySpec.Agents do
       agent ->
         Conversations.record_sent_to_agent(agent, text)
 
-        Transport.impl().dispatch_message(
+        Transport.dispatch_message(
           agent.working_copy_id,
           agent,
           "answer-" <> Ecto.UUID.generate(),
@@ -1218,9 +1364,14 @@ defmodule CodeMySpec.Agents do
     case {WorkingCopies.main(scope), main_agent(scope)} do
       {nil, _} -> {:error, :no_main_working_copy}
       {_copy, %Agent{} = agent} -> {:ok, agent}
-      {copy, nil} -> start_main_agent(scope, copy)
+      {copy, nil} -> main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
     end
   end
+
+  # A main agent somebody turned off is still the project's agent; opening the
+  # project shows it off rather than starting another (39af5611).
+  defp main_or_start(_scope, _copy, %Agent{} = off), do: {:ok, off}
+  defp main_or_start(scope, copy, nil), do: start_main_agent(scope, copy)
 
   @doc """
   The three agents a working copy does its work with, started if they are not
@@ -1249,33 +1400,40 @@ defmodule CodeMySpec.Agents do
   gets both lists so it can say which.
   """
   @spec ensure_copy_agents(Scope.t(), map()) ::
-          %{started: [Agent.t()], failed: [{atom(), term()}]}
+          %{started: [Agent.t()], failed: [{atom(), term()}], off: [Agent.t()]}
   def ensure_copy_agents(scope, copy, roles \\ @copy_roles)
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
-    present =
+    agents =
       scope
       |> AgentsRepository.list_agents()
-      |> Enum.filter(&(&1.working_copy_id == copy_id and &1.status != :stopped))
-      |> MapSet.new(& &1.role)
+      |> Enum.filter(&(&1.working_copy_id == copy_id and not Agent.retired?(&1)))
+
+    # A role somebody turned off is left alone and reported, not a failure; a
+    # retired seat is empty and gets filled (39af5611).
+    off = Enum.filter(agents, &(Agent.off?(&1) and &1.role in roles))
+    off_roles = MapSet.new(off, & &1.role)
+
+    present =
+      agents |> Enum.filter(&(&1.status != :stopped)) |> MapSet.new(& &1.role)
 
     roles
-    |> Enum.reject(&MapSet.member?(present, &1))
+    |> Enum.reject(&(MapSet.member?(present, &1) or MapSet.member?(off_roles, &1)))
     |> Enum.reduce(%{started: [], failed: []}, fn role, acc ->
       case start_copy_agent(scope, copy_id, root, role) do
         {:ok, agent} -> %{acc | started: [agent | acc.started]}
         {:error, reason} -> %{acc | failed: [{role, reason} | acc.failed]}
       end
     end)
-    |> then(&%{started: Enum.reverse(&1.started), failed: Enum.reverse(&1.failed)})
+    |> then(&%{started: Enum.reverse(&1.started), failed: Enum.reverse(&1.failed), off: off})
   end
 
   # A row with no root is not a checkout — the same rule `EpicDispatch`'s
   # `destination/1` applies. Starting agents against a directory that does not
   # exist produces three lanes that cannot run and a copy that looks staffed.
   def ensure_copy_agents(%Scope{}, _copy, _roles),
-    do: %{started: [], failed: [{:copy, :no_checkout}]}
+    do: %{started: [], failed: [{:copy, :no_checkout}], off: []}
 
   @doc """
   The roles a copy is staffed with when nobody says otherwise.
@@ -1293,10 +1451,22 @@ defmodule CodeMySpec.Agents do
   def copy_roles, do: @copy_roles
 
   @doc """
+  The roles no agent in `agents` holds a seat for: what staffing would fill.
+
+  An off agent holds its seat; a retired one does not (39af5611). Pass every
+  agent on the copy that matters, off ones included.
+  """
+  @spec empty_seats([Agent.t()], [atom()]) :: [atom()]
+  def empty_seats(agents, roles \\ @copy_roles) do
+    held = agents |> Enum.reject(&Agent.retired?/1) |> MapSet.new(& &1.role)
+    Enum.reject(roles, &MapSet.member?(held, &1))
+  end
+
+  @doc """
   Staff one working copy and put it into continuous mode, resolving the project
   and the owner from the copy itself.
 
-  The counterpart to `stop_any_agent/1`, and it exists because the alternative
+  The counterpart to `turn_off_any_agent/1`, and it exists because the alternative
   does not work. Staffing from a `mix run` script creates the rows and reaches
   no harness: the channel registry lives in the server's own VM, so a second
   BEAM writes three agents that will never start and an orchestrator message
@@ -1716,7 +1886,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <- within_turn_cap(scope, agent),
          {:ok, disposition} <-
-           Transport.impl().dispatch_message(
+           Transport.dispatch_message(
              agent.working_copy_id,
              agent,
              ref,
@@ -2435,21 +2605,40 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Stops one agent, and only that one.
+  Turn one agent off, and only that one: record who and why, then end its
+  process.
+
+  Off is the only deliberate stop (39af5611). It is intent, recorded before the
+  process is asked to end, so an agent whose machine cannot be reached is still
+  off: `Transport` delivers nothing to it and nothing restarts it until
+  `turn_on_agent/2`. `by:` names who turned it off; `reason:` is optional.
 
   Stopping is only useful if it stops the right one: a stop that reaps the tree,
   or kills by name and catches a sibling, looks identical from the caller's side
   and is worse than having no stop at all.
   """
-  @spec stop_agent(Scope.t(), Ecto.UUID.t()) ::
-          {:ok, Agent.t()} | {:error, :not_found | :cross_project | Ecto.Changeset.t()}
-  def stop_agent(%Scope{} = scope, id) do
+  @spec turn_off_agent(Scope.t(), Ecto.UUID.t(), keyword()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def turn_off_agent(%Scope{} = scope, id, opts \\ []) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
-         :ok <- end_process(scope, agent),
-         {:ok, stopped} <- record_stopped(scope, agent, :stopped) do
+         :ok <- refuse_retired(agent),
+         {:ok, off} <- record_off(scope, agent, opts),
+         :ok <- end_process(scope, off),
+         {:ok, stopped} <- record_stopped(scope, off, :stopped) do
       broadcast(scope, {:agent_stopped, stopped})
       {:ok, stopped}
     end
+  end
+
+  # An agent already off keeps the record of who turned it off first.
+  defp record_off(_scope, %Agent{off_at: %DateTime{}} = agent, _opts), do: {:ok, agent}
+
+  defp record_off(scope, agent, opts) do
+    AgentsRepository.update_agent(scope, agent, %{
+      off_at: DateTime.utc_now(),
+      off_by: trimmed(Keyword.get(opts, :by)) || "someone",
+      off_reason: trimmed(Keyword.get(opts, :reason))
+    })
   end
 
   # Ask the machine holding the process to end it, and let its answer decide
@@ -2523,7 +2712,7 @@ defmodule CodeMySpec.Agents do
   # 73d0d505: `reason` is the one thing this function's two callers actually
   # disagree about. `reap_if_absent/3` passes `:reaped` — nothing confirms
   # this was on purpose, a report simply stopped mentioning the agent.
-  # `stop_agent/2` passes `:stopped` — something explicitly asked for this.
+  # `turn_off_agent/3` passes `:stopped` — something explicitly asked for this.
   # Both used to write an identical row, which is why nothing could ever
   # tell a role that went unstaffed by a restart from one a person meant to
   # leave stopped.
@@ -2538,6 +2727,15 @@ defmodule CodeMySpec.Agents do
       work_requested_at: nil
     })
   end
+
+  defp trimmed(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp trimmed(_value), do: nil
 
   @doc """
   Records what the device reported back about an agent it was asked to start.

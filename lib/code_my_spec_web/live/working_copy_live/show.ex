@@ -106,33 +106,48 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
         "roles were not started. Staff a different checkout for a full team."
 
   defp staffing_result(report, socket) do
+    left_off = left_off(Map.get(report, :off, []))
+
     case report do
+      %{started: [], failed: []} when left_off != "" ->
+        {:noreply, put_flash(socket, :info, String.trim(left_off))}
+
       %{started: [], failed: []} ->
         {:noreply, put_flash(socket, :info, "Every role is already staffed on this copy.")}
 
       %{started: started, failed: []} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Started #{roster(started)}. Put them to work when you are ready.")
+         |> put_flash(
+           :info,
+           "Started #{roster(started)}. Put them to work when you are ready.#{left_off}"
+         )
          |> load(socket.assigns.project)}
 
       %{started: started, failed: failed} ->
         {:noreply,
          socket
-         |> put_flash(:error, staffing_trouble(started, failed))
+         |> put_flash(:error, staffing_trouble(started, failed) <> left_off)
          |> load(socket.assigns.project)}
     end
   end
 
-  @copy_roles [:product, :coding, :qa]
+  # A role somebody turned off is skipped, and said so (39af5611).
+  defp left_off([]), do: ""
 
-  # A copy is understaffed when any role has no live agent. Stopped ones do not
-  # count — `ensure_copy_agents/2` uses the same rule, so the button appears
-  # exactly when pressing it would do something.
-  defp understaffed?(agents) do
-    live = MapSet.new(agents, & &1.role)
-    Enum.any?(@copy_roles, &(not MapSet.member?(live, &1)))
+  defp left_off(agents) do
+    " " <>
+      Enum.map_join(agents, " ", fn agent ->
+        reason = if agent.off_reason, do: ": #{agent.off_reason}", else: ""
+
+        "#{String.capitalize(to_string(agent.role))} is off (by #{agent.off_by}#{reason}), left alone."
+      end)
   end
+
+  # A copy is understaffed when a seat is truly empty. An off agent holds its
+  # seat (39af5611), so it counts as staffed; `ensure_copy_agents/2` skips it
+  # too, so the button appears exactly when pressing it would do something.
+  defp understaffed?(agents, off), do: Agents.empty_seats(agents ++ off) != []
 
   defp roster(agents) do
     case Enum.map(agents, &to_string(&1.role)) do
@@ -165,8 +180,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   end
 
   defp assign_row(row, socket, now) do
+    off =
+      socket.assigns.current_scope
+      |> Agents.off_agents()
+      |> Enum.filter(&(&1.working_copy_id == row.harness.id))
+
     socket
     |> assign(:row, row)
+    |> assign(:off_agents, off)
     |> assign(:now, now)
     |> assign(:page_title, row.heading)
   end
@@ -442,7 +463,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               empty: a copy running QA and nothing else is short two agents, and
               `ensure_copy_agents/2` skips the roles already live. --%>
               <.button
-                :if={understaffed?(@row.agents)}
+                :if={understaffed?(@row.agents, @off_agents)}
                 type="button"
                 phx-click="staff_copy"
                 data-test="staff-copy"

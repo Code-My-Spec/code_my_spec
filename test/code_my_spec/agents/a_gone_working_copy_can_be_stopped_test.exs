@@ -49,7 +49,7 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
     # here having chosen it.
     Repo.update_all(from(a in Agent, where: a.id == ^agent.id), set: [working_copy_id: nil])
 
-    assert {:ok, stopped} = Agents.stop_agent(scope, agent.id), """
+    assert {:ok, stopped} = Agents.turn_off_agent(scope, agent.id), """
     stop_agent refused an agent whose working copy resolves to nothing. That
     refusal is protecting a process on a machine we cannot reach — and a
     working copy that does not exist has no machine to protect one on, so the
@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
         working_copy_id: scope.active_working_copy_id
       })
 
-    assert {:error, :harness_not_connected} = Agents.stop_agent(scope, agent.id), """
+    assert {:error, :harness_not_connected} = Agents.turn_off_agent(scope, agent.id), """
     A working copy that still exists may still be running the process this
     stop was for — the machine is merely unreachable from here, not gone.
     Reporting this as stopped would be exactly the regression criterion 2828

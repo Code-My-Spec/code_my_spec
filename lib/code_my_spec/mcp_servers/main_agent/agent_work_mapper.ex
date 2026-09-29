@@ -23,21 +23,45 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.MainAgent.AgentWork
 
   @doc "Every agent on the project, with what it holds."
-  @spec listing([AgentWork.t()]) :: Response.t()
-  def listing([]) do
+  @spec listing([AgentWork.t()], [Agent.t()]) :: Response.t()
+  def listing(work, off \\ [])
+
+  def listing([], off) do
     Response.tool()
     |> Response.text("""
     No agents are running on this project.
 
     Nothing is being worked on, which is a different thing from nothing being
     left to do — `get_next_requirement` says whether there is work waiting.
+    #{off_text(off)}\
     """)
   end
 
-  def listing(work), do: Response.tool() |> Response.text(text(work))
+  def listing(work, off),
+    do: Response.tool() |> Response.text(text(work) <> off_text(off))
+
+  @doc """
+  Agents somebody turned off. An off seat reads as an empty one to staff unless
+  it says otherwise (39af5611).
+  """
+  @spec off_text([Agent.t()]) :: String.t()
+  def off_text([]), do: ""
+
+  def off_text(off) do
+    "\n#{length(off)} agent(s) off — leave them off; only `turn_on_agent` brings one back.\n\n" <>
+      Enum.map_join(off, "\n", fn agent ->
+        """
+        Agent: #{agent.id}
+          role: #{agent.role}
+          working copy: #{agent.working_copy_id} #{agent.working_copy}
+          #{Agent.describe_off(agent)}
+        """
+      end)
+  end
 
   @doc """
   The same body as prose, for a caller composing a larger message.

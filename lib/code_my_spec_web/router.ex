@@ -447,6 +447,10 @@ defmodule CodeMySpecWeb.Router do
       # agents, which is half a control surface.
       post "/agents/:agent_id/restart", DevAgentController, :restart
 
+      # `stop` turns an agent off, and `restart` refuses one that is off; this is
+      # the explicit way back (39af5611).
+      post "/agents/:agent_id/turn_on", DevAgentController, :turn_on
+
       # An agent parked on a question is stopped until somebody answers, and
       # until this the only thing that could was a person on its conversation
       # page. These tools could start it, stop it and talk to it, and not clear

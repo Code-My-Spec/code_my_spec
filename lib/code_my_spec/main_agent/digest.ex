@@ -21,19 +21,23 @@ defmodule CodeMySpec.MainAgent.Digest do
   and all is well".
   """
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.MainAgent.Machinery
   alias CodeMySpec.MainAgent.OpenQuestion
 
+  # `off` is agents somebody turned off. Shown so the main agent leaves them
+  # off; never part of `quiet?/1`, because an off agent is settled (39af5611).
   @type t :: %__MODULE__{
           work: [AgentWork.t()],
+          off: [Agent.t()],
           machinery: Machinery.t() | nil,
           questions: [OpenQuestion.t()],
           failed: String.t() | nil
         }
 
-  defstruct work: [], machinery: nil, questions: [], failed: nil
+  defstruct work: [], off: [], machinery: nil, questions: [], failed: nil
 
   @doc "A digest that could not be assembled, and what stopped it."
   @spec failed(String.t()) :: t()

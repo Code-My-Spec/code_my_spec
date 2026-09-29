@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
         {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
 
         {:reply, stopped, _frame} =
-          StopAgent.execute(
+          TurnOffAgent.execute(
             %{"agent_id" => response_field(context.first, "Agent")},
             frame
           )

@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
   request to somebody else's computer — and rule 2 of story 961 says the stop is
   not done until the answer says the process is gone.
 
-  This drives the wire rather than the intent. `Agents.stop_agent/2` calling a
+  This drives the wire rather than the intent. `Agents.turn_off_agent/3` calling a
   transport proves nothing on its own: the whole class of defect on this project
   is a handler with no producer, and the four already found were each covered by
   specs that built the payload themselves. So the channel is joined for real, the

@@ -60,7 +60,7 @@ defmodule CodeMySpec.Agents.ListForTeamStatusTest do
   end
 
   defp stop(scope, agent) do
-    {:ok, stopped} = Agents.stop_agent(scope, agent.id)
+    {:ok, stopped} = Agents.turn_off_agent(scope, agent.id)
     stopped
   end
 

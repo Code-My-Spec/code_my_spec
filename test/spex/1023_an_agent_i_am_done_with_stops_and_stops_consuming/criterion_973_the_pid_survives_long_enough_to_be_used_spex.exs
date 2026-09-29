@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
         machine_out_of_reach()
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => context.agent.id}, frame)
+        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
 
         {:ok, Map.put(context, :reply, reply)}
       end

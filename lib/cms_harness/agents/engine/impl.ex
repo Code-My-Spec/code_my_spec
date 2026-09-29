@@ -808,7 +808,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   in the active tool catalog, despite being listed in the project guide."*
 
   Three more that a script may not have. `CodeMode.Catalog` excludes
-  `start_agent`, `stop_agent` and `assign_subagent` because a loop around a
+  `start_agent`, `turn_off_agent` and `assign_subagent` because a loop around a
   spawn is a fleet — an argument about loops, not about an agent making one
   call. Carried here, the agent that story 963 says hands work over can actually
   hand it over; left out, it described the hand-over accurately and named a
@@ -868,7 +868,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
       # script has nobody watching it; an agent does.
       CmsHarness.Agents.Tools.ShowInPanel,
       CmsHarness.Agents.Tools.StartAgent,
-      CmsHarness.Agents.Tools.StopAgent,
+      CmsHarness.Agents.Tools.TurnOffAgent,
       CmsHarness.Agents.Tools.AssignSubagent
     ]
   end

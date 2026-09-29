@@ -283,6 +283,17 @@ defmodule CodeMySpec.WorkingCopies do
 
   def fetch(_), do: {:error, :invalid_id}
 
+  @doc "The name of the machine a working copy is on, or nil when it has none on record."
+  @spec machine_name(term()) :: String.t() | nil
+  def machine_name(working_copy_id) do
+    with {:ok, copy} <- fetch(working_copy_id),
+         %{device: %Device{} = device} <- Repo.preload(copy, :device) do
+      Device.display_name(device)
+    else
+      _ -> nil
+    end
+  end
+
   @doc """
   Select the one story every agent on the current working copy works on.
 

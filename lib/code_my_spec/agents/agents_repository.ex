@@ -211,16 +211,29 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   Separate from `list_agents/1` because "what is running" and "what has ever
   run" are different questions and the first is the one an operator asks.
+
+  An agent that is off or retired is excluded even when its machine could not be
+  asked to end it: it is not the fleet's to restore, staff or offer work to
+  (39af5611).
   """
   @spec list_running(Scope.t()) :: [Agent.t()]
   def list_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
+    |> where([a], is_nil(a.off_at) and is_nil(a.retired_at))
     |> order_by([a], asc: a.working_copy, asc: a.role)
     |> Repo.all()
   end
 
   def list_running(%Scope{}), do: []
+
+  @doc "The agent, fresh from the row, if it is off or retired; nil otherwise."
+  @spec get_stood_down(Ecto.UUID.t()) :: Agent.t() | nil
+  def get_stood_down(agent_id) when is_binary(agent_id) do
+    Agent
+    |> where([a], a.id == ^agent_id and (not is_nil(a.off_at) or not is_nil(a.retired_at)))
+    |> Repo.one()
+  end
 
   @doc """
   Every agent a team-status display should show a row for.
@@ -243,13 +256,15 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     running =
       Agent
       |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
+      |> where([a], is_nil(a.retired_at))
       |> Repo.all()
 
     filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
 
+    # A retired agent gave up its seat, so its slot shows empty (39af5611).
     latest_stopped_per_empty_slot =
       from(a in Agent,
-        where: a.project_id == ^project_id and a.status == :stopped,
+        where: a.project_id == ^project_id and a.status == :stopped and is_nil(a.retired_at),
         distinct: [a.working_copy_id, a.role],
         order_by: [asc: a.working_copy_id, asc: a.role, desc: a.updated_at]
       )

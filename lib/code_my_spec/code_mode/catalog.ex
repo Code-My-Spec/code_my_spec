@@ -36,7 +36,7 @@ defmodule CodeMySpec.CodeMode.Catalog do
   agent needs of another is not the ability to start it but the ability to talk
   to it. A loop around a message is noise, which is a smaller thing than a fleet
   and bounded by the agents that already exist. So it is scriptable, and
-  `start_agent`, `stop_agent` and `assign_subagent` are not.
+  `start_agent`, `turn_off_agent` and `assign_subagent` are not.
 
   Those stay direct-call only. Story 971 carries the consequence: an excluded
   tool has to stay on the spine, or excluding it here makes it unreachable
@@ -64,7 +64,7 @@ defmodule CodeMySpec.CodeMode.Catalog do
         "of them nobody asked for",
     "start_agent" => "it spawns background work, and a loop around it is a fleet",
     "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
-    "stop_agent" => "it acts on agents, which a script cannot start",
+    "turn_off_agent" => "it acts on agents, which a script cannot start",
     "tap_out" => "it ends your turn, which is yours to do and not a script's",
     "show_in_panel" => "it puts something in front of a person, who is not watching a script",
     "run_script" =>

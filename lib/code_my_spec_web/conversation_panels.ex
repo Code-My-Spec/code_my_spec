@@ -520,6 +520,16 @@ defmodule CodeMySpecWeb.ConversationPanels do
             {a.task_label}
           </p>
         </div>
+
+        <.link
+          :if={copy.empty_seats != []}
+          navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}"}
+          data-test="team-empty-seats"
+          class="flex items-center gap-1.5 rounded py-1 pl-4 text-xs opacity-70 hover:bg-base-200"
+        >
+          <span class="min-w-0 flex-1 truncate">{Enum.join(copy.empty_seats, ", ")} — empty</span>
+          <span class="shrink-0 text-primary">Staff it</span>
+        </.link>
       </div>
     </div>
     """

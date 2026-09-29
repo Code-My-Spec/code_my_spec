@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.MainAgent.RestartMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.Agent
 
   @spec restarted(map(), String.t()) :: Response.t()
   def restarted(agent, reason) do
@@ -71,6 +72,17 @@ defmodule CodeMySpec.McpServers.MainAgent.RestartMapper do
 
     It is checked against what has already been tried, so "restarting it" is \
     not one — say what you are restarting it to fix.\
+    """)
+  end
+
+  def error({:retired, agent}), do: refuse("Not restarted: #{Agent.retired_refusal(agent)}.")
+
+  def error({:off, agent}) do
+    refuse("""
+    Not restarted: #{Agent.off_refusal(agent)}.
+
+    Somebody decided this. `turn_on_agent` is the only way back, and only when \
+    that reason no longer applies.\
     """)
   end
 

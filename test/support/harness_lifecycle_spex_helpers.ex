@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   @doc """
@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
 
   @doc "Stop one agent, through the operator's own tool. Answers the response."
   @spec stop_agent(map(), String.t()) :: struct()
-  def stop_agent(context, agent_id), do: call(StopAgent, %{agent_id: agent_id}, context)
+  def stop_agent(context, agent_id), do: call(TurnOffAgent, %{agent_id: agent_id}, context)
 
   @doc """
   What the project reports is running, as text.

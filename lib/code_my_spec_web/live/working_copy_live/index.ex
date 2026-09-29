@@ -29,7 +29,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
 
   It does not start or stop anything, and that is a decision rather than an
   omission. A harness is installed and runs on its own machine; lifecycle
-  belongs where the process is. `Agents.stop_agent/2` exists and is deliberately
+  belongs where the process is. `Agents.turn_off_agent/3` exists and is deliberately
   not wired to any surface here.
 
   ## The one thing it does remove

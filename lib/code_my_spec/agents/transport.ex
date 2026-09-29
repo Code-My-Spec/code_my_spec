@@ -4,7 +4,7 @@ defmodule CodeMySpec.Agents.Transport do
 
   The server owns the record and the machine owns the process. Stopping an agent
   is therefore a request to somebody else's computer, and the answer decides
-  whether it was a stop at all — `Agents.stop_agent/2` records `:stopped` only
+  whether it was a stop at all — `Agents.turn_off_agent/3` records `:stopped` only
   once this says the group is gone.
 
   ## Why synchronous
@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.Transport do
   """
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.AgentsRepository
 
   @doc """
   Ask the machine serving `working_copy_id` to launch this agent.
@@ -152,4 +153,39 @@ defmodule CodeMySpec.Agents.Transport do
   @doc "The configured transport. Defaults to the real channel."
   @spec impl() :: module()
   def impl, do: Application.get_env(:code_my_spec, :agent_transport, __MODULE__.Harness)
+
+  # The gate (39af5611). Everything that reaches an agent's process — a launch,
+  # a message, a dispatch, a work turn — goes through these four, and an agent
+  # that is off or retired gets `{:error, {:off | :retired, agent}}` instead.
+  # Read fresh, not off the caller's struct, so a turn-off lands on queued work.
+
+  @doc "`:ok` if this agent may be delivered to, else why not. The gate, asked ahead."
+  @spec deliverable(Agent.t()) :: :ok | {:error, {:off | :retired, Agent.t()}}
+  def deliverable(%Agent{id: id}) do
+    case AgentsRepository.get_stood_down(id) do
+      nil -> :ok
+      %Agent{retired_at: %DateTime{}} = retired -> {:error, {:retired, retired}}
+      off -> {:error, {:off, off}}
+    end
+  end
+
+  @doc "Launch, unless the agent is off or retired."
+  def start_agent(copy_id, %Agent{} = agent, timeout),
+    do: gated(agent, fn -> impl().start_agent(copy_id, agent, timeout) end)
+
+  @doc "Message and wait, unless the agent is off or retired."
+  def message_agent(copy_id, %Agent{} = agent, text, timeout),
+    do: gated(agent, fn -> impl().message_agent(copy_id, agent, text, timeout) end)
+
+  @doc "Dispatch a message, unless the agent is off or retired."
+  def dispatch_message(copy_id, %Agent{} = agent, ref, text, timeout),
+    do: gated(agent, fn -> impl().dispatch_message(copy_id, agent, ref, text, timeout) end)
+
+  @doc "Offer a work turn, unless the agent is off or retired."
+  def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout),
+    do: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+
+  defp gated(agent, deliver) do
+    with :ok <- deliverable(agent), do: deliver.()
+  end
 end

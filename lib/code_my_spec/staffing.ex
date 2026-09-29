@@ -207,7 +207,8 @@ defmodule CodeMySpec.Staffing do
     |> Enum.find_value(& &1.device_id)
   end
 
-  # Stop everything on this copy, and say what would not stop.
+  # Retire everything on this copy, and say what would not stop. Retired, not
+  # off: the copy is going away, so its agents are gone for good (39af5611).
   #
   # Counted rather than swallowed: "3 agents stopped" and "3 agents stopped, 1
   # still running" are different facts and the person offboarding needs the
@@ -218,9 +219,20 @@ defmodule CodeMySpec.Staffing do
     |> Agents.list_agents()
     |> Enum.filter(&(&1.working_copy_id == working_copy_id and &1.status != :stopped))
     |> Enum.reduce(%{agents_stopped: 0, agents_left_running: []}, fn agent, acc ->
-      case Agents.stop_agent(scope, agent.id) do
+      case Agents.retire_agent(scope, agent.id,
+             by: Agents.actor(scope),
+             reason: "its working copy was offboarded"
+           ) do
         {:ok, _stopped} ->
           %{acc | agents_stopped: acc.agents_stopped + 1}
+
+        {:ok, _retired, {:unreachable, machine}} ->
+          Logger.warning(
+            "[Staffing] offboarding #{working_copy_id}: retired agent #{agent.id}, but " <>
+              "#{machine} could not be reached, so its process may still be running"
+          )
+
+          %{acc | agents_left_running: [agent.id | acc.agents_left_running]}
 
         {:error, reason} ->
           Logger.warning(

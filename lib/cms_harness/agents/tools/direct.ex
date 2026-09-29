@@ -3,7 +3,7 @@ defmodule CmsHarness.Agents.Tools.Direct do
   The plumbing under the tools an agent carries because a script may not have
   them.
 
-  `CodeMode.Catalog` refuses to bind `start_agent`, `stop_agent` and
+  `CodeMode.Catalog` refuses to bind `start_agent`, `turn_off_agent` and
   `assign_subagent` to a script, and the reason it gives is about scripts: "it
   spawns background work, and a loop around it is a fleet". That is an argument
   against looping over a spawn, not against an agent making one — and until

@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2879Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2879Spex do
 
       when_ "I stop the QA lane", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => context.qa.id}, frame)
+        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.qa.id}, frame)
         {:ok, Map.put(context, :reply, reply)}
       end
 
