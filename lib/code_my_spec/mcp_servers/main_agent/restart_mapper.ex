@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.MainAgent.RestartMapper do
   @spec error(term()) :: Response.t()
   def error(:not_mine) do
     refuse("""
-    That is not one of your agents, so it was not restarted.
+    No agent or conversation with that id exists here, so nothing was restarted.
 
     You act on the agents of your own project. If what needs restarting is the \
     harness, it is not yours to restart either: it is a shared harness, serving \

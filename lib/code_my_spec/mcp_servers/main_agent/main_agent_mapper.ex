@@ -127,6 +127,15 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     """)
   end
 
+  def error(:no_such_agent) do
+    Response.tool()
+    |> Response.error("""
+    No agent or conversation with that id exists here. `list_agent_work` has \
+    the agent ids; ids print truncated on most surfaces, and this takes the \
+    whole one.\
+    """)
+  end
+
   def error(:no_agent_named) do
     Response.tool()
     |> Response.error("""

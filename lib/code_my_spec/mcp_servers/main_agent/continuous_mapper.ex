@@ -56,8 +56,8 @@ defmodule CodeMySpec.McpServers.MainAgent.ContinuousMapper do
   def error(:not_found) do
     Response.tool()
     |> Response.error("""
-    No agent on this project has that id. `list_agent_work` has the ones that
-    are yours.
+    No agent or conversation with that id exists here. `list_agent_work` has
+    the agent ids.
 
     Ids print truncated on most surfaces; this takes the whole one.
     """)
