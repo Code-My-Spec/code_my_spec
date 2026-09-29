@@ -133,6 +133,23 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     await_app_result(event, ref, timeout)
   end
 
+  @doc """
+  A barrier on `AppInstance`'s own reply-then-hook ordering for `root`'s
+  copy — not a read of its state, which a caller must not assert on.
+
+  `handle_call({:restart, ...})` replies before running the after-promote
+  hook, on purpose (its own comment explains why: the recipe can kill the
+  very BEAM answering the call). That hook is the next statement in the
+  same `handle_call` clause, not a separate later message, so it is not
+  necessarily done by the time a caller's own channel round trip delivers
+  the reply — spex may not reference `CmsHarness` directly, so this wraps
+  the wait every such assertion needs: `:sys.get_state/1` on the same
+  GenServer cannot be answered until the clause that sent the reply has
+  fully returned, which puts the hook's completion strictly before this
+  call's.
+  """
+  def sync_after_reply(root), do: :sys.get_state(CmsHarness.AppInstance.via(root))
+
   # --- internals ---
 
   # A directory that looks enough like a project to be served, mirroring

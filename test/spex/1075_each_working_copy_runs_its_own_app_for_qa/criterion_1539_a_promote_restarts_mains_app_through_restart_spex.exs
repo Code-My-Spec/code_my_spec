@@ -114,18 +114,13 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
       end
 
       then_ "the after-promote recipe was actually run, not skipped", context do
-        # `AppInstance` replies to this call *before* running the hook (see
-        # its own comment on `handle_call({:restart, ...})`) — the hook is
-        # the next statement in the same `handle_call` clause, not a
-        # separate later message, so it has not necessarily finished by the
-        # time this process receives that reply over the channel round
-        # trip. `:sys.get_state/1` forces a synchronous call into the same
-        # GenServer, which cannot be answered until the clause that sent
-        # the reply has fully returned — a wait on the fact under test
-        # rather than a sleep. Flaky without it under load: caught as
-        # ~1-in-3 across repeated full-suite runs, unrelated to any of this
-        # session's own changes (git blame: 9192ad367, well before today).
-        :sys.get_state(CmsHarness.AppInstance.via(context.root))
+        # A barrier on the reply-then-hook ordering `AppInstanceHelpers.
+        # sync_after_reply/1` documents — not a read of AppInstance's state,
+        # which this assertion must not depend on. Flaky without it under
+        # load: caught as ~1-in-3 across repeated full-suite runs, unrelated
+        # to any of this session's own changes (git blame on this file:
+        # 9192ad367, well before today).
+        sync_after_reply(context.root)
 
         assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) == 1,
                "a successful restart with the recipe declared should still have run it"
