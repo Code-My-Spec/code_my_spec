@@ -217,11 +217,12 @@ defmodule CmsHarness.Browser do
   # Unset looks on PATH; `false` is a machine that has one and should not use it
   # — a server, a box where agents must not drive a browser — and it is the only
   # way to reach the `:absent` branch on a machine where vibium is installed,
-  # which is every machine a test runs on here.
+  # which is every machine a test runs on here. Unset launches the binary behind
+  # the npm shim, not the shim (`CmsHarness.Browser.Executable`).
   defp executable do
     case Application.get_env(:code_my_spec, :vibium_executable, nil) do
       false -> nil
-      nil -> System.find_executable("vibium")
+      nil -> __MODULE__.Executable.find()
       path -> path
     end
   end
