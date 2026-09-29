@@ -533,4 +533,98 @@ defmodule CodeMySpec.WorkingCopiesTest do
       refute theirs.id in ids
     end
   end
+
+  describe "tunnel_sibling/1" do
+    setup %{scope: scope} do
+      device = device_fixture(scope)
+
+      {:ok, main} =
+        WorkingCopies.issue(scope, nil, label: "main", device: device)
+
+      # The project's only checkout at this point, so `report_root/2`
+      # self-designates it main — the same path every real onboarding takes.
+      {:ok, main} = WorkingCopies.report_root(main, "/tmp/sibling_main")
+      assert main.main
+
+      {:ok, main} =
+        WorkingCopies.record_preview_tunnel(main, %{
+          preview_url: "https://preview-#{main.id}.astralbi.com",
+          preview_tunnel_id: "tunnel-1",
+          preview_tunnel_secret: "s3cret"
+        })
+
+      %{device: device, main: main}
+    end
+
+    # Criterion 1586: the property `PreviewTunnel.ensure/1` leans on.
+    test "finds a same-device copy that already holds a tunnel", %{
+      scope: scope,
+      device: device,
+      main: main
+    } do
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device)
+
+      assert {:ok, sibling} = WorkingCopies.tunnel_sibling(worktree)
+      assert sibling.id == main.id
+    end
+
+    # Criterion 1587: a different device never reads as a sibling, whatever
+    # tunnel it holds.
+    test "a copy on a different device is never a sibling", %{scope: scope} do
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      assert WorkingCopies.tunnel_sibling(worktree) == :error
+    end
+
+    # `device_id` is `NOT NULL` in the schema, so a persisted row is never in
+    # this state — this is the guard clause itself, for a struct built before
+    # a harness has ever announced its machine.
+    test "a struct with no device reported yet is never a sibling" do
+      copy = %CodeMySpec.WorkingCopies.WorkingCopy{
+        id: Ecto.UUID.generate(),
+        project_id: Ecto.UUID.generate(),
+        device_id: nil
+      }
+
+      assert WorkingCopies.tunnel_sibling(copy) == :error
+    end
+  end
+
+  describe "record_preview_tunnel/2" do
+    test "refuses a non-main copy with no app of its own", %{scope: scope} do
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      assert {:error, :not_the_main_copy} =
+               WorkingCopies.record_preview_tunnel(worktree, %{
+                 preview_url: "https://preview-#{worktree.id}.astralbi.com",
+                 preview_tunnel_id: "tunnel-1",
+                 preview_tunnel_secret: "s3cret"
+               })
+    end
+
+    # Story 1108 gave every copy an `app_url` once its own app comes up —
+    # criterion 1586 is what that unlocks.
+    test "allows a non-main copy whose own app has come up", %{scope: scope} do
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      {:ok, worktree} =
+        WorkingCopies.record_app_status(worktree, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      assert {:ok, saved} =
+               WorkingCopies.record_preview_tunnel(worktree, %{
+                 preview_url: "https://preview-#{worktree.id}.astralbi.com",
+                 preview_tunnel_id: "tunnel-1",
+                 preview_tunnel_secret: "s3cret"
+               })
+
+      assert saved.preview_tunnel_id == "tunnel-1"
+    end
+  end
 end

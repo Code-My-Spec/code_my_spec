@@ -40,6 +40,32 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   deleted and replaced. `ensure/1` is therefore idempotent on the *stored*
   credential rather than on what Cloudflare reports, because "a tunnel with
   this name exists" is not the same as "we can still speak for it".
+
+  ## Sharing a tunnel across a device (criteria 1586/1587)
+
+  Every connector attached to a tunnel has to be able to satisfy every one of
+  its ingress rules, because Cloudflare has no notion of which connector is
+  near which hostname's target — it hands the request to whichever connector
+  answers. That is sound for two copies on *one* machine (either one's
+  `cloudflared` can dial `http://localhost:<the other's port>` just fine) and
+  unsound across two: a connector on a different machine cannot reach a port
+  that only exists on the first one. So a copy shares main's tunnel only when
+  `WorkingCopies.tunnel_sibling/1` finds one on its own device (1586), and
+  gets a plain refusal otherwise (1587) rather than something that looks
+  provisioned and silently cannot be reached.
+
+  Sharing adds this copy's hostname to the tunnel's *ingress list* rather than
+  running a second `cloudflared`, and only main's connector needs to be
+  running at all — see `CmsHarness` main-only tunnel gating (the stray-second-
+  connector fix). That list is mutated through Cloudflare's remote tunnel
+  configuration endpoint, which `cloudflared` only reads once a tunnel's
+  `config_src` is `"cloudflare"` instead of `"local"`. Every tunnel this
+  module creates today still has `config_src: "local"` — flipping an
+  already-serving tunnel to remote config live is a one-time, watched change,
+  not something this module performs on its own. Until that switch happens,
+  `add_ingress/4` reaches the API and gets back whatever Cloudflare already
+  holds; a copy sharing an unconverted tunnel is recorded correctly and simply
+  is not reachable yet.
   """
 
   require Logger
@@ -47,6 +73,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpec.Workspaces.TunnelIngressLock
 
   @api "https://api.cloudflare.com/client/v4"
 
@@ -102,9 +129,23 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   somebody notices the frame is blank.
   """
   @spec ensure(WorkingCopy.t()) :: {:ok, credentials()} | {:error, term()}
-  def ensure(%WorkingCopy{main: false}), do: {:error, :not_the_main_copy}
+  def ensure(%WorkingCopy{main: true} = copy), do: provision(copy)
 
-  def ensure(%WorkingCopy{} = copy) do
+  # Every other copy is eligible only once it has something of its own to
+  # point a preview at (story 1108's `app_url`) — a bare worktree still gets
+  # `:not_the_main_copy` below, unchanged from before 1586/1587 existed.
+  def ensure(%WorkingCopy{app_url: url} = copy) when is_binary(url) and url != "" do
+    case WorkingCopies.tunnel_sibling(copy) do
+      {:ok, sibling} -> share(copy, sibling)
+      :error -> {:error, :no_tunnel_on_this_device}
+    end
+  end
+
+  def ensure(%WorkingCopy{}), do: {:error, :not_the_main_copy}
+
+  # Main always creates or reuses a tunnel of its own — unchanged from before
+  # 1586/1587, just given a name now that `ensure/1` has a second path.
+  defp provision(%WorkingCopy{} = copy) do
     # Checked here as well as in `record_preview_tunnel/2`, and the order is the
     # whole point. Refusing only at the write would create the tunnel and the
     # DNS record first and reject them afterwards — leaving a real tunnel in the
@@ -117,6 +158,23 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
          :ok <- point(host, tunnel.tunnel_id),
          {:ok, _copy} <- record(copy, host, tunnel) do
       {:ok, Map.merge(tunnel, %{hostname: host, account_tag: account, embedder: embedder()})}
+    end
+  end
+
+  # The device-sharing path (1586): reuse the sibling's tunnel outright — its
+  # id and secret, not a new tunnel — and add this copy's own hostname to its
+  # ingress rather than running a second `cloudflared`.
+  defp share(%WorkingCopy{} = copy, %WorkingCopy{
+         preview_tunnel_id: id,
+         preview_tunnel_secret: secret
+       }) do
+    with {:ok, account} <- account_id(),
+         host = PreviewAddress.host(copy.id),
+         :ok <- add_ingress(account, id, host, copy.app_url),
+         :ok <- point(host, id),
+         {:ok, _copy} <- record(copy, host, %{tunnel_id: id, tunnel_secret: secret}) do
+      {:ok,
+       %{tunnel_id: id, tunnel_secret: secret, hostname: host, account_tag: account, embedder: embedder()}}
     end
   end
 
@@ -171,6 +229,109 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
+  @doc """
+  Drop this copy's own ingress rule from the tunnel it was sharing, and clear
+  its recorded address.
+
+  Offboarding, not an ordinary stop: an app that is merely idle keeps its
+  hostname and its ingress rule, serving a 502 until it restarts, because a
+  copy meant to come back should not have to be re-shared. This is for a copy
+  that is going away — its hostname should stop resolving to anything at all,
+  not sit forwarding to a port nothing will ever listen on again.
+
+  A no-op on main, whose tunnel is the project's, not this call's to remove;
+  and on a copy that never had one, which offboarding cannot tell apart from
+  one whose sharing already failed without doing something destructive to
+  find out.
+  """
+  @spec release(WorkingCopy.t()) :: :ok | {:error, term()}
+  def release(%WorkingCopy{main: true}), do: :ok
+
+  def release(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
+      when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
+    with {:ok, account} <- account_id(),
+         host = PreviewAddress.host(copy.id),
+         :ok <- remove_ingress(account, id, host) do
+      WorkingCopies.record_preview_tunnel(copy, %{
+        preview_url: nil,
+        preview_tunnel_id: nil,
+        preview_tunnel_secret: nil
+      })
+      |> case do
+        {:ok, _copy} -> :ok
+        error -> error
+      end
+    end
+  end
+
+  def release(%WorkingCopy{}), do: :ok
+
+  # ── Remote ingress (criteria 1586/1587) ──
+  #
+  # Locked on `tunnel_id`: more than one copy on the same device can add or
+  # drop its own rule around the same time, and a GET-modify-PUT with no lock
+  # would let a second write silently discard the first's addition. See
+  # `TunnelIngressLock`.
+
+  defp add_ingress(account, tunnel_id, host, service) do
+    TunnelIngressLock.with_lock(tunnel_id, fn ->
+      with {:ok, ingress} <- get_ingress(account, tunnel_id) do
+        ingress
+        |> Enum.reject(&(&1["hostname"] == host))
+        |> Kernel.++([%{"hostname" => host, "service" => service}])
+        |> put_ingress(account, tunnel_id)
+      end
+    end)
+  end
+
+  defp remove_ingress(account, tunnel_id, host) do
+    TunnelIngressLock.with_lock(tunnel_id, fn ->
+      with {:ok, ingress} <- get_ingress(account, tunnel_id) do
+        ingress
+        |> Enum.reject(&(&1["hostname"] == host))
+        |> put_ingress(account, tunnel_id)
+      end
+    end)
+  end
+
+  defp get_ingress(account, tunnel_id) do
+    case get_configuration(account, tunnel_id) do
+      {:ok, %{"result" => %{"config" => config}}} ->
+        {:ok, (config || %{}) |> Map.get("ingress", []) |> Enum.reject(&is_nil(&1["hostname"]))}
+
+      {:ok, body} ->
+        {:error, {:cloudflare, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Every named rule, then exactly one catch-all last — `cloudflared` refuses
+  # a config whose final rule names a host. `get_ingress/2` already strips
+  # whatever catch-all Cloudflare held, so every write re-asserts a fresh one
+  # rather than trusting an old one stayed put.
+  defp put_ingress(named, account, tunnel_id) do
+    case put_configuration(account, tunnel_id, named ++ [%{"service" => "http_status:404"}]) do
+      {:ok, %{"success" => true}} -> :ok
+      {:ok, body} -> {:error, {:cloudflare, body}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_configuration(account, tunnel_id) do
+    with {:ok, token} <- token() do
+      get("#{@api}/accounts/#{account}/cfd_tunnel/#{tunnel_id}/configurations", token)
+    end
+  end
+
+  defp put_configuration(account, tunnel_id, ingress) do
+    with {:ok, token} <- token() do
+      "#{@api}/accounts/#{account}/cfd_tunnel/#{tunnel_id}/configurations"
+      |> put(%{config: %{ingress: ingress}}, token)
+    end
+  end
+
   defp get(url, token) do
     [url: url, headers: [{"authorization", "Bearer " <> token}], retry: false]
     |> Keyword.merge(req_options())
@@ -187,6 +348,18 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     ]
     |> Keyword.merge(req_options())
     |> Req.patch()
+    |> body_of()
+  end
+
+  defp put(url, body, token) do
+    [
+      url: url,
+      headers: [{"authorization", "Bearer " <> token}],
+      json: body,
+      retry: false
+    ]
+    |> Keyword.merge(req_options())
+    |> Req.put()
     |> body_of()
   end
 

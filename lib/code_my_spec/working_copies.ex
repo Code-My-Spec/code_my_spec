@@ -721,19 +721,65 @@ defmodule CodeMySpec.WorkingCopies do
   frame it anyway. Saving them together means that state is unreachable rather
   than merely unlikely.
 
-  Refused on a copy that is not the main one, for the same reason
-  `record_preview_url/2` is: provisioning a tunnel for a worktree spends a real
-  Cloudflare record on an address the panel will never read.
+  Refused on a copy that is not the main one and has no app of its own yet —
+  provisioning a tunnel for a worktree nobody is running anything on spends a
+  real Cloudflare record on an address the panel will never read. A copy with
+  its own `app_url` is different: story 1108 already gave it something to
+  point a preview at, and `PreviewTunnel.ensure/1` (criteria 1586/1587) is
+  what decides whether that means sharing main's tunnel or nothing yet — this
+  function only ever refuses on identity, not on which of those two outcomes
+  the caller is asking it to record.
   """
   @spec record_preview_tunnel(WorkingCopy.t(), map()) ::
           {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
   def record_preview_tunnel(%WorkingCopy{main: true} = harness, attrs) do
+    do_record_preview_tunnel(harness, attrs)
+  end
+
+  def record_preview_tunnel(%WorkingCopy{app_url: url} = harness, attrs)
+      when is_binary(url) and url != "" do
+    do_record_preview_tunnel(harness, attrs)
+  end
+
+  def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
+
+  defp do_record_preview_tunnel(harness, attrs) do
     harness
     |> save(Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
     |> announce_graph_change(harness)
   end
 
-  def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
+  @doc """
+  Another working copy on the same project and device that already holds a
+  preview tunnel — the one `PreviewTunnel.ensure/1` shares rather than
+  duplicates (criterion 1586).
+
+  `nil` device_id never matches anything, including another `nil`: a copy
+  that has not yet reported which machine it is on cannot be assumed to
+  share one with anything else — two such copies could as easily be on two
+  different laptops that both onboarded before their harness ever connected.
+  That absence of a match is exactly criterion 1587: a copy on a different
+  device gets `:error` here and `PreviewTunnel.ensure/1` refuses to share
+  rather than guessing.
+  """
+  @spec tunnel_sibling(WorkingCopy.t()) :: {:ok, WorkingCopy.t()} | :error
+  def tunnel_sibling(%WorkingCopy{project_id: project_id, device_id: device_id, id: id})
+      when is_binary(project_id) and is_binary(device_id) do
+    query =
+      from w in WorkingCopy,
+        where: w.project_id == ^project_id,
+        where: w.device_id == ^device_id,
+        where: w.id != ^id,
+        where: not is_nil(w.preview_tunnel_id) and not is_nil(w.preview_tunnel_secret),
+        limit: 1
+
+    case Repo.one(query) do
+      nil -> :error
+      sibling -> {:ok, sibling}
+    end
+  end
+
+  def tunnel_sibling(%WorkingCopy{}), do: :error
 
   @doc """
   Where this project's preview answers, or nothing.

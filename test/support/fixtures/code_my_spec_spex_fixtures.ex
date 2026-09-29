@@ -4164,6 +4164,15 @@ defmodule CodeMySpecSpex.Fixtures do
   def notify_call(test_pid, tag, request_path), do: send(test_pid, {tag, request_path})
 
   @doc """
+  Send `message` to `test_pid` from inside a stub — same reasoning as
+  `notify_call/3`, generalised: some stubs need to report more than a
+  request path (a parsed body, a decoded ingress list) for a spex's own
+  `assert_receive`.
+  """
+  @spec notify(pid(), term()) :: term()
+  def notify(test_pid, message), do: send(test_pid, message)
+
+  @doc """
   Stub `client` to answer 200 with `response_body`, noting each call's
   `authorization` header for a spex's own `assert_received`.
   """

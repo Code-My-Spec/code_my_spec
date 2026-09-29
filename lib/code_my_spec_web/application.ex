@@ -128,6 +128,12 @@ defmodule CodeMySpecWeb.Application do
         # once decide the surviving build by timing (db97272b) — the lock
         # that closes that belongs here for the same reason RunLock does.
         CodeMySpec.Promotion.Lock,
+        # Which tunnel has an ingress read-modify-write in flight. A shared
+        # tunnel's ingress list (criterion 1586) is written by more than one
+        # working copy independently, and the GET-modify-PUT round trip is
+        # not atomic on its own — same reasoning as the lock above, scoped to
+        # a different resource.
+        CodeMySpec.Workspaces.TunnelIngressLock,
         # What agents are writing before it becomes a message. Before the
         # endpoint, which is where the drafts arrive from.
         CodeMySpec.Conversations.Drafts,

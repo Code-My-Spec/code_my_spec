@@ -221,6 +221,174 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
   end
 
+  describe "sharing a device's tunnel (criteria 1586/1587)" do
+    setup %{copy: main} do
+      {:ok, main} =
+        WorkingCopies.record_preview_tunnel(main, %{
+          preview_url: PreviewAddress.url(main.id),
+          preview_tunnel_id: @tunnel_id,
+          preview_tunnel_secret: "main-secret"
+        })
+
+      %{main: main}
+    end
+
+    defp stub_shared_cloudflare(test_pid, ingress) do
+      Test.stub(PreviewTunnel, &shared_cloudflare_response(&1, test_pid, ingress))
+    end
+
+    defp shared_cloudflare_response(%{request_path: "/" <> _ = path} = conn, test_pid, ingress) do
+      configurations_response(String.contains?(path, "/configurations"), conn, test_pid, ingress)
+    end
+
+    defp configurations_response(true, %{method: "GET"} = conn, _test_pid, ingress) do
+      Test.json(conn, %{
+        "success" => true,
+        "errors" => [],
+        "result" => %{"config" => %{"ingress" => ingress}}
+      })
+    end
+
+    defp configurations_response(true, %{method: "PUT"} = conn, test_pid, _ingress) do
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:put_config, Jason.decode!(body)})
+      Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
+    end
+
+    defp configurations_response(false, conn, test_pid, _ingress) do
+      dns_or_unknown_response(String.contains?(conn.request_path, "dns_records"), conn, test_pid)
+    end
+
+    defp dns_or_unknown_response(true, conn, test_pid) do
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:dns_record, Jason.decode!(body)})
+      Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
+    end
+
+    defp dns_or_unknown_response(false, conn, _test_pid) do
+      Test.json(conn, %{"success" => false, "errors" => [%{"code" => 9_999}]})
+    end
+
+    # Criterion 1586.
+    test "a second copy on main's own device shares main's tunnel", %{
+      scope: scope,
+      main: main
+    } do
+      stub_shared_cloudflare(self(), [])
+
+      {:ok, sibling} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+
+      {:ok, sibling} =
+        WorkingCopies.record_app_status(sibling, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      assert {:ok, creds} = PreviewTunnel.ensure(sibling)
+
+      assert creds.tunnel_id == @tunnel_id
+      assert creds.tunnel_secret == "main-secret"
+      assert creds.hostname == PreviewAddress.host(sibling.id)
+
+      assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}
+      assert %{"hostname" => host, "service" => "http://127.0.0.1:41234"} =
+               Enum.find(ingress, &(&1["hostname"] == PreviewAddress.host(sibling.id)))
+
+      assert host == PreviewAddress.host(sibling.id)
+
+      assert List.last(ingress) == %{"service" => "http_status:404"},
+             "cloudflared refuses a config whose last rule names a host"
+
+      assert_receive {:dns_record, record}
+      assert record["content"] == @tunnel_id <> ".cfargotunnel.com"
+
+      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      assert saved.preview_tunnel_id == @tunnel_id
+      assert saved.preview_tunnel_secret == "main-secret"
+      assert saved.preview_url == PreviewAddress.url(sibling.id)
+    end
+
+    # Criterion 1587.
+    test "a copy on a different device never shares another device's tunnel", %{
+      scope: scope
+    } do
+      stub_shared_cloudflare(self(), [])
+
+      {:ok, elsewhere} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      {:ok, elsewhere} =
+        WorkingCopies.record_app_status(elsewhere, %{
+          status: "serving",
+          url: "http://127.0.0.1:51234"
+        })
+
+      assert {:error, :no_tunnel_on_this_device} = PreviewTunnel.ensure(elsewhere)
+
+      refute_receive {:put_config, _}, 100
+      refute_receive {:dns_record, _}, 100
+
+      {:ok, saved} = WorkingCopies.fetch(elsewhere.id)
+      assert saved.preview_tunnel_id == nil
+    end
+
+    test "an unreachable copy is refused, not silently shared with no address", %{
+      scope: scope,
+      main: main
+    } do
+      stub_shared_cloudflare(self(), [])
+
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+
+      assert {:error, :not_the_main_copy} = PreviewTunnel.ensure(worktree)
+      refute_receive {:put_config, _}, 100
+    end
+
+    test "release/1 drops this copy's ingress rule and clears its address", %{
+      scope: scope,
+      main: main
+    } do
+      {:ok, sibling} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+
+      {:ok, sibling} =
+        WorkingCopies.record_app_status(sibling, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      host = PreviewAddress.host(sibling.id)
+
+      stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
+      assert {:ok, _} = PreviewTunnel.ensure(sibling)
+      assert_receive {:put_config, _}, 100
+      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
+
+      stub_shared_cloudflare(self(), [
+        %{"hostname" => host, "service" => "http://127.0.0.1:41234"},
+        %{"service" => "http_status:404"}
+      ])
+
+      assert :ok = PreviewTunnel.release(sibling)
+
+      assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}
+      refute Enum.any?(ingress, &(&1["hostname"] == host))
+
+      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      assert saved.preview_tunnel_id == nil
+      assert saved.preview_tunnel_secret == nil
+      assert saved.preview_url == nil
+    end
+
+    test "release/1 does nothing to main's own tunnel", %{main: main} do
+      assert :ok = PreviewTunnel.release(main)
+      {:ok, saved} = WorkingCopies.fetch(main.id)
+      assert saved.preview_tunnel_id == @tunnel_id
+    end
+  end
+
   test "a worktree is refused before anything is provisioned", %{scope: scope, copy: _copy} do
     stub_cloudflare(self())
 
