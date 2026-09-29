@@ -43,5 +43,11 @@ defmodule CodeMySpecTest do
     # `TurnEventRelay` is exported for the same reason the other two are:
     # `CodeMySpecSpex.Fixtures` installs it on a criterion's behalf. It is the
     # seam that lets an in-process agent's turn events reach the server at all.
-    exports: [FakeWorkspaceRunner, TurnEventRelay, WorkspaceWatchers]
+    #
+    # `RecordingAgentTransport` for criterion 1376 (story 1046): the promoted
+    # agent correction (`Promotion.tell_the_agent/4`) is a fire-and-forget
+    # message dispatch with no other observable surface — no DB row, no MCP
+    # response. `CodeMySpecSpex.Fixtures` installs it and hands back the
+    # dispatched message the same way it does the other two fakes here.
+    exports: [FakeWorkspaceRunner, RecordingAgentTransport, TurnEventRelay, WorkspaceWatchers]
 end

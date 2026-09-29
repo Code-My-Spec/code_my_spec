@@ -287,6 +287,25 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                     {URI.parse(row.harness.preview_url).host}
                   </a>
 
+                  <%!-- Story 1108: this copy's own app, separate from `preview_url`
+                  above — every copy runs one, not only main's. Added for story
+                  1046 (QA runs against a copy's own app before promotion), which
+                  had no surface at all showing whether that app was actually up
+                  or what commit it was serving; a defect in that plumbing read as
+                  a silent hang rather than something visible on this page. --%>
+                  <div
+                    :if={row.harness.app_status}
+                    data-test="working-copy-app-status"
+                    data-app-status={row.harness.app_status}
+                    class={["badge badge-sm mt-1", app_status_badge_class(row.harness.app_status)]}
+                  >
+                    <.icon name={app_status_icon(row.harness.app_status)} class="size-3" />
+                    app {row.harness.app_status}
+                    <span :if={row.harness.app_commit} data-test="working-copy-app-commit">
+                      &nbsp;{String.slice(row.harness.app_commit, 0, 8)}
+                    </span>
+                  </div>
+
                   <div class="text-xs opacity-60 truncate">
                     <span
                       :if={row.device}
@@ -417,4 +436,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
     </Layouts.app>
     """
   end
+
+  # `WorkingCopy.app_status` follows `preview_status`'s three states
+  # (`serving` | `erroring` | `down`) — see that field's own moduledoc note
+  # for why a 500 (erroring) reads differently from nothing answering (down).
+  defp app_status_badge_class("serving"), do: "badge-success"
+  defp app_status_badge_class("erroring"), do: "badge-warning"
+  defp app_status_badge_class("down"), do: "badge-error"
+  defp app_status_badge_class(_other), do: "badge-ghost"
+
+  defp app_status_icon("serving"), do: "hero-check-circle"
+  defp app_status_icon("erroring"), do: "hero-exclamation-triangle"
+  defp app_status_icon("down"), do: "hero-signal-slash"
+  defp app_status_icon(_other), do: "hero-question-mark-circle"
 end

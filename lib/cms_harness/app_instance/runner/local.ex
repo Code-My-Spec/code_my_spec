@@ -148,10 +148,12 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path) do
+  def launch(root, port, https_port, database, log_path, main?) do
     File.mkdir_p!(Path.dirname(log_path))
 
-    env_prefix = "PORT=#{port} HTTPS_PORT=#{https_port} DATABASE_NAME=#{database}"
+    env_prefix =
+      "PORT=#{port} HTTPS_PORT=#{https_port} DATABASE_NAME=#{database} CMS_MAIN_COPY=#{main?}"
+
     cmd = "#{env_prefix} just serve > #{log_path} 2>&1 < /dev/null"
 
     shell =

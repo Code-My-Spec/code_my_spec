@@ -151,8 +151,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path) do
-    record(:launch, [root, port, https_port, database, log_path])
+  def launch(root, port, https_port, database, log_path, main?) do
+    record(:launch, [root, port, https_port, database, log_path, main?])
     Agent.get(__MODULE__, & &1.launch_result)
   end
 

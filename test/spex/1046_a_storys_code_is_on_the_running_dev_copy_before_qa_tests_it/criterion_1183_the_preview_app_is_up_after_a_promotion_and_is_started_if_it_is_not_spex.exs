@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     :ok
   end
 
-  spex "An application that answers with an error is QA's to find" do
+  spex "An application that answers with an error is QA's to find", criterion: 1183 do
     scenario "the application is up and returning 500s" do
       given_ "a story ready for QA, on the checkout the application runs from", context do
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
@@ -72,7 +72,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     end
   end
 
-  spex "A down application is started by the same act that would promote to it" do
+  spex "A down application is started by the same act that would promote to it",
+       criterion: 1183 do
     scenario "the agent is working on the running copy and nothing is serving it" do
       given_ "an agent working on the checkout the application runs from", context do
         {:ok, a_running_copy(context)}
