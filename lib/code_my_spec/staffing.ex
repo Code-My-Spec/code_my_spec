@@ -151,8 +151,14 @@ defmodule CodeMySpec.Staffing do
 
   See `WorkingCopies.offboard/2` for what offboarding removes and what it never
   touches. Answers its counts plus `agents_stopped` and `agents_left_running`.
+
+  Refuses rather than offboarding, without removing anything, when a shared
+  copy's preview could not be released — see the reasoning inline. The copy
+  stays exactly as it was; offboarding it is safe to retry once whatever
+  Cloudflare error caused it clears.
   """
-  @spec offboard(Scope.t(), WorkingCopy.t()) :: {:ok, map()} | {:error, :not_yours}
+  @spec offboard(Scope.t(), WorkingCopy.t()) ::
+          {:ok, map()} | {:error, :not_yours} | {:error, {:preview_not_released, term()}}
   def offboard(
         %Scope{active_project_id: project_id} = scope,
         %WorkingCopy{
@@ -178,15 +184,16 @@ defmodule CodeMySpec.Staffing do
     # which is the one case the control exists for.
     agents = stop_agents_on(scope, id)
 
-    # Same reasoning, before the row goes: a shared copy's hostname and DNS
-    # record are Cloudflare's state, not this database's, and the row being
-    # deleted a moment later is not what removes them. Best-effort for the
-    # same reason stopping agents is — a copy whose machine has gone is
-    # exactly the case offboarding exists for, and a Cloudflare hiccup must
-    # not make an already-vanished checkout permanently un-offboardable.
-    release_shared_preview(copy)
-
-    with {:ok, counts} <- WorkingCopies.offboard(scope, copy) do
+    # Not best-effort, unlike the above: releasing a shared preview talks to
+    # Cloudflare, never to the copy's own machine, so "the machine is gone" —
+    # the case the leniency above exists for — cannot make this fail. A
+    # failure here means the ingress rule or the DNS record is still live,
+    # and deleting the row anyway would erase the one place that remembers
+    # either exists to clean up — a hostname kept serving whatever now runs
+    # on that port, with nothing left to notice or release it. Refusing loudly
+    # and leaving the row in place is what keeps that state findable.
+    with :ok <- release_shared_preview(copy),
+         {:ok, counts} <- WorkingCopies.offboard(scope, copy) do
       {:ok, Map.merge(counts, agents)}
     end
   end
@@ -200,9 +207,11 @@ defmodule CodeMySpec.Staffing do
 
       {:error, reason} ->
         Logger.warning(
-          "[Staffing] could not release #{copy.id}'s shared preview before offboarding: " <>
-            inspect(reason)
+          "[Staffing] refusing to offboard #{copy.id}: could not release its shared " <>
+            "preview: #{inspect(reason)}"
         )
+
+        {:error, {:preview_not_released, reason}}
     end
   end
 
