@@ -65,13 +65,19 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  # HTTPS is optional — an app with no HTTPS endpoint declared at all (no
+  # `port: String.to_integer(System.get_env("HTTPS_PORT") || ...)` line to
+  # match) is a real, ordinary shape, not a malformed config. Requiring both
+  # fallbacks here read metric_flow's own `config/dev.exs` (PORT only, no
+  # HTTPS_PORT at all) as *no* address resolvable at all —
+  # `{:cannot_resolve_main_address, root}` for a checkout whose PORT was
+  # right there — because the missing HTTPS half failed the whole `with`.
   @impl true
   def main_ports(root) do
     with main when is_binary(main) <- main_checkout_path(root),
          {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
-         http when is_integer(http) <- port_fallback(content, "PORT"),
-         https when is_integer(https) <- port_fallback(content, "HTTPS_PORT") do
-      {http, https}
+         http when is_integer(http) <- port_fallback(content, "PORT") do
+      {http, port_fallback(content, "HTTPS_PORT")}
     else
       _ -> nil
     end
@@ -152,8 +158,15 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     File.mkdir_p!(Path.dirname(log_path))
 
     env_prefix =
-      "PORT=#{port} HTTPS_PORT=#{https_port} DATABASE_NAME=#{database} " <>
-        "CMS_MAIN_COPY=#{main?} CMS_TUNNEL_HELD_BY_HARNESS=#{tunnel_held_by_harness?}"
+      [
+        "PORT=#{port}",
+        https_port_env(https_port),
+        "DATABASE_NAME=#{database}",
+        "CMS_MAIN_COPY=#{main?}",
+        "CMS_TUNNEL_HELD_BY_HARNESS=#{tunnel_held_by_harness?}"
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" ")
 
     cmd = "#{env_prefix} just serve > #{log_path} 2>&1 < /dev/null"
 
@@ -175,6 +188,13 @@ defmodule CmsHarness.AppInstance.Runner.Local do
         {:error, "launch exited #{status}: #{String.trim(out)}"}
     end
   end
+
+  # `nil` for a main checkout whose `config/dev.exs` declares no HTTPS
+  # endpoint at all (`main_ports/1`'s other half of the same fix) — omitted
+  # from the launched env entirely rather than interpolated, which would
+  # otherwise crash on `nil` having no `String.Chars` implementation.
+  defp https_port_env(nil), do: nil
+  defp https_port_env(port), do: "HTTPS_PORT=#{port}"
 
   @impl true
   def alive?(os_pid) do

@@ -32,13 +32,21 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   The `{http, https}` ports main's own `config/dev.exs` falls back to, or
-  `nil`. Main's app cannot be allocated a free port the way every other
-  copy's is — it is the one address every bookmark, browser tab and the MCP
-  endpoint already point at — so it has to be read off the same file that
-  configures it, the same way `main_database_name/1` already does for the
-  database.
+  `nil` for the whole pair when `PORT` cannot be resolved at all. Main's app
+  cannot be allocated a free port the way every other copy's is — it is the
+  one address every bookmark, browser tab and the MCP endpoint already
+  point at — so it has to be read off the same file that configures it, the
+  same way `main_database_name/1` already does for the database.
+
+  `https` is independently `nil` when the app declares no HTTPS endpoint at
+  all — a real, ordinary shape (metric_flow's own `config/dev.exs`, `PORT`
+  only), not a malformed config. Treating it as required read that shape as
+  no address resolvable at all: `{:cannot_resolve_main_address, root}` for a
+  checkout whose `PORT` was right there, because the missing HTTPS half
+  failed the whole lookup.
   """
-  @callback main_ports(root :: String.t()) :: {pos_integer(), pos_integer()} | nil
+  @callback main_ports(root :: String.t()) ::
+              {pos_integer(), pos_integer() | nil} | nil
 
   @doc "Clone `main_database` into a fresh `database` — dump and restore, not a template."
   @callback clone_database(root :: String.t(), main_database :: String.t(), database :: String.t()) ::
@@ -65,6 +73,11 @@ defmodule CmsHarness.AppInstance.Runner do
   `DATABASE_NAME`/`CMS_MAIN_COPY`/`CMS_TUNNEL_HELD_BY_HARNESS` set and its
   output redirected to `log_path`.
 
+  `https_port` is `nil` for a main checkout whose `config/dev.exs` declares
+  no HTTPS endpoint at all (see `main_ports/1`) — `HTTPS_PORT` is omitted
+  from the launched env entirely in that case, not interpolated as the
+  string `"nil"`.
+
   `main?` tells the booting app whether it is the checkout every bookmark
   already points at. A non-main copy has no business starting its own
   `ClientUtils.CloudflareTunnel` — that GenServer reads main's own hardcoded
@@ -89,7 +102,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @callback launch(
               root :: String.t(),
               port :: pos_integer(),
-              https_port :: pos_integer(),
+              https_port :: pos_integer() | nil,
               database :: String.t(),
               log_path :: String.t(),
               main? :: boolean(),
@@ -168,7 +181,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec main_database_name(String.t()) :: String.t() | nil
   def main_database_name(root), do: impl().main_database_name(root)
 
-  @spec main_ports(String.t()) :: {pos_integer(), pos_integer()} | nil
+  @spec main_ports(String.t()) :: {pos_integer(), pos_integer() | nil} | nil
   def main_ports(root), do: impl().main_ports(root)
 
   @spec clone_database(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
@@ -189,7 +202,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec launch(
           String.t(),
           pos_integer(),
-          pos_integer(),
+          pos_integer() | nil,
           String.t(),
           String.t(),
           boolean(),
