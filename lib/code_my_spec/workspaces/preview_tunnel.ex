@@ -234,10 +234,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   its recorded address.
 
   Offboarding, not an ordinary stop: an app that is merely idle keeps its
-  hostname and its ingress rule, serving a 502 until it restarts, because a
-  copy meant to come back should not have to be re-shared. This is for a copy
-  that is going away — its hostname should stop resolving to anything at all,
-  not sit forwarding to a port nothing will ever listen on again.
+  hostname, its ingress rule and its DNS record, serving a 502 until it
+  restarts, because a copy meant to come back should not have to be
+  re-shared. This is for a copy that is going away — its hostname should
+  stop resolving to anything at all, not sit forwarding to a port nothing
+  will ever listen on again, or answering NXDOMAIN through a CNAME that
+  outlives the row it named.
 
   A no-op on main, whose tunnel is the project's, not this call's to remove;
   and on a copy that never had one, which offboarding cannot tell apart from
@@ -249,9 +251,11 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   def release(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
       when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
+    host = PreviewAddress.host(copy.id)
+
     with {:ok, account} <- account_id(),
-         host = PreviewAddress.host(copy.id),
-         :ok <- remove_ingress(account, id, host) do
+         :ok <- remove_ingress(account, id, host),
+         :ok <- delete_dns_record(host) do
       WorkingCopies.record_preview_tunnel(copy, %{
         preview_url: nil,
         preview_tunnel_id: nil,
@@ -265,6 +269,33 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   end
 
   def release(%WorkingCopy{}), do: :ok
+
+  # The CNAME `point/2` wrote. Looked up by name because that is all a
+  # sharing copy was ever given back — nothing here holds the record's own
+  # id from when it was created.
+  defp delete_dns_record(host) do
+    with {:ok, token} <- token(),
+         {:ok, zone} <- zone_id() do
+      "#{@api}/zones/#{zone}/dns_records?name=#{host}"
+      |> get(token)
+      |> delete_found_record(zone, token)
+    end
+  end
+
+  defp delete_found_record({:ok, %{"result" => [%{"id" => id} | _]}}, zone, token) do
+    case delete("#{@api}/zones/#{zone}/dns_records/#{id}", token) do
+      {:ok, %{"success" => true}} -> :ok
+      {:ok, body} -> {:error, {:cloudflare, body}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Nothing to delete is not a failure — a copy released twice, or one whose
+  # record was already removed by hand, should not block on Cloudflare
+  # agreeing there was ever anything there.
+  defp delete_found_record({:ok, %{"result" => []}}, _zone, _token), do: :ok
+  defp delete_found_record({:ok, body}, _zone, _token), do: {:error, {:cloudflare, body}}
+  defp delete_found_record({:error, reason}, _zone, _token), do: {:error, reason}
 
   # ── Remote ingress (criteria 1586/1587) ──
   #
@@ -360,6 +391,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     ]
     |> Keyword.merge(req_options())
     |> Req.put()
+    |> body_of()
+  end
+
+  defp delete(url, token) do
+    [url: url, headers: [{"authorization", "Bearer " <> token}], retry: false]
+    |> Keyword.merge(req_options())
+    |> Req.delete()
     |> body_of()
   end
 

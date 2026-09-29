@@ -61,7 +61,11 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.WorkingCopies,
+      # `share_copy_app`/`unshare_copy_app` call `PreviewTunnel.ensure/1` and
+      # `.release/1` directly, the same reasoning as every other tool here
+      # that calls its own component straight through.
+      CodeMySpec.Workspaces
     ],
     exports: :all
 end

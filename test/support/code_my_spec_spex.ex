@@ -51,6 +51,14 @@ defmodule CodeMySpecSpex do
       CodeMySpec.TempFile,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
+      # Criteria 1586/1587 call `PreviewTunnel.ensure/1` and `PreviewAddress.host/1`
+      # directly — `PreviewTunnel` is the module under test (this story's own
+      # declared component), the same reasoning as `CodeMySpec.AgentTasks` and
+      # `CodeMySpec.Promotion` above. A second onboarding run against a second
+      # real root is what production does for the sibling copy; standing one up
+      # inside one spec's sandboxed environment is infrastructure this suite
+      # does not yet have (see that spec's own moduledoc).
+      CodeMySpec.Workspaces,
       CodeMySpecSpex.Fixtures,
       # Recorded analyzer output attached to a spex's environment.
       CodeMySpecSpex.RecordedAnalysis,

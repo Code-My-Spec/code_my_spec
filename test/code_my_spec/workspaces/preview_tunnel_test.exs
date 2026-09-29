@@ -233,15 +233,21 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       %{main: main}
     end
 
-    defp stub_shared_cloudflare(test_pid, ingress) do
-      Test.stub(PreviewTunnel, &shared_cloudflare_response(&1, test_pid, ingress))
+    defp stub_shared_cloudflare(test_pid, ingress, dns_lookup \\ []) do
+      Test.stub(PreviewTunnel, &shared_cloudflare_response(&1, test_pid, ingress, dns_lookup))
     end
 
-    defp shared_cloudflare_response(%{request_path: "/" <> _ = path} = conn, test_pid, ingress) do
-      configurations_response(String.contains?(path, "/configurations"), conn, test_pid, ingress)
+    defp shared_cloudflare_response(%{request_path: "/" <> _ = path} = conn, test_pid, ingress, dns_lookup) do
+      configurations_response(
+        String.contains?(path, "/configurations"),
+        conn,
+        test_pid,
+        ingress,
+        dns_lookup
+      )
     end
 
-    defp configurations_response(true, %{method: "GET"} = conn, _test_pid, ingress) do
+    defp configurations_response(true, %{method: "GET"} = conn, _test_pid, ingress, _dns_lookup) do
       Test.json(conn, %{
         "success" => true,
         "errors" => [],
@@ -249,23 +255,37 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       })
     end
 
-    defp configurations_response(true, %{method: "PUT"} = conn, test_pid, _ingress) do
+    defp configurations_response(true, %{method: "PUT"} = conn, test_pid, _ingress, _dns_lookup) do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:put_config, Jason.decode!(body)})
       Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
     end
 
-    defp configurations_response(false, conn, test_pid, _ingress) do
-      dns_or_unknown_response(String.contains?(conn.request_path, "dns_records"), conn, test_pid)
+    defp configurations_response(false, conn, test_pid, _ingress, dns_lookup) do
+      dns_response(
+        String.contains?(conn.request_path, "dns_records"),
+        conn,
+        test_pid,
+        dns_lookup
+      )
     end
 
-    defp dns_or_unknown_response(true, conn, test_pid) do
+    defp dns_response(true, %{method: "POST"} = conn, test_pid, _dns_lookup) do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:dns_record, Jason.decode!(body)})
       Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
     end
 
-    defp dns_or_unknown_response(false, conn, _test_pid) do
+    defp dns_response(true, %{method: "GET"} = conn, _test_pid, dns_lookup) do
+      Test.json(conn, %{"success" => true, "errors" => [], "result" => dns_lookup})
+    end
+
+    defp dns_response(true, %{method: "DELETE"} = conn, test_pid, _dns_lookup) do
+      send(test_pid, {:dns_deleted, conn.request_path})
+      Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
+    end
+
+    defp dns_response(false, conn, _test_pid, _dns_lookup) do
       Test.json(conn, %{"success" => false, "errors" => [%{"code" => 9_999}]})
     end
 
@@ -346,7 +366,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       refute_receive {:put_config, _}, 100
     end
 
-    test "release/1 drops this copy's ingress rule and clears its address", %{
+    test "release/1 drops this copy's ingress rule and DNS record, and clears its address", %{
       scope: scope,
       main: main
     } do
@@ -366,20 +386,56 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert_receive {:put_config, _}, 100
       {:ok, sibling} = WorkingCopies.fetch(sibling.id)
 
-      stub_shared_cloudflare(self(), [
-        %{"hostname" => host, "service" => "http://127.0.0.1:41234"},
-        %{"service" => "http_status:404"}
-      ])
+      stub_shared_cloudflare(
+        self(),
+        [
+          %{"hostname" => host, "service" => "http://127.0.0.1:41234"},
+          %{"service" => "http_status:404"}
+        ],
+        [%{"id" => "rec-shared-1", "content" => @tunnel_id <> ".cfargotunnel.com"}]
+      )
 
       assert :ok = PreviewTunnel.release(sibling)
 
       assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}
       refute Enum.any?(ingress, &(&1["hostname"] == host))
 
+      assert_receive {:dns_deleted, path}
+      assert path =~ "rec-shared-1"
+
       {:ok, saved} = WorkingCopies.fetch(sibling.id)
       assert saved.preview_tunnel_id == nil
       assert saved.preview_tunnel_secret == nil
       assert saved.preview_url == nil
+    end
+
+    test "release/1 does nothing when the DNS record was already removed by hand", %{
+      scope: scope,
+      main: main
+    } do
+      {:ok, sibling} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+
+      {:ok, sibling} =
+        WorkingCopies.record_app_status(sibling, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      host = PreviewAddress.host(sibling.id)
+
+      stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
+      assert {:ok, _} = PreviewTunnel.ensure(sibling)
+      assert_receive {:put_config, _}, 100
+      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
+
+      stub_shared_cloudflare(self(), [], [])
+
+      assert :ok = PreviewTunnel.release(sibling)
+      refute_receive {:dns_deleted, _}, 100
+
+      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      assert saved.preview_tunnel_id == nil
     end
 
     test "release/1 does nothing to main's own tunnel", %{main: main} do

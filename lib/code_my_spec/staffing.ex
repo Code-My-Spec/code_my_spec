@@ -16,7 +16,11 @@ defmodule CodeMySpec.Staffing do
       CodeMySpec.Agents,
       CodeMySpec.Projects,
       CodeMySpec.Users.Scope,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.WorkingCopies,
+      # Offboarding a copy that was sharing a device's tunnel has to drop its
+      # ingress rule and DNS record before the row goes — otherwise Cloudflare
+      # keeps answering for a hostname nothing here remembers any more.
+      CodeMySpec.Workspaces
     ],
     exports: :all
 
@@ -29,6 +33,7 @@ defmodule CodeMySpec.Staffing do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
+  alias CodeMySpec.Workspaces.PreviewTunnel
 
   @doc """
   Make a working copy for this project and staff it.
@@ -173,12 +178,33 @@ defmodule CodeMySpec.Staffing do
     # which is the one case the control exists for.
     agents = stop_agents_on(scope, id)
 
+    # Same reasoning, before the row goes: a shared copy's hostname and DNS
+    # record are Cloudflare's state, not this database's, and the row being
+    # deleted a moment later is not what removes them. Best-effort for the
+    # same reason stopping agents is — a copy whose machine has gone is
+    # exactly the case offboarding exists for, and a Cloudflare hiccup must
+    # not make an already-vanished checkout permanently un-offboardable.
+    release_shared_preview(copy)
+
     with {:ok, counts} <- WorkingCopies.offboard(scope, copy) do
       {:ok, Map.merge(counts, agents)}
     end
   end
 
   def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
+  defp release_shared_preview(copy) do
+    case PreviewTunnel.release(copy) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Staffing] could not release #{copy.id}'s shared preview before offboarding: " <>
+            inspect(reason)
+        )
+    end
+  end
 
   # `ensure_deploy_key/2` takes the project and answers the project, minting a
   # key onto it if it has none — a new project does not get one at creation, and

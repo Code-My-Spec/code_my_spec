@@ -125,6 +125,12 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning)
   component(CodeMySpec.McpServers.Stories.Tools.RestartApp)
   component(CodeMySpec.McpServers.Stories.Tools.StopApp)
+
+  # Criteria 1586/1587: sharing a preview is explicit, never automatic on an
+  # app coming up — the same "an agent cannot reach another copy" scoping as
+  # the three tools above.
+  component(CodeMySpec.McpServers.Stories.Tools.ShareCopyApp)
+  component(CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
   component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
   component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
