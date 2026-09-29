@@ -2749,6 +2749,29 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec relay_turn_events(Phoenix.Socket.t()) :: :ok
   defdelegate relay_turn_events(socket), to: CodeMySpecTest.TurnEventRelay, as: :install
 
+  @doc """
+  Swap the agent transport for one that hands dispatched messages back to
+  this process instead of delivering them for real.
+
+  Through the bridge for the same reason `install_workspace_runner/2` is: a
+  criterion cannot name `CodeMySpecTest`, and should not. Needed for
+  criterion 1376 (story 1046) — `Promotion.tell_the_agent/4`'s correction on
+  a failed restart is a fire-and-forget dispatch with no other observable
+  surface: no DB row, no MCP response. Restores the previous transport on
+  exit; the config key is global, so this is `async: false` territory.
+  """
+  @spec install_recording_agent_transport() :: :ok
+  def install_recording_agent_transport do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :agent_transport, previous)
+    end)
+
+    CodeMySpecTest.RecordingAgentTransport.listen()
+  end
+
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(id)
