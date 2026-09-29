@@ -46,10 +46,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   require Logger
 
   alias Alloy.Agent.Server
-  alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Provider
+  alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Mcp.Transport
   alias CodeMySpec.Agents.ToolIndex
