@@ -283,6 +283,25 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   # `AppInstance` needs to pick back up.
   defp tunnel_via(tunnel_id), do: {:via, Registry, {CmsHarness.Registry, {:tunnel, tunnel_id}}}
 
+  # `ClientUtils.CloudflareTunnel` defaults `base_dir` (and therefore
+  # `config_dir`) to `Path.join(File.cwd!(), "tmp/cloudflared")` — correct
+  # for an app writing its own tunnel's config from inside its own checkout,
+  # wrong here: one harness BEAM serves every project it is asked about, so
+  # its own cwd names none of them in particular. Without this, a harness
+  # started from checkout A writing checkout B's tunnel overwrote A's own
+  # `config.yml`/`credentials.json` with B's — a real incident (2026-09-29):
+  # code_my_spec's own tunnel files were clobbered by metric_flow's, and the
+  # only reason `:4000`'s already-running connector kept working is that it
+  # had already read its config at its own earlier boot.
+  #
+  # Never CWD-relative, never inside any checkout: one directory per tunnel,
+  # under this machine's own harness state, named by the one thing that
+  # never collides between tunnels or changes between restarts.
+  @doc false
+  def tunnel_base_dir(tunnel_id) do
+    Path.join([System.user_home!(), ".codemyspec", "tunnels", tunnel_id])
+  end
+
   @impl true
   def start_tunnel(credentials, origin_url) do
     child_spec = %{
@@ -299,7 +318,8 @@ defmodule CmsHarness.AppInstance.Runner.Local do
              origin_url: origin_url,
              endpoint: @dummy_endpoint,
              otp_app: @dummy_otp_app,
-             name: tunnel_via(credentials.tunnel_id)
+             name: tunnel_via(credentials.tunnel_id),
+             base_dir: tunnel_base_dir(credentials.tunnel_id)
            ]
          ]},
       restart: :permanent
