@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
+  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
   @doc """
@@ -103,9 +103,9 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
     id
   end
 
-  @doc "Stop one agent, through the operator's own tool. Answers the response."
-  @spec stop_agent(map(), String.t()) :: struct()
-  def stop_agent(context, agent_id), do: call(StopAgent, %{agent_id: agent_id}, context)
+  @doc "Retire one agent through the operator's tool, freeing its seat for a successor (39af5611)."
+  @spec retire_agent(map(), String.t()) :: struct()
+  def retire_agent(context, agent_id), do: call(RetireAgent, %{agent_id: agent_id}, context)
 
   @doc """
   What the project reports is running, as text.

@@ -45,7 +45,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   @doc "What each running agent on this project is doing."
   @spec list_agent_work(Scope.t()) :: [AgentWork.t()]
   def list_agent_work(%Scope{} = scope) do
-    agents = Agents.list_running(scope)
+    agents = Agents.list_on_duty(scope)
 
     copies = working_copies(agents)
     last_said = last_said_at(agents)

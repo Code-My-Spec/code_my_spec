@@ -54,6 +54,7 @@ defmodule CodeMySpec.MainAgent do
   require Logger
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
@@ -112,6 +113,10 @@ defmodule CodeMySpec.MainAgent do
   # settles the graph the same way. Settling is idempotent and the issue is
   # raised once per agent and reason, so a main agent that checks every twenty
   # minutes does not file the same fault seventy times a day.
+  @doc "Agents somebody turned off. Shown so the main agent leaves them off (39af5611)."
+  @spec list_off_agents(Scope.t()) :: [Agent.t()]
+  defdelegate list_off_agents(scope), to: Agents, as: :off_agents
+
   defp review_restarts(scope, work) do
     Enum.each(work, fn entry ->
       :ok = RestartRepository.settle(entry)
@@ -220,17 +225,26 @@ defmodule CodeMySpec.MainAgent do
   A restart whose predecessor did not work is allowed and raised: one failed
   remedy is already evidence that restarting is the wrong one, and waiting for
   the third to say so costs two more turns.
+
+  `{:error, {:off, agent}}` — somebody turned it off. Refused before anything
+  else is weighed; `turn_on_agent` is the only way back (39af5611).
   """
   @spec restart_agent(Scope.t(), String.t(), String.t()) ::
           {:ok, map()}
           | {:error,
-             :not_mine | :needs_a_reason | :machinery_faulty | {:already_tried, pos_integer()}}
+             :not_mine
+             | :needs_a_reason
+             | :machinery_faulty
+             | {:already_tried, pos_integer()}
+             | {:off, Agent.t()}}
   def restart_agent(%Scope{} = scope, agent_id, reason)
       when is_binary(reason) and reason != "" do
     case mine(scope, agent_id) do
       {:ok, agent} ->
-        :ok = RestartRepository.settle(agent)
-        consider(scope, agent, reason)
+        with :ok <- Agents.refuse_unless_on(agent) do
+          :ok = RestartRepository.settle(agent)
+          consider(scope, agent, reason)
+        end
 
       {:error, :not_mine} ->
         out_of_reach(scope, agent_id, reason)

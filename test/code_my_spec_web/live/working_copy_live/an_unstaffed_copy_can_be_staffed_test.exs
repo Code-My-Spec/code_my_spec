@@ -46,24 +46,56 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   # A copy that has had agents and has none now — every row `:stopped`. This is
   # the state that looked unrecoverable: the list is empty, so the toggle is
   # hidden, and the toggle was the only control.
-  defp copy_with_only_stopped_agents(context, root) do
+  defp copy_with_only_stopped_agents(context, root, extra \\ %{}) do
     copy = join_working_copy(context, root, "a copy whose agents all stopped")
 
     for role <- ~w(product coding qa) do
       {:ok, _} =
-        AgentsRepository.create_agent(context.scope, %{
-          engine: :alloy,
-          provider: "zai",
-          working_copy: root,
-          role: role,
-          working_copy_id: copy.working_copy_id,
-          project_id: context.scope.active_project_id,
-          account_id: context.scope.active_account_id,
-          status: :stopped
-        })
+        AgentsRepository.create_agent(
+          context.scope,
+          Map.merge(
+            %{
+              engine: :alloy,
+              provider: "zai",
+              working_copy: root,
+              role: role,
+              working_copy_id: copy.working_copy_id,
+              project_id: context.scope.active_project_id,
+              account_id: context.scope.active_account_id,
+              status: :stopped
+            },
+            extra
+          )
+        )
     end
 
     copy
+  end
+
+  # 39af5611: off keeps the seat, so a copy whose only gap is off agents is
+  # staffed; a retired seat is empty.
+  test "a copy whose agents are all off does not offer it", context do
+    copy =
+      copy_with_only_stopped_agents(context, "/tmp/all-off", %{
+        off_at: DateTime.utc_now(),
+        off_by: "someone"
+      })
+
+    html = context |> show(copy) |> render()
+
+    refute html =~ ~s(data-test="staff-copy"), "an off agent holds its seat"
+  end
+
+  test "a copy whose agents are all retired offers it", context do
+    copy =
+      copy_with_only_stopped_agents(context, "/tmp/all-retired", %{
+        retired_at: DateTime.utc_now(),
+        retired_by: "someone"
+      })
+
+    html = context |> show(copy) |> render()
+
+    assert html =~ ~s(data-test="staff-copy"), "a retired seat is empty"
   end
 
   test "an empty copy offers the action", %{conn: _conn} = context do

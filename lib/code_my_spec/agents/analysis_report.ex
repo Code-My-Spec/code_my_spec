@@ -294,7 +294,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   defp dispatch(%Agent{} = agent, message) do
     ref = "analysis-" <> Ecto.UUID.generate()
 
-    case Transport.impl().dispatch_message(agent.working_copy_id, agent, ref, message, 10_000) do
+    case Transport.dispatch_message(agent.working_copy_id, agent, ref, message, 10_000) do
       {:ok, _disposition} ->
         :ok
 

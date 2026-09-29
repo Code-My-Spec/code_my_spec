@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
 
       when_ "I stop the agent on one of them", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => context.target.id}, frame)
+        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.target.id}, frame)
         {:ok, Map.put(context, :reply, reply)}
       end
 

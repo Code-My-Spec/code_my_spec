@@ -351,6 +351,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
           name: "bdd_specs_exist",
           entity_type: "story",
           entity_id: "999",
+          entity_number: 12,
           entity_name: "Some unrelated story"
         })
 
@@ -367,7 +368,13 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       project_gate =
         build_node(%{name: "architecture_designed", entity_type: "project", entity_id: "proj_1"})
 
-      story = build_node(%{name: "bdd_specs_exist", entity_type: "story", entity_id: "999"})
+      story =
+        build_node(%{
+          name: "bdd_specs_exist",
+          entity_type: "story",
+          entity_id: "999",
+          entity_number: 12
+        })
 
       text = RequirementsMapper.format_next_requirements([project_gate, story])
 

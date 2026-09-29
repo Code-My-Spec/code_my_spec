@@ -120,6 +120,11 @@ defmodule CodeMySpecWeb.DevAgentController do
             Enum.map(result.failed, fn {role, reason} ->
               %{role: role, reason: inspect(reason)}
             end),
+          off:
+            Enum.map(
+              result.off,
+              &%{id: &1.id, role: &1.role, off_by: &1.off_by, off_reason: &1.off_reason}
+            ),
           continuous: result.continuous
         })
 
@@ -349,10 +354,24 @@ defmodule CodeMySpecWeb.DevAgentController do
     end)
   end
 
+  # Stopping is turning off (39af5611); `turn_on/2` is the way back.
   def stop(conn, %{"agent_id" => agent_id}) do
-    case Agents.stop_any_agent(agent_id) do
+    case Agents.turn_off_any_agent(agent_id) do
       {:ok, agent} ->
-        json(conn, %{status: "stopped", agent_id: agent.id, role: agent.role})
+        json(conn, %{status: "off", agent_id: agent.id, role: agent.role})
+
+      {:error, :no_such_agent} ->
+        conn |> put_status(404) |> json(%{error: "no agent with id #{agent_id}"})
+
+      {:error, reason} ->
+        conn |> put_status(502) |> json(%{error: inspect(reason), agent_id: agent_id})
+    end
+  end
+
+  def turn_on(conn, %{"agent_id" => agent_id}) do
+    case Agents.turn_on_any_agent(agent_id) do
+      {:ok, agent} ->
+        json(conn, %{status: to_string(agent.status), agent_id: agent.id, role: agent.role})
 
       {:error, :no_such_agent} ->
         conn |> put_status(404) |> json(%{error: "no agent with id #{agent_id}"})

@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3449Spex do
         assert {:ok, _} = tool_call(first),
                "the premise is an agent that had a working session to leave behind"
 
-        stop_agent(context, first)
+        retire_agent(context, first)
 
         refute running?(first), "the premise is a stopped agent, and this one is running"
 

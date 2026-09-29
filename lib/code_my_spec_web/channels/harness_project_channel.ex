@@ -720,9 +720,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # it built carried neither the credential nor the conversation — so an agent
     # restored after a harness restart came back with nothing to authenticate
     # with and no memory of anything it had been told.
+    # On duty only: an off or retired agent is never brought back (39af5611).
     running =
       scope
-      |> Agents.list_running()
+      |> Agents.list_on_duty()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
 
     # Before hydrating, not after. An agent that was mid-turn is told here what
@@ -824,7 +825,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     result = decode_stop_result(msg)
     if from, do: GenServer.reply(from, result)
-    if result == :ok, do: record_app_result(socket, {:ok, %{status: "down", url: nil, commit: nil}})
+
+    if result == :ok,
+      do: record_app_result(socket, {:ok, %{status: "down", url: nil, commit: nil}})
+
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
@@ -982,7 +986,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   #
   # Same shape as `fs_request` and for the same reason: the far side has to do
   # real work — signal, wait out a grace period, escalate — and the answer is
-  # the whole point. `Agents.stop_agent/2` records `:stopped` only if this comes
+  # the whole point. `Agents.turn_off_agent/3` records `:stopped` only if this comes
   # back `:ok`, so a reply that never arrives must not read as success.
   # Launching an agent, on the machine that will hold the process.
   #
@@ -1107,7 +1111,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Story 1108: main's app is never stopped for idling. The harness has no
   # way to know it is main on its own — only the server designates one — so
   # it is told fresh on every start/restart rather than asked to remember.
-  defp put_main(request, socket), do: Map.put(request, "main", socket.assigns.harness.main == true)
+  defp put_main(request, socket),
+    do: Map.put(request, "main", socket.assigns.harness.main == true)
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 

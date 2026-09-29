@@ -97,7 +97,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # out and cancel, and until it was carried the last of those named a
         # tool no internal agent held.
         unscriptable = ~w(
-          start_agent stop_agent assign_subagent
+          start_agent turn_off_agent assign_subagent
           get_next_requirement sync_project start_task evaluate_task cancel_task
           ask_user_question tap_out show_in_panel start_analysis
           promote check_answer list_user_questions

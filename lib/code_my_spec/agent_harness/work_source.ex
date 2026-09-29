@@ -23,6 +23,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
 
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -88,7 +89,10 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
           {:ok,
            %{
              requirement_name: node.name,
-             prompt: RequirementsMapper.format_story_execution(execution)
+             prompt:
+               RequirementsMapper.format_story_execution(
+                 StoryRefs.number_execution(scope, execution)
+               )
            }}
 
         _ ->

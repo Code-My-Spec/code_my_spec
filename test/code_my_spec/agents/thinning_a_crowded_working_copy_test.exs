@@ -50,13 +50,13 @@ defmodule CodeMySpec.Agents.ThinningACrowdedWorkingCopyTest do
   test "an agent is stopped without being handed a scope", %{scope: scope, copy: copy} do
     agent = coding_agent(scope, copy)
 
-    assert {:ok, stopped} = Agents.stop_any_agent(agent.id)
+    assert {:ok, stopped} = Agents.turn_off_any_agent(agent.id)
     assert stopped.id == agent.id
     assert stopped.status == :stopped
   end
 
   test "an id nobody has is refused rather than raising" do
-    assert {:error, :no_such_agent} = Agents.stop_any_agent(Ecto.UUID.generate())
+    assert {:error, :no_such_agent} = Agents.turn_off_any_agent(Ecto.UUID.generate())
   end
 
   # The guard this route must not become a way around. Stopping resolves the
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Agents.ThinningACrowdedWorkingCopyTest do
     mine = coding_agent(scope, copy)
     theirs = coding_agent(scope, copy)
 
-    assert {:ok, _} = Agents.stop_any_agent(mine.id)
+    assert {:ok, _} = Agents.turn_off_any_agent(mine.id)
 
     assert {:ok, untouched} = AgentsRepository.fetch_agent(scope, theirs.id)
     assert untouched.status == theirs.status

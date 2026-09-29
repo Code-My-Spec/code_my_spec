@@ -278,9 +278,16 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Before the dispatch, because delivery can fail — a halted agent has
     # nobody to tell — and what the orchestrator decided is true whether or not
     # anyone was there to hear it. The conversation was opened by `deliver/2`.
-    Conversations.record_sent_to_agent(agent, message)
+    #
+    # Unless it is off or retired: then there is no decision for it (39af5611).
+    case Transport.deliverable(agent) do
+      :ok ->
+        Conversations.record_sent_to_agent(agent, message)
+        deliver_message(scope, agent, message)
 
-    deliver_message(scope, agent, message)
+      {:error, _stood_down} ->
+        :ok
+    end
   end
 
   # The dispatch half, shared. `send_to/3` records a decision and sends it; the
@@ -334,7 +341,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # is, and it is right on every path — including the original one, where it
   # equals what the scope carried.
   defp dispatch(_scope, agent, ref, message) do
-    case Transport.impl().dispatch_message(
+    case Transport.dispatch_message(
            agent.working_copy_id,
            agent,
            ref,

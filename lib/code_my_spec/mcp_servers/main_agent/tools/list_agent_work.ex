@@ -11,7 +11,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork do
   """
 
   # Not folded into `list_agents`, which answers "what is running and where".
-  # That is the fleet's lifecycle and is what `start_agent` and `stop_agent`
+  # That is the fleet's lifecycle and is what `start_agent` and `turn_off_agent`
   # want; this is four more facts per agent that none of those callers need.
   #
   # No computed status, and that is criterion 3275 rather than an oversight. A
@@ -35,7 +35,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        {:reply, AgentWorkMapper.listing(MainAgent.list_agent_work(scope)), frame}
+        work = MainAgent.list_agent_work(scope)
+        {:reply, AgentWorkMapper.listing(work, MainAgent.list_off_agents(scope)), frame}
 
       {:error, reason} ->
         {:reply, AgentWorkMapper.error(reason), frame}

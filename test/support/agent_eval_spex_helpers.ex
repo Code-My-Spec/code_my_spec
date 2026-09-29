@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
@@ -226,12 +226,12 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   "Something is already running in this project's main checkout". The refusal
   was correct and the leak was mine.
 
-  `StopAgent` is what a person stops with, so what the next run starts against
+  `RetireAgent` frees the seat for the next run, so what it starts against
   is the state a real stop leaves behind.
   """
   @spec stop(map(), String.t()) :: :ok
   def stop(context, agent_id) do
-    {:reply, _response, _} = StopAgent.execute(%{agent_id: agent_id}, frame(context))
+    {:reply, _response, _} = RetireAgent.execute(%{agent_id: agent_id}, frame(context))
     :ok
   end
 

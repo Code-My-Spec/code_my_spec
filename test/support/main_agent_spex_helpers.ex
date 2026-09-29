@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
 
   # The cloud router, because these paths are `/app` ones. `CodeMySpecSpex.Case`
   # verifies against the local router, where they do not exist — which is why
@@ -99,7 +99,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   @doc """
   Stop whatever the project currently presents as its main agent.
 
-  Through the tool an operator's stop goes through, so what the scenario
+  Retired, so the seat is free and the page starts a new one: what the scenario
   observes afterwards is the state a real stop leaves behind. Reads the id off
   the page rather than being handed one, because the criterion this serves is
   about what the *page* offers before and after.
@@ -117,7 +117,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
     {:reply, reply, _frame} =
-      StopAgent.execute(%{"agent_id" => agent_id}, frame)
+      RetireAgent.execute(%{"agent_id" => agent_id}, frame)
 
     refute reply.isError, "the stop was refused, so nothing was stopped"
 

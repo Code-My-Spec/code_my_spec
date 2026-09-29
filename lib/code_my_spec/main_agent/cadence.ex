@@ -349,6 +349,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
     else
       %Digest{
         work: MainAgent.list_agent_work(scope),
+        off: MainAgent.list_off_agents(scope),
         machinery: MainAgent.check_machinery(scope),
         questions: MainAgent.list_open_questions(scope)
       }

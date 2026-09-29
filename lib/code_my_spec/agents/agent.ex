@@ -91,6 +91,12 @@ defmodule CodeMySpec.Agents.Agent do
           os_boot_id: String.t() | nil,
           status: atom() | nil,
           stopped_reason: atom() | nil,
+          off_at: DateTime.t() | nil,
+          off_by: String.t() | nil,
+          off_reason: String.t() | nil,
+          retired_at: DateTime.t() | nil,
+          retired_by: String.t() | nil,
+          retired_reason: String.t() | nil,
           continuous: boolean() | nil,
           tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
@@ -138,6 +144,20 @@ defmodule CodeMySpec.Agents.Agent do
     field :os_boot_id, :string
     field :status, Ecto.Enum, values: @statuses, default: :starting
     field :stopped_reason, Ecto.Enum, values: @stopped_reasons
+
+    # Intent, apart from `status` and `stopped_reason` (what the process did).
+    # `off_at` set means off: nothing is delivered and nothing restarts it until
+    # `Agents.turn_on_agent/3` clears all three. Issue 39af5611.
+    field :off_at, :utc_datetime_usec
+    field :off_by, :string
+    field :off_reason, :string
+
+    # Retired is a different intent from off: the agent is gone for good and its
+    # seat is free. Set by `Agents.retire_agent/3`, never cleared; the row stays
+    # for its history. Issue 39af5611.
+    field :retired_at, :utc_datetime_usec
+    field :retired_by, :string
+    field :retired_reason, :string
 
     # Whether this agent keeps working when its turn ends.
     #
@@ -228,6 +248,44 @@ defmodule CodeMySpec.Agents.Agent do
   def engines, do: @engines
 
   @doc """
+  Whether somebody turned this agent off and it still holds its seat. Off is
+  intent, whatever the process is doing; a retired agent is retired, not off.
+  """
+  @spec off?(t()) :: boolean()
+  def off?(%__MODULE__{} = agent), do: not is_nil(agent.off_at) and not retired?(agent)
+
+  @doc "Whether this agent was retired: gone for good, seat freed, row kept for history."
+  @spec retired?(t()) :: boolean()
+  def retired?(%__MODULE__{retired_at: at}), do: not is_nil(at)
+
+  @doc "What a tool that would act on a retired agent answers instead."
+  @spec retired_refusal(t()) :: String.t()
+  def retired_refusal(%__MODULE__{} = agent) do
+    reason = if agent.retired_reason, do: ": #{agent.retired_reason}", else: ""
+
+    "this agent is retired (retired by #{agent.retired_by} at " <>
+      "#{DateTime.to_iso8601(agent.retired_at)}#{reason}); it cannot be turned on — " <>
+      "start a new agent in its seat instead"
+  end
+
+  @doc ~S|The off line check_in and list_agent_work print: "off — turned off by <who> (<when>): <reason>".|
+  @spec describe_off(t()) :: String.t()
+  def describe_off(%__MODULE__{} = agent),
+    do: "off — turned off by #{agent.off_by} (#{when_off(agent)})#{reason_suffix(agent)}"
+
+  @doc "What a tool that would act on an off agent answers instead."
+  @spec off_refusal(t()) :: String.t()
+  def off_refusal(%__MODULE__{} = agent) do
+    "this agent is off (turned off by #{agent.off_by} at #{when_off(agent)}" <>
+      "#{reason_suffix(agent)}); turn it on first"
+  end
+
+  defp when_off(%__MODULE__{off_at: at}), do: DateTime.to_iso8601(at)
+
+  defp reason_suffix(%__MODULE__{off_reason: reason}) when is_binary(reason), do: ": #{reason}"
+  defp reason_suffix(%__MODULE__{}), do: ""
+
+  @doc """
   Add a task to this agent's list.
 
   The same shape as `Session.add_task/2`, deliberately: both owners hold the
@@ -291,6 +349,12 @@ defmodule CodeMySpec.Agents.Agent do
       :os_boot_id,
       :status,
       :stopped_reason,
+      :off_at,
+      :off_by,
+      :off_reason,
+      :retired_at,
+      :retired_by,
+      :retired_reason,
       :continuous,
       :turn_started_at,
       :work_request_id,

@@ -462,24 +462,105 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
-  describe "stopping an agent" do
-    test "a click ends the agent and confirms it", %{conn: conn, scope: scope, project: project} do
+  # 39af5611: the stop button became a power switch. Green and labelled "Turn
+  # agent off" while on; red and "Turn agent on" while off.
+  describe "the power button" do
+    @on "[data-test='agent-power'][data-on='true'][aria-label='Turn agent off'].text-success"
+    @off "[data-test='agent-power'][data-on='false'][aria-label='Turn agent on'].text-error"
+
+    test "an agent that is on shows green, and a click turns it off", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
       {agent, conversation} = agent_with_conversation(scope, project)
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
-      assert has_element?(view, "[data-test='stop-agent']")
+      assert has_element?(view, @on)
 
-      view |> element("[data-test='stop-agent']") |> render_click()
+      view |> element("[data-test='agent-power']") |> render_click()
 
-      assert Repo.get(Agent, agent.id).status == :stopped
-      assert render(view) =~ "Agent stopped."
+      off = Repo.get(Agent, agent.id)
+      assert off.status == :stopped
+      assert Agent.off?(off)
+      assert off.off_by == scope.user.email
+      assert has_element?(view, @off)
+      assert render(view) =~ "Agent turned off."
+    end
+
+    test "an agent that is off shows red, and a click turns it on", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      CodeMySpec.IntegrationsFixtures.integration_fixture(scope.user, %{provider: :anthropic})
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{
+          status: :stopped,
+          off_at: DateTime.utc_now(),
+          off_by: "someone else"
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, @off)
+
+      view |> element("[data-test='agent-power']") |> render_click()
+
+      on = Repo.get(Agent, agent.id)
+      refute Agent.off?(on)
+      refute on.status == :stopped
+      assert has_element?(view, @on)
+      assert render(view) =~ "Agent turned on."
+    end
+
+    test "the team panel shows a retired agent's seat as empty, with the Staff action", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {retired, _conversation} =
+        agent_with_conversation(scope, project, %{
+          status: :stopped,
+          retired_at: DateTime.utc_now(),
+          retired_by: "someone"
+        })
+
+      {:ok, view, _html} = live(conn, path(project))
+      render_hook(view, "viewport", %{"width" => 1200})
+      # Panels start closed for a fresh user; this opens the team panel.
+      render_hook(view, "toggle_panel", %{"panel" => "activity"})
+
+      assert has_element?(view, "[data-test='team-copy']")
+      refute has_element?(view, "[data-test='team-agent'][data-agent-id='#{retired.id}']")
+      assert has_element?(view, "[data-test='team-empty-seats']", "coding")
+      assert has_element?(view, "[data-test='team-empty-seats']", "Staff it")
+    end
+
+    test "a retired agent shows no power button, only that it is retired", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} =
+        agent_with_conversation(scope, project, %{
+          status: :stopped,
+          retired_at: DateTime.utc_now(),
+          retired_by: "someone"
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='agent-retired']", "Retired")
+      refute has_element?(view, "[data-test='agent-power']")
     end
 
     # A conversation with no agent of its own — story 538's "same page also
     # renders a Claude Code session's transcript" shape — has nothing this
-    # button could stop.
-    test "a conversation with no agent shows no stop control", %{
+    # button could switch.
+    test "a conversation with no agent shows no power button", %{
       conn: conn,
       scope: scope,
       project: project
@@ -488,7 +569,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
-      refute has_element?(view, "[data-test='stop-agent']")
+      refute has_element?(view, "[data-test='agent-power']")
     end
   end
 

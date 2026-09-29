@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          StopAgent.execute(%{agent_id: context.agent.id}, frame)
+          TurnOffAgent.execute(%{agent_id: context.agent.id}, frame)
 
         refute response.isError,
                "the agent had to actually stop for this to mean anything:\n" <>

@@ -211,6 +211,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   Separate from `list_agents/1` because "what is running" and "what has ever
   run" are different questions and the first is the one an operator asks.
+
+  A fact about processes, so an off or retired agent whose machine could not be
+  asked to end it is still here: reconcile has to see it to record it gone, and
+  a live process must stay findable. `list_on_duty/1` is the intent view.
   """
   @spec list_running(Scope.t()) :: [Agent.t()]
   def list_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -221,6 +225,26 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   end
 
   def list_running(%Scope{}), do: []
+
+  @doc """
+  Running agents that are also meant to be: neither off nor retired (39af5611).
+
+  What to restore on a harness join and what the main agent reports as working.
+  """
+  @spec list_on_duty(Scope.t()) :: [Agent.t()]
+  def list_on_duty(%Scope{} = scope) do
+    scope
+    |> list_running()
+    |> Enum.filter(&(is_nil(&1.off_at) and is_nil(&1.retired_at)))
+  end
+
+  @doc "The agent, fresh from the row, if it is off or retired; nil otherwise."
+  @spec get_stood_down(Ecto.UUID.t()) :: Agent.t() | nil
+  def get_stood_down(agent_id) when is_binary(agent_id) do
+    Agent
+    |> where([a], a.id == ^agent_id and (not is_nil(a.off_at) or not is_nil(a.retired_at)))
+    |> Repo.one()
+  end
 
   @doc """
   Every agent a team-status display should show a row for.
@@ -243,13 +267,15 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     running =
       Agent
       |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
+      |> where([a], is_nil(a.retired_at))
       |> Repo.all()
 
     filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
 
+    # A retired agent gave up its seat, so its slot shows empty (39af5611).
     latest_stopped_per_empty_slot =
       from(a in Agent,
-        where: a.project_id == ^project_id and a.status == :stopped,
+        where: a.project_id == ^project_id and a.status == :stopped and is_nil(a.retired_at),
         distinct: [a.working_copy_id, a.role],
         order_by: [asc: a.working_copy_id, asc: a.role, desc: a.updated_at]
       )

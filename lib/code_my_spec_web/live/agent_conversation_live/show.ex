@@ -227,6 +227,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:analysis_running, running_analysis(scope, conversation))
     |> assign(:talkable?, talkable?(scope, conversation))
     |> assign(:working?, working?(scope, conversation))
+    |> assign(:on?, on?(scope, conversation))
+    |> assign(:retired?, retired?(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
     |> assign(:waiting, waiting)
@@ -532,6 +534,41 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp working?(_scope, _conversation), do: false
 
+  # On is intent (neither off nor retired), not whether the process is up (39af5611).
+  defp on?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    match?({:ok, %Agent{off_at: nil, retired_at: nil}}, Agents.fetch_agent(scope, agent_id))
+  end
+
+  defp on?(_scope, _conversation), do: false
+
+  # A retired agent has no power button: it can never be turned on again.
+  defp retired?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    match?({:ok, %Agent{retired_at: %DateTime{}}}, Agents.fetch_agent(scope, agent_id))
+  end
+
+  defp retired?(_scope, _conversation), do: false
+
+  defp flip_power(scope, agent_id, true, params),
+    do:
+      Agents.turn_off_agent(scope, agent_id,
+        by: Agents.actor(scope),
+        reason: params["reason"]
+      )
+
+  defp flip_power(scope, agent_id, false, _params), do: Agents.turn_on_agent(scope, agent_id)
+
+  defp power_flash({:ok, _agent}, _was, true), do: {:info, "Agent turned on."}
+  defp power_flash({:ok, _agent}, _was, false), do: {:info, "Agent turned off."}
+
+  defp power_flash(_error, same, same),
+    do: {:error, "That agent could not be switched. Try again."}
+
+  defp power_flash(_error, _was, true),
+    do: {:error, "Agent turned on, but it could not start yet."}
+
+  defp power_flash(_error, _was, false),
+    do: {:error, "Agent turned off, but its machine could not be reached to end it."}
+
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
@@ -630,21 +667,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Immediate, not a request. `Agents.stop_agent/2` already exists and is
-  # idempotent — `:starting` no-ops, an already-stopped agent's transport
-  # call answers `:not_running` and is treated as success — so this needs no
-  # local check of what the agent is doing before it asks. What it interrupts
-  # if the agent is mid-turn is `Agents.stop_agent/2`'s own contract, not
-  # this button's.
-  def handle_event("stop_agent", _params, socket) do
+  # The power button (39af5611): on turns it off, off turns it on, through the
+  # same `Agents` functions the tools use. Immediate, no confirm; a `reason`
+  # param is recorded when sent and never required.
+  def handle_event("toggle_agent_power", params, socket) do
     scope = socket.assigns.current_scope
     agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
 
-    with agent_id when is_binary(agent_id) <- agent_id,
-         {:ok, _agent} <- Agents.stop_agent(scope, agent_id) do
-      {:noreply, put_flash(socket, :info, "Agent stopped.")}
+    if is_binary(agent_id) do
+      was_on? = socket.assigns.on?
+      result = flip_power(scope, agent_id, was_on?, params)
+      conversation = socket.assigns.conversation
+
+      # Re-read: intent can land even when the process could not be reached.
+      socket =
+        socket
+        |> assign(:on?, on?(scope, conversation))
+        |> assign(:talkable?, talkable?(scope, conversation))
+
+      {kind, text} = power_flash(result, was_on?, socket.assigns.on?)
+      {:noreply, put_flash(socket, kind, text)}
     else
-      _ -> {:noreply, put_flash(socket, :error, "That agent could not be stopped. Try again.")}
+      {:noreply, socket}
     end
   end
 
@@ -933,8 +977,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         }
       end)
 
-    %{row: row, agents: agents, question?: Enum.any?(agents, & &1.question?)}
+    %{
+      row: row,
+      agents: agents,
+      question?: Enum.any?(agents, & &1.question?),
+      empty_seats: empty_seats(row)
+    }
   end
+
+  # A seat whose agent retired is empty and offers staffing; the main copy holds
+  # one agent by design, so it has no empty seats (39af5611).
+  defp empty_seats(%{harness: %{main: true}}), do: []
+  defp empty_seats(row), do: Agents.empty_seats(row.agents)
 
   # What this agent is doing right now, in as few words as the number of
   # tasks allows. One task names itself — the requirement is the one thing
@@ -1357,7 +1411,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # moves without somebody reloading the page.
   def handle_info({event, _payload}, socket)
       when event in [:agents_reported, :agent_started, :agent_stopped, :session_changed] do
-    {:noreply, refresh_team_status(socket)}
+    # The power button follows a turn-off or turn-on made anywhere else.
+    scope = socket.assigns.current_scope
+    conversation = socket.assigns[:conversation]
+
+    {:noreply,
+     socket
+     |> assign(:on?, on?(scope, conversation))
+     |> assign(:retired?, retired?(scope, conversation))
+     |> assign(:talkable?, talkable?(scope, conversation))
+     |> refresh_team_status()}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -1462,6 +1525,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           talkable?={@talkable?}
           analysis_running={@analysis_running}
           working?={@working?}
+          on?={@on?}
+          retired?={@retired?}
           draft={@draft}
           agent_writing={@agent_writing}
           main_agent?={@main_agent?}
@@ -1505,6 +1570,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               talkable?={@talkable?}
               analysis_running={@analysis_running}
               working?={@working?}
+              on?={@on?}
+              retired?={@retired?}
               draft={@draft}
               agent_writing={@agent_writing}
               main_agent?={@main_agent?}
@@ -1573,6 +1640,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # should stop the compile rather than pick an answer.
   attr :analysis_running, :list, required: true
   attr :working?, :boolean, required: true
+  # Required for the same reason: the power button must never guess its state.
+  attr :on?, :boolean, required: true
+  attr :retired?, :boolean, required: true
   attr :draft, :string, required: true
 
   attr :agent_writing, :string,
@@ -1651,15 +1721,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
         </button>
 
-        <button
-          :if={@conversation && @conversation.agent_id}
-          type="button"
-          phx-click="stop_agent"
-          data-test="stop-agent"
-          class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
-          title="Stop this agent now"
+        <%!-- The power button (39af5611): green while on, red while off, and
+        the label says what a click does, so colour is never the only signal.
+        Off is a real shutdown; only this or `turn_on_agent` brings it back. --%>
+        <span
+          :if={@conversation && @conversation.agent_id && @retired?}
+          data-test="agent-retired"
+          class="badge badge-ghost badge-sm shrink-0"
         >
-          <.icon name="hero-stop-circle" class="size-4" />
+          Retired
+        </span>
+        <button
+          :if={@conversation && @conversation.agent_id && not @retired?}
+          type="button"
+          phx-click="toggle_agent_power"
+          data-test="agent-power"
+          data-on={to_string(@on?)}
+          class={[
+            "btn btn-ghost btn-sm btn-square shrink-0",
+            if(@on?, do: "text-success", else: "text-error")
+          ]}
+          aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
+          aria-pressed={to_string(@on?)}
+          title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
+        >
+          <.icon name="hero-power" class="size-4" />
         </button>
       </header>
 

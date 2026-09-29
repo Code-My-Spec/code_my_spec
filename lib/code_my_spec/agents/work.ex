@@ -86,11 +86,14 @@ defmodule CodeMySpec.Agents.Work do
       not is_nil(agent.working_copy_id) and not refused_until_later?(agent)
   end
 
+  # Each offer asks the gate before it writes the prompt to the transcript, so
+  # an off agent's thread never shows a turn it was not given (39af5611).
   defp resume(scope, agent) do
-    with {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
+    with :ok <- Transport.deliverable(agent),
+         {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
       Conversations.record_sent_to_agent(reserved, @resume_prompt)
 
-      case Transport.impl().request_work_turn(
+      case Transport.request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,
@@ -144,11 +147,12 @@ defmodule CodeMySpec.Agents.Work do
   def offer_turn_with(scope, %Agent{} = agent, preface) when is_binary(preface) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          true <- runnable_state?(current),
+         :ok <- Transport.deliverable(current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id) do
       turn_prompt = preface <> "\n\n" <> prompt(reserved)
       Conversations.record_sent_to_agent(reserved, turn_prompt)
 
-      case Transport.impl().request_work_turn(
+      case Transport.request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,
@@ -174,6 +178,7 @@ defmodule CodeMySpec.Agents.Work do
          true <- runnable_state?(current),
          {:work, offer} <- offer(scope, current),
          false <- already_declined?(current, offer),
+         :ok <- Transport.deliverable(current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id) do
       turn_prompt = prompt(reserved)
 
@@ -190,7 +195,7 @@ defmodule CodeMySpec.Agents.Work do
       # silence.
       Conversations.record_sent_to_agent(reserved, turn_prompt)
 
-      case Transport.impl().request_work_turn(
+      case Transport.request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,

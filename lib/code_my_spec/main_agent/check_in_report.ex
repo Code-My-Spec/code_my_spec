@@ -27,6 +27,7 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   is also empty, and only one of the two is good news.
   """
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.MainAgent.Machinery
@@ -38,7 +39,7 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
     """
     Check-in. #{verdict(digest)}
 
-    #{agents(digest.work)}
+    #{agents(digest.work)}#{off(digest.off)}
 
     #{machinery(digest.machinery, digest.work)}
 
@@ -57,6 +58,14 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
 
   defp agents(work) do
     "agents: #{length(work)} running\n" <> Enum.map_join(work, "\n", &agent_line/1)
+  end
+
+  # Printed so an off seat is not read as an empty one to staff (39af5611).
+  defp off([]), do: ""
+
+  defp off(agents) do
+    "\nagents off: #{length(agents)} — leave them off unless you mean to turn one on\n" <>
+      Enum.map_join(agents, "\n", &"  #{&1.id} (#{&1.role}) — #{Agent.describe_off(&1)}")
   end
 
   # Enough to decide whether to look closer, and no more. The full per-agent

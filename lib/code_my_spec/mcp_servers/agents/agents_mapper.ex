@@ -148,11 +148,26 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """
   end
 
-  @spec stopped(Agent.t()) :: Response.t()
-  def stopped(%Agent{} = agent) do
+  @spec turned_off(Agent.t()) :: Response.t()
+  def turned_off(%Agent{} = agent) do
     Response.tool()
     |> Response.text("""
-    Agent stopped.
+    Agent turned off.
+
+    Agent: #{agent.id}
+    Working copy: #{agent.working_copy}#{recorded_against(agent)}
+    Status: #{agent.status}
+    State: #{Agent.describe_off(agent)}
+
+    Nothing is delivered to it and nothing restarts it until `turn_on_agent`.
+    """)
+  end
+
+  @spec turned_on(Agent.t()) :: Response.t()
+  def turned_on(%Agent{} = agent) do
+    Response.tool()
+    |> Response.text("""
+    Agent turned on.
 
     Agent: #{agent.id}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
@@ -160,7 +175,51 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  @spec retired(Agent.t(), String.t() | nil) :: Response.t()
+  def retired(%Agent{} = agent, unreachable_machine \\ nil) do
+    Response.tool()
+    |> Response.text("""
+    Agent retired.
+
+    Agent: #{agent.id}
+    Role: #{agent.role}
+    Working copy: #{agent.working_copy}#{recorded_against(agent)}
+    Status: #{agent.status}#{unreachable(unreachable_machine)}
+
+    It will never run again and its seat is free: `start_agent` can put a new \
+    #{agent.role} agent there. Its conversation stays readable.
+    """)
+  end
+
+  defp unreachable(nil), do: ""
+
+  defp unreachable(machine),
+    do:
+      "\n\n#{machine} couldn't be reached, so its process may still be running. " <>
+        "It is sent nothing either way."
+
   @spec error(term(), String.t() | nil) :: Response.t()
+  def error({:retired, %Agent{} = agent}, _provider) do
+    refuse("""
+    Not done: #{Agent.retired_refusal(agent)}.
+
+    Agent: #{agent.id}
+    Role: #{agent.role}\
+    """)
+  end
+
+  def error({:off, %Agent{} = agent}, _provider) do
+    refuse("""
+    Not done: #{Agent.off_refusal(agent)}.
+
+    Agent: #{agent.id}
+    Role: #{agent.role}
+
+    Somebody decided this. `turn_on_agent` is the only way back, and only when \
+    that reason no longer applies.\
+    """)
+  end
+
   def error(:not_connected, provider) do
     refuse("""
     No credential for #{provider}, so no agent was started.

@@ -19,7 +19,7 @@ defmodule CmsHarness.Agents.Tools.StartAgent do
     Use this to hand work over rather than doing it yourself: a story that
     needs building goes to an agent started for it, and you report on what it
     does. `message_agent` (through `run_script`) talks to it afterwards, and
-    `stop_agent` ends it.
+    `turn_off_agent` ends it.
 
     Starting is not free — it spends the account's subscription for as long as
     the agent runs. Start one when somebody asked for the work, not to see
