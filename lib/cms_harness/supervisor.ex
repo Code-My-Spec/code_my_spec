@@ -84,6 +84,16 @@ defmodule CmsHarness.Supervisor do
       # none of which the app it started should notice.
       {DynamicSupervisor, name: CmsHarness.AppInstanceSupervisor, strategy: :one_for_one},
 
+      # A copy's tunnel connector, when `harness_holds_tunnel` is on (see
+      # `CmsHarness.AppInstance`'s own comment — off by default). Its own
+      # supervisor, not a child `AppInstance` starts and merely holds a
+      # reference to: `restart: :permanent`, keyed by `{:tunnel, tunnel_id}`
+      # in the same registry every `:via` name here uses, means a connector
+      # that dies on its own — cloudflared crashing, not `AppInstance` ever
+      # asking it to stop — comes back on its own before the next
+      # `ensure_app_running`/`restart_app` push would otherwise have noticed.
+      {DynamicSupervisor, name: CmsHarness.TunnelSupervisor, strategy: :one_for_one},
+
       # Holds the short-lived token the deploy key buys, and serialises buying
       # it: several hooks and an MCP call arrive at once on a cold start, and N
       # simultaneous exchanges for one key is N-1 tokens nobody uses.

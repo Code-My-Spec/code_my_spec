@@ -251,23 +251,54 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   @dummy_otp_app :cms_harness_tunnel
   @dummy_endpoint CmsHarness.NoEndpoint
 
+  # Named and supervised, not a bare linked/unlinked `GenServer.start`: a
+  # connector that dies on its own (cloudflared crashing, not `AppInstance`
+  # ever asking it to stop) comes back under `restart: :permanent` before the
+  # next `ensure_app_running`/`restart_app` push would otherwise have
+  # noticed. The name is what makes a second `start_tunnel/2` call for the
+  # *same* tunnel find the supervisor-restarted process instead of racing it
+  # — `DynamicSupervisor.start_child/2` answers `{:error, {:already_started,
+  # pid}}` for a name already registered, and that pid is exactly what
+  # `AppInstance` needs to pick back up.
+  defp tunnel_via(tunnel_id), do: {:via, Registry, {CmsHarness.Registry, {:tunnel, tunnel_id}}}
+
   @impl true
   def start_tunnel(credentials, origin_url) do
-    GenServer.start(ClientUtils.CloudflareTunnel,
-      mode: :named,
-      hostname: credentials.hostname,
-      tunnel_id: credentials.tunnel_id,
-      account_tag: credentials.account_tag,
-      tunnel_secret: credentials.tunnel_secret,
-      origin_url: origin_url,
-      endpoint: @dummy_endpoint,
-      otp_app: @dummy_otp_app
-    )
+    child_spec = %{
+      id: {:tunnel, credentials.tunnel_id},
+      start:
+        {ClientUtils.CloudflareTunnel, :start_link,
+         [
+           [
+             mode: :named,
+             hostname: credentials.hostname,
+             tunnel_id: credentials.tunnel_id,
+             account_tag: credentials.account_tag,
+             tunnel_secret: credentials.tunnel_secret,
+             origin_url: origin_url,
+             endpoint: @dummy_endpoint,
+             otp_app: @dummy_otp_app,
+             name: tunnel_via(credentials.tunnel_id)
+           ]
+         ]},
+      restart: :permanent
+    }
+
+    case DynamicSupervisor.start_child(CmsHarness.TunnelSupervisor, child_spec) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @impl true
   def stop_tunnel(pid) do
-    if Process.alive?(pid), do: GenServer.stop(pid)
+    # `terminate_child/2`, not `GenServer.stop/1`: a `:permanent` child killed
+    # directly is a crash as far as the supervisor is concerned, and it would
+    # restart right back — the one outcome a deliberate stop (demoted from
+    # main, re-provisioned) must never produce. Removing it from supervision
+    # first is what makes the stop actually stick.
+    DynamicSupervisor.terminate_child(CmsHarness.TunnelSupervisor, pid)
     :ok
   end
 

@@ -611,27 +611,56 @@ defmodule CmsHarness.AppInstance do
   # `ensure_running/2`'s doc and `CmsHarness.HarnessProjectChannel.put_tunnel/2`
   # for why a sharing sibling (criterion 1586) must never run a connector of
   # its own.
+  #
+  # The other side of that trade: the tunnel now lives and dies with *this*
+  # process, not with the app. This repo's own `after-promote` recipe
+  # restarts the harness BEAM 13-30s after every promote (see `after_promote/1`
+  # above), which takes this tunnel down with it — where the old, app-held
+  # tunnel survived a harness restart untouched. The public preview blips on
+  # every promote now, where it did not before. Probably acceptable, since a
+  # promote already restarts the app the preview is serving — but it is the
+  # trade being made, not a side effect nobody chose.
+  #
+  # Globally off by default (`harness_holds_tunnel`, unset). Every project's
+  # harness is one shared binary — there is no per-project config compiled
+  # into it — so this cannot come on selectively for a project whose app has
+  # migrated while staying off for one that has not. Turning it on is a
+  # separate, explicit step, taken only once every project still running its
+  # own app-side `ClientUtils.CloudflareTunnel` has had that child removed;
+  # until then a project whose tunnel *was* provisioned through
+  # `PreviewTunnel.ensure/1` (unlike this repo's own main, whose dev tunnel
+  # is still `config/dev.exs`'s hardcoded bootstrap) would get a second,
+  # competing connector on its very next restart — the exact stray-connector
+  # shape this project has already shipped one fix for, found in review
+  # before this ever went live (Harness, metric_flow's own tunnel: real
+  # credentials, `AppInstance`-managed app, untouched `application.ex`).
+  defp ensure_tunnel(state, main?, tunnel) do
+    if tunnel_feature_enabled?() do
+      do_ensure_tunnel(state, main?, tunnel)
+    else
+      state
+    end
+  end
 
-  # Not main any more, or never was — relinquish whatever tunnel this
-  # process might still be holding from an earlier call, told back when it
-  # still was main. A demoted main must stop being the one Cloudflare hears
-  # from, the same "told fresh" reasoning `main?` itself already gets.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
+  defp tunnel_feature_enabled?,
+    do: Application.get_env(:code_my_spec, :harness_holds_tunnel, false)
+
+  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     %{state | tunnel_pid: nil, tunnel_id: nil}
   end
 
-  defp ensure_tunnel(state, false, _tunnel), do: state
+  defp do_ensure_tunnel(state, false, _tunnel), do: state
 
   # Main, but holds no tunnel of its own — nothing to run.
-  defp ensure_tunnel(state, true, nil), do: state
+  defp do_ensure_tunnel(state, true, nil), do: state
 
   # Already running this exact tunnel — re-checked on every call rather than
   # trusted once: a connector this process did not itself stop can still
   # have died on its own, and `start_tunnel/2` starts it unlinked for
   # exactly this reason (see its own doc) — a dead tunnel should read as
   # "not running," not crash the process supervising it.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
+  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
        when is_pid(pid) do
     if Process.alive?(pid), do: state, else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
@@ -639,12 +668,12 @@ defmodule CmsHarness.AppInstance do
   # Holding a tunnel already, but for different credentials — re-provisioned
   # under us. Swap to the new ones rather than leaving a connector answering
   # for a tunnel this copy no longer holds the secret for.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
+  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
-  defp ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
+  defp do_ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
 
   defp start_tunnel(state, tunnel) do
     case tunnel_origin(state) do
