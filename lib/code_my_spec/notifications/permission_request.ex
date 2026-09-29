@@ -26,6 +26,9 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     # waiting on it.
     belongs_to :agent, CodeMySpec.Agents.Agent, type: :binary_id
 
+    # The Claude Code session a tap-out's decision applies to. Nil otherwise.
+    belongs_to :session, CodeMySpec.Sessions.Session, type: :binary_id
+
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
@@ -33,7 +36,16 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
 
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:user_id, :agent_id, :task_id, :tool_name, :tool_input, :status, :decision])
+    |> cast(attrs, [
+      :user_id,
+      :agent_id,
+      :session_id,
+      :task_id,
+      :tool_name,
+      :tool_input,
+      :status,
+      :decision
+    ])
     |> validate_required([:user_id, :tool_name, :tool_input])
     |> validate_inclusion(:status, ~w(pending approved denied expired))
     |> validate_inclusion(:decision, ~w(allow deny ask), message: "must be allow, deny, or ask")

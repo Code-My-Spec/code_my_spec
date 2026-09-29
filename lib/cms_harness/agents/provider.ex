@@ -99,6 +99,9 @@ defmodule CmsHarness.Agents.Provider do
   # with a ChatGPT account"*. Omitting the flag makes `codex exec` use whatever
   # that account actually has, which is always a valid answer and never goes
   # stale.
+  #
+  # `workdir: working_copy`, as for claude-code: left unset, `codex exec` runs
+  # in Alloy's temp dir holding only `prompt.txt` (5001c099).
   def options("openai-codex", credential, opts) do
     {:ok,
      [
@@ -106,6 +109,7 @@ defmodule CmsHarness.Agents.Provider do
          {Alloy.Provider.Codex,
           %{
             model: Keyword.get(opts, :model),
+            workdir: Keyword.get(opts, :working_copy),
             codex_home: codex_home(credential),
             timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
           }}

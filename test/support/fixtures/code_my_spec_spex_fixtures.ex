@@ -137,7 +137,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
   alias CodeMySpec.Mail.ResendClient
-  alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.Credentials
@@ -2632,31 +2631,6 @@ defmodule CodeMySpecSpex.Fixtures do
       _ -> raise "start_continuous_mode failed: #{inspect(response)}"
     end
   end
-
-  # -- Tap-out human response (Story 704 / Rule 5) --
-  @doc """
-  Simulate the human responding to a pending tap-out request.
-
-  Spex use this to drive the approval/rejection side without a real
-  production-server round-trip. Wraps `TapOut.respond/4`.
-  """
-  @spec respond_to_tap_out(map(), String.t(), String.t(), :approve | :reject) ::
-          {:ok, Session.t()} | {:error, term()}
-  def respond_to_tap_out(scope, session_external_id, request_id, decision)
-      when decision in [:approve, :reject] do
-    session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
-    TapOut.respond(scope, session, request_id, decision)
-  end
-
-  @doc """
-  Returns the PubSub topic that tap-out events are broadcast on.
-
-  Spex subscribe to this topic to assert that `tap_out` MCP calls
-  publish the expected messages without referencing the internal
-  `CodeMySpec.Permissions.TapOut` module directly.
-  """
-  @spec tap_out_pubsub_topic() :: String.t()
-  def tap_out_pubsub_topic, do: "permissions:tap_out"
 
   @doc """
   Looks up a session by its external conversation id (the string the

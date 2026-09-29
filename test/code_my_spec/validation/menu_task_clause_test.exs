@@ -16,6 +16,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Validation.Menu
@@ -62,7 +63,8 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
 
   describe "an open task" do
     setup do
-      %{scope: scope_with_waiting_requirements()}
+      scope = scope_with_waiting_requirements()
+      %{scope: scope, story: story_fixture(scope)}
     end
 
     # The control. If this stops holding, the displacement test below is
@@ -73,13 +75,29 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       assert menu =~ "`get_next_requirement`"
     end
 
-    test "is the directive, and carries the id evaluate_task needs", %{scope: scope} do
-      menu = Menu.render(scope, true, nil, agent([task(%{})]))
+    test "is the directive, and carries the id evaluate_task needs", %{scope: scope, story: story} do
+      menu = Menu.render(scope, true, nil, agent([task(%{story_id: story.id})]))
 
       assert menu =~ "you have an open task"
-      assert menu =~ "`story_issues_resolved` on story 904"
+      assert menu =~ "`story_issues_resolved` on story #{story.number}"
       assert menu =~ "call `evaluate_task`"
       assert menu =~ ~s(task_id "43d57947-9b6b-4309-806c-53a32ae5c65b")
+    end
+
+    # The task row holds the story's id; every tool takes its number. The label
+    # has to be the number, or the agent is handed a story reference it cannot
+    # use (metric_flow: "story 1100" on a task whose work was story 47).
+    test "names the task's story by its number, never its id", %{scope: scope} do
+      stories = for _ <- 1..3, do: story_fixture(scope)
+
+      story =
+        Enum.find(stories, &(&1.id != &1.number)) ||
+          flunk("need an id that differs from its number")
+
+      menu = Menu.render(scope, true, nil, agent([task(%{story_id: story.id})]))
+
+      assert menu =~ "on story #{story.number}"
+      refute menu =~ "on story #{story.id}"
     end
 
     # The whole point of the clause. Sending an agent to fetch more work while
@@ -111,27 +129,28 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   # exactly like one that is busy.
   describe "several open tasks" do
     setup do
-      %{scope: scope_with_waiting_requirements()}
+      scope = scope_with_waiting_requirements()
+      %{scope: scope, stories: for(_ <- 1..3, do: story_fixture(scope))}
     end
 
-    defp burst do
+    defp burst([oldest, middle, newest]) do
       [
         task(%{
           id: "oldest",
           requirement_name: "story_issues_resolved",
-          story_id: 904,
+          story_id: oldest.id,
           started_at: ~U[2026-09-06 11:26:20.022400Z]
         }),
         task(%{
           id: "middle",
           requirement_name: "bdd_specs_passing",
-          story_id: 949,
+          story_id: middle.id,
           started_at: ~U[2026-09-06 11:30:30.545291Z]
         }),
         task(%{
           id: "newest",
           requirement_name: "three_amigos_complete",
-          story_id: 994,
+          story_id: newest.id,
           started_at: ~U[2026-09-06 11:58:00.189607Z]
         })
       ]
@@ -140,16 +159,17 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     # The one it is mid-thought on, not the one it abandoned first. `Enum.find`
     # answers the head of the list, which is the oldest, and would send the
     # agent back to work it had already moved past.
-    test "names the newest, not the first", %{scope: scope} do
-      menu = Menu.render(scope, true, nil, agent(burst()))
+    test "names the newest, not the first", %{scope: scope, stories: stories} do
+      [oldest, _middle, newest] = stories
+      menu = Menu.render(scope, true, nil, agent(burst(stories)))
 
-      assert menu =~ "`three_amigos_complete` on story 994"
+      assert menu =~ "`three_amigos_complete` on story #{newest.number}"
       assert menu =~ ~s(task_id "newest")
-      refute menu =~ "story 904"
+      refute menu =~ "on story #{oldest.number}"
     end
 
-    test "says how many are open rather than implying one", %{scope: scope} do
-      menu = Menu.render(scope, true, nil, agent(burst()))
+    test "says how many are open rather than implying one", %{scope: scope, stories: stories} do
+      menu = Menu.render(scope, true, nil, agent(burst(stories)))
 
       assert menu =~ "you have 3 open tasks"
       assert menu =~ "The others are still open too"
@@ -158,8 +178,8 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     # Order in the embed is insertion order, and nothing guarantees the newest
     # is last — a restored agent's rows come back in whatever order the column
     # holds them.
-    test "picks the newest whatever order the rows arrive in", %{scope: scope} do
-      menu = Menu.render(scope, true, nil, agent(Enum.reverse(burst())))
+    test "picks the newest whatever order the rows arrive in", %{scope: scope, stories: stories} do
+      menu = Menu.render(scope, true, nil, agent(Enum.reverse(burst(stories))))
 
       assert menu =~ ~s(task_id "newest")
     end

@@ -11,6 +11,7 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Conversations,
       CodeMySpec.Issues,
       CodeMySpec.Repo,
+      CodeMySpec.Sessions,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
@@ -29,6 +30,7 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -317,26 +319,38 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc "Create one pending tap-out per agent/task intent, blocking linked work atomically."
-  def request_agent_tap_out(scope, agent_id, task_id, reason \\ nil) do
+  def request_agent_tap_out(scope, agent_id, task_id, reason \\ nil),
+    do: request_tap_out(scope, Agent, agent_id, task_id, reason)
+
+  @doc """
+  The same request for a Claude Code session: a row in the person's inbox,
+  whose approval clears `session.continuous` (or cancels the linked task).
+  """
+  def request_session_tap_out(scope, session_id, task_id, reason \\ nil),
+    do: request_tap_out(scope, Session, session_id, task_id, reason)
+
+  defp request_tap_out(scope, owner_schema, owner_id, task_id, reason) do
+    owner_key = tap_out_owner_key(owner_schema)
+
     result =
       Repo.transaction(fn ->
         owner =
           Repo.one(
-            from agent in CodeMySpec.Agents.Agent,
+            from owner in owner_schema,
               where:
-                agent.id == ^agent_id and agent.account_id == ^scope.active_account_id and
-                  agent.project_id == ^scope.active_project_id,
+                owner.id == ^owner_id and owner.account_id == ^scope.active_account_id and
+                  owner.project_id == ^scope.active_project_id,
               lock: "FOR UPDATE"
           )
 
         if is_nil(owner), do: Repo.rollback(:owner_not_found)
 
-        case pending_tap_out(agent_id, task_id) do
+        case pending_tap_out(owner_key, owner_id, task_id) do
           nil ->
             with {:ok, task} <- question_task(owner, task_id),
                  {:ok, request} <-
                    insert_permission_request(scope.user.id, %{
-                     "agent_id" => agent_id,
+                     Atom.to_string(owner_key) => owner_id,
                      "task_id" => task_id,
                      "tool_name" => "tap_out",
                      "tool_input" => %{"task_id" => task_id, "reason" => reason}
@@ -355,17 +369,22 @@ defmodule CodeMySpec.Notifications do
     with {:ok, {request, created?}} <- result do
       if created? do
         deliver_permission(request)
-        announce_blocker(scope, agent_id)
+        if owner_key == :agent_id, do: announce_blocker(scope, owner_id)
       end
 
       {:ok, request}
     end
   end
 
-  defp pending_tap_out(agent_id, task_id) do
+  defp tap_out_owner_key(Agent), do: :agent_id
+  defp tap_out_owner_key(Session), do: :session_id
+
+  defp pending_tap_out(owner_key, owner_id, task_id) do
     query =
       from p in PermissionRequest,
-        where: p.agent_id == ^agent_id and p.tool_name == "tap_out" and p.status == "pending"
+        where:
+          field(p, ^owner_key) == ^owner_id and p.tool_name == "tap_out" and
+            p.status == "pending"
 
     query =
       if is_nil(task_id),
@@ -397,7 +416,10 @@ defmodule CodeMySpec.Notifications do
         {:error, :not_found}
 
       %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
-        resolve_agent_tap_out(id, decision, answer)
+        resolve_tap_out(id, decision, answer)
+
+      %{tool_name: "tap_out", session_id: session_id} when is_binary(session_id) ->
+        resolve_tap_out(id, decision, answer)
 
       %{status: "pending"} = request ->
         request
@@ -428,7 +450,7 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp resolve_agent_tap_out(id, decision, answer) do
+  defp resolve_tap_out(id, decision, answer) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
@@ -657,12 +679,7 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp apply_tap_out_decision(request) do
-    owner =
-      Repo.one(
-        from a in CodeMySpec.Agents.Agent, where: a.id == ^request.agent_id, lock: "FOR UPDATE"
-      )
-
-    case owner do
+    case lock_tap_out_owner(request) do
       nil ->
         :ok
 
@@ -675,6 +692,12 @@ defmodule CodeMySpec.Notifications do
         end
     end
   end
+
+  defp lock_tap_out_owner(%{agent_id: id}) when is_binary(id),
+    do: Repo.one(from a in Agent, where: a.id == ^id, lock: "FOR UPDATE")
+
+  defp lock_tap_out_owner(%{session_id: id}) when is_binary(id),
+    do: Repo.one(from s in Session, where: s.id == ^id, lock: "FOR UPDATE")
 
   defp update_tap_out_owner(_scope, owner, %{task_id: nil, decision: "allow"}),
     do: owner |> Ecto.Changeset.change(continuous: false) |> Repo.update()
@@ -803,6 +826,18 @@ defmodule CodeMySpec.Notifications do
   def list_permission_requests_for_agent(agent_id) when is_binary(agent_id) do
     PermissionRequest
     |> where([p], p.agent_id == ^agent_id)
+    |> order_by([p], asc: p.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc "The requests one Claude Code session raised, by its external id, oldest first."
+  @spec list_permission_requests_for_session(String.t() | nil) :: [PermissionRequest.t()]
+  def list_permission_requests_for_session(nil), do: []
+
+  def list_permission_requests_for_session(session_external_id) do
+    PermissionRequest
+    |> join(:inner, [p], s in assoc(p, :session))
+    |> where([_p, s], s.external_conversation_id == ^session_external_id)
     |> order_by([p], asc: p.inserted_at)
     |> Repo.all()
   end
@@ -1332,10 +1367,9 @@ defmodule CodeMySpec.Notifications do
 
   Two tables, one question. `ask_user_question` writes a `QuestionRequest`;
   `tap_out`, called by an agent we run, writes a `PermissionRequest` with the
-  same `agent_id` (`McpServers.Tasks.Tools.TapOut.request_agent_tap_out/2`) —
-  `TapOut.request/2`'s session-keyed `session.state["pending_tap_out"]` is a
-  different mechanism entirely, for a Claude Code session rather than an
-  agent, and `Hooks.Stop` checks that one directly.
+  same `agent_id` (`request_agent_tap_out/4`). A Claude Code session's tap-out
+  is a row keyed by `session_id` instead, and `Hooks.Stop` reads only the
+  `session.continuous` its approval clears.
 
   This started covering only `QuestionRequest`, and `StopDecision.wake/2` had
   no check of either at all — `wake_project_roles/2` fans out to every

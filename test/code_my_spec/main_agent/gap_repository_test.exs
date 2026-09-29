@@ -23,6 +23,16 @@ defmodule CodeMySpec.MainAgent.GapRepositoryTest do
     assert first.id == second.id and second.id == third.id
   end
 
+  # The unique index on `capability` is a btree, whose entries cap near 2.7KB.
+  # Past that the insert raised rather than returned; `note_gap/3` rescued it.
+  test "a capability too long to index is refused, not raised" do
+    project = CodeMySpec.ProjectsFixtures.project_fixture(user_scope_fixture())
+    capability = 5_000 |> :crypto.strong_rand_bytes() |> Base.encode64()
+
+    assert {:error, changeset} = GapRepository.record(project.id, "coding", capability)
+    assert changeset.errors[:capability]
+  end
+
   test "the issue attached to a gap survives the next recurrence" do
     scope = full_scope_fixture()
 

@@ -137,9 +137,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   defp format_stories([]), do: "No user stories provided"
 
   defp format_stories(stories) do
-    stories
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {story, index} ->
+    Enum.map_join(stories, "\n\n", fn story ->
       acceptance_criteria =
         case criteria_descriptions(story) do
           [] -> "  None specified"
@@ -147,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
         end
 
       """
-      Story #{index}: #{story.title}
+      Story #{story.number}: #{story.title}
       Description: #{story.description}
       Acceptance Criteria:
       #{acceptance_criteria}

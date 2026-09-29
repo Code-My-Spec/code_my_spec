@@ -41,6 +41,8 @@ defmodule CmsHarness do
     top_level?: true,
     deps: [
       CodeMySpec,
+      # `ToolIndex.carried/0`, the one list of direct tools an agent carries.
+      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,

@@ -459,8 +459,10 @@ defmodule CmsHarness.Web.McpController do
   def message(:no_harness),
     do:
       "This request does not say which working copy it is about. The MCP " <>
-        "server is addressed as /mcp?harness=<id>; run `mix cms.harness.onboard` " <>
-        "in the checkout to generate a plugin that sends one."
+        "server is addressed as /mcp?harness=<id> or by `X-Harness-Id`; the plugin " <>
+        "sends `${CMS_HARNESS_ID}`, which `mix cms.harness.onboard` sets in the " <>
+        "checkout's `.claude/settings.local.json`. Onboard there if it is missing, " <>
+        "then restart the agent from the checkout."
 
   def message(:no_project_id),
     do:

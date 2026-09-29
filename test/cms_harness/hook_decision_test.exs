@@ -36,6 +36,26 @@ defmodule CmsHarness.HookDecisionTest do
     end
   end
 
+  # 47a60277: the refusal sent agents to re-onboard and pass `--plugin-dir`,
+  # neither of which resolves a hook; the payload's `cwd` does.
+  describe "a hook that named no working copy" do
+    test "points at the cwd walk, not a plugin dir" do
+      %{"reason" => reason} = HookDecision.unreachable("stop", :no_harness, "/tmp/alloy-codex-1")
+
+      refute reason =~ "--plugin-dir"
+      refute reason =~ "plugin-dev"
+      assert reason =~ "/tmp/alloy-codex-1"
+      assert reason =~ ".cms_harness.json"
+      assert reason =~ "will not help"
+    end
+
+    test "says when the payload carried no cwd" do
+      %{"reason" => reason} = HookDecision.unreachable("stop", :no_harness, "(none given)")
+
+      assert reason =~ "no `cwd`"
+    end
+  end
+
   describe "the message names the harness" do
     for reason <- [:not_connected, :no_project, :no_credential, :no_reply, :invalid_config] do
       test "#{reason} points at the harness rather than at the server" do

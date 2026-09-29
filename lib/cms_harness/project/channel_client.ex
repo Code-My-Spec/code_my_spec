@@ -664,6 +664,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
       |> assign(:silences, 0)
+      |> assign(:read_model_refused, false)
 
     schedule_read_model_refresh()
     schedule_preview_check()
@@ -983,7 +984,15 @@ defmodule CmsHarness.Project.ChannelClient do
           |> resume_watcher()
 
         maybe_sync(socket, previous, read_model)
-        {:ok, socket}
+        {:ok, assign(socket, :read_model_refusals, 0)}
+
+      # Structural, so retrying on the refresh tick cannot succeed: stop asking
+      # until the next join, and say it loudly only the first time (b5f7fdb4).
+      {:error, %{"reason" => "unmatched topic"}} = refusal ->
+        refusals = Map.get(socket.assigns, :read_model_refusals, 0)
+        log_read_model_refused(socket, refusal, refusals)
+
+        {:ok, assign(socket, read_model_refused: true, read_model_refusals: refusals + 1)}
 
       other ->
         Logger.error("""
@@ -1133,6 +1142,24 @@ defmodule CmsHarness.Project.ChannelClient do
       {source, refs} ->
         {:ok, log_analysis_reply(source, reply, assign(socket, :analysis_refs, refs))}
     end
+  end
+
+  # Counted across rejoins and reset only by a read model handed over, so a
+  # join loop logs one error, not one per join.
+  defp log_read_model_refused(socket, refusal, 0) do
+    Logger.error("""
+    [CmsHarness] the server would not hand over the read model for #{socket.assigns.project.root}: #{inspect(refusal)}
+
+    The topic is unmatched, so this is not retried until the next join. Without a
+    read model the harness is not scanning rather than scanning wrongly.
+    """)
+  end
+
+  defp log_read_model_refused(socket, refusal, refusals) do
+    Logger.debug(
+      "[CmsHarness] read model for #{socket.assigns.project.root} refused again " <>
+        "(#{refusals + 1} in a row): #{inspect(refusal)}"
+    )
   end
 
   defp handle_pending_reply(ref, reply, socket) do
@@ -2117,6 +2144,11 @@ defmodule CmsHarness.Project.ChannelClient do
     push(socket, topic, event, Map.put(encode_app_result(result), "ref", ref))
     {:noreply, socket}
   end
+
+  # Refused as unmatched on this join: the timer chain ends here, and the next
+  # join starts a fresh one.
+  def handle_info(:refresh_read_model, %{assigns: %{read_model_refused: true}} = socket),
+    do: {:noreply, socket}
 
   def handle_info(:refresh_read_model, %{assigns: %{joined: true, topic: topic}} = socket) do
     schedule_read_model_refresh()

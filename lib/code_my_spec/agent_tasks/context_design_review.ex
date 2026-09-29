@@ -196,13 +196,11 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   end
 
   defp format_user_stories(stories) do
-    stories
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {story, index} ->
+    Enum.map_join(stories, "\n\n", fn story ->
       acceptance_criteria = format_acceptance_criteria(story.criteria)
 
       """
-      ### Story #{index}: #{story.title}
+      ### Story #{story.number}: #{story.title}
 
       #{story.description}
 

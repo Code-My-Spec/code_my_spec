@@ -24,6 +24,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Sessions
 
   # skill → {subcommand → session_type}
   # nil subcommand means "no args" default
@@ -78,7 +79,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
       {:ok, :sync} -> run_sync(scope)
       {:ok, :next} -> run_next(scope)
       {:ok, session_type} -> run_task(scope, external_id, session_type, module_name)
-      {:error, :stopped} -> {:ok, %{stopped: true}}
+      {:error, :stopped} -> stop_continuous(scope, external_id)
       {:error, :unknown_skill} -> {:error, "Unknown skill: #{skill}"}
       {:error, :unknown_subcommand, available} -> unknown_subcommand(skill, subcommand, available)
     end
@@ -116,6 +117,24 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
 
   defp unknown_subcommand(skill, subcommand, available),
     do: {:error, "Unknown subcommand '#{subcommand}' for /codemyspec:#{skill}", available}
+
+  # `stopped: true` only once the flag is actually cleared: the stop hook reads
+  # `continuous`, and a false "disabled" leaves the loop on (027a974a).
+  defp stop_continuous(_scope, nil),
+    do: {:error, "Cannot stop continuous mode: no external_id names the session."}
+
+  defp stop_continuous(scope, external_id) do
+    case Sessions.get_by_external_id(scope, external_id) do
+      nil ->
+        {:error, "Cannot stop continuous mode: no active session #{external_id} in this project."}
+
+      session ->
+        case Sessions.update_session(scope, session, %{continuous: false}) do
+          {:ok, _session} -> {:ok, %{stopped: true}}
+          {:error, reason} -> {:error, "Cannot stop continuous mode: #{inspect(reason)}"}
+        end
+    end
+  end
 
   defp run_task(scope, external_id, session_type, module_name) do
     args = %{external_id: external_id, session_type: session_type, module_name: module_name}

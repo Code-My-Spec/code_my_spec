@@ -3,10 +3,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   Voluntary tap-out of continuous mode (Story 704 / Rule 5; consumer of
   538/5124).
 
-  Publishes a permission request to PermissionSocket and returns
-  immediately with a request_id. The agent does NOT block waiting for
-  human approval. On approve, `session.continuous` clears (next stop
-  hook will allow). On reject, the flag stays on.
+  Writes a `PermissionRequest` the person sees in their notifications inbox,
+  keyed to the agent we run or to the Claude Code session that asked. Returns
+  immediately; the caller does not wait. On approve, continuous clears (or the
+  linked task is cancelled). On reject, it stays on.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -14,7 +14,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Sessions
 
   schema do
@@ -26,22 +25,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   @impl true
   # Durable requests live on the permission row, linked to a task only when
   # explicitly requested. A task blocker does not change continuous intent.
-  def execute(params, %{assigns: %{agent_id: agent_id}} = frame)
-      when is_binary(agent_id) do
+  def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, request} <-
-           Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason]) do
+         {:ok, request} <- request(scope, frame.assigns[:agent_id], params) do
       {:reply,
        Response.tool()
        |> Response.text("""
-       Tap-out requested (request_id=`#{request.id}`). A human decides.
+       Tap-out requested (request_id=`#{request.id}`). It is waiting in your
+       user's notifications (/app/permissions/#{request.id}); a human decides.
 
        A linked task is blocked; unrelated work may continue. Without a task,
        this asks to turn off continuous work upon approval. Do not ask again.
        """), frame}
     else
+      {:error, reason} when is_binary(reason) ->
+        {:reply, Response.tool() |> Response.error(reason), frame}
+
       {:error, reason} ->
-        {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+        {:reply, Response.tool() |> Response.error("Tap-out was not saved: #{inspect(reason)}"),
+         frame}
     end
   rescue
     error ->
@@ -50,26 +52,18 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
        frame}
   end
 
-  def execute(params, frame) do
-    session_id = Map.get(params, :session_id)
+  defp request(scope, agent_id, params) when is_binary(agent_id),
+    do: Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason])
 
-    with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- resolve_session(scope, session_id),
-         {:ok, request_id} <- TapOut.request(scope, session) do
-      msg =
-        "Tap-out request published — awaiting human approval (request_id=`#{request_id}`). " <>
-          "Continuous mode remains on until the human responds."
-
-      {:reply, Response.tool() |> Response.text(msg), frame}
-    else
-      {:error, reason} ->
-        {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+  defp request(scope, _agent_id, params) do
+    with {:ok, session} <- resolve_session(scope, params[:session_id]) do
+      Notifications.request_session_tap_out(scope, session.id, params[:task_id], params[:reason])
     end
   end
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
-      nil -> {:error, "Session not found: #{session_id}"}
+      nil -> {:error, "Session not found: #{session_id}. Nothing was saved."}
       session -> {:ok, session}
     end
   end
@@ -77,10 +71,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   defp resolve_session(_scope, _),
     do:
       {:error,
-       "`tap_out` is built on a Claude Code session — it writes the pending " <>
-         "request into `session.state` — and an agent we run has no session to " <>
-         "write into. So this is not something you can call yet, and not " <>
-         "something a different spelling or a session id will fix.\n\n" <>
-         "If you want out of the loop, say so in your reply and stop. A human " <>
-         "reads that; nothing here does."}
+       "`tap_out` needs the session id the hook injects, and none arrived, so " <>
+         "nothing was saved and no one was asked. If you want out of the loop, " <>
+         "say so in your reply and stop; a human reads that."}
 end

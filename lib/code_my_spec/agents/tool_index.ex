@@ -102,7 +102,8 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
   defp browser_heading, do: "Called from inside `run_browser_script`"
 
-  # What the direct server exposes, which is the same for every agent.
+  # What the direct server exposes, less what the engine does not carry; the
+  # same for every agent.
   #
   # Not the `tools` column. That column governs what a *script* may call and its
   # names are `ScriptableTools` components — `create_issue`, `list_stories` and
@@ -120,8 +121,24 @@ defmodule CodeMySpec.Agents.ToolIndex do
   # The direct surface is the loop: `get_next_requirement`, `start_task`,
   # `evaluate_task`, `tap_out`, `run_script`, `tool_docs` and their neighbours.
   # It is not scoped by role, so neither is this.
-  defp carried(%Agent{}) do
-    LocalServer.__components__() |> Enum.map(& &1.name) |> Enum.sort()
+  defp carried(%Agent{}), do: carried()
+
+  # Direct tools an in-BEAM agent does not carry. `promote_sync` holds a call
+  # open for a build where `promote` messages the result back; `health` was
+  # never given a harness module.
+  @not_carried ~w(health promote_sync)
+
+  @doc """
+  The direct tools an in-BEAM agent carries: `LocalServer`'s, less
+  `@not_carried`. `CmsHarness.Agents.Engine.tools/1` builds from this, so the
+  index cannot name a tool the engine answers `Unknown tool` for (1a7b1e4c).
+  """
+  @spec carried() :: [String.t()]
+  def carried do
+    LocalServer.__components__()
+    |> Enum.map(& &1.name)
+    |> Enum.reject(&(&1 in @not_carried))
+    |> Enum.sort()
   end
 
   @doc """

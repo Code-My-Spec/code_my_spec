@@ -67,7 +67,8 @@ defmodule CmsHarness.Analysis do
   optional so direct/manual calls (and the existing test suite) still work
   without inventing one.
   """
-  @spec run(map(), String.t(), [String.t()], integer() | nil) :: {:ok, map()} | {:error, String.t()}
+  @spec run(map(), String.t(), [String.t()], integer() | nil) ::
+          {:ok, map()} | {:error, String.t()}
   def run(project, source, args \\ [], run_id \\ nil)
       when is_binary(source) and is_list(args) do
     env = Environment.new(:local, project.root)
@@ -357,8 +358,29 @@ defmodule CmsHarness.Analysis do
   defp serialize(%DateTime{} = value), do: DateTime.to_iso8601(value)
   defp serialize(value), do: value
 
-  defp cap(output) when byte_size(output) > @output_cap,
-    do: binary_part(output, 0, @output_cap) <> "\n… (truncated)"
+  @doc """
+  Analyzer output made safe for the channel: invalid UTF-8 scrubbed, then cut
+  to #{@output_cap} bytes on a character boundary. A byte cut mid-character
+  killed the channel's JSON encode (e82d6a37).
+  """
+  @spec cap(binary()) :: String.t()
+  def cap(output) do
+    output = String.replace_invalid(output)
 
-  defp cap(output), do: output
+    if byte_size(output) > @output_cap do
+      output
+      |> binary_part(0, @output_cap)
+      |> drop_partial_char()
+      |> Kernel.<>("\n… (truncated)")
+    else
+      output
+    end
+  end
+
+  # The input is already valid, so only a trailing partial sequence can fail.
+  defp drop_partial_char(binary) do
+    if String.valid?(binary),
+      do: binary,
+      else: binary |> binary_part(0, byte_size(binary) - 1) |> drop_partial_char()
+  end
 end
