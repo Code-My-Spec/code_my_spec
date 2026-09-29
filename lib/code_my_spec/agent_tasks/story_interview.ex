@@ -108,7 +108,6 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
 
   defp format_stories(stories, :numbered) do
     stories
-    |> Enum.with_index(1)
     |> Enum.map_join("\n\n", &format_story_numbered/1)
   end
 
@@ -119,9 +118,9 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
     """
   end
 
-  defp format_story_numbered({story, index}) do
+  defp format_story_numbered(story) do
     """
-    **Story #{index}: #{story.title}**
+    **Story #{story.number}: #{story.title}**
     Description: #{story.description}
     """
   end
