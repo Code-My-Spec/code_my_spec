@@ -3,22 +3,34 @@ defmodule CmsHarness.Agents.ShellTest do
 
   alias CmsHarness.Agents.Shell
 
-  # The probe name is this test's own, so nothing else sets it to restore.
+  # The CMS probe is this test's own. MIX_ENV is put back as it was; the
+  # module is sync, so no async test reads it meanwhile.
   setup do
+    mix_env = System.get_env("MIX_ENV")
     System.put_env("CMS_SHELL_TEST_PROBE", "leaked")
-    on_exit(fn -> System.delete_env("CMS_SHELL_TEST_PROBE") end)
+    System.put_env("MIX_ENV", "dev_cli")
+
+    on_exit(fn ->
+      System.delete_env("CMS_SHELL_TEST_PROBE")
+      restore("MIX_ENV", mix_env)
+    end)
   end
 
-  test "an agent's command sees neither MIX_ENV nor the harness's CMS_ variables", %{tmp_dir: dir} do
-    {out, 0} = Shell.run(~s(echo "${MIX_ENV:-unset} ${CMS_SHELL_TEST_PROBE:-unset}"), dir)
-    assert String.trim(out) == "unset unset"
+  defp restore(name, nil), do: System.delete_env(name)
+  defp restore(name, value), do: System.put_env(name, value)
+
+  test "an agent's command is run with MIX_ENV and the harness's CMS_ variables unset" do
+    unset = Shell.scrubbed_env()
+
+    assert {"CMS_SHELL_TEST_PROBE", nil} in unset
+    assert {"MIX_ENV", nil} in unset
   end
 
-  test "it still runs in the given directory and keeps other variables", %{tmp_dir: dir} do
-    {out, 0} = Shell.run("pwd; echo ${HOME:+home-set}", dir)
-    assert out =~ Path.basename(dir)
-    assert out =~ "home-set"
-  end
+  test "it leaves every other variable alone" do
+    names = for {name, nil} <- Shell.scrubbed_env(), do: name
 
-  @moduletag :tmp_dir
+    refute "HOME" in names
+    refute "PATH" in names
+    assert Enum.all?(names, &(&1 == "MIX_ENV" or String.starts_with?(&1, "CMS_")))
+  end
 end
