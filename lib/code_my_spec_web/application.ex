@@ -194,7 +194,8 @@ defmodule CodeMySpecWeb.Application do
         endpoint: CodeMySpecWeb.Endpoint,
         otp_app: :code_my_spec,
         origin_url:
-          tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}"
+          tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}",
+        enabled: main_copy?()
       )
 
     children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
@@ -215,6 +216,19 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, _), do: children
+
+  # `tunnel_config` is main's own tunnel — a hardcoded hostname, tunnel id and
+  # account tag in this file, read unconditionally by every :dev boot. A
+  # non-main working copy booting the same way (`CmsHarness.AppInstance`,
+  # story 1108) started this GenServer too, which ran a second `cloudflared`
+  # answering for main's tunnel from a different port — harmless only because
+  # every copy's config named the same origin main's did, and a live risk the
+  # moment one didn't (Cloudflare splitting main's public traffic between the
+  # two apps). `CMS_MAIN_COPY` is set by `AppInstance.Runner.Local.launch/6`
+  # for exactly this reason; unset (a developer's own `mix phx.server`, not
+  # going through the harness at all) reads as main, matching every boot
+  # before this existed.
+  defp main_copy?, do: System.get_env("CMS_MAIN_COPY") != "false"
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.

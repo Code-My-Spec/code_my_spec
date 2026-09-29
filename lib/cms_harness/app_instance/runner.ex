@@ -62,14 +62,25 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   Launch `root`'s `serve` recipe, detached, with `PORT`/`HTTPS_PORT`/
-  `DATABASE_NAME` set and its output redirected to `log_path`.
+  `DATABASE_NAME`/`CMS_MAIN_COPY` set and its output redirected to `log_path`.
+
+  `main?` tells the booting app whether it is the checkout every bookmark
+  already points at. A non-main copy has no business starting its own
+  `ClientUtils.CloudflareTunnel` — that GenServer reads main's own hardcoded
+  tunnel credentials and hostname straight out of `config/dev.exs`, so every
+  copy that started one was a second connector answering for main's tunnel,
+  each pointed at whatever local port *this* copy happened to get. Harmless
+  only because every copy's config also happened to name the same origin
+  main's did; the moment a copy's config named its own port instead,
+  Cloudflare would split main's public traffic between the two apps.
   """
   @callback launch(
               root :: String.t(),
               port :: pos_integer(),
               https_port :: pos_integer(),
               database :: String.t(),
-              log_path :: String.t()
+              log_path :: String.t(),
+              main? :: boolean()
             ) :: {:ok, os_pid :: pos_integer()} | {:error, term()}
 
   @doc "Whether `os_pid` can still be signalled."
@@ -134,10 +145,10 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec run_after_promote(String.t()) :: :ok | {:error, term()}
   def run_after_promote(root), do: impl().run_after_promote(root)
 
-  @spec launch(String.t(), pos_integer(), pos_integer(), String.t(), String.t()) ::
+  @spec launch(String.t(), pos_integer(), pos_integer(), String.t(), String.t(), boolean()) ::
           {:ok, pos_integer()} | {:error, term()}
-  def launch(root, port, https_port, database, log_path),
-    do: impl().launch(root, port, https_port, database, log_path)
+  def launch(root, port, https_port, database, log_path, main?),
+    do: impl().launch(root, port, https_port, database, log_path, main?)
 
   @spec alive?(pos_integer()) :: boolean()
   def alive?(os_pid), do: impl().alive?(os_pid)

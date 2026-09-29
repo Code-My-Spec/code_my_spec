@@ -496,7 +496,7 @@ defmodule CmsHarness.AppInstance do
   defp current_commit(state), do: Runner.current_commit(state.root)
 
   defp launch(state, port, https_port, database) do
-    Runner.launch(state.root, port, https_port, database, state.log_path)
+    Runner.launch(state.root, port, https_port, database, state.log_path, state.main?)
   end
 
   # A short, bounded wait so the common case can report "serving" rather than
