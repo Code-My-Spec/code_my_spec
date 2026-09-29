@@ -49,6 +49,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Provider
+  alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Mcp.Transport
   alias CodeMySpec.Agents.ToolIndex
@@ -973,6 +974,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
          working_directory: working_copy,
          allowed_paths: [working_copy],
          bash_restricted: true,
+         bash_executor: &Shell.run/2,
          # Which agent this is, and it has to be here rather than only in
          # `Agents.tool_context/1` — that function had no production caller at
          # all, so the shape it describes was one only the specs ever built.
