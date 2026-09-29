@@ -62,7 +62,8 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   Launch `root`'s `serve` recipe, detached, with `PORT`/`HTTPS_PORT`/
-  `DATABASE_NAME`/`CMS_MAIN_COPY` set and its output redirected to `log_path`.
+  `DATABASE_NAME`/`CMS_MAIN_COPY`/`CMS_TUNNEL_HELD_BY_HARNESS` set and its
+  output redirected to `log_path`.
 
   `main?` tells the booting app whether it is the checkout every bookmark
   already points at. A non-main copy has no business starting its own
@@ -73,6 +74,17 @@ defmodule CmsHarness.AppInstance.Runner do
   only because every copy's config also happened to name the same origin
   main's did; the moment a copy's config named its own port instead,
   Cloudflare would split main's public traffic between the two apps.
+
+  `tunnel_held_by_harness?` is the other half of the same fact
+  `CmsHarness.AppInstance.ensure_tunnel/3` acts on: `true` exactly when
+  `PreviewTunnel.stored_credentials/1` found a tunnel for this copy, which
+  means the harness is about to run — or already runs — the connector for
+  it. The launched app reads this and skips its own tunnel child when it is
+  set, the same way it already skips one for `main?: false`; a copy whose
+  tunnel is still `config/dev.exs`'s hardcoded bootstrap (no DB row) sees
+  `false` and keeps running its own, exactly as before this existed. Both
+  sides derive the same answer from the same fact — there is no separate
+  flag to keep in sync, and no state where both or neither are running one.
   """
   @callback launch(
               root :: String.t(),
@@ -80,7 +92,8 @@ defmodule CmsHarness.AppInstance.Runner do
               https_port :: pos_integer(),
               database :: String.t(),
               log_path :: String.t(),
-              main? :: boolean()
+              main? :: boolean(),
+              tunnel_held_by_harness? :: boolean()
             ) :: {:ok, os_pid :: pos_integer()} | {:error, term()}
 
   @doc "Whether `os_pid` can still be signalled."
@@ -173,10 +186,17 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec run_after_promote(String.t()) :: :ok | {:error, term()}
   def run_after_promote(root), do: impl().run_after_promote(root)
 
-  @spec launch(String.t(), pos_integer(), pos_integer(), String.t(), String.t(), boolean()) ::
-          {:ok, pos_integer()} | {:error, term()}
-  def launch(root, port, https_port, database, log_path, main?),
-    do: impl().launch(root, port, https_port, database, log_path, main?)
+  @spec launch(
+          String.t(),
+          pos_integer(),
+          pos_integer(),
+          String.t(),
+          String.t(),
+          boolean(),
+          boolean()
+        ) :: {:ok, pos_integer()} | {:error, term()}
+  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?),
+    do: impl().launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?)
 
   @spec alive?(pos_integer()) :: boolean()
   def alive?(os_pid), do: impl().alive?(os_pid)

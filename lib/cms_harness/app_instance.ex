@@ -72,7 +72,8 @@ defmodule CmsHarness.AppInstance do
     :state_path,
     :tunnel_pid,
     :tunnel_id,
-    main?: false
+    main?: false,
+    tunnel_held_by_harness?: false
   ]
 
   # --- Client ---
@@ -192,7 +193,7 @@ defmodule CmsHarness.AppInstance do
 
   @impl true
   def handle_call({:ensure_running, main?, tunnel}, _from, state) do
-    state = %{state | main?: main?}
+    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
 
     if running?(state) do
       new_state = state |> probe() |> ensure_tunnel(main?, tunnel)
@@ -212,7 +213,7 @@ defmodule CmsHarness.AppInstance do
 
   @impl true
   def handle_call({:restart, main?, tunnel}, from, state) do
-    state = %{state | main?: main?}
+    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
     stopped = if running?(state), do: stop_process(state), else: state
 
     case start_app(stopped) do
@@ -557,7 +558,15 @@ defmodule CmsHarness.AppInstance do
   defp current_commit(state), do: Runner.current_commit(state.root)
 
   defp launch(state, port, https_port, database) do
-    Runner.launch(state.root, port, https_port, database, state.log_path, state.main?)
+    Runner.launch(
+      state.root,
+      port,
+      https_port,
+      database,
+      state.log_path,
+      state.main?,
+      state.tunnel_held_by_harness?
+    )
   end
 
   # A short, bounded wait so the common case can report "serving" rather than
@@ -621,46 +630,33 @@ defmodule CmsHarness.AppInstance do
   # promote already restarts the app the preview is serving — but it is the
   # trade being made, not a side effect nobody chose.
   #
-  # Globally off by default (`harness_holds_tunnel`, unset). Every project's
-  # harness is one shared binary — there is no per-project config compiled
-  # into it — so this cannot come on selectively for a project whose app has
-  # migrated while staying off for one that has not. Turning it on is a
-  # separate, explicit step, taken only once every project still running its
-  # own app-side `ClientUtils.CloudflareTunnel` has had that child removed;
-  # until then a project whose tunnel *was* provisioned through
-  # `PreviewTunnel.ensure/1` (unlike this repo's own main, whose dev tunnel
-  # is still `config/dev.exs`'s hardcoded bootstrap) would get a second,
-  # competing connector on its very next restart — the exact stray-connector
-  # shape this project has already shipped one fix for, found in review
-  # before this ever went live (Harness, metric_flow's own tunnel: real
-  # credentials, `AppInstance`-managed app, untouched `application.ex`).
-  defp ensure_tunnel(state, main?, tunnel) do
-    if tunnel_feature_enabled?() do
-      do_ensure_tunnel(state, main?, tunnel)
-    else
-      state
-    end
-  end
-
-  defp tunnel_feature_enabled?,
-    do: Application.get_env(:code_my_spec, :harness_holds_tunnel, false)
-
-  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
+  # No feature flag: which side holds the tunnel is derived per copy from
+  # data already here, not a switch somebody has to remember to flip. `tunnel`
+  # is `nil` exactly when `PreviewTunnel.stored_credentials/1` found nothing
+  # for this copy (this repo's own main today — its dev tunnel is still
+  # `config/dev.exs`'s hardcoded bootstrap, no DB row) — and only then does
+  # this do nothing, leaving the app free to keep running its own, exactly as
+  # before. The moment a copy's tunnel *is* DB-backed, `tunnel` is never nil,
+  # and the app is told not to start one of its own — see `launch/6`'s
+  # `tunnel_held_by_harness?` and `Runner.launch/7`'s doc for the other half
+  # of this: the two sides derive the same answer from the same fact, so
+  # there is no window where both, or neither, are running one.
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     %{state | tunnel_pid: nil, tunnel_id: nil}
   end
 
-  defp do_ensure_tunnel(state, false, _tunnel), do: state
+  defp ensure_tunnel(state, false, _tunnel), do: state
 
   # Main, but holds no tunnel of its own — nothing to run.
-  defp do_ensure_tunnel(state, true, nil), do: state
+  defp ensure_tunnel(state, true, nil), do: state
 
   # Already running this exact tunnel — re-checked on every call rather than
   # trusted once: a connector this process did not itself stop can still
   # have died on its own, and `start_tunnel/2` starts it unlinked for
   # exactly this reason (see its own doc) — a dead tunnel should read as
   # "not running," not crash the process supervising it.
-  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
        when is_pid(pid) do
     if Process.alive?(pid), do: state, else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
@@ -668,12 +664,12 @@ defmodule CmsHarness.AppInstance do
   # Holding a tunnel already, but for different credentials — re-provisioned
   # under us. Swap to the new ones rather than leaving a connector answering
   # for a tunnel this copy no longer holds the secret for.
-  defp do_ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
-  defp do_ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
+  defp ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
 
   defp start_tunnel(state, tunnel) do
     case tunnel_origin(state) do

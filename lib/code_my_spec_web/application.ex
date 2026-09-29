@@ -201,7 +201,7 @@ defmodule CodeMySpecWeb.Application do
         otp_app: :code_my_spec,
         origin_url:
           tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}",
-        enabled: main_copy?()
+        enabled: main_copy?() and not tunnel_held_by_harness?()
       )
 
     children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
@@ -230,11 +230,23 @@ defmodule CodeMySpecWeb.Application do
   # answering for main's tunnel from a different port — harmless only because
   # every copy's config named the same origin main's did, and a live risk the
   # moment one didn't (Cloudflare splitting main's public traffic between the
-  # two apps). `CMS_MAIN_COPY` is set by `AppInstance.Runner.Local.launch/6`
+  # two apps). `CMS_MAIN_COPY` is set by `AppInstance.Runner.Local.launch/7`
   # for exactly this reason; unset (a developer's own `mix phx.server`, not
   # going through the harness at all) reads as main, matching every boot
   # before this existed.
   defp main_copy?, do: System.get_env("CMS_MAIN_COPY") != "false"
+
+  # The other half of the same fact `CmsHarness.AppInstance.ensure_tunnel/3`
+  # acts on: `true` exactly when this copy's tunnel is DB-backed
+  # (`PreviewTunnel.stored_credentials/1` found one) and the harness is
+  # therefore already running — or about to run — the connector for it
+  # itself. This dev tunnel's own `tunnel_config` above is a config-only
+  # bootstrap with no DB row, so `stored_credentials/1` finds nothing for it
+  # and this reads `false` — the app keeps running its own, exactly as
+  # before this existed. Set by `AppInstance.Runner.Local.launch/7`; unset
+  # (a developer's own `mix phx.server`) reads as `false`, the same
+  # not-going-through-the-harness default `main_copy?/0` uses.
+  defp tunnel_held_by_harness?, do: System.get_env("CMS_TUNNEL_HELD_BY_HARNESS") == "true"
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.

@@ -152,8 +152,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path, main?) do
-    record(:launch, [root, port, https_port, database, log_path, main?])
+  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?) do
+    record(:launch, [root, port, https_port, database, log_path, main?, tunnel_held_by_harness?])
 
     # `running?/1` in real `AppInstance` now checks `process_root(pid) ==
     # root` before trusting `alive?/1` — see criterion 1589. Defaulting to

@@ -27,20 +27,6 @@ defmodule CmsHarness.AppInstanceTunnelTest do
     "account_tag" => "acct-1"
   }
 
-  # Off by default everywhere — one harness binary serves every project, and
-  # this cannot come on for a project whose app-side tunnel has been removed
-  # while staying off for one that has not (see `AppInstance`'s own comment).
-  # Every test below is about the *enabled* behaviour except the one proving
-  # the default itself.
-  setup do
-    previous = Application.get_env(:code_my_spec, :harness_holds_tunnel)
-    Application.put_env(:code_my_spec, :harness_holds_tunnel, true)
-    on_exit(fn -> restore_flag(previous) end)
-  end
-
-  defp restore_flag(nil), do: Application.delete_env(:code_my_spec, :harness_holds_tunnel)
-  defp restore_flag(value), do: Application.put_env(:code_my_spec, :harness_holds_tunnel, value)
-
   defp push_with(payload, event \\ "ensure_app_running") do
     ref = FakeServer.push_app_event(event, payload)
     result_event = String.to_existing_atom("#{event}_result")
@@ -54,6 +40,7 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
   defp tunnel_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))
   defp stop_tunnel_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:stop_tunnel, _}, &1))
+  defp launch_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
   describe "a confirmed-main copy told a tunnel" do
     test "starts it, pointed at its own origin" do
@@ -131,16 +118,29 @@ defmodule CmsHarness.AppInstanceTunnelTest do
     end
   end
 
-  describe "the feature flag" do
-    test "off (the shipped default) starts nothing even for a confirmed main holding a tunnel" do
-      Application.put_env(:code_my_spec, :harness_holds_tunnel, false)
+  describe "telling the launched app which side holds the tunnel" do
+    test "a DB-backed main is launched told the harness holds it" do
       app_instance_rig(database_exists?: true)
 
       push_with(%{"main" => true, "tunnel" => @tunnel})
 
-      assert tunnel_calls() == [],
-             "harness_holds_tunnel defaults to off precisely because one harness binary " <>
-               "serves every project — this must never activate on its own"
+      assert [{:launch, [_root, _port, _https, _db, _log, true, true]}] = launch_calls()
+    end
+
+    test "main with no DB-backed tunnel is launched told to keep running its own" do
+      app_instance_rig(database_exists?: true)
+
+      push_with(%{"main" => true})
+
+      assert [{:launch, [_root, _port, _https, _db, _log, true, false]}] = launch_calls()
+    end
+
+    test "a non-main copy is always launched told the harness does not hold one" do
+      app_instance_rig(database_exists?: true)
+
+      push_with(%{"main" => false})
+
+      assert [{:launch, [_root, _port, _https, _db, _log, false, false]}] = launch_calls()
     end
   end
 end
