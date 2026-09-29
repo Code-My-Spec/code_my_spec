@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4665Spex do
       end
 
       then_ "launch was given a real port, https port and database name", context do
-        assert [{:launch, [root, port, https_port, database, _log_path, _main?]}] =
+        assert [{:launch, [root, port, https_port, database, _log_path, _main?, _tunnel_held?]}] =
                  Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
         assert root == context.root
