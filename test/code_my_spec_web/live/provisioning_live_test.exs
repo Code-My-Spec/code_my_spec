@@ -1042,14 +1042,14 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end
   end
 
-  # A `:pro` account's agent already runs on our own infrastructure — nothing
-  # here is theirs to provision on their own GitHub/Hetzner/Cloudflare/Resend
-  # accounts. A fresh onboarding smoke test found a paying customer landing
-  # on the credential checklist ("Still needed: ...") and reading it as the
-  # flow being stuck (ac7a510b). `:light` (self-hosted) keeps seeing the page
-  # exactly as before — deliberately not testing `:paid` here, since account.ex
-  # says a gating story has to decide what that legacy value means first.
-  describe "a :pro account's agent runs on our own infrastructure, not theirs to provision" do
+  # John, 2026-09-29: "I think we should just show that page regardless of
+  # plan." A `:pro` account's agent already runs on our own infrastructure,
+  # but that turned out not to mean nothing is ever theirs to provision —
+  # metric_flow's own `:pro` account needed to paste a Hetzner API token for
+  # its UAT server, and the managed-cloud notice above had no form to paste
+  # it into. `:pro` now sees the same setup options, credential checklist
+  # and form as any other plan, same as `:light` always has.
+  describe "a :pro account sees the full provisioning page, same as any other plan" do
     setup %{user: user} do
       account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user, %{plan: :pro})
       scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
@@ -1062,32 +1062,22 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       %{account: account, project: project, scope: scope}
     end
 
-    test "the index route shows the managed-cloud notice, not the credential checklist", %{
+    test "the index route shows the credential checklist, not a managed-cloud notice", %{
       conn: conn,
       project: project
     } do
       {:ok, view, html} = live(conn, path(project))
 
-      assert has_element?(view, "[data-test='managed-cloud-notice']")
-      refute html =~ "Still needed:"
-      refute has_element?(view, "[data-test='manage-credentials']")
+      refute has_element?(view, "[data-test='managed-cloud-notice']")
+      assert html =~ "Still needed:"
+      assert has_element?(view, "[data-test='manage-credentials']")
     end
 
-    test "the credentials/environments/secrets routes all show the same notice", %{
-      conn: conn,
-      project: project
-    } do
-      for path <- [credentials_path(project), environments_path(project), secrets_path(project)] do
-        {:ok, view, _html} = live(conn, path)
-        assert has_element?(view, "[data-test='managed-cloud-notice']")
-      end
-    end
-
-    test "the nav no longer offers Provisioning", %{conn: conn, project: project} do
+    test "the nav still offers Provisioning", %{conn: conn, project: project} do
       {:ok, _view, html} =
         conn |> get(~p"/app/projects/#{project.id}/agent-conversation") |> live()
 
-      refute html =~ ~s(href="/app/projects/#{project.id}/provisioning")
+      assert html =~ ~s(href="/app/projects/#{project.id}/provisioning")
     end
   end
 
