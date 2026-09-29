@@ -253,18 +253,19 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   def client_info(name),
     do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
 
-  # Readable in a log line and unique per session. The agent id already is both,
-  # and the browser's global name stands in for the one session that has no
-  # agent behind it.
+  # Readable in a log line and unique per session. The agent id already is both;
+  # a copy's browser session is keyed by its root, hashed because this ends up
+  # in an atom Anubis interns and a path is long and full of characters.
   defp session_tag({:via, Registry, {_registry, {:mcp, agent_id, _base_url}}}), do: agent_id
+
+  defp session_tag({:via, Registry, {_registry, {:browser, root}}}),
+    do: "browser-" <> Integer.to_string(:erlang.phash2(root))
+
   defp session_tag({:global, term}) when is_atom(term), do: to_string(term)
 
-  # The browser's own name is `{:global, {CmsHarness.Browser, :session}}`, so
-  # the term inside is a tuple and `to_string/1` on it raises — which it did,
-  # on every machine, for the one session that matters most. Hashed rather than
-  # inspected because this ends up in an atom Anubis interns: `inspect/1` on a
-  # tuple is long and full of characters, and the hash is stable for the same
-  # name, which is all this needs to be.
+  # Anything else: hashed rather than inspected, for the same reason, and never
+  # `to_string/1` on a tuple, which raises. Stable for the same name, which is
+  # all this needs to be.
   defp session_tag(other), do: other |> :erlang.phash2() |> Integer.to_string()
 
   # A client started under a via or global name has to say what to call its

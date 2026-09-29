@@ -2,13 +2,15 @@ defmodule CmsHarness.Project.Supervisor do
   @moduledoc """
   Everything one project needs, and nothing that is not one project's.
 
-  Four children, in this order, `:rest_for_one`:
+  Five children, in this order, `:rest_for_one`:
 
-    1. `ChannelClient` — the connection, and therefore the lease
-    2. `Task.Supervisor` — where scans and analyzer runs happen, off the socket
+    1. `Browser.Owner` — this copy's browser session, first so a reconnect
+       does not close it and it is the last thing to go
+    2. `ChannelClient` — the connection, and therefore the lease
+    3. `Task.Supervisor` — where scans and analyzer runs happen, off the socket
        process
-    3. `AnalysisServer` — the analyzer queue, one run at a time
-    4. `Watcher` — the filesystem subscription
+    4. `AnalysisServer` — the analyzer queue, one run at a time
+    5. `Watcher` — the filesystem subscription
 
   `:rest_for_one` because the dependency runs one way. A channel client that
   crashes comes back with a new connection, a new join, and a fresh read model,
@@ -38,6 +40,7 @@ defmodule CmsHarness.Project.Supervisor do
   @impl true
   def init(project) do
     children = [
+      {CmsHarness.Browser.Owner, root: project.root},
       {ChannelClient, project: project},
       {Task.Supervisor, name: Sync.task_supervisor(project.root)},
       {AnalysisServer, project: project},

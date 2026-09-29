@@ -404,9 +404,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # the next launch needs — which is how a restart could leave an agent worse
     # off than before it (`4078e7bf`, `dfa1ee9e`).
     #
-    # The machine's browser is not this and must not be stopped here: it is
-    # shared, `CmsHarness.Browser` owns it under its own name, and a second
-    # agent on this machine is still using it.
+    # The copy's browser session is not this and must not be stopped here:
+    # `CmsHarness.Browser.Owner` holds it for the copy, and it closes when the
+    # copy stops being served.
     disconnect_mcp(state.mcp_client)
 
     run_on_stop(state.on_stop)

@@ -40,24 +40,29 @@ defmodule CmsHarness.Mcp.Transport.AnubisClientInfoTest do
   end
 
   test "the browser's real name does not raise" do
-    # `CmsHarness.Browser`'s own name, copied exactly. The term inside the
-    # `:global` tuple is itself a tuple, and the first version called
-    # `to_string/1` on it — which raises, on every machine, for the one session
-    # a QA agent most needs. It reached production and was caught by the browser
-    # status this same session added, not by a test.
-    name = {:global, {CmsHarness.Browser, :session}}
-
-    assert %{"name" => derived} = Anubis.client_info(name)
+    # A `{:global, tuple}` name once reached `to_string/1` here, which raises, on
+    # every machine, for the one session a QA agent most needs.
+    assert %{"name" => derived} = Anubis.client_info(CmsHarness.Browser.session("/a/copy"))
     assert is_binary(derived)
+    assert %{"name" => _} = Anubis.client_info({:global, {CmsHarness.Browser, :session}})
   end
 
   test "an agent does not share one with the browser" do
     agent = Anubis.client_info(session("agent-1"))
-    browser = Anubis.client_info({:global, {CmsHarness.Browser, :session}})
+    browser = Anubis.client_info(CmsHarness.Browser.session("/a/copy"))
 
     refute table(agent) == table(browser),
            "the browser starts at boot, so sharing a table with it means no agent on " <>
              "this machine ever gets a session."
+  end
+
+  test "two copies' browsers do not share one" do
+    one = Anubis.client_info(CmsHarness.Browser.session("/copies/one"))
+    two = Anubis.client_info(CmsHarness.Browser.session("/copies/two"))
+
+    refute table(one) == table(two),
+           "every copy holds its own browser session, and a shared :private table " <>
+             "lets exactly one of them work."
   end
 
   test "the same session keeps the same name" do

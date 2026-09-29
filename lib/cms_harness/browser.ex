@@ -1,34 +1,46 @@
 defmodule CmsHarness.Browser do
   @moduledoc """
-  The browser on this machine, as an MCP server.
+  The browser on this machine, as an MCP server — one session per working copy.
 
   `vibium mcp` runs JSON-RPC over its own stdin and stdout, so this is a
   subprocess rather than a request: no URL, no credential, and it authenticates
   by being on this machine.
 
+  ## One session per copy
+
+  `vibium mcp` is one process per stdio client, and each launches a Chrome of
+  its own. Three concurrent `vibium mcp --headless` processes on this machine,
+  navigated to three different pages at once, each reported its own title back
+  — so two copies, two QA agents, can each hold a browser without seeing the
+  other's page. Calls are routed per copy already: the server pushes
+  `tool_call` on that copy's channel.
+
+  The machine-wide `{:global, {CmsHarness.Browser, :session}}` this replaces is
+  what every harness boot tripped on. Every copy probes at join, all at once,
+  and all but one collided on that single name. `Anubis.Client.start_link/1`
+  links its supervisor to the caller, so each loser's probe process was killed
+  by the failed start — `{:shutdown, {:failed_to_start_child, Anubis.Client,
+  {:already_started, pid}}}` — rather than handed an error it could recover
+  from, and the empty answer was then memoised for the whole VM.
+
+  The session is owned by the copy (`CmsHarness.Browser.Owner`, a child of the
+  copy's project supervisor): connects for one copy are serialised there, and
+  the session is closed when the copy stops being served.
+
   ## Why it is not twenty-nine tools on the agent
 
   `vibium mcp` answers `tools/list` with eighty-five tools, and every one of them
-  would be a schema the model reads on every turn to be told what a click is. On
-  top of our own ninety-eight that is most of the budget spent before the agent
-  has looked at anything.
-
-  Not twenty-nine, which is what `plugins/claude/agents/qa.md` grants a QA agent
-  — a number I once mistook for this one. The plugin's grant is a subset of what
-  the browser has, and the tools it leaves out cost the same to carry.
-
-  So a third-party server is mounted the way ours is: its tools go into the
-  catalog a script can call, and the agent carries nothing extra for them. The
-  names are discovered rather than declared — this machine's vibium answers, not
-  a list written here that would drift the first time vibium ships a tool.
+  would be a schema the model reads on every turn. So a third-party server is
+  mounted the way ours is: its tools go into the catalog a script can call, and
+  the agent carries nothing extra for them. The names are discovered rather than
+  declared — this machine's vibium answers, not a list written here that would
+  drift the first time vibium ships a tool.
 
   ## Absent is a state, and a quiet one
 
   A machine with no vibium reports no browser tools, and an agent there is
   computed without them. That is the honest answer and it is nearly invisible: a
   QA agent that cannot look at anything does not fail, it just never looks.
-  Making vibium an install prerequisite is what turns that into something the
-  install would have said — issue `ebc5586d`.
   """
 
   require Logger
@@ -40,117 +52,127 @@ defmodule CmsHarness.Browser do
   # Proposing `2025-06-18` — our own server's version, and this client's default
   # — gets **no reply at all** rather than a counter-offer, so `initialize` never
   # completes and every later request is answered "Server capabilities not set".
-  # Verified by hand: the same request with `2024-11-05` comes back with
-  # serverInfo and a tools capability, and with the newer one comes back empty.
-  #
-  # That silence is vibium's bug rather than ours — the protocol has a server
-  # answer with a version it *does* support — but it is not one we can fix from
-  # here, and every agent on a machine with a browser was getting no browser
-  # tools because of it.
+  # The same request with `2024-11-05` comes back with serverInfo and a tools
+  # capability.
   @protocol_version "2024-11-05"
 
-  @session {:global, {__MODULE__, :session}}
+  @typedoc """
+  What a copy's browser offers, asked once per join.
 
-  # Renamed from `:tool_names` deliberately, and the rename is load-bearing
-  # rather than tidying. What is cached here used to be a list of strings and is
-  # now a list of descriptors, so a harness upgraded in place would read its own
-  # old entry with the new code and call `Access.get/2` on a binary. A new key
-  # means the first call after an upgrade re-asks, which is the only safe way to
-  # change the shape of something in `:persistent_term`.
-  @cached {__MODULE__, :tools}
+  `names` is the scoping list: which tools an agent may call is read off names.
+  `docs` is what each takes, keyed by name — reported with the manifest rather
+  than fetched when asked, because the path an agent uses to decide what to call
+  is the one that queues behind sibling agents (35e5eb59). `status` says why the
+  list is what it is: `:absent` for a machine with no vibium,
+  `{:unreachable, reason}` for one that has it and could not be reached,
+  `:ready` otherwise. Both of the first two report no tools, and only the second
+  is a fault (02b03d04).
+  """
+  @type probe :: %{
+          names: [String.t()],
+          docs: %{optional(String.t()) => map()},
+          status: :ready | :absent | {:unreachable, String.t()}
+        }
+
+  @doc "The name one working copy's browser session is registered under."
+  @spec session(String.t()) :: GenServer.name()
+  def session(root), do: {:via, Registry, {CmsHarness.Registry, {:browser, root}}}
 
   @doc """
-  Start the browser's MCP server, or say why not.
+  Start this copy's browser session, or say why not.
 
-  Idempotent: a second call finds the session that is already up, because the
-  machine has one browser and starting a second would be a second Chrome.
+  Idempotent: a session that is already up is used. The connect itself runs in
+  the copy's `CmsHarness.Browser.Owner`, so a join probing and an agent's first
+  call arriving together for one copy start one session rather than colliding.
   """
-  @spec ensure_started() :: {:ok, term()} | {:error, term()}
-  def ensure_started do
-    case {executable(), whereis()} do
-      {nil, _} ->
-        {:error, :no_browser}
+  @spec ensure_started(String.t()) :: {:ok, GenServer.name()} | {:error, term()}
+  def ensure_started(root) do
+    case {executable(), GenServer.whereis(session(root))} do
+      {nil, _} -> {:error, :no_browser}
+      {_path, pid} when is_pid(pid) -> {:ok, session(root)}
+      {path, nil} -> __MODULE__.Owner.connect(root, path)
+    end
+  end
 
-      # Already up. This claimed to be idempotent and was not: it called
-      # `connect` unconditionally, and the second call failed on
-      # `:already_started` — so the *second* agent to ask on a machine got no
-      # browser tools and a log line about a child that could not start.
-      {_path, session} when session != nil ->
-        {:ok, @session}
+  @doc false
+  # Run inside the copy's owner, which is what serialises it.
+  @spec connect(String.t(), String.t()) :: {:ok, GenServer.name()} | {:error, term()}
+  def connect(root, path) do
+    case GenServer.whereis(session(root)) do
+      pid when is_pid(pid) ->
+        {:ok, session(root)}
 
-      {path, nil} ->
-        @session
-        |> Transport.impl().connect(
+      nil ->
+        Transport.impl().connect(session(root),
           command: path,
           args: ["mcp"],
           protocol_version: @protocol_version
         )
-        |> already_up()
     end
   end
 
-  # `connect` can still lose to `already_started` even though `whereis/0` just
-  # said nothing was up, because the two ask about different names: the guard
-  # above looks for *this module's* session, and the collision is on
-  # `Anubis.Client`'s own registered name underneath it. Two roots joining at
-  # the same moment both see nil, both connect, and one of them loses.
-  #
-  # The loser used to answer `{:error, ...}`, which `ask/0` turns into
-  # `unreachable` — and `ask/0` memoises into `:persistent_term`, so one lost
-  # race poisoned every root that harness instance served for its whole life.
-  # Measured: three harness instances live after a promote, and the one that
-  # lost reported `browser_status: unreachable` with zero tools while its
-  # siblings reported 85. An agent started on such a copy is refused outright
-  # by `machine_serves_tools/1`, so QA could not start on the copy that had
-  # just promoted.
-  #
-  # The error carries the winner's pid, and that process is the browser. Using
-  # it is what `ensure_started/0` already claims to do — the clause above fixed
-  # this once for the case where the session name *is* registered, and this is
-  # the same bug one name down.
-  defp already_up(
-         {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, pid}}}}
-       ),
-       do: {:ok, pid}
-
-  defp already_up({:error, {:already_started, pid}}), do: {:ok, pid}
-  defp already_up(result), do: result
-
-  defp whereis, do: GenServer.whereis(@session)
+  @doc "Close this copy's browser session, if it has one."
+  @spec disconnect(String.t()) :: :ok
+  def disconnect(root), do: Transport.impl().disconnect(session(root))
 
   @doc """
-  What this machine's browser offers, by name.
+  Ask this copy's browser what it offers.
 
-  `[]` when there is no browser, which is a state rather than a failure — see
-  the moduledoc. This is the scoping list: which tools an agent may call is read
-  off names. What each one takes is `tool_docs/0`, looked up once the agent has
-  decided which one it wants.
+  In a process of its own, and bounded. This is called from the channel join —
+  the most important thing this harness does — and `Anubis.Client.start_link/1`
+  links its supervisor to whoever called it, so a crash in there takes the
+  caller down whatever the caller has wrapped itself in. `spawn_monitor`,
+  unlinked, with a deadline, is what isolates it.
+
+  Not memoised. The session it opens is kept for the copy's tool calls, so a
+  later join asks a session that is already up; and a machine-wide memo is what
+  turned one probe that lost into every copy on the machine reporting none.
   """
-  @spec tool_names() :: [String.t()]
-  def tool_names do
-    {tools, _status} = asked()
-    Enum.map(tools, & &1["name"])
+  @spec probe(String.t()) :: probe()
+  def probe(root) do
+    {pid, ref} = spawn_monitor(fn -> exit({:asked, ask_now(root)}) end)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, {:asked, result}} ->
+        result
+
+      {:DOWN, ^ref, :process, ^pid, reason} ->
+        unreachable(root, "asking the browser what it offers died (#{inspect(reason)})")
+    after
+      5_000 ->
+        Process.exit(pid, :kill)
+        unreachable(root, "the browser did not say what it offers within 5s")
+    end
   end
 
-  @doc """
-  What each of them takes, keyed by name.
+  defp ask_now(root) do
+    with {:ok, client} <- ensure_started(root),
+         {:ok, tools} <- Transport.impl().list_tools(client) do
+      %{names: Enum.map(tools, & &1["name"]), docs: docs(tools), status: :ready}
+    else
+      # The one empty answer that is not a failure — and still worth saying,
+      # because it is the quiet one. vibium ships on npm, so there is no formula
+      # to depend on and this is where a person finds out instead (ebc5586d).
+      {:error, :no_browser} ->
+        Logger.info(
+          "[CmsHarness] no browser on this machine, so agents started here cannot " <>
+            "look at a page. `npm install -g vibium` if they should."
+        )
 
-  `tools/list` carries a description and a JSON Schema per tool and this used to
-  map the names out and drop the rest — on the reasoning above, that the
-  arguments are what `tool_docs` is for. Nothing built the asking, so the
-  catalog entry's description said "see tool_docs for its arguments" and
-  `tool_docs` had nothing to answer with: a pointer in a circle.
+        %{names: [], docs: %{}, status: :absent}
 
-  Reported with the manifest rather than fetched when asked. Thirty kilobytes
-  for all eighty-five, measured, against a round trip on the path an agent uses
-  to decide what to call — and that path is exactly the one that queues behind
-  sibling agents (35e5eb59). Documentation that is missing when the machine is
-  busy is worse than documentation that is a join old.
-  """
-  @spec tool_docs() :: %{optional(String.t()) => map()}
-  def tool_docs do
-    {tools, _status} = asked()
+      {:error, reason} ->
+        unreachable(root, "the browser did not say what it offers (#{inspect(reason)})")
+    end
+  rescue
+    error ->
+      unreachable(root, "asking the browser what it offers raised #{Exception.message(error)}")
+  catch
+    :exit, reason ->
+      unreachable(root, "the browser died while being asked what it offers (#{inspect(reason)})")
+  end
 
+  defp docs(tools) do
     Map.new(tools, fn tool ->
       {tool["name"],
        %{
@@ -160,128 +182,27 @@ defmodule CmsHarness.Browser do
     end)
   end
 
-  @doc """
-  Why this machine offers the tools it does.
+  # Said once in the log and once in the answer, so the reason travels with the
+  # empty list and stays a different answer from a machine with no vibium.
+  defp unreachable(root, reason) do
+    Logger.warning(
+      "[CmsHarness] #{reason} for #{root}; agents started there will have no browser tools"
+    )
 
-  `:absent` for a machine with no vibium, `{:unreachable, reason}` for one that
-  has it and could not be reached, `:ready` otherwise. The distinction is the
-  whole point: both of the first two report no tools, and treating them as one
-  state is how a QA agent that could not look at anything looked exactly like a
-  QA agent on a machine that was never meant to.
-  """
-  @spec status() :: :ready | :absent | {:unreachable, String.t()}
-  def status do
-    {_names, status} = asked()
-    status
+    %{names: [], docs: %{}, status: {:unreachable, reason}}
   end
-
-  defp asked do
-    case :persistent_term.get(@cached, :unasked) do
-      :unasked ->
-        {tools, status} = ask()
-        :persistent_term.put(@cached, {tools, status})
-        {tools, status}
-
-      cached ->
-        cached
-    end
-  end
-
-  # Asked once per harness, in a process of its own, and bounded.
-  #
-  # This is called from the channel join — the most important thing this harness
-  # does — and the first version started a subprocess there and let the failure
-  # through. It cost two crash loops in a row: first `Anubis.Client` raising on
-  # a via-name with no explicit transport name, then `list_tools` addressed at
-  # the supervisor `start_link/1` returns instead of at the client.
-  #
-  # `rescue` was not enough for either, and that is the lesson rather than the
-  # bug: `Anubis.Client.start_link/1` links its supervisor to whoever called it,
-  # so a crash in there takes the caller down whatever the caller has wrapped
-  # itself in. The only thing that actually isolates it is not being the same
-  # process — hence `spawn_monitor`, unlinked, with a deadline.
-  #
-  # Memoised on top, because what a machine has installed does not change
-  # between two joins a second apart.
-  defp ask do
-    {pid, ref} = spawn_monitor(fn -> exit({:asked, ask_now()}) end)
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, {:asked, result}} ->
-        result
-
-      {:DOWN, ^ref, :process, ^pid, reason} ->
-        unreachable("asking this machine's browser what it offers died (#{inspect(reason)})")
-    after
-      5_000 ->
-        Process.exit(pid, :kill)
-        unreachable("this machine's browser did not say what it offers within 5s")
-    end
-  end
-
-  defp ask_now do
-    with {:ok, client} <- ensure_started(),
-         {:ok, tools} <- Transport.impl().list_tools(client) do
-      {tools, :ready}
-    else
-      # The one empty answer that is not a failure — and still worth saying once,
-      # because it is the quiet one. An agent here does not fail for want of a
-      # browser; it never looks at anything, and until this line the machine said
-      # nothing at all about it. Issue ebc5586d wanted a package prerequisite;
-      # vibium ships on npm, so there is no formula to depend on and this is
-      # where a person finds out instead.
-      {:error, :no_browser} ->
-        Logger.info(
-          "[CmsHarness] no browser on this machine, so agents started here cannot " <>
-            "look at a page. `npm install -g vibium` if they should."
-        )
-
-        {[], :absent}
-
-      {:error, reason} ->
-        unreachable("this machine's browser did not say what it offers (#{inspect(reason)})")
-    end
-  rescue
-    error ->
-      unreachable(
-        "asking this machine's browser what it offers raised #{Exception.message(error)}"
-      )
-  catch
-    :exit, reason ->
-      unreachable(
-        "this machine's browser died while being asked what it offers (#{inspect(reason)})"
-      )
-  end
-
-  # A browser that is installed and cannot be reached, said once in the log and
-  # once in the answer.
-  #
-  # The log line existed already and was the only record, which is what made
-  # this expensive: a QA agent was recorded with twenty-nine tools, none of them
-  # could look at a page, and the sole trace was a warning nobody reads. It does
-  # not fail; it never looks. So the reason travels with the empty list now, and
-  # `{[], :absent}` — a machine that simply has no vibium — stays a different
-  # answer from this one.
-  defp unreachable(reason) do
-    Logger.warning("[CmsHarness] #{reason}; agents started here will have no browser tools")
-    {[], {:unreachable, reason}}
-  end
-
-  @doc "Ask again — for a machine that installed a browser since it came up."
-  @spec forget() :: :ok
-  def forget, do: :persistent_term.erase(@cached) && :ok
 
   @doc """
-  Call one of them, within the caller's deadline.
+  Call one of them on this copy's browser, within the caller's deadline.
 
-  The last hop before Chrome, and the one that used to cap everything: without
-  a timeout the MCP client applies its own thirty seconds, so a caller asking
-  for a minute got thirty seconds from here and an answer that did not say why.
-  `nil` still means that default, for a caller that has no opinion.
+  Without a timeout the MCP client applies its own thirty seconds, so a caller
+  asking for a minute got thirty seconds from here. `nil` still means that
+  default, for a caller that has no opinion.
   """
-  @spec call(String.t(), map(), pos_integer() | nil) :: {:ok, String.t()} | {:error, term()}
-  def call(tool, arguments, timeout \\ nil) do
-    with {:ok, client} <- ensure_started() do
+  @spec call(String.t(), String.t(), map(), pos_integer() | nil) ::
+          {:ok, String.t()} | {:error, term()}
+  def call(root, tool, arguments, timeout \\ nil) do
+    with {:ok, client} <- ensure_started(root) do
       Transport.impl().call(client, tool, arguments, opts(timeout))
     end
   end

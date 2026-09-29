@@ -514,6 +514,7 @@ defmodule CmsHarness.Project.ChannelClient do
   @impl Slipstream
   def handle_connect(socket) do
     project = socket.assigns.project
+    browser = CmsHarness.Browser.probe(project.root)
 
     {:ok,
      transport().join(socket, socket.assigns.topic, %{
@@ -556,18 +557,18 @@ defmodule CmsHarness.Project.ChannelClient do
        # said, so the server has to know before there is an agent to ask about.
        # `[]` from a machine with no browser, which is a state rather than a
        # failure — see `CmsHarness.Browser`.
-       "machine_tools" => CmsHarness.Browser.tool_names(),
+       "machine_tools" => browser.names,
        # And what each of them takes. Thirty kilobytes for all eighty-five,
        # measured against this machine's vibium — sent once per join, so that
        # `tool_docs` can answer for a browser tool without a round trip on the
        # path an agent uses to decide what to call. That path is the one that
        # queues behind sibling agents (35e5eb59), and documentation missing when
        # the machine is busy is worse than documentation one join old.
-       "machine_tool_docs" => CmsHarness.Browser.tool_docs(),
+       "machine_tool_docs" => browser.docs,
        # Why that list is what it is. `[]` meant both "no browser here" and
        # "the browser is here and would not answer", and the second is the one
        # somebody can act on — see issue 02b03d04.
-       "browser_status" => browser_status(),
+       "browser_status" => browser_status(browser.status),
        # Which OS process holds this socket. The server needs it to tell a
        # rejoin apart from a rival: both present the same working_copy_id, because
        # that id is the working copy and is read from a file in it. Same
@@ -611,12 +612,10 @@ defmodule CmsHarness.Project.ChannelClient do
   # Flattened for the wire, with the reason attached where there is one. A map
   # rather than a bare string so the server can record why without a second key
   # that could disagree with the first.
-  defp browser_status do
-    case CmsHarness.Browser.status() do
-      {:unreachable, reason} -> %{"status" => "unreachable", "error" => reason}
-      status -> %{"status" => to_string(status)}
-    end
-  end
+  defp browser_status({:unreachable, reason}),
+    do: %{"status" => "unreachable", "error" => reason}
+
+  defp browser_status(status), do: %{"status" => to_string(status)}
 
   # Host as well as pid: pids are only unique per machine, and a sprite and a
   # laptop can hold checkouts that were cloned with the same id file.
@@ -1554,10 +1553,11 @@ defmodule CmsHarness.Project.ChannelClient do
   # heartbeat missed that long reads to the server as a harness that died.
   def handle_message(_topic, "tool_call", %{"ref" => ref} = msg, socket) do
     topic = socket.assigns.topic
+    root = socket.assigns.project.root
     parent = self()
 
     Task.start(fn ->
-      result = CmsHarness.Browser.call(msg["tool"], msg["arguments"] || %{}, msg["timeout"])
+      result = CmsHarness.Browser.call(root, msg["tool"], msg["arguments"] || %{}, msg["timeout"])
 
       send(parent, {:tool_call_result, topic, ref, result})
     end)
@@ -1589,9 +1589,18 @@ defmodule CmsHarness.Project.ChannelClient do
   # a sharing sibling alike (criterion 1586). Converted to the atom-keyed
   # shape `CmsHarness.AppInstance.Runner.start_tunnel/2` already declares, so
   # nothing downstream of this module ever touches a string key.
-  defp tunnel_opt(%{"tunnel" => %{"hostname" => h, "tunnel_id" => id, "tunnel_secret" => secret} = t})
+  defp tunnel_opt(%{
+         "tunnel" => %{"hostname" => h, "tunnel_id" => id, "tunnel_secret" => secret} = t
+       })
        when is_binary(h) and is_binary(id) and is_binary(secret) do
-    [tunnel: %{hostname: h, tunnel_id: id, tunnel_secret: secret, account_tag: t["account_tag"] || ""}]
+    [
+      tunnel: %{
+        hostname: h,
+        tunnel_id: id,
+        tunnel_secret: secret,
+        account_tag: t["account_tag"] || ""
+      }
+    ]
   end
 
   defp tunnel_opt(_msg), do: []
