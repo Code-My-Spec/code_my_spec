@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3205Spex do
       end
 
       when_ "the agent is stopped and started again", context do
-        stop_agent(context, context.first)
+        retire_agent(context, context.first)
 
         {:ok, Map.put(context, :second, start_agent(context))}
       end

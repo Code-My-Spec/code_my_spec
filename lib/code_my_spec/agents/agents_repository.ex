@@ -212,20 +212,31 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   Separate from `list_agents/1` because "what is running" and "what has ever
   run" are different questions and the first is the one an operator asks.
 
-  An agent that is off or retired is excluded even when its machine could not be
-  asked to end it: it is not the fleet's to restore, staff or offer work to
-  (39af5611).
+  A fact about processes, so an off or retired agent whose machine could not be
+  asked to end it is still here: reconcile has to see it to record it gone, and
+  a live process must stay findable. `list_on_duty/1` is the intent view.
   """
   @spec list_running(Scope.t()) :: [Agent.t()]
   def list_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
-    |> where([a], is_nil(a.off_at) and is_nil(a.retired_at))
     |> order_by([a], asc: a.working_copy, asc: a.role)
     |> Repo.all()
   end
 
   def list_running(%Scope{}), do: []
+
+  @doc """
+  Running agents that are also meant to be: neither off nor retired (39af5611).
+
+  What to restore on a harness join and what the main agent reports as working.
+  """
+  @spec list_on_duty(Scope.t()) :: [Agent.t()]
+  def list_on_duty(%Scope{} = scope) do
+    scope
+    |> list_running()
+    |> Enum.filter(&(is_nil(&1.off_at) and is_nil(&1.retired_at)))
+  end
 
   @doc "The agent, fresh from the row, if it is off or retired; nil otherwise."
   @spec get_stood_down(Ecto.UUID.t()) :: Agent.t() | nil

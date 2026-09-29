@@ -720,9 +720,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # it built carried neither the credential nor the conversation — so an agent
     # restored after a harness restart came back with nothing to authenticate
     # with and no memory of anything it had been told.
+    # On duty only: an off or retired agent is never brought back (39af5611).
     running =
       scope
-      |> Agents.list_running()
+      |> Agents.list_on_duty()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
 
     # Before hydrating, not after. An agent that was mid-turn is told here what

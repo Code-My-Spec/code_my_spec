@@ -146,6 +146,7 @@ defmodule CodeMySpec.Agents do
 
   defdelegate list_agents(scope), to: AgentsRepository
   defdelegate list_running(scope), to: AgentsRepository
+  defdelegate list_on_duty(scope), to: AgentsRepository
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate providers(), to: Providers, as: :names
@@ -850,8 +851,9 @@ defmodule CodeMySpec.Agents do
   end
 
   # Any agent, not just `main_agent/1`: the copy holds one agent whatever its role.
+  # A retired agent's seat is free even while its stranded process runs (39af5611).
   defp refuse_if_occupied(scope, copy) do
-    if scope |> AgentsRepository.list_running() |> Enum.any?(&(&1.working_copy_id == copy.id)),
+    if scope |> seat_holders() |> Enum.any?(&(&1.working_copy_id == copy.id)),
       do: {:error, {:main_copy_occupied, copy.root}},
       else: :ok
   end
@@ -859,7 +861,7 @@ defmodule CodeMySpec.Agents do
   defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, working_copy: root, role: role})
        when is_binary(copy_id) do
     scope
-    |> AgentsRepository.list_running()
+    |> seat_holders()
     |> Enum.find(&same_seat?(&1, copy_id, root, role))
     |> case do
       nil -> :ok
@@ -868,6 +870,9 @@ defmodule CodeMySpec.Agents do
   end
 
   defp refuse_if_role_taken(_scope, _attrs), do: :ok
+
+  defp seat_holders(scope),
+    do: scope |> AgentsRepository.list_running() |> Enum.reject(&Agent.retired?/1)
 
   # Root as well as id: a root with no row of its own is recorded under the
   # caller's copy id (`id_for/2`), and is still a different tree.

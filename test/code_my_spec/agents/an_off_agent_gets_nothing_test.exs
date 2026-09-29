@@ -225,6 +225,26 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     end
   end
 
+  describe "an off agent whose machine could not end it" do
+    test "stays findable as running, and is not restored or reported as working", ctx do
+      off_but_running(ctx)
+
+      assert Enum.any?(Agents.list_running(ctx.scope), &(&1.id == ctx.agent.id))
+      refute Enum.any?(Agents.list_on_duty(ctx.scope), &(&1.id == ctx.agent.id))
+      assert MainAgent.list_agent_work(ctx.scope) == []
+    end
+
+    test "is recorded stopped once its machine reports it gone", ctx do
+      off_but_running(ctx)
+
+      :ok = Agents.record_running_on_copy(ctx.scope, ctx.copy.id, [])
+
+      agent = Repo.get(Agent, ctx.agent.id)
+      assert agent.status == :stopped
+      assert Agent.off?(agent)
+    end
+  end
+
   test "the main agent's view lists it as off", ctx do
     off(ctx)
 
