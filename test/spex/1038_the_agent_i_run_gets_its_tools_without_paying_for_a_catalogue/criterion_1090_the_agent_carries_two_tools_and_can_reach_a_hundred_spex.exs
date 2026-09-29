@@ -113,7 +113,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # clock cannot be right for both — so it is the same kind of thing as
         # `run_script`, and eighty-five browser schemas stay behind it rather
         # than on the agent. Criterion 3017 is where that is asserted.
-        assert scriptable == ~w(run_script run_browser_script tool_docs),
+        assert Enum.sort(scriptable) == ~w(run_browser_script run_script tool_docs),
                "the agent carries #{inspect(scriptable)} beyond the two ways in and " <>
                  "tool_docs, and every one of those is reachable from a script. Each " <>
                  "is a schema the model reads on every turn to learn something it " <>
