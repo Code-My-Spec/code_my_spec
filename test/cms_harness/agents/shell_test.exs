@@ -3,15 +3,10 @@ defmodule CmsHarness.Agents.ShellTest do
 
   alias CmsHarness.Agents.Shell
 
+  # The probe name is this test's own, so nothing else sets it to restore.
   setup do
-    previous = System.get_env("CMS_SHELL_TEST_PROBE")
     System.put_env("CMS_SHELL_TEST_PROBE", "leaked")
-
-    on_exit(fn ->
-      if previous,
-        do: System.put_env("CMS_SHELL_TEST_PROBE", previous),
-        else: System.delete_env("CMS_SHELL_TEST_PROBE")
-    end)
+    on_exit(fn -> System.delete_env("CMS_SHELL_TEST_PROBE") end)
   end
 
   test "an agent's command sees neither MIX_ENV nor the harness's CMS_ variables", %{tmp_dir: dir} do
