@@ -1110,6 +1110,43 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                "or the result it is about to send is refused as unknown_run"
     end
 
+    # cc578c21: a promote restarted the harness under metric_flow's spex run
+    # 53537 and nothing ran it again. A requested run is owed an answer, so the
+    # next join starts it again, for the same requester.
+    test "are run again for the agent that asked, when the next harness joins", %{
+      scope: scope,
+      topic: topic
+    } do
+      {:ok, %{working_copy_id: id}, channel} = join_with(scope, topic, nil)
+      served = %{scope | active_working_copy_id: id}
+      asker = %{"kind" => "mcp_tool", "tool" => "start_analysis", "agent_id" => nil}
+
+      {:ok, killed} =
+        RunsRepository.start_run(served, %{
+          source: "spex",
+          kind: :full,
+          args: %{"args" => []},
+          requested_by: asker
+        })
+
+      down = Process.monitor(channel.channel_pid)
+      Process.exit(channel.channel_pid, :kill)
+      assert_receive {:DOWN, ^down, :process, _, _}, 2_000
+
+      assert eventually(fn -> match?({:ok, _, _}, join_with(scope, topic, id)) end)
+
+      assert_push "run_analysis",
+                  %{"runs" => [%{"run_id" => rerun_id, "source" => "spex"}]},
+                  2_000
+
+      assert rerun_id != killed.id
+
+      assert %{requested_by: %{"rerun_of" => rerun_of}} =
+               RunsRepository.get_running_run(served, rerun_id)
+
+      assert rerun_of == killed.id
+    end
+
     defp join_claiming(scope, topic, working_copy_id, run_ids) do
       scope
       |> harness_socket([])

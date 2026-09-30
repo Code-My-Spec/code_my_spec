@@ -65,11 +65,17 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
     assert message =~ "start the spex run again"
   end
 
-  test "a run closed by a server restart tells the agent that requested it", ctx do
-    run(ctx.scope, %{"agent_id" => ctx.agent.id})
+  # Told at the rejoin, not at the close: the close happens as the agent's
+  # transport goes away, and a run killed that way is run again first
+  # (`ARunARestartKilledIsRunAgainTest`). This is the one it gave up on.
+  test "a run a server restart keeps killing tells the agent that requested it", ctx do
+    run(ctx.scope, %{"agent_id" => ctx.agent.id, "redispatches" => 3})
 
     reason = "the shared dev server was restarted — this run was killed by that restart"
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, reason)
+    refute_receive {:agent_dispatch, _id, _ref, _message}, 100
+
+    Analysis.resume_orphaned(ctx.scope, [])
 
     assert_receive {:agent_dispatch, id, _ref, message}
     assert id == ctx.agent.id

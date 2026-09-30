@@ -912,15 +912,20 @@ defmodule CodeMySpec.Analysis do
   recorded.
   """
   @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  # The requester is not told here. These runs are orphans, not failures, and
+  # the next join settles each one (`resume_orphaned/2`): reopened, run again,
+  # or — only then — reported as failed. Announcing now also could not work:
+  # the agent's transport is the harness that just went away, so the message
+  # was refused as `:harness_not_connected` and the agent waited on a run
+  # nobody was going to finish (cc578c21).
   def fail_in_flight(%Scope{} = scope, reason, claimed) do
     {:ok, failed} = RunsRepository.fail_running(scope, reason, claimed)
-    Enum.each(failed, &Reconciler.announce_failed(&1, reason))
     count = length(failed)
 
     if count > 0 do
       Logger.warning(
         "[Analysis] closed #{count} stranded run(s): #{inspect(reason)}" <>
-          claimed_suffix(claimed)
+          claimed_suffix(claimed) <> " — the next join for this copy settles them"
       )
     end
 
@@ -928,15 +933,116 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Close every run a previous server process left `:running`, telling each
-  requester its run died with that server.
+  Close every run a previous server process left `:running`, as orphans the
+  next join for each copy settles (`resume_orphaned/2`).
   """
   @spec fail_stranded_runs() :: {:ok, non_neg_integer()}
   def fail_stranded_runs do
     {:ok, failed} = RunsRepository.fail_stranded_runs()
-    Enum.each(failed, &Reconciler.announce_failed(&1, :server_restarted))
     {:ok, length(failed)}
   end
+
+  # A run killed on every attempt is killing its harness, or landing in a
+  # restart storm. Either way running it again is not going to help.
+  @max_redispatches 3
+
+  @doc """
+  Settle the runs this copy's harness took with it when it went, now that one
+  has joined again.
+
+  Every code_my_spec promote restarts :4000 and then the harness, which fails
+  every copy's in-flight runs (`fail_in_flight/3`, `fail_stranded_runs/0`).
+  Those are not answers. metric_flow's spex run 53537 died that way at
+  14:00:33 on 2026-09-30, and its coder answered "Your turn is done" nudges
+  until somebody queued it again by hand 16 minutes later (cc578c21).
+
+  Each orphan, oldest first:
+
+    * claimed by the harness in `claimed` — it is still executing it, so the
+      row goes back to `:running` and its result is accepted when it lands;
+    * requested through `start_analysis`, whose answer is still owed —
+      started again at the current tree, carrying the same requester, so the
+      answer reaches whoever asked;
+    * killed #{@max_redispatches} times over — reported to its requester as
+      failed instead;
+    * anything else — left closed. Nothing starts analysis on its own.
+
+  A run that failed on its own is never an orphan: only the two sweeps above
+  mark one, so an analyzer error is not re-run.
+  """
+  @spec resume_orphaned(Scope.t(), [integer()]) :: :ok
+  def resume_orphaned(%Scope{} = scope, claimed) do
+    scope
+    |> RunsRepository.unsettled_orphans()
+    |> Enum.each(&resume_orphan(scope, &1, claimed))
+  end
+
+  defp resume_orphan(scope, run, claimed) do
+    cond do
+      run.id in claimed -> reopen_orphan(run)
+      not answer_owed?(run) -> RunsRepository.settle_orphan(run, "nobody waiting")
+      redispatches(run) >= @max_redispatches -> give_up_on_orphan(run)
+      true -> rerun_orphan(scope, run)
+    end
+  end
+
+  defp reopen_orphan(run) do
+    with :ok <- RunsRepository.reopen_orphan(run) do
+      Logger.info(
+        "[Analysis] run #{run.id} (#{run.source}) reopened — the harness still holds it"
+      )
+    end
+  end
+
+  defp rerun_orphan(scope, run) do
+    with :ok <- RunsRepository.settle_orphan(run, "run again") do
+      requested_by =
+        Map.merge(run.requested_by, %{
+          "rerun_of" => run.id,
+          "redispatches" => redispatches(run) + 1
+        })
+
+      case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
+        {:ok, outcome, id} ->
+          Logger.info(
+            "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
+              "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
+          )
+
+        {:error, reason} ->
+          Reconciler.announce_failed(
+            run,
+            "#{orphan_error(run)} — and running it again failed: #{inspect(reason)}"
+          )
+      end
+    end
+  end
+
+  defp give_up_on_orphan(run) do
+    with :ok <- RunsRepository.settle_orphan(run, "gave up") do
+      Reconciler.announce_failed(
+        run,
+        "#{orphan_error(run)} — its harness went away on each of " <>
+          "#{redispatches(run) + 1} attempts, so it is not being run again automatically"
+      )
+    end
+  end
+
+  # `start_analysis` writes `agent_id` (nil for a session with no agent row) and
+  # answers later, so its answer is still owed. A blocking `await_run/4` — the
+  # agent's own `mix test` — answered its caller with an error when the channel
+  # went, and that caller asks again itself. Nothing unrequested is re-run.
+  defp answer_owed?(%Run{requested_by: %{} = by}), do: Map.has_key?(by, "agent_id")
+  defp answer_owed?(_run), do: false
+
+  defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
+  defp redispatches(_run), do: 0
+
+  defp orphan_args(%Run{args: %{"args" => args}}) when is_list(args), do: args
+  defp orphan_args(_run), do: []
+
+  defp orphan_error(%Run{stats: %{"error" => error}}) when is_binary(error), do: error
+  defp orphan_error(_run), do: "its harness went away"
 
   defp claimed_suffix([]), do: ""
 

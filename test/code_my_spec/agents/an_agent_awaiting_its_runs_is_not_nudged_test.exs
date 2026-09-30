@@ -13,6 +13,8 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
+  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpecTest.RecordingAgentTransport
 
@@ -81,6 +83,32 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
     StopDecision.deliver(ctx.scope, ctx.agent, [])
 
     assert continuations() == 0
+  end
+
+  # cc578c21: a promote's restart killed the coder's spex run, and the coder
+  # was nudged "Your turn is done" six times in a minute with nothing to act
+  # on. The run is re-dispatched when the harness rejoins, so it is still
+  # being waited on.
+  test "its own run killed by a restart, not yet run again, holds it back too", ctx do
+    run_requested_by(ctx.scope, ctx.agent.id, :running)
+    {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
+    _told_nothing = dispatched()
+
+    StopDecision.deliver(ctx.scope, ctx.agent, [])
+
+    assert continuations() == 0
+  end
+
+  test "its own run that genuinely failed does not", ctx do
+    ctx.scope
+    |> run_requested_by(ctx.agent.id, :running)
+    |> Reconciler.fail(:analyzer_crashed)
+
+    _told_it_failed = dispatched()
+
+    StopDecision.deliver(ctx.scope, ctx.agent, [])
+
+    assert continuations() == 1
   end
 
   test "with nothing of its own in flight it is prompted as before", ctx do

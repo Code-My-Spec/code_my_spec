@@ -20,6 +20,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # gauge history and debugging without unbounded growth.
   @keep_per_source 20
 
+  # How long a requested run its harness's departure killed still counts as
+  # awaited by its agent. See `awaiting_runs?/3`.
+  @orphan_awaited_s 15 * 60
+
   @doc "Insert a new `:running` run stamped with its enqueue-time fingerprint."
   @spec start_run(Scope.t(), map()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
   def start_run(%Scope{active_project_id: project_id} = scope, attrs) do
@@ -189,18 +193,82 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc """
   Whether `agent_id` has a run it requested still `:running` (queued runs
-  included) on `working_copy_id`. Keyed on `requested_by->>'agent_id'`, the
+  included) on `working_copy_id`, or one its harness's departure killed that
+  the rejoin has not settled yet. Keyed on `requested_by->>'agent_id'`, the
   field `start_analysis` writes and `Agents.AnalysisReport` answers.
+
+  The killed one counts for 15 minutes. A harness rejoins in seconds and
+  settles it (`Analysis.resume_orphaned/2`); one that never returns must not
+  leave its agent silenced for good.
   """
   @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
   def awaiting_runs?(%Scope{}, nil, _agent_id), do: false
 
   def awaiting_runs?(%Scope{active_project_id: project_id}, working_copy_id, agent_id) do
+    since = DateTime.add(DateTime.utc_now(), -@orphan_awaited_s, :second)
+
     Run
     |> where([r], r.project_id == ^project_id and r.working_copy_id == ^working_copy_id)
-    |> where([r], r.status == :running)
     |> where([r], fragment("?->>'agent_id'", r.requested_by) == ^agent_id)
+    |> where(
+      [r],
+      r.status == :running or
+        (r.status == :failed and r.finished_at > ^since and
+           fragment("(?->>'orphaned') = 'true' AND (?->>'settled') IS NULL", r.stats, r.stats))
+    )
     |> Repo.exists?()
+  end
+
+  @doc """
+  This working copy's runs its harness's departure killed that nothing has
+  settled yet — not reopened, run again, or given up on. Oldest first.
+  """
+  @spec unsettled_orphans(Scope.t()) :: [Run.t()]
+  def unsettled_orphans(%Scope{active_working_copy_id: nil}), do: []
+
+  def unsettled_orphans(%Scope{active_project_id: project_id} = scope) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.status == :failed)
+    |> where(
+      [r],
+      fragment("(?->>'orphaned') = 'true' AND (?->>'settled') IS NULL", r.stats, r.stats)
+    )
+    |> scope_to_harness(scope)
+    |> order_by(asc: :id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Record how an orphan was settled, once. `:already` when something else got
+  there first, so a run is never re-dispatched twice.
+  """
+  @spec settle_orphan(Run.t(), String.t()) :: :ok | :already
+  def settle_orphan(%Run{id: id, stats: stats}, how) do
+    {count, _} =
+      Run
+      |> where([r], r.id == ^id and r.status == :failed)
+      |> where([r], fragment("(?->>'settled') IS NULL", r.stats))
+      |> Repo.update_all(set: [stats: Map.put(stats || %{}, "settled", how)])
+
+    if count == 1, do: :ok, else: :already
+  end
+
+  @doc """
+  Put an orphan back to `:running`, because the harness that rejoined says it
+  is still executing it. Left failed, its result is refused as `unknown_run`
+  and the same run is started a second time.
+  """
+  @spec reopen_orphan(Run.t()) :: :ok | :already
+  def reopen_orphan(%Run{id: id}) do
+    {count, _} =
+      Run
+      |> where([r], r.id == ^id and r.status == :failed)
+      |> where([r], fragment("(?->>'settled') IS NULL", r.stats))
+      |> Repo.update_all(
+        set: [status: :running, finished_at: nil, stats: nil, updated_at: DateTime.utc_now()]
+      )
+
+    if count == 1, do: :ok, else: :already
   end
 
   @doc """
@@ -306,11 +374,18 @@ defmodule CodeMySpec.Analysis.RunsRepository do
           status: :failed,
           finished_at: now,
           updated_at: now,
-          stats: %{"error" => String.slice(inspect(reason), 0, 500)}
+          stats: orphaned(reason)
         ]
       )
 
     {:ok, failed}
+  end
+
+  # `orphaned` is what tells "its harness went away" from "the analyzer failed":
+  # only these two sweeps write it, and only its runs are run again on rejoin
+  # (`Analysis.resume_orphaned/2`). The reason string cannot carry that.
+  defp orphaned(reason) do
+    %{"error" => String.slice(inspect(reason), 0, 500), "orphaned" => true}
   end
 
   # An empty claim sweeps everything, which is what this did before harnesses
@@ -347,7 +422,14 @@ defmodule CodeMySpec.Analysis.RunsRepository do
       Run
       |> where([r], r.status == :running)
       |> select([r], r)
-      |> Repo.update_all(set: [status: :failed, finished_at: now, updated_at: now])
+      |> Repo.update_all(
+        set: [
+          status: :failed,
+          finished_at: now,
+          updated_at: now,
+          stats: orphaned(:server_restarted)
+        ]
+      )
 
     failed
     |> Enum.map(&{&1.id, &1.source, &1.working_copy_id})

@@ -201,8 +201,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   @doc """
   Tell the agent that requested a failed run that it failed, and why.
 
-  Every path that marks a run `:failed` ends here — `fail/2`, and the bulk
-  sweeps that close runs a harness disconnect or a server restart stranded. A
+  Every path that marks a run `:failed` ends here — `fail/2`, and
+  `Analysis.resume_orphaned/2` for a run a harness disconnect or a server
+  restart stranded that it will not run again. A
   requested run always answers (see `announce_if_new/5`); before this, only a
   completed one did, and an agent whose spex run was killed by a server restart
   waited on it forever. A run nobody requested fails silently.

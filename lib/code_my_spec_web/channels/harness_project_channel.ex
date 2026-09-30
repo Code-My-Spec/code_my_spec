@@ -106,6 +106,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # never arrives. This is the one moment it is provably safe to close them.
       Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
 
+      # Then settle what the departure killed: reopen what this harness still
+      # holds, run the requested rest again. Registered above, so a re-dispatch
+      # lands in this channel's mailbox and is pushed once the join returns
+      # (cc578c21).
+      Analysis.resume_orphaned(scope, claimed_runs(payload))
+
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
       # writes nothing; one joining a checkout for the first time writes it
@@ -1821,7 +1827,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Deliberately loud. A disconnect here is not routine: it fails every run this
   # working copy has open, while the analyzers themselves are OS processes on
   # the harness that keep running regardless. Their results arrive for runs that
-  # are no longer `:running` and are refused. Nothing retries.
+  # are no longer `:running` and are refused — unless the rejoining harness
+  # claims them, which reopens them; requested runs it does not claim are run
+  # again (`Analysis.resume_orphaned/2`).
   def terminate(reason, socket) do
     shutdown_reconcile(socket)
 
