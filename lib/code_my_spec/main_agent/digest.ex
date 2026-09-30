@@ -70,7 +70,7 @@ defmodule CodeMySpec.MainAgent.Digest do
   defp settled?(%AgentWork{} = entry) do
     entry.blocked_reasons == [] and entry.problems == [] and
       not AgentWork.toolless?(entry) and not AgentWork.provider_blocked?(entry) and
-      not stalled?(entry)
+      not AgentWork.timing_out?(entry) and not stalled?(entry)
   end
 
   # An agent with nothing in hand and a queue that is not empty is the one state

@@ -41,6 +41,8 @@ defmodule CmsHarness.Agents.Provider do
   # errors.
   @zai_model "glm-5.3"
 
+  @claude_exec_timeout_ms :timer.minutes(10)
+
   @type credential :: map()
 
   @doc """
@@ -170,6 +172,13 @@ defmodule CmsHarness.Agents.Provider do
   # cache). An agent already has exactly one working copy for its whole
   # life, so passing it here costs nothing and is the difference between
   # `--resume` actually paying for itself and being a no-op.
+  #
+  # The timeout is a wall clock on the whole `claude -p` call (Alloy's
+  # `collect_port/5`), not an idle one. A resumed session that reaches the
+  # CLI's context limit is auto-compacted inside the next call, silently, and
+  # at ~950k tokens that took ~180s — the old limit — so the kill threw the
+  # compaction away and every retry redid it (eb09b076). Ten minutes lets it
+  # finish once; the turn itself is capped at thirty.
   def options("claude-code", _credential, opts) do
     {:ok,
      [
@@ -178,7 +187,7 @@ defmodule CmsHarness.Agents.Provider do
           %{
             model: Keyword.get(opts, :model) || "claude-sonnet-5",
             workdir: Keyword.get(opts, :working_copy),
-            timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
+            timeout_ms: Keyword.get(opts, :timeout_ms) || @claude_exec_timeout_ms
           }}
      ]}
   end

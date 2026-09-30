@@ -73,8 +73,15 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   # be a wall of text seventy-two times a day, and the one agent that needed
   # attention would be somewhere in the middle of it.
   defp agent_line(%AgentWork{} = entry) do
-    "  #{entry.agent_id} (#{entry.role}) — #{doing(entry)}#{provider(entry)}; " <>
-      "last said #{moment(entry.last_said_at)}"
+    "  #{entry.agent_id} (#{entry.role}) — #{doing(entry)}#{provider(entry)}" <>
+      "#{timeouts(entry)}; last said #{moment(entry.last_said_at)}"
+  end
+
+  defp timeouts(%AgentWork{} = entry) do
+    case AgentWork.turn_timeouts(entry) do
+      nil -> ""
+      run -> "; " <> run
+    end
   end
 
   defp provider(%AgentWork{} = entry) do
