@@ -527,6 +527,34 @@ defmodule CodeMySpec.Agents.Work do
   defp already_declined?(%{declined_offer_at: at}, _offer),
     do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
 
+  @doc """
+  The damper holding this agent's current offer, or nil.
+
+  `claimable` is `claimable_work/3`'s answer, passed in so a fleet read computes
+  it once. Read by `list_agent_work` so a damped agent is not shown as idle.
+  """
+  @spec damped(Scope.t(), Agent.t(), [map()]) ::
+          %{count: pos_integer(), requirement: String.t() | nil, until: DateTime.t()} | nil
+  def damped(scope, %Agent{} = agent, claimable) do
+    offer = offer_fingerprint(scope, agent, claimable)
+
+    if already_declined?(agent, offer) do
+      %{
+        count: agent.declined_offer_count,
+        requirement: claimable |> List.first() |> then(&(&1 && &1.name)),
+        until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
+      }
+    end
+  end
+
+  @doc false
+  def offer_fingerprint(scope, agent, claimable) do
+    fingerprint(
+      question_work?(scope, agent),
+      Enum.map(claimable, &{&1.entity_type, &1.entity_id, &1.name})
+    )
+  end
+
   defp question_work?(scope, %{role: :main}) do
     Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
   end

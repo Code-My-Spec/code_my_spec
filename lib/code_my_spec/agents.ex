@@ -2071,10 +2071,14 @@ defmodule CodeMySpec.Agents do
   # Still written to the transcript as well: the step is part of what the agent
   # did, and the row is the current state of it. Two different questions.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_started"} = event, _opts) do
+    # A queued turn keeps the run's start. The harness announces every start but
+    # only the run's end, so overwriting here dated the run from its last turn and
+    # `Work.record_decline/3` missed a task an earlier turn closed — the coder was
+    # damped for ten minutes as having refused work (35e80d6d).
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
            AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: DateTime.utc_now(),
+             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
              work_request_id: nil,
              work_requested_at: nil
            }),

@@ -58,6 +58,21 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     Enum.map(agents, fn agent ->
       copy = Map.get(copies, agent.working_copy_id)
       task = current_task(agent)
+      # Whether the graph holds work *this agent* would be offered.
+      #
+      # Asked of the graph rather than read off a field, because there is no field:
+      # "nothing to do" is a property of the project's outstanding work and an
+      # implementation reporting it from somewhere a scenario had set would pass a
+      # scenario and fail in production, where nobody sets it.
+      #
+      # Per agent, at its own checkout, through `Work.claimable_work/3` — the same
+      # answer that decides whether it is offered a turn. Asking once per role at
+      # the caller's scope reported QA agents as having work each correctly said it
+      # had none (2026-09-17); asking per checkout but ignoring claims reported an
+      # agent STALLED whose only work a neighbour held, which `Work` never offers
+      # and `start_task` refuses (4849f20b). Either way an agent that had stood down
+      # correctly read identically to one that was stuck.
+      {claimable, damped} = offer(scope, agent, task, owners)
 
       %AgentWork{
         agent_id: agent.id,
@@ -78,11 +93,22 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         provider_retry_at: agent.provider_retry_at,
         # A claimed task means there is work whatever the queue says; idle is
         # only ever about an agent with nothing in hand.
-        idle?: is_nil(task) and nothing_claimable?(scope, agent, owners),
+        idle?: is_nil(task) and claimable == [],
+        damped: damped,
         machine_tools: copy && copy.machine_tools,
         problems: Map.get(problems, agent.working_copy_id, [])
       }
     end)
+  end
+
+  # A claimed task means nothing is being offered, so nothing can be damped.
+  defp offer(_scope, _agent, task, _owners) when not is_nil(task), do: {[], nil}
+
+  defp offer(scope, agent, nil, owners) do
+    case Work.claimable_work(scope, agent, owners) do
+      [] -> {[], nil}
+      claimable -> {claimable, Work.damped(scope, agent, claimable)}
+    end
   end
 
   # The work this agent is on, which is not only the active one.
@@ -190,23 +216,6 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     |> Repo.all()
     |> Enum.group_by(& &1.working_copy_id)
   end
-
-  # Whether the graph holds work *this agent* would be offered.
-  #
-  # Asked of the graph rather than read off a field, because there is no field:
-  # "nothing to do" is a property of the project's outstanding work and an
-  # implementation reporting it from somewhere a scenario had set would pass a
-  # scenario and fail in production, where nobody sets it.
-  #
-  # Per agent, at its own checkout, through `Work.claimable_work/3` — the same
-  # answer that decides whether it is offered a turn. Asking once per role at
-  # the caller's scope reported QA agents as having work each correctly said it
-  # had none (2026-09-17); asking per checkout but ignoring claims reported an
-  # agent STALLED whose only work a neighbour held, which `Work` never offers
-  # and `start_task` refuses (4849f20b). Either way an agent that had stood down
-  # correctly read identically to one that was stuck.
-  defp nothing_claimable?(scope, agent, owners),
-    do: Work.claimable_work(scope, agent, owners) == []
 
   # The story each task is against, by title.
   #

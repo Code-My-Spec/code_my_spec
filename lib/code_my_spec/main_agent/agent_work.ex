@@ -41,7 +41,9 @@ defmodule CodeMySpec.MainAgent.AgentWork do
           provider_retry_at: DateTime.t() | nil,
           idle?: boolean(),
           machine_tools: [String.t()] | nil,
-          problems: [map()]
+          problems: [map()],
+          damped:
+            %{count: pos_integer(), requirement: String.t() | nil, until: DateTime.t()} | nil
         }
 
   defstruct [
@@ -60,6 +62,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     :provider_refusal,
     :provider_retry_at,
     :machine_tools,
+    :damped,
     blocked_reasons: [],
     tapped_out?: false,
     idle?: false,
@@ -125,6 +128,13 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     do:
       "not in the loop (continuous off), so no graph change wakes it, though the graph " <>
         "holds work for its role — message_agent it, or put its copy to work"
+
+  # Offers held back by `Work`'s damper after repeated declines. Nothing re-offers
+  # at expiry; the main agent decides on its wake (35e80d6d).
+  def unclaimed_work(%AgentWork{damped: %{count: n, requirement: req, until: until}}),
+    do:
+      "damped after #{n} declines of #{req || "its offer"} until " <>
+        "#{DateTime.to_iso8601(until)} — message_agent it, or take the work"
 
   def unclaimed_work(%AgentWork{}),
     do:
