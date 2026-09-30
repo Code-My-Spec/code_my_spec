@@ -1352,7 +1352,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # would never be reached.
   defp decode_app_result(%{"status" => "ok", "app_status" => status} = msg)
        when status in ~w(serving erroring down) do
-    {:ok, %{status: status, url: Map.get(msg, "app_url"), commit: Map.get(msg, "app_commit")}}
+    {:ok,
+     %{
+       status: status,
+       url: Map.get(msg, "app_url"),
+       commit: Map.get(msg, "app_commit"),
+       head: Map.get(msg, "app_head")
+     }}
   end
 
   defp decode_app_result(%{"status" => "error", "reason" => reason}),

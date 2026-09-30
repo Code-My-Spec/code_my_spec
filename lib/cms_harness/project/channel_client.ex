@@ -2069,6 +2069,7 @@ defmodule CmsHarness.Project.ChannelClient do
     %{"status" => "ok", "app_status" => status}
     |> maybe_put("app_url", Map.get(info, :url))
     |> maybe_put("app_commit", Map.get(info, :commit))
+    |> maybe_put("app_head", Map.get(info, :head))
   end
 
   defp encode_app_result({:error, reason}),
