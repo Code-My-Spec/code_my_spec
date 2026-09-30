@@ -91,6 +91,8 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Staffing,
       CodeMySpec.Stories,
       CodeMySpec.Tags,
+      # Closing an issue from the page or the API frees the tasks waiting on it.
+      CodeMySpec.TaskOwner,
       CodeMySpec.Uploads,
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,

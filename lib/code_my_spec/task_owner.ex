@@ -47,7 +47,6 @@ defmodule CodeMySpec.TaskOwner do
   change lands rather than in fifteen call sites.
   """
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Repo
@@ -165,42 +164,102 @@ defmodule CodeMySpec.TaskOwner do
   `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
   on 4 and the graph would cycle.
 
-  Answers the count released, so a caller can say whether anything was waiting.
+  Dismissed releases too — nothing else ever clears a block on a dismissed
+  issue (545653ad). Every waiting task on every owner is released, sessions as
+  well as agents; only an agent can be woken.
+
+  Answers the count of tasks released, so a caller can say whether anything
+  was waiting.
   """
-  @spec release_issue_block(Scope.t(), String.t()) :: {:ok, non_neg_integer()}
-  def release_issue_block(%Scope{} = scope, issue_id) when is_binary(issue_id) do
+  @spec release_issue_block(Scope.t(), String.t(), :resolved | :dismissed) ::
+          {:ok, non_neg_integer()}
+  def release_issue_block(%Scope{} = scope, issue_id, disposition \\ :resolved)
+      when is_binary(issue_id) and disposition in [:resolved, :dismissed] do
     released =
-      scope
-      |> Agents.list_agents()
-      |> Enum.filter(&blocked_on_issue?(&1, issue_id))
-      |> Enum.map(&release_one(scope, &1, issue_id))
-      |> Enum.count(&(&1 == :ok))
+      [Agent, Session]
+      |> Enum.flat_map(&Repo.all(waiting_on_issue(&1, scope, issue_id)))
+      |> Enum.map(&release_issue_tasks(scope, &1, issue_id, disposition))
+      |> Enum.sum()
 
     {:ok, released}
   end
 
-  defp blocked_on_issue?(agent, issue_id) do
-    Enum.any?(agent.tasks || [], fn task ->
+  @doc """
+  Release what waited on an issue that has just been resolved or dismissed.
+
+  Every door that closes an issue calls this — the tools, the issue page and
+  the REST API — so a block clears however its issue was closed.
+  """
+  @spec issue_closed(Scope.t(), %{id: String.t(), status: atom()}) :: {:ok, non_neg_integer()}
+  def issue_closed(%Scope{} = scope, %{id: id, status: status})
+      when status in [:resolved, :dismissed],
+      do: release_issue_block(scope, id, status)
+
+  defp waiting_on_issue(module, scope, issue_id) do
+    from row in module,
+      where:
+        row.project_id == ^scope.active_project_id and
+          row.account_id == ^scope.active_account_id and
+          fragment(
+            "exists (select 1 from unnest(?) t where t->>'blocker_id' = ? and t->>'status' = 'blocked')",
+            row.tasks,
+            ^issue_id
+          )
+  end
+
+  defp release_issue_tasks(scope, owner, issue_id, disposition) do
+    with {:ok, updated} <- locked_update(scope, owner, &release_waiting(&1, issue_id)),
+         [_ | _] = released <- released_on(owner, updated, issue_id) do
+      wake_holder(scope, updated, released, issue_id, disposition)
+      length(released)
+    else
+      _ -> 0
+    end
+  end
+
+  defp release_waiting(owner, issue_id) do
+    owner
+    |> waiting_tasks(issue_id)
+    |> Enum.reduce_while({:ok, owner}, fn task, {:ok, current} ->
+      case update_embedded_task(current, task.id, %{blocker_resolved_at: now()}) do
+        {:ok, next} -> {:cont, {:ok, next}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp waiting_tasks(owner, issue_id) do
+    Enum.filter(tasks(owner), fn task ->
       task.status == :blocked and task.blocker_type == :issue and
         task.blocker_id == issue_id and is_nil(task.blocker_resolved_at)
     end)
   end
 
-  # Released and then offered a turn, because clearing the block alone leaves
-  # the agent eligible and asleep — `Work.consider_*` is edge-triggered and an
-  # issue resolving elsewhere is not one of its edges.
-  defp release_one(scope, agent, issue_id) do
-    case release_block(scope, agent, issue_id) do
-      {:ok, _owner} ->
-        Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.consider_copy(scope, agent.working_copy_id, :issue_resolved)
-        end)
+  # Waiting before this call, released after it.
+  defp released_on(before, updated, issue_id) do
+    ids = before |> waiting_tasks(issue_id) |> MapSet.new(& &1.id)
+    Enum.filter(tasks(updated), &(MapSet.member?(ids, &1.id) and &1.blocker_resolved_at != nil))
+  end
 
-        :ok
+  # Clearing the block alone leaves the agent eligible and asleep: `Work` wakes
+  # on edges, and an issue closing elsewhere is not one of them. The notice goes
+  # in the turn so the agent answers it rather than reading past it. Off this
+  # process because the caller may be the channel the wake dispatches through.
+  defp wake_holder(scope, %Agent{} = agent, released, issue_id, disposition) do
+    notice = blocker_closed_notice(released, issue_id, disposition)
 
-      _ ->
-        :error
-    end
+    Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Work.wake_with_notice(scope, agent, notice, :issue_closed)
+    end)
+
+    :ok
+  end
+
+  defp wake_holder(_scope, %Session{}, _released, _issue_id, _disposition), do: :ok
+
+  defp blocker_closed_notice(released, issue_id, disposition) do
+    tasks = Enum.map_join(released, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
+    "Your blocker #{issue_id} was #{disposition}; resume #{tasks} with `start_task`."
   end
 
   @doc "Resolve only a matching blocker; never reactivate its task. Replays are no-ops."

@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.DismissIssue do
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.TaskOwner
 
   schema do
     field :issue_id, :string, required: true, doc: "Issue ID to dismiss"
@@ -22,6 +23,10 @@ defmodule CodeMySpec.McpServers.Issues.Tools.DismissIssue do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          {:ok, updated} <- Issues.dismiss_issue(scope, issue, params.reason) do
+      # A dismissed issue is as closed as a resolved one; whoever waited on it
+      # can go (545653ad).
+      {:ok, _released} = TaskOwner.issue_closed(scope, updated)
+
       {:reply, IssuesMapper.issue_updated_response(updated, "dismissed"), frame}
     else
       nil -> {:reply, IssuesMapper.not_found_error(), frame}

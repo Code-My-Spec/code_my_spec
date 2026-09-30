@@ -173,6 +173,23 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  @doc """
+  Tell one agent something in a turn when it can take one, and on its thread
+  when it cannot — then offer its copy a turn, so a busy agent still reads the
+  notice on its next one.
+  """
+  def wake_with_notice(scope, %Agent{} = agent, notice, reason) when is_binary(notice) do
+    case offer_turn_with(scope, agent, notice) do
+      {:ok, ref} when is_binary(ref) ->
+        :ok
+
+      _not_admissible ->
+        Conversations.record_sent_to_agent(agent, notice)
+        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, reason)
+        :ok
+    end
+  end
+
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          true <- runnable_state?(current),

@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.IssuesController do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
+  alias CodeMySpec.TaskOwner
 
   action_fallback CodeMySpecWeb.FallbackController
 
@@ -58,7 +59,7 @@ defmodule CodeMySpecWeb.IssuesController do
   end
 
   defp dispatch_update(scope, issue, %{"status" => "resolved", "resolution" => resolution}) do
-    Issues.resolve_issue(scope, issue, resolution)
+    scope |> Issues.resolve_issue(issue, resolution) |> release_waiting(scope)
   end
 
   defp dispatch_update(scope, issue, %{"status" => "accepted"} = params) do
@@ -67,12 +68,20 @@ defmodule CodeMySpecWeb.IssuesController do
   end
 
   defp dispatch_update(scope, issue, %{"status" => "dismissed", "resolution" => reason}) do
-    Issues.dismiss_issue(scope, issue, reason)
+    scope |> Issues.dismiss_issue(issue, reason) |> release_waiting(scope)
   end
 
   defp dispatch_update(_scope, _issue, _params) do
     {:error, :invalid_update}
   end
+
+  # A closed issue frees whatever task waited on it (545653ad).
+  defp release_waiting({:ok, issue} = closed, scope) do
+    {:ok, _released} = TaskOwner.issue_closed(scope, issue)
+    closed
+  end
+
+  defp release_waiting(error, _scope), do: error
 
   # `story_number` names the story the way people do; resolved to the id here.
   defp put_story_id(scope, %{"story_number" => number} = params) when not is_nil(number) do

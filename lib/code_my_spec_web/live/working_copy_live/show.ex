@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Staffing
+  alias CodeMySpecWeb.AgentLoopBadge
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -516,7 +517,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               <div class="card-body gap-2">
                 <div class="flex items-center gap-3">
                   <div class="min-w-0 flex-1">
-                    <div class="font-medium">{agent.role}</div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium">{agent.role}</span>
+                      <AgentLoopBadge.loop_badge continuous?={agent.continuous == true} />
+                    </div>
                     <div class="text-xs opacity-60">
                       {engine_name(agent.engine)} · {agent.provider}
                       <span :if={agent.os_pid}>· pid {agent.os_pid}</span>

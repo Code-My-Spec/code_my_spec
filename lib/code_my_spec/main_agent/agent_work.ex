@@ -35,6 +35,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
           last_said_at: DateTime.t() | nil,
           blocked_reasons: [String.t()],
           tapped_out?: boolean(),
+          continuous?: boolean() | nil,
           turn_started_at: DateTime.t() | nil,
           provider_refusal: String.t() | nil,
           provider_retry_at: DateTime.t() | nil,
@@ -55,6 +56,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     :story_title,
     :last_said_at,
     :turn_started_at,
+    :continuous?,
     :provider_refusal,
     :provider_retry_at,
     :machine_tools,
@@ -116,6 +118,13 @@ defmodule CodeMySpec.MainAgent.AgentWork do
 
   def unclaimed_work(%AgentWork{turn_started_at: %DateTime{} = at}),
     do: "mid-turn since #{DateTime.to_iso8601(at)}, no task claimed yet"
+
+  # Not a stall: graph wakes admit only continuous agents, so nothing but a
+  # message will ever reach it (723b929d).
+  def unclaimed_work(%AgentWork{continuous?: false}),
+    do:
+      "not in the loop (continuous off), so no graph change wakes it, though the graph " <>
+        "holds work for its role — message_agent it, or put its copy to work"
 
   def unclaimed_work(%AgentWork{}),
     do:

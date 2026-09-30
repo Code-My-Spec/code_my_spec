@@ -24,8 +24,15 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.IssuesFixtures
+  import CodeMySpec.SessionsFixtures
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
+  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.RecordingAgentTransport
@@ -118,6 +125,80 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
     assert waiting?(fresh, issue_id),
            "the task stopped waiting because some other issue was fixed"
+  end
+
+  # 545653ad. The release has to fire however the issue closed, and the holder
+  # has to be handed a turn that says so — a continuous agent with a released
+  # block and no turn sat idle on metric_flow for over an hour.
+  describe "closing the issue through its tools" do
+    setup ctx do
+      {:ok, issue} = Issues.accept_issue(ctx.scope, issue_fixture(ctx.scope))
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+      Map.merge(ctx, %{issue: issue, frame: frame})
+    end
+
+    test "resolving it releases the agent's task and wakes the agent to resume", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
+
+      {:reply, response, _} =
+        ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
+
+      refute response.isError
+      assert_woken(ctx.agent.id, "Your blocker #{ctx.issue.id} was resolved; resume")
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      refute waiting?(fresh, ctx.issue.id), "resolving the issue left its task waiting"
+    end
+
+    test "dismissing it releases the agent's task and wakes the agent to resume", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
+
+      {:reply, response, _} =
+        DismissIssue.execute(%{issue_id: ctx.issue.id, reason: "not a defect"}, ctx.frame)
+
+      refute response.isError
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+
+      refute waiting?(fresh, ctx.issue.id),
+             """
+             Dismissing the issue left its task waiting.
+
+             A dismissed issue will never be resolved, so nothing else can ever
+             clear this block — the task stays refused by `start_task` forever.
+             """
+
+      assert_woken(ctx.agent.id, "Your blocker #{ctx.issue.id} was dismissed; resume")
+    end
+
+    test "a session's task waiting on it is released too", ctx do
+      session = session_fixture(ctx.scope)
+
+      {:ok, session} =
+        session
+        |> Session.add_task(%{
+          status: :active,
+          requirement_name: "qa_complete",
+          started_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
+      task = Enum.find(session.tasks, &(&1.status == :active))
+      {:ok, _} = TaskOwner.block_task(ctx.scope, session, task.id, :issue, ctx.issue.id)
+
+      {:reply, _response, _} =
+        ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
+
+      fresh = Repo.get!(Session, session.id)
+      refute waiting?(fresh, ctx.issue.id), "a session's task stayed blocked on a resolved issue"
+    end
+  end
+
+  defp assert_woken(agent_id, needle) do
+    assert_receive {:work_turn_requested, ^agent_id, _ref, message}, 2_000
+
+    assert message =~ needle,
+           "the holder was offered a turn, but not told its blocker closed: #{message}"
   end
 
   test "`:issue` is a blocker a task may actually hold", ctx do
