@@ -85,10 +85,8 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   # verdict from a stale spex run on every read. Reading `analysis_fresh` here
   # would store the qualifier in the cached row, and nothing revisits it.
   def passing?(scope, %{specs_ready: ready, id: story_id}, %{analysis_fresh: fresh})
-      when ready != true and is_map(fresh) do
-    {verdict, details} = unlatched(scope, story_id)
-    {verdict, Map.put(details, :analysis_source, "spex")}
-  end
+      when ready != true and is_map(fresh),
+      do: unlatched(scope, story_id)
 
   def passing?(scope, %{id: story_id}, %{analysis_fresh: fresh}) when is_map(fresh) do
     if Map.get(fresh, "spex", false) do
@@ -128,10 +126,15 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
         {false, %{reason: "No spec files are linked to this story"}}
 
       failing(scope, paths) == [] ->
-        {true, %{status: "Specs green on the current spex run (latched when promoted)"}}
+        {true,
+         %{
+           status: "Specs green on the current spex run (latched when promoted)",
+           analysis_source: "spex"
+         }}
 
       true ->
-        {false, %{reason: "This story's own specs fail on the current spex run"}}
+        {false,
+         %{reason: "This story's own specs fail on the current spex run", analysis_source: "spex"}}
     end
   end
 
