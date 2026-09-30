@@ -317,8 +317,61 @@ defmodule CodeMySpec.Provisioning.Widget do
     deploy_key = Keyword.fetch!(opts, :deploy_key)
 
     case install(env, deploy_key, opts) do
-      {:ok, install} -> check_presence(scope, install, site_url, opts)
+      {:ok, install} -> check_committed(scope, env, install, site_url, opts)
       {:error, reason} -> %{blank() | state: :install_failed, reason: reason}
+    end
+  end
+
+  # f766258c: `install/3` writes the generator's files into the checkout and
+  # nothing more — this module does not commit, push, or wait on CI, on
+  # purpose (the moduledoc: "this module does not reimplement the widget").
+  # `check_presence/4` right after it fetches the *deployed* site, which
+  # means a genuinely fresh install is checked against a build that has
+  # never seen these files, every time, until someone commits and pushes
+  # them through and a new image deploys — an ordinary, expected gap this
+  # step used to walk straight past and report as "the widget is not
+  # usable", which reads exactly like a broken install rather than like an
+  # unpushed one. Observed live on metric_flow: files generated hours
+  # earlier, still sitting uncommitted, while this step kept probing prod
+  # and reporting `present: false`.
+  #
+  # So this checks the one thing that actually distinguishes the two before
+  # ever touching the network: is the checkout the generator just wrote into
+  # clean. `--porcelain` with no `--untracked-files=no` on purpose, unlike
+  # promotion's own dirty-tree check (`Promotion.Steps.precheck/2`) — the
+  # generator's new files are untracked until someone adds them, and an
+  # untracked `support_widget_live.ex` is exactly the case this exists to
+  # catch, not one to ignore the way a QA agent's scratch file is.
+  defp check_committed(scope, env, install, site_url, opts) do
+    case uncommitted_files(env, opts) do
+      [] ->
+        check_presence(scope, install, site_url, opts)
+
+      files ->
+        %{
+          blank()
+          | state: :absent,
+            install: install,
+            reason:
+              "The widget was generated, but #{length(files)} file(s) are not committed: " <>
+                "#{Enum.join(files, ", ")}. The deployed site cannot show what was never " <>
+                "pushed — commit and push this checkout so CI builds and deploys it, then " <>
+                "run this step again."
+        }
+    end
+  end
+
+  defp uncommitted_files(env, opts) do
+    git = Keyword.get(opts, :git_bin, "git")
+
+    case Environments.cmd(env, git, ["status", "--porcelain"], stderr_to_stdout: true) do
+      {output, 0} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
+
+      _ ->
+        []
     end
   end
 

@@ -257,6 +257,59 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
       assert result.reason =~ "the task could not be found",
              "the failure has to carry the generator's own words. got: #{inspect(result.reason)}"
     end
+
+    # f766258c: install/3 writes files and stops there — it does not commit,
+    # push, or wait on CI, so a fresh generator run leaves the checkout
+    # dirty and the deployed site unchanged. Probing that site anyway
+    # reported "the widget is not usable", indistinguishable from a broken
+    # install. This proves the checkout's own git state is read before the
+    # network call ever happens — `fetch` here would fail the test outright
+    # if it were reached.
+    test "generated files left uncommitted are named, not silently probed", %{
+      env: env,
+      scope: scope
+    } do
+      mix = fake_mix(env.cwd, 0)
+      System.cmd("git", ["init", "-q"], cd: env.cwd)
+      File.write!(Path.join(env.cwd, "support_widget_live.ex"), "# generated")
+
+      fail_if_called = fn _url -> flunk("the presence probe ran against an uncommitted install") end
+
+      result =
+        Widget.run(scope, env,
+          site_url: "https://sams-site.com",
+          deploy_key: "dk_live",
+          mix_bin: mix,
+          fetch: fail_if_called,
+          lookup: from_site()
+        )
+
+      assert result.state == :absent
+      assert result.reason =~ "not committed"
+      assert result.reason =~ "support_widget_live.ex"
+    end
+
+    test "a clean checkout after install still reaches the presence probe", %{
+      env: env,
+      scope: scope
+    } do
+      mix = fake_mix(env.cwd, 0)
+      System.cmd("git", ["init", "-q"], cd: env.cwd)
+      File.write!(Path.join(env.cwd, "committed.ex"), "# already shipped")
+      System.cmd("git", ["add", "-A"], cd: env.cwd)
+      System.cmd("git", ["-c", "user.email=t@e.com", "-c", "user.name=t", "commit", "-q", "-m", "x"], cd: env.cwd)
+
+      result =
+        Widget.run(scope, env,
+          site_url: "https://sams-site.com",
+          deploy_key: "dk_live",
+          mix_bin: mix,
+          fetch: page(installed_page()),
+          lookup: from_site()
+        )
+
+      assert result.state == :proven
+    end
   end
 
   describe "trigger_message/3 — asking the deployed site to speak" do
