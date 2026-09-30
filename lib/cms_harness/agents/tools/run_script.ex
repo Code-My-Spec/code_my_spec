@@ -33,7 +33,7 @@ defmodule CmsHarness.Agents.Tools.RunScript do
     Run a Lua script against this project's tools and return what it returns.
 
     Every tool the server exposes is callable as a Lua function taking one
-    table: `local s = get_story({ story_id = "970" })`. A tool that cannot
+    table: `local s = get_story({ story_number = 970 })`. A tool that cannot
     answer returns nil and an error table.
 
     Prefer this to asking for one thing at a time — a loop, a filter and a

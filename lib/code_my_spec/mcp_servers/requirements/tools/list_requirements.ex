@@ -42,6 +42,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
     field :entity_type, :string,
       doc: "Filter to one entity type — `project`, `story`, or `component`."
 
+    field :story_number, :integer,
+      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+
     field :entity_id, :string,
       doc:
         "Filter to one entity: a story's number or a component's id, as printed elsewhere. " <>

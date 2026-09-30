@@ -38,6 +38,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       required: true,
       doc: "Entity type: component, story, or project"
 
+    field :story_number, :integer,
+      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+
     field :entity_id, :string,
       doc:
         "The entity that owns this requirement: a story's number, or a component's or project's id"

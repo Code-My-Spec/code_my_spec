@@ -1,9 +1,20 @@
 defmodule CodeMySpec.McpServers.ComponentsServer do
   @moduledoc false
+  alias Anubis.Server.Handlers
+  alias CodeMySpec.McpServers.StoryRefs
+
   use Anubis.Server,
     name: "components-server",
     version: "1.0.0",
     capabilities: [:tools]
+
+  # Story arguments are normalised before validation, as on `LocalServer`.
+  @impl Anubis.Server
+  def handle_request(%{"method" => "tools/call"} = request, frame) do
+    request |> StoryRefs.normalize_request(__components__()) |> Handlers.handle(__MODULE__, frame)
+  end
+
+  def handle_request(request, frame), do: Handlers.handle(request, __MODULE__, frame)
 
   # Core CRUD operations
   component(CodeMySpec.McpServers.Components.Tools.CreateComponent)

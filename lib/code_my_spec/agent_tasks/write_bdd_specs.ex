@@ -35,6 +35,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Command — slim prompt that points at framework + project BDD knowledge
   # ============================================================================
 
+  # 8a186121: a coder that cannot retire a criterion deleted its spec or asked
+  # the user. Retiring is product's; this is the path to it.
+  @obsolete_criterion "If a criterion is obsolete or wrong, don't delete its spec; file an " <>
+                        "app issue on the story (`create_issue`) naming the criterion and why; " <>
+                        "product retires or rewrites it."
+
+  @doc "What a coder does with a criterion it thinks should go."
+  def obsolete_criterion, do: @obsolete_criterion
+
   @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, task) do
     with {:ok, story} <- resolve_story(scope, task),
@@ -580,7 +589,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       failing spec.
 
     If a criterion is genuinely untestable, contradicts another, or is
-    ambiguous, **stop and flag it** rather than fudging the spec to fit.\
+    ambiguous, **stop and flag it** rather than fudging the spec to fit.
+
+    #{obsolete_criterion()}\
     """
   end
 

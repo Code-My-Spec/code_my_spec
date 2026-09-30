@@ -21,6 +21,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
     field :entity_type, :string,
       description: "Entity type filter: 'component', 'story', or 'project'"
 
+    field :story_number, :integer,
+      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+
     field :entity_id, :string,
       description: "The entity to scope the lookup to: a story's number, or a component's id"
   end

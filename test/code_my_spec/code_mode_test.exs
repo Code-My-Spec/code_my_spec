@@ -255,6 +255,19 @@ defmodule CodeMySpec.CodeModeTest do
       assert result.error.message =~ "Use `ask_user_question` instead"
     end
 
+    # 8a186121: a coder told only "not yours" deleted the spec or asked the user.
+    test "retire_criterion points a coder at filing an issue" do
+      result =
+        CodeMode.eval(%{}, "return retire_criterion({})",
+          out_of_scope: ["retire_criterion"],
+          agent_kind: "coding"
+        )
+
+      assert result.error.message =~ "retire_criterion is not a tool a coding agent carries"
+      assert result.error.message =~ "don't delete its spec"
+      assert result.error.message =~ "`create_issue`"
+    end
+
     test "an out-of-scope tool with no known substitute stays silent about one" do
       result =
         CodeMode.eval(%{}, "return delete_story({})",
