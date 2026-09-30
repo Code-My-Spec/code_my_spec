@@ -92,6 +92,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
       assert {:reply, response, ^frame} = DevopsStatus.execute(%{}, frame)
 
       text = response_text(response)
+
       assert text =~ "A setup run has been in progress",
              "a run is in flight for this project and nothing said so, which is exactly " <>
                "how a still-running setup and a hung one read the same way"
@@ -120,9 +121,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   # code in front of it.
   describe "missing_line/1" do
     test "keeps both ends of a long reason, not just one" do
-      detail = "the reason starts here" <> String.duplicate("m", 2000) <> "the conclusion ends here"
+      detail =
+        "the reason starts here" <> String.duplicate("m", 2000) <> "the conclusion ends here"
 
-      line = DevopsStatus.missing_line(%{project_name: "Market My Spec", key: "deploy", detail: detail})
+      line =
+        DevopsStatus.missing_line(%{
+          project_name: "Market My Spec",
+          key: "deploy",
+          detail: detail
+        })
 
       assert line =~ "the reason starts here"
       assert line =~ "the conclusion ends here"
@@ -130,9 +137,23 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
     end
 
     test "a short reason is unaffected" do
-      line = DevopsStatus.missing_line(%{project_name: "Market My Spec", key: "deploy", detail: "no server named x"})
+      line =
+        DevopsStatus.missing_line(%{
+          project_name: "Market My Spec",
+          key: "deploy",
+          detail: "no server named x"
+        })
 
       assert line == "Market My Spec/deploy — no server named x"
+    end
+
+    # 548b3173: per-environment steps listed twice with nothing to tell them apart.
+    test "names the environment of a per-environment step" do
+      uat = %{project_name: "Metric Flow", key: :backups, environment: "uat", detail: nil}
+      prod = %{uat | environment: "prod"}
+
+      assert DevopsStatus.missing_line(uat) == "Metric Flow/uat/backups"
+      assert DevopsStatus.missing_line(prod) == "Metric Flow/prod/backups"
     end
   end
 

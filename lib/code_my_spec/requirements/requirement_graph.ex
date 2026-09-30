@@ -2032,6 +2032,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
+        not Requirement.waiting?(n) and
         MapSet.member?(role_names, n.name) and
         not untethered_component?(n, component_priority) and
         not MapSet.member?(blocked, node_key(n))
@@ -2095,6 +2096,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
+        not Requirement.waiting?(n) and
         not untethered_component?(n, component_priority) and
         not MapSet.member?(blocked_descendants, node_key(n))
     end)

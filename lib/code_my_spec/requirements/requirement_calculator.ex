@@ -27,6 +27,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
@@ -186,8 +187,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   #
   # `Predicates.satisfied(:deployed, …)` is the query form of this and must
   # agree with it — same table, same `health_verified_at` rule.
-  defp check(%{check_type: :deployed, config: config}, scope, entity, _files, _ctx) do
-    deployed_verdict(scope, entity, environment_from(config))
+  defp check(%{check_type: :deployed, config: config}, scope, entity, _files, ctx) do
+    deployed_verdict(scope, entity, environment_from(config), ctx)
   end
 
   # Is every released story live on that environment?
@@ -399,20 +400,29 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # copy has a stale row would block an agent on a file it cannot see.
   defp environment_from(config), do: MapAccess.get(config, :environment)
 
-  defp deployed_verdict(_scope, _entity, nil),
+  defp deployed_verdict(_scope, _entity, nil, _ctx),
     do: {false, %{reason: "deployed check missing :environment in config"}}
 
-  defp deployed_verdict(scope, %{id: story_id}, environment) do
+  # Not deployed, and while setup is missing steps for the environment the
+  # deploy cannot be done, so the details say which and keep it unoffered.
+  defp deployed_verdict(scope, %{id: story_id}, environment, ctx) do
     if Deploys.deployed?(scope, story_id, environment) do
       {true, %{status: "deployed to #{environment} and health-verified"}}
     else
-      {false,
-       %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
+      {false, DevopsSetupChecker.undeployed(environment, setup_missing(scope, environment, ctx))}
     end
   end
 
-  defp deployed_verdict(_scope, _entity, _environment),
+  defp deployed_verdict(_scope, _entity, _environment, _ctx),
     do: {false, %{status: "no story to check"}}
+
+  # The preloaded answer when the pass has one; asked directly otherwise.
+  defp setup_missing(scope, environment, ctx) do
+    case ctx do
+      %{setup_missing: %{^environment => missing}} -> missing
+      _ -> DevopsSetupChecker.missing(scope, environment)
+    end
+  end
 
   defp check_path_exists(scope, ctx, path) do
     case tracked_files(scope, ctx, path) do
@@ -447,7 +457,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   """
   @spec describe_validation_errors(map()) :: String.t()
   def describe_validation_errors(%{validation_errors: errors})
-       when is_map(errors) and errors != %{} do
+      when is_map(errors) and errors != %{} do
     errors
     |> Enum.sort_by(fn {key, _} -> to_string(key) end)
     |> Enum.map_join("; ", fn {_key, value} -> format_validation_error(value) end)

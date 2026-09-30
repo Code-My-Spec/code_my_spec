@@ -13,6 +13,7 @@ defmodule CodeMySpec.Provisioning.StepRepository do
 
   alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc "Every step for the active project, in sequence order."
@@ -67,29 +68,45 @@ defmodule CodeMySpec.Provisioning.StepRepository do
       |> Map.put(:environment, environment)
       |> Map.put(:project_id, project_id)
 
-    case get(scope, key, environment) do
-      nil ->
-        %Step{}
-        |> Step.changeset(attrs)
-        |> Repo.insert!()
+    step =
+      case get(scope, key, environment) do
+        nil ->
+          %Step{}
+          |> Step.changeset(attrs)
+          |> Repo.insert!()
 
-      existing ->
-        existing
-        |> Step.changeset(attrs)
-        |> Repo.update!()
-    end
+        existing ->
+          existing
+          |> Step.changeset(attrs)
+          |> Repo.update!()
+      end
+
+    setup_changed(scope)
+    step
   end
+
+  @doc """
+  Tell the requirement graph the setup checklist may have moved.
+
+  `deploy` waits on the steps this checklist still misses, so every write that
+  can change it announces, or a deploy stays unoffered after setup completes.
+  """
+  @spec setup_changed(Scope.t()) :: :ok
+  def setup_changed(%Scope{active_project_id: project_id} = scope) when is_binary(project_id),
+    do: GraphInputs.event(scope, "Provisioning", "devops_setup_changed", %{}, [], :project_wide)
+
+  def setup_changed(_scope), do: :ok
 
   @doc "Delete one environment's row for a step, if it exists. A no-op otherwise."
   @spec delete(Scope.t(), atom(), String.t()) :: :ok
   def delete(%Scope{active_project_id: nil}, _key, _environment), do: :ok
 
-  def delete(%Scope{active_project_id: project_id}, key, environment) do
+  def delete(%Scope{active_project_id: project_id} = scope, key, environment) do
     Step
     |> where([s], s.project_id == ^project_id and s.key == ^key)
     |> where_environment(environment)
     |> Repo.delete_all()
 
-    :ok
+    setup_changed(scope)
   end
 end

@@ -54,6 +54,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.BddRulesChecker
+  alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DispatchChecker
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
@@ -109,6 +110,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     # copy has to move its verdict the same turn `bdd_specs_passing` does.
     "problems_changed" => [:specs, :problems],
     "deploy_changed" => [:links],
+    # A setup step, environment or option changing moves what an undeployed
+    # story's `deploy` is waiting on.
+    "devops_setup_changed" => [:links],
     # A story row reaches five profiles, which is why this event took five
     # conversions to turn on:
     #
@@ -575,16 +579,14 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # `deployed_verdict/3`'s wording, which is not `Deploys.uat_check/2`'s: the
-  # `:deployed` check type interpolates the environment and lowercases, and a
-  # row this settles has to read like one a recompute settled.
+  # `DevopsSetupChecker.undeployed/2`, the same details the recompute writes,
+  # so an undeployed story waits on missing setup on either path.
   defp settle("deploy", %{links: profile}, _scope) do
     %{
       entity_type: "story",
       name: "deploy",
       default: false,
-      default_details:
-        details(%{status: "not deployed to uat, or deployed without a passing health check"}),
+      default_details: details(DevopsSetupChecker.undeployed("uat", profile.uat_setup_missing)),
       except: deploy_verdicts(profile)
     }
   end

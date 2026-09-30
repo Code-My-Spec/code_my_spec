@@ -21,6 +21,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -44,7 +45,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           personas_by_story: %{integer() => [Persona.t()]},
           qa_latest_by_story: %{integer() => QaAttempt.t()},
           uat_deploy_by_story: %{integer() => Deploy.t()},
-          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
+          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]},
+          setup_missing: %{String.t() => [String.t()] | :not_started}
         }
 
   @doc """
@@ -265,7 +267,10 @@ defmodule CodeMySpec.Requirements.Preloader do
           criteria_by_story: criteria_by_story(story_ids),
           personas_by_story: personas_by_story(story_ids),
           qa_latest_by_story: qa_latest_by_story(story_ids),
-          delegated_inputs: delegated_inputs(project_id, working_copy_id)
+          delegated_inputs: delegated_inputs(project_id, working_copy_id),
+          # Once per load rather than once per story's `deploy`, and in the
+          # context so `Freshness.story/2` sees setup completing.
+          setup_missing: %{"uat" => DevopsSetupChecker.missing(scope, "uat")}
         }
       end)
 
@@ -297,7 +302,8 @@ defmodule CodeMySpec.Requirements.Preloader do
        personas_by_story: rest.personas_by_story,
        qa_latest_by_story: rest.qa_latest_by_story,
        uat_deploy_by_story: shared.uat_deploy_by_story,
-       delegated_inputs: rest.delegated_inputs
+       delegated_inputs: rest.delegated_inputs,
+       setup_missing: rest.setup_missing
      }}
   end
 
