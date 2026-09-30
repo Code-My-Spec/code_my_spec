@@ -25,8 +25,9 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
 
   schema do
     field :story_number, :integer,
-      required: true,
-      doc: "The story being promoted. Latched and stamped only if its spex pass."
+      doc:
+        "The story being promoted. Latched and stamped only if its spex pass. " <>
+          "Omit for work that is not a story's, such as a fix from an issue."
   end
 
   @impl true

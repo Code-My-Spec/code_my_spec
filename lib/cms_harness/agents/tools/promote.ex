@@ -58,9 +58,12 @@ defmodule CmsHarness.Agents.Tools.Promote do
     %{
       type: "object",
       properties: %{
-        story_number: %{type: "integer", description: "The story being promoted."}
+        story_number: %{
+          type: "integer",
+          description: "The story being promoted. Omit for work that is not a story's."
+        }
       },
-      required: ["story_number"]
+      required: []
     }
   end
 end

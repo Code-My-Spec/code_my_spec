@@ -126,11 +126,12 @@ defmodule CodeMySpec.Promotion do
   Claude Code session or an operator has no conversation, and the log is the
   record.
 
-  `story_number` is required: it names the story being promoted, not a target
-  (main is the only one). That story alone is latched (`specs_ready`) and
-  stamped (`promoted_version`), and only if all of its spex pass on the
-  promoting copy's certifying run — otherwise the promote is refused naming
-  them (e1174640).
+  `story_number` names the story being promoted, not a target (main is the
+  only one). That story alone is latched (`specs_ready`) and stamped
+  (`promoted_version`), and only if all of its spex pass on the promoting
+  copy's certifying run — otherwise the promote is refused naming them
+  (e1174640). `nil` is work that is not a story's — a fix from an issue — and
+  merges and restarts without latching or stamping anything.
 
   `verify_within:`/`verify_every:` (ms) bound how long a restart whose
   acknowledgement was lost is checked against what the app is serving
@@ -149,15 +150,7 @@ defmodule CodeMySpec.Promotion do
     log_outcome(result)
   end
 
-  defp story_to_promote(_scope, nil) do
-    {:error,
-     %{
-       reason:
-         "promote needs the number of the story you are promoting. That story is " <>
-           "latched and stamped promoted when its spex pass on this copy; main is " <>
-           "still the only place the work goes."
-     }}
-  end
+  defp story_to_promote(_scope, nil), do: {:ok, nil}
 
   defp story_to_promote(scope, number) do
     case Stories.get_story_by_number(scope, number) do
@@ -325,6 +318,8 @@ defmodule CodeMySpec.Promotion do
   defp unconfirmed(false, reason, _branch, _running, _swept, _untracked, _version),
     do: {:error, reason}
 
+  defp with_story(result, nil, _version), do: result
+
   defp with_story({:ok, report}, story, version),
     do: {:ok, Map.put(report, :story, %{number: story.number, version: version})}
 
@@ -340,6 +335,8 @@ defmodule CodeMySpec.Promotion do
   # runs, and reporting it as a failed promotion would send an agent to
   # promote again, restarting the shared dev server every other working copy
   # on the box is using, over a write that touched no code at all.
+  defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
+
   defp stamp_promoted_story(scope, story, version, commit) do
     opts = [at: DateTime.utc_now(), commit: commit]
 
@@ -363,6 +360,8 @@ defmodule CodeMySpec.Promotion do
   # directory name — see `FixBddSpecs.story_spex_problems/2` for what parsing
   # names cost). A story with no linked spec files has nothing that passed, so
   # it refuses rather than latching on an empty list.
+  defp story_spex_pass(_scope, nil, _named), do: :ok
+
   defp story_spex_pass(scope, story, named) do
     paths =
       scope

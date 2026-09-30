@@ -113,14 +113,21 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
   end
 
-  test "a promote with no story is refused before anything moves" do
-    project = a_project()
+  # Work that is not a story's — a fix from an issue — still has to reach main.
+  test "a promote with no story merges and latches or stamps nothing" do
+    %{scope: scope} = project = a_project()
+
+    green = story_fixture(scope, %{title: "Green, not named"})
+    with_spex(scope, green, false)
+
     certified(project)
 
-    assert {:error, %{reason: reason}} = Promotion.promote(project.scope, nil)
+    assert {:ok, %{merged: "story/x"} = result} = Promotion.promote(scope, nil)
+    refute Map.has_key?(result, :story)
 
-    assert reason =~ "story"
-    refute_received {:git, _, _}
+    untouched = Stories.get_story!(scope, green.id)
+    assert untouched.specs_ready == false
+    assert untouched.promoted_version == nil
   end
 
   test "latches and stamps only the named story" do
