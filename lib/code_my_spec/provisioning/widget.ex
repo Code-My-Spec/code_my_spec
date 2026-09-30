@@ -316,8 +316,10 @@ defmodule CodeMySpec.Provisioning.Widget do
     site_url = Keyword.fetch!(opts, :site_url)
     deploy_key = Keyword.fetch!(opts, :deploy_key)
 
+    before_status = git_status_lines(env, opts)
+
     case install(env, deploy_key, opts) do
-      {:ok, install} -> check_committed(scope, env, install, site_url, opts)
+      {:ok, install} -> check_committed(scope, env, install, site_url, before_status, opts)
       {:error, reason} -> %{blank() | state: :install_failed, reason: reason}
     end
   end
@@ -337,43 +339,51 @@ defmodule CodeMySpec.Provisioning.Widget do
   #
   # So this checks the one thing that actually distinguishes the two before
   # ever touching the network: is the checkout the generator just wrote into
-  # clean. `--porcelain` with no `--untracked-files=no` on purpose, unlike
-  # promotion's own dirty-tree check (`Promotion.Steps.precheck/2`) — the
-  # generator's new files are untracked until someone adds them, and an
-  # untracked `support_widget_live.ex` is exactly the case this exists to
-  # catch, not one to ignore the way a QA agent's scratch file is.
-  defp check_committed(scope, env, install, site_url, opts) do
-    case uncommitted_files(env, opts) do
+  # clean. Scoped to what the generator actually touched this run — a diff
+  # against a status taken before `install/3` ran — rather than the whole
+  # checkout's status. Caught before shipping: a real box an agent is
+  # working in almost always carries *something* unrelated dirty or
+  # untracked (metric_flow's own main checkout had a
+  # `.code_my_spec/architecture/` scratch file at the moment this shipped),
+  # and reading the whole tree would have named that file as the reason the
+  # widget could not be shown — true about the checkout, false about the
+  # widget.
+  defp check_committed(scope, env, install, site_url, before_status, opts) do
+    case git_status_lines(env, opts) -- before_status do
       [] ->
         check_presence(scope, install, site_url, opts)
 
-      files ->
+      new_lines ->
+        files = Enum.map(new_lines, &status_line_path/1)
+
         %{
           blank()
           | state: :absent,
             install: install,
             reason:
-              "The widget was generated, but #{length(files)} file(s) are not committed: " <>
-                "#{Enum.join(files, ", ")}. The deployed site cannot show what was never " <>
-                "pushed — commit and push this checkout so CI builds and deploys it, then " <>
-                "run this step again."
+              "The widget was generated, but #{length(files)} file(s) it touched are not " <>
+                "committed: #{Enum.join(files, ", ")}. The deployed site cannot show what " <>
+                "was never pushed — commit and push this checkout so CI builds and deploys " <>
+                "it, then run this step again."
         }
     end
   end
 
-  defp uncommitted_files(env, opts) do
+  # `--porcelain` with no `--untracked-files=no`, unlike promotion's own
+  # dirty-tree check (`Promotion.Steps.precheck/2`) — the generator's new
+  # files are untracked until someone adds them, and an untracked
+  # `support_widget_live.ex` is exactly the case this exists to catch, not
+  # one to ignore the way a QA agent's scratch file is.
+  defp git_status_lines(env, opts) do
     git = Keyword.get(opts, :git_bin, "git")
 
     case Environments.cmd(env, git, ["status", "--porcelain"], stderr_to_stdout: true) do
-      {output, 0} ->
-        output
-        |> String.split("\n", trim: true)
-        |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
-
-      _ ->
-        []
+      {output, 0} -> String.split(output, "\n", trim: true)
+      _ -> []
     end
   end
+
+  defp status_line_path(line), do: line |> String.slice(3..-1//1) |> String.trim()
 
   defp check_presence(scope, install, site_url, opts) do
     case verify_present(site_url, opts) do

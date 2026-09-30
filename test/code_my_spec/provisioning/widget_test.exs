@@ -265,13 +265,29 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     # install. This proves the checkout's own git state is read before the
     # network call ever happens — `fetch` here would fail the test outright
     # if it were reached.
+    # The fake generator writes its own file mid-run, the way the real one
+    # does — the check has to catch a file that appears *during* `install/3`,
+    # not one already sitting there before `Widget.run/3` was ever called.
+    defp fake_mix_that_generates(dir, filename) do
+      path = Path.join(dir, "fake_mix")
+
+      File.write!(path, """
+      #!/bin/sh
+      echo "# generated" > "#{Path.join(dir, filename)}"
+      echo generator ran
+      exit 0
+      """)
+
+      File.chmod!(path, 0o755)
+      path
+    end
+
     test "generated files left uncommitted are named, not silently probed", %{
       env: env,
       scope: scope
     } do
-      mix = fake_mix(env.cwd, 0)
       System.cmd("git", ["init", "-q"], cd: env.cwd)
-      File.write!(Path.join(env.cwd, "support_widget_live.ex"), "# generated")
+      mix = fake_mix_that_generates(env.cwd, "support_widget_live.ex")
 
       fail_if_called = fn _url -> flunk("the presence probe ran against an uncommitted install") end
 
@@ -287,6 +303,32 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
       assert result.state == :absent
       assert result.reason =~ "not committed"
       assert result.reason =~ "support_widget_live.ex"
+    end
+
+    # Harness, before this shipped: a real checkout an agent is working in
+    # almost always carries *something* unrelated dirty or untracked, and
+    # reading the whole tree's status would name that file as the reason the
+    # widget could not be shown — true about the checkout, false about the
+    # widget. Scoped to a before/after diff around `install/3` for exactly
+    # this reason.
+    test "an unrelated file already dirty before install does not block the probe", %{
+      env: env,
+      scope: scope
+    } do
+      System.cmd("git", ["init", "-q"], cd: env.cwd)
+      File.write!(Path.join(env.cwd, "unrelated_scratch_file.md"), "someone else's WIP")
+      mix = fake_mix(env.cwd, 0)
+
+      result =
+        Widget.run(scope, env,
+          site_url: "https://sams-site.com",
+          deploy_key: "dk_live",
+          mix_bin: mix,
+          fetch: page(installed_page()),
+          lookup: from_site()
+        )
+
+      assert result.state == :proven
     end
 
     test "a clean checkout after install still reaches the presence probe", %{
