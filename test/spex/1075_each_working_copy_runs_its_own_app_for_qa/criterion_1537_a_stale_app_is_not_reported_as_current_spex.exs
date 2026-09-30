@@ -8,10 +8,20 @@ defmodule CodeMySpecSpex.Story1108.Criterion4661Spex do
   Asking whether an already-running app is still up (`ensure_app_running`
   on a copy that never stopped) never re-derives the commit from the
   checkout's current HEAD — it reports what the running process was
-  actually started on. If HEAD has since moved without a restart, the app
-  genuinely *is* still serving the older commit, and saying otherwise would
-  be the lie this criterion rules out: a QA session reading "current" about
-  code that was never actually redeployed.
+  actually started on.
+
+  Reworded under 79854c2f (John: "we have hot reload, we don't need to
+  restart all the time"): `app_commit` deliberately keeps meaning *the
+  commit the process launched from*, not *the commit whose code is
+  currently being served*. Hot reload can mean those two are no longer the
+  same thing — a copy running on `old0000` may already be serving code
+  edited since, without ever restarting — and this field does not try to
+  track that. It answers a narrower, still-useful question: what got this
+  process running. `HEAD moved past it` is a separate fact, surfaced
+  alongside rather than folded in — `EnsureAppRunning`'s own reply names
+  the running copy and adds "This copy's HEAD is `<head>`: the app is not
+  restarted when HEAD moves, only on a promote." when the two diverge,
+  rather than silently reporting one number for both questions.
   """
 
   use CodeMySpecSpex.Case
