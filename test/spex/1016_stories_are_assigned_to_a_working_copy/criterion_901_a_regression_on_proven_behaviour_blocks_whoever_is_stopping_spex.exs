@@ -135,20 +135,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
         {:ok, Map.put(context, :spex_path, path)}
       end
 
-      given_ "and its spex have gone green", context do
-        # Set by hand from the project UI — story 983's criterion 2201, which
-        # exists so a story can be put under enforcement without waiting for a
-        # run. What it stands in for here is the earned latch: a green run on
-        # every one of the story's specs.
-        {:ok, stories_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
-
-        stories_live
-        |> element(~s([data-test=toggle-story-specs-ready][phx-value-id="#{context.story.id}"]))
-        |> render_click()
-
-        {:ok, context}
-      end
+      given_ :story_latched_by_promotion
 
       when_ "the agent attempts to stop", context do
         response =

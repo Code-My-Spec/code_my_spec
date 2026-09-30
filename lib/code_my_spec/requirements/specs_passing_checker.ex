@@ -47,7 +47,9 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   """
   @spec passing?(term(), term()) :: {boolean(), map()}
   def passing?(scope, %{specs_ready: ready, id: story_id}) when ready != true do
-    unlatched(scope, story_id, Analysis.fresh?(scope, "spex"))
+    if Analysis.fresh?(scope, "spex"),
+      do: unlatched(scope, story_id),
+      else: {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
   end
 
   def passing?(scope, %{id: story_id}) do
@@ -78,9 +80,14 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   `passing?/2` remains the fallback for a caller with none.
   """
   @spec passing?(term(), term(), map()) :: {boolean(), map()}
+  # In the graph, judged from the problems alone, which key its cache;
+  # freshness is left to `RequirementGraph.serve/2`, which withholds a clean
+  # verdict from a stale spex run on every read. Reading `analysis_fresh` here
+  # would store the qualifier in the cached row, and nothing revisits it.
   def passing?(scope, %{specs_ready: ready, id: story_id}, %{analysis_fresh: fresh})
       when ready != true and is_map(fresh) do
-    unlatched(scope, story_id, Map.get(fresh, "spex", false))
+    {verdict, details} = unlatched(scope, story_id)
+    {verdict, Map.put(details, :analysis_source, "spex")}
   end
 
   def passing?(scope, %{id: story_id}, %{analysis_fresh: fresh}) when is_map(fresh) do
@@ -113,10 +120,7 @@ defmodule CodeMySpec.Requirements.SpecsPassingChecker do
   # alone here would make the chain unsatisfiable. A fresh run showing the
   # story's own specs green satisfies it; a stale run, no linked specs, or a
   # red one does not.
-  defp unlatched(_scope, _story_id, false),
-    do: {false, %{reason: "Specs have not gone green on a fresh spex run yet"}}
-
-  defp unlatched(scope, story_id, true) do
+  defp unlatched(scope, story_id) do
     paths = own_spec_paths(scope, story_id)
 
     cond do

@@ -123,20 +123,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
         {:ok, Map.put(context, :spex_path, path)}
       end
 
-      given_ "and its spex have gone green", context do
-        # Story 983's criterion 2201 — a story put under enforcement from the
-        # project UI. Standing in for the earned latch: a green run over every
-        # one of its specs. Without it the finding is advisory whoever owns it,
-        # and the criterion would be asserting the latch rather than assignment.
-        {:ok, stories_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
-
-        stories_live
-        |> element(~s([data-test=toggle-story-specs-ready][phx-value-id="#{context.story.id}"]))
-        |> render_click()
-
-        {:ok, context}
-      end
+      given_ :story_latched_by_promotion
 
       when_ "the agent attempts to stop", context do
         response =

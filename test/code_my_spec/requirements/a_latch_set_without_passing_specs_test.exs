@@ -24,6 +24,8 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Requirements.Handlers
+  alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.SpecsPassingChecker
   alias CodeMySpec.Stories
 
@@ -245,6 +247,32 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
 
       assert {false, details} = SpecsPassingChecker.passing?(scope, story)
       assert details.reason =~ "not gone green"
+    end
+
+    # The graph caches this verdict under a key that leaves freshness out, so
+    # it has to be judged from the problems and qualified on read by
+    # `RequirementGraph.serve/2`. Reading freshness here stored a stale `false`
+    # that a later green run never revisited.
+    test "in the graph, is judged from its problems and leaves freshness to serve",
+         %{scope: scope} do
+      story = unlatched_with_spex(scope, false)
+
+      assert {true, details} =
+               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => false}})
+
+      assert details.analysis_source == "spex"
+    end
+
+    test "the event handler settles it the same way", %{scope: scope} do
+      story = unlatched_with_spex(scope, false)
+
+      {:ok, _changes, sweeps} = Handlers.apply_event(scope, "problems_changed", %{})
+      sweep = Enum.find(sweeps, &(&1.name == "bdd_specs_passing"))
+
+      assert %{satisfied: true, details: details} =
+               Enum.find(sweep.except, &(&1.entity_id == story.id))
+
+      assert Requirement.normalize_details(details)["analysis_source"] == "spex"
     end
   end
 end

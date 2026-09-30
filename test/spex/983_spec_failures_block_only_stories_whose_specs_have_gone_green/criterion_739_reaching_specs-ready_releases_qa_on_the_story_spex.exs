@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
+  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -39,6 +40,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
       given_ "the story's BDD specs are written and all pass", context do
         {path, content} = story_spec(context.scope, context.story.id)
         :ok = Environments.write_file(context.environment, path, content)
+
+        # Synced, so the project links the spec to its story's criterion.
+        {:reply, _synced, _frame} =
+          SyncProject.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+
         {:ok, Map.put(context, :spec_path, path)}
       end
 
@@ -146,7 +152,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
 
       use CodeMySpecSpex.Case
 
-      spex "#{story.title}" do
+      spex "#{story.title}", criterion: #{Map.get(criterion, :number) || criterion.id} do
         scenario "the criterion holds" do
           then_ "the placeholder assertion passes" do
             assert true

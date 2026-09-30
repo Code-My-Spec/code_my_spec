@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
-      given_ "a fresh green run has shipped the story specs-ready", context do
+      given_ "a fresh green run passes", context do
         response =
           use_cmd_cassette "clean", record: :none do
             Phoenix.ConnTest.build_conn()
@@ -100,6 +100,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
         {:ok, Map.put(context, :green_response, response)}
       end
+
+      given_ :story_latched_by_promotion
 
       when_ "the user clears specs-ready from the project UI", context do
         {:ok, index_live, html} =

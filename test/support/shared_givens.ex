@@ -314,6 +314,19 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:ok, Map.put(context, :story, linked_story)}
   end
 
+  # The story's specs are enforced: its `specs_ready` latch is set.
+  #
+  # Written directly. In the product only a promote naming the story sets it
+  # (e1174640), and a promote needs a git checkout designated main, which turns
+  # the stop hook's recorded analysis into a fresh run and breaks the scenarios
+  # that use this as a premise. Promote setting the latch is asserted end to
+  # end by story 983's criterion 729.
+  register_given :story_latched_by_promotion, context do
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+    {:ok, _} = CodeMySpec.Stories.set_specs_ready(context.scope, story, true)
+    {:ok, context}
+  end
+
   # The engineer has opened the project configuration page.
   register_given :on_configuration_page, context do
     {:ok, config_live, _html} =

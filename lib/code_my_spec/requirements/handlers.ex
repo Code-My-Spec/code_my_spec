@@ -480,15 +480,26 @@ defmodule CodeMySpec.Requirements.Handlers do
   # names the ready ones, which are the few. The alternative, emitting every
   # story as an exception, is one write per story for a population that is
   # mostly in one state.
+  #
+  # Since e1174640 only a promote latches a story, and the promote is
+  # downstream, so an unlatched story with linked specs is judged the way
+  # `SpecsPassingChecker` judges it: from its failing specs alone, tagged
+  # `analysis_source: "spex"` so `RequirementGraph.serve/2` withholds a clean
+  # verdict from a stale run on read.
   defp settle("bdd_specs_passing", %{specs: profile}, _scope) do
     ready = for {story_id, true} <- profile.specs_ready, do: story_id
+
+    unlatched =
+      for {story_id, failing} <- profile.failing_by_story,
+          Map.get(profile.specs_ready, story_id) != true,
+          do: unlatched_story_verdict(story_id, failing)
 
     %{
       entity_type: "story",
       name: "bdd_specs_passing",
       default: false,
-      default_details: details(%{reason: "Specs have not gone green on a fresh spex run yet"}),
-      except: Enum.map(ready, &ready_story_verdict(&1, profile))
+      default_details: details(%{reason: "No spec files are linked to this story"}),
+      except: Enum.map(ready, &ready_story_verdict(&1, profile)) ++ unlatched
     }
   end
 
@@ -730,6 +741,20 @@ defmodule CodeMySpec.Requirements.Handlers do
         })
     end
   end
+
+  defp unlatched_story_verdict(story_id, []),
+    do:
+      change("story", story_id, "bdd_specs_passing", true, %{
+        status: "Specs green on the current spex run (latched when promoted)",
+        analysis_source: "spex"
+      })
+
+  defp unlatched_story_verdict(story_id, _failing),
+    do:
+      change("story", story_id, "bdd_specs_passing", false, %{
+        reason: "This story's own specs fail on the current spex run",
+        analysis_source: "spex"
+      })
 
   defp change(entity_type, entity_id, name, satisfied, detail_map),
     do: %{
