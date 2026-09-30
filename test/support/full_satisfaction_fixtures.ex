@@ -48,17 +48,12 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
       # and next_actionable should return []
   """
 
-  import Phoenix.ConnTest
-  import Phoenix.LiveViewTest
-
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
-
-  @endpoint CodeMySpecLocalWeb.Endpoint
 
   @doc """
   Apply all satisfaction layers to the test context. Returns a
@@ -194,34 +189,15 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   # frontier got a `FixBddSpecs` prompt for the story the fixture had just
   # created, naming an id that changed on every run.
   #
-  # Through the button rather than `Stories.set_specs_ready/3`, for two
-  # reasons: this module's rule is bridge fixtures and MCP tools only, and the
-  # latch has no MCP surface at all — deliberately, since it decides whether
-  # spex failures block the agent, which is not the agent's call to make. The
-  # toggle in StoryLive is the whole of how it gets set.
+  # Directly, because nothing a fixture can drive sets it any more: the story
+  # page lost its Enforce button and only a promote of the story latches it
+  # (e1174640), which needs a merge this frontier does not have. Reloaded,
+  # because `context.story` is the map `StoryHelpers.fetch/2` answers rather
+  # than a `%Story{}`, and `set_specs_ready/4` matches on the struct.
   defp apply_specs_enforced(context) do
-    {:ok, view, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/stories")
-
-    view
-    |> element(~s{[data-test="toggle-story-specs-ready"][phx-value-id="#{context.story.id}"]})
-    |> render_click()
-
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+    {:ok, _} = CodeMySpec.Stories.set_specs_ready(context.scope, story, true)
     context
-  rescue
-    # Outside a test process `live/2` raises, and `mix cms.eval` is not one.
-    #
-    # The toggle stays the path a spex takes, for the reason above — it is the
-    # whole of how the latch gets set and this module drives real surfaces. The
-    # runner cannot reach a LiveView at all, so it calls what the toggle calls
-    # rather than losing the state the rest of the chain depends on.
-    ArgumentError ->
-      # Reloaded, because `context.story` is the map `StoryHelpers.fetch/2`
-      # answers rather than a `%Story{}`, and `set_specs_ready/4` matches on the
-      # struct.
-      story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
-      {:ok, _} = CodeMySpec.Stories.set_specs_ready(context.scope, story, true)
-      context
   end
 
   # tests_passing / spex_passing require a fresh completed analysis run at

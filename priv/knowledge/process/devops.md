@@ -22,7 +22,12 @@ promote, testing the running app tells you nothing about your work.
 
 ## The two tools
 
-Both take no arguments and run the same thing.
+Both take `story_number` — the story being promoted — and run the same
+thing. That story alone is latched (`specs_ready`) and stamped
+(`promoted_version`, which is what `story_promoted` reads), and only if
+all of its spex pass on your copy's certifying spex run; otherwise the
+promote is refused and names the failing spex. Nothing else latches a
+story: evaluating `bdd_specs_passing` only reports green.
 
 - **`promote`** — returns immediately; the outcome arrives later as an
   agent message. Needs an agent to message, so it refuses if there isn't
@@ -46,12 +51,15 @@ on main, so a promotion has exactly one target.
    the first ten.
 4. **A fresh analyzer sweep.** Stale or never-run sources get dispatched
    and waited on. Stale analyzers are swept, not refused.
-5. **Merge** into the running checkout. A conflict is left in place —
+5. **The story's spex.** Every spec file linked to the named story must
+   be green on this copy's current spex run. A story with no linked spex
+   is refused too.
+6. **Merge** into the running checkout. A conflict is left in place —
    never auto-aborted — so you can resolve it.
-6. **A second sweep**, of the running copy this time. The bar is *"the
+7. **A second sweep**, of the running copy this time. The bar is *"the
    merge added no new problems"*, not *"the target is clean"*: problems
    the running copy already carried are subtracted before comparing.
-7. **Restart**, unconditionally.
+8. **Restart**, unconditionally.
 
 Promoting **from** the running copy is a restart only — no gate, no sweep,
 because a restart carries no code.

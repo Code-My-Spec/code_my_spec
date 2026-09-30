@@ -79,7 +79,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # merely unused.
     #
     # They are a property of a git repository, not of this domain. Nothing here
-    # ever decided on them: `Promotion.promoted/2` answers `code_on_running_copy`
+    # ever decided on them: `Promotion.promoted/2` answers `story_promoted`
     # from the story's own `promoted_version` stamp, and the promote gate
     # measures git live by running it — `git merge --ff-only` is the
     # precondition and the merge in one command. A cached second copy of git's

@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
         # way — what changes is the obstacle the checker names, and the whole
         # point here is that a heartbeat changes nothing and a real change does.
         verdict = fn graph ->
-          reason_for(graph, "code_on_running_copy", :story, context.new_story.id)
+          reason_for(graph, "story_promoted", :story, context.new_story.id)
         end
 
         assert verdict.(context.after_heartbeat) == verdict.(context.before),
@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3339Spex do
                value, and that is the whole distinction: `preview_checked_at`
                moved both times, `preview_status` only this time. A
                fingerprint that cannot tell them apart is either blind to the
-               copy — and `code_on_running_copy` keeps refusing a story the
+               copy — and `story_promoted` keeps refusing a story the
                agent has already cleared — or blind to nothing, and recomputes
                on every heartbeat.
 

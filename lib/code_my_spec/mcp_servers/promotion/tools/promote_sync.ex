@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   Promote this working copy's finished work, and wait for the outcome.
 
   Same promotion as `promote`; this one blocks and answers instead of messaging
-  back. For callers with no agent behind them. Takes no arguments.
+  back. For callers with no agent behind them. Takes the story number.
   """
 
   # Kept short deliberately — see the note in `Promote`. Both descriptions are
@@ -24,15 +24,18 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   alias CodeMySpec.Promotion
 
   schema do
+    field :story_number, :integer,
+      required: true,
+      doc: "The story being promoted. Latched and stamped only if its spex pass."
   end
 
   @impl true
-  def execute(_params, frame) do
+  def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
-        result = Promotion.promote(scope, notify: frame.assigns[:agent_id])
+        result = Promotion.promote(scope, params[:story_number], notify: frame.assigns[:agent_id])
         {:reply, Responses.respond(result), frame}
 
       {:error, _reason} ->

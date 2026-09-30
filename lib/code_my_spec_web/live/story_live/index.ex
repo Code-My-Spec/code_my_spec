@@ -135,15 +135,17 @@ defmodule CodeMySpecWeb.StoryLive.Index do
                 >
                   Not enforced
                 </span>
+                <%!-- Unenforce only: promoting the story is what enforces it (e1174640). --%>
                 <button
+                  :if={story.specs_ready == true}
                   type="button"
                   phx-click="toggle_story_specs_ready"
                   phx-value-id={story.id}
                   data-test="toggle-story-specs-ready"
                   class="btn btn-ghost btn-xs"
-                  title="Spex failures only block the agent on stories whose specs have gone green"
+                  title="Stop spex failures blocking the agent on this story until it is promoted again"
                 >
-                  {if story.specs_ready == true, do: "Unenforce", else: "Enforce"}
+                  Unenforce
                 </button>
                 <div
                   :if={is_nil(story.component_id)}
@@ -342,15 +344,15 @@ defmodule CodeMySpecWeb.StoryLive.Index do
     end
   end
 
-  # The manual override on the specs-ready latch. Clearing it parks a
-  # shipped story mid-refactor without touching its specs; setting it puts
-  # a story under enforcement the gate itself would have refused.
+  # The manual override on the specs-ready latch, one way only: clearing it
+  # parks a shipped story mid-refactor without touching its specs. Setting it
+  # is a promote's job (e1174640), so a click never enforces.
   @impl true
   def handle_event("toggle_story_specs_ready", %{"id" => id}, socket) do
     scope = socket.assigns.scope
     story = Stories.get_story!(scope, id)
 
-    case Stories.set_specs_ready(scope, story, !(story.specs_ready == true)) do
+    case Stories.set_specs_ready(scope, story, false) do
       {:ok, updated} ->
         {:noreply, stream_insert(socket, :stories, updated)}
 

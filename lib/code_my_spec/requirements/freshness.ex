@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   In: everything a checker for that entity reads. For a story that is its own
   released and assigned state, its files, rules, criteria, questions, personas,
   latest QA attempt and UAT deploy — plus the running copy's state, because
-  `code_on_running_copy` reads it and a story's answer genuinely changes when
+  `story_promoted` reads it and a story's answer genuinely changes when
   the running copy moves.
 
   Out: anything a checker does not read. `updated_at` on a row nothing consults

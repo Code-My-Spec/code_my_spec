@@ -69,13 +69,13 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   # the caller still knows its own harness id, which is what the URL wants.
   defp wait_line(nil),
     do:
-      "POST /api/harnesses/<your working copy id>/promotion/run blocks for the\n" <>
+      "POST /api/harnesses/<your working copy id>/promotion/run?story_number=<n> blocks for the\n" <>
         "whole thing with no timeout."
 
   defp wait_line(working_copy_id),
     do:
       "this blocks for the whole thing with no timeout:\n\n" <>
-        "    curl -sX POST localhost:4004/api/harnesses/#{working_copy_id}/promotion/run"
+        "    curl -sX POST \"localhost:4004/api/harnesses/#{working_copy_id}/promotion/run?story_number=<n>\""
 
   @spec no_project() :: String.t()
   def no_project do
@@ -87,12 +87,12 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   # else. Worded as what happened rather than as a promotion with an empty
   # merge, because an agent reading "Promoted  to the running dev copy" would
   # reasonably conclude something had crossed.
-  defp promoted(%{restarted: root, serving: serving}) do
+  defp promoted(%{restarted: root, serving: serving} = report) do
     """
     Restarted the application on the running dev copy.
 
     Running from: #{root}
-    #{serving_line(serving)}
+    #{story_line(report)}#{serving_line(serving)}
 
     You are working on the running copy, so nothing had to be merged — the work
     was already where a promotion would put it. What was missing was a running
@@ -106,7 +106,7 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     Promoted #{branch} to the running dev copy.
 
     Merged into: #{root}
-    #{serving_line(serving)}#{swept_line(report)}#{untracked_line(report)}
+    #{story_line(report)}#{serving_line(serving)}#{swept_line(report)}#{untracked_line(report)}
 
     #{closing_line(serving)}
     """
@@ -135,6 +135,14 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     "The application is running this work now, so QA on these stories will test " <>
       "what you wrote."
   end
+
+  defp story_line(%{story: %{number: number, version: nil}}),
+    do: "Story #{number}: spex passed, latched (no version to stamp)\n"
+
+  defp story_line(%{story: %{number: number, version: version}}),
+    do: "Story #{number}: spex passed, latched and stamped promoted at #{version}\n"
+
+  defp story_line(_report), do: ""
 
   # The standard shape now (54aa534c, phase two): the restart is dispatched,
   # never awaited, so there is no revision to report here — only that it is

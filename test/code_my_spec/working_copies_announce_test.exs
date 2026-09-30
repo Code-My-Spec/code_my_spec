@@ -53,7 +53,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
       {:ok, _} = WorkingCopies.record_preview_status(copy, "serving")
 
       assert announced?(scope),
-             "a preview status moving is a graph input — `code_on_running_copy` reads it"
+             "a preview status moving is a graph input — `story_promoted` reads it"
     end
 
     test "stays quiet when the status is unchanged", %{scope: scope, copy: copy} do
@@ -95,7 +95,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
       # This announced nothing before. `designate_main/2` broadcasts on the
       # context's own topic and never reached `GraphInputs`, and the clearing
       # half is an `update_all` that never passes through `save/2` — so moving
-      # the designation left `code_on_running_copy` answering from the old copy
+      # the designation left `story_promoted` answering from the old copy
       # until something unrelated moved the graph.
       assert announced?(scope),
              "designation changes `main` and therefore whose preview the graph reads"
@@ -143,7 +143,10 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
         WorkingCopies.record_app_status(started, %{status: "down", url: "http://127.0.0.1:51234"})
 
       assert stopped.app_status == "down"
-      assert stopped.app_url == nil, "a stale address on a stopped copy is the bug this story fixes"
+
+      assert stopped.app_url == nil,
+             "a stale address on a stopped copy is the bug this story fixes"
+
       assert stopped.app_commit == "abc123"
     end
 

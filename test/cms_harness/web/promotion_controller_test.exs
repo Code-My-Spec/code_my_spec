@@ -131,19 +131,21 @@ defmodule CmsHarness.Web.PromotionControllerTest do
       {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
-      conn |> post_promotion(project.root) |> response(200)
+      conn |> post_promotion(project.root, %{"story_number" => 7}) |> response(200)
 
-      assert_received {:promotion_run, project_id, _payload}
+      assert_received {:promotion_run, project_id, payload}
       assert project_id == project.id
+      assert payload["story_number"] == 7, "the story being promoted travels with the event"
     end
   end
 
-  defp post_promotion(conn, root), do: post_promotion_as(conn, working_copy_id_at(root))
+  defp post_promotion(conn, root, body \\ %{}),
+    do: post_promotion_as(conn, working_copy_id_at(root), body)
 
-  defp post_promotion_as(conn, working_copy_id) do
+  defp post_promotion_as(conn, working_copy_id, body \\ %{}) do
     conn
     |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> post("/api/harnesses/#{working_copy_id}/promotion/run", %{})
+    |> post("/api/harnesses/#{working_copy_id}/promotion/run", body)
   end
 
   defp await_connected(root, attempts \\ 100) do

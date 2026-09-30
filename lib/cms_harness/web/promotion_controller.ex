@@ -44,11 +44,12 @@ defmodule CmsHarness.Web.PromotionController do
   Blocks for the length of the promotion. Fire it in the background and be
   notified when it returns, the same way `analysis/wait` is used.
   """
-  def run(conn, %{"harness_id" => working_copy_id}) do
+  def run(conn, %{"harness_id" => working_copy_id} = params) do
     case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
-        Logger.info("[CmsHarness] promoting #{root}")
-        reply(conn, ChannelClient.await_promotion(root))
+        story_number = params["story_number"]
+        Logger.info("[CmsHarness] promoting story #{story_number} from #{root}")
+        reply(conn, ChannelClient.await_promotion(root, story_number))
 
       # Nothing to fall back to: this harness does not serve that working copy,
       # so it cannot promote it and must not pretend the promotion happened.

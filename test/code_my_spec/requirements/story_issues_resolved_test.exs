@@ -15,12 +15,12 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
   `story_id`, whoever filed it — so an issue could land before QA ran, block the
   QA agent's task, and be unreachable, because the node that clears it was gated
   behind the QA it was preventing. Broken Oaths story 947, 2026-09-23. The fix
-  moved it to depend on `code_on_running_copy` instead.
+  moved it to depend on `story_promoted` instead.
 
-  Story 1003, revised 2026-09-28: `code_on_running_copy` moved again, to
+  Story 1003, revised 2026-09-28: `story_promoted` moved again, to
   *depend on* `qa_complete` (story 1108 gave every copy its own app, so QA no
   longer needs the story's code on main first) — leaving this node's
-  prerequisite at `code_on_running_copy` would have closed the same cycle the
+  prerequisite at `story_promoted` would have closed the same cycle the
   2026-09-23 fix broke, one hop later. Repointed straight to `bdd_specs_passing`:
   the checker was never reading the edge for its own safety anyway, so nothing
   is lost by offering the work as soon as specs are green. `qa_complete` also
@@ -72,7 +72,7 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs bdd_specs_passing → {story_issues_resolved, problems_resolved} → qa_complete → code_on_running_copy → deploy" do
+    test "the chain runs bdd_specs_passing → {story_issues_resolved, problems_resolved} → qa_complete → story_promoted → deploy" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
@@ -81,8 +81,8 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
                [id_of.("bdd_specs_passing")],
              """
              Known issues have to be clearable before QA runs, independent of
-             promotion — repointing this at code_on_running_copy (or leaving
-             it there once code_on_running_copy moved past qa_complete) closes
+             promotion — repointing this at story_promoted (or leaving
+             it there once story_promoted moved past qa_complete) closes
              the circle that stalled story 947 one hop later.
              """
 
@@ -92,10 +92,10 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
                [id_of.("story_issues_resolved"), id_of.("problems_resolved")],
              "QA now waits on both issues clear and the copy's own analyzers clean"
 
-      assert by_name["code_on_running_copy"].prerequisites == [id_of.("qa_complete")],
+      assert by_name["story_promoted"].prerequisites == [id_of.("qa_complete")],
              "story 1003: promotion follows QA, not the other way round"
 
-      assert by_name["deploy"].prerequisites == [id_of.("code_on_running_copy")],
+      assert by_name["deploy"].prerequisites == [id_of.("story_promoted")],
              "deploy has to stay downstream of promotion, or a story could " <>
                "reach UAT before its code ever landed on main"
     end

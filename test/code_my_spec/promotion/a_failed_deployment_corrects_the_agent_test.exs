@@ -25,10 +25,12 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
@@ -83,6 +85,23 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     {running_root, agent_root}
   end
 
+  defp a_story_with_linked_spex(scope) do
+    story = story_fixture(scope)
+
+    {_n, _} =
+      Files.upsert_files(scope, [
+        %{
+          path: "test/spex/#{story.number}_x/criterion_1_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
+    story
+  end
+
   defp a_copy(scope, root, label) do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, root)
@@ -113,10 +132,12 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     git!(agent_root, ["commit", "-qam", "the story's work"])
 
     scope = %{scope | active_working_copy_id: agent_copy.id}
+    story = a_story_with_linked_spex(scope)
     AnalysisFixtures.fresh_analysis_runs_fixture(scope)
     AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
 
-    assert {:ok, %{merged: "story/x"}} = Promotion.promote(scope, notify: agent.id)
+    assert {:ok, %{merged: "story/x"}} =
+             Promotion.promote(scope, story.number, notify: agent.id)
 
     agent_id = agent.id
 

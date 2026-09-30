@@ -722,11 +722,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # the skew — the same additive reasoning `active_runs` on the join payload is
   # built on. Bumping would refuse every deployed harness for an event none of
   # them use.
-  def handle_in("promotion_run", _payload, socket) do
+  def handle_in("promotion_run", payload, socket) do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
+    story_number = payload["story_number"]
 
-    {:noreply, reply_async(socket, ref, "promotion_run", fn -> promote_for_caller(scope) end)}
+    {:noreply,
+     reply_async(socket, ref, "promotion_run", fn -> promote_for_caller(scope, story_number) end)}
   end
 
   # The harness's answer to a filesystem request. See `handle_call/3` below.
@@ -1689,8 +1691,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The words come from `Responses`, which is where the other two doors get
   # theirs. A third rendering of "what happened to your promotion" is a third
   # thing to keep in step, and this module exists because two already were.
-  defp promote_for_caller(scope) do
-    result = Promotion.promote(scope)
+  defp promote_for_caller(scope, story_number) do
+    result = Promotion.promote(scope, story_number)
 
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end

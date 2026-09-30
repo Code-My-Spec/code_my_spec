@@ -191,7 +191,7 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
       assert {true, _} = SpecsPassingChecker.passing?(scope, story, %{})
     end
 
-    test "the specs_ready latch itself is still checked before touching freshness", %{
+    test "an unlatched story with no linked specs is not satisfied by a fresh run", %{
       scope: scope
     } do
       story = story_fixture(scope, %{title: "Not Started"})
@@ -199,6 +199,51 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
       assert {false, details} =
                SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => true}})
 
+      assert details.reason =~ "No spec files"
+    end
+  end
+
+  # e1174640: only a promote latches, and the promote is downstream of this
+  # requirement, so an unlatched story is answered from the fresh run.
+  describe "an unlatched story" do
+    defp unlatched_with_spex(scope, red?) do
+      story = story_fixture(scope, %{title: "Unlatched"})
+      path = id_named_spec_path(story)
+
+      {_n, _} =
+        CodeMySpec.Files.upsert_files(scope, [
+          %{
+            path: path,
+            role: :bdd_spec,
+            story_id: story.id,
+            valid: true,
+            mtime: DateTime.utc_now()
+          }
+        ])
+
+      maybe_add_red_problem(red?, scope, path)
+      story
+    end
+
+    test "is satisfied by its own specs green on a fresh run", %{scope: scope} do
+      story = unlatched_with_spex(scope, false)
+      fresh_analysis_runs_fixture(scope)
+
+      assert {true, details} = SpecsPassingChecker.passing?(scope, story)
+      assert details.status =~ "latched when promoted"
+    end
+
+    test "is not satisfied when its own specs are red", %{scope: scope} do
+      story = unlatched_with_spex(scope, true)
+      fresh_analysis_runs_fixture(scope)
+
+      assert {false, _} = SpecsPassingChecker.passing?(scope, story)
+    end
+
+    test "is not satisfied by a stale run", %{scope: scope} do
+      story = unlatched_with_spex(scope, false)
+
+      assert {false, details} = SpecsPassingChecker.passing?(scope, story)
       assert details.reason =~ "not gone green"
     end
   end

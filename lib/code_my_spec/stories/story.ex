@@ -121,7 +121,7 @@ defmodule CodeMySpec.Stories.Story do
     # cannot unmake, because it already did.
     #
     # Nil is also the invalidation switch: clearing it is how a story gets
-    # sent back through `code_on_running_copy` after its work is revised.
+    # sent back through `story_promoted` after its work is revised.
     field :promoted_version, :string
 
     # The id this story had on the harness it was migrated from. Story ids are
@@ -259,7 +259,11 @@ defmodule CodeMySpec.Stories.Story do
         changeset
 
       criteria ->
-        %{changeset | changes: Map.put(changeset.changes, :criteria, Enum.map(criteria, &retire_if_replaced/1))}
+        %{
+          changeset
+          | changes:
+              Map.put(changeset.changes, :criteria, Enum.map(criteria, &retire_if_replaced/1))
+        }
     end
   end
 
@@ -342,8 +346,12 @@ defmodule CodeMySpec.Stories.Story do
   # the manual override or the specs-passing gate talking, and it wins.
   defp clear_specs_ready_on_readiness_change(changeset) do
     cond do
-      is_nil(get_change(changeset, :ready_for_dev)) -> changeset
-      not is_nil(get_change(changeset, :specs_ready)) -> changeset
+      is_nil(get_change(changeset, :ready_for_dev)) ->
+        changeset
+
+      not is_nil(get_change(changeset, :specs_ready)) ->
+        changeset
+
       true ->
         changeset
         |> put_change(:specs_ready, false)

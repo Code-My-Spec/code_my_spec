@@ -58,6 +58,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.Environments,
+      CodeMySpec.Files,
       CodeMySpec.Problems,
       CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Stories,
@@ -73,6 +74,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Files
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
@@ -80,6 +82,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.AppTransport
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   # ----------------------------------------------------------------- read model
@@ -122,16 +125,45 @@ defmodule CodeMySpec.Promotion do
   `nil`, and a caller that omits it, mean nobody is waiting to be told — a
   Claude Code session or an operator has no conversation, and the log is the
   record.
+
+  `story_number` is required: it names the story being promoted, not a target
+  (main is the only one). That story alone is latched (`specs_ready`) and
+  stamped (`promoted_version`), and only if all of its spex pass on the
+  promoting copy's certifying run — otherwise the promote is refused naming
+  them (e1174640).
+
+  `verify_within:`/`verify_every:` (ms) bound how long a restart whose
+  acknowledgement was lost is checked against what the app is serving
+  (08744186).
   """
-  @spec promote(Scope.t(), keyword()) :: {:ok, map()} | {:error, map()}
-  def promote(%Scope{} = scope, opts \\ []) do
+  @spec promote(Scope.t(), integer() | String.t() | nil, keyword()) ::
+          {:ok, map()} | {:error, map()}
+  def promote(%Scope{} = scope, story_number, opts \\ []) do
     result =
-      with {:ok, running} <- running_copy(scope) do
-        Lock.with_lock(running.project_id, fn -> promote_into(scope, running, opts) end)
+      with {:ok, story} <- story_to_promote(scope, story_number),
+           {:ok, running} <- running_copy(scope) do
+        Lock.with_lock(running.project_id, fn -> promote_into(scope, running, story, opts) end)
         |> unlocked()
       end
 
     log_outcome(result)
+  end
+
+  defp story_to_promote(_scope, nil) do
+    {:error,
+     %{
+       reason:
+         "promote needs the number of the story you are promoting. That story is " <>
+           "latched and stamped promoted when its spex pass on this copy; main is " <>
+           "still the only place the work goes."
+     }}
+  end
+
+  defp story_to_promote(scope, number) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, %{reason: "there is no story #{inspect(number)} in this project."}}
+      story -> {:ok, story}
+    end
   end
 
   # Kept from `report_to/3`, which is gone: the log answers "what did it decide"
@@ -171,21 +203,30 @@ defmodule CodeMySpec.Promotion do
   # was nothing to merge. Neither statement was wrong and there was no way out
   # of the pair.
   #
-  # No gate and no sweep, because a restart carries no code. `gate/1` exists to
-  # stop a merge putting failing work in front of QA; nothing crosses here, so
-  # there is nothing to certify and no reason to spend minutes of analyzer sweep
-  # before a dead application comes back.
+  # No gate, because nothing crosses. The story is held to the merge path's own
+  # rule, minus the merge (e1174640): its spex must pass on main's certifying
+  # spex run, and it is then latched at main's HEAD and stamped with the
+  # version main already carries. Red or missing spex refuse, as a merge would.
   defp promote_into(
          %Scope{active_working_copy_id: id} = scope,
          %WorkingCopy{id: id} = running,
+         story,
          opts
        ) do
-    # `restart/2` always answers `{:error, %{reason: ...}}` now — dispatched,
-    # not awaited, for every promotion (54aa534c) — so this wraps it as the
-    # success it is rather than pattern-matching for a confirmation that no
-    # longer arrives.
-    {:error, reason} = restart(scope, running, opts)
-    {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
+    named = named_copy(id)
+
+    with :ok <- spex_certified(scope, named),
+         :ok <- story_spex_pass(scope, story, named) do
+      %{head: head, version: version} = current_of(scope, running)
+      stamp_promoted_story(scope, story, version, head)
+
+      # `restart/3` always answers `{:error, %{reason: ...}}` — dispatched, not
+      # awaited (54aa534c) — so this wraps it as the success it is.
+      {:error, reason} = restart(scope, running, Keyword.put(opts, :expect, %{to: head}))
+
+      {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
+      |> with_story(story, version)
+    end
   end
 
   # No post-merge check, and no wait for the merge to be *served* — both by
@@ -206,10 +247,11 @@ defmodule CodeMySpec.Promotion do
   # now held for a database read and a git fast-forward: neither one can run
   # long, and neither one is what used to make a contended promotion cost
   # sixteen minutes.
-  defp promote_into(%Scope{} = scope, running, opts) do
+  defp promote_into(%Scope{} = scope, running, story, opts) do
     with {:ok, from} <- promoting_copy(scope, running),
          {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
          {:ok, swept} <- gate(scope),
+         :ok <- story_spex_pass(scope, story, named_copy(from.id)),
          {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
          {:ok, _} <-
@@ -224,14 +266,17 @@ defmodule CodeMySpec.Promotion do
           "certified by #{describe_certifications(swept)}, dispatching restart"
       )
 
-      # Not `version`. A no-op merge originates nothing and still has stories to
+      # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
-      stamp_promoted_stories(scope, stamp_version)
+      stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
+
+      expect = %{from: Map.get(merge_result, :before), to: Map.get(merge_result, :after)}
 
       scope
-      |> restart(running, opts)
+      |> restart(running, Keyword.put(opts, :expect, expect))
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
+      |> with_story(story, stamp_version)
     else
       {:error, reason} = error ->
         # `9afcbbdf`: this used to name `running.root` unconditionally — the
@@ -280,32 +325,108 @@ defmodule CodeMySpec.Promotion do
   defp unconfirmed(false, reason, _branch, _running, _swept, _untracked, _version),
     do: {:error, reason}
 
-  # The version this merge originated, stamped permanently on every story in
-  # this project that had reached `code_on_running_copy` and had no stamp
-  # yet. `nil` (a checkout with no `mix.exs` to bump) stamps nothing, the
-  # same as before this existed — the merge already landed and a promotion
-  # does not go back on that because it could not also mint a version for it.
+  defp with_story({:ok, report}, story, version),
+    do: {:ok, Map.put(report, :story, %{number: story.number, version: version})}
+
+  defp with_story(error, _story, _version), do: error
+
+  # The promoted story alone, latched and stamped in one write with the
+  # promote's commit (e1174640). No other story is touched: a project-wide
+  # sweep stamped stories whose code sat unmerged on a different copy. `nil`
+  # (no `mix.exs` to read a version from) latches without stamping.
   #
-  # A stamping failure is logged and swallowed rather than turned into a
+  # A write failure is logged and swallowed rather than turned into a
   # promotion failure: the merge is real and already on disk by the time this
   # runs, and reporting it as a failed promotion would send an agent to
   # promote again, restarting the shared dev server every other working copy
   # on the box is using, over a write that touched no code at all.
-  defp stamp_promoted_stories(_scope, nil), do: :ok
+  defp stamp_promoted_story(scope, story, version, commit) do
+    opts = [at: DateTime.utc_now(), commit: commit]
 
-  defp stamp_promoted_stories(scope, version) do
-    case Stories.mark_ready_stories_promoted(scope, version) do
-      {:ok, _stories} ->
+    case Stories.mark_story_promoted(scope, story, version, opts) do
+      {:ok, _story} ->
         :ok
 
       {:error, reason} ->
         Logger.warning(
-          "[Promotion] merged and originated version #{version}, but could not " <>
-            "stamp stories: #{inspect(reason)}"
+          "[Promotion] merged story #{story.number} at version #{version || "none"}, but " <>
+            "could not latch and stamp it: #{inspect(reason)}"
         )
 
         :ok
     end
+  end
+
+  # All of the promoted story's spex pass on the promoting copy's certifying
+  # run. `gate/1` has already required that run to be fresh; this reads its
+  # problems against the story's own spec files (`files.story_id`, not a
+  # directory name — see `FixBddSpecs.story_spex_problems/2` for what parsing
+  # names cost). A story with no linked spec files has nothing that passed, so
+  # it refuses rather than latching on an empty list.
+  defp story_spex_pass(scope, story, named) do
+    paths =
+      scope
+      |> Files.list_story_files(story.id)
+      |> Enum.filter(&(&1.role == :bdd_spec))
+      |> MapSet.new(& &1.path)
+
+    failing =
+      scope
+      |> ProblemRepository.list_project_problems(source: "spex")
+      |> Enum.filter(&MapSet.member?(paths, &1.file_path))
+
+    spex_verdict(story, paths, failing, named)
+  end
+
+  # The running-copy path has no `gate/1` to have required a fresh run, so it
+  # asks for the one it reads.
+  defp spex_certified(scope, named) do
+    if "spex" in stale_sources(scope),
+      do: {:error, not_certified(["spex"], named)},
+      else: :ok
+  end
+
+  # A failure to read main's HEAD or version latches without them rather than
+  # refusing: the spex already passed, and nothing here moved.
+  defp current_of(scope, %WorkingCopy{root: root, id: id}) do
+    case Runner.current(scope, root, id) do
+      {:ok, current} ->
+        %{head: Map.get(current, :head), version: Map.get(current, :version)}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Promotion] could not read #{root}'s HEAD and version: #{inspect(reason)}"
+        )
+
+        %{head: nil, version: nil}
+    end
+  end
+
+  defp spex_verdict(story, paths, [], named) do
+    if MapSet.size(paths) == 0 do
+      {:error,
+       %{
+         reason:
+           "story #{story.number} has no spex linked on #{named}, so nothing says " <>
+             "its spex pass. Write them (or sync so they link), then promote again.",
+         working_copy: named
+       }}
+    else
+      :ok
+    end
+  end
+
+  defp spex_verdict(story, _paths, failing, named) do
+    {:error,
+     %{
+       reason:
+         "story #{story.number}'s spex are not all passing on #{named}'s certifying " <>
+           "spex run, so it is not promoted:\n" <>
+           describe(failing) <>
+           "\n\nFix them, let spex run, then promote again.",
+       failing_spex: failing |> Enum.map(& &1.file_path) |> Enum.uniq(),
+       working_copy: named
+     }}
   end
 
   # `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as
@@ -706,6 +827,7 @@ defmodule CodeMySpec.Promotion do
         scope
         |> Runner.restart(root, working_copy_id)
         |> classify_restart()
+        |> verify_unconfirmed(working_copy_id, opts)
         |> log_restart_outcome(root)
         |> tell_the_agent(scope, root, Keyword.get(opts, :notify))
       end)
@@ -741,24 +863,53 @@ defmodule CodeMySpec.Promotion do
 
   defp classify_restart(other), do: {:unexpected, other}
 
+  # 08744186: a lost acknowledgement used to end here, "dispatched, not yet
+  # confirmed", whether the restart happened or the channel died with it. Ask
+  # the app what it is serving, through the same `AppTransport` status path
+  # every copy's app answers, until it reports the merged commit or the bound
+  # runs out — then say which: serving <commit>, or still on <old>.
+  @verify_within 120_000
+  @verify_every 2_000
+
+  defp verify_unconfirmed({:unconfirmed, _reason}, working_copy_id, opts) do
+    expect = Keyword.get(opts, :expect, %{})
+    every = Keyword.get(opts, :verify_every, @verify_every)
+
+    deadline =
+      System.monotonic_time(:millisecond) + Keyword.get(opts, :verify_within, @verify_within)
+
+    await_serving(working_copy_id, Map.get(expect, :to), every, deadline, Map.get(expect, :from))
+  end
+
+  defp verify_unconfirmed(outcome, _working_copy_id, _opts), do: outcome
+
+  defp await_serving(working_copy_id, expected, every, deadline, last) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    case AppTransport.ensure_app_running(working_copy_id, max(remaining, every)) do
+      {:ok, %{status: "serving", commit: commit}} when expected in [nil, commit] ->
+        {:confirmed, commit}
+
+      {:ok, %{commit: commit}} when is_binary(commit) ->
+        retry_serving(working_copy_id, expected, every, deadline, commit)
+
+      _unreachable_or_down ->
+        retry_serving(working_copy_id, expected, every, deadline, last)
+    end
+  end
+
+  defp retry_serving(working_copy_id, expected, every, deadline, last) do
+    if System.monotonic_time(:millisecond) + every < deadline do
+      Process.sleep(every)
+      await_serving(working_copy_id, expected, every, deadline, last)
+    else
+      {:failed, "restart failed: still on #{last || "an unreported commit"}"}
+    end
+  end
+
   defp log_restart_outcome({:confirmed, revision} = outcome, root) do
     Logger.info(
       "[Promotion] restart confirmed for #{root}, now serving #{revision || "unknown revision"}"
-    )
-
-    outcome
-  end
-
-  # `info`, not `error`, and the distinction is the whole point. A lost
-  # acknowledgement is not confirmation — the line says so rather than
-  # claiming the restart succeeded — but neither is it a failure, and it was
-  # published as one. What this stops asserting is the opposite of the truth.
-  defp log_restart_outcome({:unconfirmed, reason} = outcome, root) do
-    Logger.info(
-      "[Promotion] restart dispatched for #{root}, acknowledgement lost on the way back — " <>
-        "the restart takes down the connection the reply was coming on, so this is the " <>
-        "shape of one that worked rather than evidence of one that did not. Unconfirmed " <>
-        "either way; ask the application what it is serving. #{reason}"
     )
 
     outcome
@@ -812,17 +963,12 @@ defmodule CodeMySpec.Promotion do
     outcome
   end
 
-  # A lost acknowledgement is not a failure — see `restart_acknowledgement_lost?/1`
-  # above and `merged/5`'s use of it. The agent's first message already said
-  # "merged, QA can start" and that is still true; correcting it here would
-  # tell the agent to "fix what broke the restart and promote again" for a
-  # restart that most likely already succeeded, which is exactly the retry
-  # this check exists to prevent — each unnecessary retry restarts the shared
+  # A lost acknowledgement is not a failure by itself — see
+  # `restart_acknowledgement_lost?/1`. `verify_unconfirmed/3` settles it
+  # against what the app is serving before this runs, so a correction here is
+  # either a real failure or an app verified still on the old commit — never a
+  # retry over a restart that already worked, which would restart the shared
   # dev server every other working copy on the box is using.
-  #
-  # That rule is applied by `classify_restart/1`, before this runs, so the
-  # discrimination happens in one place and the log cannot reach a different
-  # answer than the agent does.
   defp tell_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>

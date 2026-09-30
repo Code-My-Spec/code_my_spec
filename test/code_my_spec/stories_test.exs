@@ -82,4 +82,47 @@ defmodule CodeMySpec.StoriesTest do
       refute Enum.any?(unsatisfied, fn s -> s.id == satisfied_story.id end)
     end
   end
+
+  # e1174640: a promote latches and stamps the one story it names.
+  describe "mark_story_promoted/4" do
+    import CodeMySpec.UsersFixtures
+    import CodeMySpec.StoriesFixtures
+
+    test "latches and stamps the story in one write, touching no other" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+      other = story_fixture(scope, %{specs_ready: true})
+
+      assert {:ok, stamped} =
+               Stories.mark_story_promoted(scope, story, "2.0.11",
+                 at: DateTime.utc_now(),
+                 commit: "abc"
+               )
+
+      assert stamped.specs_ready == true
+      assert stamped.promoted_version == "2.0.11"
+      assert stamped.specs_ready_commit == "abc"
+      assert Stories.get_story!(scope, other.id).promoted_version == nil
+    end
+
+    test "keeps the version an already-promoted story was first stamped with" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{promoted_version: "2.0.10"})
+
+      assert {:ok, stamped} = Stories.mark_story_promoted(scope, story, "2.0.11")
+
+      assert stamped.promoted_version == "2.0.10"
+      assert stamped.specs_ready == true
+    end
+
+    test "latches without stamping when there is no version" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      assert {:ok, stamped} = Stories.mark_story_promoted(scope, story, nil)
+
+      assert stamped.specs_ready == true
+      assert stamped.promoted_version == nil
+    end
+  end
 end

@@ -73,7 +73,8 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   defp verdict({false, %{reason: reason}}, story) do
     {:ok, :invalid,
      "Story #{story.number} is not on the running dev copy yet: " <>
-       reason <> " Run `promote` — it gates, merges and restarts."}
+       reason <>
+       " Run `promote` with story_number #{story.number} — it gates, merges and restarts."}
   end
 
   defp story_prompt(scope, story) do
@@ -98,16 +99,18 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
     #{reason}
 
-    Call `promote`. It refuses if this copy carries problems or uncommitted
-    work, and tells you what to fix; otherwise it merges to the running copy,
-    restarts the application, and reports the revision being served.
+    Call `promote` with story_number #{story.number}. It refuses if this copy
+    carries problems or uncommitted work, or if this story's spex are not all
+    passing here, and tells you what to fix; otherwise it merges to the running
+    copy, latches and stamps this story, restarts the application, and reports
+    what is being served.
     """
     |> String.trim()
   end
 
   defp project_prompt do
     "Promote this working copy's finished work to the running dev copy with " <>
-      "`promote`."
+      "`promote`, naming the story you are promoting."
   end
 
   defp story_for(scope, %{story_id: story_id}) when not is_nil(story_id),

@@ -939,7 +939,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   # while every other shared input took between 2 and 6.
   #
   # None of the three gates anything. `Promotion.promoted/2` decides
-  # `code_on_running_copy` from the story's own `promoted_version` stamp, and
+  # `story_promoted` from the story's own `promoted_version` stamp, and
   # `not_yet_promoted/1` puts these counts in the `details` of an
   # already-false verdict — under a comment that says so outright:
   # "Informational only now — none of this gates."

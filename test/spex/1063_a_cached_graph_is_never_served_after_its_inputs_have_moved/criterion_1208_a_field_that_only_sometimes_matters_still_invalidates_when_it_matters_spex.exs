@@ -79,9 +79,9 @@ defmodule CodeMySpecSpex.Story1063.Criterion3232Spex do
         after_merge = read_graph(context, context.working_copy_id)
 
         before_reason =
-          reason_for(context.before, "code_on_running_copy", :story, context.new_story.id)
+          reason_for(context.before, "story_promoted", :story, context.new_story.id)
 
-        reason = reason_for(after_merge, "code_on_running_copy", :story, context.new_story.id)
+        reason = reason_for(after_merge, "story_promoted", :story, context.new_story.id)
 
         assert before_reason =~ "not answering",
                """

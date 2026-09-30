@@ -4,8 +4,8 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   the code you wrote.
 
   Answers when the merge is done, or says why it was refused. The restart runs
-  detached and the answer says so. Takes no arguments — there is one place work
-  goes.
+  detached and the answer says so. Name the story: it is latched and stamped
+  promoted only if its spex pass, else refused.
   """
 
   # Kept short deliberately: `Anubis.Server.Component` advertises the moduledoc
@@ -49,15 +49,18 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   alias CodeMySpec.Promotion
 
   schema do
+    field :story_number, :integer,
+      required: true,
+      doc: "The story being promoted. Latched and stamped only if its spex pass."
   end
 
   @impl true
-  def execute(_params, frame) do
+  def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
-        result = Promotion.promote(scope, notify: frame.assigns[:agent_id])
+        result = Promotion.promote(scope, params[:story_number], notify: frame.assigns[:agent_id])
         {:reply, Responses.respond(result), frame}
 
       {:error, _reason} ->

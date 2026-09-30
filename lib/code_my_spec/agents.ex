@@ -213,9 +213,9 @@ defmodule CodeMySpec.Agents do
   # the same role and copy that could not claim what the first still held.
   #
   # Measured 2026-09-23 on Broken Oaths: a promote stopped coding `b01a95bb` at
-  # 01:50:04 while it held `code_on_running_copy` active on story 950 and a
+  # 01:50:04 while it held `story_promoted` active on story 950 and a
   # blocked `bdd_specs_passing`. The replacement reported "get_next_requirement's
-  # only offering — story 950's code_on_running_copy — is already claimed by
+  # only offering — story 950's story_promoted — is already claimed by
   # another agent" and had nothing else to do. Four other stopped agents on that
   # copy held active tasks the same way. The role was stalled with a live agent
   # sitting next to its own orphaned work.
@@ -619,7 +619,7 @@ defmodule CodeMySpec.Agents do
         # marked running that never takes a turn has not continued.
         #
         # Measured 2026-09-23: coding b01a95bb was resumed at 02:34:29 holding
-        # `code_on_running_copy` on story 950, with `get_next_requirement`
+        # `story_promoted` on story 950, with `get_next_requirement`
         # answering "Status: ready — PromoteWork" the whole time. Eleven minutes,
         # zero turns, nothing in flight, decline damper long expired.
         #

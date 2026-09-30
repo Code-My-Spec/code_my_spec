@@ -24,7 +24,7 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Personas,
       CodeMySpec.Problems,
       CodeMySpec.Projects,
-      # `code_on_running_copy` is Promotion's verdict, and a graph that decided
+      # `story_promoted` is Promotion's verdict, and a graph that decided
       # it for itself would be a second answer to the question promotion exists
       # to answer. So the graph reads it — from this leaf, not from `Promotion`,
       # which sits above the graph and must not be called by it.
@@ -332,7 +332,7 @@ defmodule CodeMySpec.Requirements do
   For the nudge. Naming the node without the obstacle makes the message
   unactionable by construction — an agent is told *that* something is open and
   never *what* is holding it. Watched live on 2026-09-10: a coding agent nudged
-  every 90 seconds about `code_on_running_copy` while the gate was refusing on
+  every 90 seconds about `story_promoted` while the gate was refusing on
   "uncommitted changes — commit them", a sentence the checker had already
   written and the nudge threw away.
 

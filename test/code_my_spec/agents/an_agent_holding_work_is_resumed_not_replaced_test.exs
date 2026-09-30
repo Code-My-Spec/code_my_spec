@@ -9,9 +9,9 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
 
   Measured 2026-09-23 on Broken Oaths: a promote — which restarts the shared
   dev server every working copy on the box is using — stopped coding
-  `b01a95bb` at 01:50:04 while it held `code_on_running_copy` active on story
+  `b01a95bb` at 01:50:04 while it held `story_promoted` active on story
   950. Its replacement reported "get_next_requirement's only offering — story
-  950's code_on_running_copy — is already claimed by another agent" and had
+  950's story_promoted — is already claimed by another agent" and had
   nothing else to do. Four other stopped agents on that copy held active tasks
   the same way.
 
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
 
     {:ok, agent} =
       TaskOwner.add_task(scope, agent, %{
-        requirement_name: "code_on_running_copy",
+        requirement_name: "story_promoted",
         story_id: 950
       })
 
