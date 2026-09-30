@@ -141,4 +141,39 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
       assert Enum.any?(resources, &(&1[:kind] == "mx_record"))
     end
   end
+
+  # 98156e74: a confirmation is a specific claim — this run replaced every
+  # competing record at the name — and `confirm_cleared/5` is what checks
+  # that claim actually held, after publishing, before reporting success.
+  # `clear_competing_mx/3` already clears everything one listing can see, so
+  # there is no way to make a record survive a confirmed run against the
+  # fake, which has no concurrent writer to race. Proven directly instead,
+  # against `competing_records/3` — the same function both the clear and
+  # the post-check call — with the zone shape each of them actually passes
+  # it (Cloudflare's own record maps, Resend's `mx_records/1` maps).
+  describe "competing_records/3" do
+    @zone %{"id" => "zone-1", "name" => @domain}
+
+    test "finds an existing MX at the target name whose content Resend does not want" do
+      resend_records = [%{"name" => "", "value" => "inbound-smtp.us-east-1.amazonaws.com"}]
+
+      existing = [
+        %{"id" => "rec-1", "name" => @domain, "type" => "MX", "content" => "route1.mx.cloudflare.net"},
+        %{"id" => "rec-2", "name" => @domain, "type" => "MX", "content" => "inbound-smtp.us-east-1.amazonaws.com"},
+        %{"id" => "rec-3", "name" => @domain, "type" => "TXT", "content" => "v=spf1 -all"}
+      ]
+
+      assert [%{"id" => "rec-1"}] = Steps.competing_records(@zone, resend_records, existing)
+    end
+
+    test "finds nothing once every existing record already matches what Resend wants" do
+      resend_records = [%{"name" => "", "value" => "inbound-smtp.us-east-1.amazonaws.com"}]
+
+      existing = [
+        %{"id" => "rec-2", "name" => @domain, "type" => "MX", "content" => "inbound-smtp.us-east-1.amazonaws.com"}
+      ]
+
+      assert [] = Steps.competing_records(@zone, resend_records, existing)
+    end
+  end
 end

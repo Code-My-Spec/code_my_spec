@@ -5422,10 +5422,62 @@ defmodule CodeMySpec.Provisioning.Steps do
         base = base_domain(scope, opts)
 
         with {:ok, zone} <- Cloudflare.find_zone(scope, base),
-             :ok <- check_competing_mx(scope, zone, records, opts) do
-          Enum.reduce_while(records, {:ok, []}, &publish_mx_record(&1, &2, scope, zone))
+             :ok <- check_competing_mx(scope, zone, records, opts),
+             {:ok, published} <-
+               Enum.reduce_while(records, {:ok, []}, &publish_mx_record(&1, &2, scope, zone)) do
+          confirm_cleared(scope, zone, records, opts, published)
         end
     end
+  end
+
+  # 98156e74: a confirmed repoint is a specific claim — this run replaced
+  # every competing record at the name — and a survivor after publishing
+  # means that claim did not hold. Reporting a clean `:ok` over that is the
+  # same failure `check_competing_mx/3` itself was fixed for: a caller
+  # reading success has no reason to look again, and the thing this
+  # confirmation exists to guarantee quietly did not happen.
+  #
+  # Checked only when confirmed. Verification elsewhere in this step
+  # deliberately allows a domain split across providers on purpose — MX,
+  # unlike an apex A record, genuinely supports more than one — so this is
+  # not a standing rule about the zone's state, only an honest answer to
+  # the one question an explicit confirm actually asks.
+  defp confirm_cleared(scope, zone, records, opts, published) do
+    if Keyword.get(opts, :confirm_inbound_mx_repoint, false) do
+      with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+        case competing_records(zone, records, existing) do
+          [] ->
+            {:ok, published}
+
+          survivors ->
+            named = Enum.map_join(survivors, ", ", &"#{&1["content"]} (#{&1["name"]})")
+
+            {:error,
+             "confirmed and published, but #{length(survivors)} competing record(s) are " <>
+               "still there afterward: #{named} — the replace did not fully take; run again"}
+        end
+      end
+    else
+      {:ok, published}
+    end
+  end
+
+  # `@doc false`: exposed so the survivor check can be proven directly — a
+  # live race between `clear_competing_mx/3`'s own listing and the one
+  # `confirm_cleared/5` takes afterward is not reproducible against the fake,
+  # which has no concurrent writer.
+  @doc false
+  def competing_records(zone, records, existing) do
+    records
+    |> Enum.flat_map(fn record ->
+      record_name = qualify(record["name"], zone["name"])
+
+      Enum.filter(
+        existing,
+        &(&1["name"] == record_name and &1["type"] == "MX" and &1["content"] != record["value"])
+      )
+    end)
+    |> Enum.uniq_by(& &1["id"])
   end
 
   # `Cloudflare.ensure_dns_record/5` matches on name AND type: an existing MX
@@ -5488,17 +5540,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # already treats that one as adopted.
   defp clear_competing_mx(scope, zone, records) do
     with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
-      records
-      |> Enum.flat_map(fn record ->
-        record_name = qualify(record["name"], zone["name"])
-
-        Enum.filter(
-          existing,
-          &(&1["name"] == record_name and &1["type"] == "MX" and
-              &1["content"] != record["value"])
-        )
-      end)
-      |> Enum.uniq_by(& &1["id"])
+      zone
+      |> competing_records(records, existing)
       |> Enum.reduce_while(:ok, fn stale, :ok ->
         case Cloudflare.delete_dns_record(scope, zone["id"], stale["id"]) do
           {:ok, _} -> {:cont, :ok}
