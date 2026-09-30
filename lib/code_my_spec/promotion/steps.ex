@@ -516,9 +516,13 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
+  # A gitlink is a tree entry of mode 160000. `rev-parse <commit>:<path>` also
+  # answers for a plain tracked directory, with its tree SHA — which then read as
+  # a moved pin, and a project that tracks `.code_my_spec` as ordinary files
+  # (metric_flow, 8b27cc4c) had every merge refused and rolled back.
   defp gitlink(env, root, commit) do
-    case git(env, root, ["rev-parse", "--verify", "--quiet", "#{commit}:#{@submodule}"]) do
-      {sha, 0} -> String.trim(sha)
+    case git(env, root, ["ls-tree", commit, "--", @submodule]) do
+      {"160000 commit " <> rest, 0} -> rest |> String.split("\t") |> hd() |> String.trim()
       _ -> nil
     end
   end

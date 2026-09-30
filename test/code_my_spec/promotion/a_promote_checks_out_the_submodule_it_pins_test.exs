@@ -50,11 +50,8 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   defp answer(@main, ["merge", "--ff-only", "story/x"]), do: {"Fast-forward\n", 0}
   defp answer(@main, ["show", "HEAD:mix.exs"]), do: {"fatal: no mix.exs", 128}
 
-  defp answer(@main, ["rev-parse", "--verify", "--quiet", @base <> ":.code_my_spec"]),
-    do: {@old_pin <> "\n", 0}
-
-  defp answer(@main, ["rev-parse", "--verify", "--quiet", @merged <> ":.code_my_spec"]),
-    do: {@new_pin <> "\n", 0}
+  defp answer(@main, ["ls-tree", @base, "--", ".code_my_spec"]), do: gitlink(@old_pin)
+  defp answer(@main, ["ls-tree", @merged, "--", ".code_my_spec"]), do: gitlink(@new_pin)
 
   defp answer(@main, ["reset", "--keep", @base]), do: {"", 0}
   defp answer(@sub, ["rev-parse", "--show-superproject-working-tree"]), do: {@main <> "\n", 0}
@@ -63,6 +60,8 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   defp answer(@sub, ["checkout", "--quiet", @new_pin]), do: checkout()
   defp answer(@sub, ["rev-parse", "HEAD"]), do: {current() <> "\n", 0}
   defp answer(cd, args), do: {"unscripted: git #{Enum.join(args, " ")} in #{cd}", 1}
+
+  defp gitlink(sha), do: {"160000 commit #{sha}\t.code_my_spec\n", 0}
 
   # Main's HEAD: `@base` before the merge, `@merged` after, and `@moved` from the
   # third read on when a test has something else move main in the meantime.
@@ -178,14 +177,33 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   end
 
   test "a merge that leaves the gitlink alone runs no submodule command" do
-    unchanged = %{
-      {@main, ["rev-parse", "--verify", "--quiet", @merged <> ":.code_my_spec"]} =>
-        {@old_pin <> "\n", 0}
-    }
+    unchanged = %{{@main, ["ls-tree", @merged, "--", ".code_my_spec"]} => gitlink(@old_pin)}
 
     assert {:ok, %{merged: "story/x"}} = promote(unchanged)
 
     refute_received {:git, @sub, _}
+    assert_receive :restarted, 2_000
+  end
+
+  # 8b27cc4c: metric_flow tracks `.code_my_spec` as ordinary files. Its tree SHA
+  # moving is a merge like any other, not a pin to check out.
+  test "a .code_my_spec tracked as a plain directory is merged, not synced as a submodule" do
+    plain = %{
+      {@main, ["ls-tree", @base, "--", ".code_my_spec"]} =>
+        {"040000 tree #{@old_pin}\t.code_my_spec\n", 0},
+      {@main, ["ls-tree", @merged, "--", ".code_my_spec"]} =>
+        {"040000 tree #{@new_pin}\t.code_my_spec\n", 0},
+      # What real git answers for a tree path, which is what read as a pin.
+      {@main, ["rev-parse", "--verify", "--quiet", @base <> ":.code_my_spec"]} =>
+        {@old_pin <> "\n", 0},
+      {@main, ["rev-parse", "--verify", "--quiet", @merged <> ":.code_my_spec"]} =>
+        {@new_pin <> "\n", 0}
+    }
+
+    assert {:ok, %{merged: "story/x"}} = promote(plain)
+
+    refute_received {:git, @sub, _}
+    refute_received {:git, @main, ["reset" | _]}
     assert_receive :restarted, 2_000
   end
 end
