@@ -979,6 +979,7 @@ defmodule CodeMySpec.Provisioning.Steps do
             |> put_age_key(scope, environment)
             |> put_database_url(scope, environment)
             |> put_restore_admin_url(scope, environment)
+            |> Keyword.put_new(:scratch_database, Database.scratch_database(scope, environment))
 
           with :ok <- require_script(scope, "bin/backup"),
                {:ok, environment_opts} <-

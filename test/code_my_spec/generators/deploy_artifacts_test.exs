@@ -337,6 +337,16 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "dumps without comments, so a shared extension's admin-owned comment never blocks a restore" do
       assert file("bin/backup") =~ "pg_dump --no-owner --no-acl --no-comments"
     end
+
+    # Found live on the shared prod box: broken_oaths' proof left `scratch`
+    # behind — a full restored copy of its production data, still owned by
+    # its restore role, which then blocked metric_flow's proof as well.
+    test "drops the scratch database once its rows are counted" do
+      body = file("bin/backup")
+      [_, after_count] = String.split(body, ~s[rows=$(count_rows "$target_url")], parts: 2)
+
+      assert after_count =~ ~s[-c "DROP DATABASE IF EXISTS \\"$target\\";"]
+    end
   end
 
   # Real shelling out, same reasoning `Deploy.run/3`'s own tests give for

@@ -208,6 +208,19 @@ defmodule CodeMySpec.Provisioning.Database do
   end
 
   @doc """
+  The throwaway database `bin/backup restore` proves a dump into.
+
+  Per tenant and environment, like the role that creates it: the box's
+  postgres is shared, and a restore role can only drop a database it owns, so
+  one shared name let the first project to prove a backup lock every later one
+  out with "must be owner of database".
+  """
+  @spec scratch_database(Scope.t(), String.t()) :: String.t()
+  def scratch_database(%Scope{} = scope, environment) do
+    "app_#{tenant_slug(scope)}_#{environment}_restore_check"
+  end
+
+  @doc """
   What `bin/backup restore` connects with to create and drop its own
   scratch database.
 
@@ -619,8 +632,11 @@ defmodule CodeMySpec.Provisioning.Database do
         "-d postgres -c #{shell_escape(sql)} > /dev/null"
 
     case run.([command]) do
-      {_output, 0} -> :ok
-      {output, status} -> {:error, {:database_restore_password_not_set, status, String.trim(output)}}
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:database_restore_password_not_set, status, String.trim(output)}}
     end
   end
 

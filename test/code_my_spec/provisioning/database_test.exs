@@ -387,6 +387,18 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
   end
 
+  describe "scratch_database/2" do
+    # The box's postgres is shared and a restore role can drop only what it
+    # owns: one fixed name let the first project to prove a backup lock every
+    # later one out ("must be owner of database scratch").
+    test "is scoped to the project and environment, never a name another tenant could own" do
+      assert Database.scratch_database(scope(), "prod") == "app_sam_s_app_prod_restore_check"
+
+      refute Database.scratch_database(scope(), "prod") ==
+               Database.scratch_database(scope(), "uat")
+    end
+  end
+
   describe "credential/2" do
     # The same separation the age keys have, for the same reason: a migration
     # tested against one environment must not have already run against the

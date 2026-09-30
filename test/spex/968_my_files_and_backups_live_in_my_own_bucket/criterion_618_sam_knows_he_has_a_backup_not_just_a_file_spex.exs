@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         target = proof |> Floki.attribute("data-target") |> List.first()
         verified = proof |> Floki.attribute("data-content-verified") |> List.first()
 
-        assert target == "scratch",
+        assert target =~ ~r/_restore_check$/,
                "expected the restore to target a throwaway database rather than anything real, got #{inspect(target)}"
 
         assert verified == "true",

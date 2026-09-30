@@ -973,6 +973,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       local rows
       rows=$(count_rows "$target_url")
 
+      # Counted; the copy is production data with no further use.
+      pg psql -v ON_ERROR_STOP=1 -q "$admin_url" -c "DROP DATABASE IF EXISTS \\"$target\\";"
+
       echo "rows=${rows:-0}"
       echo "target=$target"
     }
