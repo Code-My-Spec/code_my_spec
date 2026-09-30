@@ -22,7 +22,8 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
-  import CodeMySpecSpex.Case, only: [fake_providers: 1, zone_exists: 2, zone_record_exists: 2]
+  import CodeMySpecSpex.Case,
+    only: [fake_providers: 1, zone_exists: 2, zone_record_exists: 2, zone_records: 1]
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Steps
@@ -76,6 +77,59 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
                )
 
       assert Enum.any?(resources, &(&1[:kind] == "mx_record"))
+    end
+  end
+
+  describe "several competing MX records already exist at the same name" do
+    # 98156e74: confirming used to skip straight past the check and let
+    # `ensure_dns_record/5` do its own name+type lookup, which finds the
+    # *first* match — so one confirmed run against a name carrying several
+    # competing records (MX genuinely supports more than one, unlike an apex
+    # A record) silently overwrote whichever one the provider happened to
+    # list first and left the rest standing. Observed live on
+    # metric-flow.app: three Cloudflare routes plus one AWS inbound record,
+    # and confirming peeled off exactly one per run.
+    setup context do
+      # None of these match the fake Resend's own inbound target
+      # (`inbound-smtp.us-east-1.amazonaws.com` — see `Fakes.Resend`'s
+      # `receiving_records/1`), which `ensure_dns_record/5` would correctly
+      # treat as already-right content needing only a priority fix, not a
+      # competing record to clear.
+      for {host, priority} <- [
+            {"mail.some-other-provider.example", 2},
+            {"route1.mx.cloudflare.net", 3},
+            {"route2.mx.cloudflare.net", 45}
+          ] do
+        zone_record_exists(context, %{
+          "name" => @domain,
+          "type" => "MX",
+          "content" => host,
+          "priority" => priority
+        })
+      end
+
+      :ok
+    end
+
+    test "one confirmation clears the whole set, not just the first", ctx do
+      assert {:ok, resources} =
+               Steps.run(:inbound, ctx.scope,
+                 inbound_probe_to: "sam@#{@domain}",
+                 confirm_inbound_mx_repoint: true
+               )
+
+      assert Enum.any?(resources, &(&1[:kind] == "mx_record"))
+
+      mx_records = ctx |> zone_records() |> Enum.filter(&(&1["type"] == "MX"))
+
+      refute Enum.any?(mx_records, &(&1["content"] == "mail.some-other-provider.example")),
+             "a competing record survived a confirmed run: #{inspect(mx_records)}"
+
+      refute Enum.any?(mx_records, &(&1["content"] == "route1.mx.cloudflare.net")),
+             "a competing record survived a confirmed run: #{inspect(mx_records)}"
+
+      refute Enum.any?(mx_records, &(&1["content"] == "route2.mx.cloudflare.net")),
+             "a competing record survived a confirmed run: #{inspect(mx_records)}"
     end
   end
 

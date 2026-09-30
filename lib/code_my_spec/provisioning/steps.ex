@@ -5443,7 +5443,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # of gap `apex_repoint/4` closed for the A record, missed here for MX.
   defp check_competing_mx(scope, zone, records, opts) do
     if Keyword.get(opts, :confirm_inbound_mx_repoint, false) do
-      :ok
+      clear_competing_mx(scope, zone, records)
     else
       with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
         records
@@ -5464,6 +5464,47 @@ defmodule CodeMySpec.Provisioning.Steps do
             {:error, {:competing_mx, record_name, current}}
         end
       end
+    end
+  end
+
+  # 98156e74: confirming used to skip straight to `:ok`, leaving every
+  # existing MX at the name for `ensure_dns_record/5`'s own idempotent
+  # update-or-create to find — and that finds the *first* match by name and
+  # type, matching MX's own ability to carry several records at once against
+  # a check meant for a single-record type. One confirmed run against a
+  # name carrying four competing records (three Cloudflare routes and one
+  # AWS inbound endpoint) silently overwrote whichever one the provider
+  # happened to list first and left the rest exactly as they were —
+  # observed live on metric-flow.app, twice: the second confirmed run named
+  # the next one in list order rather than clearing what the first one meant
+  # to settle.
+  #
+  # So a confirmation clears the *whole* competing set for every name Resend
+  # is about to publish to, in one pass, before any of them are created —
+  # never publish-then-check, which would leave a window where a record this
+  # same run just wrote reads as "competing" against a record still due to
+  # be written. A record whose content already matches what Resend wants is
+  # left alone rather than deleted and immediately recreated: `ensure_dns_record/5`
+  # already treats that one as adopted.
+  defp clear_competing_mx(scope, zone, records) do
+    with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+      records
+      |> Enum.flat_map(fn record ->
+        record_name = qualify(record["name"], zone["name"])
+
+        Enum.filter(
+          existing,
+          &(&1["name"] == record_name and &1["type"] == "MX" and
+              &1["content"] != record["value"])
+        )
+      end)
+      |> Enum.uniq_by(& &1["id"])
+      |> Enum.reduce_while(:ok, fn stale, :ok ->
+        case Cloudflare.delete_dns_record(scope, zone["id"], stale["id"]) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
     end
   end
 
