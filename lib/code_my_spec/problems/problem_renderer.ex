@@ -229,7 +229,12 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       failed_reruns: Keyword.get(opts, :failed_reruns, %{})
     }
 
-    blocking_section = render_blocking_section(blocking, stale, runs, reproduce, session_paths)
+    attribution = %{
+      session_paths: session_paths,
+      latched: opts |> Keyword.get(:specs_ready_stamp, %{}) |> Map.keys() |> MapSet.new()
+    }
+
+    blocking_section = render_blocking_section(blocking, stale, runs, reproduce, attribution)
 
     raw =
       header <>
@@ -415,14 +420,18 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # value rather than four positional arguments threaded two levels down, for
   # the same reason `flight` is one: they are only ever read together, and the
   # list was already seven long.
-  defp render_blocking_section(blocking, stale, runs, reproduce, session_paths) do
+  #
+  # `attribution` is whose each finding is: the paths this session wrote, and
+  # the paths on a latched story (`specs_ready_stamp`'s keys).
+  defp render_blocking_section(blocking, stale, runs, reproduce, attribution) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group(&1, stale, runs, reproduce, session_paths))
+    |> Enum.map_join("\n", &render_blocking_group(&1, stale, runs, reproduce, attribution))
   end
 
-  defp render_blocking_group({source, items}, stale, runs, reproduce, session_paths) do
+  defp render_blocking_group({source, items}, stale, runs, reproduce, attribution) do
+    %{session_paths: session_paths, latched: latched} = attribution
     %{last_ran: last_ran, duration: run_duration, overtaken: overtaken, failures: failures} = runs
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
@@ -444,7 +453,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
       reproduce_line(source, reproduce) <>
       killed_note(items) <>
-      foreign_spex_note(source, items, session_paths) <>
+      foreign_spex_note(source, items, session_paths, latched) <>
       precondition_note(items) <>
       stale_build_note(source, runs) <>
       failed_rerun_note(source, runs)
@@ -513,12 +522,16 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   #
   # Only when there is a foreign finding to explain, and only for spex: an agent
   # looking at its own red spex does not need a paragraph about latches.
-  defp foreign_spex_note("spex", items, %MapSet{} = session_paths) do
+  #
+  # And only for a finding on a latched story. An orphan, or a finding with no
+  # file at all, never earned a latch, and telling the reader "these went green
+  # once" sent them hunting for a regression that never happened (d91436b7).
+  defp foreign_spex_note("spex", items, %MapSet{} = session_paths, latched) do
     foreign? =
       MapSet.size(session_paths) > 0 and
         Enum.any?(items, fn
           %Problem{file_path: path} when is_binary(path) ->
-            not MapSet.member?(session_paths, path)
+            MapSet.member?(latched, path) and not MapSet.member?(session_paths, path)
 
           _ ->
             false
@@ -539,7 +552,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp foreign_spex_note(_source, _items, _session_paths), do: ""
+  defp foreign_spex_note(_source, _items, _session_paths, _latched), do: ""
 
   # A group whose every finding is a killed process is reporting on the machine,
   # not on the code, and nothing else in this footer can say so. `** (EXIT …)

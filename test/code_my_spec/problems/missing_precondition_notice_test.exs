@@ -88,11 +88,15 @@ defmodule CodeMySpec.Problems.MissingPreconditionNoticeTest do
   # and still said — what changed is that it is no longer asserted as the only
   # one.
   test "the latch explanation no longer asserts a regression outright" do
+    path = "test/spex/968_backups/criterion_8014_spex.exs"
+
     text =
       ProblemRenderer.render_stop_response(
-        [blocked("test/spex/968_backups/criterion_8014_spex.exs")],
+        [blocked(path)],
         [],
-        session_paths: MapSet.new(["test/spex/other/criterion_1_spex.exs"])
+        session_paths: MapSet.new(["test/spex/other/criterion_1_spex.exs"]),
+        # On a latched story, the only finding the latch paragraph is about.
+        specs_ready_stamp: %{path => nil}
       )
 
     assert text =~ "A red spex blocks even in a file this session did not touch",
