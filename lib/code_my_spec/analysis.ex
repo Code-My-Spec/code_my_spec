@@ -1064,11 +1064,7 @@ defmodule CodeMySpec.Analysis do
   # terminates. The mixture is bounded by the fact that anything the run got
   # wrong shows up as a problem on the next sweep, whereas the alternative is a
   # gate that cannot be passed by doing the work correctly.
-  defp run_answers_for?(%Run{} = run, current) when is_binary(current) do
-    run.input_fingerprint == current or run.completed_fingerprint == current
-  end
-
-  defp run_answers_for?(_run, _current), do: false
+  defp run_answers_for?(run, current), do: Run.answers_for?(run, current)
 
   # Compile first: it's the cheapest signal and every other source
   # short-circuits on its errors.

@@ -1075,19 +1075,11 @@ defmodule CodeMySpec.Requirements.Preloader do
   # projection is read only where the alternative is reading the whole file
   # table for nothing — see `analysis_freshness/1`.
   defp analysis_freshness(scope, all_files) do
-    latest = RunsRepository.latest_full_runs(scope)
+    latest = RunsRepository.latest_completed_runs(scope)
 
     Map.new(Run.sources(), fn source ->
-      fresh? =
-        case latest[source] do
-          %Run{status: :completed, input_fingerprint: fp} when is_binary(fp) ->
-            fp == Fingerprint.compute(all_files, Fingerprint.roles(source))
-
-          _ ->
-            false
-        end
-
-      {source, fresh?}
+      current = Fingerprint.compute(all_files, Fingerprint.roles(source))
+      {source, Run.answers_for?(latest[source], current)}
     end)
   end
 end

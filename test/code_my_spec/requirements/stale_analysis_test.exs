@@ -36,6 +36,9 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
 
   import CodeMySpec.{AnalysisFixtures, ComponentsFixtures, ProblemsFixtures, UsersFixtures}
 
+  alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.Fingerprint
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -120,6 +123,32 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
              "naming a count here is what sends the agent back to re-fix code " <>
                "that is already correct — the reply has to say wait, not what " <>
                "to change"
+    end
+
+    # 849f8e7a: files moved while the run ran, and it finished on today's tree.
+    # `Analysis.fresh?/2` counted that and evaluation passed, while the graph
+    # read only the tree the run started on and withheld the pass, so a passed
+    # requirement was re-offered in a loop. Both read one rule now.
+    test "a run that finished on the current tree counts, as it does for evaluation",
+         %{scope: scope} do
+      fresh_analysis_runs_fixture(scope, ["credo"])
+
+      Repo.update_all(
+        from(f in FileRecord, where: f.project_id == ^scope.active_project_id),
+        set: [fingerprint: "edited-while-it-ran"]
+      )
+
+      current = Fingerprint.current(scope, "credo")
+
+      Repo.update_all(
+        from(r in Run,
+          where: r.project_id == ^scope.active_project_id and r.source == "credo"
+        ),
+        set: [completed_fingerprint: current]
+      )
+
+      assert Analysis.fresh?(scope, "credo")
+      assert {true, _} = evaluate(scope, credo_check())
     end
   end
 

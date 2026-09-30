@@ -78,6 +78,20 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Map.new(&{&1.source, &1})
   end
 
+  @doc """
+  Latest completed `:full` run per source, the runs `Analysis.fresh?/2` judges
+  from. A newer failed run cannot make a good result stale.
+  """
+  @spec latest_completed_runs(Scope.t()) :: %{String.t() => Run.t()}
+  def latest_completed_runs(%Scope{active_project_id: project_id} = scope) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.kind == :full and r.status == :completed)
+    |> scope_to_harness(scope)
+    |> order_by([r], asc: r.started_at)
+    |> Repo.all()
+    |> Map.new(&{&1.source, &1})
+  end
+
   @doc "Latest finished `:full` run for one source, or nil."
   @spec latest_full_run(Scope.t(), String.t()) :: Run.t() | nil
   def latest_full_run(%Scope{active_project_id: project_id} = scope, source) do

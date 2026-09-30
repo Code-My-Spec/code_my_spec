@@ -98,6 +98,21 @@ defmodule CodeMySpec.Analysis.Run do
     timestamps(type: :utc_datetime)
   end
 
+  @doc """
+  Whether this run answers for a tree whose fingerprint is `current`.
+
+  Either end of the run counts: the tree it started on, or the one it finished
+  on when files moved while it ran. The one rule for "fresh" — the graph read
+  only the input side while `Analysis.fresh?/2` read both, so a run that ended
+  on the current tree passed evaluation and stayed stale in the graph, and a
+  passed requirement was re-offered forever (849f8e7a).
+  """
+  @spec answers_for?(t() | nil, String.t() | nil) :: boolean()
+  def answers_for?(%__MODULE__{status: :completed} = run, current) when is_binary(current),
+    do: run.input_fingerprint == current or run.completed_fingerprint == current
+
+  def answers_for?(_run, _current), do: false
+
   @doc "Known analyzer sources."
   @spec sources() :: [String.t()]
   def sources, do: @sources
