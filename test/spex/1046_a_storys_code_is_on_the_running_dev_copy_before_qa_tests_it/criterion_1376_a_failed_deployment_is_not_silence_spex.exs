@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   end
 
   spex "A restart that fails after a promotion corrects the agent it already told",
-       criterion: 1376 do
+    criterion: 1376 do
     scenario "the copy's own app answers down after the restart" do
       given_ "a promotable project, with an agent to correct if the restart fails",
              context do
@@ -90,10 +90,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         # means the log has definitely already landed.
         agent_id = context.agent.id
 
-        assert_receive {:agent_dispatch, ^agent_id, _ref, correction}, 5_000,
-                        "the restart failed outright and no correction reached the agent — " <>
-                          "it is still holding the earlier 'merged, QA can start' answer, " <>
-                          "which is now false."
+        assert_receive {:agent_dispatch, ^agent_id, _ref, correction},
+                       5_000,
+                       "the restart failed outright and no correction reached the agent — " <>
+                         "it is still holding the earlier 'merged, QA can start' answer, " <>
+                         "which is now false."
 
         # A restart that genuinely fails logs at `:error` — this scenario
         # provokes that on purpose, not by surprise, so it has to inspect and
@@ -143,12 +144,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   end
 
   defp analyzers_are_current(context) do
-    Fixtures.fresh_analysis_runs(context.scope)
+    Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

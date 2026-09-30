@@ -7,7 +7,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   story whose `specs_ready` is false merges — spex are committed before their
   code. A red spex of a latched story is a regression and refuses.
 
-  Drives `Promotion.gate/1` directly: the gate reads the database and never
+  Drives `Promotion.gate/3` directly: the gate reads the database and never
   touches git, so there is nothing to shell out to.
   """
 
@@ -18,9 +18,13 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
+
+  # The commit every analyzer's run started and finished on.
+  @head "4444444444444444444444444444444444444444"
 
   setup do
     scope = full_scope_fixture()
@@ -29,7 +33,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
       WorkingCopies.issue(scope, nil, label: "the promoting copy", device: device_fixture(scope))
 
     scope = %{scope | active_working_copy_id: copy.id}
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     %{scope: scope}
   end
 
@@ -61,7 +65,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
       rule: nil
     })
 
-    assert {:error, %{reason: reason}} = Promotion.gate(scope)
+    assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 exunit"
     assert reason =~ "test/my_app_web/live/settings_test.exs:12"
     assert reason =~ "not latched", "the refusal has to say what may stay red. Got: #{reason}"
@@ -70,7 +74,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   test "a credo :warning refuses", %{scope: scope} do
     problem_fixture(scope, %{severity: :warning})
 
-    assert {:error, %{reason: reason}} = Promotion.gate(scope),
+    assert {:error, %{reason: reason}} = Promotion.gate(scope, @head),
            "a credo :warning still reached main"
 
     assert reason =~ "1 credo"
@@ -79,7 +83,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   test "a credo :info does not refuse", %{scope: scope} do
     problem_fixture(scope, %{severity: :info})
 
-    assert {:ok, _certified} = Promotion.gate(scope),
+    assert {:ok, _certified} = Promotion.gate(scope, @head),
            "low-priority credo findings are advisory, not a promotion blocker"
   end
 
@@ -93,17 +97,15 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
       rule: nil
     })
 
-    assert {:error, %{reason: reason}} = Promotion.gate(scope)
+    assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 compiler"
   end
 
   test "a red spex of a story that is not latched does not refuse", %{scope: scope} do
     story = story_fixture(scope, %{title: "Written Ahead Of Its Code"})
     red_spec(scope, story)
-    # The spec file moved the fingerprint; a clean verdict needs runs at it.
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
 
-    assert {:ok, _certified} = Promotion.gate(scope),
+    assert {:ok, _certified} = Promotion.gate(scope, @head),
            "spex are committed before their code; an unlatched story's red spex must merge"
   end
 
@@ -112,7 +114,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
     red_spec(scope, story)
 
-    assert {:error, %{reason: reason}} = Promotion.gate(scope)
+    assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 spex"
     assert reason =~ "criterion_1_spex.exs"
   end

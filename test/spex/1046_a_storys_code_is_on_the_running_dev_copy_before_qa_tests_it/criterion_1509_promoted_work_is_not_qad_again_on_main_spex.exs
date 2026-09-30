@@ -114,12 +114,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
   end
 
   defp analyzers_are_current(context) do
-    Fixtures.fresh_analysis_runs(context.scope)
+    Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

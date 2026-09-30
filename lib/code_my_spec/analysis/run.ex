@@ -7,8 +7,8 @@ defmodule CodeMySpec.Analysis.Run do
 
   `sobelow` is a real, working analyzer (`StaticAnalysis.Analyzers.Sobelow`,
   `Analysis.Runners.run/4`, `CmsHarness.Analysis`) deliberately NOT in this
-  ledger yet. `stale_sources/1` in `Promotion` requires every member of
-  `Run.sources()` to be fresh before any promotion, unconditionally, by
+  ledger yet. `Promotion.gate/3` requires every member of `Run.sources()` to
+  have a clean run at HEAD before any promotion, unconditionally, by
   design — the codebase's own comment there rejects config-based exemptions
   from that list on the grounds that narrowing it "would let a project
   promote a commit [a source] had never once run against." Adding `sobelow`
@@ -126,6 +126,26 @@ defmodule CodeMySpec.Analysis.Run do
     do: run.input_fingerprint == current or run.completed_fingerprint == current
 
   def answers_for?(_run, _current), do: false
+
+  @doc """
+  Whether this run answers for `commit`: completed, started on a clean tree at
+  `commit`, and finished there (28d72f8a). The promote gate's rule, in place of
+  fingerprint freshness.
+  """
+  @spec at_commit?(t() | nil, String.t() | nil) :: boolean()
+  def at_commit?(
+        %__MODULE__{
+          status: :completed,
+          start_commit: commit,
+          completed_commit: commit,
+          start_tree_dirty: false
+        },
+        commit
+      )
+      when is_binary(commit),
+      do: true
+
+  def at_commit?(_run, _commit), do: false
 
   @doc "Known analyzer sources."
   @spec sources() :: [String.t()]

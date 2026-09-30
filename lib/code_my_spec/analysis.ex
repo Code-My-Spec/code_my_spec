@@ -1157,6 +1157,31 @@ defmodule CodeMySpec.Analysis do
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
 
+  @doc """
+  `source`'s latest completed run on this copy when it answers for `commit`
+  (`Run.at_commit?/2`), else nil. The latest only: the source's recorded
+  problems are that run's, so an older run at `commit` behind it says nothing
+  about them.
+  """
+  @spec answer_at_commit(Scope.t(), String.t(), String.t()) :: Run.t() | nil
+  def answer_at_commit(%Scope{} = scope, source, commit) do
+    run = RunsRepository.latest_completed_run(scope, source)
+    if Run.at_commit?(run, commit), do: run
+  end
+
+  @doc """
+  Whether a full run of `source` still running on this copy will answer for
+  `commit`: started there on a clean tree, or queued and not started yet.
+  """
+  @spec running_at_commit?(Scope.t(), String.t(), String.t()) :: boolean()
+  def running_at_commit?(%Scope{} = scope, source, commit) do
+    scope
+    |> RunsRepository.running_full_runs(source)
+    |> Enum.any?(fn run ->
+      is_nil(run.start_commit) or (run.start_commit == commit and run.start_tree_dirty == false)
+    end)
+  end
+
   # -- Internals --
 
   defp stale?(source, fingerprints, latest) do

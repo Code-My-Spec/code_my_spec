@@ -1679,8 +1679,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # third one; story 1108's criterion 4663 moved it onto the same
   # `ensure_app_running`/`restart_app` channel verbs every working copy's app
   # already answers to, so it no longer reaches here at all.
-  defp apply_promotion("promotion_precheck", %{"root" => root}),
-    do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1))
+  defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
+    do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1, payload["main"]))
 
   defp apply_promotion("promotion_current", %{"root" => root}),
     do: with_served_root(root, &Steps.current(Environment.new(:local, &1), &1))

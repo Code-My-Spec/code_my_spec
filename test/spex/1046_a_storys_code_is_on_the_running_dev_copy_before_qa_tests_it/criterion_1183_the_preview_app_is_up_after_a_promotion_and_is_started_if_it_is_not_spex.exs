@@ -74,12 +74,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   end
 
   spex "A down application is started by the same act that would promote to it",
-       criterion: 1183 do
+    criterion: 1183 do
     scenario "the agent is working on the running copy and nothing is serving it" do
       given_ "an agent working on the checkout the application runs from", context do
         context = a_running_copy(context)
         story = a_promotable_story(context)
-        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+
+        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex),
+          at_head: true
+        )
+
         {:ok, Map.put(context, :story, story)}
       end
 

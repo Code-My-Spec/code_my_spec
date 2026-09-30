@@ -28,6 +28,7 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   which, the same way `AnalysisController` reports a failing suite.
   """
   @spec text({:ok, map()} | {:error, map()}) :: String.t()
+  def text({:ok, %{pending: pending}}), do: CodeMySpec.Promotion.pending_text(pending)
   def text({:ok, report}), do: promoted(report)
   def text({:error, refusal}), do: refused(refusal)
 

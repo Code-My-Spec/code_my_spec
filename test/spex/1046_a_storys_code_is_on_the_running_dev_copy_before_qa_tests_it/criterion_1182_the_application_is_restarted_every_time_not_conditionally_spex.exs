@@ -105,12 +105,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
   # happens *after* the gate opens has to say that it opens, and this is how a
   # copy says its analyzers have run. 3166 deliberately omits it.
   defp analyzers_are_current(context) do
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

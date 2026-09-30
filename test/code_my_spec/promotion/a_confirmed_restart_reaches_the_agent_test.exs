@@ -17,6 +17,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
@@ -80,7 +81,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     scope = full_scope_fixture()
     {running_root, agent_root} = a_project_whose_restart_succeeds()
 
-    running = a_copy(scope, running_root, "the checkout the dev app runs in")
+    a_copy(scope, running_root, "the checkout the dev app runs in")
     agent_copy = a_copy(scope, agent_root, "the coding agent's copy")
 
     {:ok, agent} =
@@ -113,8 +114,8 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
         }
       ])
 
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
-    AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
+    head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
 
     {scope, agent, running_root, %{story_number: story.number}}
   end

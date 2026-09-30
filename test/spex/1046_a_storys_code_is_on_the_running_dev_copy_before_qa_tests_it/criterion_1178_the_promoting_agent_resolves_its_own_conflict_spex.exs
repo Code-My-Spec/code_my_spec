@@ -53,7 +53,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
     :ok
   end
 
-  spex "A conflict is refused before it is attempted, and the agent is sent to resolve it locally", criterion: 1178 do
+  spex "A conflict is refused before it is attempted, and the agent is sent to resolve it locally",
+    criterion: 1178 do
     scenario "main and the story branch changed the same line" do
       given_ "a story branch that changed a line", context do
         context = a_promotable_project(context)
@@ -125,12 +126,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   # happens *after* the gate opens has to say that it opens, and this is how a
   # copy says its analyzers have run. 3166 deliberately omits it.
   defp analyzers_are_current(context) do
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

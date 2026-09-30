@@ -14,7 +14,7 @@ defmodule CodeMySpec.Promotion.Runner do
       module against a local environment.
 
   The split exists because the gate cannot move and the commands cannot stay.
-  `gate/1` and `gate_target/3` read the database; `git merge` needs the disk.
+  `Promotion.gate/3` reads the database; `git merge` needs the disk.
   Sending the whole promotion to the harness would take the database away from
   the gate, and keeping it all on the server is what shipped and crashed —
   `Environments.Harness.cmd/4` answers `{:error, :not_supported_on_harness}`,
@@ -50,13 +50,19 @@ defmodule CodeMySpec.Promotion.Runner do
   @restart_timeout 600_000
   @git_timeout 60_000
 
-  @doc "What is on this checkout, and is it safe to move."
-  @spec precheck(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
-  def precheck(scope, root, copy_id),
-    do:
-      run(scope, copy_id, "promotion_precheck", %{"root" => root}, @git_timeout, fn env ->
-        Steps.precheck(env, root)
-      end)
+  @doc """
+  What is on this checkout, and is it safe to move. `main` is main's HEAD,
+  which the checkout must contain (`Steps.precheck/3`).
+  """
+  @spec precheck(Scope.t(), String.t(), Ecto.UUID.t() | nil, String.t() | nil) ::
+          Steps.result()
+  def precheck(scope, root, copy_id, main \\ nil) do
+    payload = %{"root" => root, "main" => main}
+
+    run(scope, copy_id, "promotion_precheck", payload, @git_timeout, fn env ->
+      Steps.precheck(env, root, main)
+    end)
+  end
 
   @doc "Merge `branch` into the checkout at `root`."
   @spec merge(Scope.t(), String.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()

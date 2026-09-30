@@ -21,6 +21,7 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
@@ -81,9 +82,10 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     story
   end
 
-  defp analyzers_are_current(scope, running) do
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
-    AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
+  # Every analyzer ran clean at the promoting copy's HEAD.
+  defp analyzers_are_current(scope, agent_root) do
+    head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
     :ok
   end
 
@@ -153,7 +155,7 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
 
     scope = %{scope | active_working_copy_id: agent.id}
     story = a_story_with_linked_spex(scope)
-    :ok = analyzers_are_current(scope, running)
+    :ok = analyzers_are_current(scope, agent_root)
 
     result = Promotion.promote(scope, story.number)
 

@@ -62,33 +62,80 @@ defmodule CodeMySpec.Promotion.Steps do
   would disagree again the moment one of them dropped it: `story_promoted`
   waving a copy through while `promote` refused the same submodule dirt it had
   just ignored (c97bb142).
+
+  `main`, when given, is main's HEAD. A copy that does not contain it is
+  refused first: analysing a branch that is behind certifies a commit that
+  cannot merge (28d72f8a). The result carries `head`, the commit a promotion
+  certifies and then merges.
   """
-  @spec precheck(Environments.Environment.t(), String.t()) :: result()
-  def precheck(env, root) do
-    case git(env, root, [
-           "status",
-           "--porcelain",
-           "--untracked-files=no",
-           "--ignore-submodules=all"
-         ]) do
-      {"", 0} -> branch(env, root)
-      {dirty, 0} -> uncommitted(dirty)
-      {out, _} -> {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
+  @spec precheck(Environments.Environment.t(), String.t(), String.t() | nil) :: result()
+  def precheck(env, root, main \\ nil) do
+    with :ok <- contains_main(env, root, main) do
+      case git(env, root, [
+             "status",
+             "--porcelain",
+             "--untracked-files=no",
+             "--ignore-submodules=all"
+           ]) do
+        {"", 0} ->
+          branch(env, root)
+
+        {dirty, 0} ->
+          uncommitted(dirty)
+
+        {out, _} ->
+          {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
+      end
     end
   end
 
+  defp contains_main(_env, _root, nil), do: :ok
+
+  defp contains_main(env, root, main) do
+    case git(env, root, ["merge-base", "--is-ancestor", main, "HEAD"]) do
+      {_, 0} ->
+        :ok
+
+      {_, 1} ->
+        {:error,
+         %{
+           reason:
+             "this copy is behind main (#{main}), most likely because another " <>
+               "promotion landed while you worked — normal on a shared checkout, " <>
+               "not a mistake. Nothing was merged or analysed: a branch that is " <>
+               "behind cannot merge the commit it would certify. Merge main in — " <>
+               "`git merge --ff-only main` (or a real merge if that refuses) — then " <>
+               "promote again.",
+           behind_main: main
+         }}
+
+      {out, _} ->
+        {:error, %{reason: "could not tell whether this copy contains main: #{String.trim(out)}"}}
+    end
+  end
+
+  # Porcelain v1: two status columns and a space, then the path.
   defp uncommitted(dirty) do
+    files =
+      dirty
+      |> String.split("\n", trim: true)
+      |> Enum.map(&(&1 |> String.slice(3..-1//1) |> String.trim()))
+
     {:error,
      %{
-       reason: "this copy has uncommitted work. Commit it, then promote.",
-       dirty: String.trim_trailing(dirty)
+       reason:
+         "this copy has uncommitted work in #{Enum.join(files, ", ")}. " <>
+           "Commit it, then promote.",
+       dirty: String.trim_trailing(dirty),
+       dirty_files: files
      }}
   end
 
   defp branch(env, root) do
     case git(env, root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
       {branch, 0} ->
-        {:ok, %{branch: String.trim(branch), untracked: untracked(env, root)}}
+        {:ok,
+         %{branch: String.trim(branch), head: head(env, root), untracked: untracked(env, root)}}
 
       {out, _} ->
         {:error, %{reason: "could not read this checkout's branch: #{String.trim(out)}"}}

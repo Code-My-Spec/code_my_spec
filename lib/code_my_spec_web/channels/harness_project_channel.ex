@@ -1721,6 +1721,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end
 
+  defp promotion_status({:ok, %{pending: _}}), do: "pending"
   defp promotion_status({:ok, _report}), do: "promoted"
   defp promotion_status({:error, _refusal}), do: "refused"
 

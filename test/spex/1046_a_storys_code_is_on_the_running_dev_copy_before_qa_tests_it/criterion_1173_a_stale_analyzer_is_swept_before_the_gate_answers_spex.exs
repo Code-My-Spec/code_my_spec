@@ -17,11 +17,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
   — for sixteen minutes over exactly this.
 
   The gap between "no problems recorded" and "no problems" is still real and
-  still the whole value of the gate. What changed is how it closes: reading
-  whether a fresh run already exists (`Analysis.fresh_sources/2`), not
-  starting one and waiting. So this scenario's premise — no analyzer has ever
-  run — is now the refusal case, named and specific, rather than the sweep
-  case. See `CodeMySpec.Promotion.not_certified/1`.
+  still the whole value of the gate.
+
+  28d72f8a keys it on the commit instead of fingerprints: a source needs a run
+  that started on a clean tree at the copy's HEAD and finished there. One that
+  has none is swept again — started, not waited on — and the promotion answers
+  "pending" at once, naming the commit; the result reaches the agent when it
+  lands. A run pinned to a commit cannot be re-staled by later edits, which
+  is what made the old wait endless.
   """
 
   use CodeMySpecSpex.Case
@@ -45,7 +48,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
     :ok
   end
 
-  spex "The gate refuses immediately when a source has never been analyzed, naming which one", criterion: 1173 do
+  spex "The gate starts the sweep when a source has never been analyzed, naming which one",
+    criterion: 1173 do
     scenario "files have changed since any analyzer ran" do
       given_ "a story branch with committed work", context do
         context = a_promotable_project(context)
@@ -68,21 +72,25 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
         {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
-      then_ "promotion refuses immediately, naming what needs a fresh run", context do
+      then_ "promotion answers at once that analysis is running at the copy's commit", context do
         text = response_text(context.response)
+        {head, 0} = git(context, context.agent_root, ["rev-parse", "HEAD"])
 
         assert text =~ ~r/(compiler|credo|exunit|spex)/,
-               "the refusal has to name which source has never been " <>
+               "the answer has to name which source has never been " <>
                  "analyzed, not just that something is missing. Got: #{text}"
 
-        assert text =~ "fresh run",
-               "the refusal has to say what would clear it, since an agent " <>
-                 "cannot make an analyzer fresh by waiting. Got: #{text}"
+        assert text =~ "Analysis running at #{String.trim(head)}",
+               "the answer has to say the sweep is running at the commit it will " <>
+                 "certify, so the agent knows what it is waiting on. Got: #{text}"
+
+        {log, 0} = git(context, context.running_root, ["log", "--oneline", "-1"])
+        assert log =~ "base", "nothing should have been merged before the sweep lands"
 
         refute exists?(context.running_root, ".restarted"),
                "nothing should have been merged or restarted — the gate " <>
-                 "refuses before either happens, in the same turn, rather " <>
-                 "than starting a sweep and waiting on it"
+                 "answers in the same turn, starting the sweep rather than " <>
+                 "waiting on it"
 
         {:ok, context}
       end

@@ -19,6 +19,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
@@ -50,17 +51,21 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     fn "git", args, opts -> answer(Keyword.fetch!(opts, :cd), args) end
   end
 
+  defp answer(@agent, ["merge-base", "--is-ancestor", @base, "HEAD"]), do: {"", 0}
   defp answer(@agent, ["status" | _]), do: {"", 0}
   defp answer(@agent, ["rev-parse", "--abbrev-ref", "HEAD"]), do: {"story/x\n", 0}
+  defp answer(@agent, ["rev-parse", "HEAD"]), do: {@merged <> "\n", 0}
   defp answer(@agent, ["ls-files" | _]), do: {"", 0}
   defp answer(@main, ["rev-parse", "HEAD"]), do: {head() <> "\n", 0}
   defp answer(@main, ["diff" | _]), do: {"", 0}
-  defp answer(@main, ["merge", "--ff-only", "story/x"]), do: {"Fast-forward\n", 0}
+  defp answer(@main, ["merge", "--ff-only", @merged]), do: {"Fast-forward\n", 0}
   defp answer(cd, args), do: {"unscripted: git #{Enum.join(args, " ")} in #{cd}", 1}
 
+  # `@base` when the promoting copy is checked against main and before the
+  # merge, `@merged` after.
   defp head do
     reads = Process.put(:head_reads, Process.get(:head_reads, 0) + 1) || 0
-    Enum.at([@base], reads, @merged)
+    Enum.at([@base, @base], reads, @merged)
   end
 
   # Takes the restart and dies without answering: the acknowledgement is lost.
@@ -138,8 +143,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
         }
       ])
 
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
-    AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @merged)
 
     assert {:ok, %{merged: "story/x"}} =
              Promotion.promote(scope, story.number,
