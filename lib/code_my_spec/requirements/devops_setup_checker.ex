@@ -62,6 +62,10 @@ defmodule CodeMySpec.Requirements.DevopsSetupChecker do
   defp project(%Scope{active_project: %Project{id: id} = project, active_project_id: id}),
     do: project
 
+  # No account to read the project through (the dev graph page's scope): there
+  # is no devops answer to give, so nothing is held.
+  defp project(%Scope{active_account_id: nil}), do: nil
+
   defp project(%Scope{active_project_id: id} = scope) when is_binary(id) do
     case Projects.get_project(scope, id) do
       {:ok, project} -> project
