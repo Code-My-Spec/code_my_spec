@@ -89,8 +89,12 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       assert by_name["problems_resolved"].prerequisites == [id_of.("bdd_specs_passing")]
 
       assert by_name["qa_complete"].prerequisites ==
-               [id_of.("story_issues_resolved"), id_of.("problems_resolved")],
-             "QA now waits on both issues clear and the copy's own analyzers clean"
+               [
+                 id_of.("story_issues_resolved"),
+                 id_of.("problems_resolved"),
+                 id_of.("story_issues_triaged")
+               ],
+             "QA waits on issues clear, the copy's own analyzers clean, and nothing untriaged"
 
       assert by_name["story_promoted"].prerequisites == [id_of.("qa_complete")],
              "story 1003: promotion follows QA, not the other way round"
@@ -196,13 +200,13 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       assert {true, _} = IssuesChecker.resolved?(scope, nil)
     end
 
-    test "triaged? follows the threshold too", %{scope: scope, story: story} do
+    test "triaged? follows the threshold for an issue with no story", %{scope: scope} do
       {:ok, _} =
         Issues.create_issue(scope, %{
           title: "Untriaged medium",
           description: "…",
           severity: :medium,
-          story_id: story.id
+          story_id: nil
         })
 
       assert {false, _} = IssuesChecker.triaged?(scope, nil)
@@ -210,6 +214,20 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       {:ok, _} = Configurations.update(scope, %{fix_issues_min_severity: :high})
 
       assert {true, _} = IssuesChecker.triaged?(scope, nil)
+    end
+
+    test "triaged? counts an issue on a story at any severity", %{scope: scope, story: story} do
+      # 255f1dcd: an untriaged issue holds its story's QA, so triage has to
+      # reach it whatever the threshold says.
+      {:ok, _} =
+        Issues.create_issue(scope, %{
+          title: "Untriaged low",
+          description: "…",
+          severity: :low,
+          story_id: story.id
+        })
+
+      assert {false, _} = IssuesChecker.triaged?(scope, nil)
     end
   end
 

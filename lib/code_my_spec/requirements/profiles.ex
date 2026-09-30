@@ -86,9 +86,10 @@ defmodule CodeMySpec.Requirements.Profiles do
 
     %{
       threshold: threshold,
-      incoming: Issues.list_by_status_and_min_severity(scope, :incoming, threshold),
+      incoming: Issues.list_triageable(scope, threshold),
       accepted: Issues.list_by_status_and_min_severity(scope, :accepted, threshold),
-      unresolved_by_story: Issues.unresolved_by_story(scope, threshold)
+      unresolved_by_story: Issues.unresolved_by_story(scope, threshold),
+      incoming_by_story: Issues.incoming_by_story(scope)
     }
   end
 

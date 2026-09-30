@@ -2,7 +2,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   @moduledoc """
   Agent task for triaging incoming QA issues.
 
-  Reviews all incoming issues from the database and decides dispositions
+  Reviews incoming issues from the database and decides dispositions
   (accept, dismiss, merge), each executed through the `accept_issue` /
   `dismiss_issue` MCP tools.
 
@@ -14,120 +14,141 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   those directories are gone; `.code_my_spec/issues/` now holds hand-written
   braindumps only.
 
-  Accepts an optional minimum severity via `task.state["topic"]` (default: :medium).
-  Only issues at or above the specified severity are included in the triage.
+  Two scopes, matching the two requirements it satisfies:
 
-  Two main functions:
-  - `command/2` — Pulls server-side incoming issues into the local DB, then
-    declares the threshold; agent discovers issues via `list_issues`
-  - `evaluate/2` — Checks that no incoming issues remain at the threshold
+    * **project** (`issues_triaged`) — `Issues.list_triageable/2`: incoming
+      issues at the threshold, plus every incoming issue on a story at any
+      severity. The threshold is the project's `fix_issues_min_severity`,
+      overridable via `task.state["topic"]`.
+    * **story** (`story_issues_triaged`) — every incoming issue on that story,
+      any severity. An untriaged finding on a story holds its QA (255f1dcd).
+
+  Both read the set the checker gates on, so the task cannot evaluate green
+  while the requirement it was offered for is still unsatisfied.
   """
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
-  alias CodeMySpec.Issues.Issue
+  alias CodeMySpec.Stories
 
   @doc """
-  Pull server-side incoming issues into the local DB, then build a triage
-  prompt declaring the severity threshold.
-
-  The remote pull is synchronous and fails loudly: if the server is
-  unreachable, `command/2` returns `{:error, {:server_unreachable, message}}`
-  so StartTask surfaces the error in the response (no triage prompt is
-  built).
+  Build a triage prompt declaring what to triage. Returns `{:ok, prompt_text}`.
 
   The prompt does NOT enumerate issues — the agent discovers them via the
   `list_issues` MCP tool. This keeps the prompt stable regardless of how
   many issues exist and forces the agent to use the canonical tool surface.
-
-  Returns `{:ok, prompt_text}`.
   """
   def command(scope, task) do
-    min_severity = get_min_severity(task)
-    issues = list_incoming_at_severity(scope, min_severity)
-
-    prompt = build_prompt(issues, min_severity)
-    {:ok, prompt}
+    target = target(scope, task)
+    {:ok, build_prompt(target, remaining(scope, target))}
   end
 
   @doc """
-  Check that no incoming issues remain at the minimum severity.
+  Check that nothing the task covers is still incoming.
 
-  Reads the database directly — the dispositions were already written there by
-  the `accept_issue` / `dismiss_issue` tool calls, so there is nothing to
-  reconcile.
-
-  Returns:
-  - `{:ok, :valid}` when no incoming issues at min severity remain
-  - `{:ok, :invalid, feedback}` when untriaged issues remain
+  Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
   """
   def evaluate(scope, task) do
-    min_severity = get_min_severity(task)
+    target = target(scope, task)
 
-    remaining = list_incoming_at_severity(scope, min_severity)
-
-    case remaining do
+    case remaining(scope, target) do
       [] ->
         {:ok, :valid}
 
       issues ->
-        names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
+        names = Enum.map_join(issues, "\n", &"- `#{&1.title}` [#{&1.severity}]")
 
         {:ok, :invalid,
-         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nUse the `accept_issue` or `dismiss_issue` MCP tools for each remaining issue."}
+         "#{length(issues)} untriaged issue(s) remain #{describe(target)}:\n\n#{names}\n\nUse the `accept_issue` or `dismiss_issue` MCP tools for each remaining issue."}
     end
   end
 
   def dispatch(_node) do
-    "Triage incoming QA issues at the configured minimum severity (default " <>
-      "`:medium`). For each issue: read via `get_issue`, decide accept / " <>
-      "dismiss / merge, and execute via `accept_issue` / `dismiss_issue` " <>
-      "MCP tools. Use when incoming issues at or above the threshold remain."
+    "Triage incoming QA issues: every issue on a story at any severity, and " <>
+      "the rest at the configured minimum severity (default `:medium`). For " <>
+      "each issue: read via `get_issue`, decide accept / dismiss / merge, and " <>
+      "execute via `accept_issue` / `dismiss_issue` MCP tools."
+  end
+
+  # ============================================================================
+  # Scope
+  # ============================================================================
+
+  defp target(scope, %{story_id: story_id}) when not is_nil(story_id) do
+    id = parse_story_id(story_id)
+    {:story, id, story_number(scope, id)}
+  end
+
+  defp target(scope, task), do: {:project, get_min_severity(scope, task)}
+
+  defp remaining(scope, {:story, story_id, _number}),
+    do: Issues.list_filtered(scope, %{status: :incoming, story_id: story_id})
+
+  defp remaining(scope, {:project, min_severity}),
+    do: Issues.list_triageable(scope, min_severity)
+
+  defp describe({:story, _id, number}), do: "on story #{number}, at any severity"
+  defp describe({:project, min_severity}), do: "at #{min_severity}+ severity or on a story"
+
+  defp parse_story_id(id) when is_integer(id), do: id
+
+  defp parse_story_id(id) do
+    case Integer.parse(to_string(id)) do
+      {int, _} -> int
+      :error -> id
+    end
+  end
+
+  defp story_number(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil -> story_id
+      story -> story.number
+    end
   end
 
   # ============================================================================
   # Prompt Building
   # ============================================================================
 
-  defp build_prompt([], min_severity) do
+  defp build_prompt(target, []) do
     """
     # Triage Issues
 
-    No incoming issues found at #{min_severity}+ severity. Nothing to triage.
+    No incoming issues #{describe(target)}. Nothing to triage.
     """
   end
 
-  defp build_prompt(_issues, min_severity) do
+  defp build_prompt({:story, _id, number} = target, _issues) do
+    """
+    # Triage Issues — story #{number}
+
+    You are triaging every incoming issue #{describe(target)}. An untriaged
+    issue holds this story's QA whatever its severity, so a low needs a
+    decision too.
+
+    #{tools_and_goal("`status: \"incoming\"` and `story_number: #{number}`")}
+
+    Accepting keeps the issue on this story. Only accepted issues at the
+    project's `fix_issues_min_severity` must be fixed before QA re-tests; an
+    accepted low stays tracked without blocking.
+
+    Stop the session when every issue on the story has been triaged.
+    """
+  end
+
+  defp build_prompt({:project, _} = target, _issues) do
     """
     # Triage Issues
 
-    You are triaging incoming QA issues at **#{min_severity}+** severity.
+    You are triaging incoming issues #{describe(target)}. Issues below the
+    threshold with no story are left for later.
 
-    ## Tools
-
-    Use the following MCP tools to interact with issues:
-
-    - `list_issues` — list issues (pass `status: "incoming"` to filter)
-    - `get_issue` — read full issue details (pass the issue `id`)
-    - `accept_issue` — accept a real issue (pass the issue `id`)
-    - `dismiss_issue` — dismiss with a reason (pass `id` and `reason`)
-
-    ## Goal
-
-    Review all incoming issues and decide their disposition.
-
-    1. **Discover issues** using `list_issues` with `status: "incoming"` and the appropriate `severity` filter
-    2. **Read each issue** using `get_issue` with the issue `id`
-    3. **Identify duplicates** — issues describing the same underlying problem
-    4. **Decide a disposition** for each issue:
-       - **Accept** — real issue, call `accept_issue` with the issue `id` **and a `story_number`**
-       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `id` and `reason`
-       - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
-    5. **Execute** each disposition using the tools above
+    #{tools_and_goal("`status: \"incoming\"` and the appropriate `severity` filter")}
 
     ## Accepting puts it on the graph — so link it
 
     `story_issues_resolved` is per-story. An unlinked issue gates nothing and
-    reaches no agent. There are currently 21 accepted issues in that state.
+    reaches no agent.
 
     Ask which story's promise the defect breaks, and pass `story_number` **on the
     `accept_issue` call** — `accepted → accepted` is rejected, so a missed link
@@ -141,15 +162,38 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     """
   end
 
+  defp tools_and_goal(list_filter) do
+    """
+    ## Tools
+
+    - `list_issues` — list issues (pass `status: "incoming"` to filter)
+    - `get_issue` — read full issue details (pass the issue `id`)
+    - `accept_issue` — accept a real issue (pass the issue `id`)
+    - `dismiss_issue` — dismiss with a reason (pass `id` and `reason`)
+
+    ## Goal
+
+    1. **Discover issues** using `list_issues` with #{list_filter}
+    2. **Read each issue** using `get_issue` with the issue `id`
+    3. **Identify duplicates** — issues describing the same underlying problem
+    4. **Decide a disposition** for each issue:
+       - **Accept** — real issue, call `accept_issue` with the issue `id` **and a `story_number`**
+       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `id` and `reason`
+       - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
+    5. **Execute** each disposition using the tools above\
+    """
+  end
+
   # ============================================================================
   # Severity Helpers
   # ============================================================================
 
-  defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
+  defp get_min_severity(_scope, %{state: %{"topic" => topic}})
+       when is_binary(topic) and topic != "" do
     parse_severity(topic)
   end
 
-  defp get_min_severity(_task), do: :medium
+  defp get_min_severity(scope, _task), do: Configurations.fix_issues_min_severity(scope)
 
   defp parse_severity(value) when is_binary(value) do
     case String.downcase(String.trim(value)) do
@@ -160,12 +204,5 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
       "info" -> :info
       _ -> :medium
     end
-  end
-
-  defp list_incoming_at_severity(scope, min_severity) do
-    Issues.list_by_status(scope, :incoming)
-    |> Enum.filter(fn issue ->
-      Issue.severity_index(issue.severity) <= Issue.severity_index(min_severity)
-    end)
   end
 end

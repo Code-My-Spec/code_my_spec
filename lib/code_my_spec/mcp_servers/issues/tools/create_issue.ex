@@ -32,10 +32,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Utils
 
   schema do
@@ -58,12 +61,15 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
     field(:source_path, :string,
       description: "File path where the issue was found, if applicable"
     )
+
+    field(:session_id, :string, description: "Injected by hook — do not set manually")
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, attrs} <- StoryRefs.put_story_id(scope, build_attrs(params)),
+         attrs = default_story(attrs, scope, params, frame),
          {:ok, issue} <- create(scope, attrs) do
       {:reply, IssuesMapper.issue_created_response(issue), frame}
     else
@@ -99,8 +105,55 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   # `IssuesRepository.list_framework_issues/1`.
   defp create(scope, attrs), do: Issues.create_issue(scope, attrs)
 
+  # An issue filed from a story's task carries that story unless it names one.
+  #
+  # 602c92a3 and 129e82f0 were filed by QA from story tasks with no story, so
+  # neither gated the story it came from and 129e82f0 reached no triage at all
+  # (518f2b52). The submit-time sweep (`Issues.attribute_to_story/3`) only
+  # takes issues listed on the attempt; this attributes at filing time.
+  #
+  # `:app` only (John, 2026-09-30): `:qa`, `:docs` and `:framework` findings
+  # are about the tooling around the work and do not gate the story unless
+  # given one explicitly. Unlinked `:qa`/`:docs` issues still reach triage
+  # through `Issues.list_triageable/2`.
+  defp default_story(%{story_id: id} = attrs, _scope, _params, _frame) when not is_nil(id),
+    do: attrs
+
+  defp default_story(%{scope: scope} = attrs, _scope, _params, _frame) when scope != :app,
+    do: attrs
+
+  defp default_story(attrs, scope, params, frame) do
+    case caller_story_id(scope, frame.assigns[:agent_id], Map.get(params, :session_id)) do
+      nil -> attrs
+      story_id -> Map.put(attrs, :story_id, story_id)
+    end
+  end
+
+  defp caller_story_id(scope, agent_id, session_id) do
+    with {:ok, owner} <- caller(scope, agent_id, session_id),
+         %{story_id: story_id} when not is_nil(story_id) <- TaskOwner.active_task(owner),
+         {id, ""} <- Integer.parse(to_string(story_id)) do
+      id
+    else
+      _ -> nil
+    end
+  end
+
+  defp caller(scope, agent_id, _session_id) when is_binary(agent_id),
+    do: Agents.fetch_agent(scope, agent_id)
+
+  defp caller(scope, _agent_id, session_id) when is_binary(session_id) and session_id != "" do
+    case Sessions.get_by_external_id(scope, session_id) do
+      nil -> :error
+      session -> {:ok, session}
+    end
+  end
+
+  defp caller(_scope, _agent_id, _session_id), do: :error
+
   defp build_attrs(params) do
     params
+    |> Map.delete(:session_id)
     |> Map.put(:status, :incoming)
     |> maybe_atomize(:severity)
     |> maybe_atomize(:scope)

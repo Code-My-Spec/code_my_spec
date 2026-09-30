@@ -55,6 +55,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Requirements.DispatchChecker
+  alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Requirements.QaIntegrationPlanChecker
@@ -211,6 +212,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
     "story_issues_resolved" => [:issues],
+    "story_issues_triaged" => [:issues],
     "problems_resolved" => [:problems],
     "bdd_specs_passing" => [:specs],
     "implementation_file" => [:files],
@@ -368,8 +370,8 @@ defmodule CodeMySpec.Requirements.Handlers do
       project_sweep(
         "issues_triaged",
         profile.incoming == [],
-        %{status: "No untriaged issues at #{profile.threshold}+ severity"},
-        %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
+        %{status: IssuesChecker.triaged_status(profile.threshold)},
+        %{reason: IssuesChecker.untriaged_reason(length(profile.incoming), profile.threshold)}
       )
 
   defp settle("issues_resolved", %{issues: profile}, _scope),
@@ -401,6 +403,25 @@ defmodule CodeMySpec.Requirements.Handlers do
                   "#{length(issues)} unresolved #{profile.threshold}+ issue(s) on this story",
                 issues: Enum.map(issues, &"#{&1.severity}: #{&1.title}")
               })
+          }
+        end)
+    }
+  end
+
+  defp settle("story_issues_triaged", %{issues: profile}, _scope) do
+    %{
+      entity_type: "story",
+      name: "story_issues_triaged",
+      default: true,
+      default_details: details(%{status: IssuesChecker.story_triaged_status()}),
+      except:
+        Enum.map(profile.incoming_by_story, fn {story_id, issues} ->
+          %{
+            entity_type: "story",
+            entity_id: story_id,
+            name: "story_issues_triaged",
+            satisfied: false,
+            details: details(IssuesChecker.story_untriaged_details(issues))
           }
         end)
     }

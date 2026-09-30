@@ -116,6 +116,55 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.all()
   end
 
+  @doc """
+  What `issues_triaged` waits on: incoming issues at the threshold, and every
+  incoming issue on a story at any severity.
+
+  An incoming issue holds its story's QA whatever its severity
+  (`story_issues_triaged`), so triage has to reach a low on a story or that
+  story waits forever — 9e8b52f4 on metric_flow story 47 (255f1dcd).
+
+  Every tenant scope counts, not only `:app`. Triage is always satisfiable —
+  dismissing is an answer — so the argument that keeps `:qa` and `:docs` out
+  of `issues_resolved` does not apply here. 129e82f0 was a `:qa` medium that
+  sat incoming while nobody was offered triage (518f2b52). Framework issues
+  stay the vendor's.
+  """
+  def list_triageable(%Scope{} = scope, min_severity) do
+    severities = Issue.severities_at_or_above(min_severity)
+
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_status(:incoming)
+    |> where([i], not is_nil(i.story_id) or i.severity in ^severities)
+    |> triage_scopes(scope)
+    |> exclude_other_copies_stories(scope)
+    |> ordered_by_severity()
+    |> Repo.all()
+  end
+
+  @doc """
+  Incoming issues on each story, any severity, grouped by story — what
+  `story_issues_triaged` reads, set-based like `unresolved_by_story/2`.
+  """
+  @spec incoming_by_story(Scope.t()) :: %{integer() => [Issue.t()]}
+  def incoming_by_story(%Scope{} = scope) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_status(:incoming)
+    |> where([i], not is_nil(i.story_id))
+    |> ordered_by_severity()
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp triage_scopes(query, scope) do
+    case ensure_vendor(scope) do
+      :ok -> query
+      {:error, :not_the_vendor} -> where(query, [i], i.scope != :framework)
+    end
+  end
+
   # An issue about a story assigned to another working copy is that copy's work.
   #
   # The same rule `Validation.split_by_story_enforcement/3` applies to spex
