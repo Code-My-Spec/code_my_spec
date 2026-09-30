@@ -421,7 +421,7 @@ defmodule CodeMySpec.Promotion do
        reason:
          "story #{story.number}'s spex are not all passing on #{named}'s certifying " <>
            "spex run, so it is not promoted:\n" <>
-           describe(failing) <>
+           describe("spex", failing) <>
            "\n\nFix them, let spex run, then promote again.",
        failing_spex: failing |> Enum.map(& &1.file_path) |> Enum.uniq(),
        working_copy: named
@@ -592,15 +592,26 @@ defmodule CodeMySpec.Promotion do
   # costing a psql join of `problems` to `working_copies` after the fact. A
   # nil id never reaches here at all (`promoting_copy/2` refuses first); this
   # is for the harder case, where a present id turns out to be the wrong one.
-  defp gate(
-         %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope
-       ) do
+  @doc """
+  Whether the promoting copy (`scope.active_working_copy_id`) may merge.
+
+  The rule (30fd997f, John 2026-09-30): **zero problems, except the red spex of
+  stories that are not latched.** Compiler, credo and exunit findings refuse at
+  `:error` or `:warning`; `:info` (low-priority credo) is advisory. A red spex refuses only when its story is latched
+  (`specs_ready`), through `Validation.enforceable/2`; an unlatched story's spex
+  are committed ahead of its code and merge red. With no blocking problem, every
+  analyzer must also have a completed run at the current commit.
+
+  `{:ok, certified_by}` or `{:error, %{reason: ...}}`.
+  """
+  @spec gate(Scope.t()) :: {:ok, [map()]} | {:error, map()}
+  def gate(%Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope) do
     Logger.info(
       "[Promotion] gate for project #{project_id}: active_working_copy_id=#{working_copy_id}"
     )
 
     scope
-    |> blocking_problems(nil)
+    |> blocking_problems()
     |> gate_known(scope, named_copy(working_copy_id))
   end
 
@@ -723,45 +734,48 @@ defmodule CodeMySpec.Promotion do
   defp gate_result([], _named), do: {:ok, []}
 
   defp gate_result(problems, named) do
+    by_source = Enum.group_by(problems, & &1.source)
+    sources = Enum.filter(Run.sources(), &Map.has_key?(by_source, &1))
+    counts = Enum.map_join(sources, ", ", &"#{length(by_source[&1])} #{&1}")
+
     {:error,
      %{
        reason:
-         "#{named} is carrying #{length(problems)} problem(s), so it promotes " <>
-           "nothing:\n" <>
-           describe(problems) <>
+         "#{named} is carrying #{length(problems)} problem(s) (#{counts}), so it " <>
+           "promotes nothing.\n\n" <>
+           Enum.map_join(sources, "\n\n", &describe(&1, by_source[&1])) <>
+           "\n\nA promotion needs zero compiler, credo and exunit errors and " <>
+           "warnings, and no red spex on a latched (specs_ready) story. Fix these on " <>
+           "#{named}, let the analyzers re-run, and promote again. Red spex of stories " <>
+           "not latched yet are allowed through." <>
            "\n\nIf #{named} is not this session's own working copy, the gate " <>
            "resolved to a different checkout than the one calling it — fix on " <>
            "that copy, or say so if this looks wrong; a sweep run from here " <>
            "will not touch problems recorded against a different working copy.",
        problems: Enum.map(problems, &problem_key/1),
+       counts: Map.new(by_source, fn {source, of_source} -> {source, length(of_source)} end),
        working_copy: named
      }}
   end
 
-  # Through `Validation.enforceable/2`, which is what the gate elsewhere blocks
-  # on. That function's own doc says why it is public: "two copies of what
-  # counts as enforceable drift, and the drift is silent."
+  # Credo and compiler findings block whatever the stop hook's mode says: a
+  # warning let through here lands on main and blocks every other copy's
+  # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
+  # Exunit and spex go through `Validation.enforceable/2`, which drops the red
+  # spex of unlatched stories — the same latch the stop hook uses.
   #
-  # Credo and compiler findings block at any severity and whatever the stop
-  # hook's mode says. A warning let through here lands on main and blocks
-  # every other copy's promote until someone cleans it up (v2.0.162's two
-  # AliasUsage findings).
+  # `:info` (low-priority credo) is advisory and never blocks (30fd997f).
   @always_block ~w(credo compiler)
 
-  defp blocking_problems(%Scope{} = scope, copy) do
-    here = as_copy(scope, copy)
+  defp blocking_problems(%Scope{} = scope) do
+    strict = ProblemRepository.list_project_problems(scope, sources: @always_block)
 
-    strict = ProblemRepository.list_project_problems(here, sources: @always_block)
-
-    here
-    |> ProblemRepository.list_project_problems(severity: :error)
-    |> Enum.reject(&(&1.source in @always_block))
-    |> then(&Validation.enforceable(here, &1))
+    scope
+    |> ProblemRepository.list_project_problems(sources: Run.sources() -- @always_block)
+    |> then(&Validation.enforceable(scope, &1))
     |> Kernel.++(strict)
+    |> Enum.reject(&(&1.severity == :info))
   end
-
-  defp as_copy(%Scope{} = scope, nil), do: scope
-  defp as_copy(%Scope{} = scope, %WorkingCopy{id: id}), do: %{scope | active_working_copy_id: id}
 
   # Always, never conditionally.
   #
@@ -1022,11 +1036,26 @@ defmodule CodeMySpec.Promotion do
       "otherwise end before it could answer."
   end
 
-  defp describe(problems) do
-    problems
-    |> Enum.take(10)
-    |> Enum.map_join("\n", fn p -> "  #{p.file_path}: #{p.message}" end)
+  @shown_per_source 3
+
+  defp describe(source, problems) do
+    shown =
+      problems
+      |> Enum.take(@shown_per_source)
+      |> Enum.map_join("\n", &"  #{location(&1)}: #{first_line(&1.message)}")
+
+    "#{source} (#{length(problems)}):\n" <> shown <> more(length(problems) - @shown_per_source)
   end
+
+  defp location(%{file_path: path, line: line}) when is_integer(line), do: "#{path}:#{line}"
+  defp location(%{file_path: path}), do: path
+
+  defp first_line(message) do
+    message |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 160)
+  end
+
+  defp more(hidden) when hidden > 0, do: "\n  …and #{hidden} more"
+  defp more(_hidden), do: ""
 
   defp problem_key(p), do: {p.source, p.file_path, p.line, p.message}
 end

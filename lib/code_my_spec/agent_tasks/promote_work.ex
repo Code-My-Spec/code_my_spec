@@ -99,11 +99,11 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
     #{reason}
 
-    Call `promote` with story_number #{story.number}. It refuses if this copy
-    carries problems or uncommitted work, or if this story's spex are not all
-    passing here, and tells you what to fix; otherwise it merges to the running
-    copy, latches and stamps this story, restarts the application, and reports
-    what is being served.
+    Call `promote` with story_number #{story.number}. It refuses on uncommitted
+    work, any compiler, credo or exunit error or warning, a red spex on a latched
+    story, or this story's own spex not all passing here, and tells you what to
+    fix; otherwise it merges to the running copy, latches and stamps this story,
+    restarts the application, and reports what is being served.
     """
     |> String.trim()
   end

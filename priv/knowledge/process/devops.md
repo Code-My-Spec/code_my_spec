@@ -45,15 +45,18 @@ on main, so a promotion has exactly one target.
 2. **Uncommitted work.** `git status --porcelain` on the copy you are
    promoting *from*. Anything at all → `this copy has uncommitted work.
    Commit it, then promote.` This is checked before everything else.
-3. **The gate.** Recorded problems answer immediately; only a clean result
-   waits for the sweep. Any enforceable `:error` problem →
-   `this copy is carrying N problem(s), so it promotes nothing`, listing
-   the first ten.
-4. **A fresh analyzer sweep.** Stale or never-run sources get dispatched
-   and waited on. Stale analyzers are swept, not refused.
-5. **The story's spex.** Every spec file linked to the named story must
-   be green on this copy's current spex run. A story with no linked spex
-   is refused too.
+3. **The gate.** Zero errors or warnings on the promoting copy, except
+   red spex of unlatched stories. Any compiler, credo or exunit error or
+   warning (credo `:info` is advisory), or a red spex on a latched
+   (`specs_ready`) story → `is carrying N problem(s) (2 exunit, 1 credo),
+   so it promotes nothing`, with the first few per source. Red spex of
+   unlatched stories merge: spex are committed before their code.
+4. **Fresh runs.** With no problem recorded, every analyzer needs a
+   completed run at the current commit. A stale source is refused by
+   name, not swept; run it and promote again.
+5. **The story's spex.** When a story is named, every spec file linked to
+   it must be green on this copy's current spex run. A named story with no
+   linked spex is refused too.
 6. **Merge** into the running checkout. A conflict is left in place —
    never auto-aborted — so you can resolve it.
 7. **A second sweep**, of the running copy this time. The bar is *"the
