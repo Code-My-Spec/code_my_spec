@@ -1056,7 +1056,11 @@ defmodule CodeMySpec.Analysis do
   # answers later, so its answer is still owed. A blocking `await_run/4` — the
   # agent's own `mix test` — answered its caller with an error when the channel
   # went, and that caller asks again itself. Nothing unrequested is re-run.
-  defp answer_owed?(%Run{requested_by: %{} = by}), do: Map.has_key?(by, "agent_id")
+  # An agent waiting on a run it did not start (`wait_on_running_at_commit/4`)
+  # is owed its answer too.
+  defp answer_owed?(%Run{requested_by: %{} = by}),
+    do: Map.has_key?(by, "agent_id") or match?([_ | _], by["waiters"])
+
   defp answer_owed?(_run), do: false
 
   defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
@@ -1181,6 +1185,13 @@ defmodule CodeMySpec.Analysis do
       is_nil(run.start_commit) or (run.start_commit == commit and run.start_tree_dirty == false)
     end)
   end
+
+  @doc """
+  `running_at_commit?/3`, and the agent waiting on it: `agent_id` is told when
+  the run lands and is not nudged meanwhile, whoever started it.
+  """
+  @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
+  defdelegate wait_on_running_at_commit(scope, source, commit, agent_id), to: RunsRepository
 
   # -- Internals --
 

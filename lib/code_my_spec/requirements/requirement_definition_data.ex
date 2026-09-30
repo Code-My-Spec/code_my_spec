@@ -219,8 +219,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # `promote` that names this story.
         description:
           "This story carries a promotion stamp (`promoted_version`), written only " <>
-            "by `promote` naming this story. Not a git check: code already on " <>
-            "main does not satisfy it. Satisfy it by promoting this story.",
+            "by a promotion naming this story. Not a git check: code already on " <>
+            "main does not satisfy it. Satisfy it by completing this task, which " <>
+            "promotes the story.",
         # Story 1003, revised 2026-09-28: was [3], straight off
         # `bdd_specs_passing` — promotion used to be what QA tested. Now [4]:
         # story 1108 gave every working copy its own app, so QA tests the

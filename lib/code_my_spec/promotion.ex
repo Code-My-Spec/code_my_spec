@@ -716,17 +716,29 @@ defmodule CodeMySpec.Promotion do
 
   # One run per missing source, unless one is already running at `head` — a
   # second would queue behind it and certify the same commit twice.
+  #
+  # A run already running there, or one a start joined, was requested by
+  # somebody else, so the agent in `opts[:notify]` is added as a waiter on it:
+  # told when it lands, and not nudged meanwhile (`awaiting_runs?/3`).
   defp start_missing(scope, missing, head, named, opts) do
-    {running, to_start} = Enum.split_with(missing, &Analysis.running_at_commit?(scope, &1, head))
-    requested_by = requested_by(Keyword.get(opts, :notify))
+    agent_id = Keyword.get(opts, :notify)
+    {running, to_start} = Enum.split_with(missing, &running_at?(scope, &1, head, agent_id))
+    requested_by = requested_by(agent_id)
 
     {started, failed} =
       to_start
       |> Enum.map(&{&1, Analysis.start_run(scope, &1, [], requested_by: requested_by)})
       |> Enum.split_with(&match?({_source, {:ok, _, _}}, &1))
 
+    for {source, {:ok, :joined, _id}} <- started, do: running_at?(scope, source, head, agent_id)
+
     pending(Enum.map(started, &elem(&1, 0)), running, failed, head, named)
   end
+
+  defp running_at?(scope, source, head, nil), do: Analysis.running_at_commit?(scope, source, head)
+
+  defp running_at?(scope, source, head, agent_id),
+    do: Analysis.wait_on_running_at_commit(scope, source, head, agent_id)
 
   defp requested_by(nil), do: %{kind: "promotion"}
   defp requested_by(agent_id), do: %{kind: "promotion", agent_id: agent_id}
@@ -779,6 +791,24 @@ defmodule CodeMySpec.Promotion do
     end)
   end
 
+  @doc """
+  Every problem recorded on the scope's copy that the gate would block on, from
+  every source's latest run wherever it ran: the story_promoted task lists
+  these at start, so the agent fixes what completing it would refuse.
+  """
+  @spec blocking_problems(Scope.t()) :: [struct()]
+  def blocking_problems(%Scope{} = scope), do: blocking_problems(scope, Run.sources())
+
+  @doc "`problems` by source, a few lines each, as the gate's refusal lists them."
+  @spec describe_problems([struct()]) :: String.t()
+  def describe_problems(problems) do
+    by_source = Enum.group_by(problems, & &1.source)
+
+    Run.sources()
+    |> Enum.filter(&Map.has_key?(by_source, &1))
+    |> Enum.map_join("\n\n", &describe(&1, by_source[&1]))
+  end
+
   defp gate_result(problems, named) do
     by_source = Enum.group_by(problems, & &1.source)
     sources = Enum.filter(Run.sources(), &Map.has_key?(by_source, &1))
@@ -789,7 +819,7 @@ defmodule CodeMySpec.Promotion do
        reason:
          "#{named} is carrying #{length(problems)} problem(s) (#{counts}), so it " <>
            "promotes nothing.\n\n" <>
-           Enum.map_join(sources, "\n\n", &describe(&1, by_source[&1])) <>
+           describe_problems(problems) <>
            "\n\nA promotion needs zero compiler, credo and exunit errors and " <>
            "warnings, and no red spex on a latched (specs_ready) story. Fix these on " <>
            "#{named}, commit, and promote again. Red spex of stories " <>

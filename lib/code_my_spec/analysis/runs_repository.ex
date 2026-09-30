@@ -232,7 +232,15 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     Run
     |> where([r], r.project_id == ^project_id and r.working_copy_id == ^working_copy_id)
-    |> where([r], fragment("?->>'agent_id'", r.requested_by) == ^agent_id)
+    |> where(
+      [r],
+      fragment("?->>'agent_id'", r.requested_by) == ^agent_id or
+        fragment(
+          "coalesce(?->'waiters', '[]'::jsonb) @> to_jsonb(?::text)",
+          r.requested_by,
+          ^agent_id
+        )
+    )
     |> where(
       [r],
       r.status == :running or
@@ -311,6 +319,55 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> order_by(desc: :id)
     |> Repo.all()
   end
+
+  @doc """
+  Add `agent_id` to the waiters (`requested_by["waiters"]`) of this copy's
+  full runs of `source` still running that will answer for `commit`: started
+  there on a clean tree, or queued and not started yet. Answers whether any
+  such run exists, so a run somebody else started counts as the agent's own
+  (28d72f8a): it is told when it lands, and `awaiting_runs?/3` holds its
+  nudges meanwhile. A run already requested by the agent is left as it is.
+  """
+  @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
+  def wait_on_running_at_commit(%Scope{active_working_copy_id: nil}, _source, _commit, _agent),
+    do: false
+
+  def wait_on_running_at_commit(%Scope{} = scope, source, commit, agent_id) do
+    ids =
+      scope
+      |> running_full_runs(source)
+      |> Enum.filter(&(is_nil(&1.start_commit) or at_clean_commit?(&1, commit)))
+      |> Enum.map(& &1.id)
+
+    Run
+    |> where([r], r.id in ^ids and r.status == :running)
+    |> where([r], fragment("coalesce(?->>'agent_id', '') <> ?", r.requested_by, ^agent_id))
+    |> where(
+      [r],
+      not fragment(
+        "coalesce(?->'waiters', '[]'::jsonb) @> to_jsonb(?::text)",
+        r.requested_by,
+        ^agent_id
+      )
+    )
+    |> update([r],
+      set: [
+        requested_by:
+          fragment(
+            "jsonb_set(coalesce(?, '{}'::jsonb), '{waiters}', coalesce(?->'waiters', '[]'::jsonb) || to_jsonb(?::text))",
+            r.requested_by,
+            r.requested_by,
+            ^agent_id
+          )
+      ]
+    )
+    |> Repo.update_all([])
+
+    ids != []
+  end
+
+  defp at_clean_commit?(%Run{start_commit: commit, start_tree_dirty: false}, commit), do: true
+  defp at_clean_commit?(_run, _commit), do: false
 
   @doc """
   Fetch one still-`:running` run of this project by id.

@@ -152,6 +152,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
           {:reply, TasksMapper.evaluate_skipped_response(task, why), frame}
 
+        # Waiting on something that reports back — `PromoteWork` with analysis
+        # running at the commit it would merge (28d72f8a). Open, and not
+        # feedback: nothing needs fixing until the result lands.
+        {:ok, :pending, why} ->
+          Logger.info("[EvaluateTask] #{type_name(task_module)} pending on task #{task.id}")
+          {:reply, TasksMapper.evaluate_pending_response(task, why), frame}
+
         {:ok, :invalid, feedback} ->
           record_feedback(scope, owner, task.id, feedback)
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")

@@ -210,11 +210,11 @@ defmodule CodeMySpec.Analysis.Reconciler do
   """
   @spec announce_failed(Run.t(), term()) :: :ok
   def announce_failed(%Run{} = run, reason) do
-    case requesting_agent_id(run) do
-      nil ->
+    case {requesting_agent_id(run), waiters(run)} do
+      {nil, []} ->
         :ok
 
-      requester ->
+      {requester, waiters} ->
         :telemetry.execute(
           [:code_my_spec, :analysis, :run_reported],
           %{},
@@ -226,6 +226,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
             source: run.source,
             problems: [],
             requester: requester,
+            waiters: waiters,
             failure: error_text(reason)
           }
         )
@@ -286,15 +287,22 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # is a hang.
   defp announce_if_new(scope, run, problems, previous, signatures) do
     requester = requesting_agent_id(run)
+    waiters = waiters(run)
 
-    if requester || new_findings?(previous, signatures) do
+    if requester || waiters != [] || new_findings?(previous, signatures) do
       # An event rather than a call: `Agents.AnalysisReport` is attached to it,
       # and Analysis does not depend on Agents. Handled synchronously, in this
       # process, as the direct call was.
       :telemetry.execute(
         [:code_my_spec, :analysis, :run_reported],
         %{},
-        %{scope: scope, source: run.source, problems: problems, requester: requester}
+        %{
+          scope: scope,
+          source: run.source,
+          problems: problems,
+          requester: requester,
+          waiters: waiters
+        }
       )
     else
       :ok
@@ -307,6 +315,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # an answer that was never going to be sent.
   defp requesting_agent_id(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: id
   defp requesting_agent_id(_run), do: nil
+
+  # Agents waiting on a run somebody else started (28d72f8a): a promotion that
+  # found one already running at its commit. Answered as the requester is.
+  defp waiters(%{requested_by: %{"waiters" => waiters}}) when is_list(waiters),
+    do: Enum.filter(waiters, &is_binary/1)
+
+  defp waiters(_run), do: []
 
   defp new_findings?(previous, signatures) do
     Signatures.delta(previous, signatures).new != []

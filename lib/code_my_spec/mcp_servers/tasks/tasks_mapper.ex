@@ -66,6 +66,15 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
     )
   end
 
+  @doc "The task is waiting on a result that reports back; it stays open."
+  def evaluate_pending_response(task, why) do
+    task_name = task_type_name(task)
+
+    text_response(
+      "# #{task_name}: Waiting\n\nTask ID: `#{task.id}` — this task remains open.\n\n#{why}"
+    )
+  end
+
   def evaluate_error_response(task, reason) do
     task_name = task_type_name(task)
 

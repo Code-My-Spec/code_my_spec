@@ -187,9 +187,10 @@ defmodule CodeMySpec.Promotion.RunningCopy do
      %{
        reason:
          "this story has no promotion stamp: `promoted_version` is unset. It is " <>
-           "written only by a `promote` that names this story, once its spex pass " <>
+           "written only by a promotion that names this story, once its spex pass " <>
            "on the promoting copy — code already on main does not count, and this " <>
-           "is not a git check. Promote this story (`promote` with its number).",
+           "is not a git check. Promote this story by completing its " <>
+           "story_promoted task.",
        promoted: false
      }}
   end
@@ -229,8 +230,8 @@ defmodule CodeMySpec.Promotion.RunningCopy do
      %{
        reason:
          "the application is not answering at #{running.preview_url || "its preview address"}, " <>
-           "so there is nothing for QA to test. `promote` restarts it — and if this " <>
-           "checkout is also behind, brings the work across in the same act.",
+           "so there is nothing for QA to test. Completing the story_promoted task " <>
+           "promotes again, which restarts it.",
        preview_status: "down"
      }}
   end
