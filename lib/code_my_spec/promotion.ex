@@ -198,8 +198,9 @@ defmodule CodeMySpec.Promotion do
   #
   # No gate, because nothing crosses. The story is held to the merge path's own
   # rule, minus the merge (e1174640): its spex must pass on main's certifying
-  # spex run, and it is then latched at main's HEAD and stamped with the
-  # version main already carries. Red or missing spex refuse, as a merge would.
+  # spex run — one at main's HEAD (28d72f8a), started here if there is none —
+  # and it is then latched at that HEAD and stamped with the version main
+  # already carries. Red or missing spex refuse, as a merge would.
   defp promote_into(
          %Scope{active_working_copy_id: id} = scope,
          %WorkingCopy{id: id} = running,
@@ -208,9 +209,9 @@ defmodule CodeMySpec.Promotion do
        ) do
     named = named_copy(id)
 
-    with :ok <- spex_certified(scope, named),
+    with {:ok, %{head: head, version: version}} <- current_of(scope, running, named),
+         :ok <- runs_at(scope, ["spex"], head, named, opts),
          :ok <- story_spex_pass(scope, story, named) do
-      %{head: head, version: version} = current_of(scope, running)
       stamp_promoted_story(scope, story, version, head)
 
       # `restart/3` always answers `{:error, %{reason: ...}}` — dispatched, not
@@ -219,6 +220,9 @@ defmodule CodeMySpec.Promotion do
 
       {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
       |> with_story(story, version)
+    else
+      {:pending, pending} -> {:ok, %{pending: pending}}
+      {:error, _} = error -> error
     end
   end
 
@@ -227,8 +231,8 @@ defmodule CodeMySpec.Promotion do
   # preconditions that the merge will be clean... deployment should follow
   # async").
   #
-  # There is nothing left for a post-merge check to find. `gate/1` already
-  # certified the promoting branch clean and fresh, and `Runner.merge/4` is
+  # There is nothing left for a post-merge check to find. `gate/3` already
+  # certified the promoting commit clean, and `Runner.merge/4` is
   # now `--ff-only` — which only ever succeeds by making the running copy's
   # tree byte-identical to the branch tip that was just certified, never by
   # combining it with anything else. A tree that cannot differ from what was
@@ -240,12 +244,20 @@ defmodule CodeMySpec.Promotion do
   # now held for a database read and a git fast-forward: neither one can run
   # long, and neither one is what used to make a contended promotion cost
   # sixteen minutes.
+  #
+  # In order (28d72f8a): the copy contains main, its tree is clean, every
+  # analyzer has a clean run at its HEAD (started now, and answered as
+  # pending, where one is missing), and then exactly that commit is merged.
   defp promote_into(%Scope{} = scope, running, story, opts) do
     with {:ok, from} <- promoting_copy(scope, running),
-         {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id),
-         {:ok, swept} <- gate(scope),
-         :ok <- story_spex_pass(scope, story, named_copy(from.id)),
-         {:ok, merge_result} <- Runner.merge(scope, running.root, branch, from.id),
+         named = named_copy(from.id),
+         {:ok, main} <- main_head(scope, running, from),
+         {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id, main),
+         {:ok, head} <- reported_head(pre, named),
+         {:ok, swept} <- gate(scope, head, opts),
+         :ok <- story_spex_pass(scope, story, named),
+         :ok <- head_unmoved(scope, from, head, named),
+         {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
          {:ok, _} <-
            Runner.sync_submodule(scope, running.root, from.root, merge_result, from.id) do
@@ -253,7 +265,7 @@ defmodule CodeMySpec.Promotion do
       stamp_version = Map.get(merge_result, :stamp_version)
 
       Logger.info(
-        "[Promotion] merged #{branch} into #{running.root} " <>
+        "[Promotion] merged #{branch} at #{head} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
           "version #{version || "none"}, stamping #{stamp_version || "none"}, " <>
           "certified by #{describe_certifications(swept)}, dispatching restart"
@@ -271,10 +283,18 @@ defmodule CodeMySpec.Promotion do
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
       |> with_story(story, stamp_version)
     else
+      {:pending, pending} ->
+        Logger.info(
+          "[Promotion] pending for #{pending.working_copy}: analysis at #{pending.commit} " <>
+            "(started #{inspect(pending.started)}, already running #{inspect(pending.running)})"
+        )
+
+        {:ok, %{pending: pending}}
+
       {:error, reason} = error ->
         # `9afcbbdf`: this used to name `running.root` unconditionally — the
-        # merge target, never the copy a `gate/1` refusal is actually about.
-        # `gate/1`'s own reasons now carry `:working_copy`; fall back to the
+        # merge target, never the copy a `gate/3` refusal is actually about.
+        # `gate/3`'s own reasons now carry `:working_copy`; fall back to the
         # merge target only for refusals that happen before the gate runs
         # (no working copy on the scope, an unreported checkout).
         named = Map.get(reason, :working_copy, running.root)
@@ -355,7 +375,7 @@ defmodule CodeMySpec.Promotion do
   end
 
   # All of the promoted story's spex pass on the promoting copy's certifying
-  # run. `gate/1` has already required that run to be fresh; this reads its
+  # run. `gate/3` has already required that run at HEAD; this reads its
   # problems against the story's own spec files (`files.story_id`, not a
   # directory name — see `FixBddSpecs.story_spex_problems/2` for what parsing
   # names cost). A story with no linked spec files has nothing that passed, so
@@ -377,27 +397,67 @@ defmodule CodeMySpec.Promotion do
     spex_verdict(story, paths, failing, named)
   end
 
-  # The running-copy path has no `gate/1` to have required a fresh run, so it
-  # asks for the one it reads.
-  defp spex_certified(scope, named) do
-    if "spex" in stale_sources(scope),
-      do: {:error, not_certified(["spex"], named)},
-      else: :ok
+  # The running copy's HEAD, which its spex run has to answer for, and the
+  # version to stamp. Without a HEAD there is no run to read, so it refuses.
+  defp current_of(scope, %WorkingCopy{root: root, id: id}, named) do
+    case Runner.current(scope, root, id) do
+      {:ok, %{head: head} = current} when is_binary(head) ->
+        {:ok, %{head: head, version: Map.get(current, :version)}}
+
+      other ->
+        {:error,
+         %{reason: "could not read #{root}'s HEAD: #{inspect(other)}", working_copy: named}}
+    end
   end
 
-  # A failure to read main's HEAD or version latches without them rather than
-  # refusing: the spex already passed, and nothing here moved.
-  defp current_of(scope, %WorkingCopy{root: root, id: id}) do
-    case Runner.current(scope, root, id) do
-      {:ok, current} ->
-        %{head: Map.get(current, :head), version: Map.get(current, :version)}
+  # Main's HEAD, which the promoting copy must contain. Asked through the
+  # promoting copy's harness, the one the merge runs through.
+  defp main_head(scope, running, from) do
+    case Runner.current(scope, running.root, from.id) do
+      {:ok, %{head: head}} when is_binary(head) ->
+        {:ok, head}
+
+      other ->
+        {:error, %{reason: "could not read main's HEAD at #{running.root}: #{inspect(other)}"}}
+    end
+  end
+
+  # A harness older than commit-keyed promotion answers the precheck without a
+  # HEAD (and without checking main). Its runs carry no commits either, so
+  # nothing it analyses could ever qualify: refused by name rather than left
+  # pending forever.
+  defp reported_head(%{head: head}, _named) when is_binary(head), do: {:ok, head}
+
+  defp reported_head(_pre, named) do
+    {:error,
+     %{
+       reason:
+         "the harness serving #{named} did not report its HEAD, so it predates " <>
+           "commit-keyed promotion and its analysis runs record no commit. Restart " <>
+           "it on the current version, then promote again.",
+       working_copy: named
+     }}
+  end
+
+  # The certified commit is what merges. If the copy moved since, the commit
+  # at its tip is not the one that was certified.
+  defp head_unmoved(scope, from, head, named) do
+    case Runner.current(scope, from.root, from.id) do
+      {:ok, %{head: ^head}} ->
+        :ok
+
+      {:ok, %{head: moved}} ->
+        {:error,
+         %{
+           reason:
+             "#{named} moved from #{head} to #{moved} while this promotion checked it, " <>
+               "so nothing was merged. Promote again.",
+           working_copy: named
+         }}
 
       {:error, reason} ->
-        Logger.warning(
-          "[Promotion] could not read #{root}'s HEAD and version: #{inspect(reason)}"
-        )
-
-        %{head: nil, version: nil}
+        {:error,
+         %{reason: "could not re-read #{named}'s HEAD: #{inspect(reason)}", working_copy: named}}
     end
   end
 
@@ -421,7 +481,7 @@ defmodule CodeMySpec.Promotion do
        reason:
          "story #{story.number}'s spex are not all passing on #{named}'s certifying " <>
            "spex run, so it is not promoted:\n" <>
-           describe(failing) <>
+           describe("spex", failing) <>
            "\n\nFix them, let spex run, then promote again.",
        failing_spex: failing |> Enum.map(& &1.file_path) |> Enum.uniq(),
        working_copy: named
@@ -461,7 +521,7 @@ defmodule CodeMySpec.Promotion do
   #
   # `promote_async/2` wrapped the whole thing in a task because "a promotion
   # sweeps analyzers before it will call a copy clean, and a sweep is minutes".
-  # That stopped being true at 54aa534c: `gate/1` no longer runs a sweep, it
+  # That stopped being true at 54aa534c: the gate no longer awaits a sweep, it
   # reads the runs already on file. What was left is three DB reads, a `git
   # status`, a `--ff-only` merge, and a restart that is dispatched rather than
   # awaited. Measured: a full `promote/2` including the merge completes in 0.3s
@@ -480,6 +540,7 @@ defmodule CodeMySpec.Promotion do
   # `outcome_text/1` says so in the answer, which is the one thing that genuinely
   # must not be waited on.
 
+  defp outcome_label({:ok, %{pending: _}}), do: "pending"
   defp outcome_label({:ok, _}), do: "promoted"
   defp outcome_label({:error, _}), do: "refused"
   defp outcome_label(_other), do: "returned something unexpected"
@@ -522,11 +583,26 @@ defmodule CodeMySpec.Promotion do
       "what is serving instead."
   end
 
+  def outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
+
   def outcome_text({:error, %{reason: reason}}),
     do: "Your promotion did not go through. #{reason}"
 
   def outcome_text(other),
     do: "Your promotion returned something unexpected: #{inspect(other)}"
+
+  @doc """
+  What a pending promotion says: analysis is running at the commit it will
+  certify, nothing was merged, and the result arrives when it lands.
+  """
+  @spec pending_text(map()) :: String.t()
+  def pending_text(%{commit: commit} = pending) do
+    sources = Enum.join(Map.get(pending, :started, []) ++ Map.get(pending, :running, []), ", ")
+
+    "Analysis running at #{commit} (#{sources}); you'll get the result when it " <>
+      "lands. Nothing was merged. If it is clean, promote again and that commit " <>
+      "merges; if not, fix what it finds, commit, and promote again."
+  end
 
   defp running_copy(%Scope{} = scope) do
     scope
@@ -563,56 +639,128 @@ defmodule CodeMySpec.Promotion do
   defp promoting_copy(%Scope{}, _running),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A read of the ledger, not a job the gate starts and waits for (54aa534c).
+  # A read of the ledger, keyed on the commit (28d72f8a), not on fingerprints.
   #
-  # It used to be the second thing: `ensure_stale_runs/3` enqueued whatever was
-  # stale, then `Analysis.await_all/2` polled until this copy had no run in
-  # flight. On a copy an agent is still working in, that predicate is
-  # re-falsified by every edit — a run enqueued at commit A answers a tree
-  # that has moved to commit B by the time it completes, `await_all/2` sees a
-  # run in flight again, and the wait never ends. Measured live 2026-09-12:
-  # 97.6% of every analysis run this project has ever recorded was superseded
-  # before it finished, and one promotion held the project's lock for sixteen
-  # minutes because its own session kept editing the very file the promotion
-  # was about, re-staling the sweep the gate was waiting on each time.
+  # Fingerprint freshness is what stalled the fleet: two definitions of fresh
+  # (849f8e7a), a tree that moved mid-run (53465/53636), a run started 22s
+  # before the commit it was meant to certify (27c4070c). A run now answers for
+  # a commit only if the harness saw it start on a clean tree at that commit
+  # and finish there (`Run.at_commit?/2`).
   #
-  # The question the gate actually needs answered — is this commit clean —
-  # has usually already been answered by the time an agent promotes; a stop
-  # hook runs analysis on every turn. So this reads whether the CURRENT
-  # commit already has a completed run for every source
-  # (`Analysis.fresh_sources/2` — the same input/completed-fingerprint
-  # comparison the stop hook's own staleness reporting already uses) and
-  # refuses immediately, by name, if it does not. Nothing is enqueued, nothing
-  # is awaited, and `Lock.with_lock/2` is now held for a ledger read, a merge
-  # and a restart — seconds — rather than a wait with no guaranteed end.
+  # A missing run is started, not waited on: the gate answers "pending" at
+  # once and the result reaches the promoting agent through `requested_by`
+  # when it lands. `Lock.with_lock/2` is still held for reads and a merge only.
+  #
   # Logged before anything else here runs, so a gate that reads the wrong
-  # copy's problems — `02796b61`: `active_working_copy_id` resolved to a
-  # different harness's id, and the promoting copy got charged for another
-  # checkout's finding — is diagnosable from this log line alone instead of
-  # costing a psql join of `problems` to `working_copies` after the fact. A
-  # nil id never reaches here at all (`promoting_copy/2` refuses first); this
-  # is for the harder case, where a present id turns out to be the wrong one.
-  defp gate(
-         %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope
-       ) do
+  # copy's problems (`02796b61`) is diagnosable from this log line alone.
+  @doc """
+  Whether the promoting copy (`scope.active_working_copy_id`) may merge `head`.
+
+  Every analyzer needs a run at `head` (`Analysis.answer_at_commit/3`). The
+  problems those runs recorded follow the rule of 30fd997f, John 2026-09-30:
+  **zero problems, except the red spex of stories that are not latched.**
+  Compiler, credo and exunit findings refuse at `:error` or `:warning`; `:info`
+  (low-priority credo) is advisory. A red spex refuses only when its story is
+  latched (`specs_ready`), through `Validation.enforceable/2`.
+
+  A source with no run at `head` has one started (`requested_by` the agent in
+  `opts[:notify]`) unless one is already running there, and the answer is
+  `{:pending, %{commit:, started:, running:}}`. A blocking problem from a run
+  that is at `head` refuses regardless: no pending run can clear it.
+
+  `{:ok, certified_by}`, `{:pending, map}` or `{:error, %{reason: ...}}`.
+  """
+  @spec gate(Scope.t(), String.t(), keyword()) ::
+          {:ok, [map()]} | {:pending, map()} | {:error, map()}
+  def gate(
+        %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id} = scope,
+        head,
+        opts \\ []
+      ) do
     Logger.info(
-      "[Promotion] gate for project #{project_id}: active_working_copy_id=#{working_copy_id}"
+      "[Promotion] gate for project #{project_id}: active_working_copy_id=#{working_copy_id} " <>
+        "at #{head}"
     )
 
-    scope
-    |> blocking_problems(nil)
-    |> gate_known(scope, named_copy(working_copy_id))
+    named = named_copy(working_copy_id)
+
+    # Every source, whatever the project's config (c6f54b90): config decides
+    # what the stop hook sweeps, never what promote demands. Narrowing this
+    # would let a project promote a commit `exunit` had never once run against.
+    {answered, missing} = answers_at(scope, Run.sources(), head)
+
+    case blocking_problems(scope, Map.keys(answered)) do
+      [] -> certify(scope, answered, missing, head, named, opts)
+      problems -> gate_result(problems, named)
+    end
   end
 
-  # `9afcbbdf` ask 1: every refusal named the merge target's root
-  # (`promote_into/3` logs `running.root` unconditionally), never the copy the
-  # findings actually belong to — which the caller has no way to learn short of
-  # a psql join, and which `02796b61` showed can silently be a *different*
-  # checkout than the one that called. Carried into both error reasons below
-  # so a refusal is self-contained: a caller comparing this against its own
-  # root can tell in one read whether the gate resolved to a copy other than
-  # its own, rather than needing the server log line this module already
-  # wrote for the same reason.
+  defp certify(_scope, answered, [], _head, _named, _opts), do: {:ok, certified_by(answered)}
+
+  defp certify(scope, _answered, missing, head, named, opts),
+    do: start_missing(scope, missing, head, named, opts)
+
+  # The running-copy path's check: `sources` answered at `head`, or started.
+  defp runs_at(scope, sources, head, named, opts) do
+    case answers_at(scope, sources, head) do
+      {_answered, []} -> :ok
+      {_answered, missing} -> start_missing(scope, missing, head, named, opts)
+    end
+  end
+
+  defp answers_at(scope, sources, head) do
+    runs = Map.new(sources, &{&1, Analysis.answer_at_commit(scope, &1, head)})
+    {answered, missing} = Enum.split_with(runs, fn {_source, run} -> run end)
+    {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
+  end
+
+  # One run per missing source, unless one is already running at `head` — a
+  # second would queue behind it and certify the same commit twice.
+  #
+  # A run already running there, or one a start joined, was requested by
+  # somebody else, so the agent in `opts[:notify]` is added as a waiter on it:
+  # told when it lands, and not nudged meanwhile (`awaiting_runs?/3`).
+  defp start_missing(scope, missing, head, named, opts) do
+    agent_id = Keyword.get(opts, :notify)
+    {running, to_start} = Enum.split_with(missing, &running_at?(scope, &1, head, agent_id))
+    requested_by = requested_by(agent_id)
+
+    {started, failed} =
+      to_start
+      |> Enum.map(&{&1, Analysis.start_run(scope, &1, [], requested_by: requested_by)})
+      |> Enum.split_with(&match?({_source, {:ok, _, _}}, &1))
+
+    for {source, {:ok, :joined, _id}} <- started, do: running_at?(scope, source, head, agent_id)
+
+    pending(Enum.map(started, &elem(&1, 0)), running, failed, head, named)
+  end
+
+  defp running_at?(scope, source, head, nil), do: Analysis.running_at_commit?(scope, source, head)
+
+  defp running_at?(scope, source, head, agent_id),
+    do: Analysis.wait_on_running_at_commit(scope, source, head, agent_id)
+
+  defp requested_by(nil), do: %{kind: "promotion"}
+  defp requested_by(agent_id), do: %{kind: "promotion", agent_id: agent_id}
+
+  defp pending(started, running, [], head, named),
+    do: {:pending, %{commit: head, started: started, running: running, working_copy: named}}
+
+  defp pending(_started, _running, failed, head, named) do
+    {:error,
+     %{
+       reason:
+         "#{named} has no clean analysis run at #{head} for " <>
+           Enum.map_join(failed, ", ", fn {source, error} ->
+             "#{source} (could not start one: #{inspect(error)})"
+           end) <> ". Nothing was merged.",
+       working_copy: named
+     }}
+  end
+
+  # `9afcbbdf` ask 1: every refusal names the copy the findings belong to, which
+  # `02796b61` showed can silently be a *different* checkout than the one that
+  # called, so a caller can tell in one read which copy the gate resolved to.
   defp named_copy(nil), do: "no working copy on this scope"
 
   defp named_copy(working_copy_id) do
@@ -622,41 +770,16 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # A problem already recorded answers immediately, staleness or not — a real
-  # finding does not stop being real because the run that found it is not the
-  # newest one. Only an *empty* list needs the staleness check, because an
-  # empty list from a stale run is not evidence of anything: "no problems
-  # recorded" and "no problems" are different claims, and closing that gap
-  # used to mean waiting for a fresh run — it now means reading whether one
-  # already exists.
-  defp gate_known([], scope, named), do: gate_freshness(scope, stale_sources(scope), named)
-  defp gate_known(problems, _scope, named), do: gate_result(problems, named)
-
-  defp gate_freshness(scope, [], _named), do: {:ok, certified_by(scope)}
-  defp gate_freshness(_scope, stale, named), do: {:error, not_certified(stale, named)}
-
-  # What this promote actually leaned on to call the copy clean. `gate/1`
-  # never runs a check of its own — see the moduledoc above it — it reads
-  # whichever runs are already on file, so two promotes seconds apart with
-  # nothing re-run in between read the exact same rows and both say "clean"
-  # with nothing in the response to tell them apart. Carried on `swept` so
-  # reuse is visible instead of silent: two promotes citing the same
-  # `finished_at` for every source verified nothing new between them, and a
-  # caller that cares (or is debugging why a second promote answered
-  # instantly) can tell.
-  defp certified_by(scope) do
-    for source <- Run.sources() do
-      case Analysis.latest_answer(scope, source) do
-        %Run{finished_at: finished_at} -> %{source: source, finished_at: finished_at}
-        nil -> %{source: source, finished_at: nil}
-      end
+  # What this promote leaned on to call the copy clean: the run per source at
+  # the certified commit, carried on `swept` so two promotes reading the same
+  # runs are visibly the same verdict.
+  defp certified_by(answered) do
+    for source <- Run.sources(), %Run{} = run <- [answered[source]] do
+      %{source: source, finished_at: run.finished_at, commit: run.completed_commit}
     end
   end
 
-  # The log line's rendering of `certified_by/1` — a timestamp per source, so
-  # the same finished_at showing up across two consecutive promotions' logs
-  # is the evidence that the second one reused the first's verdict rather
-  # than seeing anything new.
+  # The log line's rendering of `certified_by/1`.
   defp describe_certifications(certifications) do
     certifications
     |> Enum.map_join(", ", fn
@@ -668,100 +791,75 @@ defmodule CodeMySpec.Promotion do
     end)
   end
 
-  # `c6f54b90`: a project with `require_unit_tests: false` still refused on a
-  # stale `exunit`, and it looked like a bug — the requirement graph had
-  # already stopped asking for `tests_passing` under the same setting
-  # (`RequirementGraph.maybe_filter_tests/2`), so the graph and the gate
-  # disagreed about the same config. Tried narrowing this to match; reverted.
-  # Every project-level config in this system — `require_unit_tests`, and
-  # `spex`/`exunit`/`credo`'s own off|block_changed|block_all — decides what
-  # the *automatic stop-hook sweep* asks for, never what *promote* demands
-  # before it will ship. The graph is allowed to stop asking an agent to
-  # write tests for a story; the gate is not thereby excused from checking
-  # the ones that already exist still pass. Narrowing this would let a
-  # project promote a commit `exunit` had never once run against.
-  defp stale_sources(%Scope{} = scope) do
-    fresh = Analysis.fresh_sources(scope, Run.sources())
-    Enum.reject(Run.sources(), &(&1 in fresh))
+  @doc """
+  Every problem recorded on the scope's copy that the gate would block on, from
+  every source's latest run wherever it ran: the story_promoted task lists
+  these at start, so the agent fixes what completing it would refuse.
+  """
+  @spec blocking_problems(Scope.t()) :: [struct()]
+  def blocking_problems(%Scope{} = scope), do: blocking_problems(scope, Run.sources())
+
+  @doc "`problems` by source, a few lines each, as the gate's refusal lists them."
+  @spec describe_problems([struct()]) :: String.t()
+  def describe_problems(problems) do
+    by_source = Enum.group_by(problems, & &1.source)
+
+    Run.sources()
+    |> Enum.filter(&Map.has_key?(by_source, &1))
+    |> Enum.map_join("\n\n", &describe(&1, by_source[&1]))
   end
-
-  # Named and specific on purpose (376e3356 already argued this once, for the
-  # wait this replaces): the ambiguity between "working" and "stuck" is what
-  # cost sixteen minutes to diagnose last time, and a refusal that does not
-  # say which source or what to do about it recreates the same ambiguity one
-  # level up.
-  #
-  # This reads as a new restriction before it reads as the fix it is —
-  # editing after your last clean run now refuses immediately where it used
-  # to just wait, sometimes forever. Said outright, because the alternative is
-  # an agent discovering the difference by hitting it.
-  defp not_certified(stale, named) do
-    sources = Enum.join(stale, ", ")
-
-    %{
-      reason:
-        "#{named} has not been swept clean at its current commit: #{sources} " <>
-          "need a fresh run before this can promote. Nothing was started for " <>
-          "you — two ways to get one, and promote again once #{sources} lands:\n\n" <>
-          "  - `start_analysis` with the specific source (one call per name in " <>
-          "#{sources})\n" <>
-          "  - run `mix test` / `mix spex` / `mix credo` / `mix compile` yourself, " <>
-          "same as you would to check your own work — the PreToolUse hook routes " <>
-          "it through this project's own run ledger, so an ordinary invocation " <>
-          "satisfies this gate exactly like a server-dispatched sweep does; " <>
-          "nothing extra to call\n\n" <>
-          "This refuses where the gate used to wait, sometimes indefinitely: " <>
-          "promoting while still editing used to hold this project's lock, " <>
-          "refusing every other promotion, for as long as each edit re-staled " <>
-          "the sweep the gate was waiting on. A stale source is reported at " <>
-          "once instead.",
-      stale: stale,
-      working_copy: named
-    }
-  end
-
-  defp gate_result([], _named), do: {:ok, []}
 
   defp gate_result(problems, named) do
+    by_source = Enum.group_by(problems, & &1.source)
+    sources = Enum.filter(Run.sources(), &Map.has_key?(by_source, &1))
+    counts = Enum.map_join(sources, ", ", &"#{length(by_source[&1])} #{&1}")
+
     {:error,
      %{
        reason:
-         "#{named} is carrying #{length(problems)} problem(s), so it promotes " <>
-           "nothing:\n" <>
-           describe(problems) <>
+         "#{named} is carrying #{length(problems)} problem(s) (#{counts}), so it " <>
+           "promotes nothing.\n\n" <>
+           describe_problems(problems) <>
+           "\n\nA promotion needs zero compiler, credo and exunit errors and " <>
+           "warnings, and no red spex on a latched (specs_ready) story. Fix these on " <>
+           "#{named}, commit, and promote again. Red spex of stories " <>
+           "not latched yet are allowed through." <>
            "\n\nIf #{named} is not this session's own working copy, the gate " <>
            "resolved to a different checkout than the one calling it — fix on " <>
            "that copy, or say so if this looks wrong; a sweep run from here " <>
            "will not touch problems recorded against a different working copy.",
        problems: Enum.map(problems, &problem_key/1),
+       counts: Map.new(by_source, fn {source, of_source} -> {source, length(of_source)} end),
        working_copy: named
      }}
   end
 
-  # Through `Validation.enforceable/2`, which is what the gate elsewhere blocks
-  # on. That function's own doc says why it is public: "two copies of what
-  # counts as enforceable drift, and the drift is silent."
+  # Only the sources whose latest run is at the certified commit: a problem
+  # recorded by a run at another commit describes a different tree.
   #
-  # Credo and compiler findings block at any severity and whatever the stop
-  # hook's mode says. A warning let through here lands on main and blocks
-  # every other copy's promote until someone cleans it up (v2.0.162's two
-  # AliasUsage findings).
+  # Credo and compiler findings block whatever the stop hook's mode says: a
+  # warning let through here lands on main and blocks every other copy's
+  # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
+  # Exunit and spex go through `Validation.enforceable/2`, which drops the red
+  # spex of unlatched stories — the same latch the stop hook uses.
+  #
+  # `:info` (low-priority credo) is advisory and never blocks (30fd997f).
   @always_block ~w(credo compiler)
 
-  defp blocking_problems(%Scope{} = scope, copy) do
-    here = as_copy(scope, copy)
+  defp blocking_problems(%Scope{} = scope, sources) do
+    strict = problems_of(scope, Enum.filter(sources, &(&1 in @always_block)))
 
-    strict = ProblemRepository.list_project_problems(here, sources: @always_block)
-
-    here
-    |> ProblemRepository.list_project_problems(severity: :error)
-    |> Enum.reject(&(&1.source in @always_block))
-    |> then(&Validation.enforceable(here, &1))
+    scope
+    |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
+    |> then(&Validation.enforceable(scope, &1))
     |> Kernel.++(strict)
+    |> Enum.reject(&(&1.severity == :info))
   end
 
-  defp as_copy(%Scope{} = scope, nil), do: scope
-  defp as_copy(%Scope{} = scope, %WorkingCopy{id: id}), do: %{scope | active_working_copy_id: id}
+  defp problems_of(_scope, []), do: []
+
+  defp problems_of(scope, sources),
+    do: ProblemRepository.list_project_problems(scope, sources: sources)
 
   # Always, never conditionally.
   #
@@ -1022,11 +1120,26 @@ defmodule CodeMySpec.Promotion do
       "otherwise end before it could answer."
   end
 
-  defp describe(problems) do
-    problems
-    |> Enum.take(10)
-    |> Enum.map_join("\n", fn p -> "  #{p.file_path}: #{p.message}" end)
+  @shown_per_source 3
+
+  defp describe(source, problems) do
+    shown =
+      problems
+      |> Enum.take(@shown_per_source)
+      |> Enum.map_join("\n", &"  #{location(&1)}: #{first_line(&1.message)}")
+
+    "#{source} (#{length(problems)}):\n" <> shown <> more(length(problems) - @shown_per_source)
   end
+
+  defp location(%{file_path: path, line: line}) when is_integer(line), do: "#{path}:#{line}"
+  defp location(%{file_path: path}), do: path
+
+  defp first_line(message) do
+    message |> String.split("\n", parts: 2) |> hd() |> String.slice(0, 160)
+  end
+
+  defp more(hidden) when hidden > 0, do: "\n  …and #{hidden} more"
+  defp more(_hidden), do: ""
 
   defp problem_key(p), do: {p.source, p.file_path, p.line, p.message}
 end

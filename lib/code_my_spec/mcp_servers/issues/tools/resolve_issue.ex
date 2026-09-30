@@ -28,7 +28,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ResolveIssue do
       # waits on a person, this waits on exactly the work that just landed.
       # Without it QA has to raise a tap-out to say "I am waiting on the bug I
       # filed", and a human has to answer it (af9e52c6).
-      {:ok, _released} = TaskOwner.release_issue_block(scope, updated.id)
+      {:ok, _released} = TaskOwner.issue_closed(scope, updated)
 
       {:reply, IssuesMapper.issue_updated_response(updated, "resolved"), frame}
     else

@@ -54,6 +54,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Stories.Story
@@ -86,9 +87,10 @@ defmodule CodeMySpec.Requirements.Profiles do
 
     %{
       threshold: threshold,
-      incoming: Issues.list_by_status_and_min_severity(scope, :incoming, threshold),
+      incoming: Issues.list_triageable(scope, threshold),
       accepted: Issues.list_by_status_and_min_severity(scope, :accepted, threshold),
-      unresolved_by_story: Issues.unresolved_by_story(scope, threshold)
+      unresolved_by_story: Issues.unresolved_by_story(scope, threshold),
+      incoming_by_story: Issues.incoming_by_story(scope)
     }
   end
 
@@ -231,8 +233,10 @@ defmodule CodeMySpec.Requirements.Profiles do
   # actually exists, `deploy` whether the recorded deploy passed its health
   # check. Neither is answerable from the story row alone, which is why they are
   # a profile rather than a field lookup.
-  def load(%Scope{active_project_id: project_id}, :links) do
+  def load(%Scope{active_project_id: project_id} = scope, :links) do
     %{
+      # What an undeployed story's `deploy` is waiting on, if anything.
+      uat_setup_missing: DevopsSetupChecker.missing(scope, "uat"),
       component_id_by_story:
         Repo.all(
           from(s in Story,

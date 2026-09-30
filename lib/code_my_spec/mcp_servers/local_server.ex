@@ -35,6 +35,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   alias Anubis.Server.Handlers
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.ScriptableTools
+  alias CodeMySpec.McpServers.StoryRefs
 
   use Anubis.Server,
     name: "codemyspec-local",
@@ -113,7 +114,10 @@ defmodule CodeMySpec.McpServers.LocalServer do
   def handle_request(%{"method" => "tools/call", "params" => %{"name" => name}} = request, frame) do
     if moved?(name),
       do: {:reply, moved_response(name), frame},
-      else: Handlers.handle(request, __MODULE__, frame)
+      else:
+        request
+        |> StoryRefs.normalize_request(__components__())
+        |> Handlers.handle(__MODULE__, frame)
   end
 
   def handle_request(request, frame) do

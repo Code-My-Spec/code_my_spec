@@ -3952,15 +3952,28 @@ defmodule CodeMySpec.Provisioning.Steps do
     scope |> permitted_environment_rows() |> Enum.map(& &1.name)
   end
 
+  @doc """
+  `permitted_environments/1` from the rows already there, seeding none — for a
+  reader that must not write, the requirement graph's `deploy` gate.
+  """
+  @spec permitted_existing_environments(Scope.t()) :: [String.t()]
+  def permitted_existing_environments(scope) do
+    scope
+    |> EnvironmentRepository.list_existing()
+    |> permitted(scope)
+    |> Enum.map(& &1.name)
+  end
+
   # The rows, filtered by the same rule. The server step fans out over structs
   # rather than names, and the comment on `ensure_environment_servers/3` is
   # about precisely this hazard: a step that fans out over one list and checks
   # its work against another reports gaps that are really disagreements. It
   # took the unfiltered list, so the `:uat` filter above stopped the *later*
   # steps touching prod while the server step went on building the box.
-  defp permitted_environment_rows(scope) do
-    rows = EnvironmentRepository.list(scope)
+  defp permitted_environment_rows(scope),
+    do: scope |> EnvironmentRepository.list() |> permitted(scope)
 
+  defp permitted(rows, scope) do
     case devops_level(scope) do
       :uat -> Enum.reject(rows, &(&1.name == "prod"))
       _ -> rows

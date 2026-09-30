@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3387Spex do
   spex "A rejected call does not read as an empty answer", criterion: 1335 do
     scenario "a script calls a tool with an argument of the wrong type" do
       given_ "a script that passes a string where an integer is wanted", context do
-        {:ok, Map.put(context, :script, ~s|return list_rules({ story_number = "966" })|)}
+        {:ok, Map.put(context, :script, ~s|return list_rules({ story_number = true })|)}
       end
 
       when_ "the agent reads the result", context do

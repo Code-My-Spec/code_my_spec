@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1066.Criterion3388Spex do
     scenario "a script makes a malformed call and does not check whether it failed" do
       given_ "a script that discards the error the way an agent actually does", context do
         script = """
-        local _rules = list_rules({ story_number = "966" })
+        local _rules = list_rules({ story_number = true })
         return "this story has no rules"
         """
 

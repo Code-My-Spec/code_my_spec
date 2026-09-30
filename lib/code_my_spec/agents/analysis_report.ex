@@ -93,7 +93,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # swallowed — the failure stays loud each time it happens.
   @doc false
   def handle_event(@event, _measurements, %{failure: reason} = meta, _config) do
-    deliver_failure(meta.scope, meta.source, reason, meta.requester)
+    deliver_failure(meta.scope, meta.source, reason, askers(meta))
   rescue
     e ->
       Logger.error(
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   def handle_event(@event, _measurements, meta, _config) do
-    deliver(meta.scope, meta.source, meta.problems, meta.requester)
+    deliver(meta.scope, meta.source, meta.problems, askers(meta))
   rescue
     e ->
       Logger.error(
@@ -112,24 +112,31 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       )
   end
 
+  # The requester, then any agent waiting on a run it did not start (28d72f8a).
+  defp askers(meta), do: [meta.requester | Map.get(meta, :waiters, [])]
+
   @doc """
   Tell every internal agent in this run's working copy what landed.
+
+  `requester_id` is the agent that asked for the run, or a list of every agent
+  waiting on it; each is answered whatever the run found.
 
   Answers `:ok` regardless. This runs at the end of `Reconciler.reconcile/4`,
   where the run has already been recorded — a delivery that fails must not make
   a completed run look incomplete.
   """
-  @spec deliver(Scope.t(), atom() | String.t(), [struct()], String.t() | nil) :: :ok
+  @spec deliver(Scope.t(), atom() | String.t(), [struct()], String.t() | [String.t()] | nil) ::
+          :ok
   def deliver(scope, source, problems, requester_id \\ nil)
 
   def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
       when is_binary(copy_id) do
     findings = digest(source, problems)
-    requester_id = agent_uuid(requester_id)
+    askers = agent_uuids(requester_id)
 
     scope
-    |> internal_agents(copy_id, requester_id)
-    |> Enum.each(&tell_one(&1, findings, source, requester_id))
+    |> internal_agents(copy_id, askers)
+    |> Enum.each(&tell_one(&1, findings, source, askers))
   end
 
   def deliver(_scope, _source, _problems, _requester_id), do: :ok
@@ -141,16 +148,21 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   nobody requested stays silent. A requester that is not an agent row (a
   Claude Code subagent id) is told nothing here.
   """
-  @spec deliver_failure(Scope.t(), atom() | String.t(), String.t(), String.t() | nil) :: :ok
+  @spec deliver_failure(
+          Scope.t(),
+          atom() | String.t(),
+          String.t(),
+          String.t() | [String.t()] | nil
+        ) :: :ok
   def deliver_failure(%Scope{active_working_copy_id: copy_id} = scope, source, reason, requester)
       when is_binary(copy_id) do
-    case agent_uuid(requester) do
-      nil ->
+    case agent_uuids(requester) do
+      [] ->
         :ok
 
-      agent_id ->
+      agent_ids ->
         scope
-        |> requesting_agent(copy_id, agent_id)
+        |> requesting_agents(copy_id, agent_ids)
         |> Enum.each(&tell(&1, failed(source, reason)))
     end
   end
@@ -182,13 +194,19 @@ defmodule CodeMySpec.Agents.AnalysisReport do
 
   defp agent_uuid(_id), do: nil
 
+  defp agent_uuids(ids) do
+    ids |> List.wrap() |> Enum.map(&agent_uuid/1) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+  end
+
   # The asker is answered whatever the run found; everyone else keeps the
   # silence a clean tree earns them.
-  defp tell_one(%{id: id} = agent, findings, source, id),
-    do: tell(agent, findings || clean(source))
-
-  defp tell_one(_agent, nil, _source, _requester_id), do: :ok
-  defp tell_one(agent, findings, _source, _requester_id), do: tell(agent, findings)
+  defp tell_one(%{id: id} = agent, findings, source, askers) do
+    cond do
+      id in askers -> tell(agent, findings || clean(source))
+      findings -> tell(agent, findings)
+      true -> :ok
+    end
+  end
 
   defp clean(source) do
     """
@@ -245,14 +263,11 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # Casting first turns "not a real agent id" back into the plain broadcast
   # this session was always going to get told through its own path anyway (see
   # "Alloy only" above).
-  defp internal_agents(%Scope{} = scope, copy_id, requester_id) when is_binary(requester_id) do
-    case Ecto.UUID.cast(requester_id) do
-      {:ok, agent_id} -> internal_agents_matching(scope, copy_id, agent_id)
-      :error -> internal_agents(scope, copy_id, nil)
-    end
-  end
+  # `askers` are already cast by `agent_uuids/1`.
+  defp internal_agents(%Scope{} = scope, copy_id, [_ | _] = askers),
+    do: internal_agents_matching(scope, copy_id, askers)
 
-  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, _requester_id) do
+  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, []) do
     Agent
     |> where(
       [a],
@@ -262,22 +277,22 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     |> Repo.all()
   end
 
-  defp internal_agents_matching(%Scope{active_project_id: project_id}, copy_id, agent_id) do
+  defp internal_agents_matching(%Scope{active_project_id: project_id}, copy_id, agent_ids) do
     Agent
     |> where(
       [a],
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
         a.status != :stopped and a.engine == :alloy and
-        (a.role in ^@report_roles or a.id == ^agent_id)
+        (a.role in ^@report_roles or a.id in ^agent_ids)
     )
     |> Repo.all()
   end
 
-  defp requesting_agent(%Scope{active_project_id: project_id}, copy_id, agent_id) do
+  defp requesting_agents(%Scope{active_project_id: project_id}, copy_id, agent_ids) do
     Agent
     |> where(
       [a],
-      a.id == ^agent_id and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+      a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
         a.status != :stopped and a.engine == :alloy
     )
     |> Repo.all()

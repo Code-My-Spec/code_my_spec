@@ -91,19 +91,29 @@ defmodule CodeMySpec.Agents.Work do
   defp resume(scope, agent) do
     with :ok <- Transport.deliverable(agent),
          {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
-      Conversations.record_sent_to_agent(reserved, @resume_prompt)
+      turn_prompt = resume_prompt(reserved)
+      Conversations.record_sent_to_agent(reserved, turn_prompt)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,
-             @resume_prompt,
+             turn_prompt,
              5_000
            ) do
         {:ok, :started} -> {:ok, ref}
         _error -> release(scope, reserved.id, ref)
       end
     end
+  end
+
+  # The prompt promises "the task below", so the task has to follow (0d3b800d).
+  defp resume_prompt(agent) do
+    task = Agent.active_task(agent)
+
+    @resume_prompt <>
+      "\n\nThe task: `#{task.requirement_name}`, id #{task.id}. `evaluate_task` with " <>
+      "that id when it is done."
   end
 
   # Same row lock and stamp as `reserve/2`, against `stranded?/1` rather than
@@ -170,6 +180,23 @@ defmodule CodeMySpec.Agents.Work do
       false -> {:ok, :not_runnable}
       {:ok, :not_runnable} = result -> result
       error -> error
+    end
+  end
+
+  @doc """
+  Tell one agent something in a turn when it can take one, and on its thread
+  when it cannot — then offer its copy a turn, so a busy agent still reads the
+  notice on its next one.
+  """
+  def wake_with_notice(scope, %Agent{} = agent, notice, reason) when is_binary(notice) do
+    case offer_turn_with(scope, agent, notice) do
+      {:ok, ref} when is_binary(ref) ->
+        :ok
+
+      _not_admissible ->
+        Conversations.record_sent_to_agent(agent, notice)
+        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, reason)
+        :ok
     end
   end
 
@@ -509,6 +536,34 @@ defmodule CodeMySpec.Agents.Work do
 
   defp already_declined?(%{declined_offer_at: at}, _offer),
     do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
+
+  @doc """
+  The damper holding this agent's current offer, or nil.
+
+  `claimable` is `claimable_work/3`'s answer, passed in so a fleet read computes
+  it once. Read by `list_agent_work` so a damped agent is not shown as idle.
+  """
+  @spec damped(Scope.t(), Agent.t(), [map()]) ::
+          %{count: pos_integer(), requirement: String.t() | nil, until: DateTime.t()} | nil
+  def damped(scope, %Agent{} = agent, claimable) do
+    offer = offer_fingerprint(scope, agent, claimable)
+
+    if already_declined?(agent, offer) do
+      %{
+        count: agent.declined_offer_count,
+        requirement: claimable |> List.first() |> then(&(&1 && &1.name)),
+        until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
+      }
+    end
+  end
+
+  @doc false
+  def offer_fingerprint(scope, agent, claimable) do
+    fingerprint(
+      question_work?(scope, agent),
+      Enum.map(claimable, &{&1.entity_type, &1.entity_id, &1.name})
+    )
+  end
 
   defp question_work?(scope, %{role: :main}) do
     Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))

@@ -69,6 +69,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.Menu
   alias CodeMySpec.WorkingCopies
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
@@ -641,6 +642,19 @@ defmodule CodeMySpec.Validation do
 
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
 
+  # The attribution-exempt sources block only the roles that fix code.
+  #
+  # Exemption means attribution cannot demote them, so without this a QA or
+  # product agent that edited anything held every red spex on a latched story —
+  # metric_flow's QA agent, refused every turn end (d91436b7). `Menu` already
+  # gives those roles no problems; this is the gate reading the same rule.
+  # No role (a Claude Code session) keeps the exemption as it was.
+  defp split_by_role(blocking, role) do
+    if Menu.holds_problems?(role),
+      do: {blocking, []},
+      else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
+  end
+
   defp attributable_to?(problem, session_paths) do
     problem.source in @attribution_exempt_sources or
       not is_binary(problem.file_path) or
@@ -1092,7 +1106,8 @@ defmodule CodeMySpec.Validation do
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
     session_paths = session_paths(scope, opts, project_changed?)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
-    advisory = advisory ++ unattributed
+    {blocking, not_this_role} = split_by_role(blocking, Keyword.get(opts, :agent_role))
+    advisory = advisory ++ unattributed ++ not_this_role
     log_demotions(unattributed, session_paths, opts)
 
     {blocking, superseded} =
@@ -1526,14 +1541,21 @@ defmodule CodeMySpec.Validation do
     } = ctx
 
     Enum.split_with(problems, fn problem ->
-      case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
-        nil -> true
-        story_id -> MapSet.member?(ready_ids, story_id)
-      end
+      located?(problem) and
+        case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
+          nil -> true
+          story_id -> MapSet.member?(ready_ids, story_id)
+        end
     end)
   end
 
   defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
+  # A finding the runner could not place is not an orphan: it has no story
+  # link to have broken. sexy_spex 0.2.1's `fail_on_error_logs` failure carries
+  # no stacktrace or spec file, the reconciler stores "unknown", and 24 of them
+  # refused metric_flow's QA agent every turn (d91436b7). Advisory, not silent.
+  defp located?(%{file_path: path}), do: is_binary(path) and path != "unknown"
 
   # Assignment does NOT exempt a spex finding, and criterion 2406 is why.
   #

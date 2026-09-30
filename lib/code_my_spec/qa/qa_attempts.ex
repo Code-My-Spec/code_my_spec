@@ -78,7 +78,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # correct; the three denials were mechanical.
   #
   # Blocking on the issue lets the system make the handoff itself — resolving it
-  # releases the block and offers QA a turn (`TaskOwner.release_issue_block/2`).
+  # releases the block and offers QA a turn (`TaskOwner.blocker_resolved/4`).
   #
   # Here rather than in the tool, because this is where `story_id` and
   # `agent_id` are already resolved and where attribution already happens; the

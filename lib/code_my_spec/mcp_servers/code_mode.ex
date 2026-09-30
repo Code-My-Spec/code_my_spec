@@ -41,6 +41,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.ScriptResult
+  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Users.Scope
 
   @doc "The catalog of tools a script may call, acting as `scope`."
@@ -251,7 +252,10 @@ defmodule CodeMySpec.McpServers.CodeMode do
     frame = %Frame{assigns: Map.put(caller, :current_scope, scope)}
 
     fn args ->
-      with {:ok, params} <- validate(tool, identified(tool, args, caller)) do
+      args = StoryRefs.normalize_args(Map.get(tool, :input_schema), args)
+
+      with :ok <- known(tool, args),
+           {:ok, params} <- validate(tool, identified(tool, args, caller)) do
         execute(tool, params, frame)
       end
     end
@@ -285,6 +289,34 @@ defmodule CodeMySpec.McpServers.CodeMode do
     |> Map.get("properties", %{})
     |> Map.has_key?("session_id")
   end
+
+  # 87a3b848: validation drops keys the schema does not name, so
+  # `list_issues({ search = "sops" })` ran unfiltered and its 1060 issues read
+  # as the answer. Checked after `StoryRefs.normalize_args/2`, which has
+  # already turned the story aliases into declared arguments.
+  defp known(tool, args) do
+    declared = tool |> Map.get(:input_schema, %{}) |> Map.get("properties", %{})
+
+    case Enum.reject(Map.keys(args), &Map.has_key?(declared, &1)) do
+      [] ->
+        :ok
+
+      ["_"] ->
+        {:invalid_call,
+         "arguments go in a table of names — `#{tool.name}({ name = value })`; " <>
+           "valid arguments: " <> valid(declared)}
+
+      unknown ->
+        {:invalid_call,
+         "unknown argument#{if length(unknown) > 1, do: "s"} " <>
+           Enum.map_join(unknown, ", ", &"`#{&1}`") <> "; valid arguments: " <> valid(declared)}
+    end
+  end
+
+  defp valid(declared) when map_size(declared) == 0, do: "none"
+
+  defp valid(declared),
+    do: declared |> Map.keys() |> Enum.sort() |> Enum.map_join(", ", &"`#{&1}`")
 
   # The same casting a real MCP call goes through. Skipping it would make a
   # script a second, laxer door onto the same tools, and the casting is

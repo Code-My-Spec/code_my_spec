@@ -108,6 +108,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
     analysis_completed
     problems_changed
     deploy_changed
+    devops_setup_changed
     qa_attempt_submitted
   )
 

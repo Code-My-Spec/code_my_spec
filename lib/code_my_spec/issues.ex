@@ -123,6 +123,8 @@ defmodule CodeMySpec.Issues do
   end
 
   defdelegate unresolved_by_story(scope, min_severity), to: IssuesRepository
+  defdelegate incoming_by_story(scope), to: IssuesRepository
+  defdelegate list_triageable(scope, min_severity), to: IssuesRepository
 
   @doc """
   Resolved issues in one project, by id, for callers that hold an id rather

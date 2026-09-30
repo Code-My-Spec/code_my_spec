@@ -15,8 +15,13 @@ defmodule CodeMySpec.AnalysisFixtures do
   @doc """
   Insert a completed full run per source at the CURRENT input fingerprint,
   marking every source's persisted problems as current.
+
+  `commit:` also records the git state a harness reports: started on a clean
+  tree at that commit and finished there, which is what the promote gate
+  reads (`Run.at_commit?/2`). `start_tree_dirty:` and `completed_commit:`
+  override either half.
   """
-  def fresh_analysis_runs_fixture(scope, sources \\ Run.sources()) do
+  def fresh_analysis_runs_fixture(scope, sources \\ Run.sources(), opts \\ []) do
     fingerprints = Fingerprint.current(scope)
 
     for source <- sources do
@@ -28,8 +33,18 @@ defmodule CodeMySpec.AnalysisFixtures do
         })
 
       {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
-      run
+      at_commit(run, Keyword.get(opts, :commit), opts)
     end
+  end
+
+  defp at_commit(run, nil, _opts), do: run
+
+  defp at_commit(run, commit, opts) do
+    RunsRepository.record_tree(run, %{
+      start_commit: commit,
+      start_tree_dirty: Keyword.get(opts, :start_tree_dirty, false),
+      completed_commit: Keyword.get(opts, :completed_commit, commit)
+    })
   end
 
   @doc "Insert a run in a given state without touching fingerprint currency."

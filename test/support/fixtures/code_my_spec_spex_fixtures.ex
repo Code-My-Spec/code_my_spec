@@ -4791,12 +4791,20 @@ defmodule CodeMySpecSpex.Fixtures do
   this AFTER the last file write; any later relevant file change makes the
   stamp stale again (by design).
 
+  `at_head: true` stamps the runs as a harness records them: started on a
+  clean tree at the working copy's HEAD and finished there — what the promote
+  gate reads (28d72f8a). The copy's root must be a git checkout.
+
   Syncs first: fingerprints hash the Files table, and fixture-written files
   the stop hook hasn't synced yet would otherwise shift the fingerprint at
   stop time — the stamp would read stale and real analyzers would run
   against the synthetic project.
   """
-  def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
+  def fresh_analysis_runs(
+        %Scope{} = scope,
+        sources \\ ["compiler", "credo", "exunit", "spex"],
+        opts \\ []
+      ) do
     # A full sync, not an incremental one, and that is the whole of it.
     #
     # The fingerprint an analysis run is stamped with is content-based over the
@@ -4815,7 +4823,13 @@ defmodule CodeMySpecSpex.Fixtures do
     # Stamping over the set the reader will see is the fix: the fixture syncs
     # the way the thing that reads it syncs.
     {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
-    result = CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+
+    result =
+      CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
+        scope,
+        sources,
+        at_head(scope, opts)
+      )
 
     # And say so. Analysis freshness is a graph input — `Preloader` feeds it to
     # `analysis_fresh`, and `tests_passing`, `spex_passing` and the latch behind
@@ -4845,6 +4859,16 @@ defmodule CodeMySpecSpex.Fixtures do
     GraphWatcher.settle(scope)
 
     result
+  end
+
+  defp at_head(%Scope{active_working_copy_id: id, environment: env}, opts) do
+    if Keyword.get(opts, :at_head, false) do
+      {:ok, %{root: root}} = CodeMySpec.WorkingCopies.fetch(id)
+      {sha, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"], cd: root)
+      [commit: String.trim(sha)]
+    else
+      []
+    end
   end
 
   @doc """

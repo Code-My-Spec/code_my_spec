@@ -16,6 +16,8 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
+  alias CodeMySpecWeb.AgentLoopBadge
+
   @doc """
   The dynamic panel beside a conversation, with nothing to switch between.
 
@@ -498,6 +500,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
               class="size-3.5 shrink-0"
             />
             <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+            <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
             <span class="shrink-0 opacity-60">{a.liveness.label}</span>
           </.link>
 
@@ -506,6 +509,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
             class="flex items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
           >
             <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+            <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
             <span class="shrink-0">{a.liveness.label}</span>
           </div>
 

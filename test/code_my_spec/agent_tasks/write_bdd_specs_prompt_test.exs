@@ -49,6 +49,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
     text
   end
 
+  # 8a186121
+  test "tells a coder how to get an obsolete criterion retired", %{scope: scope, story: story} do
+    text = prompt(scope, story)
+
+    assert text =~ "If a criterion is obsolete or wrong, don't delete its spec"
+    assert text =~ "(`create_issue`)"
+  end
+
   describe "the case module" do
     test "is the project's, not a MyApp placeholder", %{scope: scope, story: story} do
       text = prompt(scope, story)

@@ -112,11 +112,17 @@ defmodule CmsHarness.AppInstance do
   designation (or a copy that never held one running one anyway) is exactly
   the stray-connector bug this project has already shipped one fix for. See
   `ensure_tunnel/3`.
+
+  `head` rides beside `commit`. The app restarts only on a promote, so once
+  the copy's HEAD moves it is still serving `commit`; saying both keeps that
+  from reading as a stale report (048d1f4f).
   """
   @spec ensure_running(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def ensure_running(root, opts \\ []) do
-    with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, {:ensure_running, main?(opts), tunnel(opts)}, op_timeout())
+    with {:ok, pid} <- find_or_start(root),
+         {:ok, info} <-
+           GenServer.call(pid, {:ensure_running, main?(opts), tunnel(opts)}, op_timeout()) do
+      {:ok, Map.put(info, :head, Runner.current_commit(root))}
     end
   end
 

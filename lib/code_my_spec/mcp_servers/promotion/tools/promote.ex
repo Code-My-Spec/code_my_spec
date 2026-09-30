@@ -14,10 +14,10 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   # bytes it was. Registering this tool and `promote_sync` at full length blew
   # it: 21,878 against a 20,647 budget. The detail lives here instead.
   #
-  # What it does, in order: refuses if this copy has uncommitted work; gates on
-  # the copy carrying no problems against a fresh analyzer sweep; merges this
-  # copy's branch into the running checkout; checks the merge added no problems
-  # there; restarts the application; reports the revision it is serving.
+  # What it does, in order: refuses if this copy is behind main or has
+  # uncommitted work; gates on clean analyzer runs at its HEAD (starting any
+  # that are missing and answering pending); merges exactly that commit into
+  # the running checkout; restarts the application; reports what it serves.
   #
   # Promoting *from* the running copy is a restart and nothing else — no merge,
   # no gate, no sweep, because nothing crosses. That is the case where the code

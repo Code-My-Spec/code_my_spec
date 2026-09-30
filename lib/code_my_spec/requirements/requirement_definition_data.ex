@@ -219,8 +219,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # `promote` that names this story.
         description:
           "This story carries a promotion stamp (`promoted_version`), written only " <>
-            "by `promote` naming this story. Not a git check: code already on " <>
-            "main does not satisfy it. Satisfy it by promoting this story.",
+            "by a promotion naming this story. Not a git check: code already on " <>
+            "main does not satisfy it. Satisfy it by completing this task, which " <>
+            "promotes the story.",
         # Story 1003, revised 2026-09-28: was [3], straight off
         # `bdd_specs_passing` — promotion used to be what QA tested. Now [4]:
         # story 1108 gave every working copy its own app, so QA tests the
@@ -268,7 +269,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # stamp `promoted_version` before this node was ever satisfied — the
         # exact ordering story 1003 exists to prevent. Caught by Harness
         # before it shipped.
-        prerequisites: [6, 19],
+        #
+        # `20` (`story_issues_triaged`): an untriaged finding on the story
+        # holds QA too, at any severity (255f1dcd).
+        prerequisites: [6, 19, 20],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
@@ -296,6 +300,36 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # With that in `TaskEvaluator`, automatic is safe: a premature
         # completion is impossible because completing requires the attempt.
         validation_type: :automatic
+      }),
+      # Every finding on this story decided — accepted or dismissed — before QA
+      # tests it again.
+      #
+      # metric_flow story 47, 2026-09-29: product triaged two highs and skipped
+      # the low 9e8b52f4. `story_issues_resolved` counts only accepted issues at
+      # the threshold, so QA was re-offered the story with a finding nobody had
+      # looked at, and tapped out to a human (255f1dcd).
+      #
+      # Its own node rather than a second clause in `story_issues_resolved`,
+      # because the work is product's: coding cannot accept or dismiss
+      # (`Agents.ToolSets`), so offering it `FixStoryIssues` for an incoming
+      # issue is the claim-find-nothing-tap-out spin.
+      #
+      # Off `component_linked`, the chain's head, so a finding can be triaged
+      # whenever it lands; every story node descends from that head, and the
+      # edge derivation relies on it. It gates only `qa_complete`, and product
+      # has no work downstream of it, so it clamps nothing of product's own.
+      new!(%{
+        id: 20,
+        name: "story_issues_triaged",
+        role: :product,
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :story_triaged?},
+        satisfied_by: AgentTasks.TriageIssues,
+        artifact_type: :review,
+        description: "No incoming issue on this story, at any severity",
+        prerequisites: [1],
+        execution_type: :main_agent
       }),
       # Issues QA raised against *this* story, resolved before it is released.
       #

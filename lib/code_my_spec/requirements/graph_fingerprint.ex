@@ -42,7 +42,9 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:stories, structs_digest(ctx.stories, & &1.id)},
       {:problems, problems_digest(ctx)},
       {:config, struct_digest(config)},
-      {:delegated, delegated_digest(ctx)}
+      {:delegated, delegated_digest(ctx)},
+      # What `deploy` waits on; setup completing has to publish.
+      {:setup_missing, Map.get(ctx, :setup_missing, :not_loaded)}
     ]
     |> hash()
   end

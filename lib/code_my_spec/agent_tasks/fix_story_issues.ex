@@ -39,6 +39,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   function.
   """
 
+  alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.{Configurations, Issues, Paths, Problems, Stories}
 
   def dispatch(_node) do
@@ -81,8 +82,8 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
           {:ok, :valid}
 
         {issues, problems} ->
-          {:ok,
-           :invalid, invalid_message(story_number(scope, story_id), issues, threshold, problems)}
+          {:ok, :invalid,
+           invalid_message(story_number(scope, story_id), issues, threshold, problems)}
       end
     end
   end
@@ -237,6 +238,8 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
 
     - `get_issue` — read one issue's full detail, JIT, as you pick it up.
     - `resolve_issue` — `id` + `resolution`, required after every issue fix.
+
+    #{WriteBddSpecs.obsolete_criterion()}
 
     Fix each issue and finding, call `resolve_issue` for issues, run the
     story's specs plus `mix test`/`mix credo` to confirm nothing else broke,

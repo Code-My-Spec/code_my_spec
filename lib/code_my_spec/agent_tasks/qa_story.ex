@@ -382,6 +382,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     sections =
       [
         header_section(scope, story, endpoint_module, criteria_text, specs_text),
+        changed_since_section(scope, story),
         component_section,
         scripts_section,
         plan_section(),
@@ -417,6 +418,56 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     #{specs_text}\
     """
+  end
+
+  # A re-offered story, told what moved since the last pass.
+  #
+  # metric_flow story 47, 2026-09-29: coding resolved both highs QA had filed,
+  # QA was re-offered the story, concluded "no code has changed" and tapped out
+  # (255f1dcd). The server holds the issue history but not the copy's git log,
+  # so issues are listed and commits are a command to run.
+  defp changed_since_section(scope, story) do
+    case CodeMySpec.Qa.list_qa_attempts(scope, story.id) do
+      [] -> nil
+      [last | _] -> changed_since(scope, story, last)
+    end
+  end
+
+  defp changed_since(scope, story, attempt) do
+    since = attempt.submitted_at || attempt.inserted_at
+
+    """
+    ## What changed since your last attempt
+
+    Your last attempt (#{attempt.status}) was submitted #{DateTime.to_iso8601(since)}.
+
+    Issues closed since then:
+
+    #{format_closed(closed_since(scope, story, attempt, since))}
+
+    Commits on this copy since then: run
+    `git log --oneline --since=#{DateTime.to_iso8601(since)}` in the working copy.
+    Re-test against what these changed — "nothing changed" is not a finding
+    until both lists are empty.\
+    """
+  end
+
+  defp closed_since(scope, story, attempt, since) do
+    listed = Enum.flat_map(attempt.issue_ids || [], &List.wrap(Issues.get_issue(scope, &1)))
+
+    (Issues.list_by_story(scope, story.id) ++ listed)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.filter(
+      &(&1.status in [:resolved, :dismissed] and DateTime.compare(&1.updated_at, since) == :gt)
+    )
+  end
+
+  defp format_closed([]), do: "_None._"
+
+  defp format_closed(issues) do
+    Enum.map_join(issues, "\n", fn issue ->
+      "- `#{issue.id}` [#{issue.severity}] #{issue.title} — #{issue.status}: #{issue.resolution}"
+    end)
   end
 
   # Story 1108: QA tests the working copy the story's fix actually landed
@@ -625,13 +676,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       exactly like a missing binding and is not one — this cost story 1009 a
       whole QA pass (`4633ba45`). `tool_docs({ names = {"submit_qa_result",
       "create_issue"} })` gives the arguments.
-    - Attribution follows automatically: on submit, every `scope: app` issue
-      you listed is attached to this story, and `story_issues_resolved` holds
-      the story's release until they're fixed. `framework`, `qa` and `docs`
-      findings are about the tooling rather than the story, so they queue at
-      the project level instead. If an issue belongs to a *different* story,
-      pass that `story_number` on the `create_issue` call — an explicit
-      attribution is never overwritten.
+    - Attribution follows automatically: every `scope: app` issue you file
+      from this task carries this story unless you pass a `story_number`.
+      `qa`, `docs` and `framework` findings are about the tooling, so they
+      stay off the story unless you name one. Until each story issue is triaged and every accepted one at the
+      project's threshold is resolved, this story is not re-offered for QA —
+      a `partial` or `fail` result resumes by itself once they are. If an
+      issue belongs to a *different* story, pass that `story_number` on the
+      `create_issue` call — an explicit attribution is never overwritten.
     - Don't write findings into a result.md file. The harness doesn't read it.
       Screenshots and other evidence still belong on disk, but the canonical
       record is the DB attempt + linked issues.\

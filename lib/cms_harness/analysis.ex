@@ -45,6 +45,7 @@ defmodule CmsHarness.Analysis do
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.StaticAnalysis.SobelowRun
@@ -82,6 +83,38 @@ defmodule CmsHarness.Analysis do
     )
 
     result
+  end
+
+  @doc """
+  The checkout's commit and whether its tree has uncommitted changes, read
+  around a run so the server can record which commit it answered for.
+
+  Dirty is measured as `Promotion.Steps.precheck/2` measures it (tracked files
+  only, submodules ignored), so a run's clean tree and a promotion's clean tree
+  are the same fact. Nil for whatever `git` could not answer.
+  """
+  @spec tree_state(Environment.t()) :: %{commit: String.t() | nil, dirty: boolean() | nil}
+  def tree_state(env) do
+    %{commit: head_commit(env), dirty: tree_dirty(env)}
+  end
+
+  defp head_commit(env) do
+    case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  defp tree_dirty(env) do
+    case Environments.cmd(
+           env,
+           "git",
+           ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> String.trim(out) != ""
+      _ -> nil
+    end
   end
 
   defp run_id_suffix(nil), do: ""

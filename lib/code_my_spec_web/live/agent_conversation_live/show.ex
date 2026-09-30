@@ -66,6 +66,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpecWeb.AgentLoopBadge
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
@@ -1702,14 +1703,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <%!-- Story 538's R13, at the grain somebody is actually looking at.
         The working copy page moves all three roles together, which is right
         for staffing an epic and wrong when you have one agent's conversation
-        open and want that one to carry on. --%>
+        open and want that one to carry on. The badge says which state it is in,
+        because the icon only says what a click would do (723b929d). --%>
+        <span :if={@conversation && @conversation.agent_id} class="ml-auto shrink-0">
+          <AgentLoopBadge.loop_badge continuous?={@working?} />
+        </span>
         <button
           :if={@conversation && @conversation.agent_id}
           type="button"
           phx-click="toggle_agent_working"
           data-test="toggle-agent-working"
           data-working={to_string(@working?)}
-          class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
+          class="btn btn-ghost btn-sm btn-square shrink-0"
           title={
             if @working?,
               do: "Let this agent stop after its current turn",

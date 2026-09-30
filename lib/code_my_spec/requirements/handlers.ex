@@ -54,7 +54,9 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.BddRulesChecker
+  alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DispatchChecker
+  alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Requirements.QaIntegrationPlanChecker
@@ -108,6 +110,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     # copy has to move its verdict the same turn `bdd_specs_passing` does.
     "problems_changed" => [:specs, :problems],
     "deploy_changed" => [:links],
+    # A setup step, environment or option changing moves what an undeployed
+    # story's `deploy` is waiting on.
+    "devops_setup_changed" => [:links],
     # A story row reaches five profiles, which is why this event took five
     # conversions to turn on:
     #
@@ -211,6 +216,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
     "story_issues_resolved" => [:issues],
+    "story_issues_triaged" => [:issues],
     "problems_resolved" => [:problems],
     "bdd_specs_passing" => [:specs],
     "implementation_file" => [:files],
@@ -368,8 +374,8 @@ defmodule CodeMySpec.Requirements.Handlers do
       project_sweep(
         "issues_triaged",
         profile.incoming == [],
-        %{status: "No untriaged issues at #{profile.threshold}+ severity"},
-        %{reason: "#{length(profile.incoming)} untriaged #{profile.threshold}+ issues"}
+        %{status: IssuesChecker.triaged_status(profile.threshold)},
+        %{reason: IssuesChecker.untriaged_reason(length(profile.incoming), profile.threshold)}
       )
 
   defp settle("issues_resolved", %{issues: profile}, _scope),
@@ -401,6 +407,25 @@ defmodule CodeMySpec.Requirements.Handlers do
                   "#{length(issues)} unresolved #{profile.threshold}+ issue(s) on this story",
                 issues: Enum.map(issues, &"#{&1.severity}: #{&1.title}")
               })
+          }
+        end)
+    }
+  end
+
+  defp settle("story_issues_triaged", %{issues: profile}, _scope) do
+    %{
+      entity_type: "story",
+      name: "story_issues_triaged",
+      default: true,
+      default_details: details(%{status: IssuesChecker.story_triaged_status()}),
+      except:
+        Enum.map(profile.incoming_by_story, fn {story_id, issues} ->
+          %{
+            entity_type: "story",
+            entity_id: story_id,
+            name: "story_issues_triaged",
+            satisfied: false,
+            details: details(IssuesChecker.story_untriaged_details(issues))
           }
         end)
     }
@@ -554,16 +579,14 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # `deployed_verdict/3`'s wording, which is not `Deploys.uat_check/2`'s: the
-  # `:deployed` check type interpolates the environment and lowercases, and a
-  # row this settles has to read like one a recompute settled.
+  # `DevopsSetupChecker.undeployed/2`, the same details the recompute writes,
+  # so an undeployed story waits on missing setup on either path.
   defp settle("deploy", %{links: profile}, _scope) do
     %{
       entity_type: "story",
       name: "deploy",
       default: false,
-      default_details:
-        details(%{status: "not deployed to uat, or deployed without a passing health check"}),
+      default_details: details(DevopsSetupChecker.undeployed("uat", profile.uat_setup_missing)),
       except: deploy_verdicts(profile)
     }
   end

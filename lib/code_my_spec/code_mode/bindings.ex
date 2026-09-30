@@ -5,12 +5,12 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
   ## The shape a tool takes in Lua
 
-      local story = get_story({ story_id = "970" })
+      local story = get_story({ story_number = 970 })
 
   One table in, the tool's result out. A tool that fails returns Lua's
   two-value idiom — `nil` plus an error table — rather than raising:
 
-      local story, err = get_story({ story_id = "nope" })
+      local story, err = get_story({ story_number = 99999 })
       if story == nil then return "could not read it: " .. err.message end
 
   Returned rather than raised because a raise ends the script. Half of what
@@ -171,6 +171,14 @@ defmodule CodeMySpec.CodeMode.Bindings do
   defp substitute_hint("escalate_question"),
     do: " Use `ask_user_question` instead — it reaches a human the same way."
 
+  # 8a186121: a coder that cannot retire a criterion deleted its spec or asked
+  # the user instead.
+  defp substitute_hint("retire_criterion"),
+    do:
+      " If a criterion is obsolete or wrong, don't delete its spec; file an app issue " <>
+        "on the story (`create_issue`) naming the criterion and why; product retires " <>
+        "or rewrites it."
+
   defp substitute_hint(_name), do: ""
 
   defp callback(tool) do
@@ -218,6 +226,8 @@ defmodule CodeMySpec.CodeMode.Bindings do
   defp arguments(state, [table | _rest]) do
     case state |> Lua.decode!(table) |> LuaValue.from_lua() do
       %{} = args -> args
+      # `{}` decodes as an empty list, and means no arguments.
+      [] -> %{}
       other -> %{"_" => other}
     end
   end

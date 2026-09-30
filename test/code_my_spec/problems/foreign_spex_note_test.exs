@@ -28,12 +28,17 @@ defmodule CodeMySpec.Problems.ForeignSpexNoteTest do
     %Problem{source: source, severity: :error, file_path: path, line: 12, message: "red"}
   end
 
-  defp render(problems, session_paths) do
-    ProblemRenderer.render_stop_response(problems, [], session_paths: session_paths)
-  end
-
   @mine "test/spex/985_x/criterion_1_spex.exs"
   @theirs "test/spex/985_x/criterion_2_spex.exs"
+
+  # `specs_ready_stamp` names the findings on a latched story — the only ones
+  # the latch paragraph is true of.
+  defp render(problems, session_paths, latched \\ [@mine, @theirs]) do
+    ProblemRenderer.render_stop_response(problems, [],
+      session_paths: session_paths,
+      specs_ready_stamp: Map.new(latched, &{&1, nil})
+    )
+  end
 
   test "explains itself when the blocking spex is in a file this session did not touch" do
     text = render([problem("spex", @theirs)], MapSet.new([@mine]))
@@ -69,6 +74,21 @@ defmodule CodeMySpec.Problems.ForeignSpexNoteTest do
     text = render([problem("spex", @theirs)], MapSet.new([]))
 
     refute text =~ "attribution does not demote"
+  end
+
+  # d91436b7: a finding with no story was told "these went green once". It
+  # never had a latch to earn.
+  test "claims no latch for a finding with no story" do
+    text = render([problem("spex", "unknown")], MapSet.new([@mine]), [])
+
+    refute text =~ "went green once"
+    refute text =~ "attribution does not demote"
+  end
+
+  test "claims no latch for an orphan, whose story did not resolve" do
+    text = render([problem("spex", @theirs)], MapSet.new([@mine]), [@mine])
+
+    refute text =~ "went green once"
   end
 
   test "does not explain non-spex sources, which really are demoted" do

@@ -14,19 +14,27 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   alias CodeMySpec.Stories
 
   schema do
-    field :story, :string, required: true, description: "Story number or title"
+    field :story_number, :integer, description: "Story number"
+    field :story, :string, description: "Story title, when the number is not known"
   end
 
   @impl true
-  def execute(%{story: story_ref}, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        respond_with_story(scope, story_ref, frame)
-
-      {:error, reason} ->
+  def execute(params, frame) do
+    case {Validators.validate_local_scope(frame), story_ref(params)} do
+      {{:error, reason}, _ref} ->
         {:reply, RequirementsMapper.error(reason), frame}
+
+      {_scope, nil} ->
+        {:reply, RequirementsMapper.error("Pass story_number"), frame}
+
+      {{:ok, scope}, story_ref} ->
+        respond_with_story(scope, story_ref, frame)
     end
   end
+
+  defp story_ref(%{story_number: number}) when is_integer(number), do: to_string(number)
+  defp story_ref(%{story: ref}) when is_binary(ref), do: ref
+  defp story_ref(_params), do: nil
 
   defp respond_with_story(scope, story_ref, frame) do
     case resolve_story(scope, story_ref) do

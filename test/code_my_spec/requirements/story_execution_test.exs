@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
 
   alias CodeMySpec.Requirements.{Requirement, StoryExecution}
 
-  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing story_promoted qa_complete story_issues_resolved problems_resolved)
+  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing story_promoted qa_complete story_issues_resolved story_issues_triaged problems_resolved)
 
   defp fixture do
     story = %{

@@ -401,6 +401,7 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
+        run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
         result = apply_remote_result(scope, run, payload)
         announce(scope, run, result)
         result
@@ -408,6 +409,29 @@ defmodule CodeMySpec.Analysis do
   end
 
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
+
+  @doc """
+  Record the commit a harness's analyzer started on, and whether the tree was
+  clean then. The row was opened at dispatch; the analyzer may have sat in the
+  harness's queue since, so its start is when it actually ran.
+  """
+  @spec record_remote_start(Scope.t(), map()) :: {:ok, Run.t()} | {:error, :unknown_run}
+  def record_remote_start(%Scope{} = scope, %{"run_id" => run_id} = payload)
+      when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil ->
+        {:error, :unknown_run}
+
+      %Run{} = run ->
+        {:ok,
+         RunsRepository.record_tree(
+           run,
+           Map.take(payload, ["start_commit", "start_tree_dirty"])
+         )}
+    end
+  end
+
+  def record_remote_start(_scope, _payload), do: {:error, :unknown_run}
 
   # The local queue broadcasts every run it finishes; this path never did,
   # because until `await_run/4` could dispatch remotely nothing was listening.
@@ -912,15 +936,20 @@ defmodule CodeMySpec.Analysis do
   recorded.
   """
   @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  # The requester is not told here. These runs are orphans, not failures, and
+  # the next join settles each one (`resume_orphaned/2`): reopened, run again,
+  # or — only then — reported as failed. Announcing now also could not work:
+  # the agent's transport is the harness that just went away, so the message
+  # was refused as `:harness_not_connected` and the agent waited on a run
+  # nobody was going to finish (cc578c21).
   def fail_in_flight(%Scope{} = scope, reason, claimed) do
     {:ok, failed} = RunsRepository.fail_running(scope, reason, claimed)
-    Enum.each(failed, &Reconciler.announce_failed(&1, reason))
     count = length(failed)
 
     if count > 0 do
       Logger.warning(
         "[Analysis] closed #{count} stranded run(s): #{inspect(reason)}" <>
-          claimed_suffix(claimed)
+          claimed_suffix(claimed) <> " — the next join for this copy settles them"
       )
     end
 
@@ -928,15 +957,120 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Close every run a previous server process left `:running`, telling each
-  requester its run died with that server.
+  Close every run a previous server process left `:running`, as orphans the
+  next join for each copy settles (`resume_orphaned/2`).
   """
   @spec fail_stranded_runs() :: {:ok, non_neg_integer()}
   def fail_stranded_runs do
     {:ok, failed} = RunsRepository.fail_stranded_runs()
-    Enum.each(failed, &Reconciler.announce_failed(&1, :server_restarted))
     {:ok, length(failed)}
   end
+
+  # A run killed on every attempt is killing its harness, or landing in a
+  # restart storm. Either way running it again is not going to help.
+  @max_redispatches 3
+
+  @doc """
+  Settle the runs this copy's harness took with it when it went, now that one
+  has joined again.
+
+  Every code_my_spec promote restarts :4000 and then the harness, which fails
+  every copy's in-flight runs (`fail_in_flight/3`, `fail_stranded_runs/0`).
+  Those are not answers. metric_flow's spex run 53537 died that way at
+  14:00:33 on 2026-09-30, and its coder answered "Your turn is done" nudges
+  until somebody queued it again by hand 16 minutes later (cc578c21).
+
+  Each orphan, oldest first:
+
+    * claimed by the harness in `claimed` — it is still executing it, so the
+      row goes back to `:running` and its result is accepted when it lands;
+    * requested through `start_analysis`, whose answer is still owed —
+      started again at the current tree, carrying the same requester, so the
+      answer reaches whoever asked;
+    * killed #{@max_redispatches} times over — reported to its requester as
+      failed instead;
+    * anything else — left closed. Nothing starts analysis on its own.
+
+  A run that failed on its own is never an orphan: only the two sweeps above
+  mark one, so an analyzer error is not re-run.
+  """
+  @spec resume_orphaned(Scope.t(), [integer()]) :: :ok
+  def resume_orphaned(%Scope{} = scope, claimed) do
+    scope
+    |> RunsRepository.unsettled_orphans()
+    |> Enum.each(&resume_orphan(scope, &1, claimed))
+  end
+
+  defp resume_orphan(scope, run, claimed) do
+    cond do
+      run.id in claimed -> reopen_orphan(run)
+      not answer_owed?(run) -> RunsRepository.settle_orphan(run, "nobody waiting")
+      redispatches(run) >= @max_redispatches -> give_up_on_orphan(run)
+      true -> rerun_orphan(scope, run)
+    end
+  end
+
+  defp reopen_orphan(run) do
+    with :ok <- RunsRepository.reopen_orphan(run) do
+      Logger.info(
+        "[Analysis] run #{run.id} (#{run.source}) reopened — the harness still holds it"
+      )
+    end
+  end
+
+  defp rerun_orphan(scope, run) do
+    with :ok <- RunsRepository.settle_orphan(run, "run again") do
+      requested_by =
+        Map.merge(run.requested_by, %{
+          "rerun_of" => run.id,
+          "redispatches" => redispatches(run) + 1
+        })
+
+      case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
+        {:ok, outcome, id} ->
+          Logger.info(
+            "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
+              "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
+          )
+
+        {:error, reason} ->
+          Reconciler.announce_failed(
+            run,
+            "#{orphan_error(run)} — and running it again failed: #{inspect(reason)}"
+          )
+      end
+    end
+  end
+
+  defp give_up_on_orphan(run) do
+    with :ok <- RunsRepository.settle_orphan(run, "gave up") do
+      Reconciler.announce_failed(
+        run,
+        "#{orphan_error(run)} — its harness went away on each of " <>
+          "#{redispatches(run) + 1} attempts, so it is not being run again automatically"
+      )
+    end
+  end
+
+  # `start_analysis` writes `agent_id` (nil for a session with no agent row) and
+  # answers later, so its answer is still owed. A blocking `await_run/4` — the
+  # agent's own `mix test` — answered its caller with an error when the channel
+  # went, and that caller asks again itself. Nothing unrequested is re-run.
+  # An agent waiting on a run it did not start (`wait_on_running_at_commit/4`)
+  # is owed its answer too.
+  defp answer_owed?(%Run{requested_by: %{} = by}),
+    do: Map.has_key?(by, "agent_id") or match?([_ | _], by["waiters"])
+
+  defp answer_owed?(_run), do: false
+
+  defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
+  defp redispatches(_run), do: 0
+
+  defp orphan_args(%Run{args: %{"args" => args}}) when is_list(args), do: args
+  defp orphan_args(_run), do: []
+
+  defp orphan_error(%Run{stats: %{"error" => error}}) when is_binary(error), do: error
+  defp orphan_error(_run), do: "its harness went away"
 
   defp claimed_suffix([]), do: ""
 
@@ -1027,6 +1161,38 @@ defmodule CodeMySpec.Analysis do
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
 
+  @doc """
+  `source`'s latest completed run on this copy when it answers for `commit`
+  (`Run.at_commit?/2`), else nil. The latest only: the source's recorded
+  problems are that run's, so an older run at `commit` behind it says nothing
+  about them.
+  """
+  @spec answer_at_commit(Scope.t(), String.t(), String.t()) :: Run.t() | nil
+  def answer_at_commit(%Scope{} = scope, source, commit) do
+    run = RunsRepository.latest_completed_run(scope, source)
+    if Run.at_commit?(run, commit), do: run
+  end
+
+  @doc """
+  Whether a full run of `source` still running on this copy will answer for
+  `commit`: started there on a clean tree, or queued and not started yet.
+  """
+  @spec running_at_commit?(Scope.t(), String.t(), String.t()) :: boolean()
+  def running_at_commit?(%Scope{} = scope, source, commit) do
+    scope
+    |> RunsRepository.running_full_runs(source)
+    |> Enum.any?(fn run ->
+      is_nil(run.start_commit) or (run.start_commit == commit and run.start_tree_dirty == false)
+    end)
+  end
+
+  @doc """
+  `running_at_commit?/3`, and the agent waiting on it: `agent_id` is told when
+  the run lands and is not nudged meanwhile, whoever started it.
+  """
+  @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
+  defdelegate wait_on_running_at_commit(scope, source, commit, agent_id), to: RunsRepository
+
   # -- Internals --
 
   defp stale?(source, fingerprints, latest) do
@@ -1064,11 +1230,7 @@ defmodule CodeMySpec.Analysis do
   # terminates. The mixture is bounded by the fact that anything the run got
   # wrong shows up as a problem on the next sweep, whereas the alternative is a
   # gate that cannot be passed by doing the work correctly.
-  defp run_answers_for?(%Run{} = run, current) when is_binary(current) do
-    run.input_fingerprint == current or run.completed_fingerprint == current
-  end
-
-  defp run_answers_for?(_run, _current), do: false
+  defp run_answers_for?(run, current), do: Run.answers_for?(run, current)
 
   # Compile first: it's the cheapest signal and every other source
   # short-circuits on its errors.

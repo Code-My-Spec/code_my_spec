@@ -343,6 +343,38 @@ defmodule CodeMySpec.Resources do
     end
   end
 
+  @doc """
+  The setup steps still missing before `environment` can take a deploy.
+
+  `project_report/2`'s checklist, narrowed to that environment's rows and the
+  project-wide ones every environment stands on. The deploy requirement gates
+  on this, so it and `devops_status` read one answer.
+
+  Read without seeding environment rows, because the requirement graph calls
+  it on every load and a read must not write. An environment with no row has
+  not started setup at all: `{:error, :not_started}`.
+  """
+  @spec setup_missing(Scope.t(), Project.t(), String.t()) ::
+          {:ok, [map()]} | {:error, :devops_off | :not_started}
+  def setup_missing(%Scope{} = scope, %Project{} = project, environment) do
+    case devops(scope, project) do
+      :off ->
+        {:error, :devops_off}
+
+      _ ->
+        checklist = project_checklist(scope, project, seed: false)
+
+        if Enum.any?(checklist, &(&1.environment == environment)),
+          do:
+            {:ok,
+             Enum.filter(
+               checklist,
+               &(&1.state == :missing and &1.environment in [nil, environment])
+             )},
+          else: {:error, :not_started}
+    end
+  end
+
   # What each project meant to be deployed should have, from the same sequence
   # the run uses. `plan/2` fills the gaps a run never reached, which is the
   # only reason a step nobody started can appear here at all.
@@ -377,9 +409,13 @@ defmodule CodeMySpec.Resources do
   # A step correctly stays `:missing` when it has never produced anything and
   # never reached `:done` either — `:not_started` or `:errored` before
   # creating a resource alike.
-  defp project_checklist(scope, project) do
+  defp project_checklist(scope, project, plan_opts \\ []) do
     for step <-
-          Provisioning.plan(project_scope(scope, project), Provisioning.setup_options(project)) do
+          Provisioning.plan(
+            project_scope(scope, project),
+            Provisioning.setup_options(project),
+            plan_opts
+          ) do
       %{
         project_id: project.id,
         project_name: project.name,

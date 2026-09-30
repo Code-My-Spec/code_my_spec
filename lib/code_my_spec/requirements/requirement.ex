@@ -102,6 +102,17 @@ defmodule CodeMySpec.Requirements.Requirement do
   end
 
   @doc """
+  Whether an unsatisfied requirement is waiting on something no task here can
+  do, so it is not offered. Its checker says what, under `waiting_on`, and the
+  reason stays on the node. `DevopsSetupChecker` is the one writer.
+  """
+  @spec waiting?(t()) :: boolean()
+  def waiting?(%__MODULE__{satisfied: false, details: details}) when is_map(details),
+    do: not is_nil(Map.get(details, "waiting_on", Map.get(details, :waiting_on)))
+
+  def waiting?(_requirement), do: false
+
+  @doc """
   Where a requirement's work runs, in words. `execution_type: :main_agent` means
   the agent's own session, and printed raw it read as "the main agent's job" —
   metric_flow's main claimed a coding task on that reading.

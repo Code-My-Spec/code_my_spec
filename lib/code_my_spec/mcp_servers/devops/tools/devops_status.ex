@@ -149,9 +149,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   # `image_tag/2` are public.
   @doc false
   def missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
-    do: "#{entry.project_name}/#{entry.key} — #{Truncate.head_and_tail(detail)}"
+    do: "#{step_label(entry)} — #{Truncate.head_and_tail(detail)}"
 
-  def missing_line(entry), do: "#{entry.project_name}/#{entry.key}"
+  def missing_line(entry), do: step_label(entry)
+
+  # A per-environment step has one row per environment, so without the
+  # environment `uat` and `prod` rows read as duplicates (548b3173).
+  defp step_label(%{environment: env} = entry) when is_binary(env),
+    do: "#{entry.project_name}/#{env}/#{entry.key}"
+
+  defp step_label(entry), do: "#{entry.project_name}/#{entry.key}"
 
   defp section(_label, [], _fmt), do: ""
 

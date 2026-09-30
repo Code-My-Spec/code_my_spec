@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
+  alias CodeMySpec.TaskOwner
 
   @impl true
   def render(assigns) do
@@ -171,6 +172,8 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   def handle_event("dismiss", %{"reason" => reason}, socket) do
     case Issues.dismiss_issue(socket.assigns.current_scope, socket.assigns.issue, reason) do
       {:ok, issue} ->
+        {:ok, _released} = TaskOwner.issue_closed(socket.assigns.current_scope, issue)
+
         {:noreply,
          socket
          |> assign_issue(issue)
@@ -186,6 +189,8 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   def handle_event("resolve", %{"resolution" => resolution}, socket) do
     case Issues.resolve_issue(socket.assigns.current_scope, socket.assigns.issue, resolution) do
       {:ok, issue} ->
+        {:ok, _released} = TaskOwner.issue_closed(socket.assigns.current_scope, issue)
+
         {:noreply,
          socket
          |> assign_issue(issue)

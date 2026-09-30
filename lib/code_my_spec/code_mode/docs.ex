@@ -32,10 +32,10 @@ defmodule CodeMySpec.CodeMode.Docs do
 
     """
     #{map_size(catalog)} tools are callable from a script. Call them directly by
-    name, passing one table: `local s = get_story({ story_id = "970" })`.
+    name, passing one table: `local s = get_story({ story_number = 970 })`.
 
     A tool that cannot answer returns nil and an error table:
-    `local s, err = get_story({ story_id = "nope" })`
+    `local s, err = get_story({ story_number = 99999 })`
 
     Ask for one by name to see its arguments.
 

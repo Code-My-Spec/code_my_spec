@@ -10,6 +10,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   import Ecto.Query
 
   alias CodeMySpec.Provisioning.Environment
+  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -48,7 +49,10 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   """
   @spec list_existing(Scope.t()) :: [Environment.t()]
   def list_existing(%Scope{active_project: %{id: project_id}}), do: all(project_id)
-  def list_existing(%Scope{active_project_id: project_id}) when is_binary(project_id), do: all(project_id)
+
+  def list_existing(%Scope{active_project_id: project_id}) when is_binary(project_id),
+    do: all(project_id)
+
   def list_existing(_scope), do: []
 
   @doc "Just the names, in a stable order — what most steps actually fan out over."
@@ -71,13 +75,19 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   known.
   """
   @spec put(Scope.t(), String.t(), map()) :: {:ok, Environment.t()} | {:error, Ecto.Changeset.t()}
-  def put(%Scope{active_project: %{id: project_id}}, name, attrs) do
+  def put(%Scope{active_project: %{id: project_id}} = scope, name, attrs) do
     existing =
       Repo.get_by(Environment, project_id: project_id, name: name) || %Environment{}
 
-    existing
-    |> Environment.changeset(Map.merge(attrs, %{name: name, project_id: project_id}))
-    |> Repo.insert_or_update()
+    result =
+      existing
+      |> Environment.changeset(Map.merge(attrs, %{name: name, project_id: project_id}))
+      |> Repo.insert_or_update()
+
+    # A new environment adds its steps to the setup checklist.
+    if is_nil(existing.id) and match?({:ok, _}, result), do: StepRepository.setup_changed(scope)
+
+    result
   end
 
   @doc """
@@ -116,7 +126,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   def delete(%Scope{} = scope, name) do
     case get(scope, name) do
       nil -> :ok
-      environment -> Repo.delete(environment) && :ok
+      environment -> Repo.delete(environment) && StepRepository.setup_changed(scope)
     end
   end
 
@@ -132,7 +142,9 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
     for environment <- list(scope) do
       case environment.host do
         nil ->
-          {:ok, updated} = put(scope, environment.name, %{host: host_for(environment.name, domain)})
+          {:ok, updated} =
+            put(scope, environment.name, %{host: host_for(environment.name, domain)})
+
           updated
 
         _ ->

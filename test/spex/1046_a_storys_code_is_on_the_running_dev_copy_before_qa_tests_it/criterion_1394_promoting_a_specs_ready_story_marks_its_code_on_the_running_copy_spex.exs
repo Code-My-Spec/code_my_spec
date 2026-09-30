@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   end
 
   spex "Promoting a specs-ready story marks its code on the running copy",
-       criterion: 1394 do
+    criterion: 1394 do
     scenario "the stamp lands once and a later promotion does not repeat it" do
       given_ "a story whose specs-ready latch is set, from its own passing specs evaluation, not yet promoted",
              context do
@@ -105,6 +105,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
       end
 
       when_ "a later promotion is attempted", context do
+        # The first promotion's version commit is on main now, and a copy that
+        # does not contain main is refused before anything is analysed
+        # (28d72f8a) — so the agent merges main in and its analyzers run at
+        # the new HEAD, as they would for any later promotion.
+        {_, 0} = git(context, context.agent_root, ["merge", "--ff-only", "-q", "main"])
+        context = analyzers_are_current(context)
+
         response = promote(context, context.story.number)
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :second_promote_response, response)}
@@ -141,12 +148,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   end
 
   defp analyzers_are_current(context) do
-    Fixtures.fresh_analysis_runs(context.scope)
+    Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

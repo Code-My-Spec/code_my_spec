@@ -48,6 +48,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
       end
 
       given_ "but the copy has one failing spec", context do
+        analyzed_at_head(context)
+
         CodeMySpecSpex.Fixtures.record_problem(context.scope, "spex", %{
           file_path: "test/spex/61_peace/criterion_1_spex.exs",
           message: "no match of right hand side value: []",
@@ -106,6 +108,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
       end
 
       given_ "but credo has one warning on the copy", context do
+        analyzed_at_head(context)
+
         CodeMySpecSpex.Fixtures.record_problem(context.scope, "credo", %{
           file_path: "lib/broken_oaths/diplomacy/war.ex",
           message: "Nested modules could be aliased at the top of the invoking module.",
@@ -130,6 +134,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
         {:ok, context}
       end
     end
+  end
+
+  # The finding is one the copy's analyzers recorded at its HEAD: the gate reads
+  # only runs at the commit it would merge (28d72f8a).
+  defp analyzed_at_head(context) do
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(
+      context.scope,
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
   end
 
   defp a_promotable_project(context) do

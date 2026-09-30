@@ -86,6 +86,9 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:personas, row_keys(Map.get(ctx.personas_by_story, story.id, []))},
       {:qa, attempt_key(Map.get(ctx.qa_latest_by_story, story.id))},
       {:deploy, deploy_key(Map.get(ctx.uat_deploy_by_story, story.id))},
+      # The setup steps `deploy` names while it waits; setup completing has to
+      # move the story, or the node stays unoffered after the work is possible.
+      {:setup_missing, Map.get(ctx, :setup_missing)},
       {:running_copy, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("working_copies")},
       # This story's issues, which is what `story_issues_resolved` reads:
       # `IssuesChecker.story_resolved?/2` counts only what QA attributed here,

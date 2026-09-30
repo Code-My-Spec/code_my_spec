@@ -32,6 +32,9 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
+      # `deploy` waits on `Resources.setup_missing/3`, the answer
+      # `devops_status` reports.
+      CodeMySpec.Resources,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidation,
       CodeMySpec.Requirements.Invalidations,

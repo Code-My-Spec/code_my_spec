@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
   end
 
   spex "A story's own copy is QA'd, then promoted to record its version",
-       criterion: 1174 do
+    criterion: 1174 do
     scenario "a QA pass alone does not satisfy code_on_running_copy — promotion does" do
       given_ "a story ready for QA, with its work committed on the agent's own copy",
              context do
@@ -114,12 +114,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
   # Both copies' analyzers are current — a real precondition of the promote
   # gate, not test scaffolding. See criterion 1172's own note.
   defp analyzers_are_current(context) do
-    Fixtures.fresh_analysis_runs(context.scope)
+    Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    Fixtures.fresh_analysis_runs(%{
-      context.scope
-      | active_working_copy_id: context.running.working_copy_id
-    })
+    Fixtures.fresh_analysis_runs(
+      %{context.scope | active_working_copy_id: context.running.working_copy_id},
+      ~w(compiler credo exunit spex),
+      at_head: true
+    )
 
     context
   end

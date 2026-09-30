@@ -17,7 +17,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
   import Phoenix.ChannelTest
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -70,7 +72,38 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       })
 
       assert Task.await(task) ==
-               {:ok, %{status: "serving", url: "http://127.0.0.1:51234", commit: "abc123"}}
+               {:ok,
+                %{status: "serving", url: "http://127.0.0.1:51234", commit: "abc123", head: nil}}
+    end
+
+    # 048d1f4f: an agent read its own copy's app, launched before HEAD moved,
+    # as main failing to restart after a promote.
+    test "the tool names the copy, and says when HEAD moved past the commit being served" do
+      scope = full_scope_fixture()
+      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
+      {:ok, _copy} = WorkingCopies.report_root(copy, "/tmp/ensure_tool_three_features")
+      {:ok, _reply, socket} = join_as(scope)
+
+      frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
+      task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+
+      assert_push "ensure_app_running", %{"ref" => ref}
+
+      answer(socket, "ensure_app_running_result", ref, %{
+        "status" => "ok",
+        "app_status" => "serving",
+        "app_url" => "http://127.0.0.1:59302",
+        "app_commit" => "e6d1d8fc",
+        "app_head" => "bb936fa6"
+      })
+
+      {:reply, response, _frame} = Task.await(task)
+      text = response_text(response)
+
+      assert text =~ "/tmp/ensure_tool_three_features"
+      assert text =~ "e6d1d8fc"
+      assert text =~ "bb936fa6"
+      assert text =~ "not restarted when HEAD moves"
     end
 
     test "an error on the far side comes back as an error, not a crash", %{socket: socket} do

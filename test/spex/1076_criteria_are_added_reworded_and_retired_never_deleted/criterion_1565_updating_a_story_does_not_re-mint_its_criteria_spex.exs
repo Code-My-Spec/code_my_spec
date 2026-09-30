@@ -10,6 +10,10 @@ defmodule CodeMySpecSpex.Story1076.Criterion4689Spex do
   sends the criteria back unchanged. Every unverified criterion used to be
   deleted and recreated under a new id on that call, which is how story
   1100's criteria were renumbered and lost their specs.
+
+  `update_story` no longer takes `acceptance_criteria`, and a script that
+  passes it is refused as an unknown argument (87a3b848), so the call below
+  sends only what the tool takes.
   """
 
   use CodeMySpecSpex.Case
@@ -38,8 +42,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4689Spex do
           return update_story({
             story_number = #{context.story},
             title = "Story A, renamed",
-            description = "A clearer description",
-            acceptance_criteria = { "A first thing happens", "A second thing happens" }
+            description = "A clearer description"
           })
           """)
 

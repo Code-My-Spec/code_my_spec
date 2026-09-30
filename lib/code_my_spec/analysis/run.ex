@@ -7,8 +7,8 @@ defmodule CodeMySpec.Analysis.Run do
 
   `sobelow` is a real, working analyzer (`StaticAnalysis.Analyzers.Sobelow`,
   `Analysis.Runners.run/4`, `CmsHarness.Analysis`) deliberately NOT in this
-  ledger yet. `stale_sources/1` in `Promotion` requires every member of
-  `Run.sources()` to be fresh before any promotion, unconditionally, by
+  ledger yet. `Promotion.gate/3` requires every member of `Run.sources()` to
+  have a clean run at HEAD before any promotion, unconditionally, by
   design — the codebase's own comment there rejects config-based exemptions
   from that list on the grounds that narrowing it "would let a project
   promote a commit [a source] had never once run against." Adding `sobelow`
@@ -38,6 +38,9 @@ defmodule CodeMySpec.Analysis.Run do
 
   @sources ~w(compiler credo exunit spex)
 
+  # SHA-1, or SHA-256 in a repository that uses it.
+  @sha ~r/\A[0-9a-f]{40}([0-9a-f]{24})?\z/
+
   @type t :: %__MODULE__{
           id: integer() | nil,
           source: String.t(),
@@ -52,6 +55,9 @@ defmodule CodeMySpec.Analysis.Run do
           exit_status: integer() | nil,
           started_at: DateTime.t(),
           finished_at: DateTime.t() | nil,
+          start_commit: String.t() | nil,
+          start_tree_dirty: boolean() | nil,
+          completed_commit: String.t() | nil,
           project_id: Ecto.UUID.t(),
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -87,6 +93,14 @@ defmodule CodeMySpec.Analysis.Run do
     field :started_at, :utc_datetime_usec
     field :finished_at, :utc_datetime_usec
 
+    # The working copy's commit when the analyzer started, whether its tree had
+    # uncommitted changes then, and its commit when the analyzer finished.
+    # Reported by the harness, which holds the checkout; nil when none did. A
+    # tree that moved mid-run reads as `start_commit != completed_commit`.
+    field :start_commit, :string
+    field :start_tree_dirty, :boolean
+    field :completed_commit, :string
+
     belongs_to :project, Project, type: :binary_id
 
     # Which working copy this run is about. A project can have several — a
@@ -98,9 +112,56 @@ defmodule CodeMySpec.Analysis.Run do
     timestamps(type: :utc_datetime)
   end
 
+  @doc """
+  Whether this run answers for a tree whose fingerprint is `current`.
+
+  Either end of the run counts: the tree it started on, or the one it finished
+  on when files moved while it ran. The one rule for "fresh" — the graph read
+  only the input side while `Analysis.fresh?/2` read both, so a run that ended
+  on the current tree passed evaluation and stayed stale in the graph, and a
+  passed requirement was re-offered forever (849f8e7a).
+  """
+  @spec answers_for?(t() | nil, String.t() | nil) :: boolean()
+  def answers_for?(%__MODULE__{status: :completed} = run, current) when is_binary(current),
+    do: run.input_fingerprint == current or run.completed_fingerprint == current
+
+  def answers_for?(_run, _current), do: false
+
+  @doc """
+  Whether this run answers for `commit`: completed, started on a clean tree at
+  `commit`, and finished there (28d72f8a). The promote gate's rule, in place of
+  fingerprint freshness.
+  """
+  @spec at_commit?(t() | nil, String.t() | nil) :: boolean()
+  def at_commit?(
+        %__MODULE__{
+          status: :completed,
+          start_commit: commit,
+          completed_commit: commit,
+          start_tree_dirty: false
+        },
+        commit
+      )
+      when is_binary(commit),
+      do: true
+
+  def at_commit?(_run, _commit), do: false
+
   @doc "Known analyzer sources."
   @spec sources() :: [String.t()]
   def sources, do: @sources
+
+  @doc """
+  The git state a harness reported for this run: `start_commit` and
+  `start_tree_dirty` when it started, `completed_commit` when it finished.
+  """
+  @spec tree_changeset(t(), map()) :: Ecto.Changeset.t()
+  def tree_changeset(run, attrs) do
+    run
+    |> cast(attrs, [:start_commit, :start_tree_dirty, :completed_commit])
+    |> validate_format(:start_commit, @sha)
+    |> validate_format(:completed_commit, @sha)
+  end
 
   @spec changeset(%__MODULE__{} | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(run, attrs) do

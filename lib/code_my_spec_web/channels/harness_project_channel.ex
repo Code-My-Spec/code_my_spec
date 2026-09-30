@@ -106,6 +106,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # never arrives. This is the one moment it is provably safe to close them.
       Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
 
+      # Then settle what the departure killed: reopen what this harness still
+      # holds, run the requested rest again. Registered above, so a re-dispatch
+      # lands in this channel's mailbox and is pushed once the join returns
+      # (cc578c21).
+      Analysis.resume_orphaned(scope, claimed_runs(payload))
+
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
       # writes nothing; one joining a checkout for the first time writes it
@@ -650,6 +656,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      reply_async(socket, ref, {"analysis_result", source}, fn ->
        result_reply(scope, source, payload)
      end)}
+  end
+
+  # The commit an analyzer started on, and whether the tree was clean, from the
+  # machine holding the checkout. Inline: one row update, and it must land
+  # before this run's `analysis_result`, which is deferred.
+  def handle_in("analysis_started", payload, socket) do
+    case Analysis.record_remote_start(socket.assigns.scope, payload) do
+      {:ok, _run} ->
+        :ok
+
+      {:error, :unknown_run} ->
+        Logger.info(
+          "[HarnessProject] start of run #{inspect(payload["run_id"])} not recorded: " <>
+            Analysis.explain_unknown_run(socket.assigns.scope, payload["run_id"])
+        )
+    end
+
+    {:reply, :ok, socket}
   end
 
   # The agent's own `mix test`, routed through here so it counts.
@@ -1328,7 +1352,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # would never be reached.
   defp decode_app_result(%{"status" => "ok", "app_status" => status} = msg)
        when status in ~w(serving erroring down) do
-    {:ok, %{status: status, url: Map.get(msg, "app_url"), commit: Map.get(msg, "app_commit")}}
+    {:ok,
+     %{
+       status: status,
+       url: Map.get(msg, "app_url"),
+       commit: Map.get(msg, "app_commit"),
+       head: Map.get(msg, "app_head")
+     }}
   end
 
   defp decode_app_result(%{"status" => "error", "reason" => reason}),
@@ -1697,6 +1727,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end
 
+  defp promotion_status({:ok, %{pending: _}}), do: "pending"
   defp promotion_status({:ok, _report}), do: "promoted"
   defp promotion_status({:error, _refusal}), do: "refused"
 
@@ -1821,7 +1852,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Deliberately loud. A disconnect here is not routine: it fails every run this
   # working copy has open, while the analyzers themselves are OS processes on
   # the harness that keep running regardless. Their results arrive for runs that
-  # are no longer `:running` and are refused. Nothing retries.
+  # are no longer `:running` and are refused — unless the rejoining harness
+  # claims them, which reopens them; requested runs it does not claim are run
+  # again (`Analysis.resume_orphaned/2`).
   def terminate(reason, socket) do
     shutdown_reconcile(socket)
 

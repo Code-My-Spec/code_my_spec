@@ -17,6 +17,7 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
@@ -27,6 +28,7 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
   @main "/promote-story/main"
   @agent "/promote-story/agent"
   @head "1111111111111111111111111111111111111111"
+  @agent_head "2222222222222222222222222222222222222222"
 
   # A no-op fast-forward: main's HEAD does not move, so nothing is minted and
   # the story is stamped with the version main already carries (47bb8f1cc).
@@ -40,12 +42,14 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     end
   end
 
+  defp answer(@agent, ["merge-base", "--is-ancestor", @head, "HEAD"]), do: {"", 0}
   defp answer(@agent, ["status" | _]), do: {"", 0}
   defp answer(@agent, ["rev-parse", "--abbrev-ref", "HEAD"]), do: {"story/x\n", 0}
+  defp answer(@agent, ["rev-parse", "HEAD"]), do: {@agent_head <> "\n", 0}
   defp answer(@agent, ["ls-files" | _]), do: {"", 0}
   defp answer(@main, ["rev-parse", "HEAD"]), do: {@head <> "\n", 0}
   defp answer(@main, ["diff" | _]), do: {"", 0}
-  defp answer(@main, ["merge", "--ff-only", "story/x"]), do: {"Already up to date.\n", 0}
+  defp answer(@main, ["merge", "--ff-only", @agent_head]), do: {"Already up to date.\n", 0}
 
   defp answer(@main, ["show", "HEAD:mix.exs"]),
     do: {~s|def project, do: [app: :x, version: "0.3.3"]\n|, 0}
@@ -108,9 +112,15 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     })
   end
 
+  # Each copy's analyzers ran clean at its own HEAD.
   defp certified(%{scope: scope, running: running}) do
-    AnalysisFixtures.fresh_analysis_runs_fixture(scope)
-    AnalysisFixtures.fresh_analysis_runs_fixture(%{scope | active_working_copy_id: running.id})
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @agent_head)
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(
+      %{scope | active_working_copy_id: running.id},
+      Run.sources(),
+      commit: @head
+    )
   end
 
   # Work that is not a story's — a fix from an issue — still has to reach main.

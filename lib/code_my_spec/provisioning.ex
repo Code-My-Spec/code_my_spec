@@ -56,6 +56,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
       CodeMySpec.TempFile,
       CodeMySpec.Users.Scope,
@@ -194,7 +195,11 @@ defmodule CodeMySpec.Provisioning do
     stored =
       options |> Enum.map(&to_string/1) |> Enum.filter(&MapSet.member?(known, &1)) |> Enum.uniq()
 
-    Projects.update_project(scope, project, %{setup_options: stored})
+    with {:ok, _project} = updated <-
+           Projects.update_project(scope, project, %{setup_options: stored}) do
+      StepRepository.setup_changed(scope)
+      updated
+    end
   end
 
   ## Plan
@@ -266,12 +271,10 @@ defmodule CodeMySpec.Provisioning do
   rather than guessing at it themselves.
   """
   @spec primary_environment(Scope.t()) :: String.t() | nil
-  def primary_environment(scope) do
-    case Steps.permitted_environments(scope) do
-      [] -> nil
-      names -> if "prod" in names, do: "prod", else: List.first(names)
-    end
-  end
+  def primary_environment(scope), do: scope |> Steps.permitted_environments() |> primary_of()
+
+  defp primary_of([]), do: nil
+  defp primary_of(names), do: if("prod" in names, do: "prod", else: List.first(names))
 
   @doc """
   The whole plan for a project, in order, before anything runs.
@@ -285,20 +288,29 @@ defmodule CodeMySpec.Provisioning do
   environment the project has — `:content` is the one exception, pinned to
   `primary_environment/1` rather than fanned out, since its own execution
   cannot yet prove more than one environment's site.
+
+  `seed: false` reads only the environment rows already there. A reader that
+  must not write — the requirement graph — passes it; a project with no rows
+  then plans its project-wide steps alone.
   """
-  @spec plan(Scope.t(), [atom()]) :: [map()]
-  def plan(%Scope{} = scope, enabled_options) do
+  @spec plan(Scope.t(), [atom()], keyword()) :: [map()]
+  def plan(%Scope{} = scope, enabled_options, opts \\ []) do
     persisted =
       scope |> StepRepository.list() |> Map.new(&{{&1.key, &1.environment}, &1})
 
+    names =
+      if Keyword.get(opts, :seed, true),
+        do: Steps.permitted_environments(scope),
+        else: Steps.permitted_existing_environments(scope)
+
     for step <- Sequence.for_options(enabled_options),
-        environment <- plan_environments(scope, step),
+        environment <- plan_environments(names, step),
         do: entry(step, environment, Map.get(persisted, {step.key, environment}))
   end
 
-  defp plan_environments(_scope, %{scope: :project}), do: [nil]
-  defp plan_environments(scope, %{key: :content}), do: [primary_environment(scope)]
-  defp plan_environments(scope, %{scope: :environment}), do: Steps.permitted_environments(scope)
+  defp plan_environments(_names, %{scope: :project}), do: [nil]
+  defp plan_environments(names, %{key: :content}), do: [primary_of(names)]
+  defp plan_environments(names, %{scope: :environment}), do: names
 
   # Two heads rather than a `row && row.field` for each of ten fields. Those
   # guards were the same question asked ten times, and asking it once — has
@@ -906,9 +918,10 @@ defmodule CodeMySpec.Provisioning do
   @spec reverify(Scope.t(), [atom()], keyword()) :: :ok
   def reverify(%Scope{} = scope, enabled_options, opts \\ []) do
     now = DateTime.utc_now()
+    names = Steps.permitted_environments(scope)
 
     for step <- Sequence.for_options(enabled_options),
-        environment <- plan_environments(scope, step),
+        environment <- plan_environments(names, step),
         row = StepRepository.get(scope, step.key, environment),
         row && row.state == :done do
       verify_opts = with_environment_opt(scope, step.key, environment, opts)

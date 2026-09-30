@@ -150,6 +150,18 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       assert prompt =~ "Expected user to see welcome message"
     end
 
+    # 8a186121
+    test "tells a coder how to get an obsolete criterion retired", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_spex_problem(scope, story)
+
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
+      assert prompt =~ "If a criterion is obsolete or wrong, don't delete its spec"
+      assert prompt =~ "(`create_issue`)"
+    end
+
     test "includes component module name in prompt", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope, "MyAppWeb.DashboardLive")

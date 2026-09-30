@@ -21,6 +21,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "when a story's BDD spec files exist but one or more criteria fail."
   end
 
+  alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.Analysis
   alias CodeMySpec.Components
   alias CodeMySpec.Files
@@ -424,6 +425,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     - Fix the **implementation code**, not the specs — specs define the expected behavior
     - Only modify specs if they have genuine bugs (wrong assertions, incorrect setup)
     - Keep fixes minimal and focused
+    - #{WriteBddSpecs.obsolete_criterion()}
 
     ## Failing Specs
 
