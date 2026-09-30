@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   issue and blocks the open task on it
   (`CodeMySpec.Qa.QaAttempts.wait_on_filed_issues/3`,
   `TaskOwner.block_task/5`); resolving the issue releases the block
-  (`TaskOwner.release_issue_block/2`, called from the `resolve_issue` tool)
+  (`TaskOwner.blocker_resolved/4`, called from the `resolve_issue` tool)
   and the story is offered QA again. Nothing in that cycle moves the story
   to a different working copy — `own_copy_app_url_line/1` resolves the
   agent's own app from `scope.active_working_copy_id`, which the fail/fix

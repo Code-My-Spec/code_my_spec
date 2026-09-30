@@ -486,9 +486,61 @@ defmodule CodeMySpec.Notifications do
       )
 
       broadcast_notifications_changed(updated.user_id)
-      wake_if_still_in_the_loop(updated, answer)
+      :ok = clear_decline_on_deny(updated)
+
+      if settle_tap_out_blocker(updated, answer) == 0,
+        do: wake_if_still_in_the_loop(updated, answer)
+
       {:ok, updated}
     end
+  end
+
+  # A person saying "go and work" outranks the agent's own last refusal.
+  # `Work` refuses to re-offer work an agent has already declined, which is
+  # what stops it spinning — but this deny IS the answer to that refusal, so
+  # without clearing the mark the wake would be suppressed and the deny would
+  # do nothing at all. Before either wake below, which both run off-process.
+  defp clear_decline_on_deny(%{decision: "deny", agent_id: agent_id}) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      %Agent{} = agent ->
+        {:ok, _cleared} = Work.clear_decline(owner_scope(agent), agent)
+        :ok
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp clear_decline_on_deny(_request), do: :ok
+
+  # The task a tap-out blocked goes through the same release as any blocker
+  # (2200f9e4): denied or dismissed, it is released and its holder woken to
+  # resume it, with the denial notice riding in the same turn; approved, the
+  # task was already cancelled under the decision's lock, and this only makes
+  # sure nothing is left blocked on it. Answers the count released — nothing
+  # released means the plain denial below still has to reach the agent.
+  defp settle_tap_out_blocker(%{task_id: nil}, _answer), do: 0
+
+  defp settle_tap_out_blocker(%{decision: "allow"} = request, _answer) do
+    {:ok, released} = TaskOwner.blocker_resolved(:tap_out, request.id, :approved)
+    released
+  end
+
+  defp settle_tap_out_blocker(%{decision: "deny"} = request, answer) do
+    {:ok, released} =
+      TaskOwner.blocker_resolved(:tap_out, request.id, :denied,
+        detail: tap_out_denied_notice(answer, request)
+      )
+
+    released
+  end
+
+  defp owner_scope(%Agent{} = agent) do
+    %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id,
+      active_working_copy_id: agent.working_copy_id
+    }
   end
 
   # Denying a tap-out puts the agent back in the loop, and nothing else was
@@ -501,6 +553,9 @@ defmodule CodeMySpec.Notifications do
   #
   # Only on `deny`. `allow` takes the agent out of the loop, which is what it
   # asked for, and waking it would be answering the opposite question.
+  #
+  # Only when no task was released: a task-scoped denial wakes its holder
+  # through `TaskOwner.blocker_resolved/4`, which carries this same notice.
   #
   # In a Task because this is reachable from inside the harness project channel,
   # and `Transport.Harness` dispatches by calling that channel's own process —
@@ -528,13 +583,6 @@ defmodule CodeMySpec.Notifications do
         # silent stall into a spin, so this is its other half rather than a
         # separate fix.
         notice = tap_out_denied_notice(answer, request)
-
-        # A person saying "go and work" outranks the agent's own last refusal.
-        # `Work` refuses to re-offer work an agent has already declined, which
-        # is what stops it spinning — but this deny IS the answer to that
-        # refusal, so without clearing the mark the wake below would be
-        # suppressed and the deny would do nothing at all.
-        {:ok, _cleared} = Work.clear_decline(scope, agent)
 
         # The notice goes in the turn rather than into the transcript ahead of
         # it. Recorded separately it is history the agent reads beside its own
@@ -702,13 +750,11 @@ defmodule CodeMySpec.Notifications do
   defp update_tap_out_owner(_scope, owner, %{task_id: nil, decision: "allow"}),
     do: owner |> Ecto.Changeset.change(continuous: false) |> Repo.update()
 
-  defp update_tap_out_owner(_scope, owner, %{task_id: nil}), do: {:ok, owner}
-
   defp update_tap_out_owner(scope, owner, %{decision: "allow"} = request),
     do: TaskOwner.cancel_blocked_task(scope, owner, request.task_id, request.id)
 
-  defp update_tap_out_owner(scope, owner, request),
-    do: TaskOwner.release_block(scope, owner, request.task_id, request.id)
+  # Released after the decision commits, by `settle_tap_out_blocker/2`.
+  defp update_tap_out_owner(_scope, owner, _denied), do: {:ok, owner}
 
   @doc """
   Clear a pending permission request without a decision.
@@ -747,6 +793,7 @@ defmodule CodeMySpec.Notifications do
 
             broadcast_notifications_changed(updated.user_id)
             deliver_decision_to_agent(updated)
+            release_dismissed_tap_out(updated)
 
             {:ok, updated}
 
@@ -758,6 +805,16 @@ defmodule CodeMySpec.Notifications do
         {:error, {:already_resolved, status}}
     end
   end
+
+  # Nobody deciding is not a verdict on the task, and nothing else would ever
+  # clear its block — it is released to be resumed, never cancelled.
+  defp release_dismissed_tap_out(%{tool_name: "tap_out", task_id: task_id, id: id})
+       when is_binary(task_id) do
+    {:ok, _released} = TaskOwner.blocker_resolved(:tap_out, id, :dismissed)
+    :ok
+  end
+
+  defp release_dismissed_tap_out(_request), do: :ok
 
   @doc """
   Dismiss many of a user's own pending permission requests at once.
@@ -1040,7 +1097,7 @@ defmodule CodeMySpec.Notifications do
         end
       end)
 
-    with {:ok, {updated, released?}} <- result do
+    with {:ok, updated} <- result do
       Phoenix.PubSub.broadcast(
         CodeMySpec.PubSub,
         "question_request:#{updated.id}",
@@ -1048,72 +1105,17 @@ defmodule CodeMySpec.Notifications do
       )
 
       broadcast_notifications_changed(updated.user_id)
-      deliver_answer_content(updated, released?)
-      wake_after_answer(updated, released?)
+
+      # Released and woken through the one path every blocker takes (2200f9e4).
+      # Only a first answer, or a user's override of a still-waiting one, finds
+      # anything: 3220's override of an answer whose task has already resumed
+      # and re-blocked on a different question releases nothing and wakes
+      # nobody, because nothing in front of the agent changed.
+      {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
+      deliver_answer_content(updated, released > 0)
       {:ok, updated}
     end
   end
-
-  # The other half of `wake_if_still_in_the_loop/2`, for the other kind of gate.
-  #
-  # That function's own comment already states this defect: "`Work.consider_*`
-  # is edge-triggered on a graph change, a finished task, or continuous being
-  # switched on — a person answering a gate is none of those, so an agent that
-  # had work the whole time goes on waiting for a change that is not coming."
-  # It was fixed for a denied tap-out and left unfixed for an answered question,
-  # which is the same shape with the same cause.
-  #
-  # `deliver_answer_content/2` deliberately says nothing to an idle agent, and
-  # that is right: criterion 3219 exists because content pushed at an idle
-  # machine *starts* a turn, and the answer's own text tells the agent "this does
-  # not resume the task it blocked." The design assumes the agent comes back and
-  # collects it. Nothing brought it back. For an agent whose only work IS the
-  # blocked task, there is no other observation coming.
-  #
-  # So this offers a turn through the work channel rather than pushing the
-  # answer as content — `consider_copy/4` runs the same admissibility and
-  # decline checks every other wake does, so it cannot start a turn for an agent
-  # that should not have one, and it does not put the answer anywhere criterion
-  # 3219 objects to.
-  #
-  # Measured 2026-09-23 on Broken Oaths: three questions answered at 03:25:35
-  # released coding b01a95bb's blocker on story 950's promote. The task stayed
-  # `blocked`, `get_next_requirement` went on answering "ready", and the agent
-  # took no turn for five minutes while the copy's other four roles waited with
-  # it.
-  #
-  # Only when the answer released a blocker — `released?` is already the
-  # question of whether anything was waiting on this. An answer to a question
-  # blocking nothing has nobody to wake.
-  #
-  # In a Task for the same reason the denial path is: this is reachable from
-  # inside the harness project channel, and `Transport.Harness` dispatches by
-  # calling that channel's own process, where `:calling_self` would kill it and
-  # cancel every turn on the copy.
-  defp wake_after_answer(_request, false), do: :ok
-
-  defp wake_after_answer(%{agent_id: agent_id}, true) when is_binary(agent_id) do
-    case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
-      # Mid-turn agents already had the answer handed to them as content.
-      %{turn_started_at: %DateTime{}} ->
-        :ok
-
-      %{working_copy_id: copy_id} = agent when is_binary(copy_id) ->
-        scope = %Scope{
-          active_account_id: agent.account_id,
-          active_project_id: agent.project_id,
-          active_working_copy_id: copy_id
-        }
-
-        _ = Task.start(fn -> Work.consider_copy(scope, copy_id, :question_answered) end)
-        :ok
-
-      _idle_or_gone ->
-        :ok
-    end
-  end
-
-  defp wake_after_answer(_request, true), do: :ok
 
   # The answer as content, for an agent that is in the middle of a turn.
   #
@@ -1129,6 +1131,7 @@ defmodule CodeMySpec.Notifications do
   # question's row lock is the shape of the failure John hit — a form
   # submission waiting out an agent's whole reply.
   defp deliver_answer_content(_request, false), do: :ok
+  defp deliver_answer_content(%{agent_id: nil}, _released?), do: :ok
 
   defp deliver_answer_content(request, true) do
     case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
@@ -1202,25 +1205,20 @@ defmodule CodeMySpec.Notifications do
   # and its engine never takes a turn. 1047 and 1059 assert the same shape for
   # recovery checks and empty turn boundaries.
   #
-  # What still happens on answer: the blocker is resolved (`finish/4`), the
-  # question topic is broadcast for anyone waiting, and the next turn is where
-  # the agent meets the resolved blocker and decides to resume or cancel.
+  # What still happens on answer, once it commits: the question topic is
+  # broadcast for anyone waiting, and the task it blocked is released and its
+  # holder woken to resume it (`settle_and_broadcast/3`).
 
   defp finish(request, answers, answered_by, overruled) do
-    changeset =
-      request
-      |> QuestionRequest.changeset(%{
-        status: "answered",
-        answers: answers,
-        answered_by: answered_by,
-        overruled: overruled,
-        answer_history: history_with(request, overruled)
-      })
-
-    with {:ok, updated} <- Repo.update(changeset),
-         {:ok, released?} <- resolve_question_blocker(updated) do
-      {:ok, {updated, released?}}
-    end
+    request
+    |> QuestionRequest.changeset(%{
+      status: "answered",
+      answers: answers,
+      answered_by: answered_by,
+      overruled: overruled,
+      answer_history: history_with(request, overruled)
+    })
+    |> Repo.update()
   end
 
   # The answer this one replaces, kept where the page and the audit can find it.
@@ -1238,40 +1236,6 @@ defmodule CodeMySpec.Notifications do
     }
 
     (request.answer_history || []) ++ [entry]
-  end
-
-  defp resolve_question_blocker(%{agent_id: nil}), do: {:ok, false}
-  defp resolve_question_blocker(%{task_id: nil}), do: {:ok, false}
-
-  defp resolve_question_blocker(request) do
-    case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
-      nil ->
-        {:ok, false}
-
-      owner ->
-        scope = %Scope{active_account_id: owner.account_id, active_project_id: owner.project_id}
-        held? = holds_blocker?(owner, request)
-
-        case TaskOwner.release_block(scope, owner, request.task_id, request.id) do
-          {:ok, _owner} -> {:ok, held?}
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
-
-  # Whether this answer is the one the task is actually waiting on.
-  #
-  # `release_block/4` answers `{:ok, owner}` either way — correctly, since an
-  # answer arriving for a blocker that has moved on is not an error. But it
-  # leaves the caller unable to tell the two apart, and they mean opposite
-  # things to the agent: 3220 overrides an answer whose task was resumed and
-  # then blocked again by a different question, and nothing about the work in
-  # front of the agent changed.
-  defp holds_blocker?(owner, request) do
-    match?(
-      %{status: :blocked, blocker_resolved_at: nil, blocker_id: id} when id == request.id,
-      TaskOwner.find_task(owner, request.task_id)
-    )
   end
 
   # Where tapping the notification lands you.

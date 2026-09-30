@@ -58,6 +58,11 @@ defmodule CodeMySpec.TaskOwner do
   import Ecto.Query, only: [from: 2]
 
   @type t :: Session.t() | Agent.t()
+  @type blocker_type :: :issue | :question | :tap_out
+  @type outcome :: :resolved | :dismissed | :answered | :denied | :approved
+
+  @resolvable [:issue, :question, :tap_out]
+  @outcomes [:resolved, :dismissed, :answered, :denied, :approved]
 
   @doc "Every task this owner holds."
   @spec tasks(t()) :: [Task.t()]
@@ -146,39 +151,36 @@ defmodule CodeMySpec.TaskOwner do
   end
 
   @doc """
-  Release any task blocked on an issue, now that the issue is resolved.
+  Release every task waiting on a blocker that has just been resolved, and wake
+  each agent holding one to resume it.
 
-  The handoff QA could not make for itself. A QA agent that finds a bug files
-  it and then has nothing it can do until another role fixes it — but a task
-  could only be blocked on a `:question`, a `:tap_out` or `:manual`, all of
-  which wait on a person. So QA raised a tap-out, which is a human gate, to
-  express a condition the system can see for itself.
+  The one path for every blocker a person or another role clears: an issue
+  resolved or dismissed, a question answered, a tap-out denied, dismissed or
+  approved. It was issues only (545653ad). An answered question or a denied
+  tap-out released one task on the asking agent and woke it with the generic
+  work prompt, which named nothing to resume — metric_flow's coder 965c52a9
+  answered "Same nudge, no new information" and went idle holding eight
+  resolved blocks (2200f9e4).
 
-  Measured on story 1053, 2026-09-22: three rounds of QA finding a real
-  regression, filing it, tapping out, a human denying the tap-out once coding
-  had landed the fix, and QA re-testing. Every technical step was autonomous
-  and correct; the only human input was three mechanical "yes, that is fixed
-  now".
+  Released means `blocker_resolved_at` is set. The task stays `:blocked` until
+  its holder resumes it with `start_task`, so nothing is reactivated or
+  cancelled here. Waiters are found by the blocker's id on every owner, agents
+  and sessions alike, not by the resolver's scope: whoever answered (a person,
+  the main agent, another project's issue page) need not hold the task. Only
+  an agent can be woken, and an approved tap-out wakes nobody — its holder
+  asked to leave and was told yes.
 
-  The obvious alternative does not exist: `qa_complete` (id 4) cannot take
-  `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
-  on 4 and the graph would cycle.
-
-  Dismissed releases too — nothing else ever clears a block on a dismissed
-  issue (545653ad). Every waiting task on every owner is released, sessions as
-  well as agents; only an agent can be woken.
-
-  Answers the count of tasks released, so a caller can say whether anything
-  was waiting.
+  `:detail` is appended to the wake notice, for what the resolver said.
+  Answers the count released, so a caller can tell whether anything waited.
   """
-  @spec release_issue_block(Scope.t(), String.t(), :resolved | :dismissed) ::
+  @spec blocker_resolved(blocker_type(), String.t(), outcome(), keyword()) ::
           {:ok, non_neg_integer()}
-  def release_issue_block(%Scope{} = scope, issue_id, disposition \\ :resolved)
-      when is_binary(issue_id) and disposition in [:resolved, :dismissed] do
+  def blocker_resolved(type, blocker_id, outcome, opts \\ [])
+      when type in @resolvable and is_binary(blocker_id) and outcome in @outcomes do
     released =
       [Agent, Session]
-      |> Enum.flat_map(&Repo.all(waiting_on_issue(&1, scope, issue_id)))
-      |> Enum.map(&release_issue_tasks(scope, &1, issue_id, disposition))
+      |> Enum.flat_map(&Repo.all(waiting_on(&1, type, blocker_id)))
+      |> Enum.map(&release_waiters(&1, {type, blocker_id, outcome}, opts))
       |> Enum.sum()
 
     {:ok, released}
@@ -188,38 +190,48 @@ defmodule CodeMySpec.TaskOwner do
   Release what waited on an issue that has just been resolved or dismissed.
 
   Every door that closes an issue calls this — the tools, the issue page and
-  the REST API — so a block clears however its issue was closed.
+  the REST API — so a block clears however its issue was closed. It is how QA
+  waits on the bug it filed instead of tapping out to a person (story 1053).
   """
   @spec issue_closed(Scope.t(), %{id: String.t(), status: atom()}) :: {:ok, non_neg_integer()}
-  def issue_closed(%Scope{} = scope, %{id: id, status: status})
+  def issue_closed(%Scope{}, %{id: id, status: status})
       when status in [:resolved, :dismissed],
-      do: release_issue_block(scope, id, status)
+      do: blocker_resolved(:issue, id, status)
 
-  defp waiting_on_issue(module, scope, issue_id) do
+  defp waiting_on(module, type, blocker_id) do
     from row in module,
       where:
-        row.project_id == ^scope.active_project_id and
-          row.account_id == ^scope.active_account_id and
-          fragment(
-            "exists (select 1 from unnest(?) t where t->>'blocker_id' = ? and t->>'status' = 'blocked')",
-            row.tasks,
-            ^issue_id
-          )
+        fragment(
+          "exists (select 1 from unnest(?) t where t->>'blocker_id' = ? and t->>'blocker_type' = ? and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
+          row.tasks,
+          ^blocker_id,
+          ^Atom.to_string(type)
+        )
   end
 
-  defp release_issue_tasks(scope, owner, issue_id, disposition) do
-    with {:ok, updated} <- locked_update(scope, owner, &release_waiting(&1, issue_id)),
-         [_ | _] = released <- released_on(owner, updated, issue_id) do
-      wake_holder(scope, updated, released, issue_id, disposition)
+  defp release_waiters(owner, {type, id, _outcome} = blocker, opts) do
+    scope = owner_scope(owner)
+
+    with {:ok, updated} <- locked_update(scope, owner, &release_waiting(&1, type, id)),
+         [_ | _] = released <- released_on(owner, updated, type, id) do
+      wake_holder(scope, updated, released, blocker, opts)
       length(released)
     else
       _ -> 0
     end
   end
 
-  defp release_waiting(owner, issue_id) do
+  defp owner_scope(owner) do
+    %Scope{
+      active_account_id: owner.account_id,
+      active_project_id: owner.project_id,
+      active_working_copy_id: owner.working_copy_id
+    }
+  end
+
+  defp release_waiting(owner, type, blocker_id) do
     owner
-    |> waiting_tasks(issue_id)
+    |> waiting_tasks(type, blocker_id)
     |> Enum.reduce_while({:ok, owner}, fn task, {:ok, current} ->
       case update_embedded_task(current, task.id, %{blocker_resolved_at: now()}) do
         {:ok, next} -> {:cont, {:ok, next}}
@@ -228,38 +240,44 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
-  defp waiting_tasks(owner, issue_id) do
+  defp waiting_tasks(owner, type, blocker_id) do
     Enum.filter(tasks(owner), fn task ->
-      task.status == :blocked and task.blocker_type == :issue and
-        task.blocker_id == issue_id and is_nil(task.blocker_resolved_at)
+      task.status == :blocked and task.blocker_type == type and
+        task.blocker_id == blocker_id and is_nil(task.blocker_resolved_at)
     end)
   end
 
   # Waiting before this call, released after it.
-  defp released_on(before, updated, issue_id) do
-    ids = before |> waiting_tasks(issue_id) |> MapSet.new(& &1.id)
+  defp released_on(before, updated, type, blocker_id) do
+    ids = before |> waiting_tasks(type, blocker_id) |> MapSet.new(& &1.id)
     Enum.filter(tasks(updated), &(MapSet.member?(ids, &1.id) and &1.blocker_resolved_at != nil))
   end
 
   # Clearing the block alone leaves the agent eligible and asleep: `Work` wakes
-  # on edges, and an issue closing elsewhere is not one of them. The notice goes
-  # in the turn so the agent answers it rather than reading past it. Off this
-  # process because the caller may be the channel the wake dispatches through.
-  defp wake_holder(scope, %Agent{} = agent, released, issue_id, disposition) do
-    notice = blocker_closed_notice(released, issue_id, disposition)
+  # on edges, and a blocker resolving elsewhere is not one of them. The notice
+  # goes in the turn so the agent answers it rather than reading past it, and
+  # names the task because the generic work prompt is one it has already
+  # declined. Off this process because the caller may be the channel the wake
+  # dispatches through.
+  defp wake_holder(_scope, _owner, _released, {:tap_out, _id, :approved}, _opts), do: :ok
+
+  defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
+    notice = blocker_resolved_notice(released, blocker, Keyword.get(opts, :detail))
 
     Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Work.wake_with_notice(scope, agent, notice, :issue_closed)
+      Work.wake_with_notice(scope, agent, notice, :blocker_resolved)
     end)
 
     :ok
   end
 
-  defp wake_holder(_scope, %Session{}, _released, _issue_id, _disposition), do: :ok
+  defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
 
-  defp blocker_closed_notice(released, issue_id, disposition) do
+  defp blocker_resolved_notice(released, {type, id, outcome}, detail) do
     tasks = Enum.map_join(released, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
-    "Your blocker #{issue_id} was #{disposition}; resume #{tasks} with `start_task`."
+    notice = "Your blocker #{type} #{id} was #{outcome}; resume #{tasks} with `start_task`."
+
+    if is_binary(detail) and detail != "", do: notice <> "\n\n" <> detail, else: notice
   end
 
   @doc "Resolve only a matching blocker; never reactivate its task. Replays are no-ops."

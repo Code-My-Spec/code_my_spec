@@ -96,7 +96,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
     assert waiting?(blocked, issue_id), "the premise is a task waiting on that issue"
 
-    {:ok, released} = TaskOwner.release_issue_block(ctx.scope, issue_id)
+    {:ok, released} = TaskOwner.blocker_resolved(:issue, issue_id, :resolved)
 
     assert released == 1,
            """
@@ -117,7 +117,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     blocked = blocked_on_issue(ctx.scope, ctx.agent, issue_id)
     assert waiting?(blocked, issue_id)
 
-    {:ok, released} = TaskOwner.release_issue_block(ctx.scope, Ecto.UUID.generate())
+    {:ok, released} = TaskOwner.blocker_resolved(:issue, Ecto.UUID.generate(), :resolved)
 
     assert released == 0, "an unrelated issue released a block it had nothing to do with"
 
@@ -144,7 +144,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
         ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
 
       refute response.isError
-      assert_woken(ctx.agent.id, "Your blocker #{ctx.issue.id} was resolved; resume")
+      assert_woken(ctx.agent.id, "Your blocker issue #{ctx.issue.id} was resolved; resume")
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       refute waiting?(fresh, ctx.issue.id), "resolving the issue left its task waiting"
@@ -168,7 +168,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
              clear this block — the task stays refused by `start_task` forever.
              """
 
-      assert_woken(ctx.agent.id, "Your blocker #{ctx.issue.id} was dismissed; resume")
+      assert_woken(ctx.agent.id, "Your blocker issue #{ctx.issue.id} was dismissed; resume")
     end
 
     test "a session's task waiting on it is released too", ctx do
