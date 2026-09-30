@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import Phoenix.ChannelTest
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -55,7 +56,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
         {_, 0} =
           git(context, context.running_root, ["merge", "-q", "--no-edit", "story/war"])
 
-        {:ok, context}
+        story = a_promotable_story(context)
+        {:ok, Map.put(context, :story, story)}
       end
 
       given_ "so a merge would change nothing", context do
@@ -74,7 +76,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
       end
 
       when_ "the agent promotes anyway", context do
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app(context.running_socket, context.running_root)
         {:ok, Map.put(context, :response, response)}
       end
@@ -199,9 +201,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
   # which is right for minutes of analyzer sweep and wrong for a spec, because
   # there is no outcome in the reply to assert on. `promote_sync` is the door
   # for a caller that has nowhere to be messaged, and it answers.
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

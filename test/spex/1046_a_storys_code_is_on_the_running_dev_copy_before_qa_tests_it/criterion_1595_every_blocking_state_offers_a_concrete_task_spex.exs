@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
      `FixStoryIssues` (criterion 1575 covers this case on its own; included
      here for the chain-wide sweep).
   4. QA not yet run — `qa_complete` unsatisfied → `QaStory`.
-  5. QA passed but not promoted — `code_on_running_copy` unsatisfied →
+  5. QA passed but not promoted — `story_promoted` unsatisfied →
      `PromoteWork`.
   6. Promoted — `deploy` unsatisfied → `Deploy`.
 
@@ -279,7 +279,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   # A checkout the test scope never becomes — so every story's own checkout
   # (the default copy `setup_active_project` already gave the scope) is
-  # *not* the running copy, and `code_on_running_copy` has an ancestry
+  # *not* the running copy, and `story_promoted` has an ancestry
   # question to answer rather than the "working on it directly" shortcut.
   #
   # No explicit "make main" click needed: `setup_active_project`'s own
@@ -317,13 +317,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
     context
   end
 
+  # The story page lost its Enforce toggle (e1174640): only a `promote` of
+  # the story latches `specs_ready` now, which needs a merge this wedge
+  # check does not build. Set directly, the same way
+  # `FullSatisfactionFixtures.apply_specs_enforced/1` does for the same
+  # reason.
   defp enforce_specs_ready(context, story) do
-    {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/stories")
-
-    view
-    |> element(~s{[data-test="toggle-story-specs-ready"][phx-value-id="#{story.id}"]})
-    |> render_click()
-
+    story = Stories.get_story!(context.scope, story.id)
+    {:ok, _} = Stories.set_specs_ready(context.scope, story, true)
     context
   end
 

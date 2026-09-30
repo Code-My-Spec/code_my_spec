@@ -41,7 +41,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3433Spex do
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        {:ok, context}
+        story = a_promotable_story(context)
+        {:ok, Map.put(context, :story, story)}
       end
 
       given_ "both copies' analyzers are current", context do
@@ -49,7 +50,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3433Spex do
       end
 
       when_ "the agent promotes", context do
-        {:ok, Map.put(context, :response, promote(context))}
+        {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
       then_ "it is told the merge landed", context do

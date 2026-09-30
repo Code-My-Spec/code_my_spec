@@ -4,26 +4,28 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   Criterion 1394 — Promoting a specs-ready story marks its code on the
   running copy.
 
-  Rule (reworded by Criterion Binding, 2026-09-28 — the original text,
-  "promoting a story with clean specs sets its specs-ready latch," was
-  wrong: promote never sets that latch, `FixBddSpecs.evaluate/2` does, on a
-  fresh green spex run, and that half is already covered by story 983's
-  criterion 729): a successful promotion marks every specs-ready story it
-  has not yet stamped as on the running copy, at the version it promoted.
+  Rule (reworded again by e1174640, 2026-09-29 — the 2026-09-28 wording,
+  "a successful promotion marks every specs-ready story it has not yet
+  stamped," described `Stories.mark_ready_stories_promoted/2`, which no
+  longer exists): a successful promotion stamps the one story it names —
+  and only that story — as on the running copy, at the version it
+  promoted, once its spex pass. A different specs-ready story, not the one
+  named, is left untouched by that same promotion; it is stamped by its
+  own promotion, naming it.
 
-  `Stories.mark_ready_stories_promoted/2` is the only writer of
-  `promoted_version` — it stamps every story with `specs_ready: true` and
-  `promoted_version: nil`, once, and a later promotion is a no-op for a
-  story it already stamped (the query excludes anything with a version
-  already set). `Promotion.RunningCopy.running_copy_check/2` reads that
-  stamp directly, so the two facts — promoted, and code-on-running-copy —
-  are the same fact read from two callers.
+  `Stories.mark_story_promoted/4` is the only writer of `promoted_version`
+  now, and it takes the one story `promote(scope, story_number)` named. A
+  later promotion of the same story is a no-op (the query excludes a story
+  with a version already set). `Promotion.RunningCopy.running_copy_check/2`
+  reads that stamp directly, so the two facts — promoted, and
+  `story_promoted` — are the same fact read from two callers.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -59,12 +61,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         assert story.specs_ready, "the premise failed: specs_ready should already be set"
         refute story.promoted_version, "the premise failed: the story should not be promoted yet"
 
-        {:ok, context}
+        sibling = a_promotable_story(context, title: "A different story, not the one promoted")
+        {:ok, Map.put(context, :sibling, sibling)}
       end
 
       when_ "a promotion succeeds", context do
         context = analyzers_are_current(context)
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :first_promote_response, response)}
       end
@@ -79,18 +82,30 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         {:ok, Map.put(context, :stamped_version, story.promoted_version)}
       end
 
+      and_ "the sibling story this promotion did not name is left untouched", context do
+        sibling = Stories.get_story(context.scope, context.sibling.id)
+
+        refute sibling.specs_ready,
+               "a promotion that named one story stamped a different one too — the " <>
+                 "project-wide sweep this replaced is gone; only the named story moves"
+
+        refute sibling.promoted_version
+
+        {:ok, context}
+      end
+
       then_ "its code-on-running-copy requirement is satisfied", context do
         text = code_on_running_copy_status(context)
 
-        assert text =~ "[x] **code_on_running_copy**",
-               "the stamp should be enough on its own for code_on_running_copy to " <>
+        assert text =~ "[x] **story_promoted**",
+               "the stamp should be enough on its own for story_promoted to " <>
                  "read satisfied. Got: #{text}"
 
         {:ok, context}
       end
 
       when_ "a later promotion is attempted", context do
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :second_promote_response, response)}
       end
@@ -117,7 +132,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         %{
           entity_type: "story",
           entity_id: to_string(context.story.number),
-          requirement_name: "code_on_running_copy"
+          requirement_name: "story_promoted"
         },
         frame
       )
@@ -136,9 +151,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
     context
   end
 
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

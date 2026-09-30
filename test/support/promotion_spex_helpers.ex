@@ -33,8 +33,51 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  @doc """
+  A real story — no component link needed, since nothing this story's
+  spex-passing check reads cares about one — with a passing BDD spec file
+  synced for every one of its criteria. e1174640's own precondition for a
+  `promote(story_number)` naming it to succeed: `Promotion.story_spex_pass/3`
+  reads `Files.list_story_files/2` (a project-wide row, not tied to
+  whichever checkout wrote it — see `apply_bdd_spec_for_story/2`'s own use
+  of `context.environment`, the fake domain filesystem `Files` syncs from)
+  and there must be at least one, none of them failing.
+
+  `red?: true` records a failing spex problem against the story's own
+  first criterion's file instead, for a scenario proving the refusal
+  rather than the happy path — same file `story_spex_pass/3` would name.
+  """
+  @spec a_promotable_story(map(), keyword()) :: map()
+  def a_promotable_story(context, opts \\ []) do
+    story =
+      StoryHelpers.create_story(context.scope,
+        title: Keyword.get(opts, :title, "Promotable story"),
+        description: "As a user, I want this story's own code on the running copy.",
+        acceptance_criteria: ["It works"]
+      )
+
+    :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+
+    if Keyword.get(opts, :red?, false) do
+      [criterion | _] = story.criteria
+      path = Fixtures.spec_file_path(story, criterion)
+
+      {:ok, _} =
+        Fixtures.record_problem(context.scope, "spex", %{
+          file_path: path,
+          message: "expected the war to be declared",
+          severity: :error
+        })
+    end
+
+    story
+  end
 
   @doc """
   A running checkout on `main` and an agent's worktree on `story/war`.
@@ -128,9 +171,9 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   is synchronous now — nothing in it is long-running, the restart was already
   detached — so it answers, and these criteria cover the door that is used.
   """
-  def promote(context) do
+  def promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = Promote.execute(%{}, frame)
+    {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
     response
   end
 

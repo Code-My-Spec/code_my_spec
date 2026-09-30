@@ -63,7 +63,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3436Spex do
         {_, 0} =
           git(context, context.running_root, ["commit", "-q", "-m", "somebody else's promotion"])
 
-        {:ok, context}
+        story = a_promotable_story(context)
+        {:ok, Map.put(context, :story, story)}
       end
 
       given_ "both copies' analyzers are current", context do
@@ -71,7 +72,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3436Spex do
       end
 
       when_ "the agent promotes", context do
-        {:ok, Map.put(context, :response, promote(context))}
+        {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
       then_ "the refusal says this is ordinary", context do

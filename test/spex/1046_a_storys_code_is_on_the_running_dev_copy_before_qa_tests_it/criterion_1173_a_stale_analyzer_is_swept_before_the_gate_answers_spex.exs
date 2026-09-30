@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -52,7 +53,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        {:ok, context}
+        story = a_promotable_story(context)
+        {:ok, Map.put(context, :story, story)}
       end
 
       given_ "no analyzer has ever run against it", context do
@@ -63,7 +65,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
       end
 
       when_ "the agent promotes", context do
-        {:ok, Map.put(context, :response, promote(context))}
+        {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
       then_ "promotion refuses immediately, naming what needs a fresh run", context do
@@ -170,9 +172,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
   # which is right for minutes of analyzer sweep and wrong for a spec, because
   # there is no outcome in the reply to assert on. `promote_sync` is the door
   # for a caller that has nowhere to be messaged, and it answers.
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

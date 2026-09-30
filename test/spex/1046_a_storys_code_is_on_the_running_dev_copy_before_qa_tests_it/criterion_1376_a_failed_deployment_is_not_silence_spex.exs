@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Agents.AgentsRepository
@@ -71,14 +72,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
+        story = a_promotable_story(context)
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :agent, agent)}
+        {:ok, context |> Map.put(:agent, agent) |> Map.put(:story, story)}
       end
 
       when_ "the agent promotes, and the restart comes back down rather than serving",
             context do
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app_down(context.running_socket)
 
         # Waited for here, before inspecting the error log below — the log
@@ -151,12 +153,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
     context
   end
 
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{
       assigns: %{current_scope: context.scope, agent_id: context.agent.id}
     }
 
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

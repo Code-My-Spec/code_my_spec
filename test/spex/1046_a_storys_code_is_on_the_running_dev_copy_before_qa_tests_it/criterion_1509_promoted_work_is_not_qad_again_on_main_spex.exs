@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
 
       when_ "the story is promoted", context do
         context = analyzers_are_current(context)
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :promote_response, response)}
       end
@@ -124,9 +124,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
     context
   end
 
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

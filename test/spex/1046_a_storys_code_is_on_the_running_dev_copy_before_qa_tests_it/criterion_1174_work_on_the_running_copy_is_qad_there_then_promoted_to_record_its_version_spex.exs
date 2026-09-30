@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
             context do
         text = code_on_running_copy_status(context)
 
-        refute text =~ "[x] **code_on_running_copy**",
+        refute text =~ "[x] **story_promoted**",
                "a QA pass should not, by itself, satisfy code_on_running_copy — only " <>
                  "an actual promotion lands the work on main. Got: #{text}"
 
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
 
       when_ "the story is promoted", context do
         context = analyzers_are_current(context)
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :promote_response, response)}
       end
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
 
         text = code_on_running_copy_status(context)
 
-        assert text =~ "[x] **code_on_running_copy**",
+        assert text =~ "[x] **story_promoted**",
                "once promoted, code_on_running_copy should read satisfied — the QA " <>
                  "pass and the promotion together are what this requirement means. " <>
                  "Got: #{text}"
@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
         %{
           entity_type: "story",
           entity_id: to_string(context.story.number),
-          requirement_name: "code_on_running_copy"
+          requirement_name: "story_promoted"
         },
         frame
       )
@@ -127,9 +127,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
   # Through `promote_sync` rather than `promote` — see criterion 1172's own
   # note on why a spec needs the door that answers rather than the one that
   # messages back.
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 

@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import Phoenix.ChannelTest
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -76,7 +77,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
        criterion: 1183 do
     scenario "the agent is working on the running copy and nothing is serving it" do
       given_ "an agent working on the checkout the application runs from", context do
-        {:ok, a_running_copy(context)}
+        context = a_running_copy(context)
+        story = a_promotable_story(context)
+        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+        {:ok, Map.put(context, :story, story)}
       end
 
       # Recorded, not asserted on here. That the gate refuses a `down` running
@@ -90,7 +94,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
       end
 
       when_ "the agent promotes", context do
-        response = promote(context)
+        response = promote(context, context.story.number)
         answer_restart_app(context.running_socket, context.running_root)
         {:ok, Map.put(context, :response, response)}
       end
@@ -178,9 +182,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   # Through `promote_sync` rather than `promote`: both doors run the same
   # `Promotion.promote/1` and differ only in delivery, and the agent's door
   # returns before there is an outcome to assert on.
-  defp promote(context) do
+  defp promote(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{}, frame)
+    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
     response
   end
 
