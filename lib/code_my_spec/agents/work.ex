@@ -91,19 +91,29 @@ defmodule CodeMySpec.Agents.Work do
   defp resume(scope, agent) do
     with :ok <- Transport.deliverable(agent),
          {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
-      Conversations.record_sent_to_agent(reserved, @resume_prompt)
+      turn_prompt = resume_prompt(reserved)
+      Conversations.record_sent_to_agent(reserved, turn_prompt)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
              reserved,
              ref,
-             @resume_prompt,
+             turn_prompt,
              5_000
            ) do
         {:ok, :started} -> {:ok, ref}
         _error -> release(scope, reserved.id, ref)
       end
     end
+  end
+
+  # The prompt promises "the task below", so the task has to follow (0d3b800d).
+  defp resume_prompt(agent) do
+    task = Agent.active_task(agent)
+
+    @resume_prompt <>
+      "\n\nThe task: `#{task.requirement_name}`, id #{task.id}. `evaluate_task` with " <>
+      "that id when it is done."
   end
 
   # Same row lock and stamp as `reserve/2`, against `stranded?/1` rather than

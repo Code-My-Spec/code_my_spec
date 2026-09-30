@@ -441,7 +441,8 @@ defmodule CodeMySpec.Agents do
   re-read the page to see. `turn_started_at` is cleared in the same pass for
   the interrupted case, for the reason `restart_agent/2` already clears it:
   left set, `list_agent_work` and every check-in go on reporting a turn that
-  opened before a process that no longer exists (`4078e7bf`).
+  opened before a process that no longer exists (`4078e7bf`). Any open
+  reservation is dropped for every agent, for the same reason.
   """
   @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
   def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
@@ -458,7 +459,7 @@ defmodule CodeMySpec.Agents do
       )
     end
 
-    :ok
+    drop_dead_reservation(scope, agent)
   end
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
@@ -466,8 +467,22 @@ defmodule CodeMySpec.Agents do
       Conversations.add_message(conversation, :operator, interrupted_notice(), "operator")
     end
 
-    AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+    AgentsRepository.update_agent(scope, agent, %{
+      turn_started_at: nil,
+      work_request_id: nil,
+      work_requested_at: nil
+    })
 
+    :ok
+  end
+
+  # A reservation is a wake handed to the harness that just died, so it can
+  # never become a turn. Left open it fences the agent out of the join's one
+  # sweep for up to five minutes, and nothing sweeps again (0d3b800d).
+  defp drop_dead_reservation(_scope, %Agent{work_request_id: nil}), do: :ok
+
+  defp drop_dead_reservation(scope, agent) do
+    AgentsRepository.update_agent(scope, agent, %{work_request_id: nil, work_requested_at: nil})
     :ok
   end
 
