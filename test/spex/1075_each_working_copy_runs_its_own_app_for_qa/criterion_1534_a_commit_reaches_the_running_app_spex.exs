@@ -3,11 +3,17 @@ defmodule CodeMySpecSpex.Story1108.Criterion4658Spex do
   Story 1108 — Each working copy runs its own app for QA.
   Criterion 4658 — A commit reaches the running app.
 
-  Rule: A copy's app restarts when the copy's HEAD moves.
+  Rule (79854c2f): a copy's app keeps running when the copy's HEAD moves;
+  hot reload picks up code changes, so it is only restarted when it is not
+  already running. John: "we have hot reload, we don't need to restart all
+  the time."
 
-  Asserted through `restart_app`, the verb the server pushes when it
-  notices a copy's HEAD moved — not through the checkout's git state
-  itself, which is a fact this feature reads rather than one it owns.
+  This scenario is still the case a restart genuinely happens — the app was
+  not running (or a caller asked for one directly) — so what a restart
+  brings up has to be the copy's *current* commit, not whichever one the
+  process last started on. Asserted through `restart_app` itself, the door
+  a restart actually goes through, not through the checkout's git state,
+  which is a fact this feature reads rather than one it owns.
   """
 
   use CodeMySpecSpex.Case
