@@ -12,7 +12,7 @@ defmodule CodeMySpec.Agents.ProviderRefusal do
   binary or a timeout is a failed turn, not the provider saying no.
   """
 
-  @refusal ~r/usage limit|quota|rate[ _-]?limit|credits|billing|unauthori[sz]ed|authenticat|api key|forbidden|\b(401|403|429)\b|model\b.*\b(not found|not available|not supported|does not exist|unavailable)\b/i
+  @refusal ~r/usage limit|hit your (?:\w+ )?limit|quota|rate[ _-]?limit|credits|billing|unauthori[sz]ed|authenticat|api key|forbidden|\b(401|403|429)\b|model\b.*\b(not found|not available|not supported|does not exist|unavailable)\b/i
 
   @months ~w(jan feb mar apr may jun jul aug sep oct nov dec)
 
@@ -22,7 +22,8 @@ defmodule CodeMySpec.Agents.ProviderRefusal do
   The refusal in a failed turn's text, or nil when the text is not one.
 
   The reason is the provider's `ERROR:` line when the text carries one. The
-  retry time is read from "try again at <date>" or "try again in <n> <unit>";
+  retry time is read from "try again at <date>", "resets <Mon> <d> at <time>"
+  or "try again in <n> <unit>";
   a date the provider printed without a zone is taken as UTC.
   """
   @spec read(String.t() | nil, DateTime.t()) :: t() | nil
@@ -42,8 +43,41 @@ defmodule CodeMySpec.Agents.ProviderRefusal do
   end
 
   defp retry_at(text, now) do
-    absolute(text) || relative(text, now)
+    absolute(text) || resets(text, now) || relative(text, now)
   end
+
+  # Claude: "You've hit your weekly limit · resets Oct 3 at 6pm (America/Toronto)".
+  # No year, so the next such date from now. There is no time zone database
+  # here, so a named zone is read as UTC: early by the zone's offset at worst,
+  # which costs one refused turn that records the refusal again.
+  defp resets(text, now) do
+    with [_, month, day, hour | rest] <-
+           Regex.run(
+             ~r/resets ([a-z]{3})[a-z]*\.? (\d{1,2})(?:st|nd|rd|th)?,? (?:at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i,
+             text
+           ),
+         month when is_integer(month) <-
+           Enum.find_index(@months, &(&1 == String.downcase(month))),
+         {:ok, time} <-
+           Time.new(
+             hour24(String.to_integer(hour), rest |> Enum.at(1, "") |> String.downcase()),
+             minute(Enum.at(rest, 0, "")),
+             0,
+             {0, 6}
+           ),
+         {:ok, date} <- Date.new(now.year, month + 1, String.to_integer(day)) do
+      at = DateTime.new!(date, time, "Etc/UTC")
+
+      if DateTime.compare(at, now) == :lt,
+        do: DateTime.new!(%{date | year: date.year + 1}, time, "Etc/UTC"),
+        else: at
+    else
+      _ -> nil
+    end
+  end
+
+  defp minute(""), do: 0
+  defp minute(m), do: String.to_integer(m)
 
   defp absolute(text) do
     with [_, month, day, year, hour, minute | meridiem] <-
