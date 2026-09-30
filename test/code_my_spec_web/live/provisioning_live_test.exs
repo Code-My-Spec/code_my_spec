@@ -404,6 +404,48 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       refute has_element?(view, "[data-test='inbound-probe-address']")
     end
 
+    # 22b0e27c: `check_competing_mx/3` pauses the same way `apex_repoint/4`
+    # does — a decision only Sam can make, not a failure to retry — but
+    # nothing gave him a way to make it, so a retry re-detected the existing
+    # MX and paused again, identically, forever. Same affordance as the DNS
+    # apex-repoint block, and it must not be the probe-address form instead:
+    # that answers a missing address, not a record collision.
+    test "a paused inbound step with a competing MX offers to repoint, not to supply an address",
+         %{conn: conn, project: project, scope: scope} do
+      StepRepository.upsert(scope, :inbound, nil, %{
+        state: :paused,
+        position: Sequence.position(:inbound),
+        paused_instructions:
+          "metric-flow.app already has an MX record pointing at route3.mx.cloudflare.net, " <>
+            "and publishing Resend's here would replace it rather than add alongside it — " <>
+            "if mail for this name already routes through route3.mx.cloudflare.net, that " <>
+            "redirects or breaks it silently. Confirm to publish anyway, or resolve it at " <>
+            "the provider first."
+      })
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(view, "[data-test='inbound-mx-repoint']")
+      assert has_element?(view, "[data-test='confirm-inbound-mx-repoint']")
+      refute has_element?(view, "[data-test='inbound-probe-address']")
+    end
+
+    test "the MX-repoint control does not appear for the plain probe-address pause", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :inbound, nil, %{
+        state: :paused,
+        position: Sequence.position(:inbound),
+        paused_instructions: "Give it an address and resume."
+      })
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='inbound-mx-repoint']")
+    end
+
     # The wiring, not just the markup: submitting carries `inbound_probe_to`
     # through to the step the same opts every other run path already
     # threads it to (`default_inbound_probe/3` reads it, and every other
@@ -591,6 +633,36 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
       assert_receive {:executed, opts}, 1_000
       assert Keyword.get(opts, :confirm_apex_repoint) == true
+    end
+
+    test "confirming the inbound MX repoint threads confirm_inbound_mx_repoint through", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :inbound, nil, %{
+        state: :paused,
+        position: Sequence.position(:inbound),
+        paused_instructions:
+          "already has an MX record pointing at route3.mx.cloudflare.net. " <>
+            "Confirm to publish anyway, or resolve it at the provider first."
+      })
+
+      test_pid = self()
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      stub_execute(fn _scope, _key, opts ->
+        send(test_pid, {:executed, opts})
+        {:ok, []}
+      end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view |> render_click("confirm_inbound_mx_repoint")
+
+      assert_receive {:executed, opts}, 1_000
+      assert Keyword.get(opts, :confirm_inbound_mx_repoint) == true
     end
 
     test "adopting the colliding repository threads adopt through", %{
