@@ -198,12 +198,21 @@ defmodule CmsHarness.Browser do
   Without a timeout the MCP client applies its own thirty seconds, so a caller
   asking for a minute got thirty seconds from here. `nil` still means that
   default, for a caller that has no opinion.
+
+  If the call leaves a native dialog open, it is dismissed and noted on the
+  answer (`CmsHarness.Browser.Dialog`). Notes left for this copy since its last
+  call are added too.
   """
   @spec call(String.t(), String.t(), map(), pos_integer() | nil) ::
           {:ok, String.t()} | {:error, term()}
   def call(root, tool, arguments, timeout \\ nil) do
     with {:ok, client} <- ensure_started(root) do
-      Transport.impl().call(client, tool, arguments, opts(timeout))
+      earlier = __MODULE__.Owner.take_notes(root)
+
+      client
+      |> Transport.impl().call(tool, arguments, opts(timeout))
+      |> __MODULE__.Dialog.recover(client, root)
+      |> __MODULE__.Dialog.annotate(earlier)
     end
   end
 

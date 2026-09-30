@@ -11,6 +11,10 @@ defmodule CmsHarness.Browser.Owner do
   Traps exits because `Anubis.Client.start_link/1` links its supervisor to the
   caller, and a failed start must come back as an error rather than take this
   process — and with it the copy's subtree — down.
+
+  It also keeps notes for the copy's next browser call. A dialog dismissed
+  after a call timed out is reported on the next answer
+  (`CmsHarness.Browser.Dialog`).
   """
 
   use GenServer
@@ -37,22 +41,43 @@ defmodule CmsHarness.Browser.Owner do
     end
   end
 
-  @impl true
-  def init(root) do
-    Process.flag(:trap_exit, true)
-    {:ok, root}
+  @doc "Leave a note for this copy's next browser call."
+  @spec leave_note(String.t(), String.t()) :: :ok
+  def leave_note(root, note), do: GenServer.cast(via(root), {:leave_note, note})
+
+  @doc "The notes left since the last call, oldest first. Each is handed out once."
+  @spec take_notes(String.t()) :: [String.t()]
+  def take_notes(root) do
+    case GenServer.whereis(via(root)) do
+      nil -> []
+      pid -> GenServer.call(pid, :take_notes, 15_000)
+    end
   end
 
   @impl true
-  def handle_call({:connect, path}, _from, root) do
-    {:reply, Browser.connect(root, path), root}
+  def init(root) do
+    Process.flag(:trap_exit, true)
+    {:ok, %{root: root, notes: []}}
   end
+
+  @impl true
+  def handle_call({:connect, path}, _from, state) do
+    {:reply, Browser.connect(state.root, path), state}
+  end
+
+  def handle_call(:take_notes, _from, state) do
+    {:reply, Enum.reverse(state.notes), %{state | notes: []}}
+  end
+
+  @impl true
+  def handle_cast({:leave_note, note}, state),
+    do: {:noreply, %{state | notes: [note | state.notes]}}
 
   # The exit of a client supervisor that failed to start, or one unlinked a
   # moment too late. Neither is this process's to die of.
   @impl true
-  def handle_info({:EXIT, _pid, _reason}, root), do: {:noreply, root}
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   @impl true
-  def terminate(_reason, root), do: Browser.disconnect(root)
+  def terminate(_reason, state), do: Browser.disconnect(state.root)
 end
