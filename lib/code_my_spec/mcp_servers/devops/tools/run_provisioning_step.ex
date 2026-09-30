@@ -46,6 +46,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   through repeated retries because the only "confirm" that existed was a
   LiveView click nothing here could reach.
 
+  ## `confirm_inbound_mx_repoint` is the same gap again, for `:inbound`
+
+  `Steps.check_competing_mx/3` refuses to replace an MX record the domain
+  already has without `opts[:confirm_inbound_mx_repoint]`, for the same
+  reason `apex_repoint/4` refuses an unconfirmed apex move — an existing MX
+  might be routing real mail today. Metric Flow's onboarding hit this live:
+  `provisioning_live.ex` grew a "Repoint it anyway" control at the same time
+  this field was added, but the main agent driving setup for a project with
+  no human at the LiveView needed the same "yes" through MCP.
+
   ## The `:server` step never creates a server here, under any circumstance
 
   `Steps.server_creation_gate/3` used to accept `opts[:confirm_new_server]`
@@ -100,6 +110,15 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "instead of doing this silently; set this to true once that repoint is " <>
           "actually wanted, and call the step again."
 
+    field :confirm_inbound_mx_repoint, :boolean,
+      doc:
+        "For the \"inbound\" step only: the domain already has an MX record, and " <>
+          "publishing Resend's here would replace rather than add to it — which can " <>
+          "silently redirect or break mail that already routes through the existing " <>
+          "one. The step pauses and names the current record instead of doing this " <>
+          "silently; set this to true once that replacement is actually wanted, and " <>
+          "call the step again."
+
     field :force, :boolean,
       doc:
         "Skip verification and run the step unconditionally, even if the provider " <>
@@ -138,6 +157,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
     []
     |> with_inbound_probe(params)
     |> with_confirm_apex_repoint(params)
+    |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
   end
@@ -152,6 +172,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   defp with_confirm_apex_repoint(opts, params) do
     case Map.get(params, :confirm_apex_repoint) do
       true -> Keyword.put(opts, :confirm_apex_repoint, true)
+      _ -> opts
+    end
+  end
+
+  defp with_confirm_inbound_mx_repoint(opts, params) do
+    case Map.get(params, :confirm_inbound_mx_repoint) do
+      true -> Keyword.put(opts, :confirm_inbound_mx_repoint, true)
       _ -> opts
     end
   end

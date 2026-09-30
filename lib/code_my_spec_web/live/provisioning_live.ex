@@ -941,14 +941,50 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             </.button>
           </div>
           
+    <!-- 22b0e27c: `check_competing_mx/3` refuses to replace an MX the
+                 domain already has, for the same reason `apex_repoint/4`
+                 refuses to move a live apex — an existing MX genuinely might
+                 be routing real mail today, and overwriting it silently is
+                 worse than a bare A-record repoint because MX can validly
+                 carry more than one record. Same shape as that block:
+                 a paused step naming a decision only Sam can make, behind a
+                 dialog rather than a bare click. -->
+          <div
+            :if={@step.key == :inbound and @step.state == :paused and inbound_mx_conflict?(@step)}
+            data-test="inbound-mx-repoint"
+            class="mt-3 flex gap-2"
+          >
+            <.button
+              data-test="confirm-inbound-mx-repoint"
+              class="btn btn-warning"
+              phx-click={show_confirm("confirm-inbound-mx-repoint")}
+            >
+              Repoint it anyway
+            </.button>
+
+            <.confirm_dialog
+              id="confirm-inbound-mx-repoint"
+              title="Replace the existing MX record?"
+              message={@step.paused_instructions}
+              confirm_label="Repoint it"
+              on_confirm={JS.push("confirm_inbound_mx_repoint")}
+            />
+          </div>
+
     <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
                  rather than repeat the mistake `59f366cc` fixed, but nothing gave
                  Sam a way to supply the one it's asking for — the plain "Run"
                  button above re-runs with the same missing opt and loops back to
                  this same pause forever. Same shape as the two blocks above:
-                 a paused step naming a decision only Sam can make. -->
+                 a paused step naming a decision only Sam can make.
+
+                 Excludes the MX-conflict pause above: that one is answered by
+                 the repoint dialog, not by supplying a probe address. -->
           <form
-            :if={@step.key == :inbound and @step.state == :paused}
+            :if={
+              @step.key == :inbound and @step.state == :paused and
+                not inbound_mx_conflict?(@step)
+            }
             data-test="inbound-probe-address"
             phx-submit="run_step_with_probe_address"
             class="mt-3 flex gap-2"
@@ -2007,6 +2043,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
   end
 
+  def handle_event("confirm_inbound_mx_repoint", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    # Re-run the step with the decision Sam just made, same as
+    # confirm_apex_repoint above. Async for the same reason (issue 74b6e3a0).
+    :ok =
+      Provisioning.run_step_async(
+        scope,
+        :inbound,
+        step_opts() ++ [confirm_inbound_mx_repoint: true]
+      )
+
+    {:noreply, socket |> assign(halted_at: nil, halt_reason: nil) |> load(socket.assigns.options)}
+  end
+
   def handle_event("adopt_repository", _params, socket) do
     scope = socket.assigns.current_scope
 
@@ -2746,6 +2797,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # `attempted`, which is the part nothing else says.
   defp shown_again_below?(%{key: :deploy}), do: true
   defp shown_again_below?(_step), do: false
+
+  # `check_competing_mx/3` is the only inbound pause that names a *record*
+  # rather than an address or a credential (`no_probe_address`,
+  # `probe_address_elsewhere`, `no_verified_sender`, `receiving_disabled`),
+  # so it is the one that needs the repoint dialog instead of the probe-address
+  # form. Nothing structured survives past `Steps.run/3`'s own case — the
+  # reason atom is folded into `paused_instructions` as a string before it
+  # is ever persisted — so this reads the one phrase unique to that branch
+  # rather than adding a column for a single caller.
+  defp inbound_mx_conflict?(%{paused_instructions: instructions}) when is_binary(instructions),
+    do: instructions =~ "Confirm to publish anyway"
+
+  defp inbound_mx_conflict?(_step), do: false
 
   # Each resource with whether its step still verifies. "What you now own" is a
   # claim about the present, and a recorded resource is only evidence of that
