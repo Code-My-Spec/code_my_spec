@@ -666,6 +666,11 @@ config :code_my_spec, intake_conversation_process: false
 # about; the duration is not.
 config :code_my_spec, :promotion_sweep_timeout, 200
 
+# A promote whose restart acknowledgement is lost asks the app what it serves
+# until this bound. Nothing answers in a test, so it gives up at once rather
+# than outliving the test and logging into the next one.
+config :code_my_spec, :promotion_verify_within, 0
+
 # Dev-only routes are present in test so their wiring can be asserted.
 #
 # They are compile-gated to dev, which meant nothing ever tested that they are

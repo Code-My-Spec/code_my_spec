@@ -149,9 +149,17 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
              )
 
     assert_receive {:DOWN, ^ref, :process, _, :shutdown}, 5_000
-    an_app_serving(running.id, serving_after)
+    told_after(running.id, agent.id, serving_after)
+  end
 
-    agent_id = agent.id
+  # Nothing answering at all: nothing was learned, so nothing is told.
+  defp told_after(_working_copy_id, _agent_id, nil) do
+    await_restart_tasks()
+    nil
+  end
+
+  defp told_after(working_copy_id, agent_id, serving_after) do
+    an_app_serving(working_copy_id, serving_after)
     assert_receive {:agent_dispatch, ^agent_id, _ref, message}, 10_000
     await_restart_tasks()
     message
@@ -177,5 +185,18 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
     assert message =~ "restart failed: still on #{@base}"
     refute message =~ "confirmed"
+  end
+
+  # A restart nobody could be asked about is not a failed one: telling the
+  # agent it failed sends it to fix a restart that may have worked.
+  test "an app that never answers leaves the restart unconfirmed, not failed" do
+    log =
+      ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+        assert promote_with_a_dropped_ack(nil) == nil
+      end)
+
+    refute_received {:agent_dispatch, _, _, _}
+    assert log =~ "not confirmed: the app never answered"
+    refute log =~ "restart FAILED"
   end
 end

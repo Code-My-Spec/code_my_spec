@@ -868,22 +868,30 @@ defmodule CodeMySpec.Promotion do
   # the app what it is serving, through the same `AppTransport` status path
   # every copy's app answers, until it reports the merged commit or the bound
   # runs out — then say which: serving <commit>, or still on <old>.
-  @verify_within 120_000
+  #
+  # Only an app that answered on the wrong commit is a failure. One that never
+  # answered stays unconfirmed: nothing was learned, and calling it failed
+  # tells an agent to fix a restart that may have worked.
   @verify_every 2_000
 
   defp verify_unconfirmed({:unconfirmed, _reason}, working_copy_id, opts) do
     expect = Keyword.get(opts, :expect, %{})
     every = Keyword.get(opts, :verify_every, @verify_every)
 
-    deadline =
-      System.monotonic_time(:millisecond) + Keyword.get(opts, :verify_within, @verify_within)
+    within =
+      Keyword.get_lazy(opts, :verify_within, fn ->
+        Application.get_env(:code_my_spec, :promotion_verify_within, 120_000)
+      end)
 
-    await_serving(working_copy_id, Map.get(expect, :to), every, deadline, Map.get(expect, :from))
+    deadline = System.monotonic_time(:millisecond) + within
+
+    await_serving(working_copy_id, Map.get(expect, :to), every, deadline, :unanswered)
   end
 
   defp verify_unconfirmed(outcome, _working_copy_id, _opts), do: outcome
 
-  defp await_serving(working_copy_id, expected, every, deadline, last) do
+  # `seen` is the last commit the app reported, or `:unanswered`.
+  defp await_serving(working_copy_id, expected, every, deadline, seen) do
     remaining = deadline - System.monotonic_time(:millisecond)
 
     case AppTransport.ensure_app_running(working_copy_id, max(remaining, every)) do
@@ -894,24 +902,34 @@ defmodule CodeMySpec.Promotion do
         retry_serving(working_copy_id, expected, every, deadline, commit)
 
       _unreachable_or_down ->
-        retry_serving(working_copy_id, expected, every, deadline, last)
+        retry_serving(working_copy_id, expected, every, deadline, seen)
     end
   end
 
-  defp retry_serving(working_copy_id, expected, every, deadline, last) do
+  defp retry_serving(working_copy_id, expected, every, deadline, seen) do
     if System.monotonic_time(:millisecond) + every < deadline do
       Process.sleep(every)
-      await_serving(working_copy_id, expected, every, deadline, last)
+      await_serving(working_copy_id, expected, every, deadline, seen)
     else
-      {:failed, "restart failed: still on #{last || "an unreported commit"}"}
+      settle_unverified(seen)
     end
   end
+
+  defp settle_unverified(:unanswered),
+    do: {:unconfirmed, "the app never answered, so the restart could not be verified"}
+
+  defp settle_unverified(seen), do: {:failed, "restart failed: still on #{seen}"}
 
   defp log_restart_outcome({:confirmed, revision} = outcome, root) do
     Logger.info(
       "[Promotion] restart confirmed for #{root}, now serving #{revision || "unknown revision"}"
     )
 
+    outcome
+  end
+
+  defp log_restart_outcome({:unconfirmed, reason} = outcome, root) do
+    Logger.warning("[Promotion] restart for #{root} not confirmed: #{reason}")
     outcome
   end
 
