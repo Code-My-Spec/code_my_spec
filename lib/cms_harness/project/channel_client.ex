@@ -15,8 +15,10 @@ defmodule CmsHarness.Project.ChannelClient do
       fetched rather than inferred because the harness has no database to
       derive it from
     * `observations` — the whole manifest, never a delta
+    * `analysis_started` — the commit an analyzer started on, and whether the
+      tree was clean
     * `analysis_result` — what an analyzer printed, for the server to convert
-      into Problems
+      into Problems, and the commit it finished on
     * hook decisions — a call with a reply, on the critical path of every agent
       turn
 
@@ -451,6 +453,15 @@ defmodule CmsHarness.Project.ChannelClient do
   def deliver_machine_load(root, load) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.cast(pid, {:machine_load, load})
+      [] -> :ok
+    end
+  end
+
+  @doc "Called from the analysis queue with the commit a run is starting on."
+  @spec deliver_analysis_started(String.t(), map()) :: :ok
+  def deliver_analysis_started(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:analysis_started, payload})
       [] -> :ok
     end
   end
@@ -2658,6 +2669,31 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:health_route_status, _status}, socket), do: {:noreply, socket}
+
+  # Not queued when disconnected: the server closes a departed harness's runs,
+  # so there is no open row for a late start to land on.
+  def handle_cast({:analysis_started, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "analysis_started",
+           payload,
+           decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error(
+          "[CmsHarness] could not send the start of #{payload["source"]} run " <>
+            "#{payload["run_id"]}: #{inspect(reason)}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:analysis_started, _payload}, socket), do: {:noreply, socket}
 
   def handle_cast({:head_commit, sha}, %{assigns: %{joined: true}} = socket) do
     case transport().push(

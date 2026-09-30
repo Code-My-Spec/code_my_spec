@@ -940,6 +940,108 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       """
     end
 
+    test "a run the harness starts records the commit and whether the tree was clean",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      sha = String.duplicate("a", 40)
+
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "start_commit" => sha,
+          "start_tree_dirty" => true
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+
+      run = RunsRepository.get_run_in_project(scope, run_id)
+      assert run.start_commit == sha
+      assert run.start_tree_dirty == true
+      assert run.completed_commit == nil
+    end
+
+    test "its result records the commit it finished on", %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      sha = String.duplicate("a", 40)
+
+      push(channel, "analysis_started", %{
+        "run_id" => run_id,
+        "source" => "compiler",
+        "start_commit" => sha,
+        "start_tree_dirty" => false
+      })
+
+      ref =
+        push(
+          channel,
+          "analysis_result",
+          Map.put(compiler_result(run_id, []), "completed_commit", sha)
+        )
+
+      assert_reply ref, :ok, %{"status" => "completed"}, 5_000
+
+      run = RunsRepository.get_run_in_project(scope, run_id)
+      assert {run.start_commit, run.start_tree_dirty, run.completed_commit} == {sha, false, sha}
+    end
+
+    test "a tree that moved mid-run reads as two different commits",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      started_on = String.duplicate("a", 40)
+      finished_on = String.duplicate("b", 40)
+
+      push(channel, "analysis_started", %{
+        "run_id" => run_id,
+        "source" => "compiler",
+        "start_commit" => started_on,
+        "start_tree_dirty" => false
+      })
+
+      ref =
+        push(
+          channel,
+          "analysis_result",
+          Map.put(compiler_result(run_id, []), "completed_commit", finished_on)
+        )
+
+      assert_reply ref, :ok, _reply, 5_000
+
+      run = RunsRepository.get_run_in_project(scope, run_id)
+      assert run.start_commit == started_on
+      assert run.completed_commit == finished_on
+    end
+
+    test "a failed run still records the commit it finished on",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      sha = String.duplicate("c", 40)
+
+      ref =
+        push(channel, "analysis_result", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "status" => "error",
+          "error" => "boom",
+          "completed_commit" => sha
+        })
+
+      assert_reply ref, :error, _reply, 5_000
+      assert RunsRepository.get_run_in_project(scope, run_id).completed_commit == sha
+    end
+
+    test "a start for a run this server is not tracking changes nothing", %{channel: channel} do
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => 999_999,
+          "source" => "compiler",
+          "start_commit" => String.duplicate("a", 40),
+          "start_tree_dirty" => false
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+    end
+
     test "a result for a run this server is not tracking is refused", %{channel: channel} do
       ref =
         push(channel, "analysis_result", compiler_result(999_999, [broken_file_diagnostic()]))

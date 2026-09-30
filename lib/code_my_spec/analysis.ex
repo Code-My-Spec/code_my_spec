@@ -401,6 +401,7 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
+        run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
         result = apply_remote_result(scope, run, payload)
         announce(scope, run, result)
         result
@@ -408,6 +409,29 @@ defmodule CodeMySpec.Analysis do
   end
 
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
+
+  @doc """
+  Record the commit a harness's analyzer started on, and whether the tree was
+  clean then. The row was opened at dispatch; the analyzer may have sat in the
+  harness's queue since, so its start is when it actually ran.
+  """
+  @spec record_remote_start(Scope.t(), map()) :: {:ok, Run.t()} | {:error, :unknown_run}
+  def record_remote_start(%Scope{} = scope, %{"run_id" => run_id} = payload)
+      when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil ->
+        {:error, :unknown_run}
+
+      %Run{} = run ->
+        {:ok,
+         RunsRepository.record_tree(
+           run,
+           Map.take(payload, ["start_commit", "start_tree_dirty"])
+         )}
+    end
+  end
+
+  def record_remote_start(_scope, _payload), do: {:error, :unknown_run}
 
   # The local queue broadcasts every run it finishes; this path never did,
   # because until `await_run/4` could dispatch remotely nothing was listening.

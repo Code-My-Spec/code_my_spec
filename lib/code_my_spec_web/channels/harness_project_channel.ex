@@ -658,6 +658,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      end)}
   end
 
+  # The commit an analyzer started on, and whether the tree was clean, from the
+  # machine holding the checkout. Inline: one row update, and it must land
+  # before this run's `analysis_result`, which is deferred.
+  def handle_in("analysis_started", payload, socket) do
+    case Analysis.record_remote_start(socket.assigns.scope, payload) do
+      {:ok, _run} ->
+        :ok
+
+      {:error, :unknown_run} ->
+        Logger.info(
+          "[HarnessProject] start of run #{inspect(payload["run_id"])} not recorded: " <>
+            Analysis.explain_unknown_run(socket.assigns.scope, payload["run_id"])
+        )
+    end
+
+    {:reply, :ok, socket}
+  end
+
   # The agent's own `mix test`, routed through here so it counts.
   #
   # It did not count before. The PreToolUse rewrite requires `scope.cwd`, which a

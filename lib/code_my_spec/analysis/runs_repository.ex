@@ -52,6 +52,29 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> project_freshness()
   end
 
+  @doc """
+  Record the git state a harness reported for `run` (`Run.tree_changeset/2`).
+  A malformed commit is logged and the run returned unchanged: it describes
+  the run, it does not decide whether the run's answer is recorded.
+  """
+  @spec record_tree(Run.t(), map()) :: Run.t()
+  def record_tree(%Run{} = run, attrs) when map_size(attrs) == 0, do: run
+
+  def record_tree(%Run{} = run, attrs) do
+    case run |> Run.tree_changeset(attrs) |> Repo.update() do
+      {:ok, updated} ->
+        updated
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Analysis] run #{run.id} (#{run.source}) git state not recorded: " <>
+            inspect(changeset.errors)
+        )
+
+        run
+    end
+  end
+
   # Here rather than at the three call sites in `Reconciler`, because a run
   # completing is what makes its source fresh and a fourth call site added later
   # would otherwise leave the projection behind without anything saying so.

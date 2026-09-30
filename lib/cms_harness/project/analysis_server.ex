@@ -34,6 +34,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Sync
+  alias CodeMySpec.Environments.Environment
 
   # Generous, and a ceiling rather than an expectation: a full suite on a cold
   # `_build` is minutes. What it is really for is the run that will never
@@ -169,10 +170,32 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   @impl true
-  def handle_info({ref, result}, %{running: %{task: %Task{ref: ref}} = running} = state) do
+  def handle_info(
+        {ref, {:ran, result, completed}},
+        %{running: %{task: %Task{ref: ref}} = running} = state
+      ) do
     Process.demonitor(ref, [:flush])
-    deliver(state, running, result)
+    deliver(state, running, result, completed)
     {:noreply, state |> clear_running() |> maybe_start_next()}
+  end
+
+  # The commit the analyzer is starting on, for the server to record against
+  # this run and every run tied to it. Guarded on `run_id` like
+  # `:slot_acquired`, so a start from a run already moved past is not reported.
+  def handle_info(
+        {:analysis_started, run_id, tree},
+        %{running: %{run_id: run_id, source: source} = running} = state
+      ) do
+    for id <- [run_id | Map.get(running, :tied_run_ids, [])] do
+      ChannelClient.deliver_analysis_started(state.project.root, %{
+        "run_id" => id,
+        "source" => source,
+        "start_commit" => tree.commit,
+        "start_tree_dirty" => tree.dirty
+      })
+    end
+
+    {:noreply, state}
   end
 
   def handle_info(
@@ -473,14 +496,21 @@ defmodule CmsHarness.Project.AnalysisServer do
       :ok ->
         waited_ms = System.monotonic_time(:millisecond) - requested_at
         send(parent, {:slot_acquired, entry.run_id, waited_ms})
-        Analysis.run(project, entry.source, entry.args, entry.run_id)
+
+        # The checkout's git state either side of the run, so the server can
+        # record which commit the answer is for.
+        env = Environment.new(:local, project.root)
+        send(parent, {:analysis_started, entry.run_id, Analysis.tree_state(env)})
+        result = Analysis.run(project, entry.source, entry.args, entry.run_id)
+        {:ran, result, Analysis.tree_state(env)}
 
       :busy ->
-        {:error,
-         "this machine could not free one of its #{AnalysisSlots.limit()} analyzer " <>
-           "slots within #{AnalysisSlots.wait_ceiling()}ms — more running at once makes " <>
-           "every one of them report failures that are the load rather than the code. " <>
-           "Nothing ran. The next stop re-enqueues this."}
+        {:ran,
+         {:error,
+          "this machine could not free one of its #{AnalysisSlots.limit()} analyzer " <>
+            "slots within #{AnalysisSlots.wait_ceiling()}ms — more running at once makes " <>
+            "every one of them report failures that are the load rather than the code. " <>
+            "Nothing ran. The next stop re-enqueues this."}, nil}
     end
   end
 
@@ -500,13 +530,22 @@ defmodule CmsHarness.Project.AnalysisServer do
   # 21 existed, exactly twice (`57333540`). This is the fix at its source
   # rather than a lock on the write: one execution has one owner, and only
   # the owner's message tells the server to touch Problems at all.
-  defp deliver(state, running, result) do
-    push_result(state.project.root, running.run_id, running.source, result, nil)
+  #
+  # `completed` is the checkout's git state when the analyzer finished; nil
+  # when it never returned (killed, crashed).
+  defp deliver(state, running, result, completed \\ nil) do
+    tree = completed_tree(completed)
+    push_result(state.project.root, running.run_id, running.source, result, nil, tree)
 
     for run_id <- Map.get(running, :tied_run_ids, []) do
-      push_result(state.project.root, run_id, running.source, result, running.run_id)
+      push_result(state.project.root, run_id, running.source, result, running.run_id, tree)
     end
   end
+
+  defp completed_tree(%{commit: commit}) when is_binary(commit),
+    do: %{"completed_commit" => commit}
+
+  defp completed_tree(_completed), do: %{}
 
   # The result carries whether the build that produced it is behind the tree it
   # decided about.
@@ -520,38 +559,45 @@ defmodule CmsHarness.Project.AnalysisServer do
   #
   # Sent rather than logged, because the reader is the agent being told to stop
   # again, and the harness log is the one place it is not looking.
-  defp push_result(root, run_id, source, {:ok, result}, tied_to) do
-    ChannelClient.deliver_analysis_result(root, %{
-      "run_id" => run_id,
-      "source" => source,
-      "status" => "ok",
-      "result" => result,
-      "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness(),
-      "tied_to" => tied_to
-    })
+  defp push_result(root, run_id, source, {:ok, result}, tied_to, tree) do
+    ChannelClient.deliver_analysis_result(
+      root,
+      Map.merge(tree, %{
+        "run_id" => run_id,
+        "source" => source,
+        "status" => "ok",
+        "result" => result,
+        "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness(),
+        "tied_to" => tied_to
+      })
+    )
   end
 
   # A failure never reconciles Problems either way (`Reconciler.fail/2` only
   # ever stamps the row), so tying carries nothing useful here — every tied
   # run_id still needs its own row closed, on the same terms as the primary.
-  defp push_result(root, run_id, source, {:error, reason}, _tied_to) do
+  defp push_result(root, run_id, source, {:error, reason}, _tied_to, tree) do
     Logger.error("[CmsHarness] #{source} run #{run_id} did not produce a result: #{reason}")
 
-    ChannelClient.deliver_analysis_result(root, %{
-      "run_id" => run_id,
-      "source" => source,
-      "status" => "error",
-      "error" => to_string(reason)
-    })
+    ChannelClient.deliver_analysis_result(
+      root,
+      Map.merge(tree, %{
+        "run_id" => run_id,
+        "source" => source,
+        "status" => "error",
+        "error" => to_string(reason)
+      })
+    )
   end
 
-  defp push_result(root, run_id, source, other, tied_to) do
+  defp push_result(root, run_id, source, other, tied_to, tree) do
     push_result(
       root,
       run_id,
       source,
       {:error, "unreadable analyzer result: #{inspect(other)}"},
-      tied_to
+      tied_to,
+      tree
     )
   end
 
