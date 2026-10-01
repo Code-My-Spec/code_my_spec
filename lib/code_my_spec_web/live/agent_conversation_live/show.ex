@@ -1048,10 +1048,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     }
   end
 
-  # A seat whose agent retired is empty and offers staffing; the main copy holds
-  # one agent by design, so it has no empty seats (39af5611).
-  defp empty_seats(%{harness: %{main: true}}), do: []
-  defp empty_seats(row), do: Agents.empty_seats(row.agents)
+  # A seat whose agent retired is empty and offers staffing (39af5611). Each
+  # copy's seats are its home roles: main and product on the main copy.
+  defp empty_seats(row), do: Agents.empty_seats(row.agents, Agents.home_roles(row.harness))
 
   # What this agent is doing right now, in as few words as the number of
   # tasks allows. One task names itself — the requirement is the one thing

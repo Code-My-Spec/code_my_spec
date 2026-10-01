@@ -109,9 +109,10 @@ defmodule CodeMySpec.Agents.Wake do
   # The `Agents.Waiting` path each event would start a turn through. A
   # teammate's question, stall or death is on `:wake`, which an open question of
   # main's own does not hold (only `:turn_end` does): John, step 4b, "main is
-  # woken despite an open question" on these.
+  # woken despite an open question" on these. A work offer has a path of its
+  # own, which product's open question holds (step 4c).
   @waiting_path %{
-    work_offer: :wake,
+    work_offer: :offer,
     teammate_question: :wake,
     teammate_stalled: :wake,
     teammate_died: :wake,

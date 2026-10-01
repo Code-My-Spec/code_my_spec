@@ -94,7 +94,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
       end
 
       when_ "I start the next one", context do
-        context = EpicHelpers.dispatch_one(Map.delete(context, :copy_id), "The next epic", stories: 1)
+        context =
+          EpicHelpers.dispatch_one(Map.delete(context, :copy_id), "The next epic", stories: 1)
 
         # The new copy's own page — the roster lives where a copy is shown, not
         # on the index (5412e124).
@@ -107,12 +108,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "it gets its own copy with its own three agents", context do
+      then_ "it gets its own copy with its own coding and QA agents", context do
         refute context.html =~ context.discarded,
                "the new epic went to the copy I threw away. Discarding is how I say " <>
                  "that work is over, and it did not take."
 
-        for role <- ~w(product coding qa) do
+        for role <- ~w(coding qa) do
           assert context.html =~ ~s(data-role="#{role}"),
                  "the new copy came up without a #{role} agent"
         end

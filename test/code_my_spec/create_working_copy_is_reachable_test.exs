@@ -13,7 +13,7 @@ defmodule CodeMySpec.CreateWorkingCopyIsReachableTest do
   exercised by calling `execute/2`:
 
   - `ScriptableTools` decides what exists over MCP at all.
-  - `ToolSets` decides which roles are given it.
+  - `ToolSets` decides which roles are given it (main only, since step 4c).
 
   So this asserts the wiring, not the behaviour. It is deliberately dull.
   """
@@ -44,13 +44,12 @@ defmodule CodeMySpec.CreateWorkingCopyIsReachableTest do
              "is only usable if both ends are reachable by whoever is doing the work."
   end
 
-  test "the product agent is given both" do
-    assert "offboard_working_copy" in ToolSets.for_role(:product)
-
-    assert "create_working_copy" in ToolSets.for_role(:product),
-           "placement and creation belong to the role that shapes the work — " <>
-             "`list_working_copies` and `assign_epic_to_working_copy` are already " <>
-             "product's, and creating the copy they place work on is the same job."
+  # Step 4c, John: product drops the staffing and loop tools; making,
+  # discarding and looping copies is main's alone.
+  test "the product agent is given neither" do
+    for tool <- ~w(create_working_copy offboard_working_copy set_working_copy_loop) do
+      refute tool in ToolSets.for_role(:product), "product still carries #{tool}"
+    end
   end
 
   test "the main agent is unrestricted, so it has it too" do

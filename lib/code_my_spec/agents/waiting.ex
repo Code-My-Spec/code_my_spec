@@ -5,16 +5,20 @@ defmodule CodeMySpec.Agents.Waiting do
   An agent waiting on something that will reach it when it lands is neither
   nudged at turn end (`StopDecision`) nor offered a turn (`Work`): either one
   only buys a "still waiting" turn. Each entry in `@checks` names the paths it
-  holds — `:turn_end` (`StopDecision`), `:wake` and `:resume` (`Work`),
-  `:cadence` (main's check-in turn) — and answers nil or a reason; the first
-  reason wins. A new kind of wait is one
-  entry here.
+  holds — `:turn_end` (`StopDecision`), `:offer` (a work offer), `:wake` (any
+  other event that starts a turn) and `:resume` (`Work`), `:cadence` (main's
+  check-in turn) — and answers nil or a reason; the first reason wins. A new
+  kind of wait is one entry here.
+
+  An agent's own pending question holds the paths its role's
+  `RoleProfile.waiting_on` names: main's only the nudge, product's the nudge,
+  work offers and resume (it holds one chain of thought through a design).
 
   Not entries, deliberately:
 
     * A coding or QA agent's pending question. It blocks only the task it was
       asked about, so the agent stays available for everything else
-      (0b324cab). Main's is an entry: it has nothing else to do.
+      (0b324cab).
     * The decline damper (`Work.already_declined?/2`). It is about the offer,
       not the agent: the same agent is offered a *different* offer at once.
   """
@@ -35,32 +39,39 @@ defmodule CodeMySpec.Agents.Waiting do
           | :analysis_runs
           | :question_pending
 
-  @type path :: :turn_end | :wake | :resume | :cadence
+  @type path :: :turn_end | :offer | :wake | :resume | :cadence
 
-  @all [:turn_end, :wake, :resume, :cadence]
+  @all [:turn_end, :offer, :wake, :resume, :cadence]
 
   # Each check and the paths it holds, cheapest first: the row, the registry,
   # then the database. Analysis holds the turn-end message and main's check-in
-  # turn — never work (analysis and requirements are orthogonal). Main's own
-  # question to a person holds only the nudge: the check-in still sweeps.
+  # turn — never work (analysis and requirements are orthogonal). An open
+  # question of its own holds what the role's `RoleProfile.waiting_on` says.
   @checks [
     provider_refused: @all,
     provisioning: @all,
     tap_out: @all,
     analysis_runs: [:turn_end, :cadence],
-    question_pending: [:turn_end]
+    question_pending: @all
   ]
-
-  # Which roles an open question holds is each role's `RoleProfile.waiting_on`
-  # (`:question_pending`). Main's event wakes (a teammate stalls, a step lands,
-  # a teammate asks) are messages, not nudges, so they still reach it.
 
   @spec reason(Scope.t(), Agent.t(), path()) :: reason() | nil
   def reason(%Scope{} = scope, %Agent{} = agent, path) when path in @all do
     Enum.find_value(@checks, fn {name, paths} ->
-      if path in paths, do: check(name, scope, agent)
+      if path in paths, do: check(name, scope, agent, path)
     end)
   end
+
+  # Waiting on the answer to its own question; the answer wakes it. Main's
+  # event wakes (a teammate stalls, a step lands, a teammate asks) still reach
+  # it; product waits whole. metric_flow 2026-10-01: main was nudged turn after
+  # turn while it waited.
+  defp check(:question_pending, _scope, %{role: role} = agent, path) do
+    if RoleProfile.waits_on?(role, :question_pending, path) and awaiting_question?(agent),
+      do: :question_pending
+  end
+
+  defp check(name, scope, agent, _path), do: check(name, scope, agent)
 
   # The provider refused its last turn and named when to come back (044599cc).
   # A turn before then is refused again.
@@ -92,22 +103,23 @@ defmodule CodeMySpec.Agents.Waiting do
     if Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id), do: :analysis_runs
   end
 
-  # Waiting on a person's answer to its own question; the answer wakes it.
-  # metric_flow 2026-10-01: main was nudged turn after turn while it waited.
-  defp check(:question_pending, _scope, %{role: role} = agent) do
-    if RoleProfile.waits_on?(role, :question_pending) and awaiting_question?(agent),
-      do: :question_pending
-  end
+  # Schemaless for the reason `awaiting_tap_out?/1` is. Whoever holds it — the
+  # user, or main for product's — except the agent itself: a question held by
+  # its own role is one it is answering, not waiting on.
+  defp awaiting_question?(%Agent{id: agent_id, role: role}) do
+    own = own_holder(role)
 
-  # Schemaless for the reason `awaiting_tap_out?/1` is.
-  defp awaiting_question?(%Agent{id: agent_id}) do
     from(q in "question_requests",
       where:
         q.agent_id == type(^agent_id, :binary_id) and q.status == "pending" and
-          q.holder == "user"
+          q.holder != ^own
     )
     |> Repo.exists?()
   end
+
+  defp own_holder(:main), do: "main_agent"
+  defp own_holder(:product), do: "product_agent"
+  defp own_holder(_role), do: ""
 
   @doc """
   Whether this agent has a tap-out waiting on a person.

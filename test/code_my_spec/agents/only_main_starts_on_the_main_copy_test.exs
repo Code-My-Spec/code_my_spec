@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Agents.OnlyMainStartsOnTheMainCopyTest do
   @moduledoc """
-  The project's main checkout is the main agent's home; coding and QA never
-  start there.
+  The project's main checkout is main's and product's home (step 4c); coding
+  and QA never start there.
 
   The guard used to allow exactly one agent of any role on the main copy, so a
   coding agent could take the seat whenever main was not running. metric_flow
@@ -80,7 +80,13 @@ defmodule CodeMySpec.Agents.OnlyMainStartsOnTheMainCopyTest do
 
   test "the one-agent rule still holds for main", %{scope: scope, main: main} do
     assert {:ok, _} = start(scope, "main", main)
-    assert {:error, {:main_copy_occupied, _root}} = start(scope, "main", main)
+    assert {:error, {:main_copy_occupied, :main, _root}} = start(scope, "main", main)
+  end
+
+  test "product starts beside main on the main copy (step 4c)", %{scope: scope, main: main} do
+    assert {:ok, _} = start(scope, "main", main)
+    assert {:ok, product} = start(scope, "product", main)
+    assert product.working_copy_id == main.id
   end
 
   test "the refusal says which roles live there, in words", %{scope: scope, main: main} do

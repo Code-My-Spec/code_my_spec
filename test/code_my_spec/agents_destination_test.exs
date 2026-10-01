@@ -110,7 +110,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
   test "the main copy still holds one agent", %{scope: scope, own: own} do
     assert {:ok, _} = start_on(scope, own.root, "main")
 
-    assert {:error, {:main_copy_occupied, root}} = start_on(scope, own.root, "main"),
+    assert {:error, {:main_copy_occupied, :main, root}} = start_on(scope, own.root, "main"),
            "the guard stopped firing. One agent on the main copy is the rule this " <>
              "fix must not have loosened — a second conversation there is " <>
              "indistinguishable from the project's own."
@@ -146,7 +146,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
   test "the main copy still holds one agent when named by id", %{scope: scope, own: own} do
     assert {:ok, _} = start_on(scope, own.root, "main")
 
-    assert {:error, {:main_copy_occupied, root}} = start_on_id(scope, own.id, "main"),
+    assert {:error, {:main_copy_occupied, :main, root}} = start_on_id(scope, own.id, "main"),
            "naming the main copy by its own id must still be caught by the guard"
 
     assert root == own.root

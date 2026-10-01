@@ -133,15 +133,15 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  # `{"roles": ["coding"]}` staffs one role instead of the default three. A
-  # checkout holds one agent, so a fixture wanting two coding agents wants one
-  # role on each of two copies — the default set would put twelve on four.
+  # `{"roles": ["coding"]}` staffs one role instead of the copy's home roles. A
+  # checkout holds one agent per role, so a fixture wanting two coding agents
+  # wants one role on each of two copies.
   #
   # Matched by name against `Agent.roles/0` rather than converted: an atom built
   # from a request body is a leak, and an unknown role would fail later and
   # further away. The full set rather than `copy_roles/0`, because `:main` is
-  # not one a copy is staffed with by default and a fixture still needs one —
-  # `refuse_if_occupied/2` already stops a second main agent existing.
+  # not one a feature copy is staffed with by default and a fixture still needs
+  # one — the main-copy guard already stops a second main agent existing.
   defp roles(nil), do: nil
 
   defp roles(names) when is_list(names) do

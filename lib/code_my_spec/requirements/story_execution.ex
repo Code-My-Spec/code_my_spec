@@ -400,7 +400,8 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # (`three_amigos_complete`) is not yet satisfied — pre-seal questions
   # already block sealing via `BddRulesChecker`'s own gate, and there is
   # nothing product-specific to offer ahead of that. The role's
-  # `RoleProfile.questions_block?` says which.
+  # `RoleProfile.questions_block?` says which. Product's *own* open questions
+  # hold it whole through `Agents.Waiting` instead (step 4c).
   defp blocks_on_questions?(questions, role),
     do: questions != [] and RoleProfile.questions_block?(role)
 

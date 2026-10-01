@@ -39,7 +39,8 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     %{started: started} = Agents.ensure_copy_agents(scope, copy)
-    assert length(started) == 3, "the premise needs a staffed copy to discard"
+    # Coding and QA: a feature copy's roster (step 4c).
+    assert length(started) == 2, "the premise needs a staffed copy to discard"
 
     %{scope: scope, copy: copy}
   end
@@ -47,7 +48,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   test "the copy's agents are stopped", %{scope: scope, copy: copy} do
     {:ok, counts} = Staffing.offboard(scope, copy)
 
-    assert counts.agents_stopped == 3,
+    assert counts.agents_stopped == 2,
            "the copy is gone and its agents were left running against a directory " <>
              "that is no longer this project's. Got: #{inspect(counts)}"
 

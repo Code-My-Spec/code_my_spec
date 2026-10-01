@@ -20,6 +20,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
   asked rather than summarising why it stopped.
   """
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.MainAgent.AgentWork
 
   @type t :: %__MODULE__{
@@ -156,7 +157,17 @@ defmodule CodeMySpec.MainAgent.AgentWork do
       "damped after #{n} declines of #{req || "its offer"} until " <>
         "#{DateTime.to_iso8601(until)} — message_agent it, or take the work"
 
-  def unclaimed_work(%AgentWork{}),
+  # Product waits whole on its own open question (step 4c); the answer wakes it.
+  def unclaimed_work(%AgentWork{role: role, blocked_reasons: [_ | _]} = entry)
+      when role != nil do
+    if RoleProfile.waits_on?(role, :question_pending, :offer),
+      do: "waiting on the answer to its own question before it takes more work",
+      else: stalled_line(entry)
+  end
+
+  def unclaimed_work(%AgentWork{} = entry), do: stalled_line(entry)
+
+  defp stalled_line(_entry),
     do:
       "STALLED: no task claimed while the graph holds work for its role, and no turn " <>
         "open to claim it — message_agent it"

@@ -25,8 +25,17 @@ defmodule CodeMySpec.Agents.Assignment do
       while the team holds one is refused.
     * A member joining the copy inherits its teammates' story and epic
       (`inherit/2`).
-    * `assign_epic/3` — an epic placed on a copy gives its story- and epic-scope
-      agents the epic.
+    * `assign_epic/3` — an epic placed on a copy gives its team the epic.
+
+  ## Product's epic
+
+  Product lives on the main copy at epic scope and holds no story (step 4c).
+  John: *"Product does an epic's detailed design on the main copy; the
+  approved epic then goes to a working copy, where coding and QA build it."*
+  So product's `epic_id` is the epic it is designing: set by `claim/3` when it
+  starts work on one of that epic's stories, and cleared when the epic is
+  placed on a working copy (`assign_epic/3` takes it from every agent not on
+  the destination, and product is never there).
   """
 
   import Ecto.Query
@@ -43,9 +52,6 @@ defmodule CodeMySpec.Agents.Assignment do
   def team_member?(role), do: RoleProfile.scope(role) == :story
 
   defp team_roles, do: Enum.filter(RoleProfile.roles(), &team_member?/1)
-
-  defp epic_roles,
-    do: Enum.filter(RoleProfile.roles(), &(RoleProfile.scope(&1) in [:story, :epic]))
 
   @doc """
   Assign a story to the whole team on this copy, or clear it with `nil`.
@@ -161,15 +167,18 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   @doc """
-  What a new agent on a copy takes from its teammates: the team's story for a
-  team member, and the epic for a story- or epic-scope role. Attributes that
-  already name one are left alone.
+  What a new team member on a copy takes from its teammates: their story and
+  epic. Attributes that already name one are left alone.
   """
   @spec inherit(map()) :: map()
   def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
-    attrs
-    |> maybe_put(:story_id, team_member?(role) && WorkingCopies.team_story_id(copy_id))
-    |> maybe_put(:epic_id, RoleProfile.scope(role) in [:story, :epic] && team_epic_id(copy_id))
+    if team_member?(role) do
+      attrs
+      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id))
+      |> maybe_put(:epic_id, team_epic_id(copy_id))
+    else
+      attrs
+    end
   end
 
   def inherit(attrs), do: attrs
@@ -177,14 +186,14 @@ defmodule CodeMySpec.Agents.Assignment do
   defp maybe_put(attrs, _key, value) when value in [nil, false], do: attrs
   defp maybe_put(attrs, key, value), do: Map.put_new(attrs, key, value)
 
-  @doc "The epic the agents on this copy hold, or nil."
+  @doc "The epic the team on this copy holds, or nil."
   @spec team_epic_id(Ecto.UUID.t() | nil) :: Ecto.UUID.t() | nil
   def team_epic_id(nil), do: nil
 
   def team_epic_id(copy_id) do
     from(a in Agent,
       where:
-        a.working_copy_id == ^copy_id and a.role in ^epic_roles() and is_nil(a.retired_at) and
+        a.working_copy_id == ^copy_id and a.role in ^team_roles() and is_nil(a.retired_at) and
           not is_nil(a.epic_id),
       order_by: [asc: a.inserted_at],
       select: a.epic_id,
@@ -212,11 +221,13 @@ defmodule CodeMySpec.Agents.Assignment do
   def held_on_copy(%Scope{}, _copy_id), do: []
 
   @doc """
-  Give an epic placed on a copy to the copy's story- and epic-scope agents.
+  Give an epic placed on a copy to the copy's team.
 
   Agents elsewhere lose it, and with it any of its stories they held: the
-  stories now live on another checkout. `nil` takes it from everyone, as
-  `EpicDispatch.place/3` returning the stories to the backlog does.
+  stories now live on another checkout. That includes product, which was
+  designing it on the main copy and is not sent with it (step 4c). `nil`
+  takes it from everyone, as `EpicDispatch.place/3` returning the stories to
+  the backlog does.
   """
   @spec assign_epic(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
   def assign_epic(%Scope{active_project_id: project_id}, epic_id, copy_id)
@@ -238,7 +249,7 @@ defmodule CodeMySpec.Agents.Assignment do
         from(a in Agent,
           where:
             a.project_id == ^project_id and a.working_copy_id == ^copy_id and
-              a.role in ^epic_roles() and is_nil(a.retired_at)
+              a.role in ^team_roles() and is_nil(a.retired_at)
         )
         |> Repo.update_all(set: [epic_id: epic_id])
       end
@@ -258,20 +269,37 @@ defmodule CodeMySpec.Agents.Assignment do
   Its team's own story: yes. Another story while the team holds one: refused,
   so one member never moves off the story its team is seeing through. No story
   yet: the story is assigned to the whole team, and the claim proceeds. Anyone
-  who is not a team member is not held to a story.
+  who is not a team member is not held to a story; an epic-scope role
+  (product) records the story's epic as the one it is designing.
   """
   @spec claim(Scope.t(), Agent.t(), term()) :: :ok | {:error, term()}
   def claim(%Scope{} = scope, %Agent{} = agent, story_id) do
-    with true <- team_member?(agent.role),
-         {:ok, id} <- Ecto.Type.cast(:id, story_id) do
-      case agent.story_id || WorkingCopies.team_story_id(agent.working_copy_id) do
-        ^id -> :ok
-        nil -> take(scope, agent, id)
-        held -> {:error, {:outside_team_story, held}}
-      end
-    else
+    case {RoleProfile.scope(agent.role), Ecto.Type.cast(:id, story_id)} do
+      {:story, {:ok, id}} -> team_claim(scope, agent, id)
+      {:epic, {:ok, id}} -> design(scope, agent, id)
       _ -> :ok
     end
+  end
+
+  defp team_claim(scope, agent, id) do
+    case agent.story_id || WorkingCopies.team_story_id(agent.working_copy_id) do
+      ^id -> :ok
+      nil -> take(scope, agent, id)
+      held -> {:error, {:outside_team_story, held}}
+    end
+  end
+
+  # Never refuses: which epic product is designing is a record, not a gate.
+  defp design(scope, agent, id) do
+    case Stories.get_story(scope, id) do
+      %{epic_id: epic_id} when epic_id != agent.epic_id ->
+        from(a in Agent, where: a.id == ^agent.id) |> Repo.update_all(set: [epic_id: epic_id])
+
+      _same_or_missing ->
+        :ok
+    end
+
+    :ok
   end
 
   # On the main copy nothing holds a story, so a claim there assigns nobody and

@@ -33,8 +33,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
       findings nobody asked it for), `:issue_filed` (widget issues),
       `:cadence` (the main agent's check-in timer) and `:teammate_stalled` /
       `:teammate_died` (a teammate stalled, died or was reaped).
-    * `waiting_on` — role-specific waits `Agents.Waiting` holds the turn-end
-      nudge for. `:question_pending` is its own unanswered question.
+    * `waiting_on` — role-specific waits, each with the `Agents.Waiting`
+      paths it holds. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
       story work.
     * `questions_to` — who its own questions go to first: `:main` or `:user`.
@@ -82,7 +82,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
           scope: :project | :epic | :story,
           home_copy: :main | :feature,
           wake: [wake()],
-          waiting_on: [:question_pending],
+          waiting_on: [{:question_pending, [:turn_end | :offer | :resume]}],
           questions_block?: boolean(),
           questions_to: :main | :user,
           tools: :all | [String.t()],
@@ -228,13 +228,15 @@ defmodule CodeMySpec.Agents.RoleProfile do
   #
   # `delete_component` beside create and update (856b3632): product shapes the
   # architecture, and a component it decided against had no way out of it.
+  #
+  # No staffing: making, offboarding and looping working copies is main's
+  # (John, step 4c).
   @product_tools ~w(
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
     add_criterion update_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
-    list_working_copies create_working_copy offboard_working_copy
-    assign_epic_to_working_copy set_working_copy_loop
+    list_working_copies assign_epic_to_working_copy
     link_criterion_to_rule start_three_amigos_session start_story_interview
     start_story_review get_story_gherkin show_story_requirements
     list_personas get_persona create_persona update_persona delete_persona
@@ -296,8 +298,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
       # A coding or QA agent's question blocks only the task it was asked
-      # about (0b324cab).
-      waiting_on: [:question_pending],
+      # about (0b324cab). Its event wakes and check-in still reach it.
+      waiting_on: [question_pending: [:turn_end]],
       questions_block?: true,
       # Nobody is above it: its question is a decision it could not make.
       questions_to: :user,
@@ -310,17 +312,23 @@ defmodule CodeMySpec.Agents.RoleProfile do
       claims_any?: true,
       model_preference: @strong
     },
+    # Lives on the main copy beside main and designs an epic there before the
+    # epic goes to a working copy; never holds a story (John, step 4c).
     %{
       role: :product,
       requirements: [:tagged],
       scope: :epic,
-      home_copy: :feature,
+      home_copy: :main,
       # Teammates' questions about criteria and spec are routed to it
       # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
       wake: [:work_offer, :nudge, :resume, :teammate_question],
-      waiting_on: [],
-      # The one role that owns questions: blocking it on them left the block
-      # naming no actor (56cf5697).
+      # Its own open question holds it whole — nudge, work offers, resume —
+      # because it holds one chain of thought through the design (John, step
+      # 4c). Its answer and a teammate's question still reach it.
+      waiting_on: [question_pending: [:turn_end, :offer, :resume]],
+      # A story's red cards are not its own questions: it is the actor that
+      # clears them (`questions_answered`), so blocking it on them left the
+      # block naming no actor (56cf5697).
       questions_block?: false,
       questions_to: :main,
       tools: @product_tools,
@@ -485,9 +493,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @spec wakes_on?(atom() | nil, atom()) :: boolean()
   def wakes_on?(role, event), do: event in (get_field(role, :wake) || [])
 
-  @doc "Whether `Agents.Waiting` holds `role` on `wait`."
-  @spec waits_on?(atom() | nil, atom()) :: boolean()
-  def waits_on?(role, wait), do: wait in (get_field(role, :waiting_on) || [])
+  @doc "Whether `Agents.Waiting` holds `role` on `wait` along `path`."
+  @spec waits_on?(atom() | nil, atom(), atom()) :: boolean()
+  def waits_on?(role, wait, path),
+    do: path in Keyword.get(get_field(role, :waiting_on) || [], wait, [])
 
   @doc "Whether this role's machine browser tools are added to its list."
   @spec browses?(atom() | nil) :: boolean()
