@@ -473,44 +473,99 @@ defmodule CodeMySpecWeb.ConversationPanels do
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
-          <%!-- `patch`, not `navigate`: this panel is the fastest way to a
-          different agent, and the panel is part of what a navigate would tear
-          down and rebuild — including the preview pane and the widths somebody
-          dragged. Patching swaps the transcript and leaves the rest alone.
+          <div class="flex items-center gap-1">
+            <%!-- `patch`, not `navigate`: this panel is the fastest way to a
+            different agent, and the panel is part of what a navigate would tear
+            down and rebuild — including the preview pane and the widths somebody
+            dragged. Patching swaps the transcript and leaves the rest alone.
 
-          The one you are reading is marked, because a list whose whole job is
-          picking between agents should say which one you picked. `aria-current`
-          rather than only a background: the same claim, said once, in the way
-          assistive tech reads. --%>
-          <.link
-            :if={a.chat}
-            patch={conversation_path(@project_id, a.chat.conversation.id)}
-            data-question={to_string(a.question?)}
-            data-current={to_string(current_agent?(a, @conversation_id))}
-            aria-current={current_agent?(a, @conversation_id) && "true"}
-            class={[
-              "flex items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
-              a.question? && "font-semibold text-warning",
-              current_agent?(a, @conversation_id) && "bg-base-300 font-semibold"
-            ]}
-          >
-            <.icon
-              :if={a.question?}
-              name="hero-question-mark-circle-solid"
-              class="size-3.5 shrink-0"
-            />
-            <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-            <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
-            <span class="shrink-0 opacity-60">{a.liveness.label}</span>
-          </.link>
+            The one you are reading is marked, because a list whose whole job is
+            picking between agents should say which one you picked. `aria-current`
+            rather than only a background: the same claim, said once, in the way
+            assistive tech reads. --%>
+            <.link
+              :if={a.chat}
+              patch={conversation_path(@project_id, a.chat.conversation.id)}
+              data-question={to_string(a.question?)}
+              data-current={to_string(current_agent?(a, @conversation_id))}
+              aria-current={current_agent?(a, @conversation_id) && "true"}
+              class={[
+                "flex min-w-0 flex-1 items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
+                a.question? && "font-semibold text-warning",
+                current_agent?(a, @conversation_id) && "bg-base-300 font-semibold"
+              ]}
+            >
+              <.icon
+                :if={a.question?}
+                name="hero-question-mark-circle-solid"
+                class="size-3.5 shrink-0"
+              />
+              <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+              <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
+              <span class="shrink-0 opacity-60">{a.liveness.label}</span>
+            </.link>
 
-          <div
-            :if={!a.chat}
-            class="flex items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
-          >
-            <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-            <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
-            <span class="shrink-0">{a.liveness.label}</span>
+            <div
+              :if={!a.chat}
+              class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
+            >
+              <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+              <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
+              <span class="shrink-0">{a.liveness.label}</span>
+            </div>
+
+            <%!-- f096eba2: every agent controllable from here, not only the one
+            whose conversation happens to be open — siblings of the link/div
+            above rather than nested inside it, since a button inside an `<a>`
+            both renders invalid HTML and would fire the patch-navigate on top
+            of the toggle. --%>
+            <button
+              type="button"
+              phx-click="toggle_agent_working"
+              phx-value-agent-id={a.agent.id}
+              data-test="team-agent-working"
+              data-working={to_string(a.agent.continuous == true)}
+              class="btn btn-ghost btn-xs btn-square shrink-0"
+              title={
+                if a.agent.continuous == true,
+                  do: "Let this agent stop after its current turn",
+                  else: "Put this agent to work — it picks its own next task"
+              }
+            >
+              <.icon
+                name={if a.agent.continuous == true, do: "hero-pause", else: "hero-play"}
+                class="size-3"
+              />
+            </button>
+
+            <span
+              :if={a.agent.retired_at}
+              data-test="team-agent-retired"
+              class="badge badge-ghost badge-xs shrink-0"
+            >
+              Retired
+            </span>
+            <button
+              :if={!a.agent.retired_at}
+              type="button"
+              phx-click="toggle_agent_power"
+              phx-value-agent-id={a.agent.id}
+              data-test="team-agent-power"
+              data-on={to_string(is_nil(a.agent.off_at))}
+              class={[
+                "btn btn-ghost btn-xs btn-square shrink-0",
+                if(is_nil(a.agent.off_at), do: "text-success", else: "text-error")
+              ]}
+              aria-label={if is_nil(a.agent.off_at), do: "Turn agent off", else: "Turn agent on"}
+              aria-pressed={to_string(is_nil(a.agent.off_at))}
+              title={
+                if is_nil(a.agent.off_at),
+                  do: "On — turn this agent off",
+                  else: "Off — turn this agent on"
+              }
+            >
+              <.icon name="hero-power" class="size-3" />
+            </button>
           </div>
 
           <%!-- One name, or a count — never both truncated names on one line.

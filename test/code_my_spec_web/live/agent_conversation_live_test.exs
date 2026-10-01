@@ -463,10 +463,23 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   # 39af5611: the stop button became a power switch. Green and labelled "Turn
-  # agent off" while on; red and "Turn agent on" while off.
-  describe "the power button" do
-    @on "[data-test='agent-power'][data-on='true'][aria-label='Turn agent off'].text-success"
-    @off "[data-test='agent-power'][data-on='false'][aria-label='Turn agent on'].text-error"
+  # agent off" while on; red and "Turn agent on" while off. f096eba2 moved it
+  # off the header entirely and onto each agent's own row in the team panel,
+  # so every agent is reachable without opening its conversation.
+  describe "the power button, on the team panel" do
+    defp panel_power(agent_id),
+      do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-power']"
+
+    defp panel_retired(agent_id),
+      do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-retired']"
+
+    defp open_team_panel(view) do
+      render_hook(view, "viewport", %{"width" => 1200})
+      render_hook(view, "toggle_panel", %{"panel" => "activity"})
+    end
+
+    @on_attrs "[data-on='true'][aria-label='Turn agent off'].text-success"
+    @off_attrs "[data-on='false'][aria-label='Turn agent on'].text-error"
 
     test "an agent that is on shows green, and a click turns it off", %{
       conn: conn,
@@ -476,16 +489,17 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       {agent, conversation} = agent_with_conversation(scope, project)
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
 
-      assert has_element?(view, @on)
+      assert has_element?(view, panel_power(agent.id) <> @on_attrs)
 
-      view |> element("[data-test='agent-power']") |> render_click()
+      view |> element(panel_power(agent.id)) |> render_click()
 
       off = Repo.get(Agent, agent.id)
       assert off.status == :stopped
       assert Agent.off?(off)
       assert off.off_by == scope.user.email
-      assert has_element?(view, @off)
+      assert has_element?(view, panel_power(agent.id) <> @off_attrs)
       assert render(view) =~ "Agent turned off."
     end
 
@@ -504,16 +518,33 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
         })
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
 
-      assert has_element?(view, @off)
+      assert has_element?(view, panel_power(agent.id) <> @off_attrs)
 
-      view |> element("[data-test='agent-power']") |> render_click()
+      view |> element(panel_power(agent.id)) |> render_click()
 
       on = Repo.get(Agent, agent.id)
       refute Agent.off?(on)
       refute on.status == :stopped
-      assert has_element?(view, @on)
+      assert has_element?(view, panel_power(agent.id) <> @on_attrs)
       assert render(view) =~ "Agent turned on."
+    end
+
+    test "turning an agent off from the panel also updates the open header, when it is the same agent",
+         %{conn: conn, scope: scope, project: project} do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view |> element(panel_power(agent.id)) |> render_click()
+
+      assert has_element?(
+               view,
+               "header [data-test='toggle-agent-working']"
+             ),
+             "the header's own controls should still be there after a panel toggle"
     end
 
     test "the team panel shows a retired agent's seat as empty, with the Staff action", %{
@@ -538,38 +569,25 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='team-empty-seats']", "coding")
       assert has_element?(view, "[data-test='team-empty-seats']", "Staff it")
     end
+  end
 
-    test "a retired agent shows no power button, only that it is retired", %{
+  describe "the cockpit header, since f096eba2 dropped its loop badge" do
+    test "the header shows the play/pause icon but no 'Continuous'/'Not continuous' text", %{
       conn: conn,
       scope: scope,
       project: project
     } do
-      {_agent, conversation} =
-        agent_with_conversation(scope, project, %{
-          status: :stopped,
-          retired_at: DateTime.utc_now(),
-          retired_by: "someone"
-        })
+      {_agent, conversation} = agent_with_conversation(scope, project, %{continuous: false})
 
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
-      assert has_element?(view, "[data-test='agent-retired']", "Retired")
-      refute has_element?(view, "[data-test='agent-power']")
-    end
+      assert has_element?(view, "header [data-test='toggle-agent-working']")
 
-    # A conversation with no agent of its own — story 538's "same page also
-    # renders a Claude Code session's transcript" shape — has nothing this
-    # button could switch.
-    test "a conversation with no agent shows no power button", %{
-      conn: conn,
-      scope: scope,
-      project: project
-    } do
-      conversation = agent_conversation(scope, project)
+      refute has_element?(view, "header [data-test='agent-loop']"),
+             "the header should no longer render the loop badge/text at all"
 
-      {:ok, view, _html} = live(conn, show_path(project, conversation))
-
-      refute has_element?(view, "[data-test='agent-power']")
+      refute has_element?(view, "header [data-test='agent-power']"),
+             "the power button moved to the team panel and should not remain in the header"
     end
   end
 

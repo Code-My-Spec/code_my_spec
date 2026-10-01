@@ -52,7 +52,12 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
   defp loop_badge(continuous?), do: "[data-test='agent-loop'][data-continuous='#{continuous?}']"
 
   describe "the conversation page" do
-    test "the header says an agent is not continuous, and flips when put to work", context do
+    # f096eba2: the header dropped the word ("Continuous"/"Not continuous")
+    # and kept only the play/pause icon — the badge moved to the team panel,
+    # tested below, which stays visible without needing this one agent's
+    # conversation open.
+    test "the header's play/pause icon reflects state via data-working, with no loop badge",
+         context do
       {_agent, conversation} = agent(context, "coding", false)
 
       {:ok, view, _html} =
@@ -62,12 +67,20 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
             "?conversation=#{conversation.id}"
         )
 
-      assert has_element?(view, "header " <> loop_badge(false), "Not continuous"),
-             "the header does not say this agent is out of the loop"
+      refute has_element?(view, "header [data-test='agent-loop']"),
+             "the header should not render the loop badge/text anymore"
+
+      assert has_element?(
+               view,
+               "header [data-test='toggle-agent-working'][data-working='false']"
+             )
 
       view |> element("[data-test='toggle-agent-working']") |> render_click()
 
-      assert has_element?(view, "header " <> loop_badge(true), "Continuous")
+      assert has_element?(
+               view,
+               "header [data-test='toggle-agent-working'][data-working='true']"
+             )
     end
 
     test "the team panel marks each agent", context do
@@ -96,6 +109,47 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
                view,
                "[data-test='team-agent'][data-agent-id='#{working.id}'] " <> loop_badge(true)
              )
+    end
+
+    # f096eba2: a panel row controls *that* agent, not whichever conversation
+    # the header happens to have open.
+    test "a panel row's play/pause toggles that agent, not the open conversation's", context do
+      {open_agent, open_conversation} = agent(context, "coding", false)
+      {other_agent, _other_conversation} = agent(context, "qa", false)
+
+      {:ok, view, _html} =
+        live(
+          context.conn,
+          "/app/projects/#{context.scope.active_project_id}/agent-conversation" <>
+            "?conversation=#{open_conversation.id}"
+        )
+
+      render_hook(view, "viewport", %{"width" => 1200})
+      render_hook(view, "toggle_panel", %{"panel" => "activity"})
+
+      view
+      |> element(
+        "[data-test='team-agent'][data-agent-id='#{other_agent.id}'] [data-test='team-agent-working']"
+      )
+      |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-test='team-agent'][data-agent-id='#{other_agent.id}'] " <> loop_badge(true)
+             ),
+             "the clicked row's own agent should now be continuous"
+
+      assert has_element?(
+               view,
+               "[data-test='team-agent'][data-agent-id='#{open_agent.id}'] " <> loop_badge(false)
+             ),
+             "the open conversation's agent should be unaffected by a different row's click"
+
+      assert has_element?(
+               view,
+               "header [data-test='toggle-agent-working'][data-working='false']"
+             ),
+             "the header still reflects the open conversation's own agent, not the one just toggled"
     end
   end
 

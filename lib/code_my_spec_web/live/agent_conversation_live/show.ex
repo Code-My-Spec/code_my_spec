@@ -66,7 +66,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
-  alias CodeMySpecWeb.AgentLoopBadge
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
@@ -570,6 +569,23 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp power_flash(_error, _was, false),
     do: {:error, "Agent turned off, but its machine could not be reached to end it."}
 
+  # Keeps the header's own controls (for whichever agent this conversation has
+  # open) in step when a toggle landed through the team panel instead — the
+  # one case they can disagree, since the panel can act on any agent on the
+  # project, not only this one.
+  defp sync_header_state(socket, agent) do
+    conversation = socket.assigns.conversation
+
+    if conversation && conversation.agent_id == agent.id do
+      socket
+      |> assign(:working?, agent.continuous == true)
+      |> assign(:on?, is_nil(agent.off_at))
+      |> assign(:retired?, not is_nil(agent.retired_at))
+    else
+      socket
+    end
+  end
+
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
@@ -633,6 +649,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # on the row. Written first, the transcript claims the agent was told every
   # time the machine could not be reached.
   @impl true
+  # f096eba2: the team panel's own row for an agent, which may not be the one
+  # this conversation has open. Same underlying call as the header's own
+  # button below; only where the id comes from differs.
+  def handle_event("toggle_agent_working", %{"agent-id" => agent_id}, socket) do
+    scope = socket.assigns.current_scope
+
+    with {:ok, current} <- Agents.fetch_agent(scope, agent_id),
+         {:ok, agent, outcome} <-
+           Agents.set_agent_continuous(scope, agent_id, current.continuous != true) do
+      {:noreply,
+       socket
+       |> sync_header_state(agent)
+       |> refresh_team_status()
+       |> flash_for_continuous_outcome(agent, outcome)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
+    end
+  end
+
   # Put this one agent to work, or let it stop. Story 538's R13.
   #
   # Switching on also wakes it, because a flag alone marks an agent willing and
@@ -662,9 +697,35 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       {:noreply,
        socket
        |> assign(:working?, agent.continuous == true)
+       |> refresh_team_status()
        |> flash_for_continuous_outcome(agent, outcome)}
     else
       _ -> {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
+    end
+  end
+
+  # f096eba2: same split as `toggle_agent_working` above — the team panel's
+  # row names its own agent, which the header's button never had to.
+  def handle_event("toggle_agent_power", %{"agent-id" => agent_id} = params, socket) do
+    scope = socket.assigns.current_scope
+
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, current} ->
+        was_on? = is_nil(current.off_at)
+        result = flip_power(scope, agent_id, was_on?, params)
+
+        socket =
+          case result do
+            {:ok, agent} -> socket |> sync_header_state(agent) |> refresh_team_status()
+            _ -> refresh_team_status(socket)
+          end
+
+        now_on? = match?({:ok, %{off_at: nil}}, result)
+        {kind, text} = power_flash(result, was_on?, now_on?)
+        {:noreply, put_flash(socket, kind, text)}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That agent could not be changed. Try again.")}
     end
   end
 
@@ -685,6 +746,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         socket
         |> assign(:on?, on?(scope, conversation))
         |> assign(:talkable?, talkable?(scope, conversation))
+        |> refresh_team_status()
 
       {kind, text} = power_flash(result, was_on?, socket.assigns.on?)
       {:noreply, put_flash(socket, kind, text)}
@@ -1703,18 +1765,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <%!-- Story 538's R13, at the grain somebody is actually looking at.
         The working copy page moves all three roles together, which is right
         for staffing an epic and wrong when you have one agent's conversation
-        open and want that one to carry on. The badge says which state it is in,
-        because the icon only says what a click would do (723b929d). --%>
-        <span :if={@conversation && @conversation.agent_id} class="ml-auto shrink-0">
-          <AgentLoopBadge.loop_badge continuous?={@working?} />
-        </span>
+        open and want that one to carry on. Power lives on the team panel now
+        (f096eba2), alongside every other agent's — this is the one quick
+        control worth keeping on the agent you already have open. --%>
         <button
           :if={@conversation && @conversation.agent_id}
           type="button"
           phx-click="toggle_agent_working"
           data-test="toggle-agent-working"
           data-working={to_string(@working?)}
-          class="btn btn-ghost btn-sm btn-square shrink-0"
+          class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
           title={
             if @working?,
               do: "Let this agent stop after its current turn",
@@ -1722,33 +1782,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           }
         >
           <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
-        </button>
-
-        <%!-- The power button (39af5611): green while on, red while off, and
-        the label says what a click does, so colour is never the only signal.
-        Off is a real shutdown; only this or `turn_on_agent` brings it back. --%>
-        <span
-          :if={@conversation && @conversation.agent_id && @retired?}
-          data-test="agent-retired"
-          class="badge badge-ghost badge-sm shrink-0"
-        >
-          Retired
-        </span>
-        <button
-          :if={@conversation && @conversation.agent_id && not @retired?}
-          type="button"
-          phx-click="toggle_agent_power"
-          data-test="agent-power"
-          data-on={to_string(@on?)}
-          class={[
-            "btn btn-ghost btn-sm btn-square shrink-0",
-            if(@on?, do: "text-success", else: "text-error")
-          ]}
-          aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
-          aria-pressed={to_string(@on?)}
-          title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
-        >
-          <.icon name="hero-power" class="size-4" />
         </button>
       </header>
 
