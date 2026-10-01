@@ -365,7 +365,7 @@ defmodule CodeMySpecWeb.FilesLive do
                 </div>
               </td>
               <td>
-                <.component_cell file={file} slug={@slug} socket={@socket} />
+                <.component_cell file={file} />
               </td>
               <td class="font-mono text-xs">{file.size}</td>
               <td
@@ -438,23 +438,12 @@ defmodule CodeMySpecWeb.FilesLive do
   end
 
   attr :file, :any, required: true
-  attr :slug, :string, required: true
-
-  # A function component gets no @socket of its own, and a portable view can't
-  # fall back to a bare ~p — the sigil resolves through the endpoint it compiled
-  # against, not the one serving this app.
-  attr :socket, :map, required: true
 
   defp component_cell(assigns) do
     ~H"""
-    <.link
-      :if={@file.component}
-      navigate={path(@socket, ~p"/app/projects/#{@slug}/components/#{@file.component.id}")}
-      data-test="file-component-link"
-      class="link link-primary text-sm"
-    >
+    <span :if={@file.component} data-test="file-component" class="text-sm">
       {@file.component.module_name}
-    </.link>
+    </span>
     <span :if={!@file.component} data-test="file-unowned" class="opacity-50 italic text-sm">
       (unowned)
     </span>

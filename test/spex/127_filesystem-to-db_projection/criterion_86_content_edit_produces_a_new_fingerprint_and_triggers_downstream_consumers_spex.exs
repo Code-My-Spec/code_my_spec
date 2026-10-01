@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
   (FileComponentSync, validity derivation) re-run against the fresh
   content. The user-visible proof is: after editing a spec file's
   module name, the Files page shows the new fingerprint AND the spec
-  row's component link points at the new module name.
+  row names the new module.
 
   This builds on 5944 (which asserts fingerprint refresh only) by
   also asserting the consumer-side effect.
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
   setup :setup_active_project
 
   spex "Engineer sees a content edit ripple through fingerprint AND downstream consumers", criterion: 86 do
-    scenario "renaming a spec's module re-derives the component link after sync" do
+    scenario "renaming a spec's module re-derives the component name after sync" do
       given_ "the agent has written v1 spec + impl and the engineer has synced",
              context do
         :ok = Environments.write_file(context.environment, @spec_path, spec_v1())
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
         {:ok, context}
       end
 
-      given_ "the v1 spec is showing its v1 fingerprint and ExampleContext component link",
+      given_ "the v1 spec is showing its v1 fingerprint and ExampleContext as its component",
              context do
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
 
         assert has_element?(
                  files_live,
-                 "[data-file-path=\"#{@spec_path}\"] [data-test='file-component-link']",
+                 "[data-file-path=\"#{@spec_path}\"] [data-test='file-component']",
                  "ExampleContext"
                )
 
@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
         {:ok, Map.put(context, :files_live, files_live)}
       end
 
-      then_ "the renamed spec row carries a new fingerprint and the new component link",
+      then_ "the renamed spec row carries a new fingerprint and names the new component",
             context do
         # Fingerprint side — proves classify+upsert observed the new bytes.
         assert has_element?(
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
         # NEW module name, proving the consumer re-ran on the edit.
         assert has_element?(
                  context.files_live,
-                 "[data-file-path=\"#{@spec_v2_path}\"] [data-test='file-component-link']",
+                 "[data-file-path=\"#{@spec_v2_path}\"] [data-test='file-component']",
                  "RenamedContext"
                )
 

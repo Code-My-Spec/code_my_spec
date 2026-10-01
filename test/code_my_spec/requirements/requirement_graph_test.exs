@@ -26,9 +26,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     # `project_setup` used to be the root of this graph and the first thing any
     # project was offered. It is not a requirement any more: `cms new` covers
     # setup and the mainline exits the generator with it complete, so a
-    # generated project has nothing to do there. What survives is brownfield
-    # onboarding at `/app/projects/:id/setup`, entered deliberately rather than
-    # handed out by the graph — see `CodeMySpecWeb.ProjectSetupLive`.
+    # generated project has nothing to do there. Brownfield onboarding
+    # (`/app/projects/:id/setup`) was retired (942e9566).
     test "the first actionable requirement is personas, not setup" do
       {scope, tmp_dir} = setup_project()
 

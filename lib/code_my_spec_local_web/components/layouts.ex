@@ -214,9 +214,6 @@ defmodule CodeMySpecLocalWeb.Layouts do
       >
         Configuration
       </.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/setup"} active={@section == :setup}>
-        Setup
-      </.sidebar_item>
     </div>
 
     <div class="local-sidebar-section">

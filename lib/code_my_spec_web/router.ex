@@ -631,32 +631,10 @@ defmodule CodeMySpecWeb.Router do
            MarkdownBrowserLive,
            :project_knowledge
 
-      # Brownfield onboarding, deliberately not under /requirements/. It stopped
-      # being a requirement when `cms new` took over setup — a generated project
-      # exits with it complete — so it is a door into the workflow rather than a
-      # step in it. See `ProjectSetupLive`.
-      live "/projects/:project_id/setup", ProjectSetupLive, :show
-      live "/projects/:project_id/setup/:step_id", ProjectSetupLive, :step
-
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
       live "/projects/:project_id/requirements/:name", RequirementsLive, :show
-      live "/projects/:project_id/components", RequirementsLive, :components
-      live "/projects/:project_id/components/graph", RequirementsLive, :components_graph
-      live "/projects/:project_id/components/:component_id", RequirementsLive, :component_show
-
-      live "/projects/:project_id/components/:component_id/graph",
-           RequirementsLive,
-           :component_graph
-
-      live "/projects/:project_id/components/:component_id/requirements/:name",
-           RequirementsLive,
-           :component_req_show
-
-      live "/projects/:project_id/components/:component_id/requirements/:name/prompt",
-           RequirementsLive,
-           :component_req_prompt
 
       # `:story_show` had a `handle_params` clause and no route to reach it by,
       # so a story's own requirements were unreachable while every component's

@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
   Story 687 — Files Projection Viewer
   Criterion 5947 — A tracked file's row on the projection viewer exposes
   the columns a founder needs to debug filesystem-to-DB drift: path,
-  role, validity, mtime, and a link to the owning component.
+  role, validity, mtime, and the owning component's name.
 
   The spec file `synced_context_component` writes is the anchor row —
   it has a component_id (ExampleContext) and ought to render every
@@ -52,16 +52,16 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
         {:ok, context}
       end
 
-      then_ "the spec row links to the owning component", context do
+      then_ "the spec row names the owning component", context do
         row_selector =
           "[data-test='file-row'][data-file-path*='example_context.spec.md']"
 
         assert has_element?(
                  context.files_live,
-                 "#{row_selector} [data-test='file-component-link']",
+                 "#{row_selector} [data-test='file-component']",
                  "ExampleContext"
                ),
-               "expected the spec row to expose a component link pointing at ExampleContext"
+               "expected the spec row to show the owning component's name, ExampleContext"
 
         {:ok, context}
       end

@@ -280,15 +280,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   # green on a known set rather than to justify them; a surface leaving this
   # list means it either got a nav entry or got deleted.
   @intentionally_unlinked [
-    # Onboarding entry point — reached from Home and from the setup flow, not
-    # from the nav of a project that is by definition not yet set up.
+    # Onboarding entry point — reached from Home and from init, not from the
+    # nav of a project that is by definition not yet set up.
     "/app/projects/:project_id/init",
-    # ProjectSetupLive. Brownfield onboarding, entered deliberately from Home
-    # and from init — a generated project exits `cms new` with setup already
-    # complete, so a permanent nav entry would offer every project a checklist
-    # that only some of them need. Setup stopped being a graph requirement in
-    # 545fb741 for the same reason.
-    "/app/projects/:project_id/setup",
     # TaskQueueLive. Nothing links it in either app.
     "/app/projects/:project_id/tasks",
     # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
@@ -313,8 +307,7 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/stories/scheduler",
     "/app/projects/:project_id/requirements/stories",
     "/app/projects/:project_id/architecture/overview",
-    "/app/projects/:project_id/architecture/namespaces",
-    "/app/projects/:project_id/components/graph"
+    "/app/projects/:project_id/architecture/namespaces"
   ]
 
   @doc false
