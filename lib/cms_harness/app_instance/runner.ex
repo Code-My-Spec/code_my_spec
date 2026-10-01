@@ -70,8 +70,17 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   Launch `root`'s `serve` recipe, detached, with `PORT`/`HTTPS_PORT`/
-  `DATABASE_NAME`/`CMS_MAIN_COPY`/`CMS_TUNNEL_HELD_BY_HARNESS` set and its
-  output redirected to `log_path`.
+  `DATABASE_NAME`/`CMS_MAIN_COPY`/`CMS_TUNNEL_HELD_BY_HARNESS`/`PHX_HOST`
+  set and its output redirected to `log_path`.
+
+  `host` is the tunnel's own public hostname — `nil` for a copy holding no
+  tunnel, in which case `PHX_HOST` is omitted entirely and the app falls
+  back to whatever it already defaults to. Without this, a booting app had
+  no way to learn the one address it is actually reachable at: `Endpoint.
+  url()` built every link (a login email, an OAuth redirect) against
+  whatever `config/dev.exs` happened to hardcode, which drifts the moment
+  a copy's real preview address differs from it — observed live, a login
+  link pointing at a stale tunnel address a browser could not reach.
 
   `https_port` is `nil` for a main checkout whose `config/dev.exs` declares
   no HTTPS endpoint at all (see `main_ports/1`) — `HTTPS_PORT` is omitted
@@ -106,7 +115,8 @@ defmodule CmsHarness.AppInstance.Runner do
               database :: String.t(),
               log_path :: String.t(),
               main? :: boolean(),
-              tunnel_held_by_harness? :: boolean()
+              tunnel_held_by_harness? :: boolean(),
+              host :: String.t() | nil
             ) :: {:ok, os_pid :: pos_integer()} | {:error, term()}
 
   @doc "Whether `os_pid` can still be signalled."
@@ -206,10 +216,11 @@ defmodule CmsHarness.AppInstance.Runner do
           String.t(),
           String.t(),
           boolean(),
-          boolean()
+          boolean(),
+          String.t() | nil
         ) :: {:ok, pos_integer()} | {:error, term()}
-  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?),
-    do: impl().launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?)
+  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host \\ nil),
+    do: impl().launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host)
 
   @spec alive?(pos_integer()) :: boolean()
   def alive?(os_pid), do: impl().alive?(os_pid)
