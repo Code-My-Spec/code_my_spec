@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
   spex "A turn in progress is discarded on restart; the agent picks up from the turns already recorded", criterion: 1391 do
     scenario "An agent is restarted part-way through a turn" do
       given_ "an agent mid-turn when it is restarted", context do
-        context = given_a_staffed_checkout(context, "spex_3468")
+        context = given_a_feature_checkout(context, "spex_3468")
         agent_id = start_agent(context)
         agent = %{id: agent_id, role: :coding}
 

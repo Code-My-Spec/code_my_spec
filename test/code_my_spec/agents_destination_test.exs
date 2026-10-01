@@ -62,19 +62,21 @@ defmodule CodeMySpec.AgentsDestinationTest do
     %{scope: %{scope | cwd: own.root}, own: own, other: other}
   end
 
-  defp start_on(scope, root) do
+  # The main copy is the main agent's home (`RoleProfile.home_copy`), so a
+  # start there is a `main` one; everywhere else it is coding.
+  defp start_on(scope, root, role \\ "coding") do
     Agents.start_agent(scope, %{
       provider: "anthropic",
-      role: "coding",
+      role: role,
       engine: :alloy,
       working_copy: root
     })
   end
 
-  defp start_on_id(scope, working_copy_id) do
+  defp start_on_id(scope, working_copy_id, role \\ "coding") do
     Agents.start_agent(scope, %{
       provider: "anthropic",
-      role: "coding",
+      role: role,
       engine: :alloy,
       working_copy_id: working_copy_id
     })
@@ -94,7 +96,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
     own: own,
     other: other
   } do
-    assert {:ok, _} = start_on(scope, own.root)
+    assert {:ok, _} = start_on(scope, own.root, "main")
 
     assert {:ok, agent} = start_on(scope, other.root),
            "an agent on the main checkout blocked one on a different copy. That is " <>
@@ -106,9 +108,9 @@ defmodule CodeMySpec.AgentsDestinationTest do
   end
 
   test "the main copy still holds one agent", %{scope: scope, own: own} do
-    assert {:ok, _} = start_on(scope, own.root)
+    assert {:ok, _} = start_on(scope, own.root, "main")
 
-    assert {:error, {:main_copy_occupied, root}} = start_on(scope, own.root),
+    assert {:error, {:main_copy_occupied, root}} = start_on(scope, own.root, "main"),
            "the guard stopped firing. One agent on the main copy is the rule this " <>
              "fix must not have loosened — a second conversation there is " <>
              "indistinguishable from the project's own."
@@ -130,7 +132,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
     own: own,
     other: other
   } do
-    assert {:ok, _} = start_on(scope, own.root)
+    assert {:ok, _} = start_on(scope, own.root, "main")
 
     assert {:ok, agent} = start_on_id(scope, other.id),
            "an id naming a different checkout was refused as though it named the " <>
@@ -142,9 +144,9 @@ defmodule CodeMySpec.AgentsDestinationTest do
   end
 
   test "the main copy still holds one agent when named by id", %{scope: scope, own: own} do
-    assert {:ok, _} = start_on(scope, own.root)
+    assert {:ok, _} = start_on(scope, own.root, "main")
 
-    assert {:error, {:main_copy_occupied, root}} = start_on_id(scope, own.id),
+    assert {:error, {:main_copy_occupied, root}} = start_on_id(scope, own.id, "main"),
            "naming the main copy by its own id must still be caught by the guard"
 
     assert root == own.root
@@ -169,7 +171,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
 
   test "naming nothing still means the caller's own checkout", %{scope: scope, own: own} do
     assert {:ok, agent} =
-             Agents.start_agent(scope, %{provider: "anthropic", role: "coding", engine: :alloy})
+             Agents.start_agent(scope, %{provider: "anthropic", role: "main", engine: :alloy})
 
     assert agent.working_copy_id == own.id,
            "a caller who names no checkout must land on their own. Losing that is how " <>

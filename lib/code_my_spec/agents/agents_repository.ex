@@ -162,13 +162,31 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   """
   @spec main_agent_project_scopes() :: [Scope.t()]
   def main_agent_project_scopes do
-    from(a in Agent,
-      where: a.role == :main and a.status in [:starting, :running] and not is_nil(a.project_id),
+    from(a in running_main(),
+      where: not is_nil(a.project_id),
       distinct: a.project_id,
       select: a.project_id
     )
     |> project_scopes()
   end
+
+  @doc """
+  The project's running `main` agents, newest first.
+
+  Every lookup of "the main agent" starts here — on the main copy, anywhere,
+  or other than the asker — so they agree on what one is. `:starting` counts,
+  as in `list_running/1`.
+  """
+  @spec list_running_main(Scope.t()) :: [Agent.t()]
+  def list_running_main(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    from(a in running_main(), where: a.project_id == ^project_id, order_by: [desc: a.inserted_at])
+    |> Repo.all()
+  end
+
+  def list_running_main(%Scope{}), do: []
+
+  defp running_main,
+    do: from(a in Agent, where: a.role == :main and a.status in [:starting, :running])
 
   defp project_scopes(query) do
     query

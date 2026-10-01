@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3206Spex do
   spex "Stopping an agent leaves nothing behind that breaks the next one", criterion: 1190 do
     scenario "Restarting an agent never costs it its tools" do
       given_ "an agent is restarted several times in succession", context do
-        context = given_a_staffed_checkout(context, "spex_3206")
+        context = given_a_feature_checkout(context, "spex_3206")
         agent_id = start_agent(context)
 
         Fixtures.authored_story(context.scope, "a story the agent's tools can find")

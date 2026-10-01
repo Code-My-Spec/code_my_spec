@@ -14,8 +14,8 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
   Requirement resolution reuses the same path `get_next_requirement` uses:
   `Requirements.story_execution/2` scoped to the active story and lane role,
   rendered to directive text via `RequirementsMapper`. Only the sub-agent roles
-  (`coding` / `spec_writer` / `qa`) auto-pull; `product` is interview-driven and
-  `manager` is the puller, so both resolve to `:none`.
+  (`coding` / `qa`) auto-pull; `product` is interview-driven and `manager` is the
+  puller, so both resolve to `:none`.
   """
 
   use GenServer
@@ -29,7 +29,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
   alias CodeMySpec.WorkingCopies
 
   # Role string -> requirement `role`. Roles absent here don't auto-pull.
-  @auto_pull_roles %{"coding" => :coding, "spec_writer" => :spec_writer, "qa" => :qa}
+  @auto_pull_roles %{"coding" => :coding, "qa" => :qa}
 
   # ---- API ------------------------------------------------------------------
 

@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3211Spex do
   spex "An agent whose tools do not resolve fails loudly instead of running", criterion: 1193 do
     scenario "An agent refuses to start without its tools" do
       given_ "an agent's tools cannot be resolved at launch", context do
-        context = given_a_staffed_checkout(context, "spex_3211")
+        context = given_a_feature_checkout(context, "spex_3211")
         machine_out_of_reach()
 
         {:ok, context}

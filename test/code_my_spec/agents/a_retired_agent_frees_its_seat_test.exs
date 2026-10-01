@@ -39,12 +39,25 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     integration_fixture(scope.user, %{provider: :anthropic})
 
     root = "/workspace/retire-#{System.unique_integer([:positive])}"
+    device = device_fixture(scope)
+
+    # The project's main checkout, so the one under test is a feature copy:
+    # coding agents never start on the main copy (`RoleProfile.home_copy`), and
+    # a project's only checkout is its main one.
+    {:ok, main} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "the main checkout",
+        root: root <> "-main",
+        device: device
+      )
+
+    {:ok, _main} = CodeMySpec.WorkingCopies.report_root(main, root <> "-main")
 
     {:ok, copy} =
       CodeMySpec.WorkingCopies.issue(scope, nil,
         label: "a checkout",
         root: root,
-        device: device_fixture(scope)
+        device: device
       )
 
     {:ok, copy} = CodeMySpec.WorkingCopies.report_root(copy, root)

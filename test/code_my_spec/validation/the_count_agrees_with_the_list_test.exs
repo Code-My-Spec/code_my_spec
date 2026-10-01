@@ -19,6 +19,8 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import Ecto.Query
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
 
@@ -26,7 +28,6 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Validation.Menu
@@ -60,12 +61,19 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
     Requirements.actionable_for_role(scope, role)
   end
 
-  # The control: the row is exactly the kind the old count counted. Without
-  # this, the test below could pass against a row nothing ever looked at.
-  test "the stale row is one the row count does count" do
+  # The control: the row is exactly the kind a raw row count would count — an
+  # unsatisfied coding requirement at this checkout's vantage. Without this, the
+  # test below could pass against a row nothing ever looked at.
+  test "the stale row is an unsatisfied coding row at this vantage" do
     scope = stale_row(full_scope_fixture())
 
-    assert NodeRepository.actionable_count(scope, :coding) == 1
+    assert [%Node{satisfied: false}] =
+             Repo.all(
+               from n in Node,
+                 where:
+                   n.name == "implementation_file" and
+                     n.working_copy_id == ^Projection.vantage(scope)
+             )
   end
 
   test "a row the graph does not contain is not advertised as work" do

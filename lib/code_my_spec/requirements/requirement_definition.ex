@@ -9,6 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Requirements.TaskModule
 
   @type artifact_type ::
@@ -145,7 +146,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     # Nil means nobody's in particular: project-level scaffolding that any agent
     # can satisfy, and which therefore holds no single role's loop open.
     field :role, Ecto.Enum,
-      values: [:main, :product, :coding, :qa],
+      values: RoleProfile.roles(),
       default: nil
   end
 

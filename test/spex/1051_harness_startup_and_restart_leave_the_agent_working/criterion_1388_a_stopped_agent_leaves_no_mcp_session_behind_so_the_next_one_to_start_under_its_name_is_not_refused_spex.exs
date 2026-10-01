@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3449Spex do
   spex "Stopping an agent leaves nothing behind that breaks the next one", criterion: 1388 do
     scenario "A stopped agent leaves no MCP session behind" do
       given_ "an agent that has been stopped", context do
-        context = given_a_staffed_checkout(context, "spex_3449")
+        context = given_a_feature_checkout(context, "spex_3449")
         first = start_agent(context)
 
         Fixtures.authored_story(context.scope, "a story the agent's tools can find")

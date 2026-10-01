@@ -71,6 +71,7 @@ defmodule CodeMySpec.Validation.Menu do
   nonsense. That is harder to catch than a red test.
   """
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements
@@ -177,15 +178,15 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # Unscoped for `nil`, which is every caller outside the loop — the project's
   # own count, which is what a person asking about the tree wants.
-  @problem_roles [:coding, :main]
+  #
+  # Which roles hold problems is each role's `RoleProfile.holds_problems?`.
 
   @doc """
   Whether problems are this role's to fix. The one rule both the menu and the
   stop gate read; `nil` (no agent role) is unscoped.
   """
   @spec holds_problems?(atom() | nil) :: boolean()
-  def holds_problems?(role) when is_atom(role) and not is_nil(role), do: role in @problem_roles
-  def holds_problems?(_role), do: true
+  defdelegate holds_problems?(role), to: RoleProfile
 
   # The task the caller already started and has not closed.
   #

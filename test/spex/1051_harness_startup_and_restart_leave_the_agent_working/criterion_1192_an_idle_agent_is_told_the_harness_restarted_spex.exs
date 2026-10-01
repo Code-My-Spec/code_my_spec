@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3210Spex do
     scenario "An idle agent is told the harness restarted" do
       given_ "an agent that is idle with nothing in flight, and live work for its role",
              context do
-        context = given_a_staffed_checkout(context, "spex_3210")
+        context = given_a_feature_checkout(context, "spex_3210")
 
         # A live `:problems` class for the coding role — countable, and not tied
         # to a story, so nothing about story-enforcement scoping can exclude it.

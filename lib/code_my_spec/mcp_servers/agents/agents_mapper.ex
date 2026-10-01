@@ -17,6 +17,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.WorkingCopies
 
   # Where the agent runs and where it is recorded are two different facts, and
@@ -268,6 +269,20 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     That copy holds one agent on purpose — it is the one the project talks
     through, and a second conversation there is indistinguishable from it.
     Stop the agent that is there, or start this one on a different checkout.
+    """)
+  end
+
+  # Coding and QA work on feature copies; the main checkout is the main
+  # agent's. A free seat there does not make it theirs.
+  def error({:not_at_home, role, root}, _provider) do
+    refuse("""
+    A #{role} agent does not start on this project's main checkout, so nothing
+    was started.
+
+    Checkout: #{root}
+
+    Roles that start there: #{Enum.join(RoleProfile.roles_where_home(:main), ", ")}.
+    Start the #{role} agent on a feature working copy instead.
     """)
   end
 

@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3469Spex do
   spex "A turn in progress is discarded on restart; the agent picks up from the turns already recorded", criterion: 1392 do
     scenario "The discarded turn leaves nothing claiming to be in flight" do
       given_ "an agent restarted part-way through a turn", context do
-        context = given_a_staffed_checkout(context, "spex_3469")
+        context = given_a_feature_checkout(context, "spex_3469")
         agent_id = start_agent(context)
 
         :ok = Fixtures.start_turn(context.scope, agent_id)

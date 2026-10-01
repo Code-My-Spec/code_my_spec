@@ -11,6 +11,7 @@ defmodule CodeMySpec.Requirements do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddRules,
       CodeMySpec.Components,

@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
     scenario "An empty coding queue leaves the durable agent idle" do
       given_ "an already-staffed idle coding agent whose copy has no eligible coding work",
              context do
-        context = given_a_staffed_checkout(context, "spex_3546")
+        context = given_a_feature_checkout(context, "spex_3546")
         context = ProjectStateFixtures.apply_project_kickoff(context)
         {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
         refute response.isError, response_text(response)

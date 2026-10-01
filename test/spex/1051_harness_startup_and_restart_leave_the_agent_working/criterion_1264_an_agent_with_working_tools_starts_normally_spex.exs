@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3296Spex do
   spex "An agent whose tools do not resolve fails loudly instead of running", criterion: 1264 do
     scenario "An agent with working tools starts normally" do
       given_ "an agent's tools all resolve at launch", context do
-        context = given_a_staffed_checkout(context, "spex_3296")
+        context = given_a_feature_checkout(context, "spex_3296")
 
         # A machine offering what a machine offers. Stated rather than left to
         # the default, because "the ordinary path" is the premise and a copy

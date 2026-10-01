@@ -60,9 +60,10 @@ defmodule CodeMySpec.Requirements.Registry do
   @doc """
   The names of every requirement one role owns, across every graph.
 
-  How "is there work of my kind" is answered — see `R10` on story 538 and
-  `NodeRepository.actionable_count/2`, which narrows its count by these rather
-  than by a column the read model does not have.
+  How "is there work of my kind" is answered — see `R10` on story 538.
+  `RequirementGraph.actionable_for_role_from/4` narrows by these names rather
+  than by a column the read model does not have; which definitions a role is
+  offered is its `RoleProfile.requirements`.
   """
   @spec requirement_names_for_role(atom()) :: [String.t()]
   def requirement_names_for_role(role),

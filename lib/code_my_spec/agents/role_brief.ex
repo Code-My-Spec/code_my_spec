@@ -113,8 +113,11 @@ defmodule CodeMySpec.Agents.RoleBrief do
 
     Choosing which component implements a story is yours as well.
     `component_linked` is a product requirement and `set_story_component`,
-    `create_component` and `validate_dependency_graph` are your tools: deciding
-    where a story lives in the architecture is shaping it, not building it.
+    `create_component`, `update_component`, `delete_component` and
+    `validate_dependency_graph` are your tools: deciding where a story lives in
+    the architecture is shaping it, not building it. `delete_component` removes
+    the component and its spec file; implementation and test files stay, and
+    while one still names the module the next sync brings the component back.
 
     You do not write application code, and findings about code are not yours to
     fix. If analysis reports a failing test or a lint finding in a file you did

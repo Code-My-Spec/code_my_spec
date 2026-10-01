@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Work do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Conversations
@@ -549,22 +550,24 @@ defmodule CodeMySpec.Agents.Work do
     )
   end
 
-  defp question_work?(scope, %{role: :main}) do
-    Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
+  # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
+  # `:teammate_questions` — the main agent (story 1052).
+  defp question_work?(scope, %{role: role}) do
+    RoleProfile.wakes_on?(role, :teammate_questions) and
+      Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
   end
-
-  defp question_work?(_scope, _agent), do: false
 
   # `list_notifications` is code mode, like most of the catalogue — a main agent
   # reaches it from inside a script, and saying so is the difference between a
   # tool it can use and one it reports as broken.
-  defp prompt(%{role: :main}) do
-    @prompt <>
-      " Questions are also waiting for you: read them with " <>
-      "`run_script` calling list_notifications."
+  defp prompt(%{role: role}) do
+    if RoleProfile.wakes_on?(role, :teammate_questions),
+      do:
+        @prompt <>
+          " Questions are also waiting for you: read them with " <>
+          "`run_script` calling list_notifications.",
+      else: @prompt
   end
-
-  defp prompt(_agent), do: @prompt
 
   # The nodes themselves rather than a boolean, so the offer can be fingerprinted.
   defp graph_work(scope, agent) do

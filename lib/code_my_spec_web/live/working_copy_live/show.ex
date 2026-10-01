@@ -89,16 +89,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
   defp main_copy_refusal?({_role, {:main_copy_occupied, _root}}), do: true
+  defp main_copy_refusal?({_role, {:not_at_home, _role_name, _root}}), do: true
   defp main_copy_refusal?(_failure), do: false
 
   # Not an error. This copy is the one the project talks through, and it holds a
   # single agent by design — a second conversation there is indistinguishable
-  # from the first.
+  # from the first. The roles a copy is staffed with work on feature copies.
   defp main_copy_note([]),
     do:
-      "This is the project's main checkout, which holds one agent on purpose — " <>
-        "the one the project talks through. Something is already running in it, " <>
-        "so nothing was started. Stop that agent, or staff a different checkout."
+      "This is the project's main checkout, which holds the project's own agent " <>
+        "only — the one the project talks through — so nothing was started. Staff " <>
+        "a different checkout for a team."
 
   defp main_copy_note(started),
     do:

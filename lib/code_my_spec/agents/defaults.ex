@@ -30,35 +30,10 @@ defmodule CodeMySpec.Agents.Defaults do
   """
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
 
-  # Ordered. The first entry whose provider the account has a key for wins.
-  #
-  # QA leads with the cheapest thing that can follow instructions, because it
-  # runs constantly and reads more than it reasons. Main leads with the
-  # strongest, because it is the one explaining the project to somebody who
-  # cannot read the code.
-  @preferences %{
-    main: [
-      {"anthropic", "claude-sonnet-5"},
-      {"openai-codex", "gpt-5.4"},
-      {"zai", "glm-5.3"}
-    ],
-    product: [
-      {"anthropic", "claude-sonnet-5"},
-      {"openai-codex", "gpt-5.4"},
-      {"zai", "glm-5.3"}
-    ],
-    coding: [
-      {"anthropic", "claude-sonnet-5"},
-      {"openai-codex", "gpt-5.4"},
-      {"zai", "glm-5.3"}
-    ],
-    qa: [
-      {"zai", "glm-5.3"},
-      {"openai-codex", "gpt-5.4-mini"},
-      {"anthropic", "claude-haiku-4-5"}
-    ]
-  }
+  # The order is each role's `model_preference` on its `RoleProfile`. The first
+  # entry whose provider the account has a key for wins.
 
   @doc """
   The preference list for a type, most preferred first.
@@ -68,9 +43,7 @@ defmodule CodeMySpec.Agents.Defaults do
   things to read, and only the second is true.
   """
   @spec for_role(atom()) :: [{String.t(), String.t()}]
-  def for_role(role) when role in [:main, :product, :coding, :qa],
-    do: Map.fetch!(@preferences, role)
-
+  def for_role(role) when is_atom(role), do: RoleProfile.model_preference(role)
   def for_role(_role), do: []
 
   @doc """

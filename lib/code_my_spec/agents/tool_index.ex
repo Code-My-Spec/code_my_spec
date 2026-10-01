@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   it the wrong way is no better off, so the grouping is the instruction.
   """
 
-  alias CodeMySpec.Agents.{Agent, ToolSets}
+  alias CodeMySpec.Agents.{Agent, RoleProfile}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
@@ -160,11 +160,12 @@ defmodule CodeMySpec.Agents.ToolIndex do
     }
   end
 
-  @scoped_roles [:qa, :coding, :product]
-
+  # Scoped roles first, then the roles that carry every tool.
   defp holders(name) do
-    Enum.map(Enum.filter(@scoped_roles, &(name in ToolSets.for_role(&1))), &to_string/1) ++
-      ["main"]
+    {all, scoped} = Enum.split_with(RoleProfile.all(), &(&1.tools == :all))
+
+    (Enum.filter(scoped, &RoleProfile.carries?(&1.role, name)) ++ all)
+    |> Enum.map(&to_string(&1.role))
   end
 
   # `Catalog.from/3` and `Catalog.names/1` are total over a well-formed

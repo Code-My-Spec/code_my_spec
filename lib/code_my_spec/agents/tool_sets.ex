@@ -12,192 +12,32 @@ defmodule CodeMySpec.Agents.ToolSets do
   one row. It also makes the answer readable: "what may this agent call" is a
   column, not a function of a column and a table somewhere else.
 
-  ## The lists are a judgement, and they will age
-
-  Kept here, one per role, so changing our mind is editing a list rather than
-  hunting for a rule — the same argument `Agents.Defaults` makes about models,
-  and for the same reason.
-
-  `:main` is deliberately everything. Its job is the whole project — shaping
-  stories, organising epics, handing work over, checking what came back — so
-  scoping it is scoping the thing that checks the others.
+  The lists themselves live on each role's `RoleProfile`, with the reasoning
+  behind every grant. This module is the row's view of them.
   """
 
-  # Reading, and writing what a QA run produces. Everything a QA agent files
-  # against a story it is testing, and nothing that edits the story itself: a
-  # QA agent that can rewrite a criterion can make a failing run pass without
-  # anybody deciding to.
-  #
-  # `browser` is a capability, not a tool. The machine publishes 85 browser
-  # tools and their names are its business, so the grant is "may drive the
-  # browser" — see `McpServers.CodeMode.browser_capability/0`. Without it a QA
-  # agent's browser sandbox binds nothing, which is what it did until
-  # 2026-09-07: an agent whose whole job is browser testing, with a machine
-  # reporting `ready`, calling into an empty catalog.
-  # `call_mcp_server` is an instrument, not a capability, and that distinction is
-  # the whole reason it is here rather than the three fleet tools a QA session
-  # asked for in `50eac6ab`. Granting the tools under test would have grown this
-  # list once per story and tested each tool's own dispatch rather than the
-  # surface it is mounted on. Granting the client tests the surface as a caller.
-  # John's call, 2026-09-15.
-  #
-  # `read_project_file`/`write_project_file` because all four of QA's own
-  # project requirements are `path_exists` checks on files QA writes:
-  # `qa_setup` wants `.code_my_spec/qa/plan.md`, `qa_journey_plan` and
-  # `qa_journey_execute` want their two docs beside it, and
-  # `qa_journey_wallaby` wants tests under `test/journeys/`. The role carried
-  # no file tool of any kind, so it could not satisfy a single one of them —
-  # `submit_qa_result` files a verdict on a story and writes nothing to disk.
-  #
-  # Found the same day and the same way as `install_credo_checks` above: the
-  # chain reached `qa_setup`, and the only thing standing between the agent and
-  # its own requirement was a tool nobody had given it. Two roles, one bug —
-  # which is the argument for checking every role's set against the
-  # requirements that name it rather than against the last agent that
-  # complained.
-  @qa ~w(
-    list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    show_component_requirements show_architecture_overview
-    list_requirements show_requirement list_personas get_persona
-    list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
-    list_qa_attempts submit_qa_result invalidate_qa_attempt
-    call_mcp_server
-    list_knowledge read_knowledge semantic_search
-    read_project_file write_project_file
-    list_tasks list_session_subagents list_notifications
-    web_search web_fetch
-    browser
-  )
-
-  # Writing code against a spec, and reading everything that says what the spec
-  # is. No issue *triage* and no QA submission — deciding whether an incoming
-  # issue is real is product's, and a coding agent that can submit a QA result
-  # is grading its own work.
-  #
-  # `resolve_issue` is the exception, and it used to be excluded by the same
-  # sentence. `issues_resolved` is coding's requirement and `FixIssues` tells it
-  # to call `resolve_issue` per issue, so the rule and the graph contradicted
-  # each other and the graph is the one with work hanging off it. John's call,
-  # 2026-09-07.
-  #
-  # It is not self-grading in the way submitting a QA result is: resolving
-  # records "I fixed this", and QA re-tests independently and can invalidate it.
-  # What coding still cannot do is decide an issue was never real — `accept_issue`
-  # and `dismiss_issue` stay product's.
-  #
-  # `create_issue` belongs here for the reverse reason, and has all along: an
-  # agent working one thing finds another, and the choice has to be "write it
-  # down and carry on" rather than "fix it now or lose it". John: "the coding
-  # agent can also find issues that it should report and not fix right that
-  # second."
-  #
-  # `browser` for the same reason QA has it: work on a LiveView is checked by
-  # looking at it, and the `code-writer` agent type has carried browser tools
-  # since before roles existed. Product does not — it writes specs, and a spec
-  # is not verified by driving a page.
-  # `promote` is deliberately NOT in this list, and the mistake is worth
-  # recording because it looked right.
-  #
-  # These lists are the allowlist for *scriptable* tools — `tool_sets_test.exs`
-  # checks every name here against `ScriptableTools`, and a name that matches
-  # nothing "is not a smaller grant, it is a list that reads as bigger than it
-  # is". `promote` is direct-only on `LocalServer`, so adding it here granted
-  # exactly nothing while reading as though it had.
-  #
-  # What an agent in our own BEAM actually carries is the module list in
-  # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
-  # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
-  # between the grant that did nothing and the one that worked.
-  # `install_credo_checks` is coding's because `spex_boundary_ready` is coding's.
-  #
-  # The requirement asks for framework Credo checks on disk and the tool that
-  # installs them was in no role's set at all — registered, reachable by
-  # nobody. A coding agent worked the task properly, read the workflow and the
-  # spex philosophy, called it, and was told "it exists, and this kind of agent
-  # is not given it". It cancelled the task and stopped, which is exactly what
-  # the rules ask of an agent facing a missing tool, and the chain stopped with
-  # it. Measured 2026-09-22 on the math project's first autonomous run.
-  #
-  # The same shape as the `triage_issues` case below: a task prompt naming a
-  # tool the role that receives it cannot call.
-  @coding ~w(
-    list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    show_component_requirements show_architecture_overview
-    create_component update_component validate_dependency_graph set_story_component
-    list_requirements show_requirement
-    list_rules list_questions
-    list_issues get_issue create_issue resolve_issue
-    list_knowledge read_knowledge semantic_search refresh_embeddings
-    read_project_file write_project_file
-    list_tasks clear_problems list_problems
-    install_credo_checks
-    web_search web_fetch
-    browser
-    promote
-    ensure_app_running restart_app stop_app
-  )
-
-  # Shaping what gets built, and never building it. The product half of the
-  # graph: stories, criteria, rules, personas, epics.
-  #
-  # Triage *is* shaping: `issues_triaged` is product's own requirement, and an
-  # incoming issue is either work somebody has to plan or noise to throw away.
-  # `accept_issue` and `dismiss_issue` are how that decision is recorded, and
-  # they were missing — while `triage_issues`, which product does carry, hands
-  # back a prompt naming them five times.
-  #
-  # So the agent was told to do a thing with a tool it did not have. It read all
-  # four incoming issues, decided every one of them, and then had to tap out:
-  # "This product agent lacks the required accept/dismiss tools, so I requested
-  # tap-out for a role with triage authority." The work was done and could not
-  # be written down.
-  #
-  # Note what this is not: `resolve_issue` stays off *this* list. Deciding
-  # whether an issue is real is product's; declaring it fixed belongs to whoever
-  # fixed it, which is coding — see the `@coding` comment.
-  @product ~w(
-    list_stories get_story list_story_titles create_story update_story retire_story restore_story
-    add_criterion update_criterion retire_criterion restore_criterion get_criterion move_criterion
-    add_rule update_rule delete_rule add_scenario update_scenario
-    add_question resolve_question list_rules list_questions
-    list_working_copies create_working_copy offboard_working_copy
-    assign_epic_to_working_copy set_working_copy_loop
-    link_criterion_to_rule start_three_amigos_session start_story_interview
-    start_story_review get_story_gherkin show_story_requirements
-    list_personas get_persona create_persona update_persona delete_persona
-    link_persona_to_story unlink_persona_from_story
-    list_epics create_epic update_epic assign_story_to_epic set_epic_stories_ready
-    propose_epic tag_stories list_project_tags analyze_stories
-    set_story_component create_component update_component
-    validate_dependency_graph execute_proposal show_architecture_overview
-    list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
-    list_knowledge read_knowledge semantic_search
-    web_search web_fetch
-  )
+  alias CodeMySpec.Agents.RoleProfile
 
   @doc """
   The tools an agent of this type starts with, or `nil` for every tool there is.
 
-  `:main` is `nil` rather than a list, and both halves of that are deliberate.
-
-  It may call everything, because its job is the whole project and scoping it
-  is scoping the thing that checks the others. And enumerating "everything" into
-  a row would be a copy of the catalogue that goes stale the day a tool is
-  added — the same argument this column's own migration makes for not
-  backfilling one. A stale list would read as a scoping decision somebody made.
+  `:main`'s profile says `:all`, and on the row that is `nil` rather than a
+  list. Enumerating "everything" into a row would be a copy of the catalogue
+  that goes stale the day a tool is added — the same argument this column's own
+  migration makes for not backfilling one. A stale list would read as a scoping
+  decision somebody made.
 
   `nil` already means "no restriction" everywhere it is read, so main shares a
-  meaning with the rows that predate scoping. That is not a coincidence to be
-  tidied away: both may call everything, and saying so twice in two shapes would
-  be the ambiguity, not the fix.
+  meaning with the rows that predate scoping.
 
   Which tools exist at all is the MCP layer's knowledge and stays there — this
   context is not allowed to ask, and should not want to.
   """
   @spec for_role(atom()) :: [String.t()] | nil
-  def for_role(:main), do: nil
-  def for_role(:qa), do: @qa
-  def for_role(:coding), do: @coding
-  def for_role(:product), do: @product
-  def for_role(_role), do: []
+  def for_role(role) do
+    case RoleProfile.tools(role) do
+      :all -> nil
+      granted -> granted
+    end
+  end
 end

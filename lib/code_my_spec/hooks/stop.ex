@@ -585,9 +585,9 @@ defmodule CodeMySpec.Hooks.Stop do
       true ->
         # The same count the menu renders two lines below, and deliberately.
         #
-        # `NodeRepository.actionable_count/1` reads `n.satisfied` straight from
-        # the rows, which now hold the *durable* verdict — a component's own
-        # problem count, without the no-run-yet qualifier that
+        # A raw row count (the since-deleted `NodeRepository.actionable_count/1`)
+        # reads `n.satisfied` straight from the rows, which hold the *durable*
+        # verdict — a component's own problem count, without the no-run-yet qualifier that
         # `RequirementGraph.serve/2` applies on the way to a reader. So a
         # `tests_passing` whose source has never run reads satisfied here and
         # unsatisfied in the menu: this branch would tell a continuous agent its

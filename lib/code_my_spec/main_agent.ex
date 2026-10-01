@@ -33,6 +33,7 @@ defmodule CodeMySpec.MainAgent do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Configurations,
@@ -55,7 +56,7 @@ defmodule CodeMySpec.MainAgent do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.ToolSets
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
@@ -1092,22 +1093,14 @@ defmodule CodeMySpec.MainAgent do
 
   defp borrowed(role, tool) do
     role
-    |> role_tools()
+    |> RoleProfile.tools()
     |> carries?(tool, role)
   end
 
-  defp role_tools(role) when is_binary(role) do
-    ToolSets.for_role(String.to_existing_atom(role))
-  rescue
-    ArgumentError -> []
-  end
-
-  defp role_tools(role), do: ToolSets.for_role(role)
-
-  # `nil` is main's own list and means no restriction; it never reaches here,
+  # `:all` is main's own list and means no restriction; it never reaches here,
   # because a main agent asking itself for a favour is not a role escaping
   # anything.
-  defp carries?(nil, _tool, _role), do: :ok
+  defp carries?(:all, _tool, _role), do: :ok
 
   defp carries?(tools, tool, role), do: verdict(tool in tools, role, tool)
 
@@ -1363,11 +1356,13 @@ defmodule CodeMySpec.MainAgent do
 
   def holder_for(%Scope{} = scope, agent_id) when is_binary(agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
-      {:ok, %{role: :main}} -> "user"
-      {:ok, _agent} -> "main_agent"
+      {:ok, %{role: role}} -> holder(RoleProfile.questions_to(role))
       {:error, _reason} -> "user"
     end
   end
+
+  defp holder(:user), do: "user"
+  defp holder(:main), do: "main_agent"
 
   @doc """
   Reconsider the existing main agent when a durable question arrives.
@@ -1397,8 +1392,8 @@ defmodule CodeMySpec.MainAgent do
   # and the first one found on it is whichever row came back first.
   defp main_agent_other_than(scope, asking_agent_id) do
     scope
-    |> Agents.list_running()
-    |> Enum.find(fn agent -> agent.role == :main and agent.id != asking_agent_id end)
+    |> Agents.running_main_agents()
+    |> Enum.find(&(&1.id != asking_agent_id))
   end
 
   # Escalating tells the asker nothing, on purpose.

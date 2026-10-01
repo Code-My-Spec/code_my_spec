@@ -5,6 +5,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   Membership narrows the answer, never the graph used to check prerequisites.
   The project graph remains available for status and dependency diagnostics.
   """
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Requirements.{GraphWatcher, Preloader, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
@@ -340,8 +341,10 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # it. Product still blocks here when the seal itself
   # (`three_amigos_complete`) is not yet satisfied — pre-seal questions
   # already block sealing via `BddRulesChecker`'s own gate, and there is
-  # nothing product-specific to offer ahead of that.
-  defp blocks_on_questions?(questions, role), do: questions != [] and role != :product
+  # nothing product-specific to offer ahead of that. The role's
+  # `RoleProfile.questions_block?` says which.
+  defp blocks_on_questions?(questions, role),
+    do: questions != [] and RoleProfile.questions_block?(role)
 
   defp member?(%{entity_type: "story", entity_id: id, name: name}, story_id, _ids),
     do: to_string(id) == to_string(story_id) and name in @completion_names

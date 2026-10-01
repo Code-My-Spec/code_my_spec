@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.Waiting do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
@@ -48,10 +49,9 @@ defmodule CodeMySpec.Agents.Waiting do
     question_pending: [:turn_end]
   ]
 
-  # Roles whose open question holds the turn-end nudge. Main's event wakes
-  # (a teammate stalls, a step lands, a teammate asks) are messages, not
-  # nudges, so they still reach it.
-  @questions_hold [:main]
+  # Which roles an open question holds is each role's `RoleProfile.waiting_on`
+  # (`:question_pending`). Main's event wakes (a teammate stalls, a step lands,
+  # a teammate asks) are messages, not nudges, so they still reach it.
 
   @spec reason(Scope.t(), Agent.t(), path()) :: reason() | nil
   def reason(%Scope{} = scope, %Agent{} = agent, path) when path in @all do
@@ -92,11 +92,10 @@ defmodule CodeMySpec.Agents.Waiting do
 
   # Waiting on a person's answer to its own question; the answer wakes it.
   # metric_flow 2026-10-01: main was nudged turn after turn while it waited.
-  defp check(:question_pending, _scope, %{role: role} = agent) when role in @questions_hold do
-    if awaiting_question?(agent), do: :question_pending
+  defp check(:question_pending, _scope, %{role: role} = agent) do
+    if RoleProfile.waits_on?(role, :question_pending) and awaiting_question?(agent),
+      do: :question_pending
   end
-
-  defp check(:question_pending, _scope, _agent), do: nil
 
   # Schemaless for the reason `awaiting_tap_out?/1` is.
   defp awaiting_question?(%Agent{id: agent_id}) do
