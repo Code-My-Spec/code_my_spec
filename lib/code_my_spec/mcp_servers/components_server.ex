@@ -20,6 +20,8 @@ defmodule CodeMySpec.McpServers.ComponentsServer do
   component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
   component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
   component(CodeMySpec.McpServers.Components.Tools.DeleteComponent)
+  component(CodeMySpec.McpServers.Components.Tools.AddDependency)
+  component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
   component(CodeMySpec.McpServers.Components.Tools.ListComponents)
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)

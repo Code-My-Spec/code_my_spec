@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Types
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -15,13 +16,17 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
     field :id, :string, required: true
     field :name, :string
 
-    field :type, {:enum, ["context", "coordination_context"]},
-      description:
-        "Must be one of: context (domain contexts that own entities), :coordination_context (orchestrate workflows across domain context)"
+    # Every authorable type (3aeb66cf): this offered context and
+    # coordination_context only, so a component authored as anything else
+    # could never be corrected to its real type.
+    field :type, {:enum, Types.all()},
+      description: "Component type: #{Enum.join(Types.all(), ", ")}."
 
     field :module_name, :string
     field :description, :string
-    field :parent_component_id, :string
+
+    field :parent_component_id, :string,
+      description: "The component this one belongs under, e.g. its context"
   end
 
   @impl true
