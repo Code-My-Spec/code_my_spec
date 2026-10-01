@@ -1130,11 +1130,34 @@ defmodule CodeMySpec.Notifications do
   # process holding the working copy, and doing that while still holding the
   # question's row lock is the shape of the failure John hit — a form
   # submission waiting out an agent's whole reply.
-  defp deliver_answer_content(_request, false), do: :ok
+  #
+  # A question asked without a task is the exception (9f03455b). It blocked
+  # nothing, so answering it releases nothing, and the graph may have no work
+  # to bring the agent back: metric_flow's coder asked f247789c, it was
+  # answered at 16:18:35, and the coder sat idle until woken by hand. So an
+  # idle continuous asker is offered one turn that opens with the answer —
+  # John, 10-01. `offer_turn_with/3` admits only an idle continuous agent
+  # holding no task; anything else keeps the answer for when it comes back.
   defp deliver_answer_content(%{agent_id: nil}, _released?), do: :ok
 
+  defp deliver_answer_content(%{task_id: nil} = request, false) do
+    case Repo.get(Agent, request.agent_id) do
+      %Agent{turn_started_at: nil} = agent ->
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Work.offer_turn_with(owner_scope(agent), agent, answer_message(request))
+        end)
+
+        :ok
+
+      _busy_or_gone ->
+        :ok
+    end
+  end
+
+  defp deliver_answer_content(_request, false), do: :ok
+
   defp deliver_answer_content(request, true) do
-    case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
+    case Repo.get(Agent, request.agent_id) do
       %{turn_started_at: %DateTime{}} = agent ->
         _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request))
         :ok
@@ -1147,7 +1170,7 @@ defmodule CodeMySpec.Notifications do
   # What the agent reads mid-turn. Self-contained, because it is arriving in
   # the middle of something else: a reply without its question is a line of
   # dialogue with no idea what it answers.
-  defp answer_message(%{questions: questions, answers: answers}) do
+  defp answer_message(%{questions: questions, answers: answers} = request) do
     body =
       Enum.map_join(questions, "\n\n", fn question ->
         text = MapAccess.get(question, :question)
@@ -1159,8 +1182,17 @@ defmodule CodeMySpec.Notifications do
 
     #{body}
 
+    #{answer_closing(request)}
+    """
+  end
+
+  defp answer_closing(%{task_id: nil}),
+    do: "It blocked no task. Carry on with whatever you asked it for."
+
+  defp answer_closing(_request) do
+    """
     This does not resume the task it blocked. Pick that back up deliberately
-    with `start_task` when you are ready for it.
+    with `start_task` when you are ready for it.\
     """
   end
 
