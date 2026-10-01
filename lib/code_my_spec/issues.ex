@@ -123,6 +123,9 @@ defmodule CodeMySpec.Issues do
   end
 
   defdelegate unresolved_by_story(scope, min_severity), to: IssuesRepository
+
+  @doc "See `CodeMySpec.Issues.IssuesRepository.latest_resolutions/2`."
+  defdelegate latest_resolutions(project_id, story_ids), to: IssuesRepository
   defdelegate incoming_by_story(scope), to: IssuesRepository
   defdelegate list_triageable(scope, min_severity), to: IssuesRepository
 

@@ -227,7 +227,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
     "questions_answered" => [:stories],
-    "story_promoted" => [:stories],
+    # Issues too: a fix resolved after the last promotion unsatisfies it
+    # (1f8028a1), and resolving is an issue event.
+    "story_promoted" => [:stories, :issues],
     "qa_complete" => [:qa],
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
