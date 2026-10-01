@@ -50,6 +50,7 @@ defmodule CodeMySpec.Files.Scanner do
     Paths.base_dir(),
     "CLAUDE.md",
     "mix.exs",
+    "mix.lock",
     ".credo.exs",
     "Dockerfile",
     ".sops.yaml",
@@ -430,6 +431,7 @@ defmodule CodeMySpec.Files.Scanner do
     :test,
     :rule,
     :config,
+    :lockfile,
     :bdd_spec,
     :qa_brief,
     :qa_result,
@@ -945,6 +947,7 @@ defmodule CodeMySpec.Files.Scanner do
   defp classify_setup_artifact(path) do
     cond do
       path == "mix.exs" -> {path, :mix_exs}
+      path == "mix.lock" -> {path, :lockfile}
       path == ".credo.exs" -> {path, :credo_exs}
       path == "CLAUDE.md" -> {path, :claude_md}
       path == Path.join(Paths.base_dir(), "AGENTS.md") -> {path, :agents_md}

@@ -15,20 +15,26 @@ defmodule CodeMySpec.Files.FileSync do
 
   require Logger
 
+  alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
+  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   # Files whose role makes them part of the project doc embedding corpus.
   # Updates and deletions for these flow into the Embeddings backend on
@@ -152,6 +158,7 @@ defmodule CodeMySpec.Files.FileSync do
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
     if embed?, do: sync_embeddings(scope, env, changed_entries, removed_records)
+    maybe_reconcile_lockfile(scope, changed_entries)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -566,6 +573,83 @@ defmodule CodeMySpec.Files.FileSync do
   defp working_copy(%Scope{active_working_copy_id: id}) when is_binary(id), do: "harness #{id}"
   defp working_copy(_scope), do: "an unnamed working copy"
 
+  # -- Lockfile reconcile (577de9bb step 3) --
+  #
+  # The manifest carries no file content (see `reconcile/2`'s moduledoc), so
+  # a changed `:lockfile` entry is only ever a signal to go read it, never
+  # the content itself. `maybe_reconcile_lockfile/2` is that signal's
+  # handler: cheap to call on every sync (a no-op `Enum.any?` on the
+  # already-computed changed set) and safe to call from the periodic sweep
+  # with no signal at all, because `reconcile_lockfile/1` re-derives "did it
+  # actually change" itself from stored state rather than trusting the
+  # caller.
+  defp maybe_reconcile_lockfile(scope, changed_entries) do
+    if Enum.any?(changed_entries, &(&1.role == :lockfile)) do
+      reconcile_lockfile(scope)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Re-derive a project's dependency set from its main copy's `mix.lock`, if
+  the lock has moved since the last time this ran.
+
+  One decision procedure for two callers: `maybe_reconcile_lockfile/2` above
+  triggers this the moment a manifest shows `mix.lock` changed, and
+  `CodeMySpec.Files.LockfileSweep` calls it on a timer across every project
+  regardless of whether anything changed recently. Both get the same
+  answer because neither trusts its own trigger — this re-reads the
+  project's stored `mix_lock_fingerprint` and the `files` row's own
+  fingerprint and compares them itself. That is what makes the sweep a
+  correct backstop rather than a second code path: a reconcile that failed
+  because the main copy's harness was offline mid-read leaves the stored
+  fingerprint stale, and the next tick (sweep or manifest, whichever comes
+  first) tries again from the same comparison.
+  """
+  @spec reconcile_lockfile(Scope.t()) :: :ok
+  def reconcile_lockfile(%Scope{active_project: %Project{}} = scope) do
+    if main_copy?(scope) do
+      do_reconcile_lockfile(scope)
+    else
+      :ok
+    end
+  end
+
+  def reconcile_lockfile(%Scope{}), do: :ok
+
+  defp main_copy?(%Scope{active_working_copy_id: id}) when not is_binary(id), do: false
+
+  defp main_copy?(%Scope{active_working_copy_id: id} = scope) do
+    match?(%WorkingCopy{id: ^id}, WorkingCopies.main(scope))
+  end
+
+  defp do_reconcile_lockfile(%Scope{active_project: project} = scope) do
+    case Files.get_by_path(scope, "mix.lock") do
+      %FileRecord{fingerprint: fingerprint}
+      when is_binary(fingerprint) and fingerprint != project.mix_lock_fingerprint ->
+        fetch_and_record_lockfile(scope, project, fingerprint)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp fetch_and_record_lockfile(%Scope{environment: env} = scope, project, fingerprint) do
+    with {:ok, content} <- Environments.read_file(env, "mix.lock"),
+         {:ok, _} <- Dependencies.record_lockfile(scope, content) do
+      Projects.update_project(scope, project, %{mix_lock_fingerprint: fingerprint})
+      :ok
+    else
+      {:error, reason} ->
+        Logger.info(
+          "[FileSync] #{working_copy(scope)}: lockfile reconcile deferred (#{inspect(reason)})"
+        )
+
+        :ok
+    end
+  end
+
   @doc """
   Run the embedding side of sync against the currently-tracked corpus,
   without re-walking the filesystem or upserting File records.
@@ -810,6 +894,7 @@ defmodule CodeMySpec.Files.FileSync do
     end
 
     sync_embeddings(scope, env, embedding_changed_entries, removed_records)
+    maybe_reconcile_lockfile(scope, embedding_changed_entries)
 
     clear_specs_ready_for_rewritten_specs(scope, embedding_changed_entries, removed_records)
 

@@ -55,6 +55,11 @@ defmodule CodeMySpecWeb.Application do
         embeddings_configured?() &&
           {FLAME.Pool,
            name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
+        # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
+        # — not gated on `embeddings_configured?()` like the two above,
+        # because `project_dependencies` is dependency bookkeeping on its
+        # own, independent of whether anything embeds hex docs from it here.
+        CodeMySpec.Files.LockfileSweep,
         # Per-caller failure injection, so QA can break one project's digest or
         # one visitor's intake without breaking the shared box. Owns an ETS
         # table and nothing else; only `/dev/faults` ever writes to it, and that
