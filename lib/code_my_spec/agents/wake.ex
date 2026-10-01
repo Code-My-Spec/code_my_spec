@@ -57,6 +57,9 @@ defmodule CodeMySpec.Agents.Wake do
     * `:findings` — an analysis run's findings it did not ask for.
     * `:issue_filed` — an issue filed from the widget.
     * `:cadence` — the main agent's check-in timer.
+    * `:teammate_stalled` — a teammate stalled: running, no task, no turn, while
+      the graph holds work for its role (announced once, on the transition).
+    * `:teammate_died` — a teammate's process died or was reaped.
   """
   @type event ::
           :operator_message
@@ -70,6 +73,8 @@ defmodule CodeMySpec.Agents.Wake do
           | :findings
           | :issue_filed
           | :cadence
+          | :teammate_stalled
+          | :teammate_died
 
   @type hold ::
           {:off, Agent.t()}
@@ -91,45 +96,50 @@ defmodule CodeMySpec.Agents.Wake do
     :teammate_question,
     :findings,
     :issue_filed,
-    :cadence
+    :cadence,
+    :teammate_stalled,
+    :teammate_died
   ]
 
   # Relevant to whoever it is addressed to: a person speaking to it, or the
   # answer to its own request.
   @always_relevant [:operator_message, :own_reply, :question_answered, :blocker_resolved]
 
-  # The `Agents.Waiting` path each event would start a turn through.
+  # The `Agents.Waiting` path each event would start a turn through. A
+  # teammate's question, stall or death is on `:wake`, which an open question of
+  # main's own does not hold (only `:turn_end` does): John, step 4b, "main is
+  # woken despite an open question" on these.
   @waiting_path %{
     work_offer: :wake,
     teammate_question: :wake,
+    teammate_stalled: :wake,
+    teammate_died: :wake,
     question_answered: :wake,
     blocker_resolved: :wake,
     resume: :resume,
     nudge: :turn_end
   }
 
-  # What a non-continuous agent gets. Today's behaviour, per event.
-  #
-  # `:own_reply` and `:nudge` wake it: it was told to end its turn and wait for
-  # the message, or it is hearing about the turn it just ended. A question's
-  # answer and a released blocker are collected when it comes back — criterion
-  # 3219, "a durable question exists so that an agent which stopped can collect
-  # its answer when it comes back rather than be woken by it". `:cadence` is
-  # only ever pushed to a non-continuous main: a continuous one is offered work
-  # instead. `:findings` and `:issue_filed` wake it as they always have — see
-  # the report on a31f1cd6 step 4a before changing that.
+  # What a non-continuous agent gets. John, step 4b: "hold them" — it is woken
+  # only by a person and by the replies it was told to wait for (`:own_reply`).
+  # A question's answer and a released blocker are collected when it comes
+  # back — criterion 3219, "a durable question exists so that an agent which
+  # stopped can collect its answer when it comes back rather than be woken by
+  # it". Everything else would put it to work, and is held.
   @not_continuous %{
     operator_message: :wake,
     own_reply: :wake,
-    nudge: :wake,
-    cadence: :wake,
-    findings: :wake,
-    issue_filed: :wake,
     question_answered: :queue,
     blocker_resolved: :queue,
+    nudge: :hold,
+    cadence: :hold,
+    findings: :hold,
+    issue_filed: :hold,
     work_offer: :hold,
     resume: :hold,
-    teammate_question: :hold
+    teammate_question: :hold,
+    teammate_stalled: :hold,
+    teammate_died: :hold
   }
 
   @telemetry [:code_my_spec, :agents, :wake]

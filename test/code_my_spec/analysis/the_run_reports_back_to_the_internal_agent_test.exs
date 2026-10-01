@@ -48,6 +48,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
+        continuous: true,
         engine: engine,
         role: role,
         working_copy: "/tmp/report-#{System.unique_integer([:positive])}",

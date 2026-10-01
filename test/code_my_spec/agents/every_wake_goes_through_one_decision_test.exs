@@ -127,12 +127,14 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
       for %{id: id} <- [asker, coding], do: assert_receive({:agent_dispatch, ^id, _, _}, 1_000)
     end
 
-    test "a turn ending: the stop decision as :nudge", ctx do
-      coding = agent(ctx, :coding, %{continuous: false})
-
+    test "a turn ending: the stop decision as :nudge, held for a non-continuous agent", ctx do
+      coding = agent(ctx, :coding)
       StopDecision.deliver(ctx.scope, coding, [])
-
       assert asked(coding, :nudge) == :ok
+
+      idle = agent(ctx, :coding, %{continuous: false})
+      StopDecision.deliver(ctx.scope, idle, [])
+      assert asked(idle, :nudge) == {:hold, :not_continuous}
     end
 
     test "the graph: a work offer as :work_offer", ctx do

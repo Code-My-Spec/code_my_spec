@@ -699,20 +699,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   about.
 
   Which definitions count is the role's `RoleProfile.requirements`: `:tagged`
-  is every definition that names the role.
+  is every definition that names the role, `:untagged` every one naming none.
   """
   @spec requirement_names_for_role(atom()) :: [String.t()]
   def requirement_names_for_role(role) when is_atom(role) do
-    selectors = RoleProfile.requirements(role)
-
     all_graphs()
-    |> Enum.filter(&offered?(&1, role, selectors))
+    |> Enum.filter(&offered_to?(&1, role))
     |> Enum.map(& &1.name)
     |> Enum.uniq()
   end
 
-  defp offered?(definition, role, selectors),
-    do: :tagged in selectors and definition.role == role
+  @doc "Whether `role` is offered `definition`, by its `RoleProfile.requirements` selectors."
+  @spec offered_to?(RequirementDefinition.t(), atom()) :: boolean()
+  def offered_to?(definition, role) do
+    Enum.any?(RoleProfile.requirements(role), &selects?(&1, definition, role))
+  end
+
+  defp selects?(:tagged, definition, role), do: definition.role == role
+  defp selects?(:untagged, definition, _role), do: is_nil(definition.role)
 
   defp all_graphs do
     context_graph() ++

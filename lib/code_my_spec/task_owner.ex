@@ -59,10 +59,10 @@ defmodule CodeMySpec.TaskOwner do
 
   @type t :: Session.t() | Agent.t()
   @type blocker_type :: :issue | :question | :tap_out
-  @type outcome :: :resolved | :dismissed | :answered | :denied | :approved
+  @type outcome :: :resolved | :dismissed | :answered | :denied | :approved | :withdrawn
 
   @resolvable [:issue, :question, :tap_out]
-  @outcomes [:resolved, :dismissed, :answered, :denied, :approved]
+  @outcomes [:resolved, :dismissed, :answered, :denied, :approved, :withdrawn]
 
   @doc "Every task this owner holds."
   @spec tasks(t()) :: [Task.t()]
@@ -260,6 +260,10 @@ defmodule CodeMySpec.TaskOwner do
   # declined. Off this process because the caller may be the channel the wake
   # dispatches through.
   defp wake_holder(_scope, _owner, _released, {:tap_out, _id, :approved}, _opts), do: :ok
+
+  # The asker withdrew it in its own turn, and `withdraw_question` already told
+  # it which task to resume.
+  defp wake_holder(_scope, _owner, _released, {:question, _id, :withdrawn}, _opts), do: :ok
 
   defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
     notice = blocker_resolved_notice(released, blocker, Keyword.get(opts, :detail))

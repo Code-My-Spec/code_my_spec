@@ -504,7 +504,7 @@ defmodule CodeMySpecWeb.ChatComponents do
             <.icon name="hero-check-circle" class="size-5" /> Answer sent.
           </div>
           <p :if={main_agent_answered?(@request)} class="mt-2 text-sm opacity-70">
-            The main agent answered this from project records. Correct it below if that's wrong.
+            {answered_by_agent(@request)} Correct it below if that's wrong.
           </p>
           <dl class="mt-4 space-y-2">
             <div :for={{q, a} <- @request.answers} class="text-sm">
@@ -528,6 +528,13 @@ defmodule CodeMySpecWeb.ChatComponents do
                 <dd>{format_answer(a)}</dd>
               </div>
             </dl>
+          </div>
+        </div>
+
+        <div :if={@request.status == "withdrawn"} data-test="question-withdrawn" class="mt-2">
+          <div class="alert">
+            <.icon name="hero-arrow-uturn-left" class="size-5" />
+            Withdrawn by the agent that asked: {@request.withdrawn_reason}
           </div>
         </div>
 
@@ -639,8 +646,16 @@ defmodule CodeMySpecWeb.ChatComponents do
   # it — criterion 3222. A user's own answer is not: `answer_question_request/3`
   # never lets a second one through, and offering a form here that would only
   # be refused is worse than no form at all.
-  defp main_agent_answered?(%{status: "answered", answered_by: "main_agent"}), do: true
+  defp main_agent_answered?(%{status: "answered", answered_by: by})
+       when by in ~w(main_agent product_agent),
+       do: true
+
   defp main_agent_answered?(_request), do: false
+
+  defp answered_by_agent(%{answered_by: "product_agent"}),
+    do: "The product agent answered this as the owner of the criteria."
+
+  defp answered_by_agent(_request), do: "The main agent answered this from project records."
 
   # Nil rather than `[]` for every row written before `answer_history` existed,
   # which is most of them.
@@ -652,6 +667,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   defp superseded_by(revision) do
     case Map.get(revision, "answered_by") do
       "main_agent" -> "the main agent's"
+      "product_agent" -> "the product agent's"
       _user -> "an earlier"
     end
   end

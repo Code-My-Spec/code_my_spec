@@ -61,6 +61,22 @@ defmodule CodeMySpec.MainAgent.Digest do
       Enum.all?(digest.work, &settled?/1)
   end
 
+  @doc """
+  Who main is told about as stalled (step 4b): running, holding no task, no
+  turn open, while the graph holds work for their role — `AgentWork.unclaimed_work/1`'s
+  STALLED. Not one out of the loop or damped (those are said, not stalls), and
+  never main itself.
+  """
+  @spec stalled(t()) :: [AgentWork.t()]
+  def stalled(%Digest{failed: reason}) when is_binary(reason), do: []
+
+  def stalled(%Digest{work: work}), do: Enum.filter(work, &teammate_stalled?/1)
+
+  defp teammate_stalled?(entry) do
+    stalled?(entry) and entry.role != :main and entry.continuous? != false and
+      is_nil(entry.damped)
+  end
+
   defp machinery_ok?(nil), do: true
   defp machinery_ok?(%Machinery{tool_fault: :none}), do: true
   defp machinery_ok?(%Machinery{}), do: false

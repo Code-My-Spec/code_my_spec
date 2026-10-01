@@ -62,15 +62,16 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
     %{scope: full_scope_fixture()}
   end
 
-  test "a question a person holds says it cannot be taken back", %{scope: scope} do
+  test "a question a person holds says so, and how to take it back", %{scope: scope} do
     said = ask(%Frame{assigns: %{current_scope: scope}})
 
     assert said =~ "waiting on a person"
 
-    assert said =~ "cannot be withdrawn", """
+    assert said =~ "withdraw_question", """
     The caller is told a question id and nothing else. Somebody exercising the
     ask path finds out what they did when the owner asks about it — which is how
-    two "please ignore" probes ended up permanent (08d4d7bd).
+    two "please ignore" probes ended up in the owner's inbox (08d4d7bd). Only
+    the asker can take one back (8c91d5bc).
     """
 
     assert said =~ "sandbox",

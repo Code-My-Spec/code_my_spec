@@ -19,9 +19,14 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
   alias CodeMySpec.MainAgent
   alias CodeMySpec.MainAgent.OpenQuestion
 
-  @doc "Everything waiting, grouped by who is holding it."
-  @spec listing([OpenQuestion.t()]) :: Response.t()
-  def listing([]) do
+  @doc """
+  Everything waiting, grouped by who is holding it. `mine` is the caller's own
+  holder — `main_agent`, or `product_agent` for product (8c91d5bc).
+  """
+  @spec listing([OpenQuestion.t()], String.t()) :: Response.t()
+  def listing(questions, mine \\ "main_agent")
+
+  def listing([], _mine) do
     Response.tool()
     |> Response.text("""
     Nothing is waiting on you.
@@ -31,11 +36,9 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     """)
   end
 
-  def listing(questions) do
-    {mine, theirs} = Enum.split_with(questions, &(&1.holder == "main_agent"))
-
+  def listing(questions, mine) do
     Response.tool()
-    |> Response.text(Enum.join(sections(mine, theirs), "\n"))
+    |> Response.text(Enum.join(sections(questions, mine), "\n"))
   end
 
   @doc "What one escalation looks like once it has gone up."
@@ -159,15 +162,22 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
     Response.tool() |> Response.error("Could not escalate: #{inspect(reason)}")
   end
 
-  defp sections(mine, theirs) do
+  defp sections(questions, mine) do
+    by_holder = Enum.group_by(questions, & &1.holder)
+
     Enum.reject(
       [
-        section("Needs your attention", mine),
-        section("Waiting on the user", theirs)
+        section("Needs your attention", Map.get(by_holder, mine, [])),
+        section("Waiting on the main agent", others(by_holder, mine, "main_agent")),
+        section("Waiting on the product agent", others(by_holder, mine, "product_agent")),
+        section("Waiting on the user", others(by_holder, mine, "user"))
       ],
       &is_nil/1
     )
   end
+
+  defp others(_by_holder, holder, holder), do: []
+  defp others(by_holder, _mine, holder), do: Map.get(by_holder, holder, [])
 
   defp section(_heading, []), do: nil
 

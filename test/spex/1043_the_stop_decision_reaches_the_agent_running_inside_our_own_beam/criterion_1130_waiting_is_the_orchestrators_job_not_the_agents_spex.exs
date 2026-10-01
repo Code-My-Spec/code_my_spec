@@ -97,7 +97,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
         # missing: a decision really is delivered, and none of the hook's
         # waiting vocabulary appears anywhere in it.
 
-        agent_id = running_agent(context)
+        agent_id = running_agent(context, %{"continuous" => true})
         # The agent wrote the file the finding is about.
         #
         # Recorded because that is now what makes a finding its own:

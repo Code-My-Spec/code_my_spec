@@ -51,10 +51,21 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        {:reply, MainAgentMapper.listing(MainAgent.list_open_questions(scope)), frame}
+        {:reply,
+         MainAgentMapper.listing(MainAgent.list_open_questions(scope), mine(scope, frame)), frame}
 
       {:error, reason} ->
         {:reply, MainAgentMapper.error(reason), frame}
     end
   end
+
+  # Product's own are the criteria questions routed to it (8c91d5bc).
+  defp mine(scope, %{assigns: %{agent_id: id}}) when is_binary(id) do
+    case CodeMySpec.Agents.fetch_agent(scope, id) do
+      {:ok, %{role: :product}} -> "product_agent"
+      _ -> "main_agent"
+    end
+  end
+
+  defp mine(_scope, _frame), do: "main_agent"
 end

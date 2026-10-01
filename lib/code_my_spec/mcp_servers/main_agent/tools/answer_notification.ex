@@ -87,19 +87,38 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
            precedent_id: MapAccess.get(params, :precedent_id),
            worked_around: MapAccess.get(params, :worked_around),
            on_behalf_of: MapAccess.get(params, :on_behalf_of),
-           tool: MapAccess.get(params, :tool)
+           tool: MapAccess.get(params, :tool),
+           by: caller_role(scope, frame)
          ) do
       {:ok, answered} -> {:reply, AnswerMapper.answered(answered), frame}
       {:error, reason} -> {:reply, AnswerMapper.error(reason), frame}
     end
   end
 
+  # Product answers the criteria questions routed to it (8c91d5bc); anybody
+  # else answers as main always has.
+  defp caller_role(scope, %{assigns: %{agent_id: id}}) when is_binary(id) do
+    case CodeMySpec.Agents.fetch_agent(scope, id) do
+      {:ok, %{role: role}} -> role
+      _ -> nil
+    end
+  end
+
+  defp caller_role(_scope, _frame), do: nil
+
+  # Permissions (tap-outs) stay main's: product carries this tool to answer the
+  # questions routed to it, not to staff the fleet.
   defp decide(scope, params, decision, frame) do
     id = MapAccess.get(params, :id)
 
-    case MainAgent.decide_permission(scope, id, decision, MapAccess.get(params, :answer)) do
+    case decide_as(caller_role(scope, frame), scope, id, decision, params) do
       {:ok, _resolved} -> {:reply, AnswerMapper.decided(id, decision), frame}
       {:error, reason} -> {:reply, AnswerMapper.error(reason), frame}
     end
   end
+
+  defp decide_as(:product, _scope, _id, _decision, _params), do: {:error, :not_yours}
+
+  defp decide_as(_role, scope, id, decision, params),
+    do: MainAgent.decide_permission(scope, id, decision, MapAccess.get(params, :answer))
 end

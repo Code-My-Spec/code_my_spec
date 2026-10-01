@@ -32,6 +32,9 @@ defmodule CodeMySpecWeb.WidgetIssueNoticeTest do
         engine: :alloy,
         role: role,
         status: :running,
+        # Step 4b: a non-continuous main is woken only by a person and its own
+        # replies, so a widget issue reaches a continuous one.
+        continuous: true,
         working_copy: "/tmp/widget-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })

@@ -33,6 +33,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
     field :title, :string, doc: "Notification heading."
     field :task_id, :string, doc: "Task to block; omitted defaults to your active task."
+
+    field :about, :string,
+      doc: "`criteria` for a story's acceptance criteria or spec: it goes to product."
   end
 
   @max_questions 4
@@ -42,8 +45,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       when is_list(questions) and questions != [] do
     with :ok <- check_count(questions),
          {:ok, normalized} <- normalize(questions),
-         {:ok, id} <- ask(frame, normalized, params[:title], Map.get(params, :task_id, :active)) do
-      {:reply, Response.tool() |> Response.text(asked(frame, id, normalized)), frame}
+         {:ok, request} <-
+           ask(frame, normalized, params, Map.get(params, :task_id, :active)) do
+      {:reply, Response.tool() |> Response.text(asked(frame, request, normalized)), frame}
     else
       {:error, message} when is_binary(message) ->
         {:reply, Response.tool() |> Response.error(message), frame}
@@ -157,7 +161,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   defp ask(
          %{assigns: %{current_scope: %{user: %{id: user_id}} = scope}} = frame,
          questions,
-         title,
+         params,
          task_ref
        ) do
     attrs = %{
@@ -166,14 +170,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       # was. It arrives in the params, so every question the agents asked was
       # headed "Claude has a question" while the notification the agent wrote
       # said something useful like "Capital vassalization rule".
-      "title" => title_or_default(title),
+      "title" => title_or_default(params[:title]),
       # Authenticated identity controls answer delivery. External sessions
       # collect durable replies through bounded event-driven check_answer.
       "agent_id" => frame.assigns[:agent_id],
       # Who it waits on first. An agent's question goes to the project's main
       # agent, which is story 1052's routing; a Claude Code session's goes
       # straight to the person, because there is nobody above it to route to.
-      "holder" => MainAgent.holder_for(scope, frame.assigns[:agent_id]),
+      # One the asker marks `about: "criteria"` goes to product (8c91d5bc).
+      "holder" => MainAgent.holder_for(scope, frame.assigns[:agent_id], params[:about]),
       "session_external_id" => session_id_unless_agent(frame.assigns[:agent_id], scope)
     }
 
@@ -183,7 +188,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       # of the asking agent waiting out a window for somebody who was idle
       # throughout.
       :ok = MainAgent.question_raised(scope, request)
-      {:ok, request.id}
+      {:ok, request}
     end
   end
 
@@ -205,13 +210,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
   defp working_copy_id(_scope), do: nil
 
-  defp asked(frame, id, questions) do
+  defp asked(frame, request, questions) do
     """
-    Asked #{length(questions)} question(s). Question id: #{id}
+    Asked #{length(questions)} question(s). Question id: #{request.id}
 
     #{question_context(frame)}
 
-    #{waiting_advice(frame.assigns[:agent_id])}#{who_holds_it(frame)}
+    #{waiting_advice(frame.assigns[:agent_id])}#{held_by(request.holder)}
     """
   end
 
@@ -223,34 +228,28 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
   defp question_context(_frame), do: ""
 
-  # Says when a question has reached a person, because it cannot be taken back.
+  # Says when a question has reached a person.
   #
   # A question has no dismiss and no expiry — deliberately, and story 896 argues
   # it well: one vanishing on a clock is a decision the user never made. The cost
   # falls on anybody who asks one by accident, and it has fallen twice. A QA
   # agent exercising the ask→answer round trip called this from a worktree of the
   # real project, so its typed tool was bound to the real dev harness, and two
-  # "please ignore" probes are now permanent clutter in the owner's inbox that
-  # only they can clear (`08d4d7bd`).
-  #
-  # A typed tool cannot be pointed at another harness, so nothing about the call
-  # could have gone differently. What was missing is that the caller had no way
-  # to know, at the moment of asking, that this one was real.
+  # "please ignore" probes became clutter in the owner's inbox (`08d4d7bd`).
+  # Only the asker can take one back, with `withdraw_question` (8c91d5bc).
   #
   # Only when the holder is the person. An agent's question routed to the main
   # agent is ordinary traffic, and saying this every time would make the sentence
   # worth ignoring.
-  defp who_holds_it(%{assigns: %{current_scope: %{user: %{id: _id}} = scope}} = frame),
-    do: held_by(MainAgent.holder_for(scope, frame.assigns[:agent_id]))
-
-  defp who_holds_it(_frame), do: ""
-
   defp held_by("user") do
-    "\n\nThis one is waiting on a person, and a question cannot be withdrawn or " <>
-      "expired — only answered. If you meant to exercise the ask path rather than " <>
-      "actually ask, you have just written to somebody's real inbox and only they " <>
-      "can clear it: use a sandbox project's harness over HTTP instead."
+    "\n\nThis one is waiting on a person, in their real inbox. If it goes moot, take " <>
+      "it back with `withdraw_question` and the reason. If you meant to exercise the " <>
+      "ask path rather than actually ask, withdraw it now and use a sandbox project's " <>
+      "harness over HTTP instead."
   end
+
+  defp held_by("product_agent"),
+    do: "\n\nIt went to the product agent, which owns the story's criteria and spec."
 
   defp held_by(_main_agent), do: ""
 

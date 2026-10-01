@@ -37,6 +37,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
+  alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.Notifications
   alias CodeMySpec.Users.Scope
@@ -248,7 +249,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
         Notifications.blockers_topic(scope.active_project_id)
       )
 
-    {:ok, schedule(%{scope: scope, last_check: nil})}
+    {:ok, schedule(%{scope: scope, last_check: nil, stalled: MapSet.new()})}
   end
 
   @impl true
@@ -256,7 +257,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   @impl true
   def handle_info(:check_in, state) do
-    state.scope |> MainAgent.check_in() |> deliver(state.scope)
+    digest = digest(state.scope)
+    {newly, stalled} = stall_transitions(state.stalled, digest)
+    :ok = announce_stalls(state.scope, newly)
+    state = %{state | stalled: stalled}
+
+    state.scope |> MainAgent.check_in(digest) |> deliver(state.scope)
     checked_at = DateTime.utc_now()
 
     Phoenix.PubSub.broadcast(
@@ -320,6 +326,40 @@ defmodule CodeMySpec.MainAgent.Cadence do
   # A digest that could not be assembled already raised a fault; delivering an
   # empty one would read as all-quiet.
   defp push(_result, _scope, _main), do: :ok
+
+  @doc """
+  Which teammates have just stalled, and the stalled set to remember.
+
+  Step 4b (a31f1cd6): main is told on the transition into stalled, once, not
+  every check-in. An agent that recovers leaves the set, so stalling again is a
+  new transition. A digest that could not be built changes nothing.
+  """
+  @spec stall_transitions(MapSet.t(String.t()), Digest.t()) ::
+          {[AgentWork.t()], MapSet.t(String.t())}
+  def stall_transitions(seen, %Digest{failed: reason}) when is_binary(reason), do: {[], seen}
+
+  def stall_transitions(seen, %Digest{} = digest) do
+    stalled = Digest.stalled(digest)
+    newly = Enum.reject(stalled, &MapSet.member?(seen, &1.agent_id))
+    {newly, MapSet.new(stalled, & &1.agent_id)}
+  end
+
+  @doc "Tell main about each teammate that has just stalled (`:teammate_stalled`)."
+  @spec announce_stalls(Scope.t(), [AgentWork.t()]) :: :ok
+  def announce_stalls(%Scope{} = scope, entries) do
+    Enum.each(entries, fn entry ->
+      Agents.notify_main(
+        scope,
+        :teammate_stalled,
+        "Teammate stalled: the #{entry.role} agent #{entry.agent_id} on working copy " <>
+          "#{entry.working_copy_id}#{root(entry.working_copy_root)} — " <>
+          AgentWork.unclaimed_work(entry)
+      )
+    end)
+  end
+
+  defp root(nil), do: ""
+  defp root(path), do: " (#{path})"
 
   @impl true
   def handle_cast(:reschedule, state) do

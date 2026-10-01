@@ -154,6 +154,9 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
+  # Scriptable unlike the asking tools: it waits on nobody, and only touches the
+  # caller's own question (8c91d5bc).
+  component(CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion)
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)

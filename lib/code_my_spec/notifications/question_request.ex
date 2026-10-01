@@ -24,8 +24,9 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   # decided against building the sweeper that would have made it reachable: a
   # question vanishing on a clock is a decision the user never made
   # disappearing from the one place they would have seen it. Answering is the
-  # only terminal state, and in use it is enough (83309b2a).
-  @statuses ~w(pending answered)
+  # only terminal state a person reaches (83309b2a). `withdrawn` is the asker's:
+  # a question it raised that went moot, taken back with a reason (8c91d5bc).
+  @statuses ~w(pending answered withdrawn)
 
   # Who the question is waiting on right now. Orthogonal to `status`, which says
   # whether it is finished — a pending question held by the main agent and a
@@ -36,13 +37,16 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   # `user` is the default because it is what a question is when nothing routes
   # it: Claude Code asks the person directly. An agent's question starts on the
   # main agent and moves here when it escalates.
-  @holders ~w(main_agent user)
+  #
+  # `product_agent`: a question about a story's criteria or spec goes to the
+  # project's product agent, which owns them, not to a customer (8c91d5bc).
+  @holders ~w(main_agent product_agent user)
 
   # Who actually gave the current answer, as opposed to `holder` (who it was
   # waiting on). Story 1052's 3219: the collecting agent cannot weigh a main
   # agent's reading of the records the same as the user's own intent unless
   # the answer says which one it is.
-  @answerers ~w(main_agent user)
+  @answerers ~w(main_agent product_agent user)
 
   schema "question_requests" do
     field :title, :string
@@ -74,6 +78,9 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # question that arrived with a reason rather than one that simply appeared,
     # and so the main agent can tell its own escalations apart on the way back.
     field :escalation_reason, :string
+
+    # Why the asker took it back, when it did (`status: "withdrawn"`).
+    field :withdrawn_reason, :string
 
     # Claude's session id, so a question can be shown in the conversation it
     # was asked in. Nil when it was asked outside a harness.
@@ -113,6 +120,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :overruled,
       :answer_history,
       :escalation_reason,
+      :withdrawn_reason,
       :session_external_id
     ])
     |> validate_required([:user_id])

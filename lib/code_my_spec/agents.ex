@@ -2271,8 +2271,47 @@ defmodule CodeMySpec.Agents do
     end
 
     {:ok, stopped} = record_stopped(scope, agent, :reaped)
+    :ok = tell_main_teammate_died(scope, agent, "its process died: #{cause}")
     restart_if_continuous(scope, stopped)
   end
+
+  # Step 4b (a31f1cd6): main is told when a teammate dies or is reaped, and is
+  # woken for it past its own open question (John). Main's own death has nobody
+  # to tell.
+  defp tell_main_teammate_died(_scope, %Agent{role: :main}, _reason), do: :ok
+
+  defp tell_main_teammate_died(scope, %Agent{} = agent, reason) do
+    notify_main(
+      scope,
+      :teammate_died,
+      "Teammate down: #{teammate(agent)} — #{reason}. Check it with " <>
+        "list_agent_work, and restart_agent if it does not come back."
+    )
+  end
+
+  # The agents one sweep reaped, as one message: a reconnect can reap a whole
+  # copy at once, and a message each floods main. A sweep that reaped main too
+  # says nothing; it hears about them through its restart.
+  defp tell_main_reaped(_scope, []), do: :ok
+
+  defp tell_main_reaped(scope, reaped) do
+    if Enum.any?(reaped, &(&1.role == :main)) do
+      :ok
+    else
+      notify_main(
+        scope,
+        :teammate_died,
+        "Teammates down — reaped, their machine no longer reports them running:\n" <>
+          Enum.map_join(reaped, "\n", &"  - #{teammate(&1)}") <>
+          "\nCheck them with list_agent_work, and restart_agent any that do not come back."
+      )
+    end
+  end
+
+  defp teammate(%Agent{} = agent),
+    do:
+      "the #{agent.role} agent #{agent.id} on working copy #{agent.working_copy_id} " <>
+        "(#{agent.working_copy})"
 
   # Off this process: the event arrives in the harness channel, and a restart
   # stops the agent through that same channel — a call to itself, which kills
@@ -2578,11 +2617,14 @@ defmodule CodeMySpec.Agents do
     # apart, which is what the log table in CLAUDE.md exists for.
     Logger.info("[Agents] harness reported #{length(reported)} agent(s)")
 
+    listed = AgentsRepository.list_running(scope)
+
     running =
-      scope
-      |> AgentsRepository.list_running()
+      listed
       |> Enum.map(&reap_if_absent(scope, &1, MapSet.member?(alive, &1.id)))
       |> Enum.filter(&(&1.status in [:starting, :running]))
+
+    :ok = tell_main_reaped(scope, Enum.reject(listed, &MapSet.member?(alive, &1.id)))
 
     # A report is the only moment the server learns an agent went away, so it is
     # the only moment a page watching one can find out. Without this the row
@@ -2628,12 +2670,13 @@ defmodule CodeMySpec.Agents do
   def record_running_on_copy(%Scope{} = scope, copy_id, ids) when is_list(ids) do
     alive = MapSet.new(ids)
 
-    scope
-    |> AgentsRepository.list_running()
-    |> Enum.filter(&(&1.working_copy_id == copy_id))
-    |> Enum.each(&settle_against(scope, &1, MapSet.member?(alive, &1.id)))
+    on_copy =
+      scope
+      |> AgentsRepository.list_running()
+      |> Enum.filter(&(&1.working_copy_id == copy_id))
 
-    :ok
+    Enum.each(on_copy, &settle_against(scope, &1, MapSet.member?(alive, &1.id)))
+    tell_main_reaped(scope, Enum.reject(on_copy, &MapSet.member?(alive, &1.id)))
   end
 
   # What a machine reporting itself as running has just told us.

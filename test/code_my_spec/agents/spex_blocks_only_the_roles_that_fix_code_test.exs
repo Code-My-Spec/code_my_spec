@@ -83,6 +83,13 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
            "QA has no move that clears a spex regression"
   end
 
+  # a31f1cd6 step 4b, John: "main is NOT blocked on problems".
+  test "a main agent that edited something is not refused", ctx do
+    message = StopDecision.decide(ctx.scope, agent(ctx, "main"))
+
+    refute (message || "") =~ "Fix these problems"
+  end
+
   test "a coding agent is", ctx do
     assert StopDecision.decide(ctx.scope, agent(ctx, "coding")) =~ "Fix these problems"
   end

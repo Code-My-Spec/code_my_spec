@@ -136,6 +136,7 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   end
 
   defp holder("main_agent"), do: "yours to answer"
+  defp holder("product_agent"), do: "waiting on the product agent"
   defp holder(_holder), do: "waiting on the user"
 
   defp moment(nil), do: "never"

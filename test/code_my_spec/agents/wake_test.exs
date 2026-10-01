@@ -19,19 +19,49 @@ defmodule CodeMySpec.Agents.WakeTest do
   # Who hears what nobody else does. Everything else is relevant to everyone:
   # a person's message and the answers to the agent's own requests.
   @relevant %{
-    main: [:work_offer, :nudge, :resume, :teammate_question, :findings, :issue_filed, :cadence],
-    product: [:work_offer, :nudge, :resume],
+    main: [
+      :work_offer,
+      :nudge,
+      :resume,
+      :teammate_question,
+      :findings,
+      :issue_filed,
+      :cadence,
+      :teammate_stalled,
+      :teammate_died
+    ],
+    product: [:work_offer, :nudge, :resume, :teammate_question],
     coding: [:work_offer, :nudge, :resume, :findings],
     qa: [:work_offer, :nudge, :resume]
   }
   @always [:operator_message, :own_reply, :question_answered, :blocker_resolved]
 
-  # A non-continuous agent: woken, held, or handed it only inside a turn.
-  @puts_to_work [:work_offer, :resume, :teammate_question]
+  # A non-continuous agent is woken only by a person and its own replies
+  # (step 4b, John: "hold them"); what it asked for is handed it inside a turn.
+  @puts_to_work [
+    :work_offer,
+    :resume,
+    :teammate_question,
+    :nudge,
+    :findings,
+    :issue_filed,
+    :cadence,
+    :teammate_stalled,
+    :teammate_died
+  ]
   @collects_when_back [:question_answered, :blocker_resolved]
 
   # Events that would start a turn through an `Agents.Waiting` path.
-  @waits [:work_offer, :teammate_question, :question_answered, :blocker_resolved, :resume, :nudge]
+  @waits [
+    :work_offer,
+    :teammate_question,
+    :question_answered,
+    :blocker_resolved,
+    :resume,
+    :nudge,
+    :teammate_stalled,
+    :teammate_died
+  ]
 
   @states for on <- [:on, :off, :retired, :stopped],
               continuous <- [true, false],
@@ -148,6 +178,31 @@ defmodule CodeMySpec.Agents.WakeTest do
 
     busy = put_state(idle, %{on: :on, continuous: false, waiting: false, in_turn: true})
     assert :ok = Wake.allow?(ctx.scope, busy, :question_answered)
+  end
+
+  # Step 4b: a teammate stalling or dying, or asking, wakes main past its own
+  # open question to the user (John).
+  test "main's own open question does not hold a teammate's stall, death or question", ctx do
+    main =
+      put_state(ctx.agents.main, %{on: :on, continuous: true, waiting: false, in_turn: false})
+
+    {:ok, _} =
+      CodeMySpec.Notifications.create_agent_question_request(
+        ctx.scope,
+        main.id,
+        %{
+          "title" => "Which way",
+          "holder" => "user",
+          "questions" => [%{"question" => "Which way?", "options" => []}]
+        },
+        nil
+      )
+
+    assert {:hold, :question_pending} = Wake.allow?(ctx.scope, main, :nudge)
+
+    for event <- [:teammate_stalled, :teammate_died, :teammate_question] do
+      assert :ok = Wake.allow?(ctx.scope, main, event), inspect(event)
+    end
   end
 
   test "a hold answers as the delivery paths always have" do

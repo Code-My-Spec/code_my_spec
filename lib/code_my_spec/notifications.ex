@@ -1054,6 +1054,53 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
+  @doc """
+  The asker takes back its own pending question, with a reason (8c91d5bc).
+
+  A question that went moot otherwise held its task until somebody answered
+  something nobody needed answered. Withdrawn closes it everywhere a pending
+  question is read, and releases the task it blocked through the one blocker
+  path, `TaskOwner.blocker_resolved/3`. Who the asker is, is the caller's to
+  check. Answers `{:ok, request, released_count}`.
+  """
+  @spec withdraw_question_request(String.t(), String.t()) ::
+          {:ok, QuestionRequest.t(), non_neg_integer()} | {:error, term()}
+  def withdraw_question_request(id, reason) when is_binary(id) and is_binary(reason) do
+    case String.trim(reason) do
+      "" -> {:error, :needs_a_reason}
+      reason -> withdraw(id, reason)
+    end
+  end
+
+  defp withdraw(id, reason) do
+    result =
+      Repo.transaction(fn ->
+        from(q in QuestionRequest, where: q.id == ^id, lock: "FOR UPDATE")
+        |> Repo.one()
+        |> withdraw_locked(reason)
+        |> case do
+          {:ok, updated} -> updated
+          {:error, refusal} -> Repo.rollback(refusal)
+        end
+      end)
+
+    with {:ok, updated} <- result do
+      broadcast_notifications_changed(updated.user_id)
+      {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :withdrawn)
+      {:ok, updated, released}
+    end
+  end
+
+  defp withdraw_locked(nil, _reason), do: {:error, :not_found}
+
+  defp withdraw_locked(%{status: "pending"} = request, reason) do
+    request
+    |> QuestionRequest.changeset(%{status: "withdrawn", withdrawn_reason: reason})
+    |> Repo.update()
+  end
+
+  defp withdraw_locked(%{status: status}, _reason), do: {:error, {:already_resolved, status}}
+
   # An answer that says nothing is not an answer, and as an override it is
   # destructive.
   #
@@ -1221,7 +1268,8 @@ defmodule CodeMySpec.Notifications do
       %{status: "pending"} = request ->
         finish(request, answers, answered_by, false)
 
-      %{status: "answered", answered_by: "main_agent"} = request when answered_by == "user" ->
+      %{status: "answered", answered_by: agent} = request
+      when agent in ~w(main_agent product_agent) and answered_by == "user" ->
         finish(request, answers, answered_by, true)
 
       %{status: status} ->

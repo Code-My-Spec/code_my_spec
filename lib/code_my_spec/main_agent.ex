@@ -452,7 +452,11 @@ defmodule CodeMySpec.MainAgent do
   agent to wake, which is ordinary rather than an error.
   """
   @spec check_in(Scope.t()) :: {:ok, String.t()} | {:error, String.t()}
-  def check_in(%Scope{} = scope), do: deliver_check_in(scope, Cadence.digest(scope))
+  def check_in(%Scope{} = scope), do: check_in(scope, Cadence.digest(scope))
+
+  @doc "`check_in/1` on a digest already built."
+  @spec check_in(Scope.t(), Digest.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def check_in(%Scope{} = scope, %Digest{} = digest), do: deliver_check_in(scope, digest)
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
@@ -549,10 +553,23 @@ defmodule CodeMySpec.MainAgent do
   def answer_question(%Scope{} = scope, question_id, answer, opts \\ []) do
     with {:ok, question} <- QuestionsRepository.fetch_open_question(scope, question_id),
          :ok <- answerable(question) do
-      case within_scope(question, opts) do
-        :ok -> weigh(scope, question, answer, opts)
-        refusal -> refusal
-      end
+      answer_as(Keyword.get(opts, :by), scope, question, answer, opts)
+    end
+  end
+
+  # The product agent answers the criteria questions routed to it (8c91d5bc) as
+  # their owner: its answer is the decision, as the user's is, so it is not
+  # weighed against the records. Only its own: any other question is main's or
+  # the user's.
+  defp answer_as(:product, scope, %{holder: "product_agent"} = question, answer, opts),
+    do: settle(scope, question, answer, Keyword.put(opts, :answered_by, "product_agent"))
+
+  defp answer_as(:product, _scope, _question, _answer, _opts), do: {:error, :not_yours}
+
+  defp answer_as(_main, scope, question, answer, opts) do
+    case within_scope(question, opts) do
+      :ok -> weigh(scope, question, answer, opts)
+      refusal -> refusal
     end
   end
 
@@ -625,9 +642,18 @@ defmodule CodeMySpec.MainAgent do
         settle(scope, question, attribute(answer, basis), opts)
 
       {:error, reason} ->
-        {:ok, _escalated} = escalate_question(scope, question.id, why(reason))
+        :ok = escalate_unless_with_user(scope, question, reason)
         {:error, reason}
     end
+  end
+
+  # Main may answer a question already with the user (8c91d5bc). One it cannot
+  # stand up stays as it was, with the reason it was sent up.
+  defp escalate_unless_with_user(_scope, %{holder: "user"}, _reason), do: :ok
+
+  defp escalate_unless_with_user(scope, question, reason) do
+    {:ok, _escalated} = escalate_question(scope, question.id, why(reason))
+    :ok
   end
 
   defp why(:no_basis),
@@ -1109,9 +1135,10 @@ defmodule CodeMySpec.MainAgent do
 
   defp settle(scope, question, answer, opts) do
     answers = Map.new(question.questions, fn q -> {MapAccess.get(q, :question), answer} end)
+    answered_by = Keyword.get(opts, :answered_by, "main_agent")
 
     with {:ok, answered} <-
-           Notifications.answer_question_request(question.id, answers, answered_by: "main_agent") do
+           Notifications.answer_question_request(question.id, answers, answered_by: answered_by) do
       note_gap(scope, question, Keyword.get(opts, :worked_around))
       {:ok, answered}
     end
@@ -1351,18 +1378,45 @@ defmodule CodeMySpec.MainAgent do
   a question with no agent came from Claude Code, which talks to the person
   directly.
   """
-  @spec holder_for(Scope.t(), String.t() | nil) :: String.t()
-  def holder_for(%Scope{}, nil), do: "user"
+  @spec holder_for(Scope.t(), String.t() | nil, String.t() | nil) :: String.t()
+  def holder_for(scope, agent_id, about \\ nil)
 
-  def holder_for(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+  def holder_for(%Scope{}, nil, _about), do: "user"
+
+  def holder_for(%Scope{} = scope, agent_id, about) when is_binary(agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
-      {:ok, %{role: role}} -> holder(RoleProfile.questions_to(role))
+      {:ok, agent} -> routed(scope, agent, about)
       {:error, _reason} -> "user"
     end
   end
 
+  # 8c91d5bc: a question the asker marks as about a story's criteria or spec
+  # goes to the product agent, which owns them, rather than up the chain to a
+  # customer. Only when one is running to take it; the asker's field, never a
+  # reading of its prose.
+  defp routed(scope, %Agent{role: role} = agent, "criteria") when role != :product do
+    case product_agent(scope, agent.working_copy_id) do
+      %Agent{} -> "product_agent"
+      nil -> holder(RoleProfile.questions_to(role))
+    end
+  end
+
+  defp routed(_scope, %Agent{role: role}, _about), do: holder(RoleProfile.questions_to(role))
+
   defp holder(:user), do: "user"
   defp holder(:main), do: "main_agent"
+
+  @doc "The holder value a role answers as, or nil for a role that answers none."
+  @spec holder_of(atom() | nil) :: String.t() | nil
+  def holder_of(:main), do: "main_agent"
+  def holder_of(:product), do: "product_agent"
+  def holder_of(_role), do: nil
+
+  # The product agent on the asker's checkout if there is one, else any.
+  defp product_agent(scope, near_copy_id) do
+    products = scope |> Agents.list_running() |> Enum.filter(&(&1.role == :product))
+    Enum.find(products, &(&1.working_copy_id == near_copy_id)) || List.first(products)
+  end
 
   @doc """
   Reconsider the existing main agent when a durable question arrives.
@@ -1372,6 +1426,16 @@ defmodule CodeMySpec.MainAgent do
   turn completion reconsider it without queueing stale eligibility signals.
   """
   @spec question_raised(Scope.t(), map()) :: :ok
+  def question_raised(%Scope{} = scope, %{agent_id: agent_id, holder: "product_agent"})
+      when is_binary(agent_id) do
+    with {:ok, asker} <- Agents.fetch_agent(scope, agent_id),
+         %Agent{} = product <- product_agent(scope, asker.working_copy_id) do
+      Work.request_turn_if_runnable(scope, product, :question_raised, :teammate_question)
+    end
+
+    :ok
+  end
+
   def question_raised(%Scope{} = scope, %{agent_id: agent_id})
       when is_binary(agent_id) do
     case main_agent_other_than(scope, agent_id) do

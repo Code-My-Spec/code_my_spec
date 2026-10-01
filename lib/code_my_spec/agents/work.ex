@@ -577,10 +577,13 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
-  # `:teammate_question` — the main agent (story 1052).
+  # `:teammate_question` — the main agent (story 1052), and product for the
+  # criteria questions routed to it (8c91d5bc). Each wakes for its own holder.
   defp question_work?(scope, %{role: role}) do
-    RoleProfile.wakes_on?(role, :teammate_question) and
-      Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
+    holder = MainAgent.holder_of(role)
+
+    RoleProfile.wakes_on?(role, :teammate_question) and not is_nil(holder) and
+      Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == holder))
   end
 
   # `list_notifications` is code mode, like most of the catalogue — a main agent
