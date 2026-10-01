@@ -150,6 +150,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   defp understaffed?(copy, agents, off),
     do: Agents.empty_seats(agents ++ off, Agents.home_roles(copy)) != []
 
+  # Since step 4c: main and product on the main copy, coding and QA elsewhere.
+  defp home_roles_text(copy),
+    do: copy |> Agents.home_roles() |> Enum.map_join(" and ", &role_name/1)
+
+  defp role_name(:qa), do: "QA"
+  defp role_name(role), do: to_string(role)
+
   defp roster(agents) do
     case Enum.map(agents, &to_string(&1.role)) do
       [one] -> "a #{one} agent"
@@ -496,8 +503,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           exist. --%>
           <p :if={@row.agents == []} data-test="no-agents" class="py-10 text-center opacity-60">
             Nothing is running on this copy. <strong>Staff it</strong>
-            starts one agent per role — product, coding and QA — in this checkout.
-            Approving an epic onto a copy does the same thing.
+            starts its {home_roles_text(@row.harness)} agents in this checkout.
+            <span :if={not @row.harness.main}>
+              Approving an epic onto a copy does the same thing.
+            </span>
           </p>
 
           <%!-- `data-agent-id` carries identity, not just role. "The same three

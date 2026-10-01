@@ -87,7 +87,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
     """
     Agent: #{work.agent_id}
       role: #{work.role}
-      working copy: #{work.working_copy_id}#{root(work)}
+      working copy: #{work.working_copy_id}#{root(work)}#{designing(work)}
       #{holding(work)}
       last said: #{moment(work.last_said_at)}
       in flight: #{in_flight(work)}
@@ -99,6 +99,10 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
 
   defp root(%AgentWork{working_copy_root: nil}), do: ""
   defp root(%AgentWork{working_copy_root: root}), do: " #{root}"
+
+  # Product's epic before dispatch; main is the one who dispatches it.
+  defp designing(%AgentWork{designing: nil}), do: ""
+  defp designing(%AgentWork{designing: name}), do: "\n  designing: #{name}"
 
   # What the agent has in hand, and the two kinds of nothing.
   #

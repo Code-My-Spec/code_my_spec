@@ -18,10 +18,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop do
 
   ## Per copy, because that is the unit somebody decides about
 
-  A checkout is working or it is not. The three roles staffed on it each carry
-  their own mode, so a later change can let the coding agent go home when coding
-  work runs out while product carries on (R6) — but nobody wants to switch three
-  agents on one at a time.
+  A checkout is working or it is not. The roles staffed on it each carry their
+  own mode, so a later change can let the coding agent go home when coding work
+  runs out while QA carries on (R6) — but nobody wants to switch agents on one
+  at a time.
 
   ## Stopping is not killing
 

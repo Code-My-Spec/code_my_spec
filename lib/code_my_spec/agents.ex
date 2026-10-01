@@ -366,6 +366,8 @@ defmodule CodeMySpec.Agents do
   def retire_agent(%Scope{} = scope, id, opts \\ []) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          {:ok, retired} <- record_retired(scope, agent, opts) do
+      :ok = hand_off_questions(scope, retired)
+
       case end_process(scope, retired) do
         :ok ->
           {:ok, stopped} = record_stopped(scope, retired, :stopped)
@@ -377,6 +379,43 @@ defmodule CodeMySpec.Agents do
           {:ok, retired, {:unreachable, machine_of(retired)}}
       end
     end
+  end
+
+  # A retired agent's open questions would orphan: the answer is delivered to
+  # an agent that will never read it. They go to its successor in the role —
+  # the main copy's, then any other live one — or to main, unchanged otherwise.
+  # Schemaless because `Notifications`, which owns the row, depends on us.
+  defp hand_off_questions(scope, %Agent{id: id} = retired) do
+    case successor(scope, retired) do
+      nil ->
+        :ok
+
+      %Agent{id: to} ->
+        import Ecto.Query, only: [from: 2]
+
+        from(q in "question_requests",
+          where: q.agent_id == type(^id, :binary_id) and q.status == "pending"
+        )
+        |> Repo.update_all(set: [agent_id: Ecto.UUID.dump!(to)])
+
+        :ok
+    end
+  end
+
+  defp successor(scope, %Agent{id: id, role: role}) do
+    live =
+      scope
+      |> AgentsRepository.list_agents()
+      |> Enum.filter(
+        &(&1.id != id and is_nil(&1.retired_at) and &1.status in [:starting, :running])
+      )
+
+    main_copy = WorkingCopies.main(scope)
+    same_role = Enum.filter(live, &(&1.role == role))
+
+    Enum.find(same_role, &(main_copy && &1.working_copy_id == main_copy.id)) ||
+      List.first(same_role) ||
+      main_agent(scope)
   end
 
   defp machine_of(%Agent{} = agent),
