@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story988.Criterion8201Spex do
   list forever. Filtering made that indistinguishable from a run merely
   in flight.
 
-  So the finding still blocks. What changed is that it is labelled — see 8197.
+  So the finding still blocks, labelled with the run that recorded it — see
+  8197. Since 28d72f8a that label is the run's commit and age, not "stale".
   """
 
   use CodeMySpecSpex.Case
@@ -81,7 +82,7 @@ defmodule CodeMySpecSpex.Story988.Criterion8201Spex do
         {:ok, context}
       end
 
-      then_ "the finding still blocks, and its source is marked stale", context do
+      then_ "the finding still blocks, and names the run that recorded it", context do
         result =
           use_cmd_cassette "clean", record: :none do
             Fixtures.validate_stop(context.scope, @validate_stop_opts)
@@ -94,11 +95,11 @@ defmodule CodeMySpecSpex.Story988.Criterion8201Spex do
                one edit made all four stale and nothing else could block either.
                """
 
-        assert message =~ "stale",
+        assert message =~ ~r/from the run[^\n]*finished \d+s ago/,
                """
                Blocking is only half of it. The agent has to be able to tell
-               this list predates its edit, or it re-fixes correct code — which
-               is drill 6.
+               which run this list came from, or it re-fixes correct code —
+               which is drill 6.
 
                #{message}
                """

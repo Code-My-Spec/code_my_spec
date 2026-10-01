@@ -19,6 +19,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.Deploy
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Users.Scope
 
   defp scope, do: %Scope{}
@@ -954,6 +955,276 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                    now: fn -> ~U[2026-08-03 02:00:00Z] end
                  )
                )
+    end
+  end
+
+  # Issue 0c1b5110: prod deployed, then uat's deploy of the same commit was
+  # killed mid-build by a server restart, before its `destroy` could run. The
+  # retry minutes later asked for the same deterministic name, got a 409, and
+  # refused the box as "too recent to be an abandoned run" — though no run
+  # held it any more. A builder is judged by whether its run still holds the
+  # project's RunLock, not by its age.
+  describe "build/3 — a builder judged by its run, not its age" do
+    # A Hetzner account in an Agent: a create collides on name the way the API
+    # does, a destroy removes the box, and every box remembers its labels.
+    defp fake_account(now) do
+      {:ok, account} = Agent.start_link(fn -> %{next_id: 100, servers: %{}} end)
+      owner = self()
+
+      create = fn _scope, name, create_opts ->
+        server = %{
+          "name" => name,
+          "created" => DateTime.to_iso8601(now.()),
+          "labels" => create_opts[:labels] || %{}
+        }
+
+        Agent.get_and_update(account, &account_create(&1, Map.has_key?(&1.servers, name), server))
+      end
+
+      destroy = fn _scope, id ->
+        send(owner, {:destroyed, id})
+
+        Agent.update(account, fn state ->
+          %{state | servers: Map.reject(state.servers, fn {_, s} -> s["id"] == id end)}
+        end)
+
+        {:ok, %{}}
+      end
+
+      find = fn _scope, name -> account_found(Agent.get(account, &Map.get(&1.servers, name))) end
+
+      list = fn _scope -> {:ok, Agent.get(account, &Map.values(&1.servers))} end
+
+      %{account: account, create: create, destroy: destroy, find: find, list: list}
+    end
+
+    defp account_create(state, true = _taken, _server),
+      do: {{:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error"}}}}, state}
+
+    defp account_create(state, false = _taken, server) do
+      server = Map.put(server, "id", state.next_id)
+
+      {{:ok, server},
+       %{
+         state
+         | next_id: state.next_id + 1,
+           servers: Map.put(state.servers, server["name"], server)
+       }}
+    end
+
+    defp account_found(nil), do: {:error, :not_found}
+    defp account_found(server), do: {:ok, server}
+
+    defp account_opts(account, overrides) do
+      Keyword.merge(
+        [
+          create: account.create,
+          destroy: account.destroy,
+          find: account.find,
+          list: account.list,
+          builder_image: "docker-ce",
+          build_fun: fn _scope, _server, _ref, arch ->
+            {:ok, %{reference: "img", architecture: arch}}
+          end,
+          now: fn -> ~U[2026-10-01 04:27:00Z] end
+        ],
+        overrides
+      )
+    end
+
+    defp project_scope, do: %Scope{active_project_id: Ecto.UUID.generate()}
+
+    defp servers(account), do: Agent.get(account.account, &Map.values(&1.servers))
+
+    defp kill(pid) do
+      ref = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}
+    end
+
+    # A run that starts a build and is then killed before it can finish —
+    # what a server restart does to the task holding the RunLock.
+    defp killed_mid_build(scope, ref, account, extra \\ []) do
+      test_pid = self()
+
+      blocking_build = fn _scope, server, _ref, _arch ->
+        send(test_pid, {:building, server["id"]})
+
+        receive do
+          :never -> :ok
+        end
+      end
+
+      pid =
+        spawn(fn ->
+          RunLock.with_lock(scope.active_project_id, fn ->
+            Builder.build(scope, ref, account_opts(account, [build_fun: blocking_build] ++ extra))
+          end)
+        end)
+
+      assert_receive {:building, id}
+      {pid, id}
+    end
+
+    test "prod then uat back to back: uat's retry clears the box its killed run left" do
+      scope = project_scope()
+      account = fake_account(fn -> ~U[2026-10-01 04:23:19Z] end)
+      ref = "2633473a5e14"
+
+      # prod deploys and finishes: its builder is destroyed, as it always was.
+      assert {:ok, _} =
+               RunLock.with_lock(scope.active_project_id, fn ->
+                 Builder.build(scope, ref, account_opts(account, architecture: :x86))
+               end)
+
+      assert servers(account) == []
+
+      # uat starts on the same commit and is killed mid-build by a restart.
+      {pid, uat_box} = killed_mid_build(scope, ref, account)
+      kill(pid)
+      assert [%{"id" => ^uat_box}] = servers(account)
+
+      # The retry, four minutes later. The box is young, but its run is gone.
+      log =
+        capture_log(fn ->
+          assert {:ok, build} =
+                   RunLock.with_lock(scope.active_project_id, fn ->
+                     Builder.build(scope, ref, account_opts(account, []))
+                   end)
+
+          assert build.builder_destroyed
+        end)
+
+      assert_received {:destroyed, ^uat_box}
+      assert servers(account) == []
+      assert log =~ "no longer in flight"
+    end
+
+    test "a builder whose run is still in flight is refused, however old it is" do
+      scope = project_scope()
+      account = fake_account(fn -> ~U[2026-10-01 01:00:00Z] end)
+      ref = "2633473a5e14"
+
+      {pid, live_box} = killed_mid_build(scope, ref, account)
+
+      # Hours later, by a caller outside the run (a drill, a manual retry):
+      # age alone would call this box abandoned.
+      assert {:error, {:orphaned_builder, message}} =
+               Builder.build(
+                 scope,
+                 ref,
+                 account_opts(account, now: fn -> ~U[2026-10-01 05:00:00Z] end)
+               )
+
+      assert message =~ "still in flight"
+      refute_received {:destroyed, ^live_box}
+      assert [%{"id" => ^live_box}] = servers(account)
+
+      kill(pid)
+    end
+
+    test "the box carries its owner: project, run and instance" do
+      scope = project_scope()
+      test_pid = self()
+
+      create = fn _scope, _name, create_opts ->
+        send(test_pid, {:labels, create_opts[:labels]})
+        {:ok, server()}
+      end
+
+      RunLock.with_lock(scope.active_project_id, fn ->
+        Builder.build(
+          scope,
+          "abc123",
+          opts(create: create, builder_image: "docker-ce", build_fun: build_fun())
+        )
+      end)
+
+      assert_received {:labels, labels}
+      assert labels["cms-builder-project"] == scope.active_project_id
+      assert is_binary(labels["cms-builder-run"])
+      assert labels["cms-builder-instance"] =~ ~r/^[0-9a-f]{12}$/
+    end
+
+    test "a box built outside any run carries no owner" do
+      test_pid = self()
+
+      create = fn _scope, _name, create_opts ->
+        send(test_pid, {:labels, create_opts[:labels]})
+        {:ok, server()}
+      end
+
+      Builder.build(
+        project_scope(),
+        "abc123",
+        opts(create: create, builder_image: "docker-ce", build_fun: build_fun())
+      )
+
+      assert_received {:labels, nil}
+    end
+
+    test "another instance's builder falls back to the age rule" do
+      scope = project_scope()
+      name = "builder-2633473a5e14"
+
+      foreign = %{
+        "id" => 999,
+        "name" => name,
+        "created" => "2026-10-01T04:23:19Z",
+        "labels" => %{
+          "cms-builder-project" => scope.active_project_id,
+          "cms-builder-run" => "0000000000000000",
+          "cms-builder-instance" => "000000000000"
+        }
+      }
+
+      create = fn _scope, _name, _opts ->
+        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error"}}}}
+      end
+
+      # No `:destroy` fake: destroying here would reach for real Hetzner.
+      assert {:error, {:orphaned_builder, message}} =
+               RunLock.with_lock(scope.active_project_id, fn ->
+                 Builder.build(
+                   scope,
+                   "2633473a5e14",
+                   Keyword.merge(
+                     opts(create: create, find: fn _scope, ^name -> {:ok, foreign} end),
+                     builder_image: "docker-ce",
+                     now: fn -> ~U[2026-10-01 04:27:00Z] end
+                   )
+                 )
+               end)
+
+      assert message =~ "too recent"
+    end
+
+    test "a server-limit refusal reaps a young box whose run is gone, never a live one" do
+      scope = project_scope()
+      other_scope = project_scope()
+      account = fake_account(fn -> ~U[2026-10-01 04:23:19Z] end)
+
+      {dead, dead_box} = killed_mid_build(scope, "deadbeef0000", account)
+      kill(dead)
+      {live, live_box} = killed_mid_build(other_scope, "1111aaaa2222", account)
+
+      create =
+        create_once_then(
+          {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}},
+          {:ok, server()}
+        )
+
+      capture_log(fn ->
+        assert {:ok, _} =
+                 RunLock.with_lock(scope.active_project_id, fn ->
+                   Builder.build(scope, "abc123", account_opts(account, create: create))
+                 end)
+      end)
+
+      assert_received {:destroyed, ^dead_box}
+      refute_received {:destroyed, ^live_box}
+
+      kill(live)
     end
   end
 end

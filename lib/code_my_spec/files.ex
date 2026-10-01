@@ -7,10 +7,6 @@ defmodule CodeMySpec.Files do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
-      # `stale_analyzers/2` marks an analyzer's results stale the moment a
-      # file it reads changes. `Analysis` already depends back on `Files` to
-      # read what changed, so this is a real mutual dependency, not a slip.
-      CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
       CodeMySpec.Documents,
@@ -555,8 +551,7 @@ defmodule CodeMySpec.Files do
   # One list, two readers: `on_conflict` below and `FileSync.changed_entries/2`
   # via `replaceable_fields/0`. They have to agree, and a pair that has to agree
   # with nothing linking them is how most of this system's quiet bugs have
-  # started — `@role_analyzers` against `Fingerprint.@source_roles`, the
-  # generators fixture against `DeployBoilerplate.@files`, `@configurable_sources`
+  # started — the generators fixture against `DeployBoilerplate.@files`, `@configurable_sources`
   # against `Run.@sources`. A field added here is compared from the moment it is
   # added.
   #

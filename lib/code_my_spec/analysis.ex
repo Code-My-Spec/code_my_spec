@@ -5,15 +5,15 @@ defmodule CodeMySpec.Analysis do
 
   Analyzer sources (`compiler`, `credo`, `exunit`, `spex`) execute as
   supervised background jobs, serialized per project, with results reconciled
-  into Problems and recorded in the `analysis_runs` ledger. A completed
-  `:full` run whose input fingerprint matches the current Files state means
-  the persisted Problems for that source are current — nothing re-runs on
-  unchanged code.
+  into Problems and recorded in the `analysis_runs` ledger. The latest
+  completed `:full` run answers for its source, however old; whether it ran at
+  a given commit is `Run.at_commit?/2`, which the promote gate reads
+  (28d72f8a).
 
   Entry points:
 
-  - `ensure_stale_runs/3` — stop hook: enqueue whatever's stale, return
-    immediately.
+  - `ensure_stale_runs/3` — stop hook: enqueue what the stop calls for,
+    return immediately.
   - `await_run/4` — model-invoked (`mix test` rewrite) and MCP callers:
     join-or-start, block until finished, get the run back with output.
   - `runs_in_flight?/1`, `status/1` — decision + UI gauge reads.
@@ -63,7 +63,6 @@ defmodule CodeMySpec.Analysis do
 
   alias CodeMySpec.Analysis.{
     Execution,
-    Fingerprint,
     HarnessRegistry,
     ProjectServer,
     Reconciler,
@@ -72,7 +71,6 @@ defmodule CodeMySpec.Analysis do
     RunsRepository
   }
 
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   # `:async` (default) runs jobs through the per-project ProjectServer —
@@ -102,10 +100,9 @@ defmodule CodeMySpec.Analysis do
 
   Each request is a source string (canonical full run) or a
   `{source, args}` tuple (e.g. credo scoped to the turn's changed files).
-  Requests with path-like args are `:partial` — they always enqueue (a scoped
-  run is never fresh-making, so there's nothing to memoize against). Full
-  requests are memo-skipped when a completed run matches the current input
-  fingerprint.
+  Requests with path-like args are `:partial`. A stop with changed files runs
+  every request; a quiet stop (`only_failed`) runs only what has nothing to
+  show — see `needs_run?/4`.
 
   Returns `%{enqueued: [source], memoized: [source]}` immediately; jobs run
   in the background and reconcile Problems as they land.
@@ -114,53 +111,50 @@ defmodule CodeMySpec.Analysis do
 
   - `:notify` (default `true`) — push a notification when a run lands
     blocking problems (the agent may have stopped by then).
-  - `:only_failed` (default `false`) — enqueue only sources whose latest run
-    `:failed` (crash/timeout/superseded recovery). Used by no-changed-files
-    stops so they stay quiet unless there's something to heal.
+  - `:only_failed` (default `false`) — enqueue only sources with no completed
+    run, or whose latest run `:failed` (crash/timeout/superseded recovery).
+    Used by no-changed-files stops so they stay quiet unless there's something
+    to heal.
   - cassette escape hatches (`:compile_output_file`, `:exunit_output_file`,
     `:spex_output_file`, `:credo_output_file`) pass through to the runners.
   """
   @spec ensure_stale_runs(Scope.t(), [String.t() | {String.t(), [String.t()]}], keyword()) ::
           %{enqueued: [String.t()], memoized: [String.t()]}
   def ensure_stale_runs(%Scope{} = scope, requests, opts \\ []) do
-    fingerprints = Fingerprint.current(scope)
     latest = RunsRepository.latest_full_runs(scope)
     only_failed = Keyword.get(opts, :only_failed, false)
 
-    {stale, memoized} = plan_runs(requests, fingerprints, latest, only_failed)
+    {stale, memoized} = plan_runs(requests, latest, only_failed)
 
     Enum.each(stale, fn {source, args} ->
-      job = build_job(source, args, fingerprints[source], opts)
+      job = build_job(source, args, opts)
       dispatch(scope, job)
     end)
 
-    stale_sources = Enum.map(stale, &elem(&1, 0))
+    enqueued = Enum.map(stale, &elem(&1, 0))
     memoized_sources = Enum.map(memoized, &elem(&1, 0))
 
-    if stale_sources != [],
-      do: Logger.info("[Analysis] enqueued: #{Enum.join(stale_sources, ", ")}")
+    if enqueued != [],
+      do: Logger.info("[Analysis] enqueued: #{Enum.join(enqueued, ", ")}")
 
     if memoized_sources != [],
-      do: Logger.info("[Analysis] skipped (current): #{Enum.join(memoized_sources, ", ")}")
+      do: Logger.info("[Analysis] skipped (quiet stop): #{Enum.join(memoized_sources, ", ")}")
 
-    %{enqueued: stale_sources, memoized: memoized_sources}
+    %{enqueued: enqueued, memoized: memoized_sources}
   end
 
   @doc """
   Which of `requests` need running, split from those that do not.
 
-  Public so the property that matters can be asserted without dispatching:
-  what this decides must agree with `fresh_sources/2`. They did not, and the
-  disagreement was a livelock — see `needs_run?/5`.
+  Public so the property that matters can be asserted without dispatching.
+  `latest` is `RunsRepository.latest_full_runs/1`.
   """
-  @spec plan_runs([term()], map(), map(), boolean()) :: {list(), list()}
-  def plan_runs(requests, fingerprints, latest, only_failed) do
+  @spec plan_runs([term()], map(), boolean()) :: {list(), list()}
+  def plan_runs(requests, latest, only_failed) do
     requests
     |> Enum.map(&normalize_request/1)
     |> order_compile_first()
-    |> Enum.split_with(fn {source, args} ->
-      needs_run?(source, args, fingerprints, latest, only_failed)
-    end)
+    |> Enum.split_with(fn {source, _args} -> needs_run?(source, latest, only_failed) end)
   end
 
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
@@ -168,67 +162,37 @@ defmodule CodeMySpec.Analysis do
   defp normalize_request(source) when is_binary(source),
     do: {source, Map.fetch!(@full_args, source)}
 
-  # A stop with changed files re-runs everything. The old fingerprint memo
-  # skipped sources whose inputs hadn't moved, which saved little (the work is
-  # async and off the critical path) and cost a lot: a skipped source left
+  # A stop with changed files re-runs everything. A skipped source would leave
   # last run's Problems in place with no run to explain them.
   #
-  # `only_failed` survives because it is a different question — a stop with NO
-  # changed files stays quiet entirely, re-enqueuing only sources whose last
-  # run crashed or timed out.
-  # On a quiet stop, compiler also re-runs when another source was skipped
-  # *because of* compiler errors — only a compiler run can clear them.
+  # A stop with NO changed files (`only_failed`) stays quiet unless something
+  # has nothing to show: a source that has never completed a run (it could
+  # never bootstrap otherwise — compiler and credo sat runless on a real
+  # project and `tests_passing` never went green), or whose latest run failed.
   #
-  # Without this the pipeline deadlocks: a stale compiler error makes exunit
-  # skip, a skipped run finishes `:failed` (never `:completed`), `only_failed`
-  # re-enqueues exunit but not compiler, so nothing can clear the error.
-  # exunit re-runs and re-skips on every stop while `tests_passing` waits
-  # forever for a completed run — even though `mix test` passes clean by hand.
+  # Not keyed on the tree. It used to compare input fingerprints, and that is
+  # gone with the rest of fingerprint freshness (28d72f8a). Nor on the commit:
+  # the server does not know a copy's HEAD at stop time — a commit is measured
+  # live when something needs one, and the promote gate starts its own runs at
+  # HEAD. A quiet stop has no edits for a rerun to see.
   #
-  # Scoped to the skip case on purpose: a quiet stop with nothing skipped must
-  # still block on a genuinely outstanding compile error without re-running
-  # anything (criterion 6077).
-  # A source that has never run is stale, not current.
-  #
-  # `only_failed` asks for "re-run what broke", and a missing run matched
-  # neither the failed clause nor anything else — so a source with no run was
-  # treated as up to date and skipped, forever. It could not bootstrap: no run
-  # meant no enqueue, and no enqueue meant no run.
-  #
-  # compiler and credo were caught by it on a real project. Nothing errored;
-  # `tests_passing` simply never went green, which blocked every story's
-  # qa_complete, which emptied next_actionable, which told an unattended agent
-  # there was nothing left to do while ten stories sat unQA'd. `stale?/3`
-  # already got this right with its `_ -> true`.
-  # `only_failed` meant "the latest run completed, so there is nothing to redo".
-  # Status is not evidence about the tree. A run can have completed perfectly
-  # against a tree that has since moved, which is exactly the state after the
-  # agent fixes the finding it was blocked on — and `fresh_sources/2`, which the
-  # stop hook uses, reads the fingerprint and calls that stale.
-  #
-  # So both were reachable at once and contradicted each other:
-  #
-  #     [Analysis] skipped (current): compiler, credo, exunit, spex
-  #     credo (1) — stale, last ran 19m ago … A rerun is in flight now (credo)
-  #
-  # Nothing was in flight, the timestamp never moved, and the hook's advice —
-  # stop again and let the rerun replace these — could not succeed. Following it
-  # loops; the alternative is re-editing code that is already correct
-  # (`1f60a145`).
-  #
-  # `stale?/3` is what `status/1` already uses, so the two answers now come from
-  # one comparison. `only_failed` keeps its meaning — do not redo work for an
-  # unchanged tree — and loses the part that was never true, that an unchanged
-  # status implies an unchanged tree.
-  defp needs_run?("compiler", _args, fingerprints, latest, true) do
-    stale?("compiler", fingerprints, latest) or
+  # Compiler also re-runs when another source was skipped *because of* compiler
+  # errors — only a compiler run can clear them. Without this the pipeline
+  # deadlocks: a compiler error makes exunit skip, a skipped run finishes
+  # `:failed`, `only_failed` re-enqueues exunit but not compiler, and nothing
+  # can clear the error. Scoped to the skip case on purpose: a quiet stop with
+  # nothing skipped must still block on an outstanding compile error without
+  # re-running anything (criterion 6077).
+  defp needs_run?("compiler", latest, true) do
+    nothing_to_show?(latest["compiler"]) or
       Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
   end
 
-  defp needs_run?(source, _args, fingerprints, latest, true),
-    do: stale?(source, fingerprints, latest)
+  defp needs_run?(source, latest, true), do: nothing_to_show?(latest[source])
+  defp needs_run?(_source, _latest, _only_failed), do: true
 
-  defp needs_run?(_source, _args, _fingerprints, _latest, _only_failed), do: true
+  defp nothing_to_show?(%Run{status: :completed}), do: false
+  defp nothing_to_show?(_run), do: true
 
   # `Reconciler.fail/2` stamps the reason into `stats["error"]`.
   defp skipped_for_compile_errors?(%Run{status: :failed, stats: %{"error" => err}})
@@ -246,7 +210,7 @@ defmodule CodeMySpec.Analysis do
   @spec start_run(Scope.t(), String.t(), [String.t()], keyword()) ::
           {:ok, :started | :joined | :skipped, integer()} | {:error, term()}
   def start_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
-    job = build_job(source, args, Fingerprint.current(scope, source), opts)
+    job = build_job(source, args, opts)
 
     case remote_executor(scope) do
       {:ok, channel} ->
@@ -290,8 +254,7 @@ defmodule CodeMySpec.Analysis do
   @spec await_run(Scope.t(), String.t(), [String.t()], keyword()) ::
           {:ok, Run.t()} | {:error, term()}
   def await_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
-    fingerprint = Fingerprint.current(scope, source)
-    job = build_job(source, args, fingerprint, Keyword.put(opts, :notify, false))
+    job = build_job(source, args, Keyword.put(opts, :notify, false))
 
     # `dispatch/2` has always chosen between here and the harness; this did not,
     # and ran everything locally. On a light harness that means the analyzer runs
@@ -457,24 +420,10 @@ defmodule CodeMySpec.Analysis do
        }}
     )
 
-    # And to the graph, because a run finishing changes what the graph says.
-    #
-    # `tests_passing` and `bdd_specs_passing` are served through an analysis
-    # freshness qualifier that *downgrades only* — a clean verdict is withheld
-    # while the run behind it is stale, and never restored. Freshness is
-    # deliberately absent from the per-entity fingerprint (criterion 3448: four
-    # project-wide booleans made every component stale at once), so nothing
-    # marks those entities for recompute either. Measured: a component's
-    # `tests_passing` stays `false` after the analyzer completes, and the stale
-    # diff reports nothing wrong, because by its own terms nothing is.
-    #
-    # This was dropped once on the grounds that a stop hook records a run every
-    # agent turn, so announcing woke every role every turn. That was true while
-    # announcing and waking were the same act. They are not any more — a pass
-    # now wakes only for work that *appeared* — so this recomputes every turn,
-    # which is cheap and per-entity, and wakes nobody unless the run genuinely
-    # unblocked something.
-    GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [], :this_checkout)
+    # Not to the graph: `Reconciler.reconcile/4` tells it, once, on the success
+    # path, and only for spex — the one source a requirement reads (28d72f8a).
+    # A failed run changes nothing a requirement reads.
+    :ok
   end
 
   @doc """
@@ -1078,16 +1027,16 @@ defmodule CodeMySpec.Analysis do
     do: " (spared #{length(claimed)} the harness still holds: #{inspect(claimed)})"
 
   @doc """
-  Per-source gauge state for the UI and the freshness check.
+  Per-source gauge state for the UI and the wait summary.
 
-  Returns `%{source => %{state, run}}` where state is `:running`, `:fresh`
-  (completed at the current fingerprint), `:stale` (inputs changed since),
-  or `:failed` (last run crashed/was skipped). Sources with no run are
-  `:stale`.
+  Returns `%{source => %{state, run}}` where state is `:running`, `:completed`
+  (the latest full run completed), `:failed` (it crashed or was skipped), or
+  `:none` (no full run yet). Nothing here says whether a run is current — the
+  latest completed run answers, and the promote gate is keyed on the commit
+  (28d72f8a).
   """
   @spec status(Scope.t()) :: %{String.t() => %{state: atom(), run: Run.t() | nil}}
   def status(%Scope{} = scope) do
-    fingerprints = Fingerprint.current(scope)
     latest = RunsRepository.latest_full_runs(scope)
     running = in_flight(scope)
 
@@ -1095,9 +1044,9 @@ defmodule CodeMySpec.Analysis do
       state =
         cond do
           source in running -> :running
-          not stale?(source, fingerprints, latest) -> :fresh
-          match?(%{status: :failed}, latest[source]) -> :failed
-          true -> :stale
+          match?(%Run{status: :completed}, latest[source]) -> :completed
+          match?(%Run{status: :failed}, latest[source]) -> :failed
+          true -> :none
         end
 
       {source, %{state: state, run: latest[source]}}
@@ -1105,54 +1054,10 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Which of `sources` are fresh, in one pass over the file ledger.
-
-  Same answer as `fresh?/2` per source, and the reason to prefer it is cost.
-  `Fingerprint.current/2` loads **every file row for the working copy** — 4,544
-  on this project — and `fresh?/2` calls it once per source. The stop hook asks
-  about every source that has problems, so a turn spent four or five full loads
-  of the same table to compute four hashes of it.
-
-  `Fingerprint.current/1` has always computed all four sources from a single
-  load. This is that, plus the per-source `latest_completed_run/2` lookups,
-  which are indexed and cheap.
-
-  Deliberately not built on `status/1`, which looks like it answers this and
-  does not: it reads `latest_full_runs/1` and treats a failed newest run as
-  stale, where `fresh?/2` skips failures to find the newest run that actually
-  *answered*. That distinction is load-bearing — a duplicate enqueue refused as
-  "already queued" must not make a good result stale — so this keeps
-  `fresh?/2`'s lookup and only shares the fingerprinting.
-  """
-  @spec fresh_sources(Scope.t(), [String.t()]) :: MapSet.t(String.t())
-  def fresh_sources(%Scope{} = scope, sources) when is_list(sources) do
-    fingerprints = Fingerprint.current(scope)
-
-    for source <- sources,
-        %Run{} = run <- [RunsRepository.latest_completed_run(scope, source)],
-        run_answers_for?(run, Map.get(fingerprints, source)),
-        into: MapSet.new(),
-        do: source
-  end
-
-  @doc "Is `source`'s last completed run current for today's inputs?"
-  @spec fresh?(Scope.t(), String.t()) :: boolean()
-  def fresh?(%Scope{} = scope, source) do
-    # The latest run that *answered*, not the latest run. A failure — including
-    # a duplicate enqueue refused as "already queued" — cannot make a good
-    # result stale, and used to, because this took the newest row of any status
-    # and then required `:completed`.
-    case RunsRepository.latest_completed_run(scope, source) do
-      %Run{} = run -> run_answers_for?(run, Fingerprint.current(scope, source))
-      _ -> false
-    end
-  end
-
-  @doc """
   The latest run of `source` that produced an answer, or nil.
 
-  The same run `fresh?/2` judges staleness from, exposed because anything
-  reporting *about* that staleness — how old it is, how long it took — has to
+  The run that answers for `source`, however old (28d72f8a). Anything
+  reporting *about* that answer — how old it is, which commit — has to
   describe the same run. Reading the age off `status/1` instead meant the label
   and the number came from different rows whenever the newest run had failed,
   which is the common case: a failure lands sooner than the retry that succeeds.
@@ -1160,6 +1065,10 @@ defmodule CodeMySpec.Analysis do
   @spec latest_answer(Scope.t(), String.t()) :: Run.t() | nil
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
+
+  @doc "Whether `source` has a completed full run on this copy — anything that answers for it."
+  @spec answered?(Scope.t(), String.t()) :: boolean()
+  defdelegate answered?(scope, source), to: RunsRepository
 
   @doc """
   `source`'s latest completed run on this copy when it answers for `commit`
@@ -1195,55 +1104,17 @@ defmodule CodeMySpec.Analysis do
 
   # -- Internals --
 
-  defp stale?(source, fingerprints, latest) do
-    case latest[source] do
-      %Run{status: :completed} = run -> not run_answers_for?(run, fingerprints[source])
-      _ -> true
-    end
-  end
-
-  # Does this run's answer describe `current`?
-  #
-  # Two fingerprints are recorded and only one was ever read. `input_fingerprint`
-  # is stamped at enqueue — the tree we *asked* about. `completed_fingerprint` is
-  # stamped at reconcile — the tree the run *answered* about. The reconciler has
-  # written both since 7a7eed33 and called out the distinction as "the difference
-  # between a result that waiting will refresh and one that no amount of waiting
-  # can". Nothing consumed it.
-  #
-  # Judging on input alone is what no amount of waiting fixes. The ordinary
-  # sequence is: edit code, a stop enqueues a run at F1, keep working, the run
-  # reads the edited files and completes at F2. Its answer describes F2 and it is
-  # marked stale against F1 forever, so the next stop enqueues another run, which
-  # the next edit invalidates in the same way. For any analyzer slower than the
-  # edit rate that never converges — story 896 sat green through four sweeps
-  # unable to latch, and `Coverage`'s moduledoc records the same trap for exunit
-  # at ~2m20s.
-  #
-  # Either matching is enough:
-  #
-  #   input == current      nothing moved between ask and now
-  #   completed == current  the tree at answer time is the tree now
-  #
-  # The second is the weaker claim — a run spanning an edit read some files
-  # before it and some after, so its answer is a mixture — and it is the one that
-  # terminates. The mixture is bounded by the fact that anything the run got
-  # wrong shows up as a problem on the next sweep, whereas the alternative is a
-  # gate that cannot be passed by doing the work correctly.
-  defp run_answers_for?(run, current), do: Run.answers_for?(run, current)
-
   # Compile first: it's the cheapest signal and every other source
   # short-circuits on its errors.
   defp order_compile_first(requests) do
     Enum.sort_by(requests, fn {source, _args} -> source != "compiler" end)
   end
 
-  defp build_job(source, args, fingerprint, opts) do
+  defp build_job(source, args, opts) do
     %{
       source: source,
       args: args,
       kind: kind_for(args),
-      fingerprint: fingerprint,
       # Who asked, carried as a plain value from here rather than read back
       # off `Logger.metadata()` at the point a Run row gets written: that
       # metadata is per-process, and `StartAnalysis` (among others) hands this
@@ -1323,7 +1194,7 @@ defmodule CodeMySpec.Analysis do
   # planned spex and this dropped it, and the run that finished at 00:33:57
   # answered about the pre-commit tree. Nothing re-queued it. `analysis/wait`
   # then reported "ok" with spex stale and the queue idle — accurate and
-  # useless — and `FixBddSpecs`, which gates on `Analysis.fresh?(scope, "spex")`
+  # useless — and `FixBddSpecs`, which then gated on spex being fresh
   # and says to wait and re-evaluate, looped until somebody ran the analyzer by
   # hand.
   defp dispatch_remote(scope, job, channel) do
@@ -1368,7 +1239,6 @@ defmodule CodeMySpec.Analysis do
            source: job.source,
            kind: job.kind,
            args: %{"args" => job.args},
-           input_fingerprint: job.fingerprint,
            requested_by: job.requested_by
          }) do
       {:ok, run} -> send_or_skip(scope, job, channel, run)
@@ -1403,7 +1273,6 @@ defmodule CodeMySpec.Analysis do
         source: job.source,
         kind: job.kind,
         args: %{"args" => job.args},
-        input_fingerprint: job.fingerprint,
         requested_by: job.requested_by
       })
 

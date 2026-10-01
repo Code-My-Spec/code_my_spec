@@ -11,9 +11,10 @@ defmodule CodeMySpecSpex.Story1012.Criterion2348Spex do
   verdict on work already replaced.
 
   Story 988 keeps the verdict honest; this makes its honesty legible at the
-  point of use. The stop hook already does exactly this and it demonstrably
-  works — "credo (4) — stale, last ran 4m ago" is what stopped an agent
-  re-fixing four files that were already correct.
+  point of use. The stop hook does the same — "credo (4) — from the run at
+  1a2b3c4d, finished 4m ago" (28d72f8a; it used to say "stale, last ran 4m
+  ago", which is what stopped an agent re-fixing four files that were already
+  correct).
 
   Surface: the PostToolUse hook.
   """

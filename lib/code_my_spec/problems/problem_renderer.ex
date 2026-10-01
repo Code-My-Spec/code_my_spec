@@ -177,10 +177,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   def render_stop_response([], _advisory, _opts), do: ""
 
   def render_stop_response(blocking, advisory, opts) do
-    stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
-    last_ran = Keyword.get(opts, :last_ran, %{})
-    run_duration = Keyword.get(opts, :run_duration, %{})
-    overtaken = Keyword.get(opts, :overtaken, %{})
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
 
@@ -202,9 +198,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     flight = %{
       sources: Keyword.get(opts, :in_flight, []),
       since: Keyword.get(opts, :in_flight_since, %{}),
-      # Defaults true: every existing caller was making the "no rerun" claim
-      # already, and only a caller that knows otherwise should soften it.
-      tracked?: Keyword.get(opts, :tracked?, true),
       # The harness whose `analysis/wait` will block until the sweep lands, when
       # there is one to name. A scope with no harness gets the plain instruction
       # rather than a URL that would 404 — same rule as `Hooks.Stop`.
@@ -221,9 +214,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
 
     runs = %{
-      last_ran: last_ran,
-      duration: run_duration,
-      overtaken: overtaken,
+      answers: Keyword.get(opts, :answers, %{}),
       failures: Keyword.get(opts, :run_failures, %{}),
       analyzer_staleness: Keyword.get(opts, :analyzer_staleness, %{}),
       failed_reruns: Keyword.get(opts, :failed_reruns, %{})
@@ -234,7 +225,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       latched: opts |> Keyword.get(:specs_ready_stamp, %{}) |> Map.keys() |> MapSet.new()
     }
 
-    blocking_section = render_blocking_section(blocking, stale, runs, reproduce, attribution)
+    blocking_section = render_blocking_section(blocking, runs, reproduce, attribution)
 
     raw =
       header <>
@@ -242,7 +233,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         advisory_section <>
         assignment_note(blocking, advisory, Keyword.get(opts, :story_assignment, %{})) <>
         specs_ready_note(blocking, Keyword.get(opts, :specs_ready_stamp, %{})) <>
-        stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) <>
+        in_flight_footer(blocking, runs, flight) <>
         attribution_note(session_paths, internal?)
 
     enforce_total_cap(raw, blocking, advisory)
@@ -415,24 +406,23 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp commit_phrase(nil), do: nil
   defp commit_phrase(commit), do: "commit #{String.slice(commit, 0, 8)}"
 
-  # `runs` carries what the ledger says about each source — age, duration,
-  # whether an edit landed inside the window, and why it never completed. One
+  # `runs` carries what the ledger says about each source — the run its
+  # findings came from, and why it never completed. One
   # value rather than four positional arguments threaded two levels down, for
   # the same reason `flight` is one: they are only ever read together, and the
   # list was already seven long.
   #
   # `attribution` is whose each finding is: the paths this session wrote, and
   # the paths on a latched story (`specs_ready_stamp`'s keys).
-  defp render_blocking_section(blocking, stale, runs, reproduce, attribution) do
+  defp render_blocking_section(blocking, runs, reproduce, attribution) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group(&1, stale, runs, reproduce, attribution))
+    |> Enum.map_join("\n", &render_blocking_group(&1, runs, reproduce, attribution))
   end
 
-  defp render_blocking_group({source, items}, stale, runs, reproduce, attribution) do
+  defp render_blocking_group({source, items}, runs, reproduce, attribution) do
     %{session_paths: session_paths, latched: latched} = attribution
-    %{last_ran: last_ran, duration: run_duration, overtaken: overtaken, failures: failures} = runs
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
@@ -448,7 +438,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
             "has them, page through with `page` and `per_page`"
       end
 
-    marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)
+    marker = run_marker(source, runs)
 
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
       reproduce_line(source, reproduce) <>
@@ -671,26 +661,28 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp why_line(why) when is_binary(why) and why != "", do: "\n  (#{why})"
   defp why_line(_why), do: ""
 
-  # Marked, not dropped: dropping opens an escape at the last stop of a run
-  # and hides an analyzer that fails every time.
+  # Which run recorded these findings: its commit and how long ago it finished.
   #
-  # With an age, because "stale" alone does not say whether waiting will help.
-  # A source that last ran two minutes ago is mid-cycle; one that last ran
-  # forty minutes ago has not been coming back, and the right response is to
-  # report the analyzer rather than stop again. Those need opposite actions and
-  # the message could not tell them apart.
-  defp stale_marker(source, stale, last_ran, run_duration, overtaken, failures) do
-    case {MapSet.member?(stale, source), Map.get(last_ran, source)} do
-      {false, _} ->
-        ""
+  # Findings always block, from the latest completed run however old (28d72f8a).
+  # There is no "stale" label: whether that run saw the current code is the
+  # promote gate's question, and the label sent agents to wait out reruns
+  # rather than read the finding. The commit and the age are facts a reader can
+  # check against their own checkout.
+  defp run_marker(source, %{answers: answers, failures: failures}) do
+    case Map.get(answers, source) do
+      %{} = answer ->
+        " — from the run#{at_commit(answer[:commit])}#{finished(answer[:finished_at])}"
 
-      {true, %DateTime{} = at} ->
-        " — stale, last ran #{ago(at)}#{run_window(source, at, run_duration, overtaken)}"
-
-      {true, _} ->
-        " — stale, has never completed" <> failure_clause(Map.get(failures, source))
+      nil ->
+        " — has never completed a run" <> failure_clause(Map.get(failures, source))
     end
   end
+
+  defp at_commit(commit) when is_binary(commit), do: " at #{String.slice(commit, 0, 8)}"
+  defp at_commit(_commit), do: ""
+
+  defp finished(%DateTime{} = at), do: ", finished #{ago(at)}"
+  defp finished(_at), do: ""
 
   # Why it never completed, in the analyzer's own words.
   #
@@ -698,9 +690,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # cause is already in `Run.output` — `Reconciler.fail/2` writes it there and
   # nothing read it back. `6f89b278` is three days of blocked stops where the
   # answer sat in that column: a test database two migrations behind, and the
-  # exact command for the right partition. What the agent saw instead was 22
-  # stale spex findings from stories it had never touched, and advice to stop
-  # again, which re-entered the same block.
+  # exact command for the right partition.
   #
   # Indented under the group rather than folded into the marker: this is
   # somebody else's output, often multi-line, and running it into our sentence
@@ -711,46 +701,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     body = reason |> String.split("\n") |> Enum.map_join("\n", &("      " <> &1))
     "\n\n    The analyzer could not run. It said:\n\n" <> body <> "\n"
   end
-
-  # Only when the run is slower than the age, which is the case the age alone
-  # renders absurd: "stale, last ran 0s ago" on a run that had just succeeded.
-  # It had not gone stale since finishing — the edit landed while it ran.
-  defp run_window(source, at, run_duration, overtaken) do
-    if overtaken?(source, at, run_duration, overtaken),
-      do: " (run takes #{duration_text(Map.get(run_duration, source))})",
-      else: ""
-  end
-
-  # The result was already answering about an older tree when it arrived.
-  #
-  # A run is fingerprinted at enqueue and judged against the tree when read, so
-  # an edit inside its window makes it stale on completion. Comparing the age to
-  # the duration is what separates that from an ordinary lag, and they take
-  # opposite advice: one is fixed by waiting and one cannot be.
-  # The ledger answers it where it can. `input_fingerprint` is stamped at
-  # enqueue and `completed_fingerprint` at reconcile, so the two differ exactly
-  # when the tree moved while the run was in flight — no inference involved.
-  defp overtaken?(source, at, run_duration, overtaken) do
-    case Map.get(overtaken, source) do
-      answer when is_boolean(answer) -> answer
-      nil -> overtaken_by_duration?(source, at, run_duration)
-    end
-  end
-
-  # The fallback, for a run that finished before `completed_fingerprint` existed.
-  # A result younger than the run took must have been overtaken — sound only if
-  # nothing was edited after it finished, which a stop closely following a long
-  # run breaks. Kept because guessing "not overtaken" for those rows would send
-  # an agent to wait out a rerun that cannot come back fresh, and that is the
-  # loop this whole branch exists to break.
-  defp overtaken_by_duration?(source, %DateTime{} = at, run_duration) do
-    case Map.get(run_duration, source) do
-      seconds when is_integer(seconds) and seconds > 0 -> staleness_seconds(at) < seconds
-      _ -> false
-    end
-  end
-
-  defp overtaken_by_duration?(_source, _at, _run_duration), do: false
 
   defp duration_text(seconds) when seconds < 60, do: "#{seconds}s"
   defp duration_text(seconds) when rem(seconds, 60) == 0, do: "#{div(seconds, 60)}m"
@@ -764,159 +714,29 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) do
-    blocking
-    |> Enum.map(& &1.source)
-    |> Enum.uniq()
-    |> Enum.filter(&MapSet.member?(stale, &1))
-    |> case do
+  # A rerun of a blocking source is running: say so, and how to wait for it.
+  #
+  # Not a judgement on the findings — they block either way. It answers the one
+  # question the age cannot: will something replace these on its own.
+  defp in_flight_footer(blocking, runs, flight) do
+    rerunning =
+      blocking
+      |> Enum.map(& &1.source)
+      |> Enum.uniq()
+      |> Enum.filter(&(&1 in flight.sources))
+
+    case rerunning do
       [] ->
         ""
 
-      sources ->
-        {ran, never} = Enum.split_with(sources, &match?(%DateTime{}, Map.get(last_ran, &1)))
-
-        stale_sentence(ran) <>
-          never_sentence(never) <>
-          " Do not re-fix anything you have already corrected." <>
-          escalation(sources, last_ran, run_duration, flight, overtaken)
-    end
-  end
-
-  # "Stale" covers two conditions and they are not the same news.
-  #
-  # `Analysis.fresh?/2` answers false both when the newest completed full run
-  # predates your edits *and* when there is no completed full run at all — a
-  # source whose every run failed, which is ordinary for credo and spex. The
-  # footer asserted the first for both, so a source that had never produced a
-  # result was described as having "last ran before your most recent edit".
-  #
-  # That mattered in a report where exunit read current while credo and spex
-  # read stale against the same edit: the two were not disagreeing about the
-  # edit, they were in different conditions wearing one label, and the label
-  # sent the reader looking for a comparison bug.
-  defp stale_sentence([]), do: "\n\n"
-
-  defp stale_sentence(sources),
-    do:
-      "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
-        "before your most recent edit."
-
-  defp never_sentence([]), do: ""
-
-  defp never_sentence(sources) do
-    " #{Enum.join(Enum.sort(sources), ", ")} #{verb(sources)} never completed a run, so " <>
-      "#{pronoun(sources)} findings are whatever was recorded last — not a result " <>
-      "measured against your edits."
-  end
-
-  defp verb([_]), do: "has"
-  defp verb(_), do: "have"
-
-  defp pronoun([_]), do: "its"
-  defp pronoun(_), do: "their"
-
-  # Two different facts, and they had been collapsed into one sentence.
-  #
-  # `last_ran` is the `finished_at` of the newest *completed* run, so its age
-  # says how old the result is — not how long anything has been running. The old
-  # wording said "has not completed in over N minutes", which reads as a run in
-  # flight, and the line above it asserted "Analysis is running now" whether or
-  # not anything was. An agent chasing a wedged analyzer found a run that had
-  # completed in under three minutes, thirty-eight minutes earlier.
-  #
-  # So say the age, and say separately whether a rerun is actually in flight —
-  # because that is what decides the advice. Waiting works when something is
-  # running and never works when nothing is.
-  defp escalation(sources, last_ran, run_duration, flight, overtaken) do
-    age =
-      sources
-      |> Enum.map(&(last_ran |> Map.get(&1) |> staleness_seconds()))
-      |> Enum.max(fn -> 0 end)
-
-    rerunning = Enum.filter(sources, &(&1 in flight.sources))
-
-    overtaken_sources =
-      Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration, overtaken))
-
-    # Checked before the others because it is the most specific condition and
-    # the only one none of them describes. "A rerun is in flight, stop again"
-    # and "stopping again enqueues one" are both advice to wait, and waiting is
-    # what cannot work here — the next edit overtakes the rerun exactly as it
-    # overtook this one.
-    if overtaken_sources != [] do
-      overtaken_sentence(overtaken_sources, run_duration, rerunning)
-    else
-      wait_or_report(age, rerunning, run_duration, flight)
-    end
-  end
-
-  # Names the remedy, because neither of the two that exist is obvious and
-  # neither is "fix it": get a sweep to land with no edit inside it, or act on
-  # findings that are one edit behind. They are real results from a run that
-  # succeeded — a coverage gap, not a wrong answer — and nothing here opens an
-  # escape from them.
-  #
-  # "Pause edits until a sweep completes" was the first wording and it is wrong
-  # with nothing in flight: it describes waiting for something that will not
-  # start, because a stop is what enqueues a run. An agent following it edits
-  # nothing and waits, which is the loop this exists to break wearing new words.
-  # So the instruction is what the reader does — stop, and do not edit while it
-  # runs — and the in-flight fact only changes whether that also enqueues one.
-  defp overtaken_sentence(sources, run_duration, rerunning) do
-    longest =
-      sources
-      |> Enum.map(&Map.get(run_duration, &1))
-      |> Enum.filter(&is_integer/1)
-      |> Enum.max(fn -> 0 end)
-
-    " #{Enum.join(Enum.sort(sources), ", ")} #{verb(sources)} a run time of " <>
-      "#{duration_text(longest)} and your edits landed inside it, so a rerun " <>
-      "will finish stale as well. The analyzer is working — it answered about " <>
-      "the tree it was given." <>
-      next_sweep_sentence(sources, rerunning) <>
-      " Or act on these as they stand: one edit behind is not the same as wrong."
-  end
-
-  defp next_sweep_sentence(sources, rerunning) do
-    case Enum.filter(sources, &(&1 in rerunning)) do
-      [] ->
-        " Stopping again enqueues a sweep; let that one finish without editing " <>
-          "during it and its result will be current."
-
       running ->
-        " A sweep is in flight now (#{Enum.join(Enum.sort(running), ", ")}) — " <>
-          "stop again without editing during it and its result will be current."
-    end
-  end
-
-  defp wait_or_report(age, rerunning, run_duration, flight) do
-    case {age, rerunning, flight.tracked?} do
-      {_age, [_ | _] = running, _} ->
-        " A rerun is in flight now (#{running_detail(running, run_duration, flight)})." <>
+        "\n\nA rerun is in flight now (#{running_detail(running, run_durations(runs), flight)})." <>
           wait_remedy(flight)
-
-      # Nothing is watching, so "no rerun is in flight" is not something this
-      # can know — `in_flight/1` answers the same empty list for idle and for
-      # untracked. Saying the analyzer is failing on that basis sends the reader
-      # after a component that may never have been started for this project.
-      {_age, [], false} ->
-        " Nothing is tracking analysis runs for this project, so whether one is " <>
-          "in flight is unknown — not \"none\". Check that the analyzer is " <>
-          "running for this working copy before concluding anything from these " <>
-          "results' age."
-
-      {age, [], true} when age > 900 ->
-        " The newest of these results is #{div(age, 60)} minutes old and no rerun " <>
-          "is running, so nothing is going to replace it on its own: treat the " <>
-          "analyzer as failing and report it rather than editing around it."
-
-      {_age, [], true} ->
-        " No rerun is in flight. Stopping again enqueues one; if these persist " <>
-          "across several stops with no change, the analyzer itself is failing — " <>
-          "report that rather than editing around it."
     end
   end
+
+  defp run_durations(%{answers: answers}),
+    do: Map.new(answers, fn {source, answer} -> {source, answer[:duration]} end)
 
   # Waiting, as something the agent can actually do.
   #
@@ -981,7 +801,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # which is the signature of a stuck process. Nothing was stuck: credo was
   # behind a 198-second spex sweep and took 8 seconds once it started. The
   # number was doing the opposite of its job, and it is most wrong exactly when
-  # it matters most, because queue pressure is when stops block on stale sources
+  # it matters most, because queue pressure is when stops block on findings
   # in the first place.
   #
   # Naming what it waits behind answers "should I wait?" in a way no duration
@@ -1005,12 +825,12 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  # The stale source is the one running: report it, and say what is behind it.
+  # The blocking source is the one running: report it, and say what is behind it.
   defp detail(true, blocker, progress, waiting),
     do: blocker <> progress <> queued_clause(waiting)
 
-  # The stale source is waiting on something that is not itself stale, so the
-  # blocker never appeared in this sentence at all — which is how "queued" came
+  # The blocking source is waiting on something that is not itself blocking, so
+  # the blocker never appeared in this sentence at all — which is how "queued" came
   # to read as "running". Naming it, with its progress, is what answers "should
   # I wait?": 60s into a typical 198s says roughly two minutes, and no duration
   # attached to the waiting source could say that.
@@ -1052,9 +872,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Locally executed projects report which sources are running but not since
   # when, so there is nothing to say and the sentence stays as it was.
   defp elapsed_clause(_started_at, _typical), do: ""
-
-  defp staleness_seconds(%DateTime{} = at), do: DateTime.diff(DateTime.utc_now(), at, :second)
-  defp staleness_seconds(_), do: 0
 
   defp render_blocking_line(%Problem{} = problem, session_paths) do
     message =

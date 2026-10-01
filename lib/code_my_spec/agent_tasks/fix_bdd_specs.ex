@@ -90,18 +90,19 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   Evaluate the specs-passing gate for the task's story. Reports green; does
   not latch.
 
-  It requires a *fresh* spex run showing every one of the story's own specs
-  green. Since e1174640 the `specs_ready` latch is set only by a promote of
-  the story (`Stories.mark_story_promoted/4`); once latched, a later edit
-  that stales the run leaves it alone.
+  It reads the latest completed spex run on this working copy, however old
+  (28d72f8a): every one of the story's own specs green on it is a pass.
+  Whether that run saw the current code is the promote gate's question.
+  Since e1174640 the `specs_ready` latch is set only by a promote of the
+  story (`Stories.mark_story_promoted/4`).
 
-  Staleness is reported as *pending*, never as *failure*: an agent told
-  its specs failed goes hunting for a bug that isn't there.
+  No completed run at all is reported as *pending*, never as *failure*: an
+  agent told its specs failed goes hunting for a bug that isn't there.
 
   Returns:
-  - `{:ok, :valid}` when the story's specs are green on a fresh run
-  - `{:ok, :invalid, feedback}` when specs fail, are missing, or the run
-    is not yet current
+  - `{:ok, :valid}` when the story's specs are green on the latest run
+  - `{:ok, :invalid, feedback}` when specs fail, are missing, or no spex run
+    has completed yet
   """
   def evaluate(scope, task), do: evaluate(scope, task, nil)
 
@@ -125,11 +126,10 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   defp evaluate_story(scope, story, _task, owner) do
     cond do
       latched_and_uncontradicted?(scope, story) ->
-        # Already latched. A stale run, or a fresh failure on somebody else's
-        # story, must not un-latch it — that asymmetry is why the node can
-        # exist at all.
+        # Already latched. No run, or a failure on somebody else's story, must
+        # not un-latch it — that is why the node can exist at all.
         #
-        # What it must not survive is a fresh run showing *this* story's own
+        # What it must not survive is the latest run showing *this* story's own
         # specs red, because that means the latch was never earned. It was set
         # by a gate that matched problems to stories by parsing a directory
         # name and found none, and finding none is the branch that latches.
@@ -140,7 +140,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       not has_bdd_specs?(scope, story) ->
         {:ok, :invalid, no_specs_message(story)}
 
-      not Analysis.fresh?(scope, "spex") ->
+      not Analysis.answered?(scope, "spex") ->
         {:ok, :invalid, analysis_pending_message(story, scope, owner)}
 
       true ->
@@ -284,12 +284,12 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     Story #{story.number} (#{story.title}) has no failing spex problems recorded. The
     work looks done.
 
-    `bdd_specs_passing` is satisfied by a fresh spex run showing this story's
+    `bdd_specs_passing` is satisfied by the latest spex run showing this story's
     own specs green. Evaluating does not latch anything: the `specs_ready`
     latch is set when this story is promoted.
 
-    Call `evaluate_task` on this task. If the latest spex run does not yet cover
-    the current code the evaluation will say so and ask you to wait — that is a
+    Call `evaluate_task` on this task. If no spex run has completed on this
+    working copy yet the evaluation will say so and ask you to wait — that is a
     pending answer, not a failure.
 
     Other stories may have failing specs. They are not yours and they do not
@@ -307,15 +307,15 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
   end
 
-  # Deliberately worded as pending rather than failing. A stale run means
-  # "we don't know yet", and an agent told its specs failed will go looking
-  # for a bug that isn't there.
+  # Deliberately worded as pending rather than failing. No run means "we don't
+  # know yet", and an agent told its specs failed will go looking for a bug
+  # that isn't there.
   defp analysis_pending_message(story, scope, owner) do
     """
     # Specs Passing — analysis pending
 
-    Story #{story.number} (#{story.title}) cannot be flipped to specs-ready yet: the
-    latest spex run does not cover the current state of the code. This is
+    Story #{story.number} (#{story.title}) cannot be evaluated yet: no spex run has
+    completed on this working copy, so there is no result to read. This is
     **not** a spec failure — nothing is known to be broken.
 
     #{wait_directive(scope, owner)}
@@ -364,7 +364,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
       "the background and you will be notified when it returns — then evaluate this " <>
       "requirement again.\n\n" <>
-      "If that returns straight away and still says `spex: stale`, nothing was running: " <>
+      "If that returns straight away, nothing was running: " <>
       "start one with " <>
       "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/run " <>
       ~s(-H 'content-type: application/json' -d '{"source":"spex"}'`, in the ) <>

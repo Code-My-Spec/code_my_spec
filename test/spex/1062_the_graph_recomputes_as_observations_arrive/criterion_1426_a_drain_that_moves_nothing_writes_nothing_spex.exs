@@ -53,6 +53,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  # Recorded as spex: since 28d72f8a it is the only source whose findings
+  # announce an observation at all, so a credo write would leave nothing to
+  # drain.
   @finding %{
     message: "Function body is nested too deep (max_nesting is 2).",
     file_path: "lib/reservations/booking.ex",
@@ -64,7 +67,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
       given_ :synced_context_component
 
       given_ "a settled graph that already carries these findings", context do
-        :ok = Fixtures.replace_problems(context.scope, context.component.id, "credo", [@finding])
+        :ok = Fixtures.replace_problems(context.scope, context.component.id, "spex", [@finding])
         :ok = Fixtures.settle_graph(context.scope)
 
         graph = read_settled_graph(context)
@@ -76,7 +79,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
       end
 
       when_ "the same findings are recorded again and the drain runs", context do
-        :ok = Fixtures.replace_problems(context.scope, context.component.id, "credo", [@finding])
+        :ok = Fixtures.replace_problems(context.scope, context.component.id, "spex", [@finding])
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :drain, read_graph(context)["last_drain"])}

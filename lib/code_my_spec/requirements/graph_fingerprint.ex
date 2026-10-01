@@ -2,10 +2,8 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
   @moduledoc """
   Hashes everything the requirement graph is computed from.
 
-  Same idea as `CodeMySpec.Analysis.Fingerprint`, which memoizes analyzer runs
-  over `{path, fingerprint}` pairs — a hash of hashes, no file I/O. This one
-  covers the wider input set `RequirementGraph` reads: files, components,
-  stories, problem counts, analysis freshness, and configuration.
+  A hash of hashes over `{path, fingerprint}` pairs and the rest of the input
+  set `RequirementGraph` reads — no file I/O.
 
   ## Content, not timestamps
 
@@ -40,7 +38,6 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:files, files_digest(ctx.files_by_project)},
       {:components, structs_digest(ctx.components, & &1.id)},
       {:stories, structs_digest(ctx.stories, & &1.id)},
-      {:problems, problems_digest(ctx)},
       {:config, struct_digest(config)},
       {:delegated, delegated_digest(ctx)},
       # What `deploy` waits on; setup completing has to publish.
@@ -49,25 +46,11 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
     |> hash()
   end
 
-  # `analysis_fresh` is deliberately absent, and the rule it follows is:
-  # **changing files stales the graph; running analyzers freshens it.**
-  #
-  # As an input it did the opposite. The four booleans flip when an analyzer
-  # *finishes*, so the completion of a run — the event that makes the graph more
-  # trustworthy, not less — moved this fingerprint, missed the cache and
-  # recomputed the project. Criterion 3448 measured that at the per-entity
-  # grain (1116 of 1347 requirements, twice in an hour) and removed it there;
-  # this is the same value one level up, keying `GraphCache`.
-  #
-  # It is not an input to begin with. Freshness is a qualifier on *serving* an
-  # answer, which `RequirementGraph.serve/2` applies from the current context on
-  # every read — downgrade-only and idempotent, so a cached graph is re-qualified
-  # against today's freshness without being recomputed. What genuinely moves when
-  # an analyzer lands is `problems`, one line above, and that stays.
-  #
-  # The residue: a checker that reads `ctx.analysis_fresh` at *compute* time
-  # stores the qualifier instead of applying it, and nothing revisits that stored
-  # answer. `SpecsPassingChecker` is the one that does.
+  # Analysis state and problems are deliberately absent: the rule is
+  # **changing files moves the graph; running analyzers does not.** No
+  # requirement reads a component's findings any more (28d72f8a), and the one
+  # that reads spex findings, `bdd_specs_passing`, is settled from the
+  # `problems_changed` event rather than by a recompute.
 
   # The code that turns inputs into a graph is an input.
   #
@@ -121,32 +104,6 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
   defp files_digest(files) do
     files
     |> Enum.map(&{&1.path, &1.role, &1.fingerprint || "", &1.valid, &1.component_id, &1.story_id})
-    |> Enum.sort()
-  end
-
-  # The findings, not the tally — the same correction `Freshness.component/2`
-  # already carries, which this had not been given.
-  #
-  # It hashed `problems_by_component`, which is `%{source => count}`. Correct one
-  # test failure and introduce a different one in the same module and the count
-  # is 1 both times, so this fingerprint held still — and holding still here is
-  # worse than at the per-entity grain, because `GraphCache.publish/4` answers
-  # `:unchanged` on an unmoved fingerprint and `persist_projection/5` keys the
-  # node and edge writes off that answer. The pass ran, `stale_entities/3`
-  # correctly reported the component mismatched, the rows were recomputed — and
-  # then nothing was written. Measured by criterion 3472: the per-entity digest
-  # moved from `51ba66f3` to `bf6a75ac` while the stored `inputs_fingerprint`
-  # stayed at `9ce0db5f` and `checked_at` never advanced.
-  #
-  # `problem_digests_by_component` is the same grouping keyed on
-  # `{file_path, line, rule, message}`, so a swap at equal count moves it and a
-  # re-run that found the same things does not.
-  defp problems_digest(ctx) do
-    ctx
-    |> Map.get(:problem_digests_by_component, %{})
-    |> Enum.flat_map(fn {component_id, by_source} ->
-      Enum.map(by_source, fn {source, digest} -> {component_id, source, digest} end)
-    end)
     |> Enum.sort()
   end
 

@@ -37,7 +37,8 @@ defmodule CodeMySpec.MainAgent.Machinery do
 
   @type analyzer :: %{
           source: String.t(),
-          state: :fresh | :stale | :failed | :never_run,
+          state: :completed | :failed | :never_run,
+          commit: String.t() | nil,
           finished_at: DateTime.t() | nil
         }
 

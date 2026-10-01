@@ -2,19 +2,15 @@ defmodule CodeMySpec.AnalysisFixtures do
   @moduledoc """
   Fixtures for the analysis run ledger.
 
-  `tests_passing` / `spex_passing` requirements only count zero persisted
-  problems as "passing" when the source's latest completed full run matches
-  the current input fingerprint. Tests that set up files + zero problems and
-  expect satisfaction must stamp fresh runs after their file setup — call
-  `fresh_analysis_runs_fixture/2` AFTER the last file insert, since any later
-  file change makes the fingerprint stale again (by design).
+  A requirement reads the latest completed full run on the working copy,
+  however old (28d72f8a). Which commit a run answers for is
+  `start_commit`/`completed_commit`, which the promote gate reads.
   """
 
-  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Run, RunsRepository}
 
   @doc """
-  Insert a completed full run per source at the CURRENT input fingerprint,
-  marking every source's persisted problems as current.
+  Insert a completed full run per source — the run that answers for each.
 
   `commit:` also records the git state a harness reports: started on a clean
   tree at that commit and finished there, which is what the promote gate
@@ -22,15 +18,8 @@ defmodule CodeMySpec.AnalysisFixtures do
   override either half.
   """
   def fresh_analysis_runs_fixture(scope, sources \\ Run.sources(), opts \\ []) do
-    fingerprints = Fingerprint.current(scope)
-
     for source <- sources do
-      {:ok, run} =
-        RunsRepository.start_run(scope, %{
-          source: source,
-          kind: :full,
-          input_fingerprint: fingerprints[source]
-        })
+      {:ok, run} = RunsRepository.start_run(scope, %{source: source, kind: :full})
 
       {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
       at_commit(run, Keyword.get(opts, :commit), opts)
@@ -47,11 +36,11 @@ defmodule CodeMySpec.AnalysisFixtures do
     })
   end
 
-  @doc "Insert a run in a given state without touching fingerprint currency."
+  @doc "Insert a run in a given state."
   def analysis_run_fixture(scope, attrs \\ %{}) do
     attrs =
       Map.merge(
-        %{source: "exunit", kind: :full, input_fingerprint: "stale-fingerprint"},
+        %{source: "exunit", kind: :full},
         attrs
       )
 

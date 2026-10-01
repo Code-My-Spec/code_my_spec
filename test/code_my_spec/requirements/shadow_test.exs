@@ -581,7 +581,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       {:ok, full} = Preloader.load(scope)
       config = CodeMySpec.Configurations.get_or_create(scope)
 
-      {:ok, narrow} = Preloader.load_story(scope, story.id, full.analysis_fresh)
+      {:ok, narrow} = Preloader.load_story(scope, story.id)
 
       {_, from_full} =
         RequirementGraph.compute_entity(scope, full, config, {"story", story.id})
@@ -620,7 +620,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           %{ready_for_dev: false}
         )
 
-      {:ok, narrow} = Preloader.load_story(scope, story.id, %{})
+      {:ok, narrow} = Preloader.load_story(scope, story.id)
 
       # `load/1` gates on `ready_for_dev` and on the assignment rule, and the
       # narrow load has to apply the same filter or it would compute rows for a

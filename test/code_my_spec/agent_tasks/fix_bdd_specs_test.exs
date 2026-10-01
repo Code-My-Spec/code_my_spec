@@ -244,8 +244,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   # ============================================================================
   # evaluate/2 — the specs-passing gate
   #
-  # `evaluate/2` is scoped to ONE story (the task's entity): it requires a
-  # fresh green spex run for that story and reports it. It no longer latches
+  # `evaluate/2` is scoped to ONE story (the task's entity): it reads the
+  # latest completed spex run, however old (28d72f8a), and reports green. It no longer latches
   # `specs_ready` — only a promote of the story does (e1174640). This is
   # deliberately narrower than `command/2`, which still builds a project-wide
   # fix prompt.
@@ -269,18 +269,40 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
              "evaluating reports green; only a promote of the story latches it"
     end
 
-    test "reports pending, not failure, when the spex run is stale", %{tmp_dir: tmp_dir} do
+    test "reports pending, not failure, when no spex run has completed", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope)
       story = create_story_with_component(scope, component)
       create_bdd_spec_file(scope, story)
 
-      # No fresh run stamped — the ledger has nothing current for spex.
       assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
 
       assert feedback =~ "analysis pending"
+      assert feedback =~ "no spex run has"
       refute feedback =~ "BDD spec failure"
       refute Stories.get_story(scope, story.id).specs_ready == true
+    end
+
+    # 28d72f8a: the latest completed run answers, however old. An edit after
+    # it does not turn a green answer into "pending".
+    test "a green run that predates an edit still answers", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
+      fresh_analysis_runs_fixture(scope, ["spex"])
+
+      {_n, _} =
+        CodeMySpec.Files.upsert_files(scope, [
+          %{
+            path: "lib/edited_after.ex",
+            role: :implementation,
+            valid: true,
+            mtime: DateTime.utc_now()
+          }
+        ])
+
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(story))
     end
 
     test "addresses the wait URL to the harness, because the unaddressed one 404s", %{
@@ -397,14 +419,14 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       refute Stories.get_story(scope, red_story.id).specs_ready == true
     end
 
-    test "an already-latched story stays valid even with a stale run", %{tmp_dir: tmp_dir} do
+    test "an already-latched story stays valid with no spex run", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope)
       story = create_story_with_component(scope, component)
       create_bdd_spec_file(scope, story)
       {:ok, story} = Stories.set_specs_ready(scope, story, true)
 
-      # No fresh run — freshness gates the flip, never the state.
+      # No run — nothing to contradict the latch.
       assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(story))
       assert Stories.get_story(scope, story.id).specs_ready == true
     end

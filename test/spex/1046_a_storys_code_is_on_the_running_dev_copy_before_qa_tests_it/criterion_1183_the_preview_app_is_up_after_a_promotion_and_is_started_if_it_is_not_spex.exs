@@ -264,8 +264,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   # to know whether anything is serving before QA is offered — the half
   # `code_on_running_copy` used to cover for free by being upstream of
   # `qa_complete`. `FullSatisfactionFixtures.apply_story/1` never assigns a
-  # copy, so it has to be set explicitly here, same as criterion 1575's own
-  # fixture needed for `problems_resolved`.
+  # copy, so it has to be set explicitly here.
   defp assign_story_to_this_copy(context) do
     story = Stories.get_story(context.scope, context.story.id)
 

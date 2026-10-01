@@ -6,6 +6,13 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
   8201 says the finding still blocks. This says the agent must be able to tell
   it is looking at a list that predates its own edit.
 
+  28d72f8a: it is told by the run that recorded the list — its commit and how
+  long ago it finished — on every finding, always. There is no "stale" label:
+  whether a run saw the current code is the promote gate's question, and the
+  label changed what an agent did without changing what was true. This
+  criterion's wording ("not handed back as fresh work") should be retired or
+  reworded to "a finding names the run that recorded it".
+
   That distinction is the whole of drill 6. The agent was stopped and handed
   four credo findings at specific line numbers in code it had already fixed,
   with nothing marking them provisional, so it read them as work. For "nesting
@@ -34,8 +41,8 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
   setup :setup_active_project
   setup :devops_on
 
-  spex "A stale list is labelled as one", criterion: 765 do
-    scenario "the corrected credo finding comes back marked, with instructions" do
+  spex "A finding names the run that recorded it", criterion: 765 do
+    scenario "the corrected credo finding comes back labelled with its run" do
       given_ "credo recorded a finding and the agent is handed it", context do
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
@@ -64,9 +71,8 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
         assert {:error, message} = result
         assert message =~ "nesting too deep"
 
-        refute message =~ "stale",
-               "while the run is current the list is current — marking it here " <>
-                 "would train the agent to ignore the marker"
+        assert message =~ ~r/from the run[^\n]*finished \d+s ago/,
+               "every finding is labelled with the run that recorded it: #{message}"
 
         {:ok, context}
       end
@@ -83,7 +89,7 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
         {:ok, context}
       end
 
-      then_ "the response marks credo stale and says not to re-fix", context do
+      then_ "the response still names the run, and says nothing about staleness", context do
         result =
           use_cmd_cassette "clean", record: :none do
             Fixtures.validate_stop(context.scope, @validate_stop_opts)
@@ -91,22 +97,16 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
 
         assert {:error, message} = result
 
-        assert message =~ "stale",
+        assert message =~ ~r/from the run[^\n]*finished \d+s ago/,
                """
-               Line 61 of a file the agent just corrected, handed back with no
-               mark on it, is drill 6 exactly.
+               Line 61 of a file the agent just corrected has to say which run
+               found it, so the agent can tell it predates the edit.
 
                #{message}
                """
 
-        assert message =~ ~r/do not re-?fix/i,
-               """
-               Naming the state is not enough — the agent needs to know what to
-               do with it, which is wait rather than edit. Without that, the
-               only reading of a blocked stop is "more work to do".
-
-               #{message}
-               """
+        refute message =~ "stale",
+               "no stale label: the run's age and commit are the facts (28d72f8a)"
 
         {:ok, context}
       end

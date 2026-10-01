@@ -32,8 +32,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :path_exists
           | :field_present
           | :field_true
-          | :no_problems
-          | :tests_passing
           | :delegate
 
   @type node_scope :: :parent | :child | :self
@@ -88,8 +86,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     # a story can carry a correct id for a component the working copy has not
     # synced yet. Presence would call that linked.
     :component_exists,
-    :no_problems,
-    :tests_passing,
     :delegate,
     # Read from the deploys table, which only records a deploy after its own
     # health probe answered.

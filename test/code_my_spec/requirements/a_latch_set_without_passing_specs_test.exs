@@ -20,7 +20,9 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
   through to specs passing before they get latched in."
 
   Both halves of that are tested here: the latch cannot be set by a lookup that
-  failed, and it cannot survive a fresh run that contradicts it.
+  failed, and it cannot survive the latest run contradicting it. The latest
+  completed run answers however old (28d72f8a); only no run at all leaves the
+  latch with nothing to argue with.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -76,7 +78,7 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
     fresh_analysis_runs_fixture(scope)
 
     assert {false, details} = SpecsPassingChecker.passing?(scope, story)
-    assert details.reason =~ "fail on the current spex run"
+    assert details.reason =~ "fail on the latest spex run"
   end
 
   test "and the reason says the latch was set without them passing", %{scope: scope} do
@@ -101,20 +103,38 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
     story = story_fixture(scope, %{title: "Not Started"})
 
     assert {false, details} = SpecsPassingChecker.passing?(scope, story)
-    assert details.reason =~ "not gone green"
+    assert details.reason =~ "No spex run has completed"
   end
 
-  # The asymmetry that lets the node exist at all. bab2f792 removed
-  # `bdd_specs_passing` because freshness was re-evaluated forever, so nearly
-  # any edit dropped a finished story back to "analysis pending" and clamped
-  # `qa_complete` behind it. A stale run is not evidence of anything.
-  test "a stale spex run cannot clear the latch", %{scope: scope} do
+  # What lets the node exist at all. bab2f792 removed `bdd_specs_passing`
+  # because freshness was re-evaluated forever, so nearly any edit dropped a
+  # finished story back to "analysis pending" and clamped `qa_complete` behind
+  # it. With no run on this copy there is nothing to contradict the latch.
+  test "with no spex run on this copy, the latch stands", %{scope: scope} do
     story = story_with_red_specs(scope)
 
-    # No fresh run recorded — the red problems above are from a run that no
-    # longer covers the current code.
     assert {true, details} = SpecsPassingChecker.passing?(scope, story)
-    assert details.status =~ "no fresh spex run"
+    assert details.status =~ "no spex run"
+  end
+
+  # 28d72f8a: the latest completed run answers, however old. A run that
+  # predates an edit is still the answer — it is not withheld as stale.
+  test "a run that predates an edit still contradicts the latch", %{scope: scope} do
+    story = story_with_red_specs(scope)
+    fresh_analysis_runs_fixture(scope)
+
+    {_n, _} =
+      CodeMySpec.Files.upsert_files(scope, [
+        %{
+          path: "lib/edited_after.ex",
+          role: :implementation,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
+    assert {false, details} = SpecsPassingChecker.passing?(scope, story)
+    assert details.reason =~ "fail on the latest spex run"
   end
 
   # A failing spec that belongs to somebody else is somebody else's gate. This
@@ -144,47 +164,48 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
   end
 
   # `passing?/3` is what `RequirementCalculator`'s delegate dispatch actually
-  # calls inside `compute_graph/1` — it exists so a graph with many stories
-  # reads freshness from the preload's `ctx.analysis_fresh` once instead of
-  # every story re-running `Analysis.fresh?/2`'s full `Files.list_files/1`
-  # fetch. It must answer exactly like `passing?/2`, just from the ctx.
+  # calls inside `compute_graph/1` — it reads whether spex has run from the
+  # preload's `ctx.analysis_ran` once instead of a ledger query per story. It
+  # must answer exactly like `passing?/2`, just from the ctx.
   describe "passing?/3 (the ctx-aware path compute_graph/1 actually calls)" do
-    test "a fresh ctx reads the same as a fresh direct check", %{scope: scope} do
+    test "a ctx with a run reads the same as the direct check", %{scope: scope} do
       story = story_with_red_specs(scope)
       fresh_analysis_runs_fixture(scope)
 
       assert {false, details} =
-               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => true}})
+               SpecsPassingChecker.passing?(scope, story, %{analysis_ran: %{"spex" => true}})
 
-      assert details.reason =~ "fail on the current spex run"
+      assert details.reason =~ "fail on the latest spex run"
     end
 
-    test "a stale ctx cannot clear the latch, same as the stale direct check", %{scope: scope} do
+    test "a ctx with no run leaves the latch standing, same as the direct check", %{
+      scope: scope
+    } do
       story = story_with_red_specs(scope)
 
       assert {true, details} =
-               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => false}})
+               SpecsPassingChecker.passing?(scope, story, %{analysis_ran: %{"spex" => false}})
 
-      assert details.status =~ "no fresh spex run"
+      assert details.status =~ "no spex run"
     end
 
-    test "a ctx with no \"spex\" entry in analysis_fresh treats it as stale, not as a crash", %{
+    test "a ctx with no \"spex\" entry in analysis_ran treats it as not run, not as a crash", %{
       scope: scope
     } do
       story = story_with_red_specs(scope)
       fresh_analysis_runs_fixture(scope)
 
-      # `%{analysis_fresh: %{}}` still matches the ctx-aware clause — it is a
-      # map, just one that never learned about "spex". `Map.get(fresh, "spex",
-      # false)` treats that the same as a ctx that positively says stale: the
+      # `%{analysis_ran: %{}}` still matches the ctx-aware clause — it is a
+      # map, just one that never learned about "spex". `Map.get(ran, "spex",
+      # false)` treats that the same as a ctx that positively says no run: the
       # latch stands, same as `passing?/2` sees when nothing has run at all.
       assert {true, details} =
-               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{}})
+               SpecsPassingChecker.passing?(scope, story, %{analysis_ran: %{}})
 
-      assert details.status =~ "no fresh spex run"
+      assert details.status =~ "no spex run"
     end
 
-    test "a ctx that isn't a map with :analysis_fresh falls back to a direct check", %{
+    test "a ctx that isn't a map with :analysis_ran falls back to a direct check", %{
       scope: scope
     } do
       story = story_with_red_specs(scope, red: false)
@@ -193,20 +214,20 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
       assert {true, _} = SpecsPassingChecker.passing?(scope, story, %{})
     end
 
-    test "an unlatched story with no linked specs is not satisfied by a fresh run", %{
+    test "an unlatched story with no linked specs is not satisfied by a run", %{
       scope: scope
     } do
       story = story_fixture(scope, %{title: "Not Started"})
 
       assert {false, details} =
-               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => true}})
+               SpecsPassingChecker.passing?(scope, story, %{analysis_ran: %{"spex" => true}})
 
       assert details.reason =~ "No spec files"
     end
   end
 
   # e1174640: only a promote latches, and the promote is downstream of this
-  # requirement, so an unlatched story is answered from the fresh run.
+  # requirement, so an unlatched story is answered from the latest run.
   describe "an unlatched story" do
     defp unlatched_with_spex(scope, red?) do
       story = story_fixture(scope, %{title: "Unlatched"})
@@ -227,7 +248,7 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
       story
     end
 
-    test "is satisfied by its own specs green on a fresh run", %{scope: scope} do
+    test "is satisfied by its own specs green on the latest run", %{scope: scope} do
       story = unlatched_with_spex(scope, false)
       fresh_analysis_runs_fixture(scope)
 
@@ -242,23 +263,23 @@ defmodule CodeMySpec.Requirements.ALatchSetWithoutPassingSpecsTest do
       assert {false, _} = SpecsPassingChecker.passing?(scope, story)
     end
 
-    test "is not satisfied by a stale run", %{scope: scope} do
+    test "is not satisfied while no spex run has completed", %{scope: scope} do
       story = unlatched_with_spex(scope, false)
 
       assert {false, details} = SpecsPassingChecker.passing?(scope, story)
-      assert details.reason =~ "not gone green"
+      assert details.reason =~ "No spex run has completed"
     end
 
-    # The graph caches this verdict under a key that leaves freshness out, so
-    # it has to be judged from the problems and qualified on read by
-    # `RequirementGraph.serve/2`. Reading freshness here stored a stale `false`
-    # that a later green run never revisited.
-    test "in the graph, is judged from its problems and leaves freshness to serve",
+    # The graph caches this verdict under a key that leaves runs out, so it has
+    # to be judged from the problems and qualified on read by
+    # `RequirementGraph.serve/2`. Reading the run here stored a `false` that a
+    # later first run never revisited.
+    test "in the graph, is judged from its problems and leaves the no-run check to serve",
          %{scope: scope} do
       story = unlatched_with_spex(scope, false)
 
       assert {true, details} =
-               SpecsPassingChecker.passing?(scope, story, %{analysis_fresh: %{"spex" => false}})
+               SpecsPassingChecker.passing?(scope, story, %{analysis_ran: %{"spex" => false}})
 
       assert details.analysis_source == "spex"
     end

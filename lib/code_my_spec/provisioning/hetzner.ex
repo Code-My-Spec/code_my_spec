@@ -146,7 +146,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   `opts` accepts `:arch` (`:arm`, the default, or `:x86`), and `:server_type` /
   `:location` / `:image` / `:firewall_ids` / `:ssh_key_ids` to override
-  individually.
+  individually, and `:labels` to tag the server.
 
   Attaching an SSH key at creation is not optional in practice. A server made
   without one has a root password Hetzner emails to the account owner and
@@ -290,6 +290,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       # been told where to push, and the address it was told is the one it does
       # not have yet.
       |> maybe_put(:networks, Keyword.get(opts, :network_ids))
+      |> maybe_put(:labels, Keyword.get(opts, :labels))
 
     Logger.warning("[Hetzner] create_server payload=#{inspect(payload)}")
 

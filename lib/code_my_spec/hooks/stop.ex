@@ -587,9 +587,9 @@ defmodule CodeMySpec.Hooks.Stop do
         #
         # `NodeRepository.actionable_count/1` reads `n.satisfied` straight from
         # the rows, which now hold the *durable* verdict — a component's own
-        # problem count, without the analysis-freshness qualifier that
+        # problem count, without the no-run-yet qualifier that
         # `RequirementGraph.serve/2` applies on the way to a reader. So a
-        # `tests_passing` whose run has gone stale reads satisfied here and
+        # `tests_passing` whose source has never run reads satisfied here and
         # unsatisfied in the menu: this branch would tell a continuous agent its
         # work was finished while the menu in the same response listed the work.
         # Criterion 3448 is what forbids those two disagreeing.

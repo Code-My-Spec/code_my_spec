@@ -4,7 +4,7 @@ defmodule CodeMySpec.AnalysisTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Fingerprint, Reconciler, RunsRepository, Signatures}
+  alias CodeMySpec.Analysis.{Reconciler, RunsRepository, Signatures}
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -31,58 +31,25 @@ defmodule CodeMySpec.AnalysisTest do
     Files.get_by_path(scope, path)
   end
 
-  describe "Fingerprint" do
-    test "changes when a relevant file's content hash changes", %{scope: scope} do
-      upsert_file!(scope, "lib/foo.ex", :implementation, "aaa")
-      before = Fingerprint.current(scope, "exunit")
-
-      upsert_file!(scope, "lib/foo.ex", :implementation, "bbb")
-      assert Fingerprint.current(scope, "exunit") != before
-    end
-
-    test "ignores files outside the source's role set", %{scope: scope} do
-      upsert_file!(scope, "lib/foo.ex", :implementation, "aaa")
-      before = Fingerprint.current(scope, "exunit")
-
-      # bdd_spec feeds spex, not exunit
-      upsert_file!(scope, "test/spex/a_spex.ex", :bdd_spec, "zzz")
-
-      assert Fingerprint.current(scope, "exunit") == before
-      refute Fingerprint.current(scope, "spex") == Fingerprint.current(scope, "exunit")
-    end
-  end
-
   describe "run ledger" do
-    test "a completed full run at the current fingerprint reads as fresh", %{scope: scope} do
+    test "a completed full run answers for its source, however old", %{scope: scope} do
       upsert_file!(scope, "lib/foo.ex", :implementation, "aaa")
 
-      {:ok, run} =
-        RunsRepository.start_run(scope, %{
-          source: "exunit",
-          kind: :full,
-          input_fingerprint: Fingerprint.current(scope, "exunit")
-        })
-
+      {:ok, run} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
       {:ok, _} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
 
-      assert CodeMySpec.Analysis.fresh?(scope, "exunit")
+      assert Analysis.answered?(scope, "exunit")
 
-      # A content change makes it stale again
+      # An edit since does not unseat it (28d72f8a).
       upsert_file!(scope, "lib/foo.ex", :implementation, "bbb")
-      refute CodeMySpec.Analysis.fresh?(scope, "exunit")
+      assert Analysis.answered?(scope, "exunit")
     end
 
-    test "a failed run is never fresh", %{scope: scope} do
-      {:ok, run} =
-        RunsRepository.start_run(scope, %{
-          source: "exunit",
-          kind: :full,
-          input_fingerprint: Fingerprint.current(scope, "exunit")
-        })
-
+    test "a failed run answers nothing", %{scope: scope} do
+      {:ok, run} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
       {:ok, _} = RunsRepository.finish_run(run, :failed, %{})
 
-      refute CodeMySpec.Analysis.fresh?(scope, "exunit")
+      refute Analysis.answered?(scope, "exunit")
     end
 
     test "fail_stranded_runs closes rows left :running", %{scope: scope} do
@@ -122,7 +89,10 @@ defmodule CodeMySpec.AnalysisTest do
         })
 
       assert finished.status == :completed
-      paths = scope |> Problems.list_project_problems(source: "exunit") |> Enum.map(& &1.file_path)
+
+      paths =
+        scope |> Problems.list_project_problems(source: "exunit") |> Enum.map(& &1.file_path)
+
       assert paths == ["test/new_test.exs"]
     end
 
@@ -173,8 +143,7 @@ defmodule CodeMySpec.AnalysisTest do
         RunsRepository.start_run(scope, %{
           source: "exunit",
           kind: :partial,
-          args: %{"args" => ["test/target_test.exs"]},
-          input_fingerprint: Fingerprint.current(scope, "exunit")
+          args: %{"args" => ["test/target_test.exs"]}
         })
 
       {:ok, finished} =
@@ -196,10 +165,9 @@ defmodule CodeMySpec.AnalysisTest do
 
       assert paths == ["test/other_test.exs"]
 
-      # And it must not make the source look current: completed + matching
-      # fingerprint is exactly what `tests_passing` accepts, so a targeted run
-      # reading as fresh passed a suite that never ran in full.
-      refute Analysis.fresh?(scope, "exunit")
+      # And it must not answer for the source: a targeted run counting as the
+      # source's answer passed a suite that never ran in full.
+      refute Analysis.answered?(scope, "exunit")
     end
 
     test "stamps component_id on test problems via the file path join", %{scope: scope} do

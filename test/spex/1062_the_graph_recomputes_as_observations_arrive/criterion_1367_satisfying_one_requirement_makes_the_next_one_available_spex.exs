@@ -1,9 +1,14 @@
 defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
   @moduledoc """
-  Satisfying component implementations makes a story's BDD work available.
+  Satisfying component implementations makes a story's work available.
 
   The story's own inputs stay fixed while two child implementations appear.
   Its frontier must move even though only the components' files changed.
+
+  Which story requirement the frontier lands on is not the claim. It used to
+  be `bdd_specs_passing`, only because the new files made the spex run stale;
+  since 28d72f8a the latest completed run answers however old, so the green
+  run carries the story on to the next requirement.
   """
 
   use CodeMySpecSpex.Case
@@ -56,11 +61,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
         {:ok, Map.put(context, :after, Fixtures.next_actionable_requirements(context.scope))}
       end
 
-      then_ "the story's specs were not on offer before", context do
-        refute offered?(context.before, "Reservations story", "bdd_specs_passing"),
+      then_ "the story's work was not on offer before", context do
+        refute offered?(context.before, "Reservations story"),
                """
-               The premise did not hold: the story's `bdd_specs_passing` was
-               already available before the components finished.
+               The premise did not hold: the story's work was already available
+               before the components finished.
 
                edges before: #{length(context.before_graph["edges"] || [])}
                story edges before: #{inspect(story_edges(context.before_graph))}
@@ -77,7 +82,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
       end
 
       then_ "and they are now", context do
-        assert offered?(context.after, "Reservations story", "bdd_specs_passing"),
+        assert offered?(context.after, "Reservations story"),
                """
                The components finished and the work that unblocks was not
                offered.
@@ -107,8 +112,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
     |> Enum.map(&{&1["entity_name"], &1["satisfied"]})
   end
 
-  defp offered?(requirements, entity_name, name) do
-    Enum.any?(requirements, &(&1.entity_name == entity_name and to_string(&1.name) == name))
+  defp offered?(requirements, entity_name) do
+    Enum.any?(requirements, &(&1.entity_name == entity_name))
   end
 
   defp offered(requirements) do

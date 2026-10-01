@@ -25,11 +25,10 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Users.Scope
 
-  # Must agree with `Analysis.Fingerprint`'s `@source_roles`, which decides
-  # which roles make a source *stale*. This map decides which analyzers a
-  # changed role *schedules*. When the two disagree, the disagreement is a
-  # loop rather than a missed run: the stop blocks on a source it will never
-  # re-run.
+  # Which analyzers a changed role *schedules*. It used to have to agree with
+  # `Analysis.Fingerprint`'s `@source_roles` (gone with fingerprint freshness,
+  # 28d72f8a), which decided which roles made a source *stale*; when the two
+  # disagreed, the stop blocked on a source it would never re-run.
   #
   # `test: [:credo]` was exactly that. Editing a test file changed exunit's
   # fingerprint — `:test` is in `@toolchain_only`, correctly, since editing a

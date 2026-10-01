@@ -51,12 +51,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel.WaitSummaryReasonTest do
   end
 
   defp failed_run(scope, source, error) do
-    {:ok, run} =
-      RunsRepository.start_run(scope, %{
-        source: source,
-        kind: :full,
-        input_fingerprint: "whatever"
-      })
+    {:ok, run} = RunsRepository.start_run(scope, %{source: source, kind: :full})
 
     {:ok, _} = RunsRepository.finish_run(run, :failed, %{stats: %{"error" => error}})
   end

@@ -125,6 +125,55 @@ defmodule CodeMySpec.Provisioning.RunLockTest do
     end
   end
 
+  describe "caller_run_id/1 and run_state/2" do
+    test "the holder and a task it starts see the run's id; nobody else does" do
+      id = project_id()
+      test_pid = self()
+
+      run_id =
+        RunLock.with_lock(id, fn ->
+          own = RunLock.caller_run_id(id)
+          assert is_binary(own)
+          assert Task.await(Task.async(fn -> RunLock.caller_run_id(id) end)) == own
+
+          spawn(fn -> send(test_pid, {:stranger, RunLock.caller_run_id(id)}) end)
+          assert_receive {:stranger, nil}
+
+          assert RunLock.run_state(id, own) == :in_flight
+          own
+        end)
+
+      assert RunLock.caller_run_id(id) == nil
+      assert RunLock.run_state(id, run_id) == :ended
+    end
+
+    test "a holder that dies ends its run, and the next run gets a new id" do
+      id = project_id()
+      test_pid = self()
+
+      holder =
+        spawn(fn ->
+          RunLock.with_lock(id, fn ->
+            send(test_pid, {:run, RunLock.caller_run_id(id)})
+
+            receive do
+              :never -> :ok
+            end
+          end)
+        end)
+
+      assert_receive {:run, dead_run}
+      ref = Process.monitor(holder)
+      Process.exit(holder, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^holder, :killed}
+
+      RunLock.with_lock(id, fn ->
+        refute RunLock.caller_run_id(id) == dead_run
+        assert RunLock.run_state(id, dead_run) == :ended
+      end)
+    end
+  end
+
   defp wait_until(fun, attempts \\ 20)
   defp wait_until(_fun, 0), do: flunk("condition never became true")
 

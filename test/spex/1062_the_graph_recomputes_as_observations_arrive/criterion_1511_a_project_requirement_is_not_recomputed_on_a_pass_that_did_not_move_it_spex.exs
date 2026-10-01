@@ -53,7 +53,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -92,17 +91,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
         # requirement actually reads a story's *contents* rather than its
         # existence is a separate and narrower question, and not this one.
         #
-        # `exunit` rather than `credo`, deliberately (story 1003, 2026-09-28):
-        # `problems_resolved` now reads every `problems_changed` event to know
-        # whether a story's own working copy carries a blocking credo/compiler
-        # finding — a `credo` finding here would genuinely move it (this
-        # project's own default working copy is a story's working copy too),
-        # which is no longer the unambiguous "moved nothing" case this
-        # scenario needs. `exunit` isn't in `problems_resolved`'s always-block
-        # set, so it stays inert to every project *and* story requirement,
-        # which is the property this scenario is actually about.
+        # A component's findings are in no project requirement's inputs at all,
+        # so this is the unambiguous case: a pass that genuinely did not move
+        # them. spex, because since 28d72f8a it is the only source whose
+        # findings announce anything (a credo write leaves no observation).
         :ok =
-          Fixtures.replace_problems(context.scope, context.component.id, "exunit", [
+          Fixtures.replace_problems(context.scope, context.component.id, "spex", [
             %{
               message: "Function body is nested too deep (max_nesting is 2).",
               file_path: "lib/reservations/booking.ex",
@@ -117,30 +111,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3615Spex do
         # in the project's own fingerprint, so this pass genuinely has to
         # re-derive them. Without it there is no baseline and "cheaper" is a
         # number with nothing to be cheaper than.
-        #
-        # Joined by a blocking finding on the story's *own* copy (story 1003,
-        # 2026-09-28): `problems_resolved` now reads every `problems_changed`
-        # event, which costs the untouched pass above two fixed reads even
-        # though nothing it finds there is relevant. An issue alone no longer
-        # clears that floor by enough margin to mean anything; a credo finding
-        # that actually blocks a story — a second, genuinely-moving kind in
-        # the same drain — does.
-        story = Stories.get_story(context.scope, context.story_id)
-
-        {:ok, _story} =
-          Stories.update_story(context.scope, story, %{
-            working_copy_id: context.scope.active_working_copy_id
-          })
-
-        :ok =
-          Fixtures.replace_problems(context.scope, context.component.id, "credo", [
-            %{
-              message: "Nested modules could be aliased at the top of the invoking module.",
-              file_path: "lib/reservations/booking.ex",
-              line: 1
-            }
-          ])
-
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, filed, _frame} =

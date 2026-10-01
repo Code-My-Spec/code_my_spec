@@ -3,7 +3,7 @@ defmodule CodeMySpec.Problems.AnalyzerCouldNotRunTest do
   "Has never completed" is true and says nothing, and the cause is already in
   the ledger.
 
-  `6f89b278`. Three days of blocked stops on 22 stale spex findings belonging to
+  `6f89b278`. Three days of blocked stops on 22 spex findings belonging to
   stories the session never touched, with the hook advising "stop again and let
   the rerun replace these". The rerun could not replace them: `mix spex` aborted
   before booting, because the analyzer's test database — a partition the
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Problems.AnalyzerCouldNotRunTest do
     ProblemRenderer.render_stop_response(
       [problem("spex")],
       [],
-      [stale_sources: ["spex"], last_ran: %{"spex" => nil}] ++ opts
+      [answers: %{}] ++ opts
     )
   end
 
@@ -74,13 +74,11 @@ defmodule CodeMySpec.Problems.AnalyzerCouldNotRunTest do
   test "a source with an answer is untouched" do
     text =
       ProblemRenderer.render_stop_response([problem("credo")], [],
-        stale_sources: ["credo"],
-        last_ran: %{"credo" => DateTime.add(DateTime.utc_now(), -600, :second)},
+        answers: %{"credo" => %{finished_at: DateTime.add(DateTime.utc_now(), -600, :second)}},
         run_failures: %{"credo" => "should not be consulted"}
       )
 
     refute text =~ "The analyzer could not run",
-           "this source answered; it is behind, which is a different condition " <>
-             "and one that waiting fixes"
+           "this source answered; its findings are labelled with that run"
   end
 end

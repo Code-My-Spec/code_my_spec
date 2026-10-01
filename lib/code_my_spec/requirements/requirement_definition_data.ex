@@ -162,40 +162,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # fresh spex run" reads as a fact about the world, so an agent whose
         # sweep had gone green read the unsatisfied node as a broken gate rather
         # than as an evaluation it had not run yet.
-        description: "BDD specs green on a fresh spex run, and evaluated to record it",
+        description: "BDD specs green on the latest spex run, and evaluated to record it",
         prerequisites: [2],
-        execution_type: :main_agent
-      }),
-      # Story 1003, added 2026-09-28: John — "I want all the problems gone,
-      # all the issues fixed, then we run QA." Problems (compiler, credo,
-      # exunit, spex findings) were previously only checked at promotion —
-      # this closes the gap so QA is never spent on a copy the analyzers
-      # already know is broken. Checks credo/compiler findings specifically
-      # (`ProblemsChecker`, the same always-blocking half `Promotion`'s own
-      # gate reads), scoped to this story's own working copy rather than
-      # whichever copy happens to be asking. Narrower than promotion's full
-      # definition of clean — see the module doc for why the rest of it
-      # cannot be reused from here.
-      new!(%{
-        id: 19,
-        name: "problems_resolved",
-        role: :coding,
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: CodeMySpec.Requirements.ProblemsChecker, function: :resolved?},
-        # No dedicated task exists for "clear analyzer findings generally" —
-        # every existing coding task already surfaces persisted problems for
-        # its own files via `ProblemFeedback`/the stop hook regardless of
-        # which one is offered. `FixStoryIssues` is reused here as the
-        # nearest "this story isn't release-ready yet" coding gate; its own
-        # prompt is issue-specific and won't always describe *this* trigger
-        # precisely when what's blocking is a bare compiler/credo finding
-        # with no accepted issue behind it. Worth a dedicated task later if
-        # that mismatch turns out to matter in practice.
-        satisfied_by: AgentTasks.FixStoryIssues,
-        artifact_type: :review,
-        description: "This story's own working copy carries no blocking analyzer problem",
-        prerequisites: [3],
         execution_type: :main_agent
       }),
       new!(%{
@@ -254,9 +222,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # Story 1003, revised 2026-09-28: `story_promoted` (18) is no
         # longer upstream of this node at all — it moved to *depend on*
         # `qa_complete` instead (story 1108 gave every copy its own app, so
-        # QA no longer needs the story's code on main first). Added `19`
-        # (`problems_resolved`) alongside the existing `6`: QA now waits on
-        # both issues being clear and the copy's own analyzers being clean.
+        # QA no longer needs the story's code on main first).
+        #
+        # `problems_resolved` (19) sat here too, holding QA on a clean copy.
+        # Removed (28d72f8a): analyzer findings are the promote gate's job,
+        # run when `story_promoted` completes — a completed run per source at
+        # HEAD on a clean tree.
         #
         # Whether the story's own copy is actually serving is deliberately
         # *not* a prerequisite here (a `qa_target_serving` node ahead of this
@@ -272,7 +243,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         #
         # `20` (`story_issues_triaged`): an untriaged finding on the story
         # holds QA too, at any severity (255f1dcd).
-        prerequisites: [6, 19, 20],
+        prerequisites: [6, 20],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and

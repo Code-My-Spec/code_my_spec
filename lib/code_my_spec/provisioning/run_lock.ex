@@ -63,6 +63,7 @@ defmodule CodeMySpec.Provisioning.RunLock do
         when result: term()
   def with_lock(project_id, fun, holder \\ []) when is_function(fun, 0) do
     meta = %{
+      run_id: new_run_id(),
       started_at: DateTime.utc_now(),
       agent_id: Keyword.get(holder, :agent_id),
       label: Keyword.get(holder, :label)
@@ -89,6 +90,59 @@ defmodule CodeMySpec.Provisioning.RunLock do
       [] -> nil
     end
   end
+
+  @doc """
+  The id of the run the calling process is doing the work of, or nil.
+
+  Only when the lock holder is this process or one it was started from
+  (`$callers`/`$ancestors`) — a run some other process holds for the same
+  project is not this caller's, and labelling a box with it would claim
+  ownership on that run's behalf.
+  """
+  @spec caller_run_id(Ecto.UUID.t() | nil) :: String.t() | nil
+  def caller_run_id(nil), do: nil
+
+  def caller_run_id(project_id) do
+    lineage = [self() | Process.get(:"$callers", [])] ++ Process.get(:"$ancestors", [])
+
+    case Registry.lookup(__MODULE__, project_id) do
+      [{pid, %{run_id: run_id}}] -> if pid in lineage, do: run_id
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Whether run `run_id` of `project_id` still holds the lock, anywhere in the
+  cluster.
+
+  `:in_flight` when some node's lock for the project is held by that run,
+  `:ended` when every node answered and none is, `:unknown` when a node could
+  not be asked — an unanswered node may be the one running it, so that is not
+  evidence the run is over.
+  """
+  @spec run_state(Ecto.UUID.t(), String.t()) :: :in_flight | :ended | :unknown
+  def run_state(project_id, run_id) do
+    remote = :erpc.multicall(Node.list(), __MODULE__, :local_run_id, [project_id], 5_000)
+    answers = [{:ok, local_run_id(project_id)} | remote]
+
+    cond do
+      Enum.any?(answers, &match?({:ok, ^run_id}, &1)) -> :in_flight
+      Enum.all?(answers, &match?({:ok, _}, &1)) -> :ended
+      true -> :unknown
+    end
+  end
+
+  @doc false
+  # Called over `:erpc` by `run_state/2` on every node, this one included.
+  @spec local_run_id(Ecto.UUID.t()) :: String.t() | nil
+  def local_run_id(project_id) do
+    case Registry.lookup(__MODULE__, project_id) do
+      [{_pid, %{run_id: run_id}}] -> run_id
+      [] -> nil
+    end
+  end
+
+  defp new_run_id, do: 8 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
 
   @doc "The run `agent_id` started that is still in flight, or nil."
   @spec held_by(Ecto.UUID.t() | nil) ::

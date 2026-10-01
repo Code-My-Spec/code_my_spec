@@ -23,10 +23,8 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
   prerequisite at `story_promoted` would have closed the same cycle the
   2026-09-23 fix broke, one hop later. Repointed straight to `bdd_specs_passing`:
   the checker was never reading the edge for its own safety anyway, so nothing
-  is lost by offering the work as soon as specs are green. `qa_complete` also
-  gained a second prerequisite, `problems_resolved` — a story's own working
-  copy has to carry no blocking analyzer problem before QA runs, not only no
-  accepted issue.
+  is lost by offering the work as soon as specs are green. (`problems_resolved`
+  sat beside it until 28d72f8a moved analyzer findings to the promote gate.)
 
   Whether the story's own copy is actually serving is deliberately *not* a
   graph node: a `qa_target_serving` node ahead of `qa_complete` was tried and
@@ -72,7 +70,7 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs bdd_specs_passing → {story_issues_resolved, problems_resolved} → qa_complete → story_promoted → deploy" do
+    test "the chain runs bdd_specs_passing → story_issues_resolved → qa_complete → story_promoted → deploy" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
@@ -86,15 +84,12 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
              the circle that stalled story 947 one hop later.
              """
 
-      assert by_name["problems_resolved"].prerequisites == [id_of.("bdd_specs_passing")]
+      refute Map.has_key?(by_name, "problems_resolved"),
+             "28d72f8a: analyzer findings are the promote gate's job, not a QA prerequisite"
 
       assert by_name["qa_complete"].prerequisites ==
-               [
-                 id_of.("story_issues_resolved"),
-                 id_of.("problems_resolved"),
-                 id_of.("story_issues_triaged")
-               ],
-             "QA waits on issues clear, the copy's own analyzers clean, and nothing untriaged"
+               [id_of.("story_issues_resolved"), id_of.("story_issues_triaged")],
+             "QA waits on issues clear and nothing untriaged"
 
       assert by_name["story_promoted"].prerequisites == [id_of.("qa_complete")],
              "story 1003: promotion follows QA, not the other way round"
