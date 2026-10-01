@@ -34,6 +34,27 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
+        # Embeddings rework step 2 (577de9bb): the server does its own
+        # inference now instead of trusting a harness to have embedded
+        # content before it arrived. Gated on the backend actually being
+        # configured (unset in :test, which stays on the ETS-backed
+        # TestBackend) rather than on env name, so this follows whatever
+        # `embeddings_backend` says rather than drifting from it.
+        #
+        # One OrtexServing, not one per priority: John's call, reviewing
+        # step 2 — a plain mailbox would starve search behind a queued
+        # bulk batch, so the server itself prioritises search internally
+        # (see OrtexServing's own moduledoc) rather than needing two
+        # instances to fake it.
+        embeddings_configured?() && CodeMySpec.Embeddings.OrtexServing,
+        # `min: 0` — no runner sits idle between hex-doc reconciles
+        # (step 3). `max: 4` is a starting guess for round 1's
+        # FLAME.LocalBackend, where a "runner" is just a local spawned
+        # process rather than real infrastructure being provisioned, so
+        # being wrong here costs nothing to revisit.
+        embeddings_configured?() &&
+          {FLAME.Pool,
+           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
         # Per-caller failure injection, so QA can break one project's digest or
         # one visitor's intake without breaking the shared box. Owns an ETS
         # table and nothing else; only `/dev/faults` ever writes to it, and that
@@ -156,6 +177,7 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
         CodeMySpecWeb.Endpoint
       ]
+      |> Enum.filter(& &1)
       |> children(env)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -182,6 +204,11 @@ defmodule CodeMySpecWeb.Application do
   # server.log, a different process on a different port, and answered wrongly.
   defp log_boot_version do
     Logger.info("[Boot] serving #{CodeMySpec.BootVersion.describe()}")
+  end
+
+  defp embeddings_configured? do
+    Application.get_env(:code_my_spec, :embeddings_backend) ==
+      CodeMySpec.Embeddings.PgVectorBackend
   end
 
   defp maybe_install_file_logger do

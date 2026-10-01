@@ -25,6 +25,19 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential git ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
 
+# Rust, for `ortex`'s NIF (lib/code_my_spec/embeddings/ortex_serving.ex) —
+# `ortex` depends on `rustler` directly, not `rustler_precompiled`, so it
+# compiles its native crate from source on every build rather than fetching
+# a prebuilt binary. Confirmed by actually running this build stage without
+# it first: `mix deps.compile` failed on `System.cmd("cargo", ...)` with
+# `:enoent` — `build-essential` gives gcc/make, not cargo. `cargo build`
+# (invoked by `rustler`'s own compiler, not run directly here) also pulls
+# the `ort` crate's bundled onnxruntime binary over the network, so this
+# needs the same network access the rest of this stage already has.
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+  && rustc --version && cargo --version
+
 # sops, fetched here so the runtime stage needs no download tooling of its
 # own — same pattern (and version pin) `DeployArtifacts` generates for every
 # other project's own Dockerfile. This server calls the `sops` binary

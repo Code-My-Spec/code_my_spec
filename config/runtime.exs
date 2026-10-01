@@ -319,6 +319,17 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
   end
 end
 
+# Embeddings rework step 2 (577de9bb): inference moves onto this server, so
+# :dev and :prod both need a real backend and serving implementation now.
+# Not :test — config/test.exs already points at TestBackend (ETS, no
+# model), and loading the real 90MB ONNX file on every test boot for a
+# backend nothing in that env calls would just be a slow no-op.
+if config_env() in [:dev, :prod] do
+  config :code_my_spec,
+    embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
+    embedding_serving: CodeMySpec.Embeddings.OrtexServing
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
