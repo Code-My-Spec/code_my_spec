@@ -29,6 +29,7 @@ defmodule CodeMySpecWeb.ConversationChannel do
   alias CodeMySpec.Projects
   alias CodeMySpec.Uploads
   alias CodeMySpecWeb.Presence
+  alias CodeMySpecWeb.WidgetIssueNotice
 
   @impl true
   def join("conversation:" <> topic_user_id, _payload, socket) do
@@ -211,6 +212,7 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
     case Issues.report_from_widget(socket.assigns.account_id, socket.assigns.project_id, attrs) do
       {:ok, issue} ->
+        WidgetIssueNotice.send(socket.assigns.account_id, socket.assigns.project_id, issue)
         {:reply, {:ok, %{id: issue.id}}, socket}
 
       {:error, _reason} ->

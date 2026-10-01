@@ -11,9 +11,10 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Users.Scope, CodeMySpec.WorkingCopies],
+    deps: [CodeMySpec.Issues, CodeMySpec.Users.Scope, CodeMySpec.WorkingCopies],
     exports: :all
 
+  alias CodeMySpec.Issues
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -66,7 +67,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   def running_copy_check(%Scope{} = scope, entity) do
     scope
     |> WorkingCopies.main()
-    |> verdict(scope, entity, :unread)
+    |> verdict(scope, with_fix(entity, fixes(scope, [entity])), :unread)
   end
 
   @doc """
@@ -92,11 +93,13 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
     unpromoted = verdict(running, scope, %{promoted_version: nil}, local)
 
+    stamped = Enum.filter(stories, &is_binary(Map.get(&1, :promoted_version)))
+    fixes = fixes(scope, stamped)
+
     promoted =
-      for %{promoted_version: version} = story <- stories,
-          is_binary(version),
+      for story <- stamped,
           into: %{},
-          do: {story.id, verdict(running, scope, story, local)}
+          do: {story.id, verdict(running, scope, with_fix(story, fixes), local)}
 
     {unpromoted, promoted}
   end
@@ -163,14 +166,66 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   # afterward — more commits, a dirty tree, work for an unrelated story — can
   # make it stop being true, because it already happened.
   defp promoted(entity, copy) do
-    case Map.get(entity, :promoted_version) do
-      version when is_binary(version) ->
+    case {Map.get(entity, :promoted_version), unshipped_fix(entity)} do
+      {version, nil} when is_binary(version) ->
         {true, %{status: "Promoted at version #{version}"}}
+
+      {version, {issue_id, resolved_at}} when is_binary(version) ->
+        fix_not_promoted(version, issue_id, resolved_at)
 
       _ ->
         not_yet_promoted(copy)
     end
   end
+
+  # 1f8028a1: a fix resolved after the story's last promotion. The stamp alone
+  # said the story was promoted, so issue b4e19491's fix on metric_flow's
+  # feature copy was resolved, every requirement read satisfied, and nothing
+  # ever offered the promote that would carry it to main.
+  #
+  # Read from rows, not git: whether the copy has commits main lacks is asked
+  # live by `promote`, and nothing here may move on a restart (ccedd2e7).
+  # `specs_ready_at` is the time of the story's last promotion — every promote
+  # naming it writes it — so promoting again satisfies this.
+  defp unshipped_fix(entity) do
+    with {_issue_id, resolved_at} = fix <- Map.get(entity, :fix),
+         %DateTime{} = promoted_at <- Map.get(entity, :specs_ready_at),
+         :gt <- DateTime.compare(resolved_at, promoted_at) do
+      fix
+    else
+      _ -> nil
+    end
+  end
+
+  defp fix_not_promoted(version, issue_id, resolved_at) do
+    {false,
+     %{
+       reason:
+         "issue #{issue_id} on this story was resolved at #{DateTime.to_iso8601(resolved_at)}, " <>
+           "after its last promotion (version #{version}), so its fix is not on main yet. " <>
+           "Promote this story again by completing its story_promoted task.",
+       promoted: false
+     }}
+  end
+
+  defp fixes(%Scope{active_project_id: project_id}, stories) when is_binary(project_id) do
+    stamped_ids =
+      for story <- stories,
+          is_binary(Map.get(story, :promoted_version)),
+          id = Map.get(story, :id),
+          id != nil,
+          do: id
+
+    case stamped_ids do
+      [] -> %{}
+      ids -> Issues.latest_resolutions(project_id, ids)
+    end
+  end
+
+  defp fixes(_scope, _stories), do: %{}
+
+  defp with_fix(%{id: id} = story, fixes), do: Map.put(story, :fix, Map.get(fixes, id))
+  defp with_fix(entity, _fixes), do: entity
 
   # No git diagnostic any more, and `promote` is a better one than this was.
   #

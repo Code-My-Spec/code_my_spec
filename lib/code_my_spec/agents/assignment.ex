@@ -1,0 +1,287 @@
+defmodule CodeMySpec.Agents.Assignment do
+  @moduledoc """
+  The story and epic a copy's team works on (a31f1cd6).
+
+  The team is the copy's story-scope agents — coding and QA. John: *"the team
+  would get assigned a story and see it through to full completion together …
+  fine for the team to take a new story from the working copy when the team
+  collectively finishes a story."* So a story is assigned to the whole team at
+  once and held on each member's `story_id`; that is the only record. The copy
+  keeps no story of its own (*"it just blows through"*); a session or product
+  reads the team's through `WorkingCopies.team_story_id/1`. The main agent reads
+  none and holds none: main is promoted to, never worked on.
+
+  `stories.working_copy_id` stays the checkout reservation: the team's story is
+  reserved for its copy, and released when the team moves off it.
+
+  ## How a team gets a story
+
+    * `assign_team/3` — `set_active_story`, from any caller on the copy, or
+      from the main agent naming a feature copy.
+    * `advance/4` — a team member's read finding the team's story complete
+      moves the whole team onto the next eligible story.
+    * `claim/3` — a team member starting a story's work when its team holds no
+      story assigns that story to the whole team. Starting another story's work
+      while the team holds one is refused.
+    * A member joining the copy inherits its teammates' story and epic
+      (`inherit/2`).
+    * `assign_epic/3` — an epic placed on a copy gives its story- and epic-scope
+      agents the epic.
+  """
+
+  import Ecto.Query
+
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
+
+  @doc "Whether `role` is a team member: it works one story with its copy's team."
+  @spec team_member?(atom() | String.t() | nil) :: boolean()
+  def team_member?(role), do: RoleProfile.scope(role) == :story
+
+  defp team_roles, do: Enum.filter(RoleProfile.roles(), &team_member?/1)
+
+  defp epic_roles,
+    do: Enum.filter(RoleProfile.roles(), &(RoleProfile.scope(&1) in [:story, :epic]))
+
+  @doc """
+  Assign a story to the whole team on this copy, or clear it with `nil`.
+
+  The story must be ready for development and unassigned or already reserved
+  for this copy; an unassigned one is reserved here. Every team member gets it,
+  and its epic. The stories the team held before are released unless an agent
+  on the copy still holds one. `{:error, :no_team}` when no coding or QA agent
+  is on the copy: there is nobody to hold the story. `{:error, :main_copy}` for
+  the project's main copy: story work happens on feature copies, and nothing on
+  main — not the main agent, not product — ever holds a story.
+  """
+  @spec assign_team(Scope.t(), Ecto.UUID.t() | nil, term()) ::
+          {:ok, integer() | nil} | {:error, term()}
+  def assign_team(%Scope{}, nil, _story_id), do: {:error, :no_working_copy}
+
+  def assign_team(%Scope{} = scope, copy_id, story_id) do
+    with :ok <- feature_copy(scope, copy_id) do
+      fan_out(scope, copy_id, story_id)
+    end
+  end
+
+  # Story work happens on feature copies. John: "Main is what protects us from
+  # dogshit from the agents" — work is promoted to it, never done on it.
+  defp feature_copy(scope, copy_id) do
+    case WorkingCopies.fetch(copy_id) do
+      {:ok, %{project_id: project_id, main: true}} when project_id == scope.active_project_id ->
+        {:error, :main_copy}
+
+      {:ok, %{project_id: project_id}} when project_id == scope.active_project_id ->
+        :ok
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp fan_out(scope, copy_id, story_id) do
+    result =
+      Repo.transaction(fn ->
+        team = lock_team(scope, copy_id)
+        if team == [], do: Repo.rollback(:no_team)
+
+        story = reserve(scope, copy_id, story_id)
+        new_id = story && story.id
+        before = team |> Enum.map(& &1.story_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+        from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+        |> Repo.update_all(set: team_attrs(story))
+
+        still_held = held_on_copy(scope, copy_id)
+        WorkingCopies.release_stories(scope, copy_id, (before -- [new_id]) -- still_held)
+
+        {before, new_id}
+      end)
+
+    with {:ok, {before, new_id}} <- result do
+      if before != [new_id], do: WorkingCopies.announce_selection(scope)
+      {:ok, new_id}
+    end
+  end
+
+  @doc """
+  Move the team from its finished story `from_id` onto `to_id`, once.
+
+  Teammates reading the finished story at the same moment all ask; the team's
+  rows are locked first, so the first moves the team and the rest find it no
+  longer on `from_id` and do nothing. `{:ok, :moved}` either way, or the
+  assignment's own refusal.
+  """
+  @spec advance(Scope.t(), Ecto.UUID.t(), integer(), integer()) ::
+          {:ok, :moved} | {:error, term()}
+  def advance(%Scope{} = scope, copy_id, from_id, to_id) do
+    with :ok <- feature_copy(scope, copy_id) do
+      Repo.transaction(fn ->
+        team = lock_team(scope, copy_id)
+        still_on? = team != [] and Enum.all?(team, &(&1.story_id == from_id))
+        move(scope, copy_id, to_id, still_on?)
+      end)
+    end
+  end
+
+  defp move(_scope, _copy_id, _to_id, false), do: :moved
+
+  defp move(scope, copy_id, to_id, true) do
+    case fan_out(scope, copy_id, to_id) do
+      {:ok, _id} -> :moved
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp reserve(_scope, _copy_id, nil), do: nil
+
+  defp reserve(scope, copy_id, story_id) do
+    case WorkingCopies.reserve_story(scope, copy_id, story_id) do
+      {:ok, story} -> story
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp team_attrs(nil), do: [story_id: nil]
+  defp team_attrs(%{id: id, epic_id: nil}), do: [story_id: id]
+  defp team_attrs(%{id: id, epic_id: epic_id}), do: [story_id: id, epic_id: epic_id]
+
+  defp lock_team(scope, copy_id) do
+    from(a in Agent,
+      where:
+        a.project_id == ^scope.active_project_id and a.account_id == ^scope.active_account_id and
+          a.working_copy_id == ^copy_id and a.role in ^team_roles() and is_nil(a.retired_at),
+      lock: "FOR UPDATE"
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  What a new agent on a copy takes from its teammates: the team's story for a
+  team member, and the epic for a story- or epic-scope role. Attributes that
+  already name one are left alone.
+  """
+  @spec inherit(map()) :: map()
+  def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
+    attrs
+    |> maybe_put(:story_id, team_member?(role) && WorkingCopies.team_story_id(copy_id))
+    |> maybe_put(:epic_id, RoleProfile.scope(role) in [:story, :epic] && team_epic_id(copy_id))
+  end
+
+  def inherit(attrs), do: attrs
+
+  defp maybe_put(attrs, _key, value) when value in [nil, false], do: attrs
+  defp maybe_put(attrs, key, value), do: Map.put_new(attrs, key, value)
+
+  @doc "The epic the agents on this copy hold, or nil."
+  @spec team_epic_id(Ecto.UUID.t() | nil) :: Ecto.UUID.t() | nil
+  def team_epic_id(nil), do: nil
+
+  def team_epic_id(copy_id) do
+    from(a in Agent,
+      where:
+        a.working_copy_id == ^copy_id and a.role in ^epic_roles() and is_nil(a.retired_at) and
+          not is_nil(a.epic_id),
+      order_by: [asc: a.inserted_at],
+      select: a.epic_id,
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  The stories agents on this copy hold.
+  """
+  @spec held_on_copy(Scope.t(), Ecto.UUID.t() | nil) :: [integer()]
+  def held_on_copy(%Scope{active_project_id: project_id}, copy_id)
+      when is_binary(project_id) and is_binary(copy_id) do
+    from(a in Agent,
+      where:
+        a.project_id == ^project_id and a.working_copy_id == ^copy_id and
+          not is_nil(a.story_id) and is_nil(a.retired_at),
+      select: a.story_id,
+      distinct: true
+    )
+    |> Repo.all()
+  end
+
+  def held_on_copy(%Scope{}, _copy_id), do: []
+
+  @doc """
+  Give an epic placed on a copy to the copy's story- and epic-scope agents.
+
+  Agents elsewhere lose it, and with it any of its stories they held: the
+  stories now live on another checkout. `nil` takes it from everyone, as
+  `EpicDispatch.place/3` returning the stories to the backlog does.
+  """
+  @spec assign_epic(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
+  def assign_epic(%Scope{active_project_id: project_id}, epic_id, copy_id)
+      when is_binary(project_id) do
+    epic_stories = from(s in Stories.Story, where: s.epic_id == ^epic_id, select: s.id)
+    elsewhere = from(a in Agent, where: a.project_id == ^project_id)
+    elsewhere = if copy_id, do: not_on(elsewhere, copy_id), else: elsewhere
+
+    Repo.transaction(fn ->
+      elsewhere
+      |> where([a], a.story_id in subquery(epic_stories))
+      |> Repo.update_all(set: [story_id: nil])
+
+      elsewhere
+      |> where([a], a.epic_id == ^epic_id)
+      |> Repo.update_all(set: [epic_id: nil])
+
+      if copy_id do
+        from(a in Agent,
+          where:
+            a.project_id == ^project_id and a.working_copy_id == ^copy_id and
+              a.role in ^epic_roles() and is_nil(a.retired_at)
+        )
+        |> Repo.update_all(set: [epic_id: epic_id])
+      end
+    end)
+
+    :ok
+  end
+
+  def assign_epic(%Scope{}, _epic_id, _copy_id), do: :ok
+
+  defp not_on(query, copy_id),
+    do: where(query, [a], is_nil(a.working_copy_id) or a.working_copy_id != ^copy_id)
+
+  @doc """
+  Whether a team member may start story-level work on `story_id`.
+
+  Its team's own story: yes. Another story while the team holds one: refused,
+  so one member never moves off the story its team is seeing through. No story
+  yet: the story is assigned to the whole team, and the claim proceeds. Anyone
+  who is not a team member is not held to a story.
+  """
+  @spec claim(Scope.t(), Agent.t(), term()) :: :ok | {:error, term()}
+  def claim(%Scope{} = scope, %Agent{} = agent, story_id) do
+    with true <- team_member?(agent.role),
+         {:ok, id} <- Ecto.Type.cast(:id, story_id) do
+      case agent.story_id || WorkingCopies.team_story_id(agent.working_copy_id) do
+        ^id -> :ok
+        nil -> take(scope, agent, id)
+        held -> {:error, {:outside_team_story, held}}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  # On the main copy nothing holds a story, so a claim there assigns nobody and
+  # is not refused for it: story work does not belong on main, but turning a
+  # claim away is not where that is decided.
+  defp take(scope, agent, id) do
+    case assign_team(scope, agent.working_copy_id, id) do
+      {:ok, _id} -> :ok
+      {:error, :main_copy} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+end

@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
-  alias CodeMySpec.Agents.Waiting
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
@@ -58,11 +58,12 @@ defmodule CodeMySpec.Agents.StopDecision do
   def deliver(scope, agent, opts \\ [])
 
   def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
-    # Waiting on something that messages it when it lands: anything said here
-    # only buys a "still waiting" turn. `Work` holds the wake on the same list.
-    case Waiting.reason(scope, agent, :turn_end) do
-      nil -> decide_and_deliver(scope, agent, opts)
-      _waiting -> :ok
+    # `Wake` decides whether it hears anything: off, or waiting on something
+    # that messages it when it lands (anything said here only buys a "still
+    # waiting" turn), and it is not nudged.
+    case Wake.allow?(scope, agent, :nudge) do
+      :ok -> decide_and_deliver(scope, agent, opts)
+      {:hold, _reason} -> :ok
     end
   end
 

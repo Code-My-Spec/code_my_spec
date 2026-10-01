@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
@@ -372,10 +373,12 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def create_agent(%Scope{} = scope, attrs) do
     with :ok <- validate_own_working_copy(scope, attrs) do
+      # A member joining a copy takes its team's story and epic (a31f1cd6).
       attrs =
         attrs
         |> Map.put(:project_id, scope.active_project_id)
         |> Map.put(:account_id, scope.active_account_id)
+        |> Assignment.inherit()
 
       %Agent{}
       |> Agent.changeset(attrs)

@@ -28,6 +28,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Utils
 
@@ -213,8 +214,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp handle_existing(nil, scope, owner, requirement, agent_id, frame) do
-    case role_may_claim(owner, requirement) do
-      :ok -> create_and_activate(scope, owner, requirement, agent_id, frame)
+    with :ok <- role_may_claim(owner, requirement),
+         :ok <- team_may_claim(scope, owner, requirement) do
+      create_and_activate(scope, owner, requirement, agent_id, frame)
+    else
       {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
     end
   end
@@ -326,6 +329,32 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       {:error, reason} ->
         {:reply, TasksMapper.error(claim_error(reason)), frame}
     end
+  end
+
+  # A team member works its team's story (a31f1cd6, `Agents.claim_story/3`):
+  # another story's work is refused while the team holds one, and with none
+  # the story is assigned to the whole team before the task starts. An agent
+  # already holding an active task is refused by `TaskOwner` first, so it moves
+  # no team.
+  defp team_may_claim(scope, %Agent{} = agent, %{entity_type: "story", entity_id: story_id}) do
+    if Agent.active_task(agent), do: :ok, else: claim_for_team(scope, agent, story_id)
+  end
+
+  defp team_may_claim(_scope, _owner, _requirement), do: :ok
+
+  defp claim_for_team(scope, agent, story_id) do
+    case Agents.claim_story(scope, agent, story_id) do
+      :ok -> :ok
+      {:error, {:outside_team_story, held}} -> {:error, outside_team_story(scope, held)}
+      {:error, reason} -> {:error, "Cannot take this story for your team: #{inspect(reason)}"}
+    end
+  end
+
+  defp outside_team_story(scope, held) do
+    number = with %{number: n} <- Stories.get_story(scope, held), do: n
+
+    "Your team is on story #{number || held}, and sees it through together before taking " <>
+      "another. `get_next_requirement` lists its work."
   end
 
   defp claim_error({:active_task_exists, task_id}) do

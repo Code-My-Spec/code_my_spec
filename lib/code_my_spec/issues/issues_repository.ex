@@ -705,6 +705,22 @@ defmodule CodeMySpec.Issues.IssuesRepository do
       {:error, Changeset.change(issue) |> Changeset.add_error(:id, "does not exist")}
   end
 
+  @doc """
+  The most recently resolved issue on each of `story_ids`, as
+  `%{story_id => {issue_id, resolved_at}}`. There is no resolution timestamp,
+  so `updated_at` stands in: it is the resolution unless the issue was edited
+  again afterwards, which reads as a later resolution.
+  """
+  def latest_resolutions(project_id, story_ids) when is_list(story_ids) do
+    from(i in Issue,
+      where: i.project_id == ^project_id and i.story_id in ^story_ids and i.status == :resolved,
+      select: {i.story_id, i.id, i.updated_at}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), fn {_story_id, id, at} -> {id, at} end)
+    |> Map.new(fn {story_id, rows} -> {story_id, Enum.max_by(rows, &elem(&1, 1), DateTime)} end)
+  end
+
   def list_filtered(%Scope{} = scope, filters) when is_map(filters) do
     Issue
     |> by_project(scope.active_project.id)

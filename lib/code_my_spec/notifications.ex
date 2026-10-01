@@ -610,7 +610,7 @@ defmodule CodeMySpec.Notifications do
   # still has to be told — so that case falls back to the old shape rather than
   # dropping the notice.
   defp deliver_denial(scope, agent, copy_id, notice) do
-    case Work.offer_turn_with(scope, agent, notice) do
+    case Work.offer_turn_with(scope, agent, notice, :blocker_resolved) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
@@ -854,7 +854,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
-    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request))
+    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request), :own_reply)
     :ok
   end
 
@@ -1130,16 +1130,48 @@ defmodule CodeMySpec.Notifications do
   # process holding the working copy, and doing that while still holding the
   # question's row lock is the shape of the failure John hit — a form
   # submission waiting out an agent's whole reply.
-  defp deliver_answer_content(_request, false), do: :ok
+  #
+  # A question asked without a task is the exception (9f03455b). It blocked
+  # nothing, so answering it releases nothing, and the graph may have no work
+  # to bring the agent back: metric_flow's coder asked f247789c, it was
+  # answered at 16:18:35, and the coder sat idle until woken by hand. So an
+  # idle continuous asker is offered one turn that opens with the answer —
+  # John, 10-01: "if the agent asked the question and it's continuous it should
+  # get the answer delivered". Whether it may be woken is `Agents.Wake`'s
+  # (`:question_answered`): a non-continuous asker collects it when it comes
+  # back (3219).
+  #
+  # Mid-turn the answer joins the turn whatever the question blocked. A
+  # task-less answer mid-turn used to go nowhere: the turn ended, nothing
+  # offered another, and the answer waited on `check_answer`.
+  #
+  # Idle with a task released: `TaskOwner.blocker_resolved/3` already woke it
+  # with the task named.
   defp deliver_answer_content(%{agent_id: nil}, _released?), do: :ok
 
-  defp deliver_answer_content(request, true) do
-    case Repo.get(CodeMySpec.Agents.Agent, request.agent_id) do
-      %{turn_started_at: %DateTime{}} = agent ->
-        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request))
+  # A task-scoped answer that released nothing (3220's override of a task that
+  # already moved on) changes nothing in front of the agent, and says nothing.
+  defp deliver_answer_content(%{task_id: task_id}, false) when not is_nil(task_id), do: :ok
+
+  defp deliver_answer_content(request, released?) do
+    case Repo.get(Agent, request.agent_id) do
+      %Agent{turn_started_at: %DateTime{}} = agent ->
+        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request), :question_answered)
         :ok
 
-      _idle_or_gone ->
+      %Agent{} = agent when not released? ->
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Work.offer_turn_with(
+            owner_scope(agent),
+            agent,
+            answer_message(request),
+            :question_answered
+          )
+        end)
+
+        :ok
+
+      _released_or_gone ->
         :ok
     end
   end
@@ -1147,7 +1179,7 @@ defmodule CodeMySpec.Notifications do
   # What the agent reads mid-turn. Self-contained, because it is arriving in
   # the middle of something else: a reply without its question is a line of
   # dialogue with no idea what it answers.
-  defp answer_message(%{questions: questions, answers: answers}) do
+  defp answer_message(%{questions: questions, answers: answers} = request) do
     body =
       Enum.map_join(questions, "\n\n", fn question ->
         text = MapAccess.get(question, :question)
@@ -1159,8 +1191,17 @@ defmodule CodeMySpec.Notifications do
 
     #{body}
 
+    #{answer_closing(request)}
+    """
+  end
+
+  defp answer_closing(%{task_id: nil}),
+    do: "It blocked no task. Carry on with whatever you asked it for."
+
+  defp answer_closing(_request) do
+    """
     This does not resume the task it blocked. Pick that back up deliberately
-    with `start_task` when you are ready for it.
+    with `start_task` when you are ready for it.\
     """
   end
 

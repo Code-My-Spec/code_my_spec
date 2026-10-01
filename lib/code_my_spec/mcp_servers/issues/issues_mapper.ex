@@ -88,7 +88,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     hybrid_response(summary, issue_data(issue))
   end
 
-  def issues_list_response(issues, filters) do
+  def issues_list_response(issues, filters, total \\ nil) do
     count = length(issues)
 
     filter_text =
@@ -100,25 +100,45 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
 
     summary =
       if count == 0 do
-        "No issues found#{filter_note}."
+        "No issues found#{filter_note}." <> hidden_note(filters)
       else
         lines =
           Enum.map_join(issues, "\n", fn i ->
-            "- [#{i.severity}] #{i.title} (#{i.status}) — ID: #{i.id}"
+            "- [#{i.severity}] #{one_line(i.title)} (#{i.status}) — ID: #{i.id}"
           end)
 
-        "#{count} issues#{filter_note}:\n#{lines}"
+        "#{count} issues#{filter_note}:\n#{lines}" <>
+          more_note(count, total) <>
+          hidden_note(filters)
       end
 
     data = %{
       issues: Enum.map(issues, &issue_data/1),
       count: count,
+      total: total || count,
       filters: filters,
       store: store()
     }
 
     hybrid_response(summary <> store_note(), data)
   end
+
+  defp more_note(count, total) when is_integer(total) and total > count,
+    do:
+      "\n\nShowing the newest #{count} of #{total}. Narrow with `query`, `severity` or " <>
+        "`status`, or raise `limit`."
+
+  defp more_note(_count, _total), do: ""
+
+  defp hidden_note(%{severity: "medium or higher"}),
+    do: "\n\nLow and info are hidden; `severity: \"all\"` shows them."
+
+  defp hidden_note(_filters), do: ""
+
+  # One line per issue: the description is `get_issue`'s, and a title carrying a
+  # newline would otherwise read as two rows.
+  defp one_line(title) when is_binary(title), do: String.replace(title, ~r/\s+/, " ")
+  defp one_line(title), do: title
 
   # Which store answered.
   #

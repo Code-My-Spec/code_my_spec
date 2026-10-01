@@ -40,6 +40,8 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
 
   use CodeMySpecSpex.Case, async: false
 
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
@@ -50,7 +52,19 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
 
   setup ctx do
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
-    {:ok, _} = CodeMySpec.WorkingCopies.set_active_story(ctx.scope, ctx.story.id)
+
+    {:ok, _coding} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        engine: :alloy,
+        provider: "zai",
+        working_copy: "/tmp/a-copy",
+        role: :coding,
+        working_copy_id: ctx.scope.active_working_copy_id
+      })
+
+    {:ok, _} =
+      Agents.assign_team(ctx.scope, ctx.scope.active_working_copy_id, ctx.story.id)
+
     :ok = GraphWatcher.settle(ctx.scope)
     ctx
   end

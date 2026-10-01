@@ -1101,7 +1101,7 @@ defmodule CodeMySpec.Promotion do
   # Logged rather than retried, matching `report_to/3`: the agent may already be
   # acting on the first message, and a delivery loop does not fix that.
   defp deliver(scope, agent_id, text, what) do
-    case Agents.dispatch_message(scope, agent_id, text) do
+    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
       {:ok, disposition, _message} ->
         Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
 

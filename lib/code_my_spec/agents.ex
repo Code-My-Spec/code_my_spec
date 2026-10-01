@@ -52,6 +52,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
@@ -64,6 +65,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
@@ -74,6 +76,8 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.TurnTimeout
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -149,6 +153,9 @@ defmodule CodeMySpec.Agents do
   defdelegate list_on_duty(scope), to: AgentsRepository
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
+  defdelegate assign_team(scope, copy_id, story_id), to: Assignment
+  defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
+  defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
@@ -1299,10 +1306,15 @@ defmodule CodeMySpec.Agents do
   submission, and an agent whose machine has since gone away must not take the
   form with it — the answer is recorded either way, and an agent that missed it
   can still find it with `check_answer`.
+
+  `event` is what `Wake` is asked about — `:own_reply` for the answer to
+  something it asked of us, `:question_answered` for its question's answer. A
+  held message is still recorded, as a delivery that failed always was: what
+  was said is true whether or not anything was there to hear it.
   """
-  @spec send_to_agent(Ecto.UUID.t(), String.t(), timeout()) ::
+  @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), timeout()) ::
           {:ok, :started | :queued} | {:error, term()}
-  def send_to_agent(agent_id, text, timeout \\ @message_timeout_ms)
+  def send_to_agent(agent_id, text, event, timeout \\ @message_timeout_ms)
       when is_binary(agent_id) and is_binary(text) do
     case Repo.get(Agent, agent_id) do
       nil ->
@@ -1311,14 +1323,28 @@ defmodule CodeMySpec.Agents do
       agent ->
         Conversations.record_sent_to_agent(agent, text)
 
-        Transport.dispatch_message(
-          agent.working_copy_id,
-          agent,
-          "answer-" <> Ecto.UUID.generate(),
-          text,
-          timeout
-        )
+        case Wake.allow?(agent_scope(agent), agent, event) do
+          :ok ->
+            Transport.dispatch_message(
+              agent.working_copy_id,
+              agent,
+              "answer-" <> Ecto.UUID.generate(),
+              text,
+              timeout
+            )
+
+          hold ->
+            Wake.to_error(hold)
+        end
     end
+  end
+
+  defp agent_scope(%Agent{} = agent) do
+    %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id,
+      active_working_copy_id: agent.working_copy_id
+    }
   end
 
   # Running out of our own patience is not the message failing. The machine took
@@ -1358,6 +1384,26 @@ defmodule CodeMySpec.Agents do
     case WorkingCopies.main(scope) do
       nil -> nil
       copy -> scope |> running_main_agents() |> Enum.find(&(&1.working_copy_id == copy.id))
+    end
+  end
+
+  @doc """
+  Tell the project's main agent about `event`, if one is running and `Wake`
+  allows it. Delivered from a task, because delivery waits on a turn the caller
+  should not.
+  """
+  @spec notify_main(Scope.t(), Wake.event(), String.t()) :: :ok
+  def notify_main(%Scope{} = scope, event, text) when is_binary(text) do
+    with %Agent{} = main <- main_agent(scope),
+         :ok <- Wake.allow?(scope, main, event) do
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          message_agent(scope, main.id, text)
+        end)
+
+      :ok
+    else
+      _nobody_or_held -> :ok
     end
   end
 
@@ -1907,13 +1953,18 @@ defmodule CodeMySpec.Agents do
 
   `{:ok, :started}` means the agent has it. `{:ok, :queued}` means it will when
   the turn ends, and until then it can be taken back.
+
+  `event` is what `Wake` is asked about: `:operator_message` for a person at a
+  page, `:own_reply` for the outcome of a run the agent started. A hold answers
+  as `Wake.to_error/1` says.
   """
-  @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
+  @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t(), Wake.event()) ::
           {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
-  def dispatch_message(%Scope{} = scope, id, text) when is_binary(text) do
+  def dispatch_message(%Scope{} = scope, id, text, event) when is_binary(text) do
     ref = Ecto.UUID.generate()
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, disposition} <-
            Transport.dispatch_message(
@@ -1926,6 +1977,13 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent),
          {:ok, message} <- record_sent(conversation, text, ref, disposition) do
       {:ok, disposition, message}
+    end
+  end
+
+  defp wake(scope, agent, event) do
+    case Wake.allow?(scope, agent, event) do
+      :ok -> :ok
+      hold -> Wake.to_error(hold)
     end
   end
 
@@ -2126,8 +2184,7 @@ defmodule CodeMySpec.Agents do
         # differently next turn. Recorded as an orchestrator action it reached
         # the person watching and never the agent, which for "you ran out of
         # steps" means the same over-long turn again.
-        send_to_agent(agent.id, event["text"] || "")
-        :ok
+        send_off_channel(agent, event["text"] || "")
 
       _ ->
         :ok
@@ -2148,6 +2205,39 @@ defmodule CodeMySpec.Agents do
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "agent_died"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} -> account_for_death(scope, agent, event["text"])
+      _ -> :ok
+    end
+  end
+
+  # A failed turn that was neither a provider refusal nor a timeout (8e9a1d83).
+  #
+  # Its text used to be written as a step, which reads as the agent speaking,
+  # and nothing offered the work again: a metric_flow agent's whole reply to a
+  # request for a help page was "Claude Code returned tool_use without any tool
+  # calls", the next turn moved on, and the request was gone. Six times from
+  # 09-23 to 10-01.
+  #
+  # Now it is said to the agent, with the request it failed on, once. A turn
+  # that fails on the re-offer is recorded and left: a failure that repeats on
+  # every turn would otherwise buy a turn per failure, forever.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "turn_failed", "text" => text} = event,
+        _opts
+      )
+      when is_binary(text) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      # A refusal and a timeout each have a reader that finds this line on the
+      # transcript (`ProviderRefusal`, `TurnTimeout`), so they stay there.
+      if ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) do
+        record_refusal(scope, agent, event)
+        write_turn_event(conversation, agent, event)
+      else
+        reoffer_failed_turn(conversation, agent, text)
+      end
+    else
       _ -> :ok
     end
   end
@@ -2197,6 +2287,52 @@ defmodule CodeMySpec.Agents do
   end
 
   defp restart_if_continuous(_scope, _agent), do: :ok
+
+  @failed_turn "Your last turn failed: "
+
+  defp reoffer_failed_turn(conversation, agent, failure) do
+    request = Conversations.last_request_text(conversation)
+
+    if is_binary(request) and String.starts_with?(request, @failed_turn) do
+      Conversations.add_message(
+        conversation,
+        :operator,
+        @failed_turn <> failure <> "\n\nIt failed again on the retry, so it was not re-sent.",
+        "operator"
+      )
+    else
+      send_off_channel(agent, failed_turn_notice(failure, request))
+    end
+
+    :ok
+  end
+
+  defp failed_turn_notice(failure, nil),
+    do: @failed_turn <> failure <> "\n\nPick up where the thread leaves off."
+
+  defp failed_turn_notice(failure, request) do
+    """
+    #{@failed_turn}#{failure}
+
+    Nothing from it was carried out. The request was:
+
+    #{request}
+
+    Pick it back up.\
+    """
+  end
+
+  # This runs in the harness channel, and sending to an agent is a call into
+  # that same channel, which the transport refuses rather than deadlock — the
+  # message was recorded and never delivered (once, 2026-10-01 12:14Z).
+  defp send_off_channel(agent, text) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        send_to_agent(agent.id, text, :own_reply)
+      end)
+
+    :ok
+  end
 
   defp death_notice(cause) do
     """

@@ -1,8 +1,9 @@
 defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
   @moduledoc """
   A pending task-scoped tap-out blocks its attempt, not the durable agent.
-  The agent chooses another released story through the real task tool while
-  the human decision remains pending. No blocked state is seeded.
+  The agent chooses unrelated component work through the real task tool while
+  the human decision remains pending; it stays with its team's story rather
+  than taking another (a31f1cd6: the team sees a story through together). No blocked state is seeded.
   """
   use CodeMySpecSpex.Case
 
@@ -95,13 +96,13 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
         {:ok, context}
       end
 
-      when_ "the agent deliberately claims the other story", context do
+      when_ "the agent deliberately claims unrelated component work", context do
         {:reply, started, _} =
           StartTask.execute(
             %{
-              requirement_name: "bdd_specs_exist",
-              entity_type: "story",
-              entity_id: to_string(context.second_story.number)
+              requirement_name: "implementation_file",
+              entity_type: "component",
+              entity_id: to_string(context.component.id)
             },
             context.agent_frame
           )

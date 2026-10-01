@@ -343,7 +343,7 @@ defmodule CodeMySpec.MainAgent do
       # turn it was in the middle of; why that happened is the one thing it
       # cannot work out for itself, and an orchestrator row saying so was
       # dropped from its context before it ever got there.
-      Agents.send_to_agent(restarted.id, "Restarted: #{reason}")
+      Agents.send_to_agent(restarted.id, "Restarted: #{reason}", :own_reply)
 
       {:ok, restarted}
     end
@@ -1379,7 +1379,7 @@ defmodule CodeMySpec.MainAgent do
         :ok
 
       agent ->
-        Work.request_turn_if_runnable(scope, agent, :question_raised)
+        Work.request_turn_if_runnable(scope, agent, :question_raised, :teammate_question)
         :ok
     end
   end

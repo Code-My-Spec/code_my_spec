@@ -71,8 +71,8 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -136,8 +136,8 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     askers = agent_uuids(requester_id)
 
     scope
-    |> internal_agents(copy_id, askers)
-    |> Enum.each(&tell_one(&1, findings, source, askers))
+    |> internal_agents(copy_id)
+    |> Enum.each(&tell_one(scope, &1, findings, source, askers))
   end
 
   def deliver(_scope, _source, _problems, _requester_id), do: :ok
@@ -164,7 +164,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       agent_ids ->
         scope
         |> requesting_agents(copy_id, agent_ids)
-        |> Enum.each(&tell(&1, failed(source, reason)))
+        |> Enum.each(&tell(scope, &1, :own_reply, failed(source, reason)))
     end
   end
 
@@ -200,11 +200,12 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   # The asker is answered whatever the run found; everyone else keeps the
-  # silence a clean tree earns them.
-  defp tell_one(%{id: id} = agent, findings, source, askers) do
+  # silence a clean tree earns them, and hears findings only if `Wake` says
+  # its role does (`RoleProfile.wake` naming `:findings`).
+  defp tell_one(scope, %{id: id} = agent, findings, source, askers) do
     cond do
-      id in askers -> tell(agent, findings || clean(source))
-      findings -> tell(agent, findings)
+      id in askers -> tell(scope, agent, :own_reply, findings || clean(source))
+      findings -> tell(scope, agent, :findings, findings)
       true -> :ok
     end
   end
@@ -222,70 +223,27 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # Alloy only. A Claude Code session in the same copy has its own path and
   # would be told twice — once here and once on its next tool call — which is
   # the duplicate criterion 3048 exists to keep out.
-  # The roles a run's findings are actually for.
   #
-  # `Validation.Menu` holds the same two on its problems class, and for the same
-  # reason: `:coding` fixes code and `:main` does everything, while `:qa` tests a
-  # story and `:product` writes specs. Telling QA about 47 spex errors it cannot
-  # read — the digest says "call `list_problems`", which its role does not carry
-  # — is a message that costs a turn and offers no move.
+  # Every alloy agent on the copy, and nothing more: who hears what is
+  # `tell_one/5`'s payload rule and `Wake`'s agent rule. The broadcast's role
+  # filter (only roles that fix code hear findings nobody asked for — telling
+  # QA about 47 spex errors it cannot read is a turn with no move) is
+  # `RoleProfile.wake` naming `:findings`; the asker is answered as
+  # `:own_reply` whatever its role.
   #
-  # Kept apart from the menu's rule deliberately rather than shared: they answer
-  # different questions that happen to agree today, and a wake that follows a
-  # refusal it cannot cause is worse than two lists that drift visibly. So it is
-  # its own field on the profile, `hears_findings?`, beside `holds_problems?`.
-  defp report_roles, do: RoleProfile.roles_where(:hears_findings?)
-
-  # Two questions, and this used to answer both with the role list.
+  # Measured 2026-09-23, and why the asker is not filtered by role: a QA agent
+  # on Broken Oaths story 947 started credo and spex through `start_analysis`,
+  # both completed at 16:02, and the query that picked the broadcast roles
+  # removed the asker before it could be answered. Fifty minutes, and the only
+  # thing that moved it was a person noticing.
   #
-  # "Who should hear about findings nobody asked for" is a broadcast, and the
-  # roles above are the right answer to it. "Who asked for this run and is
-  # waiting on it" is a reply, and the asker's role has nothing to do with it —
-  # `tell_one/4` already knows the difference and answers the requester whatever
-  # the run found, including a clean one. That clause could never fire for a role
-  # outside the list, because this query removed the asker before it ran.
-  #
-  # Measured 2026-09-23. A QA agent on Broken Oaths story 947 started credo and
-  # spex through `start_analysis`, both rows carrying
-  # `requested_by: {"agent_id" => "b55ec59c-..."}`. Both completed at 16:02. It
-  # held its task waiting for them, correctly, and was never told: `:qa` is not
-  # in `report_roles/0`, so it was filtered out of its own answer. Fifty minutes,
-  # and the only thing that moved it was a person noticing.
-  #
-  # The broadcast filter is unchanged and still right — the comment above it
-  # describes a real cost, and a QA agent still does not get told about 47 spex
-  # errors it cannot read. It just no longer decides who may be answered.
-  # `requester_id` is `run.requested_by["agent_id"]`, written by whoever called
-  # `start_analysis` — an alloy agent's real row id, but a Claude Code session
-  # writes its own (non-UUID) session id there instead, having no row in this
-  # table at all. `is_binary/1` accepts either, and `a.id == ^requester_id`
-  # then asks Ecto to dump a non-UUID string as this column's `:binary_id`,
-  # which raises and fails the whole run's report — not silently: it crashes
-  # every analysis a CLI session requests, compiler and credo included.
-  # Casting first turns "not a real agent id" back into the plain broadcast
-  # this session was always going to get told through its own path anyway (see
-  # "Alloy only" above).
-  # `askers` are already cast by `agent_uuids/1`.
-  defp internal_agents(%Scope{} = scope, copy_id, [_ | _] = askers),
-    do: internal_agents_matching(scope, copy_id, askers)
-
-  defp internal_agents(%Scope{active_project_id: project_id}, copy_id, []) do
+  # `askers` are cast by `agent_uuids/1`: a Claude Code session writes its own
+  # non-UUID id into `requested_by`, and comparing that to this column raised.
+  defp internal_agents(%Scope{active_project_id: project_id}, copy_id) do
     Agent
     |> where(
       [a],
-      a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy and a.role in ^report_roles()
-    )
-    |> Repo.all()
-  end
-
-  defp internal_agents_matching(%Scope{active_project_id: project_id}, copy_id, agent_ids) do
-    Agent
-    |> where(
-      [a],
-      a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy and
-        (a.role in ^report_roles() or a.id in ^agent_ids)
+      a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.engine == :alloy
     )
     |> Repo.all()
   end
@@ -295,16 +253,20 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     |> where(
       [a],
       a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy
+        a.engine == :alloy
     )
     |> Repo.all()
   end
 
   # Off the caller's process: a run failed on channel death or join is announced
   # from inside the harness channel, and dispatch is a call back into it,
-  # refused as :would_deadlock (same class as 104bcb23).
-  defp tell(%Agent{} = agent, message) do
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> dispatch(agent, message) end)
+  # refused as :would_deadlock (same class as 104bcb23). Whether it reaches the
+  # agent at all is `Wake`'s: a stopped agent is not owed one (criterion 3049).
+  defp tell(scope, %Agent{} = agent, event, message) do
+    if Wake.allow?(scope, agent, event) == :ok do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> dispatch(agent, message) end)
+    end
+
     :ok
   end
 

@@ -25,6 +25,7 @@ defmodule CodeMySpec.WorkingCopies do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Components,
       CodeMySpec.Devices,
@@ -44,6 +45,7 @@ defmodule CodeMySpec.WorkingCopies do
 
   require Logger
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments.Environment
@@ -295,74 +297,67 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
-  Select the one story every agent on the current working copy works on.
+  The story the team on this copy works: the one its story-scope agents
+  (coding, QA) hold, or nil when none holds one (a31f1cd6).
 
-  Selection is explicit. Clearing it leaves the copy idle and preserves its
-  backlog assignments. An unassigned story is assigned to this copy atomically
-  with selection; a story assigned elsewhere cannot be taken by this operation.
+  The team is the only record. The copy kept an `active_story_id` of its own
+  until John's ruling — "we don't have to record the active story on the copy,
+  it just blows through" — so a session or the main agent asking about a copy
+  reads its team's story here. `Agents.assign_team/3` is the writer.
+
+  Read schemalessly because `Agents` sits above this context. Agents in step
+  hold one story; if they ever disagree, the earliest-started one answers.
   """
-  def set_active_story(%Scope{active_working_copy_id: nil}, _story_id),
-    do: {:error, :no_working_copy}
+  @spec team_story_id(Ecto.UUID.t() | nil) :: integer() | nil
+  def team_story_id(copy_id) when is_binary(copy_id) do
+    roles =
+      for role <- RoleProfile.roles(), RoleProfile.scope(role) == :story, do: to_string(role)
 
-  def set_active_story(%Scope{} = scope, story_id) do
-    result =
-      Repo.transaction(fn ->
-        copy =
-          WorkingCopy
-          |> where([c], c.id == ^scope.active_working_copy_id)
-          |> where([c], c.project_id == ^scope.active_project_id)
-          |> lock("FOR UPDATE")
-          |> Repo.one()
-
-        if is_nil(copy), do: Repo.rollback(:not_found)
-
-        release_backlog(scope, copy)
-        selected_id = select_story(scope, copy, story_id)
-
-        case save(copy, %{active_story_id: selected_id}) do
-          {:ok, updated} -> {copy, updated}
-          {:error, reason} -> Repo.rollback(reason)
-        end
-      end)
-
-    case result do
-      {:ok, {before, updated}} ->
-        if before.active_story_id != updated.active_story_id do
-          GraphInputs.announce(scope, "WorkingCopies", [], :project_wide)
-        end
-
-        {:ok, updated}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
+          is_nil(a.retired_at) and not is_nil(a.story_id),
+      order_by: [asc: a.inserted_at],
+      select: a.story_id,
+      limit: 1
+    )
+    |> Repo.one()
   end
 
-  # A copy holds the story it is pointed at, and no others.
-  #
-  # `select_story/3` assigned on the way in and nothing ever released, so a copy
-  # accumulated every story it had ever been pointed at and each one was pinned
-  # there: `story_assigned_elsewhere` refuses to move an assigned story, and
-  # clearing the active story left the assignment behind. Pointing a copy at a
-  # second story stranded the first with no tool able to free it — measured on
-  # 2026-09-21, where story 1027 was pinned to a main checkout within ten
-  # minutes of the project being set up and could not be handed to the copy
-  # that was staffed to build it.
-  #
-  # Released before the new one is selected and inside the same transaction, so
-  # a refusal rolls the release back with it: a copy pointed at something
-  # invalid keeps exactly what it had.
-  defp release_backlog(scope, copy) do
-    Story
-    |> where([s], s.working_copy_id == ^copy.id)
-    |> where([s], s.project_id == ^scope.active_project_id)
-    |> where([s], s.account_id == ^scope.active_account_id)
-    |> Repo.update_all(set: [working_copy_id: nil])
+  def team_story_id(_copy_id), do: nil
+
+  @doc """
+  Release these stories' reservations on this copy.
+
+  A team switching or clearing its story frees the old one for another copy to
+  take (John, a31f1cd6): reserving on the way in and never releasing is how a
+  copy came to pin every story it had ever been pointed at — story 1027 stuck on
+  a main checkout on 2026-09-21. The caller leaves out whatever an agent on the
+  copy still holds.
+  """
+  @spec release_stories(Scope.t(), Ecto.UUID.t(), [integer()]) :: non_neg_integer()
+  def release_stories(_scope, _copy_id, []), do: 0
+
+  def release_stories(%Scope{} = scope, copy_id, story_ids) do
+    {count, _} =
+      Story
+      |> where([s], s.working_copy_id == ^copy_id and s.id in ^story_ids)
+      |> where([s], s.project_id == ^scope.active_project_id)
+      |> where([s], s.account_id == ^scope.active_account_id)
+      |> Repo.update_all(set: [working_copy_id: nil])
+
+    count
   end
 
-  defp select_story(_scope, _copy, nil), do: nil
-
-  defp select_story(scope, copy, story_id) do
+  @doc """
+  Reserve a story for a checkout so work on it can be selected there: ready for
+  development, and unassigned or already this checkout's. An unassigned story
+  is assigned here. Locks the story row, so call it inside the transaction
+  that records the selection.
+  """
+  @spec reserve_story(Scope.t(), Ecto.UUID.t(), term()) ::
+          {:ok, Story.t()} | {:error, :not_found | :story_not_ready | :story_assigned_elsewhere}
+  def reserve_story(%Scope{} = scope, copy_id, story_id) do
     with {:ok, id} <- Ecto.Type.cast(:id, story_id),
          %Story{} = story <-
            Story
@@ -370,23 +365,28 @@ defmodule CodeMySpec.WorkingCopies do
            |> where([s], s.account_id == ^scope.active_account_id)
            |> lock("FOR UPDATE")
            |> Repo.one() do
-      if not story.ready_for_dev, do: Repo.rollback(:story_not_ready)
+      cond do
+        not story.ready_for_dev ->
+          {:error, :story_not_ready}
 
-      if story.working_copy_id not in [nil, copy.id],
-        do: Repo.rollback(:story_assigned_elsewhere)
+        story.working_copy_id not in [nil, copy_id] ->
+          {:error, :story_assigned_elsewhere}
 
-      if is_nil(story.working_copy_id) do
-        case story |> Story.changeset(%{working_copy_id: copy.id}) |> Repo.update() do
-          {:ok, _story} -> :ok
-          {:error, reason} -> Repo.rollback(reason)
-        end
+        is_nil(story.working_copy_id) ->
+          story |> Story.changeset(%{working_copy_id: copy_id}) |> Repo.update()
+
+        true ->
+          {:ok, story}
       end
-
-      story.id
     else
-      _ -> Repo.rollback(:not_found)
+      _ -> {:error, :not_found}
     end
   end
+
+  @doc "Tell the graph a story selection on this project changed."
+  @spec announce_selection(Scope.t()) :: term()
+  def announce_selection(%Scope{} = scope),
+    do: GraphInputs.announce(scope, "WorkingCopies", [], :project_wide)
 
   @doc """
   Point a scope at a harness: which checkout, where it is, and how to reach it.

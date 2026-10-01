@@ -29,8 +29,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
     scope = full_scope_fixture()
     {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
     scope = %{scope | active_working_copy_id: copy.id}
-    story = story_fixture(scope)
-    {:ok, _} = WorkingCopies.set_active_story(scope, story.id)
+    story_fixture(scope)
     Requirements.recompute(scope)
 
     role =

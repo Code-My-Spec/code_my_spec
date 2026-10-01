@@ -13,7 +13,24 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
   # another agent's at this checkout — before the wave is cut (467310a7).
-  def read(scope, role \\ nil, requested_number \\ nil, withheld? \\ fn _ -> false end) do
+  #
+  # `assignment` is whose story this is (a31f1cd6):
+  #
+  #   * `{:team, story_id, epic_id}` — the team's story, as `Agents.Work`
+  #     resolves it. When that story is complete for the whole team the answer
+  #     carries `:next_story`, the story the team takes next, so `Agents.Work`
+  #     can move the whole team onto it.
+  #   * `:copy` — the story the copy's team holds, read here. For callers below
+  #     `Agents` that cannot resolve a team.
+  #   * `:project` — no story at all. The main agent's: story work happens on
+  #     feature copies, never on main.
+  def read(
+        scope,
+        role \\ nil,
+        requested_number \\ nil,
+        withheld? \\ fn _ -> false end,
+        assignment \\ :copy
+      ) do
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
          :ok <- GraphWatcher.settle(scope),
@@ -21,9 +38,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
          ctx = Map.put(ctx, :withheld?, withheld?),
          {{nodes, edges}, _actionable, _at} <-
            RequirementGraph.cached_graph_with_actionable(scope) do
-      case selected(scope, copy, requested_number) do
+      case selected(scope, copy, requested_number, assignment) do
         {:ok, story} ->
-          story_or_project(story, nodes, edges, ctx, role, requested_number)
+          scoped = from_graph(story, nodes, edges, ctx, role)
+          next = next_story(scoped, assignment, requested_number, nodes, edges, ctx)
+
+          scoped
+          |> story_or_project(nodes, edges, ctx, role, requested_number)
+          |> Map.put(:next_story, next)
 
         {:refused, reason} ->
           result(:unavailable, nil, reason)
@@ -69,18 +91,12 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # story is blocked on this" rather than "go triage issues". The issue needing
   # triage is that story's own. An agent asking what *it* should do is the case
   # that was broken, and it always names a role.
-  defp story_or_project(story, nodes, edges, ctx, nil, nil),
-    do: from_graph(story, nodes, edges, ctx, nil)
+  defp story_or_project(story_scoped, _nodes, _edges, _ctx, nil, nil), do: story_scoped
 
-  defp story_or_project(story, nodes, edges, ctx, role, nil) do
-    case from_graph(story, nodes, edges, ctx, role) do
-      %{actionable: []} = story_scoped -> project_level(nodes, edges, ctx, role, story_scoped)
-      story_scoped -> story_scoped
-    end
-  end
+  defp story_or_project(%{actionable: []} = story_scoped, nodes, edges, ctx, role, nil),
+    do: project_level(nodes, edges, ctx, role, story_scoped)
 
-  defp story_or_project(story, nodes, edges, ctx, role, _requested),
-    do: from_graph(story, nodes, edges, ctx, role)
+  defp story_or_project(story_scoped, _nodes, _edges, _ctx, _role, _requested), do: story_scoped
 
   # Project-scope work, and nothing else, for a copy whose story holds none.
   #
@@ -135,8 +151,12 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # about that story or it is a refusal — never the project. `GetNextRequirement`
   # has always documented it that way: "an explicit story must agree with the
   # working copy's active assignment".
-  defp selected(scope, copy, nil) do
-    with id when not is_nil(id) <- copy.active_story_id,
+  #
+  # The team's story must still be reserved for its checkout: the reservation
+  # (`stories.working_copy_id`) is where the code lives, and the team's
+  # `story_id` is which of the copy's stories it works.
+  defp selected(scope, copy, nil, assignment) do
+    with id when not is_nil(id) <- assigned_id(copy, assignment),
          %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
          true <- story.working_copy_id == copy.id do
       {:ok, story}
@@ -145,9 +165,10 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
-  # The caller names a story by its number; the copy holds it by id.
-  defp selected(scope, copy, requested_number) do
-    active = copy.active_story_id && Stories.get_story(scope, copy.active_story_id)
+  # The caller names a story by its number; the copy or the agent holds it by id.
+  defp selected(scope, copy, requested_number, assignment) do
+    id = assigned_id(copy, assignment)
+    active = id && Stories.get_story(scope, id)
 
     with %{} <- active,
          true <- to_string(requested_number) == to_string(active.number),
@@ -159,23 +180,60 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
+  defp assigned_id(copy, :copy), do: WorkingCopies.team_story_id(copy.id)
+  defp assigned_id(_copy, {:team, story_id, _epic_id}), do: story_id
+  defp assigned_id(_copy, :project), do: nil
+
+  # The story a team whose story is complete takes next (a31f1cd6). John:
+  # "fine for the team to take a new story from the working copy when the team
+  # collectively finishes a story."
+  #
+  # Candidates are the stories this copy can work — ready for development,
+  # reserved here or unassigned, which is what `ctx.stories` already holds —
+  # in the epic when the team has one, in the graph's own story order
+  # (priority, then age), and not already complete. Nil when nothing is
+  # eligible: the team stays "complete".
+  defp next_story(
+         %{status: :complete, story: current},
+         {:team, _id, epic_id},
+         nil,
+         nodes,
+         edges,
+         ctx
+       ) do
+    ctx.stories
+    |> Enum.filter(&(&1.id != current.id and is_nil(&1.retired_at) and in_epic?(&1, epic_id)))
+    |> Enum.sort_by(&{&1.priority || 999, age(&1.inserted_at)})
+    |> Enum.find(&(from_graph(&1, nodes, edges, ctx, nil).status != :complete))
+  end
+
+  defp next_story(_scoped, _assignment, _requested, _nodes, _edges, _ctx), do: nil
+
+  defp age(%DateTime{} = at), do: DateTime.to_unix(at, :microsecond)
+  defp age(%NaiveDateTime{} = at), do: at |> DateTime.from_naive!("Etc/UTC") |> age()
+  defp age(_at), do: 0
+
+  defp in_epic?(_story, nil), do: true
+  defp in_epic?(story, epic_id), do: story.epic_id == epic_id
+
   defp refusal(requested, nil),
     do:
-      "This working copy has no active story, so it has nothing to answer for story " <>
-        "#{requested}. Select it with `set_active_story` first."
+      "This working copy's team has no active story, so it has nothing to answer for " <>
+        "story #{requested}. Select it with `set_active_story` first."
 
-  defp refusal(requested, active), do: refusal_for(to_string(requested), to_string(active))
+  defp refusal(requested, active),
+    do: refusal_for(to_string(requested), to_string(active), "this working copy's team's")
 
   # Matched on the same binding twice: the ids agree, so the story the caller
   # named *is* the selection and something else made it ineligible.
-  defp refusal_for(same, same),
+  defp refusal_for(same, same, holder),
     do:
-      "Story #{same} is this copy's active story but is not available to it right now — " <>
+      "Story #{same} is #{holder} active story but is not available right now — " <>
         "it is not ready for development, or it has been assigned elsewhere."
 
-  defp refusal_for(requested, active),
+  defp refusal_for(requested, active, holder),
     do:
-      "Story #{requested} is not this working copy's active story (#{active}). Asking for " <>
+      "Story #{requested} is not #{holder} active story (#{active}). Asking for " <>
         "another story does not widen the answer; switch with `set_active_story`."
 
   # No story selected, which is not the same as nothing to do.

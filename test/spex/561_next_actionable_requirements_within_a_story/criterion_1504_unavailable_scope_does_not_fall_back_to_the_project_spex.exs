@@ -34,6 +34,16 @@ defmodule CodeMySpecSpex.Story561.Criterion3606Spex do
              context do
         context = context |> Slice.base() |> Slice.child() |> Slice.waiting()
         other_scope = CodeMySpecSpex.Fixtures.live_agent_scope(context.scope)
+        # The other copy is a feature copy with a team: a story goes to a copy's
+        # team, and never to the main copy (a31f1cd6). Reporting its root made it
+        # the project's first, so main goes back to this one.
+        {:ok, _} =
+          CodeMySpec.WorkingCopies.designate_main(
+            context.scope,
+            context.scope.active_working_copy_id
+          )
+
+        Slice.staff(%{context | scope: other_scope})
 
         Slice.call(
           %{context | scope: other_scope},

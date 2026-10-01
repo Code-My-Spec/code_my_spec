@@ -105,7 +105,12 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
            """
   end
 
-  test "an answer that released nothing wakes nobody", ctx do
+  # 9f03455b: this test used to say an answer that released nothing woke
+  # nobody. For a question asked without a task that left the asker idle with
+  # its answer unread and, when the graph had no work for it, idle for good —
+  # metric_flow's coder, f247789c, woken by hand. John, 10-01: offer an idle
+  # continuous asker one turn that opens with the answer.
+  defp asking_without_a_task(ctx, continuous?) do
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)
 
@@ -114,7 +119,7 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
         provider: "anthropic",
         engine: :alloy,
         role: "coding",
-        continuous: true,
+        continuous: continuous?,
         status: :running,
         working_copy: "/tmp/answered-none-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
@@ -127,8 +132,6 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
         agent.id
       )
 
-    # No task, so no blocker — `released?` is false and there is nothing waiting
-    # on this answer.
     {:ok, request} =
       Notifications.create_agent_question_request(
         ctx.scope,
@@ -144,6 +147,27 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
 
     {:ok, _answered} =
       Notifications.answer_question_request(request.id, %{"Just wondering?" => "no matter"})
+
+    conversation
+  end
+
+  test "an answer to a question asked without a task offers the agent a turn with it", ctx do
+    conversation = asking_without_a_task(ctx, true)
+
+    assert_receive {:new_message, _}, 5_000
+
+    opened_with_answer? =
+      conversation
+      |> Conversations.list_messages()
+      |> Enum.any?(&(inspect(&1.content) =~ "A: no matter"))
+
+    assert opened_with_answer?,
+           "the answer released no task, and the idle agent that asked was never " <>
+             "handed it — nothing else will bring it back"
+  end
+
+  test "an agent not in the loop collects it when it comes back", ctx do
+    asking_without_a_task(ctx, false)
 
     refute_receive {:new_message, _}, 1_500
   end

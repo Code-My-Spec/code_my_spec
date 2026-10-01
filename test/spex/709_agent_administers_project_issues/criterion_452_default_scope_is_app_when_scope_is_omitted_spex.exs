@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
       then_ "list_issues filtered by scope=app includes the issue", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListIssues.execute(%{scope: "app"}, frame)
+        {:reply, response, _frame} = ListIssues.execute(%{scope: "app", severity: "all"}, frame)
         body = response_text(response)
 
         assert body =~ "Toast disappears too quickly",
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
         # accepts framework now.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListIssues.execute(%{scope: "qa"}, frame)
+        {:reply, response, _frame} = ListIssues.execute(%{scope: "qa", severity: "all"}, frame)
         body = response_text(response)
 
         refute body =~ "Toast disappears too quickly",

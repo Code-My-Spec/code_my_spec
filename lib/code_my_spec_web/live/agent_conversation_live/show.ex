@@ -771,7 +771,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket = assign(socket, :draft, "")
 
     socket.assigns.current_scope
-    |> Agents.dispatch_message(socket.assigns.conversation.agent_id, message)
+    |> Agents.dispatch_message(socket.assigns.conversation.agent_id, message, :operator_message)
     |> sent(socket)
   end
 

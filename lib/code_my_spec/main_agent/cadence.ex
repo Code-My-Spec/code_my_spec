@@ -33,6 +33,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.MainAgent
@@ -306,10 +307,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
     :ok
   end
 
-  defp push({:ok, report}, scope, %{continuous: false, id: id}) do
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Agents.message_agent(scope, id, report)
-    end)
+  defp push({:ok, report}, scope, %{continuous: false, id: id} = main) do
+    if Wake.allow?(scope, main, :cadence) == :ok do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Agents.message_agent(scope, id, report)
+      end)
+    end
 
     :ok
   end
