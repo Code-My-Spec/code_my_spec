@@ -5756,6 +5756,12 @@ defmodule CodeMySpecSpex.Case do
     |> Map.replace_lazy("to", &normalize_probe_recipients/1)
   end
 
+  # A builder's owner labels carry a fresh run id per run (issue 0c1b5110).
+  # Dropped rather than replaced, so recordings made before the labels existed
+  # still match; the name still tells one builder's create from another's.
+  defp normalize_body(%{"name" => "builder-" <> _, "labels" => _} = body),
+    do: Map.delete(body, "labels")
+
   defp normalize_body(body), do: body
 
   defp normalize_probe_recipients(to) when is_list(to),

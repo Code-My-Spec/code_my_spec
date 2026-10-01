@@ -22,7 +22,9 @@ defmodule CodeMySpec.Provisioning.Builder do
   alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Wait
+  alias CodeMySpec.PublicUrl
   alias CodeMySpec.Users.Scope
 
   defmodule Build do
@@ -123,6 +125,17 @@ defmodule CodeMySpec.Provisioning.Builder do
   # (issue 13ad1abe). An hour matches the window `mix cms.provisioning_leaks`
   # already uses for the same judgment call.
   @orphan_max_age_minutes 60
+
+  # Who a builder belongs to, written on it at creation: the project, the
+  # `RunLock` run doing the build, and which CodeMySpec instance holds that
+  # lock. A same-named box is then judged by whether its run is still in
+  # flight (`run_verdict/1`), not by how old it is — a server restart kills a
+  # run mid-build without its `destroy` ever running, and the retry minutes
+  # later found a box "too recent to be an abandoned run" whose run was gone
+  # (issue 0c1b5110).
+  @project_label "cms-builder-project"
+  @run_label "cms-builder-run"
+  @instance_label "cms-builder-instance"
 
   @doc """
   Build `ref` for `architecture`, and take the builder with it either way.
@@ -429,7 +442,8 @@ defmodule CodeMySpec.Provisioning.Builder do
       # The registry it pushes to answers on a private address, so the builder
       # has to be on that network. Attached at creation rather than after: the
       # reference it was handed names an address it would not yet hold.
-      network_ids: Keyword.get(opts, :network_ids)
+      network_ids: Keyword.get(opts, :network_ids),
+      labels: ownership_labels(scope)
     ]
 
     Logger.warning(
@@ -470,9 +484,10 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  # Age-based on purpose: it needs no cooperation from the process that
-  # died, which is the one signal a SIGKILL, a killed `mix test`, or a
-  # cancelled drill can never give.
+  # Needs no cooperation from the process that died, which is the one signal
+  # a SIGKILL, a killed `mix test`, or a cancelled drill can never give: an
+  # owner-labelled box is judged by whether its run still holds the lock,
+  # anything else by age (`abandoned?/2`).
   defp reap_orphaned_builders(scope, opts) do
     list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
@@ -492,7 +507,73 @@ defmodule CodeMySpec.Provisioning.Builder do
 
   defp stale_orphan?(server, cutoff) do
     name = server_name(server) || ""
-    String.starts_with?(name, @builder_prefix) and created_before?(server, cutoff)
+    String.starts_with?(name, @builder_prefix) and abandoned?(server, cutoff)
+  end
+
+  defp abandoned?(server, cutoff) do
+    case run_verdict(server) do
+      :abandoned -> true
+      :live -> false
+      :undetermined -> created_before?(server, cutoff)
+    end
+  end
+
+  # Only a run this caller is doing the work of can own the box it creates.
+  # Built outside any run (a drill, a mix task, a test with no lock), the box
+  # carries no owner and is judged by age, as before.
+  defp ownership_labels(%Scope{active_project_id: project_id}) do
+    case RunLock.caller_run_id(project_id) do
+      nil ->
+        nil
+
+      run_id ->
+        %{@project_label => project_id, @run_label => run_id, @instance_label => instance()}
+    end
+  end
+
+  # Is the run that made this box still going?
+  #
+  #   * `:live` — its run holds its project's `RunLock` right now, somewhere
+  #     in this cluster. Never destroyed, whatever its age.
+  #   * `:abandoned` — its run no longer holds the lock: it finished, failed,
+  #     or died with its process (a restart, a kill) before `destroy` ran.
+  #     `RunLock` is a Registry, so a dead holder's entry goes with it, and
+  #     the lock is per project, so another run holding it means this box's
+  #     run is over. The caller's own run counts as over too: a run builds
+  #     one image at a time, so a box it made earlier is from a build that
+  #     already returned.
+  #   * `:undetermined` — no owner labels (made before they existed, or
+  #     outside a run), another CodeMySpec instance's run (a laptop and the
+  #     cloud can share a Hetzner account; this instance cannot see the
+  #     other's locks, and a run id it never issued must not read as ended),
+  #     or a node that could not be asked. The age rule decides those.
+  defp run_verdict(server) do
+    labels = server["labels"] || %{}
+
+    with project when is_binary(project) <- labels[@project_label],
+         run when is_binary(run) <- labels[@run_label],
+         true <- labels[@instance_label] == instance() do
+      if run == RunLock.caller_run_id(project), do: :abandoned, else: lock_verdict(project, run)
+    else
+      _ -> :undetermined
+    end
+  end
+
+  defp lock_verdict(project, run) do
+    case RunLock.run_state(project, run) do
+      :in_flight -> :live
+      :ended -> :abandoned
+      :unknown -> :undetermined
+    end
+  end
+
+  # Which CodeMySpec holds a builder's run. Hashed: a label value is capped at
+  # 63 characters of a restricted set, and a URL is neither.
+  defp instance do
+    :sha256
+    |> :crypto.hash(PublicUrl.base())
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 12)
   end
 
   # No timestamp is not evidence of age. The safe reading is "not old enough
@@ -523,12 +604,11 @@ defmodule CodeMySpec.Provisioning.Builder do
   # builder is single-use and destroyed at the end of every build specifically
   # so one customer's source never sits on a box that held another's (see
   # moduledoc) — but destroying on sight is just as wrong when the box is new
-  # enough to plausibly still be somebody's live build. `stale_orphan?`'s own
-  # age threshold is the line already drawn elsewhere in this module between
-  # "abandoned" and "still running" (see `reap_orphaned_builders/2`); this is
-  # the same line, so a name collision destroys only what age already marks a
-  # crash, a kill, or an MCP transport timeout (issue faaf76b6) — and refuses,
-  # loud, rather than kill something too young to be one of those.
+  # enough to plausibly still be somebody's live build. So the box is judged
+  # the way `reap_orphaned_builders/2` judges one: by its run when it carries
+  # owner labels (`run_verdict/1` — destroyed once that run no longer holds the
+  # lock, refused while it does), by age when it does not (issue faaf76b6).
+  # Refuses, loud, rather than kill something it cannot show is abandoned.
   defp reclaim_orphan(scope, name, create, create_opts, opts) do
     find = Keyword.get(opts, :find, &Hetzner.find_server/2)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
@@ -553,14 +633,33 @@ defmodule CodeMySpec.Provisioning.Builder do
   end
 
   defp reclaim_if_stale(scope, orphan, cutoff, name, create, create_opts, opts) do
-    if created_before?(orphan, cutoff) do
-      case destroy(scope, orphan, opts) do
-        :ok -> create.(scope, name, create_opts)
-        other -> orphan_undestroyable_error(name, other)
-      end
-    else
-      too_young_to_reclaim_error(name)
+    case run_verdict(orphan) do
+      :live -> live_run_error(name)
+      :abandoned -> reclaim(scope, orphan, name, create, create_opts, opts)
+      :undetermined -> reclaim_if_old(scope, orphan, cutoff, name, create, create_opts, opts)
     end
+  end
+
+  defp reclaim_if_old(scope, orphan, cutoff, name, create, create_opts, opts) do
+    if created_before?(orphan, cutoff),
+      do: reclaim(scope, orphan, name, create, create_opts, opts),
+      else: too_young_to_reclaim_error(name)
+  end
+
+  defp reclaim(scope, orphan, name, create, create_opts, opts) do
+    Logger.warning("[Builder] #{name} is left from a run no longer in flight — destroying it")
+
+    case destroy(scope, orphan, opts) do
+      :ok -> create.(scope, name, create_opts)
+      other -> orphan_undestroyable_error(name, other)
+    end
+  end
+
+  defp live_run_error(name) do
+    {:error,
+     {:orphaned_builder,
+      "A builder named #{name} already exists at Hetzner and belongs to a deploy run still " <>
+        "in flight. Refusing to destroy it; retry once that run finishes."}}
   end
 
   defp too_young_to_reclaim_error(name) do

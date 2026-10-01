@@ -55,6 +55,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Integrations,
       CodeMySpec.ProjectSecrets,
       CodeMySpec.Projects,
+      CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
