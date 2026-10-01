@@ -82,7 +82,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     source = Keyword.get(opts, :source)
     source_prefix = Keyword.get(opts, :source_prefix)
 
-    with {:ok, embedding} <- Serving.embed(query) do
+    with {:ok, embedding} <- Serving.embed(query, :search) do
       {scope_sql, scope_params} = scope_clause(project_id)
       {source_sql, source_params} = source_clause(source, source_prefix, length(scope_params))
       vector = encode_vector(embedding)
@@ -169,7 +169,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   """
   @impl true
   def store_chunk(project_id, source, path, index, chunk, hash, file_hash) do
-    with {:ok, embedding} <- Serving.embed(chunk) do
+    with {:ok, embedding} <- Serving.embed(chunk, :bulk) do
       store_embedded_chunk(project_id, source, path, index, chunk, hash, file_hash, embedding)
     end
   end

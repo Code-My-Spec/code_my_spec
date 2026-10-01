@@ -264,7 +264,7 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   end
 
   defp generate_embedding(text) do
-    Serving.embed(text)
+    Serving.embed(text, :search)
   end
 
   # -- Deduplication --

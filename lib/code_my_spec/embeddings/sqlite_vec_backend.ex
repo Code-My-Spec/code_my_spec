@@ -55,7 +55,7 @@ defmodule CodeMySpec.Embeddings.SqliteVecBackend do
   """
   @impl true
   def store_chunk(project_id, source, path, index, chunk, hash, file_hash) do
-    with {:ok, embedding} <- Serving.embed(chunk) do
+    with {:ok, embedding} <- Serving.embed(chunk, :bulk) do
       vector_json = Jason.encode!(embedding)
       now = DateTime.utc_now() |> DateTime.to_iso8601()
 

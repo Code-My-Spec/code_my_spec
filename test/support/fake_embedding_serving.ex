@@ -15,8 +15,8 @@ defmodule CodeMySpecTest.FakeEmbeddingServing do
   def start_link(_opts), do: :ignore
 
   @impl true
-  def embed(_text), do: {:ok, @vector}
+  def embed(_text, _priority), do: {:ok, @vector}
 
   @impl true
-  def embed_batch(texts), do: {:ok, Enum.map(texts, fn _ -> @vector end)}
+  def embed_batch(texts, _priority), do: {:ok, Enum.map(texts, fn _ -> @vector end)}
 end

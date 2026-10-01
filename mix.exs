@@ -226,9 +226,15 @@ defmodule CodeMySpec.MixProject do
       {:sweet_xml, "~> 0.7"},
 
       # Embeddings
-      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
-      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
-      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
+      #
+      # No `only:` — the embeddings rework (577de9bb) moves inference onto
+      # the server (OrtexServing, lib/code_my_spec/embeddings/), so :dev and
+      # :prod need Ortex/Tokenizers/Nx now too. They were CLI-only while
+      # only the packaged binary embedded anything.
+      {:ortex, "~> 0.1"},
+      {:tokenizers, "~> 0.5"},
+      {:nx, "~> 0.9"},
+      {:flame, "~> 0.1"},
       {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli, :cli_demo]},
 
       # CLI release
