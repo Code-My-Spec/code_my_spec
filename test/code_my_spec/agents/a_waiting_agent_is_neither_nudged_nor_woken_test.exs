@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.AWaitingAgentIsNeitherNudgedNorWokenTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Environments
+  alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
@@ -239,6 +240,52 @@ defmodule CodeMySpec.Agents.AWaitingAgentIsNeitherNudgedNorWokenTest do
       StopDecision.deliver(ctx.scope, agent, [])
 
       refute_receive {:agent_dispatch, _id, _ref, _message}, 500
+    end
+  end
+
+  # Main waiting on a person's answer is nudged into "still waiting" turns
+  # otherwise. Only the nudge: its event wakes are messages, and coding or QA
+  # questions block their task, not the agent.
+  describe "a question pending on the user" do
+    defp ask(scope, agent, holder \\ "user") do
+      %QuestionRequest{}
+      |> QuestionRequest.changeset(%{
+        user_id: scope.user.id,
+        agent_id: agent.id,
+        title: "Which approach?",
+        questions: [%{"question" => "Which?", "options" => [%{"label" => "A"}]}],
+        holder: holder
+      })
+      |> Repo.insert!()
+    end
+
+    defp as_main(scope, agent) do
+      {:ok, main} = AgentsRepository.update_agent(scope, agent, %{role: :main})
+      main
+    end
+
+    test "holds main's turn-end nudge, not its wake", ctx do
+      main = as_main(ctx.scope, ctx.agent)
+      assert Waiting.reason(ctx.scope, main, :turn_end) == nil
+
+      ask(ctx.scope, main)
+
+      assert Waiting.reason(ctx.scope, main, :turn_end) == :question_pending
+      assert Waiting.reason(ctx.scope, main, :wake) == nil
+      assert Waiting.reason(ctx.scope, main, :resume) == nil
+    end
+
+    test "does not hold for a question main is answering for a teammate", ctx do
+      main = as_main(ctx.scope, ctx.agent)
+      ask(ctx.scope, main, "main_agent")
+
+      assert Waiting.reason(ctx.scope, main, :turn_end) == nil
+    end
+
+    test "does not hold a coding agent, whose question blocks only its task", ctx do
+      ask(ctx.scope, ctx.agent)
+
+      assert Waiting.reason(ctx.scope, ctx.agent, :turn_end) == nil
     end
   end
 end

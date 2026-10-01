@@ -11,8 +11,9 @@ defmodule CodeMySpec.Agents.Waiting do
 
   Not entries, deliberately:
 
-    * A pending question. It blocks only the task it was asked about, so the
-      agent stays available for everything else (0b324cab).
+    * A coding or QA agent's pending question. It blocks only the task it was
+      asked about, so the agent stays available for everything else
+      (0b324cab). Main's is an entry: it has nothing else to do.
     * The decline damper (`Work.already_declined?/2`). It is about the offer,
       not the agent: the same agent is offered a *different* offer at once.
   """
@@ -30,6 +31,7 @@ defmodule CodeMySpec.Agents.Waiting do
           | {:provisioning, String.t() | nil}
           | :tap_out
           | :analysis_runs
+          | :question_pending
 
   @type path :: :turn_end | :wake | :resume
 
@@ -42,8 +44,14 @@ defmodule CodeMySpec.Agents.Waiting do
     provider_refused: @all,
     provisioning: @all,
     tap_out: @all,
-    analysis_runs: [:turn_end]
+    analysis_runs: [:turn_end],
+    question_pending: [:turn_end]
   ]
+
+  # Roles whose open question holds the turn-end nudge. Main's event wakes
+  # (a teammate stalls, a step lands, a teammate asks) are messages, not
+  # nudges, so they still reach it.
+  @questions_hold [:main]
 
   @spec reason(Scope.t(), Agent.t(), path()) :: reason() | nil
   def reason(%Scope{} = scope, %Agent{} = agent, path) when path in @all do
@@ -80,6 +88,24 @@ defmodule CodeMySpec.Agents.Waiting do
   # hour without this.
   defp check(:analysis_runs, scope, agent) do
     if Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id), do: :analysis_runs
+  end
+
+  # Waiting on a person's answer to its own question; the answer wakes it.
+  # metric_flow 2026-10-01: main was nudged turn after turn while it waited.
+  defp check(:question_pending, _scope, %{role: role} = agent) when role in @questions_hold do
+    if awaiting_question?(agent), do: :question_pending
+  end
+
+  defp check(:question_pending, _scope, _agent), do: nil
+
+  # Schemaless for the reason `awaiting_tap_out?/1` is.
+  defp awaiting_question?(%Agent{id: agent_id}) do
+    from(q in "question_requests",
+      where:
+        q.agent_id == type(^agent_id, :binary_id) and q.status == "pending" and
+          q.holder == "user"
+    )
+    |> Repo.exists?()
   end
 
   @doc """
