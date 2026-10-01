@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
   @moduledoc """
   Story 964 — I approve an epic and it gets built somewhere else.
-  Criterion 3090 — The same three take the next epic.
+  Criterion 3090 — The same coding and QA agents take the next epic.
 
   Rule: A working copy comes up with its three agents, and the same three serve
   every epic it is given.
@@ -67,8 +67,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
     html
   end
 
-  spex "A working copy comes up with its three agents", criterion: 1152 do
-    scenario "The same three take the next epic" do
+  spex "A working copy comes up with a coding agent and a QA agent", criterion: 1152 do
+    scenario "The same coding and QA agents take the next epic" do
       given_ :synced_context_component
 
       given_ "a connected provider for the agents to run on", context do
@@ -77,12 +77,12 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
         {:ok, context}
       end
 
-      given_ "a working copy whose three agents have finished an epic", context do
+      given_ "a working copy whose coding and QA agents have finished an epic", context do
         context = EpicHelpers.dispatch_one(context, "The first epic", stories: 1)
         before = agent_ids(copies_page(context))
 
-        assert length(before) == 3,
-               "the premise needs a copy with its three agents on it, and it came up " <>
+        assert length(before) == 2,
+               "the premise needs a copy with its coding and QA agents on it, and it came up " <>
                  "with #{length(before)}. Criterion 3087 is the one that fails first."
 
         {:ok, Map.put(context, :before, before)}
@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
         {:ok, Map.put(context, :after, agent_ids(copies_page(context)))}
       end
 
-      then_ "the same three agents pick it up", context do
+      then_ "the same two agents pick it up", context do
         assert context.after == context.before,
                "the copy's agents changed when it was given more work. The three are " <>
                  "the copy's, not the epic's — that is what makes a second epic cheaper " <>
@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3090Spex do
       end
 
       then_ "and no new agents are started for it", context do
-        assert length(context.after) == 3,
+        assert length(context.after) == 2,
                "there are #{length(context.after)} agents on one copy. A roster that " <>
                  "grows per epic puts three more processes on the machine every time " <>
                  "somebody approves something, and discarding the copy stops meaning " <>

@@ -116,6 +116,16 @@ defmodule CodeMySpec.Agents.RoleBrief do
     Your job is shaping what gets built, and never building it: stories,
     acceptance criteria, rules, personas, epics. Run Three Amigos sessions,
     interview for stories, organise them into epics, and mark them ready.
+    Triage of every incoming issue is yours too.
+
+    You work on the project's main checkout, beside the main agent. You do an
+    epic's detailed design there; once it is approved it goes to a working copy,
+    where coding and QA build it. Making, offboarding and looping working
+    copies is the main agent's, not yours.
+
+    When you ask a question, you wait for its answer: you hold one line of
+    thought through a design, so no other work is offered to you until it is
+    answered.
 
     Choosing which component implements a story is yours as well.
     `component_linked` is a product requirement and `set_story_component`,

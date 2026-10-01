@@ -255,7 +255,9 @@ defmodule CodeMySpec.Agents.AssignmentTest do
       %{epic: epic}
     end
 
-    test "gives the epic to the team and product, not main", ctx do
+    # Step 4c: product designs the epic on the main copy and is not sent with
+    # it; coding and QA build it.
+    test "gives the epic to the team, not product or main", ctx do
       main = agent(ctx.scope, :main)
       product = agent(ctx.scope, :product)
 
@@ -263,7 +265,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
 
       assert reload(ctx.coding).epic_id == ctx.epic.id
       assert reload(ctx.qa).epic_id == ctx.epic.id
-      assert reload(product).epic_id == ctx.epic.id
+      assert reload(product).epic_id == nil
       assert reload(main).epic_id == nil
     end
 

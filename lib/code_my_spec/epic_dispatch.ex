@@ -147,7 +147,9 @@ defmodule CodeMySpec.EpicDispatch do
     # refuse an epic somebody agreed to.
     #
     # Idempotent by role, so a second epic onto the same copy starts nothing —
-    # the three that are there are the ones that take it.
+    # the coding and QA agents there are the ones that take it. Product stays
+    # on the main copy and is not sent with it; `place/3` takes the epic it
+    # was designing off it (step 4c).
     with {:ok, _epic} <- result, %{} <- copy do
       place(scope, epic.id, copy.id)
       Agents.ensure_copy_agents(scope, copy)

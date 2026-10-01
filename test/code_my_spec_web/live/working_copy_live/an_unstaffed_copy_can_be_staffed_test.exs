@@ -49,7 +49,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   defp copy_with_only_stopped_agents(context, root, extra \\ %{}) do
     copy = join_working_copy(context, root, "a copy whose agents all stopped")
 
-    for role <- ~w(product coding qa) do
+    for role <- home_roles() do
       {:ok, _} =
         AgentsRepository.create_agent(
           context.scope,
@@ -185,7 +185,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   test "a fully staffed copy does not offer it", context do
     copy = join_working_copy(context, "/tmp/fully-staffed", "a staffed copy")
 
-    for role <- ~w(product coding qa) do
+    for role <- home_roles() do
       {:ok, _} =
         AgentsRepository.create_agent(context.scope, %{
           engine: :alloy,
@@ -206,6 +206,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   end
 
   defp root_of(_copy), do: "/tmp/fully-staffed"
+
+  # The joined copy is the project's only checkout, so it is its main one, and
+  # the main copy's seats are main and product (step 4c).
+  defp home_roles, do: ~w(main product)
 
   # `show/2` takes the context; naming the pass-through keeps the two click
   # tests reading as "open the page, press the button, read the page".

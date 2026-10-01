@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
   @moduledoc """
   Story 964 — I approve an epic and it gets built somewhere else.
-  Criterion 3087 — A new copy arrives with its three agents.
+  Criterion 3087 — A new copy arrives with its coding and QA agents.
 
   Rule: A working copy comes up with its three agents, and the same three serve
   every epic it is given.
@@ -52,8 +52,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
     :ok
   end
 
-  spex "A working copy comes up with its three agents", criterion: 1150 do
-    scenario "A new copy arrives with its three agents" do
+  spex "A working copy comes up with a coding agent and a QA agent", criterion: 1150 do
+    scenario "A new copy arrives with its coding and QA agents" do
       given_ :synced_context_component
 
       given_ "a connected provider for the agents to run on", context do
@@ -81,8 +81,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3087Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "its product, coding and QA agents are on it", context do
-        for role <- ~w(product coding qa) do
+      then_ "its coding and QA agents are on it", context do
+        for role <- ~w(coding qa) do
           assert context.html =~ ~s(data-role="#{role}"),
                  "the copy came up without a #{role} agent. The roles exist in " <>
                    "`Agent`'s enum and nothing starts them, so a copy that was " <>

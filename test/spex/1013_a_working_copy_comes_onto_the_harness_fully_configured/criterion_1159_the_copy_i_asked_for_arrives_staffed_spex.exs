@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
   first epic lands on the main checkout, where `Agents.main_copy_is_free/2`
   refuses a roster and is right to.
 
-  `Agents.ensure_copy_agents/2` already starts the three, idempotent by role.
+  `Agents.ensure_copy_agents/2` starts the copy's coding and QA agents, idempotent by
+  role (a31f1cd6 step 4c: product lives on the main copy).
   What is missing is a copy that is not the main one to call it against.
 
   ## Red on purpose
@@ -44,7 +45,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
   defp id_from([_, id]), do: id
   defp id_from(_no_match), do: ""
 
-  spex "A working copy created this way comes up with its agents already on it", criterion: 1159 do
+  spex "A working copy created this way comes up with its agents already on it",
+    criterion: 1159 do
     scenario "The copy I asked for arrives staffed" do
       given_ "a machine holding this project's repository", context do
         copy = join_working_copy(context, "/tmp/spex_3097_host", "the machine with the disk")
@@ -67,7 +69,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "its product, coding and QA agents are on it", context do
+      then_ "its coding and QA agents are on it", context do
         roles =
           context.scope
           |> Agents.list_agents()
@@ -75,7 +77,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
           |> Enum.uniq()
           |> Enum.sort()
 
-        for role <- [:coding, :product, :qa] do
+        for role <- [:coding, :qa] do
           assert role in roles,
                  "the copy came up without a #{role} agent. Creating a copy is the " <>
                    "whole request and it is finished when somebody is in there to do " <>

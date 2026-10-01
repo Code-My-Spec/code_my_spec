@@ -74,10 +74,10 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     {:ok, copy} =
       WorkingCopies.issue(context.scope, nil,
         label: "the main checkout",
-        device: CodeMySpec.DevicesFixtures.device_fixture(context.scope)
+        device: Fixtures.device_fixture(context.scope)
       )
 
-    {:ok, _} = CodeMySpec.Staffing.designate_main(context.scope, copy.id)
+    {:ok, _} = WorkingCopies.designate_main(context.scope, copy.id)
     main_scope = %{context.scope | active_working_copy_id: copy.id}
     main = Fixtures.running_agent(main_scope, role: "main")
     Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})

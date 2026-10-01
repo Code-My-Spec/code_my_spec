@@ -22,6 +22,7 @@ defmodule CodeMySpec.MainAgent.Digest do
   """
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.MainAgent.Machinery
@@ -74,8 +75,15 @@ defmodule CodeMySpec.MainAgent.Digest do
 
   defp teammate_stalled?(entry) do
     stalled?(entry) and entry.role != :main and entry.continuous? != false and
-      is_nil(entry.damped)
+      is_nil(entry.damped) and not waiting_on_its_question?(entry)
   end
+
+  # Product waits whole on its own open question (step 4c): idle beside work
+  # is what it is meant to be, not a stall.
+  defp waiting_on_its_question?(%AgentWork{role: role, blocked_reasons: [_ | _]}),
+    do: RoleProfile.waits_on?(role, :question_pending, :offer)
+
+  defp waiting_on_its_question?(%AgentWork{}), do: false
 
   defp machinery_ok?(nil), do: true
   defp machinery_ok?(%Machinery{tool_fault: :none}), do: true

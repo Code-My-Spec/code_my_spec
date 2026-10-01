@@ -92,6 +92,6 @@ defmodule CodeMySpec.Agents.OneAgentPerRoleOnACopyTest do
     staffed = Agents.ensure_copy_agents(ctx.scope, ctx.copy)
 
     assert staffed.failed == []
-    assert Enum.map(staffed.started, & &1.role) |> Enum.sort() == [:product, :qa]
+    assert Enum.map(staffed.started, & &1.role) == [:qa]
   end
 end

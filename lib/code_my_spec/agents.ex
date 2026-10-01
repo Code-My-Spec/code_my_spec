@@ -135,6 +135,7 @@ defmodule CodeMySpec.Agents do
           | {:unknown_working_copy, String.t()}
           | {:role_taken, atom(), Ecto.UUID.t(), String.t() | nil}
           | {:not_at_home, atom(), String.t() | nil}
+          | {:main_copy_occupied, atom(), String.t() | nil}
           | Ecto.Changeset.t()
           | term()
 
@@ -726,17 +727,16 @@ defmodule CodeMySpec.Agents do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
 
-  # The main working copy holds one agent, and it is the project's own: only a
-  # role whose `RoleProfile.home_copy` is `:main` may start there. Coding and QA
-  # never do — metric_flow carried a coding agent there from 09-24 until John
-  # retired it.
+  # The main working copy holds the roles whose `RoleProfile.home_copy` is
+  # `:main` — main and product, one each (John, step 4c) — and nothing else.
+  # Coding and QA never start there: metric_flow carried a coding agent there
+  # from 09-24 until John retired it.
   #
-  # Two agents in one checkout are two processes editing one tree — the failure
-  # the working-copy grain exists to prevent — and in this checkout it is worse
-  # than that: the user is told there is one thing to talk to, and a second
-  # conversation appears on the copy that is supposed to have exactly one.
+  # One of each, because a second main is a second conversation on the copy the
+  # user is told has one thing to talk to, and a second product is a second
+  # chain of thought through the same design.
   #
-  # Every other checkout holds one agent per role. Two coding agents on one copy
+  # Every other checkout holds one agent per role too. Two coding agents on one copy
   # claim and edit the same work: on metric_flow 2026-09-27 the main agent could
   # not reach `restart_agent`, started a fresh coder beside the running one, and
   # the copy had two once the original came back. `restart_agent/2` does not
@@ -745,7 +745,11 @@ defmodule CodeMySpec.Agents do
     main = WorkingCopies.main(scope)
 
     if main && names?(attrs, main),
-      do: with(:ok <- refuse_unless_at_home(attrs, main), do: refuse_if_occupied(scope, main)),
+      do:
+        with(
+          :ok <- refuse_unless_at_home(attrs, main),
+          do: refuse_if_occupied(scope, attrs, main)
+        ),
       else: refuse_if_role_taken(scope, attrs)
   end
 
@@ -882,12 +886,15 @@ defmodule CodeMySpec.Agents do
     id == copy.id or (is_binary(root) and root != "" and Path.expand(root) == copy.root)
   end
 
-  # Any agent, not just `main_agent/1`: the copy holds one agent whatever its role.
-  # A retired agent's seat is free even while its stranded process runs (39af5611).
-  defp refuse_if_occupied(scope, copy) do
-    if scope |> seat_holders() |> Enum.any?(&(&1.working_copy_id == copy.id)),
-      do: {:error, {:main_copy_occupied, copy.root}},
-      else: :ok
+  # One agent per role on the main copy, by id alone: root does not matter
+  # there, the copy is the project's. A retired agent's seat is free even while
+  # its stranded process runs (39af5611).
+  defp refuse_if_occupied(scope, %{role: role}, copy) do
+    if scope
+       |> seat_holders()
+       |> Enum.any?(&(&1.working_copy_id == copy.id and to_string(&1.role) == to_string(role))),
+       do: {:error, {:main_copy_occupied, RoleProfile.get(role).role, copy.root}},
+       else: :ok
   end
 
   defp refuse_if_role_taken(scope, %{working_copy_id: copy_id, working_copy: root, role: role})
@@ -1451,11 +1458,21 @@ defmodule CodeMySpec.Agents do
   # A main agent somebody turned off is still the project's agent; opening the
   # project shows it off rather than starting another (39af5611).
   defp main_or_start(_scope, _copy, %Agent{} = off), do: {:ok, off}
-  defp main_or_start(scope, copy, nil), do: start_main_agent(scope, copy)
+
+  # Main comes up with the rest of the main copy's roster beside it: product,
+  # one per project (John, step 4c). Only when main itself is started, so
+  # opening a project whose main is running starts nothing. Best-effort, as
+  # staffing a copy is; an off product is left alone (39af5611).
+  defp main_or_start(scope, copy, nil) do
+    with {:ok, main} <- start_main_agent(scope, copy) do
+      ensure_copy_agents(scope, copy, RoleProfile.roles_where_home(:main) -- [:main])
+      {:ok, main}
+    end
+  end
 
   @doc """
-  The three agents a working copy does its work with, started if they are not
-  there yet.
+  The agents a working copy does its work with, started if they are not there
+  yet.
 
   The roster belongs to the **copy**, not to the epic it was given. John,
   2026-09-04: *"when we come up with a working copy the three agents are there,
@@ -1465,13 +1482,12 @@ defmodule CodeMySpec.Agents do
 
   So this is idempotent by role: a copy that already has a coding agent gets no
   second one, which is what makes a second epic cheaper than the first rather
-  than three more processes on the machine. It is also what keeps
+  than more processes on the machine. It is also what keeps
   `WorkingCopies.offboard/2` meaningful — if agents accumulated per epic,
   discarding the copy would stop meaning that the work on it is over.
 
-  Product, coding and QA, and not `:main`. The main agent is the project's, is
-  one per project, and lives on the main checkout — `ensure_main_agent/1` owns
-  it. These are the ones that take work off the graph.
+  The default roster is the copy's home roles (`home_roles/1`): coding and QA
+  on a feature copy, main and product on the main copy (John, step 4c).
 
   Best-effort per role, and deliberately not all-or-nothing. Each `start_agent/2`
   records `:starting` and the machine confirms; a copy whose provider is
@@ -1481,7 +1497,11 @@ defmodule CodeMySpec.Agents do
   """
   @spec ensure_copy_agents(Scope.t(), map()) ::
           %{started: [Agent.t()], failed: [{atom(), term()}], off: [Agent.t()]}
-  def ensure_copy_agents(scope, copy, roles \\ RoleProfile.feature_roles())
+  def ensure_copy_agents(scope, copy, roles \\ nil)
+
+  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root} = copy, nil)
+      when is_binary(copy_id) and is_binary(root) and root != "",
+      do: ensure_copy_agents(scope, copy, home_roles(copy))
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
@@ -1516,19 +1536,23 @@ defmodule CodeMySpec.Agents do
     do: %{started: [], failed: [{:copy, :no_checkout}], off: []}
 
   @doc """
-  The roles a copy is staffed with when nobody says otherwise.
+  The roles a feature copy is staffed with when nobody says otherwise.
 
-  Product, coding and QA — the three that build something. `:main` is not among
-  them and a copy does not get one by default: the main agent is the project's,
-  not a checkout's, and staffing one per copy would give a project as many
-  orchestrators as it has worktrees.
-
-  Named rather than left implicit because a caller can now ask for a different
-  roster, and "what do I get if I don't ask" should be readable without finding
-  the module attribute.
+  Coding and QA — the two that build something (John, step 4c). Main and
+  product are not among them: they are the project's, live on the main copy,
+  and staffing them per copy would give a project as many orchestrators and
+  designers as it has worktrees.
   """
   @spec copy_roles() :: [atom()]
   def copy_roles, do: RoleProfile.feature_roles()
+
+  @doc """
+  The roles that belong on `copy`: main and product on the project's main
+  copy, `copy_roles/0` on any other.
+  """
+  @spec home_roles(map()) :: [atom()]
+  def home_roles(%{main: true}), do: RoleProfile.roles_where_home(:main)
+  def home_roles(_copy), do: RoleProfile.feature_roles()
 
   @doc """
   The roles no agent in `agents` holds a seat for: what staffing would fill.
@@ -1569,7 +1593,7 @@ defmodule CodeMySpec.Agents do
   def staff_any_copy(copy_id, roles \\ nil) when is_binary(copy_id) do
     with {:ok, copy} <- WorkingCopies.fetch(copy_id),
          {:ok, scope} <- owner_scope(copy) do
-      result = ensure_copy_agents(scope, copy, roles || RoleProfile.feature_roles())
+      result = ensure_copy_agents(scope, copy, roles)
       {:ok, continuous} = set_copy_continuous(scope, copy_id, true)
       {:ok, Map.put(result, :continuous, continuous)}
     end
@@ -1921,15 +1945,32 @@ defmodule CodeMySpec.Agents do
         :none
 
       %Agent{} = agent ->
-        with {:ok, moved} <-
-               AgentsRepository.update_agent(scope, agent, %{
-                 working_copy_id: copy.id,
-                 working_copy: copy.root
-               }) do
-          broadcast(scope, {:agent_started, moved})
+        with {:ok, moved} <- relocate(scope, agent, copy) do
+          move_main_copy_roster(scope, agent.working_copy_id, copy)
           {:ok, moved}
         end
     end
+  end
+
+  defp relocate(scope, agent, copy) do
+    with {:ok, moved} <-
+           AgentsRepository.update_agent(scope, agent, %{
+             working_copy_id: copy.id,
+             working_copy: copy.root
+           }) do
+      broadcast(scope, {:agent_started, moved})
+      {:ok, moved}
+    end
+  end
+
+  # Product lives where main lives (step 4c), so it moves with it.
+  defp move_main_copy_roster(scope, from_id, copy) do
+    others = RoleProfile.roles_where_home(:main) -- [:main]
+
+    scope
+    |> seat_holders()
+    |> Enum.filter(&(&1.working_copy_id == from_id and &1.role in others))
+    |> Enum.each(&relocate(scope, &1, copy))
   end
 
   # The project's agent wherever it currently is, which during a move is not

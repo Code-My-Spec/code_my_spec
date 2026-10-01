@@ -88,24 +88,22 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # invents precision the page does not have.
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
-  defp main_copy_refusal?({_role, {:main_copy_occupied, _root}}), do: true
+  defp main_copy_refusal?({_role, {:main_copy_occupied, _role_name, _root}}), do: true
   defp main_copy_refusal?({_role, {:not_at_home, _role_name, _root}}), do: true
   defp main_copy_refusal?(_failure), do: false
 
-  # Not an error. This copy is the one the project talks through, and it holds a
-  # single agent by design — a second conversation there is indistinguishable
-  # from the first. The roles a copy is staffed with work on feature copies.
+  # Not an error. The project's main checkout holds its main and product agents,
+  # one each; coding and QA work on feature copies (John, step 4c).
   defp main_copy_note([]),
     do:
-      "This is the project's main checkout, which holds the project's own agent " <>
-        "only — the one the project talks through — so nothing was started. Staff " <>
-        "a different checkout for a team."
+      "This is the project's main checkout, which holds the main and product agents " <>
+        "only, so nothing was started. Staff a different checkout for coding and QA."
 
   defp main_copy_note(started),
     do:
       "Started #{roster(started)}. This is the project's main checkout, which holds " <>
-        "one agent on purpose — the one the project talks through — so the other " <>
-        "roles were not started. Staff a different checkout for a full team."
+        "the main and product agents only, so the other roles were not started. Staff " <>
+        "a different checkout for coding and QA."
 
   defp staffing_result(report, socket) do
     left_off = left_off(Map.get(report, :off, []))
@@ -149,7 +147,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # A copy is understaffed when a seat is truly empty. An off agent holds its
   # seat (39af5611), so it counts as staffed; `ensure_copy_agents/2` skips it
   # too, so the button appears exactly when pressing it would do something.
-  defp understaffed?(agents, off), do: Agents.empty_seats(agents ++ off) != []
+  defp understaffed?(copy, agents, off),
+    do: Agents.empty_seats(agents ++ off, Agents.home_roles(copy)) != []
 
   defp roster(agents) do
     case Enum.map(agents, &to_string(&1.role)) do
@@ -237,9 +236,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     scope = socket.assigns.current_scope
 
     case Agents.ensure_copy_agents(scope, socket.assigns.row.harness) do
-      # The project's main checkout holds one agent on purpose, so asking for a
-      # roster of three gets the first and two refusals. Said in words here
-      # rather than as `{:main_copy_occupied, "/Users/..."}`, which is an
+      # The project's main checkout holds main and product only, so a role
+      # refused there is said in words rather than as
+      # `{:main_copy_occupied, :product, "/Users/..."}`, which is an
       # inspect of an internal tuple — `AgentsMapper` already writes this out
       # for the MCP surface and the page was not using the same sentence.
       %{failed: [_ | _] = failed} = report ->
@@ -465,7 +464,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
               empty: a copy running QA and nothing else is short two agents, and
               `ensure_copy_agents/2` skips the roles already live. --%>
               <.button
-                :if={understaffed?(@row.agents, @off_agents)}
+                :if={understaffed?(@row.harness, @row.agents, @off_agents)}
                 type="button"
                 phx-click="staff_copy"
                 data-test="staff-copy"

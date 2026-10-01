@@ -56,7 +56,8 @@ defmodule CodeMySpec.Agents.Wake do
     * `:teammate_question` — a teammate raised a question it answers first.
     * `:findings` — an analysis run's findings it did not ask for.
     * `:issue_filed` — an issue filed from the widget.
-    * `:cadence` — the main agent's check-in timer.
+    * `:cadence` — the main agent's check-in timer: one turn a tick, continuous
+      main only, carrying the digest and its work offer.
     * `:teammate_stalled` — a teammate stalled: running, no task, no turn, while
       the graph holds work for its role (announced once, on the transition).
     * `:teammate_died` — a teammate's process died or was reaped.
@@ -108,16 +109,18 @@ defmodule CodeMySpec.Agents.Wake do
   # The `Agents.Waiting` path each event would start a turn through. A
   # teammate's question, stall or death is on `:wake`, which an open question of
   # main's own does not hold (only `:turn_end` does): John, step 4b, "main is
-  # woken despite an open question" on these.
+  # woken despite an open question" on these. A work offer has a path of its
+  # own, which product's open question holds (step 4c).
   @waiting_path %{
-    work_offer: :wake,
+    work_offer: :offer,
     teammate_question: :wake,
     teammate_stalled: :wake,
     teammate_died: :wake,
     question_answered: :wake,
     blocker_resolved: :wake,
     resume: :resume,
-    nudge: :turn_end
+    nudge: :turn_end,
+    cadence: :cadence
   }
 
   # What a non-continuous agent gets. John, step 4b: "hold them" — it is woken

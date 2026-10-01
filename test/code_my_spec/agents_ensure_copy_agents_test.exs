@@ -1,6 +1,7 @@
 defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
   @moduledoc """
-  A working copy's roster: product, coding and QA, started once.
+  A feature copy's roster: coding and QA, started once (step 4c — product lives
+  on the main copy).
 
   The agents belong to the copy rather than to the epic it was given, so this is
   idempotent by role — a second epic onto the same copy starts nothing, which is
@@ -52,7 +53,7 @@ defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
     assert result.failed == [],
            "a role could not be started: #{inspect(result.failed)}"
 
-    assert Enum.map(result.started, & &1.role) |> Enum.sort() == [:coding, :product, :qa]
+    assert Enum.map(result.started, & &1.role) |> Enum.sort() == [:coding, :qa]
   end
 
   test "a second call starts nothing", %{scope: scope, copy: copy} do
@@ -61,7 +62,7 @@ defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
     first = Agents.ensure_copy_agents(scope, arg)
     second = Agents.ensure_copy_agents(scope, arg)
 
-    assert length(first.started) == 3
+    assert length(first.started) == 2
     assert second.started == [], "a second epic started more agents: #{inspect(second)}"
   end
 
@@ -81,13 +82,13 @@ defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
       assert Enum.map(result.started, & &1.role) == [:main]
     end
 
-    test "the default is still the three that build something", %{scope: scope, copy: copy} do
-      assert Agents.copy_roles() == [:product, :coding, :qa]
+    test "the default is the two that build something", %{scope: scope, copy: copy} do
+      assert Agents.copy_roles() == [:coding, :qa]
 
       arg = %{id: copy.id, root: copy.root || "/tmp/roster"}
       result = Agents.ensure_copy_agents(scope, arg)
 
-      assert Enum.map(result.started, & &1.role) |> Enum.sort() == [:coding, :product, :qa],
+      assert Enum.map(result.started, & &1.role) |> Enum.sort() == [:coding, :qa],
              "a copy nobody staffed deliberately should not gain a main agent — the main " <>
                "agent is the project's, and one per worktree gives a project as many " <>
                "orchestrators as it has checkouts"
