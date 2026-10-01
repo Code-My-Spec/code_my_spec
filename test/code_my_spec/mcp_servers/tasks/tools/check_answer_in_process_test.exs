@@ -16,6 +16,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.MainAgent.QuestionsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.Notifications
   alias Ecto.Adapters.SQL.Sandbox
@@ -83,6 +84,30 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
 
     assert response.isError
     refute text(response) =~ "secret"
+  end
+
+  # Issue `2999a0cb`: an agent wrote its question as `34a663ee` in its own
+  # notes, then called `check_answer` with that. `Repo.get/2` raised casting it
+  # to a uuid, Anubis answered "Tool execution crashed", and the agent learned
+  # nothing about why.
+  test "a shortened id is refused in words, not crashed on", %{user_id: user_id, scope: scope} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Which store?"}]
+      })
+
+    short = String.slice(request.id, 0, 8)
+
+    {:reply, response, _} = CheckAnswer.execute(%{question_id: short}, frame(scope))
+
+    assert response.isError
+    assert text(response) =~ short
+    assert text(response) =~ "list_user_questions"
+  end
+
+  test "a malformed id finds no question", %{scope: scope} do
+    assert Notifications.get_question_request("34a663ee") == nil
+    assert QuestionsRepository.fetch_answered(scope, "34a663ee") == nil
   end
 
   test "an answer event completes an in-flight check", %{user_id: user_id, scope: scope} do

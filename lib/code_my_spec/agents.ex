@@ -2124,6 +2124,24 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # A process that died, as the harness saw it go (2999a0cb).
+  #
+  # Before this a crash left the row `:running` until the next report reaped it,
+  # `list_agent_work` then dropped it, and the reaped-agent restart runs only
+  # when a harness joins — so a continuous agent stayed dead until a person
+  # noticed.
+  #
+  # Said *to* the agent, as an operator line, not as a step: a step is written
+  # as the agent speaking, and `RestartRepository` reads the agent speaking as
+  # a restart that worked — so an agent dying on every turn would never reach
+  # the three-strike refusal and would be restarted forever.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "agent_died"} = event, _opts) do
+    case AgentsRepository.fetch_agent(scope, agent_id) do
+      {:ok, agent} -> account_for_death(scope, agent, event["text"])
+      _ -> :ok
+    end
+  end
+
   def record_turn_event(%Scope{} = scope, agent_id, event, _opts) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, conversation} <- open_conversation(scope, agent) do
@@ -2137,6 +2155,46 @@ defmodule CodeMySpec.Agents do
       # work.
       _ -> :ok
     end
+  end
+
+  # The reason `MainAgent.restart_agent/3` counts restarts by, so it is the same
+  # every time: the cause differs per crash (pids, refs) and a per-crash reason
+  # would never add up to the three that stop a crash loop. The cause itself is
+  # in the thread, written just before.
+  @death_reason "its process died; the cause is the last operator line in its thread"
+
+  defp account_for_death(scope, agent, cause) do
+    Logger.warning("[Agents] #{agent.role} agent #{agent.id} died: #{cause}")
+
+    with {:ok, conversation} <- open_conversation(scope, agent) do
+      Conversations.add_message(conversation, :operator, death_notice(cause), "operator")
+    end
+
+    {:ok, stopped} = record_stopped(scope, agent, :reaped)
+    restart_if_continuous(scope, stopped)
+  end
+
+  # Off this process: the event arrives in the harness channel, and a restart
+  # stops the agent through that same channel — a call to itself, which kills
+  # it and every agent's turn on the copy.
+  defp restart_if_continuous(scope, %Agent{continuous: true} = agent) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        MainAgent.restart_agent(scope, agent.id, @death_reason)
+      end)
+
+    :ok
+  end
+
+  defp restart_if_continuous(_scope, _agent), do: :ok
+
+  defp death_notice(cause) do
+    """
+    Your process died at #{DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()}: #{cause}
+
+    The turn in flight was discarded and not recorded. Carry on from the turns \
+    above; if you are unsure whether something landed, check rather than redo it.
+    """
   end
 
   # A failed turn the provider refused, kept on the row as state (044599cc).

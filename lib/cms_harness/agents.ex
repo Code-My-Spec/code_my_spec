@@ -23,6 +23,7 @@ defmodule CmsHarness.Agents do
   """
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Project.ChannelClient
 
   @doc """
@@ -293,8 +294,7 @@ defmodule CmsHarness.Agents do
 
   # Bounded, because a tool's error can carry a whole response body and this
   # goes to a file that rotates at 10 MB.
-  defp failure_text(error) when is_binary(error), do: String.slice(error, 0, 500)
-  defp failure_text(error), do: error |> inspect() |> String.slice(0, 500)
+  defp failure_text(error), do: error |> ToolResults.describe() |> String.slice(0, 500)
 
   # This checkout's id, from the file it keeps it in.
   #

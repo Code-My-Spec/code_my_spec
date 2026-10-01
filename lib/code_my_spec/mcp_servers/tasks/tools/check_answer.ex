@@ -58,6 +58,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
       {:error, {:pending, holder}} ->
         {:reply, Response.tool() |> Response.text(still_open(holder)), frame}
 
+      {:error, :not_found} ->
+        {:reply, Response.tool() |> Response.error(not_found(id)), frame}
+
       {:error, :not_configured} ->
         {:reply,
          Response.tool()
@@ -70,6 +73,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
 
   def execute(_params, frame) do
     {:reply, Response.tool() |> Response.error("question_id is required"), frame}
+  end
+
+  # Agents shorten ids in their own notes and then call with the short form
+  # (2999a0cb), so say which id and where the whole one is.
+  defp not_found(id) do
+    "No question of yours has id `#{id}`. Use the full id — `list_user_questions` lists them."
   end
 
   # What "still open" means, said precisely enough to act on.

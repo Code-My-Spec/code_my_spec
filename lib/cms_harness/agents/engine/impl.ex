@@ -51,6 +51,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
+  alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Mcp.Transport
   alias CodeMySpec.Agents.ToolIndex
 
@@ -398,7 +399,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # insists" — anything the agent was part-way through gets to land here rather
   # than being lost with the process.
   @impl true
-  def terminate(_reason, state) do
+  def terminate(reason, state) do
     # The session goes with the agent that opened it.
     #
     # `connect/2` unlinks the client's supervisor deliberately, so nothing here
@@ -413,7 +414,29 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
+    announce_death(state, reason)
     :ok
+  end
+
+  # A process that goes for any reason but a stop, said out loud on its way.
+  #
+  # The agent is `:temporary` under its supervisor, and its transcript is the
+  # server's: a fresh process here would come back with no memory. So this
+  # reports and the server restarts it with its history. Before this a crash
+  # was a `stopped` line in `harness.log` and the agent was simply absent —
+  # list_agent_work dropped it, and nobody noticed for fifteen minutes
+  # (2999a0cb).
+  #
+  # Last, after the MCP session is closed: a relaunch must not find this
+  # agent's client still registered under the name it needs.
+  defp announce_death(_state, :shutdown), do: :ok
+  defp announce_death(_state, {:shutdown, _}), do: :ok
+  defp announce_death(%{on_event: nil}, _reason), do: :ok
+
+  defp announce_death(state, reason) do
+    text = reason |> Exception.format_exit() |> String.slice(0, 1_000)
+    Logger.warning("[CmsHarness] agent #{state.agent_id} died: #{text}")
+    state.on_event.(state.agent_id, %{event: :agent_died, text: text})
   end
 
   # `nil` on every path where the session was never opened — a machine that
@@ -965,7 +988,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
-       |> Keyword.put(:middleware, [Compaction])
+       # `ToolResults` keeps a tool's failure from killing the agent: an error
+       # struct in a result block cannot be JSON-encoded for the next request
+       # (2999a0cb).
+       |> Keyword.put(:middleware, [Compaction, ToolResults])
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
