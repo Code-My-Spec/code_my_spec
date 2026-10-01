@@ -166,82 +166,56 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # slower than it needs to be costs time; a graph that is wrong is an agent
   # doing work that does not exist.
   @doc """
-  Apply analysis freshness to computed or stored requirements, on the way out.
+  Withhold a clean analyzer verdict from a source that has never completed a
+  run, on the way out.
 
-  The half of a `:tests_passing` verdict that is not durable. The row holds the
-  component's own problem count; whether the run behind that count still
-  describes the current code is a project-wide fact that changes on its own
-  schedule, and baking it into rows made an analyzer finishing recompute 1116 of
-  1347 requirements to correct one term. Criterion 3448.
+  The latest completed run answers for its source, however old (28d72f8a):
+  analysis and requirements are orthogonal, so a run being behind the code
+  never hides or withholds work here. Whether results are current is the
+  promote gate's question, keyed on the commit.
 
-  **Downgrades only.** A stored `false` is never turned into a pass, so this
-  cannot manufacture the false positive the asymmetry exists to prevent — it can
-  only withhold a clean verdict whose evidence has gone stale. That also makes
-  it idempotent, which is why applying it on both the cached and the computed
-  path is safe.
+  What remains is absence. A source with no completed run on this working copy
+  has recorded nothing, so a zero count from it is not a pass. That fact is
+  project-wide and changes on its own schedule, so it is applied here rather
+  than baked into rows — baking a project-wide term into rows made an analyzer
+  finishing recompute 1116 of 1347 requirements (criterion 3448).
+
+  **Downgrades only**, so it is idempotent and safe on both the cached and the
+  computed path. A count is always served as it stands.
 
   Keyed off `details.analysis_source`, written by `problem_verdict/5`, so a
-  requirement says for itself which analyzer it leans on rather than this
-  needing a table of names.
+  requirement says for itself which analyzer it leans on.
   """
   @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
   def serve(nodes, ctx) do
-    fresh = Map.get(ctx, :analysis_fresh, %{})
-    Enum.map(nodes, &apply_freshness(&1, fresh))
+    ran = Map.get(ctx, :analysis_ran, %{})
+    Enum.map(nodes, &withhold_unanswered(&1, ran))
   end
 
-  defp apply_freshness(node, fresh) do
+  defp withhold_unanswered(%{satisfied: true} = node, ran) do
     case analysis_source(node) do
-      source when is_binary(source) -> freshen(node, source, Map.get(fresh, source, false))
-      nil -> node
+      source when is_binary(source) ->
+        if Map.get(ran, source, false), do: node, else: unanswered(node, source)
+
+      nil ->
+        node
     end
   end
 
-  defp freshen(node, _source, true), do: node
-  defp freshen(node, source, false), do: stale(node, source)
+  defp withhold_unanswered(node, _ran), do: node
 
-  # Both directions of the asymmetry, applied at serve time rather than baked
-  # into the row. `StaleAnalysisTest` is what this has to keep true, and it was
-  # bought by a drill: an agent re-fixed four credo findings it had already
-  # corrected, because a stale list is indistinguishable from a current one when
-  # nothing says so.
-  #
-  # A stale **zero** refuses. Clean from a run that never saw this code is a
-  # false pass, and that is the direction that costs correctness.
-  #
-  # A stale **count** is still served, with its vintage named. Withholding it
-  # instead left any source slower than the edit cadence permanently "pending",
-  # never answering at all (issue 7a7eed33) — absent information rendered as a
-  # blocked requirement.
-  defp stale(%{satisfied: true} = node, source) do
+  defp unanswered(node, source) do
     %{
       node
       | satisfied: false,
         details:
-          node.details
-          |> put_detail(
+          put_detail(
+            node.details,
             :reason,
-            "#{source} results not current — the last completed run " <>
-              "predates your changes, so a clean result from it proves nothing"
+            "No #{source} run has completed on this working copy yet, so there is " <>
+              "no result to read — start one with `start_analysis`"
           )
-          |> put_detail(:stale, true)
     }
-  end
-
-  defp stale(node, source) do
-    case read_detail(node.details, :reason) do
-      reason when is_binary(reason) and reason != "" ->
-        %{
-          node
-          | details:
-              node.details
-              |> put_detail(:reason, "#{reason}, from the last completed #{source} run")
-              |> put_detail(:stale, true)
-        }
-
-      _ ->
-        %{node | details: put_detail(node.details, :stale, true)}
-    end
   end
 
   # Written back in the key style the map already uses.
@@ -258,11 +232,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp put_detail(_details, key, value), do: %{key => value}
-
-  defp read_detail(details, key) when is_map(details),
-    do: Map.get(details, key) || Map.get(details, to_string(key))
-
-  defp read_detail(_details, _key), do: nil
 
   defp atom_keyed?(details) do
     case Map.keys(details) do
@@ -385,7 +354,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       # Split by kind, and with the two project-wide inputs beside it, because
       # "665 entities stale" does not say whether that was 665 real changes or
       # one shared input taking everybody with it. Stories and components have
-      # different shared inputs — `analysis_fresh` for components, the running
+      # different shared inputs — `analysis_ran` for components, the running
       # copy for stories — so the split alone distinguishes them: all components
       # and no stories is the analyser flipping, all stories and no components
       # is the running copy moving, and a partial count of each is genuine file
@@ -402,7 +371,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "in #{elapsed_ms(started)}ms " <>
           "(preload #{ms_or_na(preload_ms)}, projection #{projection_ms}ms); " <>
           "shared=#{shared_parts(ctx)}; " <>
-          "analysis_fresh=#{inspect(Map.get(ctx, :analysis_fresh, %{}))}"
+          "analysis_ran=#{inspect(Map.get(ctx, :analysis_ran, %{}))}"
       )
 
       # `reduced`, not `ctx`, and this is the whole reason the first attempt
@@ -1214,9 +1183,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> persist_projection(scope, enriched_ctx, nodes, edges)
 
     # Persisted durable, returned overlaid — in that order. The rows must hold
-    # the component's own answer so a freshness flip does not invalidate them;
-    # the caller must see the qualified one so it never acts on a clean verdict
-    # whose run has gone stale.
+    # the component's own answer so a source's first run does not invalidate
+    # them; the caller must see the qualified one so it never acts on a clean
+    # verdict no run has produced.
     {serve(nodes, ctx), edges}
   end
 

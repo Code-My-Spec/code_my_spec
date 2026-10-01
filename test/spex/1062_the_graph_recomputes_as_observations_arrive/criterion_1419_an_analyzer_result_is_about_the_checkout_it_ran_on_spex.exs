@@ -104,13 +104,16 @@ defmodule CodeMySpecSpex.Story1062.Criterion3507Spex do
         Fixtures.stop_graph_watchers()
 
         scope = %{context.scope | active_working_copy_id: context.first_id}
-        run = Fixtures.start_analysis_run(scope, "credo")
+        # spex: since 28d72f8a it is the one analyzer a requirement reads
+        # (`bdd_specs_passing`), so the only one whose run tells the graph
+        # anything. A credo, compiler or exunit run leaves no observation.
+        run = Fixtures.start_analysis_run(scope, "spex")
         :ok = Fixtures.complete_analysis_run(scope, run)
 
         # A finding, because a clean run legitimately settles nothing —
         # [[criterion 3448]] is the rule that says so.
         :ok =
-          Fixtures.replace_problems(scope, context.component.id, "credo", [
+          Fixtures.replace_problems(scope, context.component.id, "spex", [
             %{
               message: "Function body is nested too deep (max_nesting is 2).",
               file_path: "lib/reservations/booking.ex",

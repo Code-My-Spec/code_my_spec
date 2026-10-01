@@ -17,18 +17,15 @@ defmodule CodeMySpec.Analysis.Run do
   scan should gate every promotion the same way a test suite does, given the
   two have different costs and cadences. Wire it in once that's decided, not
   as a side effect of registering it.
-  The `input_fingerprint` is a hash over the File rows relevant to that source,
-  computed at enqueue time (never at completion — mid-run edits must read as
-  stale on the next check). A completed run whose fingerprint matches the
-  current inputs means the persisted Problems for that source are current and
-  the analyzer does not need to re-run.
+  The latest completed `:full` run answers for its source, however old. Which
+  commit it answers for is `start_commit`/`completed_commit`, and the promote
+  gate reads that (`at_commit?/2`, 28d72f8a) — the one rule for "current".
 
   `kind` distinguishes canonical `:full` runs (bare args, the stop hook's
-  whole-project sweep — eligible to satisfy freshness) from `:partial` targeted
-  runs (`mix test path/`, rewritten by the PreToolUse hook). A partial records
-  its output and stats for the model to read back but leaves Problems
-  untouched, and `latest_full_run/2` filters it out so it can never make a
-  source look fresh.
+  whole-project sweep) from `:partial` targeted runs (`mix test path/`,
+  rewritten by the PreToolUse hook). A partial records its output and stats for
+  the model to read back but leaves Problems untouched, and
+  `latest_full_run/2` filters it out so it can never answer for a source.
   """
 
   use Ecto.Schema
@@ -46,8 +43,6 @@ defmodule CodeMySpec.Analysis.Run do
           source: String.t(),
           kind: :full | :partial,
           status: :running | :completed | :failed,
-          input_fingerprint: String.t() | nil,
-          completed_fingerprint: String.t() | nil,
           args: map() | nil,
           stats: map() | nil,
           requested_by: map() | nil,
@@ -75,8 +70,6 @@ defmodule CodeMySpec.Analysis.Run do
     # `latest_completed_run/2` — made a good result read stale. 14 of these in
     # half an hour on one harness.
     field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded]
-    field :input_fingerprint, :string
-    field :completed_fingerprint, :string
     field :args, :map
     field :stats, :map
 
@@ -111,21 +104,6 @@ defmodule CodeMySpec.Analysis.Run do
 
     timestamps(type: :utc_datetime)
   end
-
-  @doc """
-  Whether this run answers for a tree whose fingerprint is `current`.
-
-  Either end of the run counts: the tree it started on, or the one it finished
-  on when files moved while it ran. The one rule for "fresh" — the graph read
-  only the input side while `Analysis.fresh?/2` read both, so a run that ended
-  on the current tree passed evaluation and stayed stale in the graph, and a
-  passed requirement was re-offered forever (849f8e7a).
-  """
-  @spec answers_for?(t() | nil, String.t() | nil) :: boolean()
-  def answers_for?(%__MODULE__{status: :completed} = run, current) when is_binary(current),
-    do: run.input_fingerprint == current or run.completed_fingerprint == current
-
-  def answers_for?(_run, _current), do: false
 
   @doc """
   Whether this run answers for `commit`: completed, started on a clean tree at
@@ -170,8 +148,6 @@ defmodule CodeMySpec.Analysis.Run do
       :source,
       :kind,
       :status,
-      :input_fingerprint,
-      :completed_fingerprint,
       :args,
       :stats,
       :requested_by,

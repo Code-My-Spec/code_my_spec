@@ -20,7 +20,6 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Analysis.Fingerprint
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
@@ -71,40 +70,27 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(working_copy_id))
   end
 
-  # Whether each analyzer ran, and whether what it said is about the code that
-  # is here now.
-  #
-  # `:stale` is the state worth the trouble. A completed run whose fingerprint
-  # no longer matches is well-formed, green and about code that is gone — and it
-  # fails safe, which is why a broken analyzer that errors gets fixed within the
-  # hour and one answering from last week is trusted indefinitely.
+  # Whether each analyzer ran, and on what: the latest run's outcome, with the
+  # commit and the time it finished. Not whether that result is about the code
+  # here now — nothing in the system judges that any more except the promote
+  # gate, keyed on the commit (28d72f8a). The commit and the age are facts the
+  # main agent can check; "fresh" was an inference it could not.
   defp analyzers(%Scope{} = scope) do
     Enum.map(@sources, fn source ->
+      run = latest_run(scope, source)
+
       %{
         source: source,
-        state: analyzer_state(scope, source),
-        finished_at: finished_at(scope, source)
+        state: state_of(run),
+        commit: run && run.completed_commit,
+        finished_at: run && run.finished_at
       }
     end)
   end
 
-  defp analyzer_state(scope, source) do
-    scope
-    |> latest_run(source)
-    |> state_of(Fingerprint.current(scope, source))
-  end
-
-  defp state_of(nil, _current), do: :never_run
-  defp state_of(%Run{status: :failed}, _current), do: :failed
-  defp state_of(%Run{completed_fingerprint: current}, current) when is_binary(current), do: :fresh
-  defp state_of(%Run{}, _current), do: :stale
-
-  defp finished_at(scope, source) do
-    case latest_run(scope, source) do
-      nil -> nil
-      run -> run.finished_at
-    end
-  end
+  defp state_of(nil), do: :never_run
+  defp state_of(%Run{status: :failed}), do: :failed
+  defp state_of(%Run{}), do: :completed
 
   # A caller that named a project and no checkout has no analyzer state to
   # report, and says so rather than crashing.
@@ -117,7 +103,7 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
   # that only have one"), which is exactly what leaves `active_working_copy_id`
   # nil. Issue `b27c54f1`.
   #
-  # `:never_run` is the honest answer and the one `state_of/2` already gives for
+  # `:never_run` is the honest answer and the one `state_of/1` already gives for
   # a missing run. The other sections of the report — harness, tools, preview,
   # machine — do not depend on a checkout and still answer, which is the point:
   # the tool whose job is "is it the agent or the machine" should degrade rather

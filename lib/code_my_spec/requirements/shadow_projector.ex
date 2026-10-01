@@ -202,12 +202,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # found already there. `settle_vantage/6` asks the table once per vantage
        # and remembers the answer here.
        established_vantages: MapSet.new(),
-       # The four analyzer-freshness booleans, kept between drains. Project-wide
-       # and computed from the whole checkout's files, so recomputing it per
-       # narrow drain would reintroduce the read the narrow path exists to
-       # avoid. Only a writer that touched files or an analyzer run can move it,
-       # and every one of those records `:unknown`.
-       analysis_fresh: %{},
        # The topology this projector last wrote edges for. Edges are a global
        # computation, so the cheap question is whether they can have moved at
        # all — `Freshness.topology/2` is the same hash the pass records, over
@@ -298,10 +292,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # checkout (a story renamed, an issue accepted), which every vantage reads and
   # which is the only case that fans out.
   #
-  # The two caches go with it. `analysis_fresh` is computed from a checkout's
-  # own files and `last_topology` from what that checkout can see, so both are
-  # per-vantage facts and a single slot silently answered one vantage's question
-  # with another's.
+  # The topology cache goes with it. `last_topology` is computed from what that
+  # checkout can see, so it is a per-vantage fact and a single slot silently
+  # answered one vantage's question with another's.
   defp apply_marks(state, marks) do
     config = Configurations.get_or_create(state.scope)
     base_scope = state.scope
@@ -746,42 +739,33 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         "#{drawn.edges} edges in #{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
     )
 
-    state = remember_topology(state, topology)
-    cache_analysis(state, ctx.analysis_fresh)
+    remember_topology(state, topology)
   end
 
   # The narrow path: one entity at a time, each loading only what it needs, and
   # no project-wide read at all.
   #
-  # `analysis_fresh` is the one project-wide value a narrow computation still
-  # needs — `bdd_specs_passing` reads it — and it is computed from the whole
-  # checkout's files, so it is cached rather than recomputed per drain. Sound
-  # because it can only move when files or an analyzer run move, and every
-  # writer that does either records `:unknown`, which takes the `:everything`
-  # branch above and refreshes it.
+  # Nothing project-wide is read here: `bdd_specs_passing` asks the run ledger
+  # for the one story it computes, so a drain that touches no story pays
+  # nothing for it.
   #
   # Deduped by what each computation covered, for the reason `write_each/4`
   # gives: a component's unit is its family, so two marks naming siblings are
   # one piece of work.
   defp run({:narrow, entities}, state, config) do
-    analysis_fresh =
-      Map.get(state.analysis_fresh, vantage(state)) ||
-        Preloader.analysis_freshness(state.scope)
-
-    {_done, node_set_moved?} = narrow_each(entities, state.scope, config, analysis_fresh)
-    state = reproject_topology(state, config, node_set_moved?)
-    cache_analysis(state, analysis_fresh)
+    {_done, node_set_moved?} = narrow_each(entities, state.scope, config)
+    reproject_topology(state, config, node_set_moved?)
   end
 
   # Answers whether any write added or reaped a row, beside what it covered.
-  @spec narrow_each(Enumerable.t(), Scope.t(), map(), map()) ::
+  @spec narrow_each(Enumerable.t(), Scope.t(), map()) ::
           {MapSet.t(Shadow.entity()), boolean()}
-  defp narrow_each(entities, scope, config, analysis_fresh) do
+  defp narrow_each(entities, scope, config) do
     Enum.reduce(entities, {MapSet.new(), false}, fn entity, {done, moved?} ->
       if MapSet.member?(done, entity) do
         {done, moved?}
       else
-        {:ok, ctx} = narrow_load(scope, entity, analysis_fresh)
+        {:ok, ctx} = narrow_load(scope, entity)
         {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
         {:ok, %{inserted: inserted, reaped: reaped}} = Shadow.write(scope, covered, nodes)
         {MapSet.union(done, covered), moved? or inserted > 0 or reaped > 0}
@@ -900,17 +884,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp remember_topology(state, topology),
     do: %{state | last_topology: Map.put(state.last_topology, vantage(state), topology)}
 
-  defp cache_analysis(state, freshness),
-    do: %{state | analysis_fresh: Map.put(state.analysis_fresh, vantage(state), freshness)}
+  defp narrow_load(scope, {"story", story_id}), do: Preloader.load_story(scope, story_id)
 
-  defp narrow_load(scope, {"story", story_id}, analysis_fresh),
-    do: Preloader.load_story(scope, story_id, analysis_fresh)
+  defp narrow_load(scope, {"component", component_id}),
+    do: Preloader.load_component_family(scope, component_id)
 
-  defp narrow_load(scope, {"component", component_id}, analysis_fresh),
-    do: Preloader.load_component_family(scope, component_id, analysis_fresh)
-
-  defp narrow_load(scope, {"project", _}, analysis_fresh),
-    do: Preloader.load_project(scope, analysis_fresh)
+  defp narrow_load(scope, {"project", _}), do: Preloader.load_project(scope)
 
   defp all_entities(ctx) do
     MapSet.union(

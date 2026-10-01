@@ -452,10 +452,10 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # working copy (story 1108), not against main after a promotion — so
     # `story_promoted` moved from *before* `qa_complete` to *after* it.
     # Promotion records verified work landing; it no longer gates what QA can
-    # test. `story_issues_resolved` and `problems_resolved` sit ahead of
-    # `qa_complete` instead, straight off `bdd_specs_passing`: a story's own
-    # known issues and its own working copy's analyzer findings both have to
-    # be clear before QA spends a pass on it.
+    # test. `story_issues_resolved` sits ahead of `qa_complete` instead,
+    # straight off `bdd_specs_passing`: a story's own known issues have to be
+    # clear before QA spends a pass on it. Analyzer findings are the promote
+    # gate's (28d72f8a), so `problems_resolved` is gone.
     #
     # Whether the copy is actually serving is deliberately not a graph node —
     # a `qa_target_serving` node here was tried and reverted the same day
@@ -463,7 +463,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # up live as part of starting, and a graph-level refusal that redirected
     # to `PromoteWork` instead would have let `promoted_version` get stamped
     # before `qa_complete` was satisfied. See criterion 1169's spex.
-    test "qa_complete waits on issues and problems clearing; story_promoted waits on qa_complete" do
+    test "qa_complete waits on issues clearing; story_promoted waits on qa_complete" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -488,14 +488,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert edge?.("bdd_specs_passing", "story_issues_resolved"),
              "story_issues_resolved should follow bdd_specs_passing directly"
 
-      assert edge?.("bdd_specs_passing", "problems_resolved"),
-             "problems_resolved should follow bdd_specs_passing directly"
-
       assert edge?.("story_issues_resolved", "qa_complete"),
              "qa_complete should wait on the story's known issues being resolved"
-
-      assert edge?.("problems_resolved", "qa_complete"),
-             "qa_complete should wait on the story's own working copy carrying no problems"
 
       assert edge?.("qa_complete", "story_promoted"),
              "promotion should follow QA, not the other way round"

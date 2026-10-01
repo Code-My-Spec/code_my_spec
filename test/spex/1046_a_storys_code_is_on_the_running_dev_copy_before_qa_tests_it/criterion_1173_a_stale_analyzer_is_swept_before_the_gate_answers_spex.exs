@@ -62,9 +62,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3166Spex do
       end
 
       given_ "no analyzer has ever run against it", context do
-        # given: already true — nothing records a run here. "A source that has
-        # never run is stale, not current" (`analysis.ex`), which is exactly
-        # the case `Analysis.fresh_sources/2` reports as not fresh.
+        # given: already true — nothing records a run here, so no source has a
+        # run at the copy's HEAD (`Analysis.answer_at_commit/3`).
         {:ok, context}
       end
 

@@ -11,13 +11,12 @@ defmodule CodeMySpec.Requirements.Preloader do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Analysis.{Fingerprint, Freshness, Run, RunsRepository}
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Personas.{Persona, PersonaStory}
-  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
@@ -31,10 +30,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_story: %{integer() => [File.t()]},
           files_by_project: [File.t()],
           files_by_path: %{String.t() => File.t()},
-          problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
-          problem_digests_by_component: %{Ecto.UUID.t() => %{String.t() => String.t()}},
           issues_by_story: %{integer() => [{integer(), NaiveDateTime.t()}]},
-          analysis_fresh: %{String.t() => boolean()},
+          analysis_ran: %{String.t() => boolean()},
           components: [Component.t()],
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
@@ -170,66 +167,6 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> Enum.filter(& &1.story_id)
       |> Enum.group_by(& &1.story_id)
 
-    # 3. Problem counts by component and source, and what those problems are
-    #
-    # The count is the verdict's input — `problem_verdict/5` reports "3 credo
-    # problem(s)" and nothing finer. The digest is the *fingerprint's* input,
-    # and it has to be a different thing, because a count cannot tell a fixed
-    # finding from a swapped one: correct one credo violation, introduce
-    # another in the same module, and the count is 1 both times. The component
-    # is then skipped by `recompute_stale/3` and goes on serving the old
-    # finding's verdict until something unrelated moves it.
-    #
-    # Keyed on the findings and not on the rows, which is the whole difficulty.
-    # Every write path here is delete-then-insert —
-    # `reconcile_problems_for_source/4` clears the source and re-inserts — so
-    # ids and `updated_at` move on every analyzer run whether or not the code
-    # changed. Keying on those would make an analyzer finishing restale every
-    # component that has a problem, which is the cost criterion 3448 removed
-    # when it took `analysis_fresh` out of the fingerprint.
-    #
-    # Aggregated in the database so this stays one row per (component, source).
-    # The alternative is loading every problem row — messages included — into
-    # memory on the path of every graph computation.
-    {problems_us, problem_rows} =
-      :timer.tc(fn ->
-        Problem
-        |> where([p], p.project_id == ^project_id and not is_nil(p.component_id))
-        |> group_by([p], [p.component_id, p.source])
-        |> select(
-          [p],
-          {p.component_id, p.source, count(p.id),
-           fragment(
-             "md5(string_agg(?, '|' ORDER BY ?))",
-             fragment(
-               "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
-               p.file_path,
-               p.line,
-               p.rule,
-               p.message
-             ),
-             fragment(
-               "coalesce(?, '') || ':' || coalesce(?::text, '') || ':' || coalesce(?, '') || ':' || coalesce(?, '')",
-               p.file_path,
-               p.line,
-               p.rule,
-               p.message
-             )
-           )}
-        )
-        |> Repo.all()
-      end)
-
-    problems_by_component =
-      Enum.reduce(problem_rows, %{}, fn {comp_id, source, count, _digest}, acc ->
-        Map.update(acc, comp_id, %{source => count}, &Map.put(&1, source, count))
-      end)
-
-    problem_digests_by_component =
-      Enum.reduce(problem_rows, %{}, fn {comp_id, source, _count, digest}, acc ->
-        Map.update(acc, comp_id, %{source => digest}, &Map.put(&1, source, digest))
-      end)
-
     # 4. Stories
     #
     # The pace gate. Only stories released for development project into the
@@ -263,7 +200,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     {rest_us, rest} =
       :timer.tc(fn ->
         %{
-          analysis_fresh: analysis_freshness(scope, all_files),
+          analysis_ran: analysis_ran(scope),
           criteria_by_story: criteria_by_story(story_ids),
           personas_by_story: personas_by_story(story_ids),
           qa_latest_by_story: qa_latest_by_story(story_ids),
@@ -277,7 +214,6 @@ defmodule CodeMySpec.Requirements.Preloader do
     log_load_cost(project_id, working_copy_id, length(all_files), %{
       shared: shared_us,
       files: files_us,
-      problems: problems_us,
       stories: stories_us,
       rest: rest_us
     })
@@ -288,10 +224,8 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_story: files_by_story,
        files_by_project: all_files,
        files_by_path: Map.new(all_files, &{&1.path, &1}),
-       problems_by_component: problems_by_component,
-       problem_digests_by_component: problem_digests_by_component,
        issues_by_story: shared.issues_by_story,
-       analysis_fresh: rest.analysis_fresh,
+       analysis_ran: rest.analysis_ran,
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
        children_by_parent: Enum.group_by(components, & &1.parent_component_id),
@@ -478,7 +412,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     Logger.info(
       "[Preloader] loaded in #{total}ms — " <>
         "shared #{ms.(parts.shared)}ms, files #{ms.(parts.files)}ms (#{file_count} rows), " <>
-        "problems #{ms.(parts.problems)}ms, stories #{ms.(parts.stories)}ms, " <>
+        "stories #{ms.(parts.stories)}ms, " <>
         "rest #{ms.(parts.rest)}ms; " <>
         "project=#{project_id} copy=#{inspect(working_copy_id)}"
     )
@@ -546,9 +480,10 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   Nothing else in the story graph needs a context. Its eight requirements are
   one `:file_exists` (served by the files below), one `:component_exists` and
-  one `:deployed` (both query directly), four delegates that ignore `ctx`, and
-  `bdd_specs_passing`, which reads `analysis_fresh` — the one project-wide value
-  here, passed in so a caller holding several marks computes it once.
+  one `:deployed` (both query directly), and delegates that ignore `ctx` or
+  query for themselves — `bdd_specs_passing` asks the run ledger whether spex
+  has run for this one story, rather than every drain asking it for all of
+  them.
 
   There is no `:path_exists` in the story graph, which is why `files_by_path` is
   not carried at all — see `narrow_context/2` on why an absent key is safer here
@@ -567,8 +502,8 @@ defmodule CodeMySpec.Requirements.Preloader do
   parked, or assigned to another checkout — which is the same filter `load/1`
   applies and makes the consumer write no rows for it.
   """
-  @spec load_story(Scope.t(), integer(), %{String.t() => boolean()}) :: {:ok, context()}
-  def load_story(%Scope{active_project_id: project_id} = scope, story_id, analysis_fresh)
+  @spec load_story(Scope.t(), integer()) :: {:ok, context()}
+  def load_story(%Scope{active_project_id: project_id} = scope, story_id)
       when is_binary(project_id) do
     story =
       Story
@@ -576,21 +511,20 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> assigned_here_or_unassigned(scope.active_working_copy_id)
       |> Repo.one()
 
-    {:ok, story_context(scope, story, analysis_fresh)}
+    {:ok, story_context(scope, story)}
   end
 
-  defp story_context(_scope, nil, analysis_fresh),
-    do: narrow_context(analysis_fresh, [])
+  defp story_context(_scope, nil), do: narrow_context([])
 
-  defp story_context(scope, story, analysis_fresh) do
+  defp story_context(scope, story) do
     files =
       File
       |> where([f], f.story_id == ^story.id)
       |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
-    analysis_fresh
-    |> narrow_context([story])
+    [story]
+    |> narrow_context()
     |> Map.put(:files_by_story, %{story.id => files})
   end
 
@@ -613,12 +547,11 @@ defmodule CodeMySpec.Requirements.Preloader do
   # indexed query and is what those clauses were written for. A key this load
   # forgot that something genuinely needs raises `KeyError` — loud, caught by
   # the drain, marks retained — rather than quietly answering `false`.
-  defp narrow_context(analysis_fresh, stories) do
+  defp narrow_context(stories) do
     %{
       stories: stories,
       components: [],
       files_by_story: %{},
-      analysis_fresh: analysis_fresh,
       skip_fingerprints: true
     }
   end
@@ -641,8 +574,8 @@ defmodule CodeMySpec.Requirements.Preloader do
   reach for their keys through `ctx[:key]`, which falls through to the database
   rather than reading an empty collection as an answer.
   """
-  @spec load_project(Scope.t(), %{String.t() => boolean()}) :: {:ok, context()}
-  def load_project(%Scope{active_project_id: project_id} = scope, analysis_fresh)
+  @spec load_project(Scope.t()) :: {:ok, context()}
+  def load_project(%Scope{active_project_id: project_id} = scope)
       when is_binary(project_id) do
     files =
       File
@@ -651,8 +584,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> Repo.all()
 
     ctx =
-      analysis_fresh
-      |> narrow_context([])
+      []
+      |> narrow_context()
       |> Map.merge(%{
         files_by_project: files,
         files_by_path: Map.new(files, &{&1.path, &1})
@@ -677,16 +610,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   therefore not a container here, which is the same answer `load/1` gives on
   this project's shape (measured: 0 components nested below the second level).
 
-  `problems_by_component` is carried and `problem_digests_by_component` is not,
-  and the split is the point. The digests exist only for `Freshness.component/2`,
-  which this path skips; the counts are read by
-  `RequirementCalculator.get_problem_count/4`, whose preloaded clause matches on
-  the key being present. Omitting the counts raises `FunctionClauseError` rather
-  than reporting zero problems — see `narrow_context/2`.
+  No problems are loaded: no component requirement reads them (28d72f8a).
   """
-  @spec load_component_family(Scope.t(), Ecto.UUID.t(), %{String.t() => boolean()}) ::
-          {:ok, context()}
-  def load_component_family(%Scope{active_project_id: project_id} = scope, id, analysis_fresh)
+  @spec load_component_family(Scope.t(), Ecto.UUID.t()) :: {:ok, context()}
+  def load_component_family(%Scope{active_project_id: project_id} = scope, id)
       when is_binary(project_id) do
     root =
       Repo.one(
@@ -696,13 +623,12 @@ defmodule CodeMySpec.Requirements.Preloader do
         )
       )
 
-    {:ok, family_context(scope, root, analysis_fresh)}
+    {:ok, family_context(scope, root)}
   end
 
-  defp family_context(_scope, nil, analysis_fresh),
-    do: narrow_context(analysis_fresh, [])
+  defp family_context(_scope, nil), do: narrow_context([])
 
-  defp family_context(%Scope{active_project_id: project_id} = scope, root, analysis_fresh) do
+  defp family_context(%Scope{active_project_id: project_id} = scope, root) do
     family =
       Component
       |> where([c], c.project_id == ^project_id)
@@ -718,55 +644,30 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> scope_to_harness(files_copy(scope))
       |> Repo.all()
 
-    analysis_fresh
-    |> narrow_context([])
+    []
+    |> narrow_context()
     |> Map.merge(%{
       components: family,
       components_by_id: Map.new(family, &{&1.id, &1}),
       children_by_parent: Enum.group_by(family, & &1.parent_component_id),
-      files_by_component: Enum.group_by(files, & &1.component_id),
-      problems_by_component: problem_counts(project_id, ids)
+      files_by_component: Enum.group_by(files, & &1.component_id)
     })
   end
 
-  defp problem_counts(project_id, component_ids) do
-    Problem
-    |> where([p], p.project_id == ^project_id and p.component_id in ^component_ids)
-    |> group_by([p], [p.component_id, p.source])
-    |> select([p], {p.component_id, p.source, count(p.id)})
-    |> Repo.all()
-    |> Enum.reduce(%{}, fn {component_id, source, count}, acc ->
-      Map.update(acc, component_id, %{source => count}, &Map.put(&1, source, count))
-    end)
-  end
-
   @doc """
-  The four analyzer-freshness booleans on their own.
+  Whether spex has a completed full run on this working copy, as
+  `%{"spex" => boolean}` — the one source a requirement still leans on
+  (`bdd_specs_passing`).
 
-  Project-wide and read by `bdd_specs_passing` on every story, so a consumer
-  handling several marks asks once rather than per entity.
-
-  Answers from `Analysis.Freshness` when the projection knows every source, and
-  reads files otherwise. This is the one path where that trade is worth making:
-  a narrow per-entity load has no files in hand, so the alternative is reading
-  the checkout's entire file table to answer four booleans — the last thing
-  forcing it to do so.
-
-  `analysis_freshness/2`, which already holds the files, does **not** consult
-  the projection. The comparison costs ~4ms there and is derived from the files
-  themselves, so it cannot be wrong about them; a row can be, for any reason its
-  own events do not describe. That direction is a false pass, so the path that
-  can afford to check, checks.
+  The latest completed run answers however old (28d72f8a). This is only the
+  absence check: a source that has never completed a run has no answer, and an
+  empty Problems table is not evidence of a pass. One `exists` query, read by
+  `RequirementGraph.serve/2` on the whole-graph paths; narrow loads leave it
+  out and the checker asks for the one story it is computing.
   """
-  @spec analysis_freshness(Scope.t()) :: %{String.t() => boolean()}
-  def analysis_freshness(%Scope{} = scope) do
-    known = Freshness.known(scope.active_working_copy_id)
-
-    case Run.sources() -- Map.keys(known) do
-      [] -> known
-      _unknown -> analysis_freshness(scope, CodeMySpec.Files.list_files(scope))
-    end
-  end
+  @spec analysis_ran(Scope.t()) :: %{String.t() => boolean()}
+  def analysis_ran(%Scope{} = scope),
+    do: %{"spex" => RunsRepository.answered?(scope, "spex")}
 
   defp rules_by_story(project_id) do
     Rule
@@ -1059,33 +960,5 @@ defmodule CodeMySpec.Requirements.Preloader do
       fn {story_id, _id, _at} -> story_id end,
       fn {_story_id, id, at} -> {id, at} end
     )
-  end
-
-  # Per-source freshness: does the latest completed full analysis run match
-  # the current input fingerprint? Reuses the already-loaded file list, so
-  # this is one ledger query plus in-memory hashing. `tests_passing` gates
-  # on it — zero persisted problems only means "passing" when the results
-  # are actually current for today's code.
-  # Computed, and deliberately *not* merged with the projection.
-  #
-  # The files are already in hand here, so the comparison costs ~4ms — there is
-  # nothing for the projection to save on this path, and letting it win would
-  # trade a free correct answer for a cheaper one that can be wrong.
-  # `StaleAnalysisTest` constructs exactly how: a run stamped before a file
-  # changed, the file moved without the sync that would have staled the row, and
-  # the row then claims fresh over code its run never saw. It caught this when
-  # the merge was here.
-  #
-  # A stale *clean* result is a false pass, which is the direction that costs
-  # correctness rather than time. So the authoritative path computes, and the
-  # projection is read only where the alternative is reading the whole file
-  # table for nothing — see `analysis_freshness/1`.
-  defp analysis_freshness(scope, all_files) do
-    latest = RunsRepository.latest_completed_runs(scope)
-
-    Map.new(Run.sources(), fn source ->
-      current = Fingerprint.compute(all_files, Fingerprint.roles(source))
-      {source, Run.answers_for?(latest[source], current)}
-    end)
   end
 end

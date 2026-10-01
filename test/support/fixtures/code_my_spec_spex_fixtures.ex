@@ -4719,18 +4719,12 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  A completed run for `source` whose fingerprint no longer matches the tree.
-
-  Stale is not the same state as never-ran, and the difference decides what the
-  agent is told. A source with no completed run at all is simply not enforced;
-  a completed run against a fingerprint that has moved on still blocks, and the
-  response gains the footer explaining that a rerun is coming — which is where
-  the hook's "curl analysis/wait and stop again" remedy lives.
+  A completed full run for `source`, with no commit recorded — the run its
+  findings came from. Not a run at HEAD, so it does not certify a promotion.
   """
-  def stale_analysis_run(%Scope{} = scope, source) do
+  def completed_analysis_run(%Scope{} = scope, source) do
     CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
       source: source,
-      input_fingerprint: "stale-fingerprint",
       status_override: :completed
     })
   end
@@ -4738,10 +4732,8 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   Start a full analyzer run, the way a real sweep enqueues one.
 
-  Split from `complete_analysis_run/2` so a scenario can put an edit between
-  the two: a file written after this call and read by `complete_analysis_run/2`
-  is what "in flight" means to `Coverage.seen_entries/3` — the analyzer never
-  saw it, and recording it anyway would be a false fact rather than a stale one.
+  Split from `complete_analysis_run/2` so a scenario can put work between the
+  two.
   """
   @spec start_analysis_run(Scope.t(), String.t()) :: CodeMySpec.Analysis.Run.t()
   def start_analysis_run(%Scope{} = scope, source) do
@@ -4752,13 +4744,11 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Finish a run through `Reconciler.reconcile/4` — the only path that ever
-  calls `Coverage.record/4`.
+  Finish a run through `Reconciler.reconcile/4`, the production path.
 
-  `fresh_analysis_runs/2` stamps the ledger directly and reaches `Coverage`
-  not at all, which is right for a fixture whose job is "this source is
-  current" and wrong for a criterion about what a run actually read: proving
-  that requires going through the producer it names.
+  `fresh_analysis_runs/2` stamps the ledger directly, which is right for a
+  fixture whose job is "this source has run" and wrong for a criterion about
+  what reconciling a run does.
   """
   @spec complete_analysis_run(Scope.t(), CodeMySpec.Analysis.Run.t()) :: :ok
   def complete_analysis_run(%Scope{} = scope, run) do
@@ -4773,23 +4763,13 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc "Files a source's roles feed that it has never read — as the dev freshness page counts them."
-  defdelegate unread_files(scope, source), to: CodeMySpec.Analysis.Coverage, as: :unanalyzed_files
-
-  @doc "Files a source read whose content has since moved, with what it saw and what changed."
-  defdelegate stale_coverage(scope, source), to: CodeMySpec.Analysis.Coverage, as: :stale_report
-
-  @doc "Whether a source has read everything it should and none of it has moved since."
-  defdelegate coverage_fresh?(scope, source), to: CodeMySpec.Analysis.Coverage, as: :fresh?
-
   @doc """
-  Stamp completed analysis runs at the CURRENT input fingerprints.
+  Stamp a completed analysis run per source.
 
-  `tests_passing` / `spex_passing` require a fresh completed run in the
-  analysis ledger (v1.5.36) — zero persisted problems no longer reads as
-  "passing" on a project whose suites never ran. Satisfaction fixtures call
-  this AFTER the last file write; any later relevant file change makes the
-  stamp stale again (by design).
+  `tests_passing` / `spex_passing` require a completed run in the analysis
+  ledger (v1.5.36) — zero persisted problems no longer reads as "passing" on a
+  project whose suites never ran. The latest completed run answers however old
+  (28d72f8a).
 
   `at_head: true` stamps the runs as a harness records them: started on a
   clean tree at the working copy's HEAD and finished there — what the promote
@@ -4807,21 +4787,10 @@ defmodule CodeMySpecSpex.Fixtures do
       ) do
     # A full sync, not an incremental one, and that is the whole of it.
     #
-    # The fingerprint an analysis run is stamped with is content-based over the
-    # files the source's roles cover — `{path, fingerprint}`, sorted — so it
-    # moves when the *file set* changes, not when a sync merely runs. Stamping
-    # after `sync_changed/2` recorded the set that incremental pass knew about,
-    # and `GetNextRequirement` then does a full `FileSync.sync/2` on its way to
-    # the graph, discovering whatever the incremental one had not. Different
-    # set, different fingerprint, `analysis_fresh` false — so `bdd_specs_passing`
-    # dropped and `FixBddSpecs` outranked the work the scenario was about.
-    #
-    # Criteria 6529, 6532 and 6533 at 10 pass / 5 fail each over fifteen runs,
-    # with the graph itself answering `[coding: "bdd_specs_passing"]` where the
-    # passing runs answer `[qa: "qa_complete"]`.
-    #
-    # Stamping over the set the reader will see is the fix: the fixture syncs
-    # the way the thing that reads it syncs.
+    # A full sync first, so the files a reader will see are in the ledger
+    # before the run is stamped — the way the thing that reads it syncs
+    # (criteria 6529, 6532, 6533 were flaky without it while runs carried
+    # fingerprints of the file set).
     {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
 
     result =
@@ -4831,9 +4800,8 @@ defmodule CodeMySpecSpex.Fixtures do
         at_head(scope, opts)
       )
 
-    # And say so. Analysis freshness is a graph input — `Preloader` feeds it to
-    # `analysis_fresh`, and `tests_passing`, `spex_passing` and the latch behind
-    # `bdd_specs_passing` are all computed from it.
+    # And say so. Whether spex has run is a graph input — `Preloader` feeds it
+    # to `analysis_ran`, and `bdd_specs_passing` reads it.
     #
     # `fresh_analysis_runs_fixture/2` calls `RunsRepository.finish_run/3`
     # directly rather than going through `Analysis.Reconciler.reconcile/4`,

@@ -30,12 +30,13 @@ defmodule CodeMySpec.Problems do
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
 
-  # Writes. `GraphFingerprint` hashes the problem counts per component, and
-  # `Validation.Menu` counts problems into the nudge, so a problem landing is
-  # work appearing that no reader would notice — the case `Requirements
-  # .GraphInputs` exists for. Wrapped rather than delegated for that one line;
-  # there is no single choke point underneath, and the alternative was a
-  # proxy in whichever caller happened to be looked at first.
+  # Writes. One requirement still reads findings: `bdd_specs_passing`, from the
+  # spex source (28d72f8a — no component requirement reads problems any more,
+  # and they are out of every fingerprint). So a write announces
+  # `problems_changed` only when it can have moved spex; the per-source writers
+  # below know their source and stay quiet for compiler, credo and exunit.
+  # Wrapped rather than delegated for that one line; there is no single choke
+  # point underneath.
 
   # The deleters count the rows they removed, so `{:ok, 0}` is proof that
   # nothing moved and announcing it would be a lie the fingerprint then has to
@@ -56,11 +57,13 @@ defmodule CodeMySpec.Problems do
 
   # The files are still on disk — this clears one analyzer's findings at paths
   # that remain — so their owners resolve and the mark can name them.
-  def clear_problems_for_source(scope, source_filter, file_paths),
-    do:
-      scope
-      |> ProblemRepository.clear_problems_for_source(source_filter, file_paths)
-      |> announce_if_moved(scope, Files.owners_of_paths(scope, file_paths))
+  def clear_problems_for_source(scope, source_filter, file_paths) do
+    result = ProblemRepository.clear_problems_for_source(scope, source_filter, file_paths)
+
+    if spex?(source_filter[:source]),
+      do: announce_if_moved(result, scope, Files.owners_of_paths(scope, file_paths)),
+      else: result
+  end
 
   def clear_problems_for_missing_files(scope, current_paths),
     do:
@@ -89,17 +92,23 @@ defmodule CodeMySpec.Problems do
   # `problem_digests_by_component`, and an analyzer writes here on every agent
   # turn — so this is the input that most often takes the whole project stale
   # for a change that belonged to a handful of modules.
-  def replace_problems_for_components(scope, component_ids, source, problems),
-    do:
-      scope
-      |> ProblemRepository.replace_problems_for_components(component_ids, source, problems)
-      |> announce(scope, Enum.map(component_ids, &{"component", &1}))
+  def replace_problems_for_components(scope, component_ids, source, problems) do
+    result =
+      ProblemRepository.replace_problems_for_components(scope, component_ids, source, problems)
 
-  def reconcile_problems_for_source(scope, source, file_scope, problems),
-    do:
-      scope
-      |> ProblemRepository.reconcile_problems_for_source(source, file_scope, problems)
-      |> announce(scope)
+    if spex?(source),
+      do: announce(result, scope, Enum.map(component_ids, &{"component", &1})),
+      else: result
+  end
+
+  def reconcile_problems_for_source(scope, source, file_scope, problems) do
+    result = ProblemRepository.reconcile_problems_for_source(scope, source, file_scope, problems)
+    if spex?(source), do: announce(result, scope), else: result
+  end
+
+  # A filter that names no source could have touched spex.
+  defp spex?(nil), do: true
+  defp spex?(source), do: source in ["spex", :spex]
 
   defp announce_if_moved(result, scope), do: announce_if_moved(result, scope, [])
 
@@ -123,9 +132,9 @@ defmodule CodeMySpec.Problems do
   defp announce(result, scope), do: announce(result, scope, [])
 
   defp announce({:ok, _moved} = result, scope, entities) do
-    # The event as well as the marks. `tests_passing` is settled from the
-    # problem counts directly — 13 definitions — and the entities beside it are
-    # the fallback for anything without a handler.
+    # The event as well as the marks. `bdd_specs_passing` is settled from it
+    # (`Handlers`, the `:specs` profile), and the entities beside it are the
+    # fallback for anything without a handler.
     # Findings come from an analyzer run on one tree, so they are that
     # checkout's problems.
     GraphInputs.event(scope, "Problems", "problems_changed", %{}, entities, :this_checkout)

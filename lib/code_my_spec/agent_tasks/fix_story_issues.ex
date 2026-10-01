@@ -16,74 +16,43 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   raised somewhere else — in another agent's territory, in a package waiting
   on a publish — has no business gating story 42, and would if this node read
   the project queue.
-
-  Story 1003, revised 2026-09-28: also resolves `problems_resolved` —
-  `Requirements.ProblemsChecker`'s own node, checking credo/compiler findings
-  on the story's own working copy, now sits ahead of `qa_complete` alongside
-  this one. It has no dedicated task of its own: reusing this one keeps a
-  story blocked only by a bare analyzer finding from being offered a task
-  whose prompt names nothing it can act on, which is exactly the "claim the
-  task, find no issues, tap out, get offered the same task again" spin this
-  project has been burned by before (94327fe2).
-
-  `evaluate/2` below shows both together for an agent reading its own
-  feedback, but this module is not in `Evaluator.custom_evaluate_modules/0`,
-  so neither `EvaluateTask` nor the stop hook ever calls it —
-  `dispatch_evaluate/4` in each falls through to `Evaluator.evaluate/2`,
-  which checks the *one* requirement `task.requirement_name` actually names
-  (`ProblemsChecker.resolved?/2` for a `problems_resolved` task,
-  `IssuesChecker.story_resolved?/2` for `story_issues_resolved`). That already
-  refuses correctly per requirement, independent of the other — confirmed by
-  criterion 1575's own `evaluate_task` assertion — which is what actually
-  keeps a story from reading done while either blocker remains, not this
-  function.
   """
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.{Configurations, Issues, Paths, Problems, Stories}
+  alias CodeMySpec.{Configurations, Issues, Paths, Stories}
 
   def dispatch(_node) do
     "Resolve the accepted issues QA filed against this story, at or above " <>
       "the project's `fix_issues_min_severity`, by reading, fixing, and " <>
-      "calling `resolve_issue` per issue — and clear any credo/compiler " <>
-      "finding on this story's own working copy alongside them. Use when a " <>
-      "story is not yet offered for QA because it carries either."
+      "calling `resolve_issue` per issue. Use when a story is not yet offered " <>
+      "for QA because it carries accepted issues of its own."
   end
 
-  @always_block_problem_sources ~w(credo compiler)
-
   @doc """
-  Build the fix prompt for this story's accepted issues and analyzer problems.
+  Build the fix prompt for this story's accepted issues.
   """
   def command(scope, task) do
     with {:ok, story_id} <- get_story_id(task) do
       threshold = Configurations.fix_issues_min_severity(scope)
       issues = blocking_issues(scope, story_id, threshold)
-      problems = blocking_problems(scope, story_id)
-      {:ok, build_prompt(story_number(scope, story_id), issues, threshold, problems)}
+      {:ok, build_prompt(story_number(scope, story_id), issues, threshold)}
     end
   end
 
   @doc """
-  Dead as far as evaluation goes — see the moduledoc. Kept because a task
-  module without `evaluate/2` reads as unfinished to the next person who
-  opens this file, and this shows accepted issues and analyzer problems
-  the same combined way `command/2`'s prompt does, in case something ever
-  does call it directly.
+  Check that every accepted issue on this story at or above the configured
+  threshold has been resolved.
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(task) do
       threshold = Configurations.fix_issues_min_severity(scope)
-      issues = blocking_issues(scope, story_id, threshold)
-      problems = blocking_problems(scope, story_id)
 
-      case {issues, problems} do
-        {[], []} ->
+      case blocking_issues(scope, story_id, threshold) do
+        [] ->
           {:ok, :valid}
 
-        {issues, problems} ->
-          {:ok, :invalid,
-           invalid_message(story_number(scope, story_id), issues, threshold, problems)}
+        issues ->
+          {:ok, :invalid, issues_section(story_number(scope, story_id), issues, threshold)}
       end
     end
   end
@@ -91,31 +60,6 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
   defp blocking_issues(scope, story_id, threshold) do
     Issues.list_by_story_status_and_min_severity(scope, story_id, :accepted, threshold)
   end
-
-  # Same source list `Requirements.ProblemsChecker` gates `problems_resolved`
-  # on — scoped to the story's own working copy, not whichever copy happens
-  # to be asking, for the same reason that checker is (`02796b61`).
-  defp blocking_problems(scope, story_id) do
-    case Stories.get_story(scope, story_id) do
-      %{working_copy_id: working_copy_id} when is_binary(working_copy_id) ->
-        here = %{scope | active_working_copy_id: working_copy_id}
-        Problems.list_project_problems(here, sources: @always_block_problem_sources)
-
-      _ ->
-        []
-    end
-  end
-
-  defp invalid_message(story_number, issues, threshold, problems) do
-    [
-      issues_section(story_number, issues, threshold),
-      problems_section(problems)
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n\n")
-  end
-
-  defp issues_section(_story_number, [], _threshold), do: nil
 
   defp issues_section(story_number, issues, threshold) do
     names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — [#{&1.severity}] #{&1.title}")
@@ -126,23 +70,6 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     #{names}
 
     Use the `resolve_issue` MCP tool with the issue `id` and `resolution` for each one you fix.
-    """
-  end
-
-  defp problems_section([]), do: nil
-
-  defp problems_section(problems) do
-    names =
-      Enum.map_join(problems, "\n", fn p ->
-        "- [#{p.source}] #{p.file_path}:#{p.line} — #{p.message}"
-      end)
-
-    """
-    #{length(problems)} credo/compiler finding(s) on this story's own working copy:
-
-    #{names}
-
-    These block `problems_resolved` and `qa_complete` regardless of issue status. Fix them directly in the code.
     """
   end
 
@@ -169,58 +96,30 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
       "FixStoryIssues is a story-scoped requirement. Call `start_task` with entity_type=`story` and the story's number as entity_id."}}
   end
 
-  defp build_prompt(story_number, [], _threshold, []) do
+  defp build_prompt(story_number, [], threshold) do
     """
     # Fix Story Issues — story #{story_number}
 
-    No unresolved accepted issues and no analyzer problems on this story's
-    own working copy. Call `evaluate_task` to record it and move on.
+    No unresolved accepted issues on this story at #{threshold}+ severity.
+    Call `evaluate_task` to record it and move on.
     """
   end
 
-  defp build_prompt(story_number, issues, threshold, problems) do
-    issues_listing =
-      case issues do
-        [] ->
-          "None."
-
-        issues ->
-          Enum.map_join(issues, "\n", &"- `#{&1.id}` — [#{&1.severity}] #{&1.title}")
-      end
-
-    problems_listing =
-      case problems do
-        [] ->
-          "None."
-
-        problems ->
-          Enum.map_join(problems, "\n", fn p ->
-            "- [#{p.source}] #{p.file_path}:#{p.line} — #{p.message}"
-          end)
-      end
+  defp build_prompt(story_number, issues, threshold) do
+    listing = Enum.map_join(issues, "\n", &"- `#{&1.id}` — [#{&1.severity}] #{&1.title}")
 
     """
     # Fix Story Issues — story #{story_number}
 
-    This story is blocked from QA/release by #{length(issues)} accepted
-    issue(s) at or above `#{threshold}` severity and/or #{length(problems)}
-    credo/compiler finding(s) on its own working copy. Fix whichever apply.
+    This story is blocked from QA by **#{length(issues)} accepted issue(s)**
+    at or above `#{threshold}` severity. Fix them before it is tested again.
     Issues below the threshold stay tracked and don't gate.
 
-    ## Accepted issues
-
-    #{issues_listing}
+    #{listing}
 
     Only issues QA attributed to this story appear here. The rest of the
     project queue is handled once, at the end, by the project-level
     `issues_resolved` requirement — don't work it from this task.
-
-    ## Analyzer findings (credo/compiler)
-
-    #{problems_listing}
-
-    These are checked against `problems_resolved`, a separate requirement
-    from issues — both have to clear before this task is done.
 
     ## Read the playbook
 
@@ -237,13 +136,12 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
     ## MCP tools
 
     - `get_issue` — read one issue's full detail, JIT, as you pick it up.
-    - `resolve_issue` — `id` + `resolution`, required after every issue fix.
+    - `resolve_issue` — `id` + `resolution`, required after every fix.
 
     #{WriteBddSpecs.obsolete_criterion()}
 
-    Fix each issue and finding, call `resolve_issue` for issues, run the
-    story's specs plus `mix test`/`mix credo` to confirm nothing else broke,
-    then call `evaluate_task`.
+    Fix each issue, call `resolve_issue`, run the story's specs plus
+    `mix test` to confirm nothing else broke, then call `evaluate_task`.
     """
   end
 end

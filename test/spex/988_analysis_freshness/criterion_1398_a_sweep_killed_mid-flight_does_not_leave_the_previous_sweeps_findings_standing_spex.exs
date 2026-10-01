@@ -17,13 +17,11 @@ defmodule CodeMySpecSpex.Story988.Criterion3478Spex do
   at never landed. The failure this criterion is about is presenting an old
   finding as though the sweep that would confirm or clear it actually ran.
 
-  What already carries that label is 8197's staleness marker: the finding
-  still describes a fingerprint that predates the fix, and
-  `check_blocking_problems/3` reads that mismatch the same way whether the
-  replacement run is merely pending or has already died. A kill does not
-  need its own code path — it needs the existing one to have no gap for it,
-  which is what this proves: the failed run must not have quietly cleared or
-  masked the finding it was meant to replace.
+  The label is the failed-rerun note: the newest run of the source failed, so
+  the response says when and why, and that these findings are from the
+  earlier run and were not re-checked. Since 28d72f8a there is no "stale"
+  marker to carry it — the run's own record does. The failed run must not have
+  quietly cleared or masked the finding it was meant to replace.
   """
 
   use CodeMySpecSpex.Case
@@ -92,7 +90,7 @@ defmodule CodeMySpecSpex.Story988.Criterion3478Spex do
                been green for hours.
                """
 
-        assert message =~ "stale",
+        assert message =~ "were not re-checked",
                """
                The rerun died without answering. Presenting this finding as
                current — as though the sweep that would confirm or clear it

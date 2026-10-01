@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1002.Criterion3442Spex do
   import CodeMySpecSpex.PromotionHelpers
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Fingerprint, RunsRepository}
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Environments
   alias CodeMySpec.Hooks.{PreToolUse, Stop}
   alias CodeMySpec.Problems
@@ -59,7 +59,8 @@ defmodule CodeMySpecSpex.Story1002.Criterion3442Spex do
     :ok
   end
 
-  spex "An agent's failing mix test blocks the stop hook through the shared ledger", criterion: 1381 do
+  spex "An agent's failing mix test blocks the stop hook through the shared ledger",
+    criterion: 1381 do
     scenario "a checkout with no recorded exunit problems" do
       given_ "a working copy with no recorded exunit problems", context do
         context = a_promotable_project(context)
@@ -100,12 +101,7 @@ defmodule CodeMySpecSpex.Story1002.Criterion3442Spex do
                failure. Got: #{inspect(command)}
                """
 
-        {:ok, run} =
-          RunsRepository.start_run(context.scope, %{
-            source: "exunit",
-            kind: :full,
-            input_fingerprint: Fingerprint.current(context.scope, "exunit")
-          })
+        {:ok, run} = RunsRepository.start_run(context.scope, %{source: "exunit", kind: :full})
 
         {:ok, _finished} =
           Analysis.record_remote_result(context.scope, %{

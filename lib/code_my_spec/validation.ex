@@ -199,20 +199,9 @@ defmodule CodeMySpec.Validation do
 
     config = Configurations.get_or_create(scope)
 
-    # Read *before* the pipeline enqueues, and that ordering is the whole of it.
-    # Asked afterwards, this set contains the runs this very stop just started,
-    # so every stale finding would be superseded on every stop and the gate
-    # would only ever block on fresh ones — which a finding stops being the
-    # moment anything is edited. What `23c8e006` describes is narrower: a rerun
-    # that was *already* going when the stop arrived, whose result will replace
-    # these findings without the agent doing anything.
-    already_running = Analysis.in_flight(scope)
-
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
-
-    opts = Keyword.put(opts, :already_running, already_running)
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
@@ -282,13 +271,9 @@ defmodule CodeMySpec.Validation do
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
 
-    already_running = Analysis.in_flight(scope)
-
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
-
-    opts = Keyword.put(opts, :already_running, already_running)
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
@@ -661,75 +646,6 @@ defmodule CodeMySpec.Validation do
       MapSet.member?(session_paths, problem.file_path)
   end
 
-  @doc """
-  Split blocking findings whose source is stale *and* currently re-running.
-
-  A finding in this state describes a tree that no longer exists, and a
-  replacement is already on its way. Blocking on it produced a response whose
-  two instructions could not both be satisfied — "fix these problems before
-  stopping", and, four lines down, "do not re-fix anything you have already
-  corrected; a rerun is in flight, stop again and let it replace these".
-
-  `23c8e006` reports both halves of that. First with a rerun that was failing
-  (2m32s then 2m53s against a typical 1m7s, under a concurrent provisioning
-  drill), and then again — the case that settles the design — with a rerun that
-  was perfectly healthy at "15s of a typical 19s". The second one had no failure
-  to surface: the findings were already fixed on disk, the analyzer agreed
-  (`422 findings project-wide, zero in that file`, instrument checked against
-  the same rules still firing elsewhere), and the block was purely the lag
-  between an edit and the sweep that measures it. Its line numbers had moved
-  too, so following them lands on unrelated code.
-
-  Both conditions are required. A stale source with nothing running still
-  blocks — that is a real outstanding finding nobody is measuring, and waiting
-  cannot help. A fresh source obviously blocks. Only the overlap is demoted,
-  and only until the run lands: if the finding is real, the next stop blocks on
-  the new result.
-
-  **`in_flight` must be read before the stop's own pipeline enqueues anything.**
-  Asked afterwards it contains the runs this very stop just started, so every
-  stale finding is superseded on every stop and the gate only ever blocks on
-  fresh ones — which a finding stops being the moment anything is edited. That
-  is not a subtle degradation; it switches the gate off. Caught by
-  `HarnessProjectChannelTest`'s "a sub-agent stopping with problems blocks,
-  rather than killing the channel", which went green-to-red on the first
-  version of this and is the reason the caller captures `already_running`
-  before `run_pipeline/5`.
-
-  This aligns the blocking path with the pending one, which already reached the
-  same answer from the other side. `Hooks.Stop` treats in-flight analysis as a
-  distinct outcome and, outside continuous mode, allows the stop with "results
-  apply next stop" — but only when validation *passed*, because blocking
-  findings return before that check. So a stop with no findings waited politely
-  while a stop with stale ones was refused on data of the same age.
-
-  Not to be confused with `cc1016a8`, which was the case where the rerun never
-  comes at all. That is fixed separately (a sweep no longer drops a request for
-  a busy source); if it recurs, this demotion would hide it, which is why the
-  response still names the source as stale and says what is running.
-  """
-  @spec split_superseded([Problems.Problem.t()], [String.t()], [String.t()]) ::
-          {[Problems.Problem.t()], [Problems.Problem.t()]}
-  def split_superseded(blocking, stale_sources, in_flight) do
-    replacing = MapSet.intersection(MapSet.new(stale_sources), MapSet.new(in_flight))
-
-    Enum.split_with(blocking, &(not MapSet.member?(replacing, &1.source)))
-  end
-
-  # Same reasoning as `log_demotions/2`: the gate declining to block is the
-  # interesting case, and it is invisible in the response.
-  defp log_supersessions([], _opts), do: :ok
-
-  defp log_supersessions(superseded, opts) do
-    sources = superseded |> Enum.map(& &1.source) |> Enum.uniq() |> Enum.join(", ")
-
-    Logger.info(
-      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
-        "#{length(superseded)} finding(s) to advisory: #{sources} is stale and re-running, " <>
-        "so these describe a tree that no longer exists"
-    )
-  end
-
   # Loudly, because this is the gate declining to block. A demotion that is
   # right is uninteresting and a demotion that is wrong is invisible in the
   # response — the log is the only place the difference shows up.
@@ -1062,7 +978,7 @@ defmodule CodeMySpec.Validation do
     sources = active_blocking_sources(config)
 
     # Problems are an eventually consistent projection: block on what is
-    # recorded, report staleness, let the run this kicks off replace it.
+    # recorded, say which run recorded it, let the run this kicks off replace it.
     problems_by_source =
       scope
       |> Problems.list_project_problems(sources: sources)
@@ -1081,27 +997,18 @@ defmodule CodeMySpec.Validation do
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
-    # One pass over the file ledger for every source, rather than one per
-    # source. See `Analysis.fresh_sources/2` — the answer is identical.
+    # Each finding is labelled with the run that recorded it — its commit and
+    # its age — and always blocks (28d72f8a). There is no "stale": whether a
+    # run saw the current code is the promote gate's question, keyed on the
+    # commit, and a label saying so changed what an agent did without changing
+    # what was true.
     #
-    # Restricted to `Run.sources/0` first. "Stale" means a completed ledger
-    # run whose fingerprint no longer matches the tree — a condition
-    # `ensure_stale_runs/3` can act on by enqueuing a fresh one.
-    # `spec_validation` and `qa_validation` are not in that ledger:
-    # `Run.changeset/2` rejects any source outside `@sources`, so a row for
-    # either can never exist, and `fresh_sources/2`'s lookup always misses.
-    # They are in-process document validators instead
-    # (`StaticAnalysis.Pipeline.run_validator/3`) — synchronous, and re-run
-    # in this same request whenever their governing file is among this
-    # turn's changed files, so their persisted Problems are exactly as
-    # current as that file. Feeding them through the ledger check reported
-    # them "stale" on every stop, forever, with a rerun `ensure_stale_runs/3`
-    # never actually requests for either source (it only ever asks for
-    # `compiler`, `credo`, `exunit`, `spex`) — a wait that could not end.
+    # Restricted to `Run.sources/0`: `spec_validation` and `qa_validation` are
+    # in-process document validators re-run in this request, with no ledger row
+    # to describe.
     sources_with_problems = Map.keys(problems_by_source)
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
-    fresh = Analysis.fresh_sources(scope, ledger_sources)
-    stale_sources = Enum.reject(ledger_sources, &MapSet.member?(fresh, &1))
+    in_flight = Analysis.in_flight(scope)
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
     session_paths = session_paths(scope, opts, project_changed?)
@@ -1110,15 +1017,7 @@ defmodule CodeMySpec.Validation do
     advisory = advisory ++ unattributed ++ not_this_role
     log_demotions(unattributed, session_paths, opts)
 
-    {blocking, superseded} =
-      split_superseded(blocking, stale_sources, Keyword.get(opts, :already_running, []))
-
-    advisory = advisory ++ superseded
-    log_supersessions(superseded, opts)
-
-    {last_ran, run_duration, overtaken} = run_timing(scope, stale_sources)
-
-    decide(blocking, advisory, stale_sources,
+    decide(blocking, advisory,
       # Computed here, from the opts that actually carry the identity.
       #
       # `decide/4` is handed this freshly built list rather than the caller's,
@@ -1128,23 +1027,20 @@ defmodule CodeMySpec.Validation do
       # option straight to the renderer, which is exactly the instrument error
       # of checking a probe only where it cannot fail.
       internal_agent?: internal_agent?(opts),
-      last_ran: last_ran,
+      # The run each source's findings came from: commit, age and duration —
+      # and for a source being rerun, the typical duration the in-flight note
+      # compares its progress against.
+      answers: answers(scope, Enum.uniq(ledger_sources ++ in_flight)),
       # Why a source that has never answered could not run. The analyzer's own
       # words are in `Run.output` and nothing read them back — `6f89b278` is
       # three days of blocked stops with the fix sitting in that column.
-      run_failures: run_failures(scope, stale_sources),
+      run_failures: run_failures(scope, ledger_sources),
       # Whether the build that decided a source's findings was older than the
       # tree it decided about. Stamped on the run by the harness, because only
       # the harness can compare its own boot sha against its own checkout.
       analyzer_staleness: analyzer_staleness(scope, sources_with_problems),
       # A rerun that failed behind an older answer; those findings were not re-checked.
       failed_reruns: failed_reruns(scope, sources_with_problems),
-      # How long the run itself took. Read together with the age, this separates
-      # "your edit predates this result" from "your edit landed while it was
-      # running" — and only the first is fixed by waiting.
-      run_duration: run_duration,
-      # Read off the two fingerprints rather than inferred from the duration.
-      overtaken: overtaken,
       # How to see these findings without stopping again. Only credo has one:
       # its plain invocation hides the low-priority band that `block_changed`
       # promotes, so `mix credo` answers "found no issues" on the very findings
@@ -1160,19 +1056,14 @@ defmodule CodeMySpec.Validation do
       # How many moved to advisory, and why, so the advisory pile does not
       # absorb them silently. A gate that stops blocking has to say so.
       unattributed_count: length(unattributed),
-      # Whether a rerun is actually running, as opposed to how old the newest
-      # result is. The message used to assert the first from the second and got
-      # it wrong in both directions.
-      in_flight: Analysis.in_flight(scope),
+      # Whether a rerun of a blocking source is running — what decides whether
+      # waiting can help.
+      in_flight: in_flight,
       # And how long it has been running. "A rerun is in flight" is the same
       # sentence on every stop inside one run's window, so taking the advice
       # promptly returns a byte-identical block — which is what a livelock looks
       # like from the outside, and the opposite response is correct for each.
       in_flight_since: Analysis.in_flight_since(scope),
-      # And whether anyone is watching at all. "No rerun is in flight, stopping
-      # again enqueues one" is a claim about the world, and an untracked project
-      # cannot support it — nothing would report a run either way.
-      tracked?: Analysis.in_flight_state(scope) != :untracked,
       # Whose story each spex finding belongs to.
       #
       # Rule 3 of story 895: a working copy surfaces every finding about it,
@@ -1203,59 +1094,34 @@ defmodule CodeMySpec.Validation do
     )
   end
 
-  # When each stale source last finished, and how long it took to get there.
-  #
-  # "Stale" alone cannot tell "a rerun is coming" from "no rerun can land", and
-  # those need opposite responses: wait, or stop editing and report the
-  # analyzer. A source that last ran two minutes ago is mid-cycle; one that last
-  # ran forty minutes ago, across several stops, is not coming back on its own.
-  #
-  # The duration adds a third condition the age alone cannot express. A run is
-  # fingerprinted when it is enqueued and judged against the tree when it is
-  # read, so an edit landing inside its window makes the result stale the
-  # instant it arrives. For exunit and spex here — measured at 2m20s and 2m35s
-  # against compiler's 9s — that is the normal working rhythm, not an anomaly,
-  # and it produced "stale, last ran 0s ago" on a run that had just succeeded.
-  # Waiting cannot fix it, so the message must not advise it.
-  #
-  # Both read the latest run that *answered*, which is the run staleness is
-  # computed from. This used `Analysis.status/1`, whose `latest_full_runs/1`
-  # includes `:failed` — so the age described one run while "stale" described
-  # another, and the failure is usually the newer of the two.
-  #
-  # Measured on the live ledger: spex last completed at 03:59:05 and last failed
-  # at 04:02:52, so a source whose real answer was four minutes stale reported
-  # the failure's age instead. Everything keyed to that age then inverts —
-  # mid-cycle rather than wedged, wait rather than escalate — and `83cde34f`
-  # read the resulting "last ran 5m ago" against a 96-minute-old answer as
-  # another working copy's run leaking in. It needs no second checkout.
-  #
-  # Per-source rather than one pass, which is also cheaper here:
-  # `latest_completed_run/2` is an indexed lookup, where `status/1` computes
-  # `Fingerprint` over every file row in the working copy — 4,544 on this
-  # project — for an answer this does not use.
-  #
   @doc """
-  Public so the property can be asserted directly, the same reason
-  `blocking_key/1` and `split_unattributed/2` are.
+  The run each source's findings came from, as `%{source => %{commit:,
+  finished_at:, duration:}}`: the latest completed full run, however old.
+
+  Read off `Analysis.latest_answer/2`, the same run whose problems are
+  recorded, so the label and the findings describe one run. `commit` is nil
+  where no harness reported one.
   """
-  def run_timing(_scope, []), do: {%{}, %{}, %{}}
-
-  def run_timing(scope, sources) do
-    Enum.reduce(sources, {%{}, %{}, %{}}, fn source, {ages, durations, overtaken} ->
-      run = Analysis.latest_answer(scope, source)
-
-      {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run)),
-       Map.put(overtaken, source, overtaken?(run))}
-    end)
+  @spec answers(Scope.t(), [String.t()]) :: %{String.t() => map()}
+  def answers(scope, sources) do
+    for source <- sources,
+        %Run{} = run <- [Analysis.latest_answer(scope, source)],
+        into: %{},
+        do:
+          {source,
+           %{
+             commit: run.completed_commit,
+             finished_at: run.finished_at,
+             duration: duration(run)
+           }}
   end
 
   @doc """
   Why a source that has never produced an answer could not run.
 
   Only for sources with no completed run at all. A source with an older answer
-  is behind, which is a different condition and already described; this one has
-  nothing, and the footer said so as "stale, has never completed" — true, and
+  is labelled with that run; this one has
+  nothing, and the footer said so as "has never completed" — true, and
   silent about the cause.
 
   The cause is already in the ledger. `Reconciler.fail/2` writes the analyzer's
@@ -1359,7 +1225,7 @@ defmodule CodeMySpec.Validation do
   @doc """
   Per source, the newest full run when it failed after the latest answer.
 
-  The findings still come from that older answer (`Analysis.fresh?/2` keeps it
+  The findings still come from that older answer (`Analysis.latest_answer/2` keeps it
   good), so the reader must be told the rerun failed and why.
   """
   @spec failed_reruns(Scope.t(), [String.t()]) :: %{String.t() => map()}
@@ -1380,33 +1246,8 @@ defmodule CodeMySpec.Validation do
            }}
   end
 
-  # Did an edit land while this run was in flight?
-  #
-  # `input_fingerprint` is stamped at enqueue and `completed_fingerprint` at
-  # reconcile, so the two differ exactly when the tree moved underneath it. That
-  # is the difference between a result waiting will refresh and one no amount of
-  # waiting can, and the two take opposite advice.
-  #
-  # The renderer inferred this from the run's duration — a result younger than
-  # the run took must have been overtaken — which is sound only if nothing was
-  # edited after the run finished. A stop that follows a long run closely breaks
-  # that: the edit came afterwards, a rerun would be clean, and the message said
-  # not to bother waiting for one.
-  #
-  # `nil` for a run predating the column, which is what sends the renderer back
-  # to the duration inference rather than asserting either answer.
-  defp overtaken?(%{input_fingerprint: input, completed_fingerprint: done})
-       when is_binary(input) and is_binary(done),
-       do: input != done
-
-  defp overtaken?(_run), do: nil
-
-  defp finished_at(%{finished_at: %DateTime{} = at}), do: at
-  defp finished_at(_), do: nil
-
   # Nil rather than zero when either end is missing: zero would read as an
-  # instant run and send the message down the "your edit predates this" branch,
-  # which is the wrong half of the very distinction this exists to draw.
+  # instant run.
   defp duration(%{started_at: %DateTime{} = from, finished_at: %DateTime{} = to}),
     do: DateTime.diff(to, from, :second)
 
@@ -1745,7 +1586,7 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], [], _stale, _opts), do: {:ok, nil}
+  defp decide([], [], _opts), do: {:ok, nil}
 
   # Nothing blocks, and something is still worth saying.
   #
@@ -1760,17 +1601,13 @@ defmodule CodeMySpec.Validation do
   # findings on every allowed stop is the wallpaper failure `Analysis.Alert`
   # already argues against — an agent that reads a paragraph it cannot act on
   # learns to skip the paragraph.
-  defp decide([], advisory, _stale, opts) do
+  defp decide([], advisory, opts) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
 
     {:ok, Problems.advisory_assignment_note(advisory, Keyword.get(opts, :story_assignment, %{}))}
   end
 
-  defp decide(blocking, advisory, stale_sources, opts) do
-    if stale_sources != [] do
-      Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
-    end
-
+  defp decide(blocking, advisory, opts) do
     reason =
       Problems.render_stop_response(
         blocking,
@@ -1782,7 +1619,7 @@ defmodule CodeMySpec.Validation do
         # stop again" has no counterpart here, and QA watched an agent obey it
         # and spend a whole turn re-curling — issue `778ab035`), and that its
         # edits are not unattributed but simply its own.
-        Keyword.put(opts, :stale_sources, stale_sources)
+        opts
       )
 
     {:error, reason, blocking_key(blocking)}
@@ -1791,7 +1628,7 @@ defmodule CodeMySpec.Validation do
   # What is blocking, as something that can be compared across stops.
   #
   # Deliberately not the rendered reason. R8's repeat detection hashes the text
-  # it is given, and this text carries relative ages — "stale, last ran 3
+  # it is given, and this text carries relative ages — "finished 3
   # minutes ago" — which change on every stop. Hashing it would produce a new
   # value each time and the streak would never build, so the escape would be
   # silently inert in exactly the case that needs it most: an analyzer lagging

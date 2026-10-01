@@ -30,11 +30,12 @@ defmodule CodeMySpec.Analysis.ProjectServer do
   LiveView watches a project, and which checkout produced a result is not
   something it subscribes by.
 
-  Dedup: a request matching a running or queued job (same source + args +
-  input fingerprint) joins it instead of double-running. Await callers are
-  held as `from` tuples and replied when the job lands. Queued (unwatched)
-  full runs for a source are superseded when a newer fingerprint arrives —
-  only the latest inputs matter.
+  Dedup: a request matching a *queued* job (same source + args) joins it
+  instead of double-running — it has not started, so it will read the tree as
+  it is when it does. A request matching only the *running* job queues behind
+  it: that run may have read the tree before the edit the request is about,
+  which is the same rule the harness's `AnalysisServer` applies. Await callers
+  are held as `from` tuples and replied when the job lands.
 
   Execution happens in a `Task.Supervisor.async_nolink` task that owns the
   whole runner → reconcile path (`Analysis.Execution`), so results persist
@@ -158,20 +159,14 @@ defmodule CodeMySpec.Analysis.ProjectServer do
   # -- Internals --
 
   defp find_match(state, job) do
-    candidates =
-      case state.running do
-        nil -> state.queue
-        entry -> [entry | state.queue]
-      end
-
-    case Enum.find(candidates, &same_job?(&1.job, job)) do
+    case Enum.find(state.queue, &same_job?(&1.job, job)) do
       nil -> :none
       entry -> {:ok, entry.run.id}
     end
   end
 
   defp same_job?(a, b) do
-    a.source == b.source and a.args == b.args and a.fingerprint == b.fingerprint
+    a.source == b.source and a.args == b.args
   end
 
   defp enqueue(state, scope, job) do
@@ -179,7 +174,6 @@ defmodule CodeMySpec.Analysis.ProjectServer do
            source: job.source,
            kind: job.kind,
            args: %{"args" => job.args},
-           input_fingerprint: job.fingerprint,
            requested_by: job.requested_by
          }) do
       {:ok, run} ->
@@ -189,7 +183,6 @@ defmodule CodeMySpec.Analysis.ProjectServer do
 
         state =
           state
-          |> supersede_queued(job)
           |> Map.update!(:queue, &order(&1 ++ [entry]))
           |> maybe_start_next()
 
@@ -211,8 +204,8 @@ defmodule CodeMySpec.Analysis.ProjectServer do
   # `Enum.sort_by` is stable, so equal ranks keep the order they arrived in —
   # this reorders across sources without disturbing FIFO within one.
   #
-  # Starvation is bounded rather than prevented: there are four sources and
-  # same-fingerprint jobs dedup, so a finite burst drains. A source that
+  # Starvation is bounded rather than prevented: there are four sources and a
+  # queued job absorbs every identical request, so a finite burst drains. A source that
   # re-enqueued faster than it ran could hold off spex, and if that ever shows
   # up the fix is aging, not a bigger table.
   @source_cost %{"credo" => 0, "compiler" => 1, "exunit" => 2, "spex" => 3}
@@ -223,26 +216,6 @@ defmodule CodeMySpec.Analysis.ProjectServer do
   def order(queue) do
     Enum.sort_by(queue, &Map.get(@source_cost, &1.job.source, 9))
   end
-
-  # A newer full run for a source obsoletes queued (not running, unwatched)
-  # full runs of the same source at an older fingerprint.
-  defp supersede_queued(state, %{kind: :full} = job) do
-    {stale, keep} =
-      Enum.split_with(state.queue, fn entry ->
-        entry.job.kind == :full and entry.job.source == job.source and
-          entry.job.fingerprint != job.fingerprint and
-          not Map.has_key?(state.waiters, entry.run.id)
-      end)
-
-    Enum.each(stale, fn entry ->
-      Reconciler.fail(entry.run, :superseded)
-      broadcast(state.project_id, entry.job.source, :failed, entry.run)
-    end)
-
-    %{state | queue: keep}
-  end
-
-  defp supersede_queued(state, _job), do: state
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     task =

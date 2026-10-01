@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
   re-fixes finished work or stops trusting a result that was correct.
 
   Both wrong turns were taken on 2026-08-13. The stop gate reported four credo
-  findings already corrected, and only its own "stale, last ran 4m ago" stopped
-  a second round of edits to four files that were already clean.
+  findings already corrected, and only the age on its own line ("stale, last ran
+  4m ago" then; "from the run at <commit>, finished 4m ago" since 28d72f8a)
+  stopped a second round of edits to four files that were already clean.
 
   The corollary matters as much as the age itself: a fix with no run behind it
   must not be reported as passing. Silence about green (criterion 2346) is what

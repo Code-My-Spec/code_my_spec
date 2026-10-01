@@ -8,7 +8,7 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
   still built from the snapshot before it. Measured on the incident:
 
       08:13:41.285  stop fires, starts credo run 2963
-      08:13:41.663  blocks: "stale, last ran 13m ago … a rerun is in flight"
+      08:13:41.663  blocks: "last ran 13m ago … a rerun is in flight"
       08:13:54.585  stop fires again — the advice, taken 13s later
       08:13:57.256  identical text, identical age
       08:13:59.766  run 2963 completes clean
@@ -42,12 +42,14 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
     ProblemRenderer.render_stop_response(
       [problem()],
       [],
-      stale_sources: ["credo"],
-      last_ran: %{"credo" => DateTime.add(DateTime.utc_now(), -13 * 60, :second)},
-      run_duration: Keyword.get(opts, :run_duration, %{"credo" => 18}),
+      answers: %{
+        "credo" => %{
+          finished_at: DateTime.add(DateTime.utc_now(), -13 * 60, :second),
+          duration: Keyword.get(opts, :duration, 18)
+        }
+      },
       in_flight: ["credo"],
       in_flight_since: Keyword.get(opts, :since, %{"credo" => started_at}),
-      tracked?: true,
       working_copy_id: Keyword.get(opts, :working_copy_id)
     )
   end
@@ -98,7 +100,7 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
   # A source that has never completed a run has no typical duration to compare
   # against. Elapsed alone still moves, which is what this is for.
   test "with no typical duration it reports the elapsed time alone" do
-    text = render(13, run_duration: %{})
+    text = render(13, duration: nil)
 
     assert text =~ "credo, running 13s)"
     refute text =~ "typical"
@@ -126,15 +128,15 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
       ProblemRenderer.render_stop_response(
         [problem()],
         [],
-        stale_sources: ["credo"],
-        last_ran: %{"credo" => DateTime.add(now, -13 * 60, :second)},
-        run_duration: %{"credo" => 9, "spex" => 198},
+        answers: %{
+          "credo" => %{finished_at: DateTime.add(now, -13 * 60, :second), duration: 9},
+          "spex" => %{finished_at: DateTime.add(now, -30 * 60, :second), duration: 198}
+        },
         in_flight: ["credo", "spex"],
         in_flight_since: %{
           "spex" => DateTime.add(now, -spex_elapsed, :second),
           "credo" => DateTime.add(now, -credo_elapsed, :second)
-        },
-        tracked?: true
+        }
       )
     end
 

@@ -1,12 +1,12 @@
 defmodule CodeMySpec.Analysis.LastRanAnswersTest do
   @moduledoc """
-  The age a stale source reports is the age of the answer, not of the attempt.
+  The run a finding is labelled with is the run that answered, not the latest
+  attempt.
 
-  Staleness comes from `latest_completed_run/2` — "the latest run that
-  *answered*, not the latest run", as `fresh?/2` puts it, because a failure
-  cannot make a good result stale. The age beside it came from
-  `latest_full_runs/1`, which includes `:failed`. Two different runs wearing one
-  label, and the failure is usually the newer of the two.
+  A source's findings come from `latest_completed_run/2` — the latest run that
+  *answered*, because a failure cannot unseat a good result. The age beside them
+  came from `latest_full_runs/1`, which includes `:failed`. Two different runs
+  wearing one label, and the failure is usually the newer of the two.
 
   So a source whose last real answer is an hour old reports "last ran 2m ago"
   on the strength of a run that produced nothing, and every piece of advice
@@ -52,13 +52,16 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     run
   end
 
+  defp age(scope) do
+    %{"spex" => %{finished_at: at}} = Validation.answers(scope, ["spex"])
+    DateTime.diff(DateTime.utc_now(), at, :second)
+  end
+
   test "a newer failure does not become the reported age", %{scope: scope} do
     finished_run(scope, "spex", :completed, 3_600)
     finished_run(scope, "spex", :failed, 120)
 
-    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
-
-    age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
+    age = age(scope)
 
     assert age > 3_000,
            "the answer is an hour old; reporting the 2-minute failure as the age " <>
@@ -69,30 +72,24 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     finished_run(scope, "spex", :failed, 3_600)
     finished_run(scope, "spex", :completed, 120)
 
-    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
-    age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
+    age = age(scope)
 
     assert age < 600
   end
 
   test "duration comes from the same run as the age", %{scope: scope} do
-    # Not merely tidiness: the overtaken-on-arrival branch compares them, so a
-    # duration read off one run and an age off another can make a slow source
-    # look overtaken when it is simply old, or the reverse.
+    # One run, one label: a duration read off one run and an age off another
+    # describe neither.
     finished_run(scope, "spex", :completed, 3_600)
     finished_run(scope, "spex", :failed, 120)
 
-    {_last_ran, duration, _overtaken} = Validation.run_timing(scope, ["spex"])
-
-    assert Map.fetch!(duration, "spex") == 30
+    assert Validation.answers(scope, ["spex"])["spex"].duration == 30
   end
 
   test "a source that has never completed reports no age", %{scope: scope} do
     finished_run(scope, "spex", :failed, 120)
 
-    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
-
-    assert Map.fetch!(last_ran, "spex") == nil,
+    refute Map.has_key?(Validation.answers(scope, ["spex"]), "spex"),
            "never answered is a different condition from answered a while ago, " <>
              "and the footer already says so — it must not be handed a failure's " <>
              "timestamp and call it an answer"
@@ -115,8 +112,7 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     finished_run(scope, "spex", :completed, 5_760)
     finished_run(%{scope | active_working_copy_id: other.id}, "spex", :completed, 300)
 
-    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
-    age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
+    age = age(scope)
 
     assert age > 3_000,
            "a neighbouring checkout's five-minute-old run was reported as this " <>

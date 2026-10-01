@@ -16,9 +16,11 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
       service and writes nothing the server reads. `PreToolUse.decide/4` is what
       turns it into a request to the analysis endpoint, so that rewrite is the
       first half.
-    * the ledger — if the endpoint writes somewhere the staleness check does not
-      read, the routing is decoration. `Analysis.fresh_sources/2` is the reader
-      the promotion gate and the stop hook both use, so that is the second.
+    * the ledger — if the endpoint writes somewhere the server's checks do not
+      read, the routing is decoration. `Analysis.answered?/2` reads the same
+      record the stop hook labels findings with and the promotion gate keys on
+      the commit (28d72f8a — the staleness check this criterion names is gone;
+      its wording should be retired or reworded), so that is the second.
 
   ## Why this does not run a real suite
 
@@ -37,7 +39,6 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
   import CodeMySpecSpex.PromotionHelpers
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Hooks.PreToolUse
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -54,8 +55,8 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
       given_ "a working copy the server has no fresh exunit run for", context do
         context = a_promotable_project(context)
 
-        refute "exunit" in Analysis.fresh_sources(context.scope, Run.sources()),
-               "the premise failed: the server already considers exunit fresh here"
+        refute Analysis.answered?(context.scope, "exunit"),
+               "the premise failed: the server already has an exunit run here"
 
         {:ok, context}
       end
@@ -97,13 +98,12 @@ defmodule CodeMySpecSpex.Story1002.Criterion3441Spex do
       and_ "the run it produces is the one the server's staleness check reads", context do
         CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
 
-        assert "exunit" in Analysis.fresh_sources(context.scope, Run.sources()),
+        assert Analysis.answered?(context.scope, "exunit"),
                """
-               A completed exunit run did not satisfy the server's own staleness
-               check. That is the whole of this criterion: routing the CLI
-               through the service buys nothing if the record it writes is not
-               the record `fresh_sources/2` reads — and `fresh_sources/2` is what
-               the promotion gate and the stop hook both ask.
+               A completed exunit run is not the one the server reads. That is
+               the whole of this criterion: routing the CLI through the service
+               buys nothing if the record it writes is not the record the
+               server's checks read.
                """
 
         {:ok, context}

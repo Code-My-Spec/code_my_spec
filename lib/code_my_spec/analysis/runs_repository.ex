@@ -11,7 +11,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   require Logger
 
-  alias CodeMySpec.Analysis.Freshness
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -24,7 +23,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # awaited by its agent. See `awaiting_runs?/3`.
   @orphan_awaited_s 15 * 60
 
-  @doc "Insert a new `:running` run stamped with its enqueue-time fingerprint."
+  @doc "Insert a new `:running` run."
   @spec start_run(Scope.t(), map()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
   def start_run(%Scope{active_project_id: project_id} = scope, attrs) do
     %Run{}
@@ -49,7 +48,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
       |> Map.put_new(:finished_at, DateTime.utc_now())
     )
     |> Repo.update()
-    |> project_freshness()
   end
 
   @doc """
@@ -75,19 +73,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     end
   end
 
-  # Here rather than at the three call sites in `Reconciler`, because a run
-  # completing is what makes its source fresh and a fourth call site added later
-  # would otherwise leave the projection behind without anything saying so.
-  #
-  # Only `:completed` and only `:full`: a failed run answers nothing, and a
-  # partial run is not the baseline `latest_completed_run/2` reads.
-  defp project_freshness({:ok, %Run{status: :completed, kind: :full} = run} = result) do
-    Freshness.mark_fresh(run.working_copy_id, run.source, run)
-    result
-  end
-
-  defp project_freshness(result), do: result
-
   @doc """
   Latest finished `:full` run per source for the project.
 
@@ -106,8 +91,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
-  Latest completed `:full` run per source, the runs `Analysis.fresh?/2` judges
-  from. A newer failed run cannot make a good result stale.
+  Latest completed `:full` run per source — the run that answers for each,
+  however old. A newer failed run cannot displace a good result.
   """
   @spec latest_completed_runs(Scope.t()) :: %{String.t() => Run.t()}
   def latest_completed_runs(%Scope{active_project_id: project_id} = scope) do
@@ -136,12 +121,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   copy.
 
   `latest_full_run/2` includes failures, which is right for reporting *state* —
-  an analyzer that keeps dying should say so. It is wrong for deciding
-  freshness, because `fresh?/2` and `stale?/3` both require `:completed` and
-  read anything else as stale. So a run that never ran makes a source stale
-  even when a good result sits behind it, and a duplicate enqueue refused as
-  "already queued" is exactly that: 14 such rows in half an hour on this
-  machine, each one marking its source stale.
+  an analyzer that keeps dying should say so. It is wrong for deciding what a
+  source's findings are, because a run that never ran would displace a good
+  result, and a duplicate enqueue refused as "already queued" is exactly that:
+  14 such rows in half an hour on this machine.
 
   A refusal is a scheduling fact. It should not be able to invalidate an
   answer.
@@ -155,6 +138,19 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> order_by(desc: :started_at)
     |> limit(1)
     |> Repo.one()
+  end
+
+  @doc """
+  Whether `source` has a completed full run on this working copy — whether
+  anything answers for it at all. An `exists` query: no row, no output column.
+  """
+  @spec answered?(Scope.t(), String.t()) :: boolean()
+  def answered?(%Scope{active_project_id: project_id} = scope, source) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :completed)
+    |> scope_to_harness(scope)
+    |> Repo.exists?()
   end
 
   # Freshness is a question about one working copy's tree. Unscoped, the latest

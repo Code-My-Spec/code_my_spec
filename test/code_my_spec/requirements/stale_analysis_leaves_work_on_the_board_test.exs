@@ -5,9 +5,12 @@ defmodule CodeMySpec.Requirements.StaleAnalysisLeavesWorkOnTheBoardTest do
   metric_flow's coder committed a story 33 fix after the last spex run read the
   tree. `bdd_specs_passing` went unsatisfied on staleness alone, and the fleet
   idled with 183 unsatisfied requirements and nothing offered. John: requirements
-  are never "pending analysis" — an unsatisfied one sits on the board, ready to
-  work, whatever the freshness of the run behind it. Freshness matters only when
-  a task is evaluated.
+  are never "pending analysis".
+
+  28d72f8a finished the job: the latest completed run answers a requirement
+  however old, so an edit after the sweep moves nothing on the board. Whether
+  the run saw the current code is the promote gate's question, keyed on the
+  commit.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -15,7 +18,6 @@ defmodule CodeMySpec.Requirements.StaleAnalysisLeavesWorkOnTheBoardTest do
   alias CodeMySpec.Environments
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Validation.Menu
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
 
@@ -25,7 +27,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisLeavesWorkOnTheBoardTest do
   setup ctx do
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
 
-    # Specs green on a fresh run: `bdd_specs_passing` satisfied, off the board.
+    # Specs green on a completed run: `bdd_specs_passing` satisfied, off the board.
     Fixtures.fresh_analysis_runs(ctx.scope)
     :ok = GraphWatcher.settle(ctx.scope)
 
@@ -51,30 +53,17 @@ defmodule CodeMySpec.Requirements.StaleAnalysisLeavesWorkOnTheBoardTest do
     :ok = GraphWatcher.settle(ctx.scope)
   end
 
-  test "a requirement stale analysis unsatisfied is offered to its role", ctx do
+  test "an edit after the sweep leaves the latest run's answer standing", ctx do
     assert bdd_passing(ctx.scope, :coding) == [],
-           "premise: specs green on a fresh run, so nothing to offer yet"
+           "premise: specs green on a completed run, so nothing to offer yet"
 
     commit_a_fix(ctx)
 
-    assert [node] = bdd_passing(ctx.scope, :coding),
+    assert bdd_passing(ctx.scope, :coding) == [],
            """
-           spex is stale for this tree and bdd_specs_passing is unsatisfied — it
-           must sit on the board for coding rather than read as nothing to do.
+           the run behind bdd_specs_passing predates the edit, and it still
+           answers — a requirement is never unsatisfied on staleness.
            Offered: #{inspect(Requirements.actionable_for_role(ctx.scope, :coding) |> Enum.map(& &1.name))}
            """
-
-    assert node.entity_id == ctx.story.id
-  end
-
-  test "the coder's stop menu names it", ctx do
-    commit_a_fix(ctx)
-
-    menu = Menu.render(ctx.scope, true, :coding, nil)
-
-    # The menu counts rather than names (the model picks, 2026-09-05), so "not
-    # nothing" is the claim: an empty menu is the loop's terminus.
-    assert menu =~ ~r/Next: [1-9]\d* requirement/,
-           "the continuing coder must be pointed at the work, got: #{inspect(menu)}"
   end
 end

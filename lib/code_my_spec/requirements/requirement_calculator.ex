@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Requirements.RequirementCalculator do
   @moduledoc """
-  Computes requirement satisfaction from File records, Problems, and entity fields.
+  Computes requirement satisfaction from File records and entity fields.
 
   Dispatches on `definition.check_type` instead of pattern-matching on requirement
   names. Handles component, story, and project requirements with a unified set of
@@ -12,8 +12,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:component_exists` — Story's `component_id` resolves to a component that exists
   - `:field_present` — Field on entity struct is not nil
   - `:field_true`    — Boolean field on entity struct is exactly `true`
-  - `:no_problems`   — Zero Problem records from configured source
-  - `:tests_passing` — Zero exunit Problems
   - `:bdd_specs_covered` — File of configured role exists for every acceptance
     criterion on the story, not merely for the story as a whole
   """
@@ -25,7 +23,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Deploys
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.Preloader
@@ -155,19 +152,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  defp check(%{check_type: :no_problems, config: config}, scope, entity, _files, ctx) do
-    source = config_source(config)
-    problem_verdict(scope, entity, source, ctx, "#{source} problem")
-  end
-
-  defp check(%{check_type: :tests_passing}, scope, entity, files, ctx) do
-    if Enum.any?(files, &(&1.role == :test)) do
-      problem_verdict(scope, entity, "exunit", ctx, "test failure")
-    else
-      {false, %{reason: "No test file exists yet"}}
-    end
-  end
-
   defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
     module = MapAccess.get(config, :module)
     function = MapAccess.get(config, :function, :check)
@@ -230,38 +214,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Stale analysis is asymmetric: serve the findings, refuse the clean.
-  #
-  # A stale count above zero is a real finding that was true of recent code, so
-  # it is reported — withholding it left any source slower than the edit cadence
-  # permanently "pending", never answering at all (issue 7a7eed33). A stale zero
-  # is the dangerous direction: reporting clean from a run that never looked at
-  # the current code is a false pass, and that one still refuses.
-  #
-  # The reason says which it is. An agent once re-fixed four credo findings it
-  # had already corrected, because a stale list is indistinguishable from a
-  # current one when nothing says so — and for "nesting too deep" there is no
-  # idempotent second fix, so it degrades correct code on every pass.
-  # The component's own problem count, and nothing else.
-  #
-  # Freshness used to be half of this verdict, and storing the product of a
-  # per-component count and a project-wide boolean is what made an analyzer
-  # finishing cost 1116 of 1347 requirements. The count is durable and belongs
-  # in a row; whether the run behind it is still current is a qualifier applied
-  # when the graph is served — `RequirementGraph.serve/2`. Criterion 3448.
-  #
-  # The asymmetry the old table encoded is unchanged, only relocated: a stale
-  # count above zero is still reported (it was true of recent code), and a stale
-  # zero is still refused (a clean result from a run that never saw the current
-  # code is a false pass). The overlay only ever downgrades, so nothing here can
-  # be turned into a pass by it.
-  defp problem_verdict(scope, entity, source, ctx, noun) do
-    case get_problem_count(scope, entity_id(entity), source, ctx) do
-      0 -> {true, %{status: "No #{noun}s", analysis_source: source}}
-      n -> {false, %{reason: "#{n} #{noun}(s)", count: n, analysis_source: source}}
-    end
-  end
-
   # Checkers that export an arity-3 clause are handed the preloaded context;
   # the rest keep the two-argument contract and query for themselves.
   #
@@ -321,10 +273,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     MapAccess.get(config, :role) || raise "file check missing :role in config"
   end
 
-  defp config_source(config) do
-    MapAccess.get(config, :source) || raise "no_problems check missing :source in config"
-  end
-
   defp config_field(config) do
     MapAccess.get(config, :field) || raise "field_present check missing :field in config"
   end
@@ -340,9 +288,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp latch_hint(_definition), do: "nothing has recorded it yet."
 
   # -- Entity helpers --
-
-  defp entity_id(%Component{id: id}), do: id
-  defp entity_id(%{id: id}), do: id
 
   defp expected_path(%Scope{active_project: project}, %Component{} = component, role) do
     file_key = role_to_file_key(role)
@@ -655,20 +600,5 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     File
     |> where([f], f.project_id == ^project_id and f.component_id == ^component_id)
     |> Repo.all()
-  end
-
-  defp get_problem_count(_scope, component_id, source, %{problems_by_component: pbc}) do
-    pbc
-    |> Map.get(component_id, %{})
-    |> Map.get(source, 0)
-  end
-
-  defp get_problem_count(%Scope{active_project_id: project_id}, component_id, source, nil) do
-    Problem
-    |> where(
-      [p],
-      p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source
-    )
-    |> Repo.aggregate(:count)
   end
 end

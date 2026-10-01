@@ -48,18 +48,11 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
         # Story 988's criterion 8201's recipe, plus the state this criterion is
         # actually about.
         #
-        # Two things have to be true at once, and neither is free. The finding
-        # must *block*, or nothing is delivered and every refutation below
-        # passes against an empty list — which is what this scenario did until
-        # QA found the directive live. And the source must be **stale**, because
-        # the wait remedy only appears in the footer a stale source produces; a
-        # fresh one renders no remedy at all and the refutes go vacuous a second
-        # way.
-        #
-        # `stale_analysis_run/2` is the difference between stale and never-ran:
-        # a completed run whose fingerprint has moved on still blocks and still
-        # explains itself, where a source with no run at all is simply not
-        # enforced.
+        # The finding must *block*, or nothing is delivered and every
+        # refutation below passes against an empty list — which is what this
+        # scenario did until QA found the directive live. A completed run
+        # behind it (28d72f8a: findings always block, labelled with that run)
+        # is what makes it block and explain itself.
         Fixtures.set_analyzer_mode(context.scope, :credo, :block_all)
 
         :ok =
@@ -76,24 +69,23 @@ defmodule CodeMySpecSpex.Story1043.Criterion3056Spex do
           message: "Modules should have a @moduledoc tag"
         })
 
-        Fixtures.stale_analysis_run(context.scope, "credo")
+        Fixtures.completed_analysis_run(context.scope, "credo")
 
         assert {:error, reason} = Fixtures.validate_stop(context.scope),
                "the finding must block, or the refutations below assert against nothing"
 
-        assert reason =~ "stale",
+        assert reason =~ "from the run",
                """
-               The source is not stale, so the response carries no footer about
-               reruns at all and the refutations below would pass whatever the
-               code did. Got:
+               The finding is not labelled with the run that recorded it, so
+               this is not the response the refutations below are about. Got:
 
                #{reason}
                """
 
         # What this scenario can and cannot reach.
         #
-        # The `curl analysis/wait` remedy lives behind `wait_or_report/4`'s
-        # "a rerun is in flight" branch, and `Analysis.in_flight/1` reads the
+        # The `curl analysis/wait` remedy lives behind the renderer's "a rerun
+        # is in flight" footer, and `Analysis.in_flight/1` reads the
         # analysis Registry rather than the ledger — with no ProjectServer for
         # this project the state is `:untracked`, so no ledger row can put a
         # source in flight from here. The remedy's two renderings are asserted

@@ -1,238 +1,103 @@
 defmodule CodeMySpec.Requirements.StaleAnalysisTest do
   @moduledoc """
-  What a `no_problems` check says when the analysis behind it is out of date.
+  What a requirement backed by an analyzer says when the run behind it is
+  behind the code.
 
-  `tests_passing` has guarded this for a while, against a stale *zero*: no
-  recorded failures for yesterday's code is not evidence today's code passes.
-  The same staleness runs the other way for credo and the compiler, and that
-  direction had no guard at all — a stale *non-zero* count is a false failure,
-  handed to the agent as a list of problems to fix.
+  The latest completed run answers, however old (28d72f8a). Analysis and
+  requirements are orthogonal: a run that predates an edit neither withholds a
+  clean verdict nor relabels a failure — whether results are current is the
+  promote gate's question, keyed on the commit.
 
-  A drill hit it. The agent fixed four credo findings and got the same four
-  back, at the same line numbers, against code it had already corrected;
-  `mix credo --strict` said clean and so did `await_analysis`. It refused to
-  re-fix and filed the friction, which was right — for "nesting too deep" or
-  "alias order" there is no idempotent second fix, so satisfying a stale list
-  means inventing a different refactor of correct code, and each such edit
-  produces the next stale snapshot. The loop has no exit and every turn makes
-  the code worse.
-
-  ## The rule is asymmetric now
-
-  Refusing on any staleness fixed that loop and bought a worse one: a source
-  whose analyzer takes longer than the gap between edits is *never* fresh, so
-  its requirement never answers at all — permanently "pending" (issue
-  7a7eed33). Absent information rendered as a blocked requirement.
-
-  So the two directions are separated. A stale count above zero is served, with
-  the reason saying which run it came from: those findings were true of code
-  that existed recently, and naming their vintage is what keeps the drill above
-  from repeating. A stale zero still refuses, because reporting clean from a run
-  that never read the current code is a false pass — work skipped and nobody
-  the wiser, which is the failure this whole area keeps producing.
+  What still withholds is absence. With no completed spex run on this working
+  copy nothing has been recorded, and a clean verdict from nothing is not a
+  pass. `bdd_specs_passing` is the one requirement this applies to, through
+  `RequirementGraph.serve/2`, which every reader goes through.
   """
 
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.{AnalysisFixtures, ComponentsFixtures, ProblemsFixtures, UsersFixtures}
+  import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.Fingerprint
-  alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Requirements.Preloader
-  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.SpecsPassingChecker
 
   setup do
     scope = full_scope_fixture()
+    story = story_fixture(scope, %{title: "Unlatched"})
+    path = "test/spex/#{story.id}_feature/criterion_1_spex.exs"
 
-    Repo.insert!(%FileRecord{
-      project_id: scope.active_project_id,
-      working_copy_id: scope.active_working_copy_id,
-      path: "lib/my_app/accounts.ex",
-      role: :implementation,
-      valid: true,
-      validation_errors: %{}
+    {_n, _} =
+      CodeMySpec.Files.upsert_files(scope, [
+        %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+      ])
+
+    %{scope: scope, story: story, path: path}
+  end
+
+  # Computed the way the graph computes it — from the problems alone — then
+  # served, which is what a reader receives.
+  defp served(scope, story) do
+    {:ok, ctx} = Preloader.load(scope)
+    {satisfied, details} = SpecsPassingChecker.passing?(scope, story, ctx)
+
+    [node] =
+      RequirementGraph.serve(
+        [%{name: "bdd_specs_passing", satisfied: satisfied, details: details}],
+        ctx
+      )
+
+    {node.satisfied, node.details}
+  end
+
+  defp edit_files(scope) do
+    {_n, _} =
+      CodeMySpec.Files.upsert_files(scope, [
+        %{
+          path: "lib/edited_after.ex",
+          role: :implementation,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+  end
+
+  test "with no completed spex run, a clean verdict is withheld", %{scope: scope, story: story} do
+    assert {false, %{reason: reason}} = served(scope, story)
+    assert reason =~ "No spex run has completed"
+  end
+
+  test "a completed run with the story's specs green passes", %{scope: scope, story: story} do
+    fresh_analysis_runs_fixture(scope, ["spex"])
+
+    assert {true, _details} = served(scope, story)
+  end
+
+  test "a green run that predates an edit still answers", %{scope: scope, story: story} do
+    fresh_analysis_runs_fixture(scope, ["spex"])
+    edit_files(scope)
+
+    assert {true, _details} = served(scope, story),
+           "the latest completed run answers however old — whether it saw the " <>
+             "current code is the promote gate's question, not the graph's"
+  end
+
+  test "a red run that predates an edit is served as it stands, with no stale label",
+       %{scope: scope, story: story, path: path} do
+    fresh_analysis_runs_fixture(scope, ["spex"])
+
+    problem_fixture(scope, %{
+      source: "spex",
+      source_type: :test,
+      file_path: path,
+      severity: :error,
+      category: "spex"
     })
 
-    %{scope: scope}
-  end
+    edit_files(scope)
 
-  defp credo_check,
-    do: %{name: "credo_clean", check_type: :no_problems, config: %{"source" => "credo"}}
-
-  # Computed, then served — because that is now where the asymmetry lives.
-  #
-  # `problem_verdict/5` stores the durable half, this component's own problem
-  # count, so that an analyzer finishing does not invalidate every component in
-  # the project to correct one term (criterion 3448). Freshness is applied by
-  # `RequirementGraph.serve/2` on the way to a reader, and every path that hands
-  # nodes to a reader goes through it.
-  #
-  # So this asserts the verdict a caller actually receives. Driving
-  # `compute_one/5` alone would assert the stored half and pass while the served
-  # answer was wrong, which is the opposite of what this file is for.
-  defp evaluate(scope, definition) do
-    {:ok, ctx} = Preloader.load(scope)
-
-    result =
-      scope
-      |> RequirementCalculator.compute_one(scope.active_project, definition, [], ctx)
-      |> List.wrap()
-      |> RequirementGraph.serve(ctx)
-      |> hd()
-
-    {result.satisfied, result.details}
-  end
-
-  describe "credo problems against a stale run" do
-    test "with no run at all, says pending rather than passing", %{scope: scope} do
-      assert {false, %{reason: reason}} = evaluate(scope, credo_check())
-
-      assert reason =~ "not current",
-             "no analysis has run, so zero recorded problems is not evidence of anything"
-    end
-
-    test "a fresh run with no problems passes", %{scope: scope} do
-      fresh_analysis_runs_fixture(scope, ["credo"])
-
-      assert {true, %{status: status}} = evaluate(scope, credo_check())
-      assert status =~ "No credo problems"
-    end
-
-    test "a run stamped before the file changed no longer counts", %{scope: scope} do
-      fresh_analysis_runs_fixture(scope, ["credo"])
-
-      # The agent's edit. The fingerprint covers the files, so touching one is
-      # exactly what the drill did between the analyzer running and the hook
-      # reading its result.
-      Repo.update_all(
-        from(f in FileRecord, where: f.project_id == ^scope.active_project_id),
-        set: [fingerprint: "after-the-agent-edited-it"]
-      )
-
-      assert {false, %{reason: reason}} = evaluate(scope, credo_check())
-
-      assert reason =~ "not current",
-             "this is the moment that mattered: the run completed against the " <>
-               "old bytes, so neither its problems nor its silence describe " <>
-               "what is on disk now"
-
-      refute reason =~ "problem(s)",
-             "naming a count here is what sends the agent back to re-fix code " <>
-               "that is already correct — the reply has to say wait, not what " <>
-               "to change"
-    end
-
-    # 849f8e7a: files moved while the run ran, and it finished on today's tree.
-    # `Analysis.fresh?/2` counted that and evaluation passed, while the graph
-    # read only the tree the run started on and withheld the pass, so a passed
-    # requirement was re-offered in a loop. Both read one rule now.
-    test "a run that finished on the current tree counts, as it does for evaluation",
-         %{scope: scope} do
-      fresh_analysis_runs_fixture(scope, ["credo"])
-
-      Repo.update_all(
-        from(f in FileRecord, where: f.project_id == ^scope.active_project_id),
-        set: [fingerprint: "edited-while-it-ran"]
-      )
-
-      current = Fingerprint.current(scope, "credo")
-
-      Repo.update_all(
-        from(r in Run,
-          where: r.project_id == ^scope.active_project_id and r.source == "credo"
-        ),
-        set: [completed_fingerprint: current]
-      )
-
-      assert Analysis.fresh?(scope, "credo")
-      assert {true, _} = evaluate(scope, credo_check())
-    end
-  end
-
-  # The other half of the rule, and the half that took a decision.
-  #
-  # Refusing on every stale source left anything slower than the edit cadence
-  # permanently "pending" — it never answered at all (7a7eed33). So staleness is
-  # asymmetric now: findings are served, clean is refused. A count above zero
-  # was true of code that existed recently and is worth acting on; a zero from a
-  # run that never saw the current code is a false pass, which is the direction
-  # that lets work be skipped and never noticed.
-  describe "a stale run that found something" do
-    # Problems are counted per component (`problems_by_component`), so these
-    # evaluate against one rather than the project. The tests above pass either
-    # way only because their count is zero.
-    setup %{scope: scope} do
-      %{component: component_fixture(scope, %{type: "context"})}
-    end
-
-    defp go_stale(scope) do
-      Repo.update_all(
-        from(f in FileRecord, where: f.project_id == ^scope.active_project_id),
-        set: [fingerprint: "after-the-agent-edited-it"]
-      )
-    end
-
-    # Served, for the same reason `evaluate/2` above is.
-    defp evaluate_component(scope, component) do
-      {:ok, ctx} = Preloader.load(scope)
-
-      result =
-        scope
-        |> RequirementCalculator.compute_one(component, credo_check(), [], ctx)
-        |> List.wrap()
-        |> RequirementGraph.serve(ctx)
-        |> hd()
-
-      {result.satisfied, result.details}
-    end
-
-    defp found(scope, component, count) do
-      fresh_analysis_runs_fixture(scope, ["credo"])
-      problem_list_fixture(scope, count, %{source: "credo", component_id: component.id})
-      go_stale(scope)
-    end
-
-    test "reports the findings rather than refusing", %{scope: scope, component: component} do
-      found(scope, component, 3)
-
-      assert {false, details} = evaluate_component(scope, component)
-      assert details.count == 3
-      assert details.reason =~ "3 credo problem(s)"
-    end
-
-    test "says they are from the last completed run", %{scope: scope, component: component} do
-      found(scope, component, 2)
-
-      assert {false, details} = evaluate_component(scope, component)
-
-      assert details.reason =~ "last completed credo run",
-             "a stale list is indistinguishable from a current one unless it says " <>
-               "so, and that is what sent an agent back to re-fix four findings " <>
-               "it had already corrected"
-
-      assert details.stale == true
-    end
-
-    # The asymmetry itself. Same staleness, opposite answers, decided by whether
-    # withholding costs a false pass or a stalled requirement.
-    test "a stale zero refuses where a stale count does not", %{
-      scope: scope,
-      component: component
-    } do
-      fresh_analysis_runs_fixture(scope, ["credo"])
-      go_stale(scope)
-
-      assert {false, %{reason: clean_reason}} = evaluate_component(scope, component)
-      assert clean_reason =~ "not current"
-
-      problem_list_fixture(scope, 1, %{source: "credo", component_id: component.id})
-
-      assert {false, %{reason: found_reason}} = evaluate_component(scope, component)
-      refute found_reason =~ "not current"
-      assert found_reason =~ "1 credo problem(s)"
-    end
+    assert {false, details} = served(scope, story)
+    assert details.reason =~ "fail on the latest spex run"
+    refute Map.has_key?(details, :stale)
   end
 end

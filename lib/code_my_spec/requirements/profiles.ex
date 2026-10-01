@@ -50,7 +50,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems
-  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
@@ -60,16 +59,10 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  # `Requirements.ProblemsChecker`'s own list — kept here too rather than
-  # cross-referenced, since a profile and the delegate check it backs must not
-  # drift on what "blocking" means for the same requirement.
-  @always_block_problem_sources ~w(credo compiler)
-
   @type name ::
           :issues
           | :specs
           | :files
-          | :problems
           | :links
           | :stories
           | :qa
@@ -146,81 +139,19 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
-  # Problem counts per component and source, which is what `problem_verdict/5`
-  # reads and all `tests_passing` asks for.
-  #
-  # Aggregated in the database for the reason `Preloader.do_load/3` gives: the
-  # alternative is loading every problem row, messages included, to count them.
-  def load(%Scope{active_project_id: project_id}, :problems) do
-    counts =
-      Repo.all(
-        from(p in Problem,
-          where: p.project_id == ^project_id and not is_nil(p.component_id),
-          group_by: [p.component_id, p.source],
-          select: {p.component_id, p.source, count(p.id)}
-        )
-      )
-
-    # `problems_resolved` (story 1003): a story's own working copy carrying
-    # any credo/compiler finding — the same always-blocking sources
-    # `Promotion`'s own gate reads. By working copy, not by component: a
-    # story's copy can carry a finding in a file no component owns yet, and
-    # `problems_resolved` still has to see it.
-    blocking_by_working_copy =
-      Repo.all(
-        from(p in Problem,
-          where:
-            p.project_id == ^project_id and p.source in ^@always_block_problem_sources and
-              not is_nil(p.working_copy_id),
-          group_by: p.working_copy_id,
-          select: {p.working_copy_id, count(p.id)}
-        )
-      )
-      |> Map.new()
-
-    %{
-      by_component_source:
-        Enum.reduce(counts, %{}, fn {component_id, source, n}, acc ->
-          Map.update(acc, component_id, %{source => n}, &Map.put(&1, source, n))
-        end),
-      blocking_by_working_copy: blocking_by_working_copy,
-      # `{id, working_copy_id}` for stories whose copy is one of the ones
-      # above — not the `:stories` profile (personas/rules/criteria/
-      # questions/epic_in_progress, none of which `problems_resolved` reads),
-      # and not every story in the project either: criterion 1511 measures a
-      # pass's query count against what genuinely moved, and the steady state
-      # has no blocking working copy at all, so the common case skips the
-      # query outright rather than paying for a project-wide story scan that
-      # `blocking_by_working_copy` already knows will match nothing.
-      stories_by_id: stories_on_blocked_copies(project_id, blocking_by_working_copy)
-    }
-  end
-
   # Everything `bdd_specs_passing` reads, for every story, in three reads.
   #
   # The requirement has three outcomes and `SpecsPassingChecker.passing?/3`
-  # takes them in order: a story that is not `specs_ready` fails outright; one
-  # that is, with no fresh spex run, passes because there is nothing to
-  # re-check against; one that is, with a fresh run, passes only if none of its
-  # own spec files are failing.
+  # takes them in order: a story that is not `specs_ready` is judged from its
+  # own failing specs; one that is, with no completed spex run on this copy,
+  # passes because there is nothing to re-check against; one that is, with a
+  # completed run, passes only if none of its own spec files are failing.
   #
-  # `spex_fresh?` is `Analysis.fresh?/2`, the same function
-  # `SpecsPassingChecker.passing?/2` calls — the comparison, not the projection.
-  #
-  # It read `Analysis.Freshness` first, falling back to the comparison, and that
-  # was wrong in the one direction that costs correctness. `Preloader` states the
-  # rule it broke: the path that already holds the files does not consult the
-  # projection, because a comparison derived from the files cannot be wrong about
-  # them and a row can be, for any reason its own events do not describe.
-  #
-  # Caught by the diff, on this project: the row said `fresh: true` from a
-  # `rebuild/1` at 12:41 with no run behind it, the comparison said false, and
-  # `story:822/bdd_specs_passing` came back unsatisfied against a calculator that
-  # passed it. A stale *clean* row is a false pass. One file read is the price of
-  # not writing one.
+  # `spex_ran?` is whether the latest completed spex run exists — the run that
+  # answers, however old (28d72f8a).
   def load(%Scope{active_project_id: project_id} = scope, :specs) do
     %{
-      spex_fresh?: Analysis.fresh?(scope, "spex"),
+      spex_ran?: Analysis.answered?(scope, "spex"),
       specs_ready: specs_ready_by_story(project_id),
       failing_by_story: failing_specs_by_story(scope, project_id)
     }
@@ -343,27 +274,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   # nothing.
   def load(%Scope{} = scope, :architecture) do
     %{components: Components.list_components_for_coverage(scope)}
-  end
-
-  # `stories_by_id` for the `:problems` profile above — narrowed to stories on
-  # one of the blocked copies, not every story in the project: criterion 1511
-  # measures a pass's query count against what genuinely moved, and the
-  # steady state has no blocking working copy at all, so the common case
-  # skips the query outright rather than paying for a project-wide scan that
-  # `blocking_by_working_copy` already knows will match nothing.
-  defp stories_on_blocked_copies(_project_id, blocking_by_working_copy)
-       when map_size(blocking_by_working_copy) == 0,
-       do: []
-
-  defp stories_on_blocked_copies(project_id, blocking_by_working_copy) do
-    working_copy_ids = Map.keys(blocking_by_working_copy)
-
-    Repo.all(
-      from(s in Story,
-        where: s.project_id == ^project_id and s.working_copy_id in ^working_copy_ids,
-        select: %{id: s.id, working_copy_id: s.working_copy_id}
-      )
-    )
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same

@@ -184,9 +184,9 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   end
 
   # Analyzer activity gauge — one dot per analyzer source so the engineer can
-  # see at a glance what's running, what's fresh, and what found problems.
-  # States: running (pulsing amber), problems (signal red + count), fresh
-  # (green), failed (red ring), stale (hollow). Live via "analysis:<id>"
+  # see at a glance what's running, what has run, and what found problems.
+  # States: running (pulsing amber), problems (signal red + count), completed
+  # (green), failed (red ring), none (hollow). Live via "analysis:<id>"
   # PubSub from the run service.
   defp analysis_gauge(%{gauge: []} = assigns), do: ~H""
 
@@ -213,7 +213,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
   defp gauge_dot(%{state: :running}), do: "bg-warning animate-pulse"
   defp gauge_dot(%{problems: count}) when count > 0, do: "bg-error"
-  defp gauge_dot(%{state: :fresh}), do: "bg-success"
+  defp gauge_dot(%{state: :completed}), do: "bg-success"
   defp gauge_dot(%{state: :failed}), do: "bg-transparent ring-1 ring-error"
   defp gauge_dot(_item), do: "bg-transparent ring-1 ring-base-content/30"
 

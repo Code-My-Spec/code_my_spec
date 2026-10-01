@@ -4,11 +4,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   Harness's wedge check, requested after story 1003's reorder moved several
   edges in one sitting (`story_issues_resolved`, `problems_resolved`,
-  `qa_complete`, `code_on_running_copy`, `deploy`). A graph that long is a
-  poor place to trust to instinct that every state along the chain still
-  produces *something* to do — a single requirement that never resolves
-  stalls every role waiting behind it, not just the one story that is
-  actually broken (`one_unsatisfiable_requirement_wedges_the_whole_fleet`).
+  `qa_complete`, `code_on_running_copy`, `deploy`). `problems_resolved` has
+  since gone (28d72f8a): analyzer findings are the promote gate's job. A
+  graph that long is a poor place to trust to instinct that every state along
+  the chain still produces *something* to do — a single requirement that
+  never resolves stalls every role waiting behind it, not just the one story
+  that is actually broken (`one_unsatisfiable_requirement_wedges_the_whole_fleet`).
 
   One story per blocking state, in chain order, each asked for its next
   work and asserted to get back a concrete, actionable task naming the
@@ -17,13 +18,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   1. Specs red — `bdd_specs_passing` unsatisfied → `FixBddSpecs`.
   2. An accepted issue open — `story_issues_resolved` unsatisfied →
      `FixStoryIssues`.
-  3. Only a credo/compiler problem — `problems_resolved` unsatisfied →
-     `FixStoryIssues` (criterion 1575 covers this case on its own; included
-     here for the chain-wide sweep).
-  4. QA not yet run — `qa_complete` unsatisfied → `QaStory`.
-  5. QA passed but not promoted — `story_promoted` unsatisfied →
+  3. QA not yet run — `qa_complete` unsatisfied → `QaStory`.
+  4. QA passed but not promoted — `story_promoted` unsatisfied →
      `PromoteWork`.
-  6. Promoted — `deploy` unsatisfied → `Deploy`.
+  5. Promoted — `deploy` unsatisfied → `Deploy`.
 
   One working copy carries one active story at a time
   (`WorkingCopies.set_active_story/2`, `StoryExecution.selected/3`), so each
@@ -40,7 +38,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.Problems
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -50,7 +47,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
-  # `deploy` (state 6) has no node at all without this — d207ad38 removed it
+  # `deploy` (state 5) has no node at all without this — d207ad38 removed it
   # from the default template; `Fixtures.enable_devops/1` is what puts it
   # back for a project that opted in.
   setup :devops_on
@@ -61,7 +58,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   end
 
   spex "Every blocking state along the story chain offers a concrete, actionable task",
-       criterion: 1595 do
+    criterion: 1595 do
     scenario "one story per state, none left with nothing to do" do
       given_ "a project with the shared setup every story below builds on", context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
@@ -71,7 +68,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         # A second, separate checkout designated main — otherwise
         # `WorkingCopies.main/1` answers `nil` and `code_on_running_copy`
         # reads vacuously true for every story ("no running copy
-        # designated"), which would make states 5 and 6 indistinguishable.
+        # designated"), which would make states 4 and 5 indistinguishable.
         # Not a real git checkout: this test never calls `promote` or
         # `restart_app`, only asks the graph what it would offer, so nothing
         # here needs a working `justfile`.
@@ -127,65 +124,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         {:ok, context}
       end
 
-      given_ "a third story, ready for QA, with a blocking credo finding on its own copy",
-             context do
-        story =
-          StoryHelpers.create_and_link(context.scope, context.component.module_name,
-            title: "Story with a bare analyzer finding",
-            description: "As a user, I want problem-blocked work.",
-            acceptance_criteria: ["Problem-blocked criterion"],
-            priority: 3
-          )
-
-        context = ready_for_qa(context, story)
-
-        # `set_active_story` (inside `ready_for_qa/2`'s callers below) stamps
-        # this story's own `working_copy_id` — done here via `activate/2`
-        # directly, so the credo finding lands on the same copy the story
-        # now carries.
-        activate(context, story.number)
-
-        {:ok, [_problem]} =
-          Problems.create_problems(context.scope, [
-            %{
-              severity: :error,
-              source_type: :static_analysis,
-              source: "credo",
-              file_path: "lib/example/wedge_check.ex",
-              line: 1,
-              message: "Function is too complex",
-              category: "readability",
-              rule: "Credo.Check.Refactor.CyclomaticComplexity",
-              metadata: %{}
-            }
-          ])
-
-        {:ok, Map.put(context, :problem_story, story)}
-      end
-
-      then_ "the problem-blocked story is offered FixStoryIssues naming problems_resolved",
-            context do
-        text = ask_for_next_work(context, context.problem_story.number)
-
-        assert text =~ "FixStoryIssues",
-               "a story blocked only by an analyzer finding should still be " <>
-                 "offered a coding task, not left with nothing actionable. Got: #{text}"
-
-        assert text =~ "problems_resolved",
-               "the offer should name the requirement actually blocking. Got: #{text}"
-
-        refute no_work?(text), "the story read no actionable work. Got: #{text}"
-
-        {:ok, context}
-      end
-
-      given_ "a fourth story, clear of issues and problems, ready for QA", context do
+      given_ "a third story, clear of issues, ready for QA", context do
         story =
           StoryHelpers.create_and_link(context.scope, context.component.module_name,
             title: "Story ready for QA",
             description: "As a user, I want QA-ready work.",
             acceptance_criteria: ["QA-ready criterion"],
-            priority: 4
+            priority: 3
           )
 
         context = ready_for_qa(context, story)
@@ -196,7 +141,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         text = ask_for_next_work(context, context.qa_story.number)
 
         assert text =~ "QaStory",
-               "a story with clean specs, no issues and no problems should be " <>
+               "a story with clean specs and no issues should be " <>
                  "offered QA. Got: #{text}"
 
         refute no_work?(text), "the story read no actionable work. Got: #{text}"
@@ -204,13 +149,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         {:ok, context}
       end
 
-      given_ "a fifth story that has passed QA but was never promoted", context do
+      given_ "a fourth story that has passed QA but was never promoted", context do
         story =
           StoryHelpers.create_and_link(context.scope, context.component.module_name,
             title: "Story passed QA, unpromoted",
             description: "As a user, I want post-QA work.",
             acceptance_criteria: ["Post-QA criterion"],
-            priority: 5
+            priority: 4
           )
 
         context = ready_for_qa(context, story)
@@ -231,13 +176,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         {:ok, context}
       end
 
-      given_ "a sixth story that has passed QA and was promoted", context do
+      given_ "a fifth story that has passed QA and was promoted", context do
         story =
           StoryHelpers.create_and_link(context.scope, context.component.module_name,
             title: "Story promoted, not yet deployed",
             description: "As a user, I want post-promotion work.",
             acceptance_criteria: ["Post-promotion criterion"],
-            priority: 6
+            priority: 5
           )
 
         context = ready_for_qa(context, story)
@@ -297,10 +242,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   # Every story below the first shares the same "ready for QA" shape: linked
   # to the shared component, three-amigos sealed, its own BDD spec file
-  # written, specs enforced and evaluated fresh, clear of any issue or
-  # problem. Rebuilt per story rather than shared, because
-  # `story_issues_resolved`/`problems_resolved` both read *this* story's own
-  # state — one shared "ready" story mutated six times would make each
+  # written, specs enforced and evaluated, clear of any issue. Rebuilt per
+  # story rather than shared, because `story_issues_resolved` reads *this*
+  # story's own state — one shared "ready" story mutated five times would make each
   # `then_` a statement about the last mutation, not about the state it
   # claims to test.
   defp ready_for_qa(context, story) do
@@ -347,7 +291,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
     response_text(response)
   end
 
-  defp no_work?(text), do: text =~ "No requirement" or text =~ "no work" or text =~ "All requirements satisfied"
+  defp no_work?(text),
+    do: text =~ "No requirement" or text =~ "no work" or text =~ "All requirements satisfied"
 
   # `list_requirements` reads `cached_all/1` straight, with no settle of its
   # own (`GetNextRequirement` settles on its way in; this tool is a read

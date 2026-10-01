@@ -39,18 +39,10 @@ defmodule CodeMySpec.Problems.ProblemRendererWaitRemedyTest do
     }
   end
 
-  # A stale source with a rerun of that same source in flight — the only state
-  # that renders a remedy at all.
+  # A blocking source with a rerun of that same source in flight — the only
+  # state that renders a remedy at all.
   defp opts(extra) do
-    Keyword.merge(
-      [
-        stale_sources: ["credo"],
-        in_flight: ["credo"],
-        working_copy_id: @working_copy_id,
-        tracked?: true
-      ],
-      extra
-    )
+    Keyword.merge([in_flight: ["credo"], working_copy_id: @working_copy_id], extra)
   end
 
   test "an external agent is told to wait for the run itself" do

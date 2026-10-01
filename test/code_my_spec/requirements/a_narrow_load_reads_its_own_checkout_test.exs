@@ -71,11 +71,11 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
 
       {:ok, _} = FileSync.sync(main)
 
-      own = Preloader.load_component_family(main, component.id, %{})
+      own = Preloader.load_component_family(main, component.id)
       assert paths_in(own) != [], "the default checkout does not see its own file; setup is wrong"
 
       other = Fixtures.live_agent_scope(main, label: "a checkout without it")
-      narrow = Preloader.load_component_family(other, component.id, %{})
+      narrow = Preloader.load_component_family(other, component.id)
 
       refute @impl_path in paths_in(narrow),
              """

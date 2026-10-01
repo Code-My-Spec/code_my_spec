@@ -117,23 +117,31 @@ defmodule CodeMySpec.McpServers.MainAgent.MachineryMapper do
     "analyzers:\n" <> Enum.map_join(analyzers, "\n", &analyzer_line/1) <> "\n"
   end
 
-  # A stale run's numbers are deliberately absent. Flagging the staleness while
-  # still quoting them is a warning nobody reads beside an outcome nobody
-  # questions — the result is not a weaker answer, it is an answer to a
-  # different question.
-  defp analyzer_line(%{source: source, state: :fresh}),
-    do: "  #{source} — working, and its result is about the code that is here now"
-
-  defp analyzer_line(%{source: source, state: :stale}),
+  # The run's commit and age, never "passing": whether a completed run is about
+  # the code here now is a question this report cannot answer, and the promote
+  # gate answers it by commit (28d72f8a).
+  defp analyzer_line(%{source: source, state: :completed} = analyzer),
     do:
-      "  #{source} — STALE: it last completed against different files, so whatever " <>
-        "it said is not a verdict on this code. Nothing it reports should be read as passing."
+      "  #{source} — working; last run completed" <>
+        at_commit(analyzer[:commit]) <> finished(analyzer[:finished_at])
 
   defp analyzer_line(%{source: source, state: :failed}),
     do: "  #{source} — FAILED: its last run did not finish, so this gate cannot be answered"
 
   defp analyzer_line(%{source: source, state: :never_run}),
     do: "  #{source} — has not run here"
+
+  defp at_commit(commit) when is_binary(commit), do: " at #{String.slice(commit, 0, 8)}"
+  defp at_commit(_commit), do: ""
+
+  defp finished(%DateTime{} = at),
+    do: ", #{DateTime.diff(DateTime.utc_now(), at, :second) |> age()} ago"
+
+  defp finished(_at), do: ""
+
+  defp age(seconds) when seconds < 90, do: "#{seconds}s"
+  defp age(seconds) when seconds < 5400, do: "#{div(seconds, 60)}m"
+  defp age(seconds), do: "#{div(seconds, 3600)}h"
 
   defp machines(%Machinery{machines: []}), do: "machine: nothing has reported a device.\n"
 

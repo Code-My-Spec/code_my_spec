@@ -933,10 +933,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert_reply ref, :error, %{"reason" => reason}, 5_000
       assert reason =~ "timed out"
 
-      refute Analysis.fresh?(scope, "compiler"), """
-      A failed run must never satisfy freshness. If it did, an analyzer that
-      could not run would make the source look current and stop re-enqueueing —
-      "nobody looked" recorded as "looked, and it is clean".
+      refute Analysis.answered?(scope, "compiler"), """
+      A failed run must never answer for its source. If it did, an analyzer
+      that could not run would stop re-enqueueing — "nobody looked" recorded as
+      "looked, and it is clean".
       """
     end
 

@@ -5,29 +5,20 @@ defmodule CodeMySpecSpex.Story1057.Criterion3323Spex do
   Criterion 3323 — An analyzer that is not really running is not reported as
   passing.
 
-  Rule: a verdict is only as fresh as the run behind it.
+  Rule: a verdict is only as current as the run behind it.
 
-  The worst failure available anywhere in this story, because it fails *safe*:
-  everything goes green. An analyzer whose result is stale reports no problems,
-  every gate it feeds opens, and work promotes on the strength of a suite that
-  has not seen the code it is judging.
+  The worst failure available anywhere in this story fails *safe*: everything
+  goes green, and work promotes on the strength of a suite that has not seen
+  the code it is judging.
 
-  Nothing complains. That is the whole difficulty — a broken analyzer that
-  errors is a nuisance somebody fixes within the hour, and one that quietly
-  answers from last week's run is trusted indefinitely.
+  ## Since 28d72f8a
 
-  ## Stale and absent are the same claim here
-
-  The criterion says "returns a result without having run", and the shape that
-  takes in this system is a completed run whose input fingerprint no longer
-  matches the files — the run happened, against something else. The verdict
-  exists, is well-formed, and describes code that is gone.
-
-  ## Both halves
-
-  Visible as a fault, *and* its results not treated as fresh. A report that
-  flagged the staleness while the gates went on believing the numbers would be a
-  warning nobody reads, beside an outcome nobody questions.
+  There is no "stale" state to report. Fingerprint freshness is gone; the
+  promote gate asks for a completed run at HEAD on a clean tree, so an old run
+  can no longer promote anything. What the report owes the main agent is the
+  facts it can check — which run, at which commit, how long ago — and never a
+  word that reads as "passing". This criterion's wording should be retired or
+  reworded to "an analyzer's report names its run, never a verdict".
   """
 
   use CodeMySpecSpex.Case
@@ -48,9 +39,9 @@ defmodule CodeMySpecSpex.Story1057.Criterion3323Spex do
     :ok
   end
 
-  spex "A stale verdict is not a passing one", criterion: 1291 do
-    scenario "an analyzer completed against code that is no longer there" do
-      given_ "a checkout whose exunit run completed against different files",
+  spex "An old run is reported as a run, not as a passing verdict", criterion: 1291 do
+    scenario "an analyzer completed some time ago" do
+      given_ "a checkout whose exunit run completed earlier",
              context do
         reply = join_working_copy(context, "/tmp/spex-3323", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
@@ -58,9 +49,8 @@ defmodule CodeMySpecSpex.Story1057.Criterion3323Spex do
         Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
         _agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3323")
 
-        # A completed run, no problems, and a fingerprint that no longer matches
-        # what is on disk. Well-formed, green, and about code that is gone.
-        _stale = Fixtures.stale_analysis_run(scope, "exunit")
+        # A completed run, no problems, no commit recorded.
+        _run = Fixtures.completed_analysis_run(scope, "exunit")
 
         {:ok, Map.put(context, :scope, scope)}
       end
@@ -74,18 +64,11 @@ defmodule CodeMySpecSpex.Story1057.Criterion3323Spex do
         {:ok, Map.put(context, :report, response_text(response))}
       end
 
-      then_ "it is visible as a fault", context do
-        assert context.report =~ ~r/stale|out of date|has not run|not been run/i,
+      then_ "it is reported with when its run completed", context do
+        assert context.report =~ ~r/exunit[^\n]*last run completed[^\n]*ago/,
                """
-               An analyzer answering from a run against code that is gone is
-               reported as if it had run.
-
-               This is the worst failure in the story because it fails safe:
-               everything goes green, every gate it feeds opens, and work
-               promotes on the strength of a suite that never saw the code it is
-               judging. Nothing complains — which is why a broken analyzer that
-               errors gets fixed within the hour and one that quietly answers
-               from last week is trusted indefinitely.
+               The report has to say which run the analyzer's state comes from,
+               so the main agent can judge its age itself.
 
                report:
                #{context.report}
@@ -94,15 +77,11 @@ defmodule CodeMySpecSpex.Story1057.Criterion3323Spex do
         {:ok, context}
       end
 
-      then_ "and its result is not offered as a fresh verdict", context do
+      then_ "and its result is not offered as a verdict", context do
         refute context.report =~ ~r/exunit[^\\n]*(passing|clean|no problems)/i,
                """
-               The stale run's result is being reported as a verdict.
-
-               Flagging the staleness while still quoting the numbers is a
-               warning nobody reads beside an outcome nobody questions. The
-               result is not a weaker answer than a fresh one — it is an answer
-               to a different question.
+               The run's result is being reported as a verdict on the code here
+               now, which nothing but the promote gate can say.
 
                report:
                #{context.report}

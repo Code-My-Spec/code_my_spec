@@ -118,20 +118,8 @@ defmodule CodeMySpec.Requirements.Freshness do
   — and not on whether a child's own spec changed, which moves that child's
   requirements and not its parent's.
 
-  ## Where the remaining cost is
-
-  `analysis_fresh` is project-wide: four booleans, one per analyzer source,
-  each saying whether the last full run still matches the current files. They
-  are correct inputs — `tests_passing` means nothing if the run predates the
-  code — but they are the same four for every component, so any file change
-  anywhere flips them and every component in the project goes stale, then goes
-  stale again when the analyzer catches up.
-
-  Conservative rather than wrong, and the expensive half is untouched: edges
-  are kept across all of it, and stories — the larger population — are keyed on
-  their own inputs and stay put. Narrowing it means analysis freshness per
-  component, which is a change to `Preloader.analysis_freshness/2` and its
-  fingerprint, not to this function.
+  Analyzer runs and their findings are not inputs: no component requirement
+  reads them.
   """
   @spec component(Preloader.context(), map()) :: String.t()
   def component(ctx, component) do
@@ -139,31 +127,10 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:component, component.id, row_key(component), component.type, component.module_name},
       {:files, file_keys(Map.get(ctx.files_by_component, component.id, []))},
       {:children, ids(Map.get(ctx.children_by_parent, component.id, []))},
-      # The findings, not the tally. `problems_by_component` is what the verdict
-      # reports and it is a count per source, so a finding corrected and a
-      # different one introduced in the same module leaves it at 1 both times —
-      # the fingerprint holds still and the component keeps serving the old
-      # finding. `problem_digests_by_component` is the same grouping keyed on
-      # `{file_path, line, rule, message}`, so a swap at equal count moves it and
-      # a re-run that found the same things does not.
-      {:problems, Map.get(ctx, :problem_digests_by_component, %{}) |> Map.get(component.id, %{})},
       config_part(ctx)
-      # `analysis_fresh` is deliberately absent, and this is the whole of
-      # criterion 3448. It is four project-wide booleans, so a flip made every
-      # component's fingerprint move at once: measured on this project, 1116 of
-      # 1347 requirements recomputed to correct one term, twice in an hour, at
-      # ~80x the cost of an ordinary read.
-      #
-      # It never belonged in a fingerprint. A fingerprint answers "were this
-      # entity's own inputs different", and analysis freshness is not an input
-      # to a component — it is a *qualifier on serving* the answer, derived
-      # (`run.input_fingerprint == Fingerprint.compute(files, roles)`), cheap,
-      # and identical for every component. What is genuinely per-component is
-      # `problems`, one line above, and that stays.
-      #
-      # So the verdict stored here is the durable half — this component's own
-      # problem count — and freshness is applied when the graph is served. See
-      # `RequirementGraph.serve/2`.
+      # Neither analysis state nor problems are inputs: no component
+      # requirement reads them (28d72f8a), so an analyzer landing moves no
+      # component.
     ])
   end
 
