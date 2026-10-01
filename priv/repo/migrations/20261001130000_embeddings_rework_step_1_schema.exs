@@ -1,11 +1,13 @@
 defmodule CodeMySpec.Repo.Migrations.EmbeddingsReworkStep1Schema do
   use Ecto.Migration
 
-  # Embeddings rework step 1 (577de9bb). Existing doc_embeddings rows are
-  # dead — nothing in production writes them today (the web build has no
-  # backend configured, and the harness starts neither Serving nor
-  # FileWatcherServer) — so there is nothing to migrate forward. Truncate
-  # rather than carry rows nobody can account for into a schema that
+  # Embeddings rework step 1 (577de9bb). doc_embeddings holds rows on dev —
+  # 3,101 across 6 projects, from the old CLI/sprite paths — but nothing
+  # reads them: the web build has no backend configured, and the harness
+  # starts neither Serving nor FileWatcherServer. Legacy, not dead-and-empty,
+  # which is why this runs as a deliberate truncate (backed up first —
+  # ~/.codemyspec/backups/doc_embeddings_pre_577de9bb_20261001T192558Z.dump)
+  # rather than carrying rows nobody can account for into a schema that
   # changes what they mean.
   def up do
     execute("TRUNCATE TABLE doc_embeddings")
