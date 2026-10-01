@@ -256,7 +256,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <p class="opacity-70 text-sm">
         Infrastructure the account owns — shared across every project.
       </p>
-      <ol class="steps steps-vertical w-full overflow-visible" data-test="account-steps">
+      <ol
+        class="steps steps-vertical auto-rows-auto w-full overflow-visible"
+        data-test="account-steps"
+      >
         <.step_card
           :for={step <- account_plan(@plan)}
           step={step}
@@ -512,7 +515,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </.button>
       </section>
 
-      <ol class="steps steps-vertical w-full overflow-visible" data-test="project-steps">
+      <ol
+        class="steps steps-vertical auto-rows-auto w-full overflow-visible"
+        data-test="project-steps"
+      >
         <.step_card
           :for={step <- project_plan(@plan)}
           step={step}
@@ -528,7 +534,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       >
         <h2 class="text-lg font-semibold mt-8">Environment: {environment}</h2>
         <p class="opacity-70 text-sm">What runs for {environment}, tracked on its own.</p>
-        <ol class="steps steps-vertical w-full overflow-visible" data-test="environment-steps">
+        <ol
+          class="steps steps-vertical auto-rows-auto w-full overflow-visible"
+          data-test="environment-steps"
+        >
           <.step_card
             :for={step <- environment_plan(@plan, environment)}
             step={step}
@@ -1478,8 +1487,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         # there — and a server deleted in the console leaves the row saying
         # done forever (criteria 7970 and 7964).
         if connected?(socket) do
-          Provisioning.subscribe(scope)
+          # Reverify first, subscribe after: `reverify/3` announces one
+          # `{:provisioning, :step, row}` per already-`:done` step it
+          # reconfirms, and `load/2` below already reads every row reverify
+          # just wrote. Subscribing before it ran meant this same process
+          # heard its own announcements and paid for a full `load/2` — every
+          # query it makes (the plan, resources, recipients, secrets, domain,
+          # storage...) — once per already-done step, on every single mount.
           Provisioning.reverify(scope, options, step_opts())
+          Provisioning.subscribe(scope)
         end
 
         {:ok, load(socket, options)}

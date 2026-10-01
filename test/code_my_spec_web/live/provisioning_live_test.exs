@@ -300,6 +300,33 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end
   end
 
+  describe "mounting does not flood the page with its own reverify announcements" do
+    # `reverify/3` announces one `{:provisioning, :step, row}` per already-done
+    # step it reconfirms, and this page used to subscribe to that topic
+    # *before* calling it — so a connecting mount heard its own announcements
+    # and ran a full `load/2` (environments, plan, resources, recipients,
+    # secrets, domain, storage...) once per step, on top of the one `load/2`
+    # mount already does right after reverify finishes. Subscribing only
+    # after reverify completes means none of its announcements are still
+    # queued for this process once it has joined — a project with several
+    # done steps should leave its own mailbox exactly as empty as one with a
+    # single step.
+    test "a project with several done steps has nothing left in its own mailbox once joined",
+         %{conn: conn, project: project, scope: scope} do
+      for key <- [:repository, :server, :domain, :dns, :email] do
+        StepRepository.upsert(scope, key, nil, %{state: :done, position: 0})
+      end
+
+      stub_verifier(fn _scope, _key -> {:ok, :satisfied, []} end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert Process.info(view.pid, :message_queue_len) == {:message_queue_len, 0},
+             "the view's own mailbox still held messages right after joining — " <>
+               "it is hearing its own mount's reverify announcements"
+    end
+  end
+
   describe "a step's state is rendered from what actually happened" do
     # The page re-checks a done step against its provider on mount rather than
     # reading the row back, so the verifier has to say the resource is there —
