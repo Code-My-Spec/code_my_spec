@@ -17,10 +17,12 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   - `hexdocs` — every embedded hex package (prefix match, `hexdocs:*`)
   - `hexdocs:<package>` — a specific hex package, e.g. `hexdocs:phoenix`
 
-  Embeddings are auto-maintained by `sync_project` — running it picks up
-  any changed knowledge/spec/rule files, projects hex docs from compiled
-  deps, and refreshes all vectors. There is no separate `embed_docs` or
-  `embed_hexdocs` tool; `sync_project` is the single entry point.
+  Embeddings fill in on their own — there is no sync tool and nothing to
+  run. Hex docs appear once the server's reconciler has embedded the
+  package versions this project's `mix.lock` actually pins; project and
+  framework knowledge follow in a later step. A query that finds nothing
+  for a package or topic that should exist usually means that embedding
+  hasn't landed yet, not that something needs triggering.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -109,7 +111,10 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
 
   defp format_body([]),
     do:
-      "\nNo matches found. Run `sync_project` to refresh all embeddings (project knowledge, specs, rules, hex docs)."
+      "\nNo matches found. Embeddings fill in on their own — there's nothing to run. " <>
+        "If this is a hex package, its docs land once the server's reconciler has " <>
+        "embedded the version this project's mix.lock pins; retrying later (not now) " <>
+        "may turn up results once that's happened."
 
   defp format_body(results) do
     Enum.map_join(results, "\n\n---\n\n", &format_result/1)
