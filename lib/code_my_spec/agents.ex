@@ -74,6 +74,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -2126,8 +2127,7 @@ defmodule CodeMySpec.Agents do
         # differently next turn. Recorded as an orchestrator action it reached
         # the person watching and never the agent, which for "you ran out of
         # steps" means the same over-long turn again.
-        send_to_agent(agent.id, event["text"] || "")
-        :ok
+        send_off_channel(agent, event["text"] || "")
 
       _ ->
         :ok
@@ -2148,6 +2148,39 @@ defmodule CodeMySpec.Agents do
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "agent_died"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} -> account_for_death(scope, agent, event["text"])
+      _ -> :ok
+    end
+  end
+
+  # A failed turn that was neither a provider refusal nor a timeout (8e9a1d83).
+  #
+  # Its text used to be written as a step, which reads as the agent speaking,
+  # and nothing offered the work again: a metric_flow agent's whole reply to a
+  # request for a help page was "Claude Code returned tool_use without any tool
+  # calls", the next turn moved on, and the request was gone. Six times from
+  # 09-23 to 10-01.
+  #
+  # Now it is said to the agent, with the request it failed on, once. A turn
+  # that fails on the re-offer is recorded and left: a failure that repeats on
+  # every turn would otherwise buy a turn per failure, forever.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "turn_failed", "text" => text} = event,
+        _opts
+      )
+      when is_binary(text) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      # A refusal and a timeout each have a reader that finds this line on the
+      # transcript (`ProviderRefusal`, `TurnTimeout`), so they stay there.
+      if ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) do
+        record_refusal(scope, agent, event)
+        write_turn_event(conversation, agent, event)
+      else
+        reoffer_failed_turn(conversation, agent, text)
+      end
+    else
       _ -> :ok
     end
   end
@@ -2197,6 +2230,52 @@ defmodule CodeMySpec.Agents do
   end
 
   defp restart_if_continuous(_scope, _agent), do: :ok
+
+  @failed_turn "Your last turn failed: "
+
+  defp reoffer_failed_turn(conversation, agent, failure) do
+    request = Conversations.last_request_text(conversation)
+
+    if is_binary(request) and String.starts_with?(request, @failed_turn) do
+      Conversations.add_message(
+        conversation,
+        :operator,
+        @failed_turn <> failure <> "\n\nIt failed again on the retry, so it was not re-sent.",
+        "operator"
+      )
+    else
+      send_off_channel(agent, failed_turn_notice(failure, request))
+    end
+
+    :ok
+  end
+
+  defp failed_turn_notice(failure, nil),
+    do: @failed_turn <> failure <> "\n\nPick up where the thread leaves off."
+
+  defp failed_turn_notice(failure, request) do
+    """
+    #{@failed_turn}#{failure}
+
+    Nothing from it was carried out. The request was:
+
+    #{request}
+
+    Pick it back up.\
+    """
+  end
+
+  # This runs in the harness channel, and sending to an agent is a call into
+  # that same channel, which the transport refuses rather than deadlock — the
+  # message was recorded and never delivered (once, 2026-10-01 12:14Z).
+  defp send_off_channel(agent, text) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        send_to_agent(agent.id, text)
+      end)
+
+    :ok
+  end
 
   defp death_notice(cause) do
     """

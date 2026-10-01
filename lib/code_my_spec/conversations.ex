@@ -642,6 +642,23 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
+  Text of the last thing said *to* the agent — by a person or the operator —
+  or nil. What a failed turn was answering, so it can be asked again.
+  """
+  @spec last_request_text(Conversation.t()) :: String.t() | nil
+  def last_request_text(%Conversation{} = conversation) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id and m.role in [:user, :operator])
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      message -> Message.text(message)
+    end
+  end
+
+  @doc """
   Everything a restarted agent needs to carry on, in the order it was said.
 
   The whole conversation while it is short enough, and from the last checkpoint
