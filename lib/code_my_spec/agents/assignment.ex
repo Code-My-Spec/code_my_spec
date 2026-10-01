@@ -290,8 +290,13 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   # Never refuses: which epic product is designing is a record, not a gate.
+  # A story placed on another copy went there with its approved epic, so
+  # product's work on it (triage, questions) is not designing it (step 4d).
   defp design(scope, agent, id) do
     case Stories.get_story(scope, id) do
+      %{working_copy_id: copy} when not is_nil(copy) and copy != agent.working_copy_id ->
+        :ok
+
       %{epic_id: epic_id} when epic_id != agent.epic_id ->
         from(a in Agent, where: a.id == ^agent.id) |> Repo.update_all(set: [epic_id: epic_id])
 

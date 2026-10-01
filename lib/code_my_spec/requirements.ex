@@ -46,6 +46,7 @@ defmodule CodeMySpec.Requirements do
     ],
     exports: :all
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
@@ -102,6 +103,26 @@ defmodule CodeMySpec.Requirements do
   @spec actionable_for_role(Scope.t(), atom() | nil) :: [map()]
   def actionable_for_role(%Scope{active_project_id: nil}, _role), do: []
   def actionable_for_role(%Scope{} = scope, role), do: story_execution(scope, role).actionable
+
+  @doc """
+  The node `name` on a story placed on another copy, read at that copy, when
+  `role` reads every story wherever it is placed and `name` is its own work;
+  `nil` otherwise. `start_task`'s lookup for what `story_execution/5` offers
+  across copies (a31f1cd6 step 4d).
+  """
+  @spec placed_story_node(Scope.t(), atom() | nil, String.t(), term()) :: Requirement.t() | nil
+  def placed_story_node(%Scope{} = scope, role, name, story_id) do
+    with :project <- RoleProfile.story_vantage(role),
+         true <- offered_to?(role, name),
+         %{} = story <- Enum.find(Preloader.placed_elsewhere(scope), &same_id?(&1.id, story_id)) do
+      {nodes, _edges} = Projection.placed([story], [name])
+      List.first(nodes)
+    else
+      _ -> nil
+    end
+  end
+
+  defp same_id?(id, other), do: to_string(id) == to_string(other)
 
   @doc """
   Whether requirement `name` is one `role` is offered, by its profile's
