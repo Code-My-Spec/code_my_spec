@@ -52,6 +52,28 @@ defmodule CodeMySpec.Components.DependencyRepository do
   end
 
   @doc """
+  The dependency of `source_id` on `target_id` within scope, or nil. Ids that
+  are not UUIDs find nothing rather than raising.
+  """
+  @spec get_dependency_between(Scope.t(), term(), term()) :: Dependency.t() | nil
+  def get_dependency_between(%Scope{active_project_id: project_id}, source_id, target_id) do
+    with {:ok, source} <- Ecto.UUID.cast(source_id),
+         {:ok, target} <- Ecto.UUID.cast(target_id) do
+      from(d in Dependency,
+        join: sc in Component,
+        on: d.source_component_id == sc.id,
+        where:
+          sc.project_id == ^project_id and d.source_component_id == ^source and
+            d.target_component_id == ^target,
+        preload: [:source_component, :target_component]
+      )
+      |> Repo.one()
+    else
+      :error -> nil
+    end
+  end
+
+  @doc """
   Creates a dependency.
   """
   @spec create_dependency(Scope.t(), map()) ::

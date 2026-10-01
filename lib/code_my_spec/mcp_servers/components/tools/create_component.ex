@@ -15,29 +15,16 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
 
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Types
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
 
   schema do
     field :name, :string, required: true
 
-    field :type,
-          {:enum,
-           [
-             "context",
-             "coordination_context",
-             "live_context",
-             "schema",
-             "behaviour",
-             "json",
-             "liveview",
-             "liveview_component",
-             "controller",
-             "module"
-           ]},
-          required: true,
-          description:
-            "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, or module."
+    field :type, {:enum, Types.all()},
+      required: true,
+      description: "Component type: #{Enum.join(Types.all(), ", ")}."
 
     field :module_name, :string, required: true
     field :description, :string, required: false

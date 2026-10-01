@@ -245,6 +245,7 @@ defmodule CodeMySpec.Components do
   defdelegate list_dependencies(scope), to: DependencyRepository
   defdelegate list_component_dependencies(scope, component_id), to: DependencyRepository
   defdelegate get_dependency!(scope, id), to: DependencyRepository
+  defdelegate get_dependency_between(scope, source_id, target_id), to: DependencyRepository
   defdelegate create_dependency(scope, attrs), to: DependencyRepository
   defdelegate delete_dependency(scope, dependency), to: DependencyRepository
   defdelegate validate_dependency_graph(scope), to: DependencyRepository

@@ -200,6 +200,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
     create_component update_component validate_dependency_graph set_story_component
+    add_dependency remove_dependency
     list_requirements show_requirement
     list_rules list_questions withdraw_question
     list_issues get_issue create_issue resolve_issue
@@ -234,6 +235,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
   #
   # `delete_component` beside create and update (856b3632): product shapes the
   # architecture, and a component it decided against had no way out of it.
+  # `add_dependency` and `remove_dependency` for the same reason (3aeb66cf):
+  # the edges are authored records too, not something a spec file has to carry.
   #
   # No staffing: making, offboarding and looping working copies is main's
   # (John, step 4c).
@@ -250,6 +253,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_epics create_epic update_epic assign_story_to_epic set_epic_stories_ready
     propose_epic tag_stories list_project_tags analyze_stories
     set_story_component create_component update_component delete_component
+    add_dependency remove_dependency
     validate_dependency_graph execute_proposal show_architecture_overview
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
     list_notifications answer_notification escalate_question withdraw_question
