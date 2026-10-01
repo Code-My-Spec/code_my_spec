@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Work do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Conversations
@@ -467,9 +468,8 @@ defmodule CodeMySpec.Agents.Work do
 
   # Hashed rather than stored whole: the comparison is equality and nothing
   # reads the parts, so the column stays a fixed width no matter how much work
-  # a role has. Sorted first — `actionable_for_role/2` makes no ordering
-  # promise, and an unstable order would read as a changed offer every pass and
-  # defeat the whole guard.
+  # a role has. Sorted first — the offer is a set, and an order change would
+  # read as a changed offer every pass and defeat the whole guard.
   defp fingerprint(questions, nodes) do
     :crypto.hash(:sha256, :erlang.term_to_binary({questions, Enum.sort(nodes)}))
     |> Base.encode16(case: :lower)
@@ -549,22 +549,24 @@ defmodule CodeMySpec.Agents.Work do
     )
   end
 
-  defp question_work?(scope, %{role: :main}) do
-    Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
+  # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
+  # `:teammate_questions` — the main agent (story 1052).
+  defp question_work?(scope, %{role: role}) do
+    RoleProfile.wakes_on?(role, :teammate_questions) and
+      Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
   end
-
-  defp question_work?(_scope, _agent), do: false
 
   # `list_notifications` is code mode, like most of the catalogue — a main agent
   # reaches it from inside a script, and saying so is the difference between a
   # tool it can use and one it reports as broken.
-  defp prompt(%{role: :main}) do
-    @prompt <>
-      " Questions are also waiting for you: read them with " <>
-      "`run_script` calling list_notifications."
+  defp prompt(%{role: role}) do
+    if RoleProfile.wakes_on?(role, :teammate_questions),
+      do:
+        @prompt <>
+          " Questions are also waiting for you: read them with " <>
+          "`run_script` calling list_notifications.",
+      else: @prompt
   end
-
-  defp prompt(_agent), do: @prompt
 
   # The nodes themselves rather than a boolean, so the offer can be fingerprinted.
   defp graph_work(scope, agent) do
@@ -574,48 +576,89 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @doc """
-  The graph work this agent would be offered: its role's actionable nodes at its
-  own checkout, minus any another agent there holds.
+  The work for one caller: `Requirements.story_execution/4`'s status, its
+  ordered `actionable` list, the `wave` cut from it, and why.
+
+  The one answer to "what can this role do next here" (a31f1cd6). The turn
+  offer, the stop menu, `get_next_requirement` and `start_task`'s resume check
+  all read it, so none of them names work another refuses. "First" is the head
+  of `actionable`; "any" is whether it is empty.
+
+    * `role` — whose requirements, through `RoleProfile.requirements`; `nil` is
+      every role's.
+    * `owner` — an `Agent` is answered at its own checkout, without what
+      `withheld?/3` holds back from it. Anything else (a `Session`, `nil`) is
+      answered at the scope's checkout with nothing withheld.
+
+  Withholding happens before the story's wave is cut and before the fallback to
+  project-level work, so an agent whose story work is all held still gets the
+  project's.
+
+  Options: `:story_number` narrows to that story or refuses, as
+  `get_next_requirement` takes it; `:owners` is the project's agents, so a
+  fleet read lists them once.
+  """
+  @spec work_for(Scope.t(), atom() | nil, term(), keyword()) :: map()
+  def work_for(%Scope{} = scope, role, owner \\ nil, opts \\ []) do
+    scope = at_copy(scope, owner)
+
+    Requirements.story_execution(
+      scope,
+      role,
+      Keyword.get(opts, :story_number),
+      withholding(scope, owner, opts)
+    )
+  end
+
+  @doc "`work_for/4`'s ordered actionable list."
+  @spec actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]
+  def actionable(scope, role, owner \\ nil, opts \\ [])
+  def actionable(%Scope{active_project_id: nil}, _role, _owner, _opts), do: []
+  def actionable(scope, role, owner, opts), do: work_for(scope, role, owner, opts).actionable
+
+  defp at_copy(scope, %Agent{working_copy_id: id}) when is_binary(id),
+    do: %{scope | active_working_copy_id: id}
+
+  defp at_copy(scope, _owner), do: scope
+
+  defp withholding(scope, %Agent{} = agent, opts) do
+    owners = Keyword.get(opts, :owners) || AgentsRepository.list_agents(scope)
+    &withheld?(owners, agent, &1)
+  end
+
+  defp withholding(_scope, _owner, _opts), do: fn _node -> false end
+
+  @doc """
+  `actionable/4` for this agent's role at its own checkout.
 
   Public so the main agent's "this agent has work" is this answer rather than a
   second one that disagrees (4849f20b). `owners` saves a reader asking for a
   whole fleet from listing the project's agents once per agent.
   """
   @spec claimable_work(Scope.t(), Agent.t(), [Agent.t()] | nil) :: [map()]
-  def claimable_work(scope, agent, owners \\ nil) do
-    scope = %{scope | active_working_copy_id: agent.working_copy_id}
-    owners = owners || AgentsRepository.list_agents(scope)
-
-    scope
-    |> Requirements.actionable_for_role(agent.role)
-    |> Enum.reject(&held?(owners, agent, &1))
-  end
-
-  defp held?(owners, agent, node), do: held_by?(owners, agent, node, true)
+  def claimable_work(scope, agent, owners \\ nil),
+    do: actionable(scope, agent.role, agent, owners: owners)
 
   @doc """
   Whether a task at `agent`'s checkout withholds `node` from it: another
   agent's live task, or its own blocked on an unresolved blocker.
 
-  `get_next_requirement` asks this so it never offers what `start_task` refuses
-  (467310a7). Its own active task is not withheld — `start_task` resumes that.
+  Its own active task is not withheld — `start_task` resumes that (467310a7).
   """
   @spec withheld?([Agent.t()], Agent.t(), map()) :: boolean()
-  def withheld?(owners, agent, node), do: held_by?(owners, agent, node, false)
-
-  defp held_by?(owners, agent, node, own_active?) do
+  def withheld?(owners, agent, node) do
     owners
     |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
     |> Enum.any?(fn owner ->
       mine? = owner.id == agent.id
-      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, own_active?, node))
+      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
     end)
   end
 
-  defp holds_node?(task, mine?, own_active?, node) do
+  defp holds_node?(task, mine?, node) do
     task.requirement_name == node.name and
       entity_id(task, node.entity_type) == to_string(node.entity_id) and
-      ((task.status == :active and (own_active? or not mine?)) or
+      ((task.status == :active and not mine?) or
          (task.status == :blocked and (not mine? or is_nil(task.blocker_resolved_at))))
   end
 

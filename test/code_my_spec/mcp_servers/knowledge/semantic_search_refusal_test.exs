@@ -20,6 +20,7 @@ defmodule CodeMySpec.McpServers.Knowledge.SemanticSearchRefusalTest do
 
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
 
   defp refusal do
@@ -49,9 +50,10 @@ defmodule CodeMySpec.McpServers.Knowledge.SemanticSearchRefusalTest do
   # runtime where the pipeline ships. Removing it there to spare the server a
   # failed call would take the capability from the place it exists.
   test "the tool is still offered to the agents that have a runtime for it" do
-    sets = File.read!("lib/code_my_spec/agents/tool_sets.ex")
+    granted? =
+      Enum.any?(RoleProfile.roles(), &RoleProfile.carries?(&1, "semantic_search"))
 
-    assert sets =~ "semantic_search",
+    assert granted?,
            "the gap is the runtime, not the grant — the CLI binary can search"
   end
 

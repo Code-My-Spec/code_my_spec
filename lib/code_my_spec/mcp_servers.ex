@@ -16,6 +16,7 @@ defmodule CodeMySpec.McpServers do
     deps: [
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Agents,
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Architecture,

@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3205Spex do
   spex "Stopping an agent leaves nothing behind that breaks the next one", criterion: 1189 do
     scenario "An agent stopped and started again has its tools" do
       given_ "a running agent with working tools", context do
-        context = given_a_staffed_checkout(context, "spex_3205")
+        context = given_a_feature_checkout(context, "spex_3205")
         agent_id = start_agent(context)
 
         Fixtures.authored_story(context.scope, "a story the agent's tools can find")

@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
   spex "An agent is told about a restart only when something of its own was in flight", criterion: 1191 do
     scenario "An interrupted agent is told what happened to its work" do
       given_ "an agent waiting on a tool result", context do
-        context = given_a_staffed_checkout(context, "spex_3209")
+        context = given_a_feature_checkout(context, "spex_3209")
         agent_id = start_agent(context)
 
         # A turn the server knows is open. That is what makes the agent

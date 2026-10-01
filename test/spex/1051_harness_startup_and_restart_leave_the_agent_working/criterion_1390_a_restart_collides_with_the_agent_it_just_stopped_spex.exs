@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3467Spex do
   spex "Stopping an agent leaves nothing behind that breaks the next one", criterion: 1390 do
     scenario "A restart collides with the agent it just stopped" do
       given_ "an agent that is restarted", context do
-        context = given_a_staffed_checkout(context, "spex_3467")
+        context = given_a_feature_checkout(context, "spex_3467")
 
         {:ok, Map.put(context, :agent_id, start_agent(context))}
       end

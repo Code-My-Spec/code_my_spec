@@ -31,12 +31,12 @@ defmodule CodeMySpec.Agents.ModelSetting do
 
   import Ecto.Changeset
 
-  alias CodeMySpec.Agents.Roles
+  alias CodeMySpec.Agents.RoleProfile
 
   @type t :: %__MODULE__{}
 
   schema "agent_model_settings" do
-    field :role, Ecto.Enum, values: Roles.all()
+    field :role, Ecto.Enum, values: RoleProfile.roles()
     field :provider, :string
     field :model, :string
     field :user_id, :integer

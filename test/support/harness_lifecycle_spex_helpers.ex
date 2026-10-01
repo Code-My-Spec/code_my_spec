@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   import Phoenix.ConnTest, only: [get: 2]
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.MainAgentHelpers, only: [given_a_main_checkout: 2]
+  import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -53,8 +54,35 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   """
   @spec given_a_staffed_checkout(map(), String.t()) :: map()
   def given_a_staffed_checkout(context, label) do
-    context = given_a_main_checkout(context, label)
+    context
+    |> given_a_main_checkout(label)
+    |> connected()
+  end
 
+  @doc """
+  The same premise on a feature checkout, beside the project's main one.
+
+  For a coding or QA agent: those never start on the main copy
+  (`RoleProfile.home_copy`), so a lifecycle about one needs a checkout of its
+  own. The main checkout is joined first, so this one is not the project's only
+  checkout and is not designated main by default.
+  """
+  @spec given_a_feature_checkout(map(), String.t()) :: map()
+  def given_a_feature_checkout(context, label) do
+    context = given_a_main_checkout(context, label <> "_main")
+
+    copy = CodeMySpec.TempFile.dir(label)
+    File.mkdir_p!(copy)
+    {joined, socket} = join_working_copy_socket(context, copy, "a feature checkout")
+
+    context
+    |> Map.put(:copy, copy)
+    |> Map.put(:copy_id, joined.working_copy_id)
+    |> Map.put(:harness_socket, socket)
+    |> connected()
+  end
+
+  defp connected(context) do
     scope = %{context.scope | active_working_copy_id: context.copy_id}
     {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
 

@@ -32,6 +32,7 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.AgentTasks,
       CodeMySpec.Agents,
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.Configurations,

@@ -19,14 +19,14 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
   These rows plus `requirement_edges` are a read model, and questions about the
   graph's *current* shape can be answered from them without recomputing
-  anything. `actionable_count/1` is the first such reader; the recompute path
+  anything. `requirement_details/3` is one such reader; the recompute path
   exists to keep the rows true, not to answer every question about them.
   """
 
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, Projection, Registry, Requirement, Shadow}
+  alias CodeMySpec.Requirements.{Node, Projection, Requirement, Shadow}
   alias CodeMySpec.Users.Scope
 
   @replace {:replace,
@@ -42,127 +42,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
             ]}
 
   @doc """
-  How many requirements are unsatisfied with every prerequisite met.
-
-  A read-model query and nothing else: unsatisfied nodes belonging to the
-  project, minus any with an incoming edge from a node that is itself
-  unsatisfied. No preload, no fingerprint, no cache, and no filesystem.
-
-  That last part is why this exists. The obvious reader —
-  `RequirementGraph.next_actionable/1` — recomputes on a cache miss, the
-  recompute runs the checkers, and the checkers glob the working copy. For a
-  harness-served project the stop decision runs *inside the channel process*, so
-  the process that would serve the glob is the one blocked waiting for it
-  (`harness_project_channel_test`, 4949ms, "it accepted the request and did not
-  answer"). Reading the cache instead avoided the deadlock and answered almost
-  never: `GraphFingerprint.compute/2` hashes the file digest, and the stop hook
-  syncs files before it decides, so the entry is always stale by then.
-
-  Both of those were attempts to compute an answer the rows already hold.
-
-  Scoped three ways because the rows are, deliberately: `project_id` is set only
-  on project-level nodes, while component and story requirements carry
-  `component_id` or `story_id` and leave it null. A filter on `project_id` alone
-  selects the project-level handful and silently misses the rest — measured at 5
-  of 57 on a real working copy.
-
-  Not identical to `next_actionable/1`, which also drops component requirements
-  with no inherited story priority. Measured 57 here against that path's 58, and
-  the difference is that filter rather than a disagreement about the graph.
-  """
-  @spec actionable_count(Scope.t()) :: non_neg_integer()
-  def actionable_count(%Scope{active_project_id: nil}), do: 0
-
-  def actionable_count(%Scope{} = scope),
-    do: scope |> actionable_query() |> Repo.aggregate(:count)
-
-  @doc """
-  The same count, narrowed to one role's work.
-
-  Story 538's R10: whether there is anything to do is asked of the requirements
-  this agent's role can satisfy, so a coding agent is never held open by
-  product's queue and a QA agent is never sent to implement something.
-
-  Filtered by requirement **name** rather than by a column, because the role
-  lives on the definition and the read model has no place for it. The registry
-  is the source of truth for that mapping and it is in code, so resolving it
-  here costs a list comprehension rather than a migration and a backfill — and
-  a name that changes role changes it in one place.
-
-  A role with no requirements of its own counts nothing, which is the honest
-  answer: it has no work, and its loop should end rather than hold it open on
-  somebody else's queue.
-
-  `nil` requirements — project-level scaffolding no role owns — belong to no
-  role's count for the same reason. They are nobody's in particular, and
-  counting them for everybody would hold every loop open forever on work that
-  is not any one agent's to finish.
-  """
-  @spec actionable_count(Scope.t(), atom() | nil) :: non_neg_integer()
-  def actionable_count(%Scope{} = scope, nil), do: actionable_count(scope)
-
-  def actionable_count(%Scope{} = scope, role) when is_atom(role) do
-    case Registry.requirement_names_for_role(role) do
-      [] ->
-        0
-
-      names ->
-        scope |> actionable_query() |> where([n], n.name in ^names) |> Repo.aggregate(:count)
-    end
-  end
-
-  defp actionable_query(%Scope{active_project_id: project_id} = scope) do
-    # Whose count this is. Rows are per working copy, so an unfiltered count
-    # returns the real number multiplied by however many checkouts have
-    # computed — and `blocked` would let a prerequisite unsatisfied in any one
-    # copy block that node in every other.
-    #
-    # `Projection.vantage/1` is the single definition of "whose view": an agent
-    # counts its own work, and anything that is not a checkout counts the
-    # project's default copy.
-    working_copy_id = Projection.vantage(scope)
-
-    blocked =
-      from(e in Edge,
-        join: prereq in Node,
-        as: :prereq,
-        on: prereq.id == e.from_requirement_id,
-        where: prereq.satisfied == false,
-        # Named, because `copy_filter/1`'s `dynamic([n], ...)` binds
-        # positionally and position 0 here is the Edge — which has no
-        # `working_copy_id` and says so at runtime rather than quietly
-        # correlating against the wrong table.
-        where: ^prereq_copy_filter(working_copy_id),
-        select: e.to_requirement_id
-      )
-
-    # `type/2` on both, because these are schemaless queries: naming a table
-    # rather than a schema leaves Ecto with no field definition to cast against,
-    # so a UUID string reaches Postgrex uncast and it refuses — "expected a
-    # binary of 16 bytes". The outer `project_id` needs none, since `Node` is a
-    # schema and knows its own field is a binary id.
-    from(n in Node,
-      where: n.satisfied == false,
-      where: n.id not in subquery(blocked),
-      where:
-        n.project_id == ^project_id or
-          n.component_id in subquery(
-            from(c in "components",
-              where: c.project_id == type(^project_id, :binary_id),
-              select: c.id
-            )
-          ) or
-          n.story_id in subquery(
-            from(s in "stories",
-              where: s.project_id == type(^project_id, :binary_id),
-              select: s.id
-            )
-          )
-    )
-    |> where(^copy_filter(working_copy_id))
-  end
-
-  @doc """
   One requirement's recorded `details`, read straight off the row.
 
   For the stop hook's nudge, which wants a single reason string and used to get
@@ -175,9 +54,9 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
   A stop is not a change. Nothing here recomputes.
 
-  Scoped the same three ways as `actionable_count/1`, and for the same reason:
-  `project_id` is set only on project-level nodes, so filtering on it alone
-  finds the handful and misses every component and story requirement.
+  Scoped three ways because the rows are, deliberately: `project_id` is set
+  only on project-level nodes, so filtering on it alone finds the handful and
+  misses every component and story requirement.
   """
   @spec requirement_details(Scope.t(), String.t(), [String.t()]) :: map() | nil
   def requirement_details(%Scope{active_project_id: nil}, _name, _entity_ids), do: nil
@@ -574,9 +453,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # and make every UI render insert a fresh duplicate.
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
-
-  defp prereq_copy_filter(nil), do: dynamic([prereq: p], is_nil(p.working_copy_id))
-  defp prereq_copy_filter(id), do: dynamic([prereq: p], p.working_copy_id == ^id)
 
   # Read back rather than trusting `insert_all`'s returning: an upsert that
   # conflicted returns the existing row, and the ids have to be the same ones

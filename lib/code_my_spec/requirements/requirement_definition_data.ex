@@ -14,6 +14,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   within the template — cross-boundary edges are explicit.
   """
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Requirements.RequirementDefinition
 
@@ -696,14 +697,22 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   Deduplicated: the same name appears in several component graphs with the same
   role, and a duplicate in an `IN` clause is noise the database has to think
   about.
+
+  Which definitions count is the role's `RoleProfile.requirements`: `:tagged`
+  is every definition that names the role.
   """
   @spec requirement_names_for_role(atom()) :: [String.t()]
   def requirement_names_for_role(role) when is_atom(role) do
+    selectors = RoleProfile.requirements(role)
+
     all_graphs()
-    |> Enum.filter(&(&1.role == role))
+    |> Enum.filter(&offered?(&1, role, selectors))
     |> Enum.map(& &1.name)
     |> Enum.uniq()
   end
+
+  defp offered?(definition, role, selectors),
+    do: :tagged in selectors and definition.role == role
 
   defp all_graphs do
     context_graph() ++

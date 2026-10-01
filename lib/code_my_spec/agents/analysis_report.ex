@@ -71,6 +71,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -229,10 +230,11 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # read — the digest says "call `list_problems`", which its role does not carry
   # — is a message that costs a turn and offers no move.
   #
-  # Kept beside the menu's list deliberately rather than shared: they answer
+  # Kept apart from the menu's rule deliberately rather than shared: they answer
   # different questions that happen to agree today, and a wake that follows a
-  # refusal it cannot cause is worse than two lists that drift visibly.
-  @report_roles [:coding, :main]
+  # refusal it cannot cause is worse than two lists that drift visibly. So it is
+  # its own field on the profile, `hears_findings?`, beside `holds_problems?`.
+  defp report_roles, do: RoleProfile.roles_where(:hears_findings?)
 
   # Two questions, and this used to answer both with the role list.
   #
@@ -247,7 +249,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # spex through `start_analysis`, both rows carrying
   # `requested_by: {"agent_id" => "b55ec59c-..."}`. Both completed at 16:02. It
   # held its task waiting for them, correctly, and was never told: `:qa` is not
-  # in `@report_roles`, so it was filtered out of its own answer. Fifty minutes,
+  # in `report_roles/0`, so it was filtered out of its own answer. Fifty minutes,
   # and the only thing that moved it was a person noticing.
   #
   # The broadcast filter is unchanged and still right — the comment above it
@@ -272,7 +274,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     |> where(
       [a],
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.status != :stopped and a.engine == :alloy and a.role in ^@report_roles
+        a.status != :stopped and a.engine == :alloy and a.role in ^report_roles()
     )
     |> Repo.all()
   end
@@ -283,7 +285,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       [a],
       a.working_copy_id == ^copy_id and a.project_id == ^project_id and
         a.status != :stopped and a.engine == :alloy and
-        (a.role in ^@report_roles or a.id in ^agent_ids)
+        (a.role in ^report_roles() or a.id in ^agent_ids)
     )
     |> Repo.all()
   end

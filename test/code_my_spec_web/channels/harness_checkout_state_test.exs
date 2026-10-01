@@ -133,16 +133,16 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
       assert recorded.preview_checked_at
     end
 
-    # The gate's own half. `story_promoted` proved the code was on the
-    # running copy and said nothing about whether anything served it, so QA was
-    # sent to a checkout whose app was down and met a connection refused.
-    test "and the gate then refuses a running copy that is down", %{scope: scope} do
+    # Main restarting is not the story being unpromoted: the stamp answers on
+    # its own from another copy (ccedd2e7). Whether main is answering is asked
+    # only of an agent working on main itself (criterion 1183).
+    test "a stamped story stays promoted while the running copy is down", %{scope: scope} do
       running = WorkingCopies.main(scope)
       {:ok, _} = WorkingCopies.record_preview_status(running, "down")
 
       story = story_fixture(scope, %{promoted_version: "2.0.11"})
 
-      assert {false, %{preview_status: "down"}} = Promotion.running_copy_check(scope, story)
+      assert {true, _} = Promotion.running_copy_check(scope, story)
     end
 
     # A 500 is the application answering, which is the thing QA exists to find.

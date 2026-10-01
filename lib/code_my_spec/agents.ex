@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.CodeMode,
@@ -70,8 +71,8 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.ProviderRefusal
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RefusalWake
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.StopDecision
-  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
@@ -86,10 +87,6 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
-
-  # The roster a working copy does its work with. Not `:main` — that one is the
-  # project's, there is one of it, and it lives on the main checkout.
-  @copy_roles [:product, :coding, :qa]
 
   # How long we wait for a turn before reporting "still working" instead of
   # blocking further. The agent is not interrupted — this is how long we wait
@@ -133,6 +130,7 @@ defmodule CodeMySpec.Agents do
           | :unknown_provider
           | {:unknown_working_copy, String.t()}
           | {:role_taken, atom(), Ecto.UUID.t(), String.t() | nil}
+          | {:not_at_home, atom(), String.t() | nil}
           | Ecto.Changeset.t()
           | term()
 
@@ -534,13 +532,14 @@ defmodule CodeMySpec.Agents do
   # project in the stood-down list — indistinguishable from a project nobody
   # works on (`5f9fad45`). Ordered before `ensure_cadence/1` so the timer that
   # comes up is one that will actually deliver.
-  defp watch_over(scope, %Agent{role: :main}) do
-    MainAgent.resume(scope)
-    MainAgent.ensure_cadence(scope)
+  defp watch_over(scope, %Agent{role: role}) do
+    if RoleProfile.wakes_on?(role, :cadence) do
+      MainAgent.resume(scope)
+      MainAgent.ensure_cadence(scope)
+    end
+
     :ok
   end
-
-  defp watch_over(_scope, _agent), do: :ok
 
   @doc """
   Restart one agent's process in place — same id, same conversation.
@@ -720,7 +719,10 @@ defmodule CodeMySpec.Agents do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
 
-  # The main working copy holds one agent, and it is the project's own.
+  # The main working copy holds one agent, and it is the project's own: only a
+  # role whose `RoleProfile.home_copy` is `:main` may start there. Coding and QA
+  # never do — metric_flow carried a coding agent there from 09-24 until John
+  # retired it.
   #
   # Two agents in one checkout are two processes editing one tree — the failure
   # the working-copy grain exists to prevent — and in this checkout it is worse
@@ -736,8 +738,14 @@ defmodule CodeMySpec.Agents do
     main = WorkingCopies.main(scope)
 
     if main && names?(attrs, main),
-      do: refuse_if_occupied(scope, main),
+      do: with(:ok <- refuse_unless_at_home(attrs, main), do: refuse_if_occupied(scope, main)),
       else: refuse_if_role_taken(scope, attrs)
+  end
+
+  defp refuse_unless_at_home(%{role: role}, copy) do
+    if RoleProfile.lives_on_main_copy?(role),
+      do: :ok,
+      else: {:error, {:not_at_home, role, copy.root}}
   end
 
   # Where the agent will actually run, decided before anything is checked
@@ -1349,7 +1357,7 @@ defmodule CodeMySpec.Agents do
   def main_agent(%Scope{} = scope) do
     case WorkingCopies.main(scope) do
       nil -> nil
-      copy -> AgentsRepository.list_running(scope) |> Enum.find(&main_on_copy?(&1, copy))
+      copy -> scope |> running_main_agents() |> Enum.find(&(&1.working_copy_id == copy.id))
     end
   end
 
@@ -1359,8 +1367,12 @@ defmodule CodeMySpec.Agents do
   # Story 1059's criterion 3331 puts a continuous main and a continuous coding
   # agent on one checkout, and anything addressed to "the main agent" there
   # reached whichever the query returned first.
-  defp main_on_copy?(%Agent{role: :main, working_copy_id: id}, %{id: id}), do: true
-  defp main_on_copy?(_agent, _copy), do: false
+  @doc """
+  The project's running `main` agents, newest first, wherever they run. The one
+  source every "find the main agent" reads.
+  """
+  @spec running_main_agents(Scope.t()) :: [Agent.t()]
+  defdelegate running_main_agents(scope), to: AgentsRepository, as: :list_running_main
 
   @doc """
   The project's own agent, started if it does not exist yet.
@@ -1423,7 +1435,7 @@ defmodule CodeMySpec.Agents do
   """
   @spec ensure_copy_agents(Scope.t(), map()) ::
           %{started: [Agent.t()], failed: [{atom(), term()}], off: [Agent.t()]}
-  def ensure_copy_agents(scope, copy, roles \\ @copy_roles)
+  def ensure_copy_agents(scope, copy, roles \\ RoleProfile.feature_roles())
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
@@ -1470,7 +1482,7 @@ defmodule CodeMySpec.Agents do
   the module attribute.
   """
   @spec copy_roles() :: [atom()]
-  def copy_roles, do: @copy_roles
+  def copy_roles, do: RoleProfile.feature_roles()
 
   @doc """
   The roles no agent in `agents` holds a seat for: what staffing would fill.
@@ -1479,7 +1491,7 @@ defmodule CodeMySpec.Agents do
   agent on the copy that matters, off ones included.
   """
   @spec empty_seats([Agent.t()], [atom()]) :: [atom()]
-  def empty_seats(agents, roles \\ @copy_roles) do
+  def empty_seats(agents, roles \\ RoleProfile.feature_roles()) do
     held = agents |> Enum.reject(&Agent.retired?/1) |> MapSet.new(& &1.role)
     Enum.reject(roles, &MapSet.member?(held, &1))
   end
@@ -1503,7 +1515,7 @@ defmodule CodeMySpec.Agents do
   role on each of several copies. A QA fixture for the wake criteria needs two
   *coding* agents to show that only the assigned one is woken, and a checkout
   holds one agent, so the shape is one role per copy rather than three on one.
-  Staffing every copy with `@copy_roles` would put twelve agents on four
+  Staffing every copy with `copy_roles/0` would put twelve agents on four
   checkouts to get the four that were wanted.
   """
   @spec staff_any_copy(Ecto.UUID.t(), [atom()] | nil) ::
@@ -1511,7 +1523,7 @@ defmodule CodeMySpec.Agents do
   def staff_any_copy(copy_id, roles \\ nil) when is_binary(copy_id) do
     with {:ok, copy} <- WorkingCopies.fetch(copy_id),
          {:ok, scope} <- owner_scope(copy) do
-      result = ensure_copy_agents(scope, copy, roles || @copy_roles)
+      result = ensure_copy_agents(scope, copy, roles || RoleProfile.feature_roles())
       {:ok, continuous} = set_copy_continuous(scope, copy_id, true)
       {:ok, Map.put(result, :continuous, continuous)}
     end
@@ -1876,11 +1888,7 @@ defmodule CodeMySpec.Agents do
 
   # The project's agent wherever it currently is, which during a move is not
   # the main copy — that is the point of moving it.
-  defp main_agent_anywhere(%Scope{} = scope) do
-    scope
-    |> AgentsRepository.list_agents()
-    |> Enum.find(&(&1.role == :main and &1.status in [:starting, :running]))
-  end
+  defp main_agent_anywhere(%Scope{} = scope), do: scope |> running_main_agents() |> List.first()
 
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.
@@ -3008,18 +3016,17 @@ defmodule CodeMySpec.Agents do
   defp tools_for(%Scope{} = scope, attrs) do
     role = Map.fetch!(attrs, :role)
 
-    case ToolSets.for_role(role) do
-      # Everything, and not written down as a list — see `ToolSets.for_role/1`.
-      # A machine's tools need no adding to "all of them".
-      nil -> nil
+    case RoleProfile.tools(role) do
+      # Everything, and not written down as a list on the row — see
+      # `ToolSets.for_role/1`. A machine's tools need no adding to "all of them".
+      :all -> nil
       granted -> granted ++ machine_tools(scope, attrs, role)
     end
   end
 
-  defp machine_tools(_scope, _attrs, role) when role not in [:main, :qa, :coding], do: []
-
-  defp machine_tools(scope, attrs, _role) do
-    with id when is_binary(id) <-
+  defp machine_tools(scope, attrs, role) do
+    with true <- RoleProfile.browses?(role),
+         id when is_binary(id) <-
            Map.get(attrs, :working_copy_id) || scope.active_working_copy_id,
          {:ok, %{machine_tools: names}} when is_list(names) <- WorkingCopies.fetch(id) do
       names

@@ -71,6 +71,8 @@ defmodule CodeMySpec.Validation.Menu do
   nonsense. That is harder to catch than a red test.
   """
 
+  alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements
@@ -177,15 +179,15 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # Unscoped for `nil`, which is every caller outside the loop — the project's
   # own count, which is what a person asking about the tree wants.
-  @problem_roles [:coding, :main]
+  #
+  # Which roles hold problems is each role's `RoleProfile.holds_problems?`.
 
   @doc """
   Whether problems are this role's to fix. The one rule both the menu and the
   stop gate read; `nil` (no agent role) is unscoped.
   """
   @spec holds_problems?(atom() | nil) :: boolean()
-  def holds_problems?(role) when is_atom(role) and not is_nil(role), do: role in @problem_roles
-  def holds_problems?(_role), do: true
+  defdelegate holds_problems?(role), to: RoleProfile
 
   # The task the caller already started and has not closed.
   #
@@ -262,8 +264,11 @@ defmodule CodeMySpec.Validation.Menu do
   # `get_next_requirement` for it, and the agent was told there was none — every
   # six seconds, until enough recomputes caught the rows up. A count and the
   # list it counts, disagreeing, which is exactly what one source prevents.
-  defp count(scope, :requirements, role, _owner),
-    do: Requirements.actionable_count(scope, role)
+  #
+  # `Work.actionable/4` with the owner, so an agent's count is what it would be
+  # offered: it did not withhold, and counted work `start_task` refuses (a31f1cd6).
+  defp count(scope, :requirements, role, owner),
+    do: length(Work.actionable(scope, role, owner))
 
   # `[]` for every caller not given an owner — the class then counts 0 and the
   # menu reads exactly as it did before this existed.

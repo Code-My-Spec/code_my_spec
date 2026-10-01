@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3204Spex do
   spex "An agent's tools work again after its harness restarts, with nobody intervening", criterion: 1188 do
     scenario "Tools come back on their own after a harness restart" do
       given_ "a running agent whose tools work", context do
-        context = given_a_staffed_checkout(context, "spex_3204")
+        context = given_a_feature_checkout(context, "spex_3204")
         agent_id = start_agent(context)
 
         # A story for the call to find, so "it answered" is distinguishable

@@ -140,8 +140,14 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   defp verdict(%WorkingCopy{} = running, %Scope{} = scope, entity, :unread),
     do: verdict(running, scope, entity, local_copy(running, scope))
 
-  defp verdict(%WorkingCopy{} = running, %Scope{}, entity, {:ok, copy}),
-    do: entity |> promoted(copy) |> and_serving(running)
+  # The stamp alone. This used to ask whether main was serving too, so every
+  # restart of main — after any promote, app or harness — unsatisfied every
+  # promoted story at once, and work handed the first one to a coder who ran
+  # the full gate only for `mark_story_promoted` to keep the stamp it already
+  # had: 26 paid turns from 09-27 to 10-01 (ccedd2e7). Whether main is up is
+  # deploy's question, and since story 1003 QA no longer waits on this one.
+  defp verdict(%WorkingCopy{}, %Scope{}, entity, {:ok, copy}),
+    do: promoted(entity, copy)
 
   defp verdict(%WorkingCopy{}, %Scope{}, _entity, _local),
     do: {true, %{status: "This checkout is not on file"}}
@@ -195,18 +201,8 @@ defmodule CodeMySpec.Promotion.RunningCopy do
      }}
   end
 
-  # Both halves, and the order matters: naming the sync problem first gives an
-  # agent something it can act on before it is told the application is down.
-  #
-  # This used to say promoting fixes both, which is true for *ahead* and false
-  # for *behind*: promotion merges this branch into the running copy and leaves
-  # this worktree where it was, so promoting while behind restarts the shared
-  # dev server and leaves the agent exactly as far behind. The counts now travel
-  # with the verdict so the remedy can tell those cases apart.
-  defp and_serving({false, _details} = behind, _running), do: behind
-  defp and_serving({true, details}, running), do: serving(running, details)
-
-  # Whether the application QA browses is answering.
+  # Whether the application is answering, asked only of an agent working on the
+  # running copy itself (criterion 1183).
   #
   # `story_promoted` proved the code was on the running copy and stopped
   # there, and the two came apart within a day: Broken Oaths' preview was down,

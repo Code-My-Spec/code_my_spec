@@ -146,6 +146,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
   component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
   component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
+  component(CodeMySpec.McpServers.Components.Tools.DeleteComponent)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
