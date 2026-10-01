@@ -274,7 +274,7 @@ defmodule CmsHarness.AppInstance do
         start_first_run(state, main?, tunnel)
 
       true ->
-        case start_app(state) do
+        case start_app(state, tunnel) do
           {:ok, new_state} ->
             new_state = ensure_tunnel(new_state, main?, tunnel)
             {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
@@ -291,7 +291,7 @@ defmodule CmsHarness.AppInstance do
     state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
     stopped = if running?(state), do: stop_process(state), else: state
 
-    case start_app(stopped) do
+    case start_app(stopped, tunnel) do
       {:ok, new_state} when main? ->
         new_state = ensure_tunnel(new_state, main?, tunnel)
         # Replied before the hook runs, not after: this repo's own
@@ -463,23 +463,23 @@ defmodule CmsHarness.AppInstance do
 
   # --- Internals: start/stop ---
 
-  defp start_app(state) do
-    with {:ok, launched_state} <- launch_process(state) do
+  defp start_app(state, tunnel) do
+    with {:ok, launched_state} <- launch_process(state, tunnel) do
       {:ok, wait_for_health(launched_state)}
     end
   end
 
-  # The half `start_app/1` and `start_first_run/3` share: get the OS process
+  # The half `start_app/2` and `start_first_run/3` share: get the OS process
   # running and the state persisted, before either decides how long to wait
   # on it. `status: "starting"` here is only ever the value `wait_for_health/1,2`
   # sees on its own first (always-taken) probe — real `probe/1` output
   # overwrites it before either caller's own reply is built.
-  defp launch_process(state) do
+  defp launch_process(state, tunnel) do
     with :ok <- ensure_serve_recipe(state),
          {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
          :ok <- ensure_port_free(state, port),
          :ok <- ensure_database(state, database),
-         {:ok, os_pid} <- launch(state, port, https_port, database) do
+         {:ok, os_pid} <- launch(state, port, https_port, database, tunnel) do
       new_state = %{
         state
         | port: port,
@@ -518,7 +518,7 @@ defmodule CmsHarness.AppInstance do
   # `handle_info(:first_start_check, ...)`), rather than making the next
   # `ensure_app_running` call respond stale or wait through the launch again.
   defp start_first_run(state, main?, tunnel) do
-    case launch_process(state) do
+    case launch_process(state, tunnel) do
       {:ok, launched_state} ->
         settled_state = wait_for_health(launched_state, first_start_probe_attempts())
 
@@ -763,7 +763,7 @@ defmodule CmsHarness.AppInstance do
 
   defp current_commit(state), do: Runner.current_commit(state.root)
 
-  defp launch(state, port, https_port, database) do
+  defp launch(state, port, https_port, database, tunnel) do
     Runner.launch(
       state.root,
       port,
@@ -771,9 +771,17 @@ defmodule CmsHarness.AppInstance do
       database,
       state.log_path,
       state.main?,
-      state.tunnel_held_by_harness?
+      state.tunnel_held_by_harness?,
+      tunnel_host(tunnel)
     )
   end
+
+  # The tunnel map's hostname, atomised the same way `ensure_tunnel/3`'s own
+  # clauses already pattern-match it — the one piece of it a booting app
+  # needs to answer `Endpoint.url()` correctly from the moment it starts,
+  # rather than only once something pointed the Cloudflare tunnel at it.
+  defp tunnel_host(%{hostname: hostname}), do: hostname
+  defp tunnel_host(_), do: nil
 
   # A short, bounded wait so the common case can report "serving" rather than
   # "started, ask again" — not a long one, since the caller (a QA session

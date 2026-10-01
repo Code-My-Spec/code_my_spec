@@ -25,7 +25,7 @@ defmodule CmsHarness.AppInstanceHttpsOptionalTest do
            "a main checkout with PORT but no HTTPS_PORT in config/dev.exs " <>
              "should resolve and launch, not be refused as unresolvable. Got: #{inspect(result)}"
 
-    assert [{:launch, [_root, 4070, nil, _database, _log_path, true, _tunnel_held?]}] =
+    assert [{:launch, [_root, 4070, nil, _database, _log_path, true, _tunnel_held?, _host]}] =
              Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
   end
 end

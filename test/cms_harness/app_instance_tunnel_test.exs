@@ -124,7 +124,8 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
       push_with(%{"main" => true, "tunnel" => @tunnel})
 
-      assert [{:launch, [_root, _port, _https, _db, _log, true, true]}] = launch_calls()
+      assert [{:launch, [_root, _port, _https, _db, _log, true, true, "preview-main.codemyspec.com"]}] =
+               launch_calls()
     end
 
     test "main with no DB-backed tunnel is launched told to keep running its own" do
@@ -132,7 +133,7 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
       push_with(%{"main" => true})
 
-      assert [{:launch, [_root, _port, _https, _db, _log, true, false]}] = launch_calls()
+      assert [{:launch, [_root, _port, _https, _db, _log, true, false, nil]}] = launch_calls()
     end
 
     test "a non-main copy is always launched told the harness does not hold one" do
@@ -140,7 +141,7 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
       push_with(%{"main" => false})
 
-      assert [{:launch, [_root, _port, _https, _db, _log, false, false]}] = launch_calls()
+      assert [{:launch, [_root, _port, _https, _db, _log, false, false, nil]}] = launch_calls()
     end
   end
 end

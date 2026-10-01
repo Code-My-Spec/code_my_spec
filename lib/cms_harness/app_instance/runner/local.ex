@@ -156,7 +156,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?) do
+  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host \\ nil) do
     File.mkdir_p!(Path.dirname(log_path))
 
     env_prefix =
@@ -165,7 +165,8 @@ defmodule CmsHarness.AppInstance.Runner.Local do
         https_port_env(https_port),
         "DATABASE_NAME=#{database}",
         "CMS_MAIN_COPY=#{main?}",
-        "CMS_TUNNEL_HELD_BY_HARNESS=#{tunnel_held_by_harness?}"
+        "CMS_TUNNEL_HELD_BY_HARNESS=#{tunnel_held_by_harness?}",
+        host_env(host)
       ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" ")
@@ -197,6 +198,13 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   # otherwise crash on `nil` having no `String.Chars` implementation.
   defp https_port_env(nil), do: nil
   defp https_port_env(port), do: "HTTPS_PORT=#{port}"
+
+  # `nil` when this copy holds no tunnel (not main, or main with no
+  # DB-backed credentials yet — `HarnessProjectChannel.tunnel_for/1`'s own
+  # cases) — omitted entirely rather than interpolated, so the app falls
+  # back to whatever `PHX_HOST` default it already had, same as today.
+  defp host_env(nil), do: nil
+  defp host_env(host), do: "PHX_HOST=#{host}"
 
   @impl true
   def alive?(os_pid) do
