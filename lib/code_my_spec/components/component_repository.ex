@@ -95,10 +95,18 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
   @spec upsert_component(Scope.t(), map()) :: Component.t() | {:error, Ecto.Changeset.t()}
   def upsert_component(%Scope{} = scope, attrs) do
-    %Component{}
-    |> Component.changeset(attrs, scope)
+    changeset = Component.changeset(%Component{}, attrs, scope)
+
+    # Replacing every column on conflict would write a nil `provenance` over an
+    # authored mark whenever an upsert did not mention it.
+    kept =
+      if Ecto.Changeset.get_change(changeset, :provenance),
+        do: [:id, :inserted_at, :last_analyzed_at],
+        else: [:id, :inserted_at, :last_analyzed_at, :provenance]
+
+    changeset
     |> Repo.insert(
-      on_conflict: {:replace_all_except, [:id, :inserted_at, :last_analyzed_at]},
+      on_conflict: {:replace_all_except, kept},
       conflict_target: [:module_name, :project_id],
       returning: true
     )

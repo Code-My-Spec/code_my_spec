@@ -35,7 +35,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
   @spec execute(any(), any()) :: {:reply, Anubis.Server.Response.t(), any()}
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, component} <- Components.create_component(scope, params) do
+         {:ok, component} <-
+           Components.create_component(scope, Map.put(params, :provenance, :authored)) do
       {:reply, reply_for(scope, component), frame}
     else
       {:error, changeset = %Ecto.Changeset{}} ->

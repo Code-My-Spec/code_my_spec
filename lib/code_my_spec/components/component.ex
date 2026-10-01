@@ -49,6 +49,12 @@ defmodule CodeMySpec.Components.Component do
     field :type, :string
     field :module_name, :string
     field :description, :string
+
+    # Whether the component was written as intended architecture (`:authored`,
+    # by a tool or a proposal) or derived from code (`:discovered`). A sync
+    # never prunes an authored component (3aeb66cf).
+    field :provenance, Ecto.Enum, values: [:authored, :discovered]
+
     field :synced_at, :utc_datetime
     field :files_changed_at, :utc_datetime
     field :last_analyzed_at, :utc_datetime
@@ -79,6 +85,7 @@ defmodule CodeMySpec.Components.Component do
       :module_name,
       :description,
       :parent_component_id,
+      :provenance,
       :synced_at,
       :files_changed_at,
       :last_analyzed_at
