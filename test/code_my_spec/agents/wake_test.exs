@@ -59,6 +59,7 @@ defmodule CodeMySpec.Agents.WakeTest do
     :blocker_resolved,
     :resume,
     :nudge,
+    :cadence,
     :teammate_stalled,
     :teammate_died
   ]

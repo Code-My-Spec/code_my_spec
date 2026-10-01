@@ -33,31 +33,105 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   alias CodeMySpec.MainAgent.Machinery
   alias CodeMySpec.MainAgent.OpenQuestion
 
-  @doc "The whole check-in as one message."
-  @spec render(Digest.t()) :: String.t()
-  def render(%Digest{} = digest) do
-    """
-    Check-in. #{verdict(digest)}
+  @work_offer "Your work: eligible work is waiting. Call get_next_requirement to see it, " <>
+                "then claim it with start_task. Nothing has been selected or assigned for you."
 
-    #{agents(digest.work)}#{off(digest.off)}
+  @doc """
+  The whole check-in as one message: what waits on main first — questions it
+  answers, stalled teammates, a machinery fault, its own work — then the fleet.
 
-    #{machinery(digest.machinery, digest.work)}
+  The cadence's turn (`MainAgent.cadence_check_in/3`) passes:
 
-    #{questions(digest.questions)}
+    * `:self` — main's own id, so its line reads "you".
+    * `:work?` — main's work offer stands, so the turn carries it.
+    * `:new_stalls` — ids that stalled since the last tick, marked new.
+  """
+  @spec render(Digest.t(), keyword()) :: String.t()
+  def render(%Digest{} = digest, opts \\ []) do
+    {mine, others} = Enum.split_with(digest.questions, &(&1.holder == "main_agent"))
+    stalled = Digest.stalled(digest)
+    alarm = machinery_alarm(digest.machinery, digest.work)
+    needs = needs(mine, stalled, Keyword.get(opts, :new_stalls, []), alarm)
 
-    `list_agent_work` and `check_machinery` have the detail behind any of this.
-    """
+    [
+      "Check-in. " <> verdict(digest, needs),
+      needs_block(needs, mine),
+      work(Keyword.get(opts, :work?, false)),
+      agents(digest.work, Keyword.get(opts, :self), MapSet.new(stalled, & &1.agent_id)) <>
+        off(digest.off),
+      if(alarm, do: nil, else: machinery(digest.machinery)),
+      questions(others, mine),
+      "`list_agent_work` and `check_machinery` have the detail behind any of this."
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
   end
 
-  defp verdict(digest), do: said(Digest.quiet?(digest))
+  defp verdict(digest, needs) do
+    cond do
+      Digest.quiet?(digest) -> "Nothing needs you — every agent is working or has nothing to do."
+      needs != [] -> "Some of this needs you."
+      true -> "Nothing is waiting on you, but not every agent is settled — see below."
+    end
+  end
 
-  defp said(true), do: "Nothing needs you — every agent is working or has nothing to do."
-  defp said(false), do: "Some of this needs you."
+  defp needs(mine, stalled, new_stalls, alarm) do
+    Enum.map(mine, &mine_line/1) ++
+      Enum.map(stalled, &stall_line(&1, &1.agent_id in new_stalls)) ++ List.wrap(alarm)
+  end
 
-  defp agents([]), do: "agents: none running."
+  defp needs_block([], _mine), do: nil
 
-  defp agents(work) do
-    "agents: #{length(work)} running\n" <> Enum.map_join(work, "\n", &agent_line/1)
+  defp needs_block(needs, mine) do
+    "Needs you:\n" <>
+      Enum.map_join(needs, "\n", &("- " <> &1)) <> answer_hint(mine)
+  end
+
+  # From the work prompt: the tool is code mode, and naming the wrong one cost a
+  # main agent its turn (see `Work`'s `@prompt`).
+  defp answer_hint([]), do: ""
+
+  defp answer_hint(_mine),
+    do:
+      "\nRead questions with `run_script` calling list_notifications; answer each with " <>
+        "`answer_notification` so the answer is recorded and reaches the asker."
+
+  defp mine_line(%OpenQuestion{} = question) do
+    "question #{question.id} from #{asker(question)}: " <>
+      Enum.join(OpenQuestion.texts(question), "; ")
+  end
+
+  defp asker(%OpenQuestion{agent_id: nil}), do: "a session"
+
+  defp asker(%OpenQuestion{} = question),
+    do: "the #{question.agent_role} agent #{question.agent_id}#{root(question.working_copy_root)}"
+
+  defp stall_line(%AgentWork{} = entry, new?) do
+    "the #{entry.role} agent #{entry.agent_id} on working copy #{entry.working_copy_id}" <>
+      "#{root(entry.working_copy_root)}#{if new?, do: " (new)", else: ""} — " <>
+      AgentWork.unclaimed_work(entry)
+  end
+
+  defp root(nil), do: ""
+  defp root(path), do: " (#{path})"
+
+  defp work(true), do: @work_offer
+  defp work(false), do: nil
+
+  defp agents([], _self, _stalled), do: "agents: none running."
+
+  defp agents(work, self, stalled) do
+    "agents: #{length(work)} running\n" <>
+      Enum.map_join(work, "\n", &agent_line(&1, self, stalled))
+  end
+
+  defp agent_line(%AgentWork{agent_id: id} = entry, id, _stalled),
+    do: "  #{id} (#{entry.role}) — you"
+
+  defp agent_line(%AgentWork{agent_id: id} = entry, _self, stalled) do
+    if MapSet.member?(stalled, id),
+      do: "  #{id} (#{entry.role}) — stalled, above",
+      else: agent_line(entry)
   end
 
   # Printed so an off seat is not read as an empty one to staff (39af5611).
@@ -102,15 +176,20 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
 
   # A machine answering is not an agent working: when every provider refuses,
   # nothing runs whatever the machines say (044599cc).
-  defp machinery(machinery, [_ | _] = work) do
-    if Enum.all?(work, &AgentWork.provider_blocked?/1),
-      do:
+  # A fault is something main acts on, so it leads; a healthy line is fleet state.
+  defp machinery_alarm(machinery, work) do
+    cond do
+      work != [] and Enum.all?(work, &AgentWork.provider_blocked?/1) ->
         "machinery: BLOCKED — every agent's provider is refusing its turns; nothing " <>
-          "can run until it accepts them again.",
-      else: machinery(machinery)
-  end
+          "can run until it accepts them again."
 
-  defp machinery(machinery, []), do: machinery(machinery)
+      match?(%Machinery{tool_fault: fault} when fault != :none, machinery) ->
+        machinery(machinery)
+
+      true ->
+        nil
+    end
+  end
 
   defp machinery(nil), do: "machinery: not read."
 
@@ -125,17 +204,19 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   defp machinery(%Machinery{tool_fault: {:agents, ids}}),
     do: "machinery: working, but these agents cannot call tools: " <> Enum.join(ids, ", ")
 
-  defp questions([]), do: "questions: none open."
+  # Main's own are under "Needs you"; these are the ones waiting on others.
+  defp questions([], []), do: "questions: none open."
+  defp questions([], _mine), do: nil
 
-  defp questions(questions) do
-    "questions: #{length(questions)} open\n" <> Enum.map_join(questions, "\n", &question_line/1)
+  defp questions(others, _mine) do
+    "questions waiting on others: #{length(others)}\n" <>
+      Enum.map_join(others, "\n", &question_line/1)
   end
 
   defp question_line(%OpenQuestion{} = question) do
     "  #{Enum.join(OpenQuestion.texts(question), "; ")} (#{holder(question.holder)})"
   end
 
-  defp holder("main_agent"), do: "yours to answer"
   defp holder("product_agent"), do: "waiting on the product agent"
   defp holder(_holder), do: "waiting on the user"
 

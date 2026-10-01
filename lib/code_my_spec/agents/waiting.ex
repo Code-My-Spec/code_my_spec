@@ -5,8 +5,9 @@ defmodule CodeMySpec.Agents.Waiting do
   An agent waiting on something that will reach it when it lands is neither
   nudged at turn end (`StopDecision`) nor offered a turn (`Work`): either one
   only buys a "still waiting" turn. Each entry in `@checks` names the paths it
-  holds — `:turn_end` (`StopDecision`), `:wake` and `:resume` (`Work`) — and
-  answers nil or a reason; the first reason wins. A new kind of wait is one
+  holds — `:turn_end` (`StopDecision`), `:wake` and `:resume` (`Work`),
+  `:cadence` (main's check-in turn) — and answers nil or a reason; the first
+  reason wins. A new kind of wait is one
   entry here.
 
   Not entries, deliberately:
@@ -34,18 +35,19 @@ defmodule CodeMySpec.Agents.Waiting do
           | :analysis_runs
           | :question_pending
 
-  @type path :: :turn_end | :wake | :resume
+  @type path :: :turn_end | :wake | :resume | :cadence
 
-  @all [:turn_end, :wake, :resume]
+  @all [:turn_end, :wake, :resume, :cadence]
 
   # Each check and the paths it holds, cheapest first: the row, the registry,
-  # then the database. Analysis holds only the turn-end message — it never
-  # keeps an agent from work (analysis and requirements are orthogonal).
+  # then the database. Analysis holds the turn-end message and main's check-in
+  # turn — never work (analysis and requirements are orthogonal). Main's own
+  # question to a person holds only the nudge: the check-in still sweeps.
   @checks [
     provider_refused: @all,
     provisioning: @all,
     tap_out: @all,
-    analysis_runs: [:turn_end],
+    analysis_runs: [:turn_end, :cadence],
     question_pending: [:turn_end]
   ]
 

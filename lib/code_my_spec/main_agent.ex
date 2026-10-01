@@ -523,6 +523,57 @@ defmodule CodeMySpec.MainAgent do
   end
 
   @doc """
+  The cadence's tick: one turn for a continuous main, carrying the check-in and
+  its own work offer together, and the recovery check for everyone else.
+
+  John: "we never want a non continuous main agent to get the nudge. Only a
+  continuous main agent." So the turn goes through `Wake` as `:cadence`, which
+  holds a non-continuous main, one waiting on its own run, and one mid-turn
+  (skipped, not queued). Main is left out of the recovery check, so a tick
+  that would also have offered it work gives one turn, never two — and a
+  stood-down main (3334) gets nothing from the timer.
+
+  `newly_stalled` are teammates that stalled since the last tick. They ride in
+  the turn; when no turn goes, they are announced on their own
+  (`:teammate_stalled`), which still reaches a main that is mid-turn.
+
+  Answers `{:ok, ref}` when the turn went, otherwise why not.
+  """
+  @spec cadence_check_in(Scope.t(), Digest.t(), [AgentWork.t()]) ::
+          {:ok, term()} | {:error, term()}
+  def cadence_check_in(%Scope{} = scope, %Digest{failed: reason} = digest, _newly_stalled)
+      when is_binary(reason),
+      do: deliver_check_in(scope, digest)
+
+  def cadence_check_in(%Scope{} = scope, %Digest{} = digest, newly_stalled) do
+    # The main checkout's, as `notify_main` resolves it, so a tick and a stall
+    # notice never name different mains.
+    main = if Cadence.running?(scope), do: Agents.main_agent(scope)
+    result = cadence_turn(scope, main, digest, newly_stalled)
+    # Every main is the cadence's, whatever its status: the recovery check is
+    # for everyone else.
+    mains = scope |> Agents.list_agents() |> Enum.filter(&(&1.role == :main))
+    :ok = Work.consider_project(scope, :recovery_check, Enum.map(mains, & &1.id))
+
+    case result do
+      {:ok, ref} when is_binary(ref) -> :ok
+      _no_turn -> :ok = Cadence.announce_stalls(scope, newly_stalled)
+    end
+
+    result
+  end
+
+  defp cadence_turn(_scope, nil, _digest, _newly_stalled), do: {:ok, :no_main}
+
+  defp cadence_turn(scope, %Agent{} = main, digest, newly_stalled) do
+    new_stalls = Enum.map(newly_stalled, & &1.agent_id)
+
+    Work.request_cadence_turn(scope, main, fn work? ->
+      CheckInReport.render(digest, self: main.id, work?: work?, new_stalls: new_stalls)
+    end)
+  end
+
+  @doc """
   Answer one of this project's open questions from what the project records.
 
   Story 1058's point: the main agent's wider reach is for *using*. A main agent

@@ -367,10 +367,7 @@ defmodule CodeMySpec.Notifications do
       end)
 
     with {:ok, {request, created?}} <- result do
-      if created? do
-        deliver_permission(request)
-        if owner_key == :agent_id, do: announce_blocker(scope, owner_id)
-      end
+      if created?, do: deliver_permission(request)
 
       {:ok, request}
     end
@@ -958,27 +955,8 @@ defmodule CodeMySpec.Notifications do
 
     with {:ok, request} <- result do
       deliver_question(request)
-      announce_blocker(scope, agent_id)
       {:ok, request}
     end
-  end
-
-  @doc """
-  The topic a new agent question or tap-out is announced on, as
-  `{:blocker_raised, agent_id}`. The main agent's cadence listens, so it is
-  woken with a check-in now rather than at the next tick.
-  """
-  @spec blockers_topic(term()) :: String.t()
-  def blockers_topic(project_id), do: "main_agent:blockers:#{project_id}"
-
-  # A broadcast because `MainAgent` depends on this module. `Cadence` skips
-  # main's own blockers; no cadence process means no main, so nobody hears it.
-  defp announce_blocker(scope, agent_id) do
-    Phoenix.PubSub.broadcast(
-      CodeMySpec.PubSub,
-      blockers_topic(scope.active_project_id),
-      {:blocker_raised, agent_id}
-    )
   end
 
   defp question_task(nil, _task_ref), do: {:error, :owner_not_found}

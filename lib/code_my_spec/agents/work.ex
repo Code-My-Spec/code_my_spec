@@ -31,9 +31,10 @@ defmodule CodeMySpec.Agents.Work do
   @prompt "Eligible work is available. Call get_next_requirement to see it, " <>
             "then claim it with start_task. No task has been selected or assigned for you."
 
-  def consider_project(scope, reason) do
+  def consider_project(scope, reason, except_agent_ids \\ []) do
     scope
     |> AgentsRepository.list_agents()
+    |> Enum.reject(&(&1.id in except_agent_ids))
     |> Enum.each(&request_turn_if_runnable(scope, &1, reason))
 
     :ok
@@ -252,6 +253,48 @@ defmodule CodeMySpec.Agents.Work do
       true -> {:ok, :offer_declined}
       hold -> not_admitted(hold)
     end
+  end
+
+  @doc """
+  The main agent's check-in turn: one per cadence tick, with or without work.
+
+  `render` builds the prompt from whether main's work offer stands — eligible
+  graph work it has not declined past the damper. Admitted as `:cadence`, so
+  only a running, continuous, idle main that is not waiting gets it; mid-turn
+  it is skipped, not queued — the next tick comes round.
+  """
+  def request_cadence_turn(scope, %Agent{} = agent, render) when is_function(render, 1) do
+    with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
+         :ok <- admit(scope, current, :cadence),
+         {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
+      turn_prompt = render.(work_offered?(scope, reserved))
+      Conversations.record_sent_to_agent(reserved, turn_prompt)
+
+      case Transport.request_work_turn(
+             reserved.working_copy_id,
+             reserved,
+             ref,
+             turn_prompt,
+             5_000
+           ) do
+        {:ok, :started} ->
+          {:ok, ref}
+
+        error ->
+          release(scope, reserved.id, ref)
+          error
+      end
+    else
+      hold -> not_admitted(hold)
+    end
+  end
+
+  # Graph work only: questions reach the check-in through the digest.
+  defp work_offered?(scope, agent) do
+    nodes = graph_work(scope, agent)
+
+    nodes != [] and
+      not already_declined?(agent, fingerprint(question_work?(scope, agent), nodes))
   end
 
   # An off or retired agent answers as the gate always has; any other hold is
