@@ -45,7 +45,8 @@ defmodule CodeMySpec.Files.File do
     :project_knowledge,
     :hex_doc,
     :deploy_artifact,
-    :encrypted_env
+    :encrypted_env,
+    :lockfile
   ]
 
   @type role ::
@@ -74,6 +75,7 @@ defmodule CodeMySpec.Files.File do
           | :hex_doc
           | :deploy_artifact
           | :encrypted_env
+          | :lockfile
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,

@@ -62,6 +62,7 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
     # hard-coded, which is why reading the checker was not enough to spot it.
     {Path.join(Paths.qa_scripts_dir(), "verify_github.sh"), "an integration verify script"},
     {"mix.exs", "mix.exs"},
+    {"mix.lock", "mix.lock"},
     {".credo.exs", ".credo.exs"},
     {"CLAUDE.md", "CLAUDE.md"},
     {Path.join(Paths.base_dir(), "AGENTS.md"), "AGENTS.md"}

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Projects.Project do
           module_name: String.t() | nil,
           health_route_status: String.t() | nil,
           head_commit: String.t() | nil,
+          mix_lock_fingerprint: String.t() | nil,
           code_repo: String.t() | nil,
           docs_repo: String.t() | nil,
           client_api_url: String.t() | nil,
@@ -54,6 +55,12 @@ defmodule CodeMySpec.Projects.Project do
     # there); the harness runs it locally on every sync and reports it, the
     # same shape as `module_name`/`health_route_status`.
     field :head_commit, :string
+    # The fingerprint `Files.Scanner` computed for `mix.lock` the last time
+    # it was successfully read and recorded into `project_dependencies`
+    # (577de9bb step 3). `nil` means never reconciled, not "unchanged" — the
+    # reconciler treats those the same (both mean "read it"), but nothing
+    # downstream should.
+    field :mix_lock_fingerprint, :string
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
@@ -170,6 +177,7 @@ defmodule CodeMySpec.Projects.Project do
       :module_name,
       :health_route_status,
       :head_commit,
+      :mix_lock_fingerprint,
       :code_repo,
       :docs_repo,
       :client_api_url,
@@ -201,6 +209,9 @@ defmodule CodeMySpec.Projects.Project do
     )
     |> validate_inclusion(:health_route_status, ~w(ok no_health_route health_route_piped))
     |> validate_format(:head_commit, ~r/^[0-9a-f]{40}$/, message: "must be a git commit SHA")
+    |> validate_format(:mix_lock_fingerprint, ~r/^[0-9a-f]{64}$/,
+      message: "must be a sha256 hex digest"
+    )
     |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_deploy_key_hash()

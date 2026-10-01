@@ -428,6 +428,32 @@ defmodule CodeMySpec.WorkingCopies do
   def main(%Scope{}), do: nil
 
   @doc """
+  A scope per project that has designated a main copy, pointed at that
+  copy's own harness.
+
+  For sweeps that act on "every project's main checkout" rather than one
+  project at a time — `reconcile_lockfile/1`'s periodic backstop is the
+  first caller. Each scope is independently usable: `environment` is a
+  `:harness` environment addressed by that copy's own id, so a read against
+  one that happens to be offline right now fails on its own and does not
+  take the rest of the sweep down with it.
+  """
+  @spec main_copy_scopes() :: [Scope.t()]
+  def main_copy_scopes do
+    from(w in WorkingCopy, where: w.main, preload: [:project])
+    |> Repo.all()
+    |> Enum.reject(&is_nil(&1.project))
+    |> Enum.map(fn %WorkingCopy{project: project} = copy ->
+      %Scope{active_account_id: project.account_id}
+      |> project_scoped(project)
+      |> put_scope(copy)
+    end)
+  end
+
+  defp project_scoped(%Scope{} = scope, project),
+    do: %Scope{scope | active_project: project, active_project_id: project.id}
+
+  @doc """
   Which checkout a reader that named none is answered from.
 
   Most readers name none — a browser has no checkout, and neither does anything
