@@ -21,11 +21,29 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
-    field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
+    field :status, :string,
+      doc:
+        "open (default: incoming and accepted), all, or one of incoming, accepted, dismissed, resolved"
+
+    field :severity, :string,
+      doc: "medium or higher by default; all, or one of critical, high, medium, low, info"
+
     field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
     field :story_number, :integer, doc: "Filter by the related story's number"
+    field :query, :string, doc: "Text that the title or description contains (case-insensitive)"
+    field :limit, :integer, doc: "Most issues to return, newest first (default 50)"
   end
+
+  # 6da8e0e5: the default was every issue, by severity, and the reply is cut at
+  # 24KB. On metric_flow that was 547 issues and about 150 rows shown — critical
+  # and high — so a medium issue John had just filed from the widget never
+  # appeared, and main told him nothing had landed. Open and newest first is
+  # what an agent asking "what is there" means, and the footer says what was
+  # left out and how to reach it. Low and info are left out too unless asked
+  # for — John, 10-01: what an agent needs from a listing is what to act on.
+  @open [:incoming, :accepted]
+  @medium_up [:critical, :high, :medium]
+  @default_limit 50
 
   # Atoms, not strings, and that is load-bearing rather than stylistic.
   #
@@ -63,9 +81,28 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, filters} <- build_filters(params),
          {:ok, story_id} <- StoryRefs.story_id(scope, params[:story_number]) do
-      issues = list(scope, maybe_put(filters, :story_id, story_id))
-      shown = maybe_put(filters, :story_number, params[:story_number])
-      {:reply, IssuesMapper.issues_list_response(issues, shown), frame}
+      {statuses, filters} = Map.pop(filters, :statuses)
+      {severities, filters} = Map.pop(filters, :severities)
+
+      matching =
+        scope
+        |> list(maybe_put(filters, :story_id, story_id))
+        |> Enum.filter(
+          &(in?(&1.status, statuses) and in?(&1.severity, severities) and
+              contains?(&1, params[:query]))
+        )
+        |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+
+      shown =
+        filters
+        |> Map.put(:status, status_label(statuses))
+        |> Map.put(:severity, severity_label(severities))
+        |> maybe_put(:story_number, params[:story_number])
+        |> maybe_put(:query, params[:query])
+
+      issues = Enum.take(matching, limit(params[:limit]))
+
+      {:reply, IssuesMapper.issues_list_response(issues, shown, length(matching)), frame}
     else
       {:error, {:invalid_value, field, value, allowed}} ->
         {:reply,
@@ -119,18 +156,67 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   end
 
   defp build_filters(params) do
-    with {:ok, status} <- validate_filter(params[:status], :status, @valid_statuses),
-         {:ok, severity} <- validate_filter(params[:severity], :severity, @valid_severities),
+    with {:ok, statuses} <- statuses(params[:status]),
+         {:ok, severities} <- severities(params[:severity]),
          {:ok, scope} <- validate_filter(params[:scope], :scope, @valid_scopes) do
       filters =
-        %{}
-        |> maybe_put(:status, status)
-        |> maybe_put(:severity, severity)
+        %{statuses: statuses, severities: severities}
         |> maybe_put(:scope, scope)
 
       {:ok, filters}
     end
   end
+
+  defp statuses(nil), do: {:ok, @open}
+  defp statuses("open"), do: {:ok, @open}
+  defp statuses("all"), do: {:ok, nil}
+
+  defp statuses(value) do
+    case validate_filter(value, :status, @valid_statuses) do
+      {:ok, status} ->
+        {:ok, [status]}
+
+      {:error, {:invalid_value, field, value, allowed}} ->
+        {:error, {:invalid_value, field, value, [:open, :all | allowed]}}
+    end
+  end
+
+  defp severities(nil), do: {:ok, @medium_up}
+  defp severities("all"), do: {:ok, nil}
+
+  defp severities(value) do
+    case validate_filter(value, :severity, @valid_severities) do
+      {:ok, severity} ->
+        {:ok, [severity]}
+
+      {:error, {:invalid_value, field, value, allowed}} ->
+        {:error, {:invalid_value, field, value, [:all | allowed]}}
+    end
+  end
+
+  defp in?(_value, nil), do: true
+  defp in?(value, allowed), do: value in allowed
+
+  defp severity_label(nil), do: "all"
+  defp severity_label(@medium_up), do: "medium or higher"
+  defp severity_label([severity]), do: severity
+
+  defp status_label(nil), do: "all"
+  defp status_label(@open), do: "open"
+  defp status_label([status]), do: status
+
+  defp contains?(_issue, query) when query in [nil, ""], do: true
+
+  defp contains?(issue, query) do
+    needle = String.downcase(query)
+
+    Enum.any?([issue.title, issue.description], fn text ->
+      is_binary(text) and String.contains?(String.downcase(text), needle)
+    end)
+  end
+
+  defp limit(n) when is_integer(n) and n > 0, do: n
+  defp limit(_), do: @default_limit
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)

@@ -1362,6 +1362,26 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Tell the project's main agent something, if one is running. Delivered from a
+  task, because delivery waits on a turn the caller should not.
+  """
+  @spec notify_main(Scope.t(), String.t()) :: :ok
+  def notify_main(%Scope{} = scope, text) when is_binary(text) do
+    case main_agent(scope) do
+      nil ->
+        :ok
+
+      main ->
+        {:ok, _pid} =
+          Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+            message_agent(scope, main.id, text)
+          end)
+
+        :ok
+    end
+  end
+
   # Role as well as copy. This matched on the working copy alone, so "the main
   # agent" was whichever agent happened to be running on the main checkout —
   # and the main copy holds one agent only by convention, not by constraint.

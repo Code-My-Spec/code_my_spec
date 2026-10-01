@@ -18,12 +18,15 @@ defmodule CodeMySpecWeb.WidgetIssuesController do
   alias CodeMySpec.Issues
   alias CodeMySpec.Projects.Project
   alias CodeMySpecWeb.AppCredential
+  alias CodeMySpecWeb.WidgetIssueNotice
 
   def create(conn, %{"issue" => issue_params}) do
     case authenticate(conn) do
       {:ok, %Project{} = project} ->
         case Issues.report_widget_issue(project.account_id, project.id, issue_params) do
           {:ok, issue} ->
+            WidgetIssueNotice.send(project.account_id, project.id, issue)
+
             conn
             |> put_status(:created)
             |> put_view(json: CodeMySpecWeb.IssuesJSON)
