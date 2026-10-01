@@ -85,10 +85,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
   use Anubis.Server.Component, type: :tool
 
-  require Logger
-
   alias Anubis.Server.Response
-  alias CodeMySpec.Agents
+  alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
@@ -149,7 +147,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
          {:ok, project} <- Validators.devops_project(scope),
          {:ok, key} <- find_step(step),
          :ok <- require_environment(key, params) do
-      starter = {scope, frame.assigns[:agent_id], label(step, params)}
+      starter = Starter.new(scope, frame, label(step, params))
 
       scope
       |> Resources.project_scope(project)
@@ -263,13 +261,21 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        RunLock.with_lock(project.id, fn ->
-          send(parent, {ref, :locked})
-          Provisioning.run_step(scope, key, opts)
-        end)
+        RunLock.with_lock(
+          project.id,
+          fn ->
+            send(parent, {ref, :locked})
+            Provisioning.run_step(scope, key, opts)
+          end,
+          Starter.lock_holder(starter)
+        )
         |> case do
-          {:error, {:already_running, _}} = refused -> send(parent, {ref, refused})
-          finished -> tell_starter(finished, starter, project)
+          {:error, {:already_running, _}} = refused ->
+            send(parent, {ref, refused})
+
+          finished ->
+            {_scope, _agent_id, label} = starter
+            Starter.tell(starter, outcome_message(finished, label, project.name))
         end
       end)
 
@@ -282,8 +288,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   end
 
   defp reply({:ok, :started}, step, project, frame) do
-    {:reply, ok("#{step} for #{project.name} started — #{then_what(frame.assigns[:agent_id])}"),
-     frame}
+    {:reply, ok("#{step} for #{project.name} started — #{then_what(frame)}"), frame}
   end
 
   # The synchronous (test-mode) outcomes — `Provisioning.run_step/2`'s own
@@ -318,33 +323,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
      ), frame}
   end
 
-  defp then_what(agent_id) when is_binary(agent_id),
-    do: "you'll be messaged how it ends. Don't poll; end your turn if nothing else is waiting."
-
-  defp then_what(_agent_id), do: "call devops_status to watch it converge"
+  defp then_what(frame), do: Starter.then_what(frame.assigns[:agent_id])
 
   defp label(step, %{environment: env}) when is_binary(env) and env != "", do: "#{step} (#{env})"
   defp label(step, _params), do: step
-
-  # 1599c109: the starter ended its turn as told and nothing woke it when the
-  # step landed — eleven minutes idle, three times in a day. Same push
-  # `Promotion` uses for a restart's outcome. A caller with no agent row
-  # (Claude Code) watches `devops_status` instead.
-  defp tell_starter(_outcome, {_scope, nil, _label}, _project), do: :ok
-
-  defp tell_starter(outcome, {scope, agent_id, label}, project) do
-    text = outcome_message(outcome, label, project.name)
-
-    case Agents.dispatch_message(scope, agent_id, text) do
-      {:ok, _disposition, _message} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.info(
-          "[Provisioning] could not tell agent #{agent_id} how #{label} ended: #{inspect(reason)}"
-        )
-    end
-  end
 
   @doc false
   def outcome_message({:ok, %{state: state}}, label, name),

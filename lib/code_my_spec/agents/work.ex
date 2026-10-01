@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Conversations
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
@@ -54,7 +55,7 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Offer a turn to agents left holding a task with no turn open.
 
-  `runnable_state?/1` refuses an agent with an active task, which is right while
+  `runnable_state?/2` refuses an agent with an active task, which is right while
   a turn is genuinely running and wrong the moment one is not. A turn discarded
   mid-flight — a harness restart is the common way — clears `turn_started_at`
   and leaves the task held, which is the exact combination every recovery path
@@ -74,16 +75,18 @@ defmodule CodeMySpec.Agents.Work do
   def resume_held_tasks(scope, copy_id) do
     scope
     |> AgentsRepository.list_agents()
-    |> Enum.filter(&(&1.working_copy_id == copy_id and stranded?(&1)))
+    |> Enum.filter(&(&1.working_copy_id == copy_id and stranded?(scope, &1)))
     |> Enum.each(&resume(scope, &1))
 
     :ok
   end
 
-  defp stranded?(agent) do
+  # A held task with a turn ended to wait is not stranded: whatever it waits on
+  # messages it (`Waiting`).
+  defp stranded?(scope, agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id) and not refused_until_later?(agent)
+      not is_nil(agent.working_copy_id) and is_nil(Waiting.reason(scope, agent, :resume))
   end
 
   # Each offer asks the gate before it writes the prompt to the transcript, so
@@ -116,8 +119,8 @@ defmodule CodeMySpec.Agents.Work do
       "that id when it is done."
   end
 
-  # Same row lock and stamp as `reserve/2`, against `stranded?/1` rather than
-  # `runnable_state?/1` — two events racing to resume one agent must still hand
+  # Same row lock and stamp as `reserve/2`, against `stranded?/2` rather than
+  # `runnable_state?/2` — two events racing to resume one agent must still hand
   # out a single turn.
   defp reserve_stranded(scope, id) do
     Repo.transaction(fn ->
@@ -130,7 +133,7 @@ defmodule CodeMySpec.Agents.Work do
             lock: "FOR UPDATE"
         )
 
-      if agent && stranded?(agent), do: reserve(agent), else: :not_stranded
+      if agent && stranded?(scope, agent), do: reserve(agent), else: :not_stranded
     end)
   end
 
@@ -156,7 +159,7 @@ defmodule CodeMySpec.Agents.Work do
   """
   def offer_turn_with(scope, %Agent{} = agent, preface) when is_binary(preface) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
-         true <- runnable_state?(current),
+         true <- runnable_state?(scope, current),
          :ok <- Transport.deliverable(current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id) do
       turn_prompt = preface <> "\n\n" <> prompt(reserved)
@@ -202,7 +205,7 @@ defmodule CodeMySpec.Agents.Work do
 
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
-         true <- runnable_state?(current),
+         true <- runnable_state?(scope, current),
          {:work, offer} <- offer(scope, current),
          false <- already_declined?(current, offer),
          :ok <- Transport.deliverable(current),
@@ -253,7 +256,7 @@ defmodule CodeMySpec.Agents.Work do
   finished with nothing claimed. Until this existed the agent was re-offered
   the same work immediately and forever: ending a turn clears `turn_started_at`
   and the reservation, and declining leaves `active_task` nil, so every
-  condition `runnable_state?/1` tests is satisfied again the instant the turn
+  condition `runnable_state?/2` tests is satisfied again the instant the turn
   ends. The next observation — and a turn ending is itself enough to produce
   one — fires `consider_project/2` and hands the agent the offer it just
   refused.
@@ -275,7 +278,7 @@ defmodule CodeMySpec.Agents.Work do
   A turn that cannot be delivered never becomes a turn, so the agent never ends
   one and `record_decline/3` — which fires on the turn-ended path — never runs.
   Nothing else damps it either: `release/3` clears the reservation, which puts
-  the agent straight back into `runnable_state?/1`, and the next observation
+  the agent straight back into `runnable_state?/2`, and the next observation
   offers it the same work again.
 
   So an agent whose machine is unreachable spins on the *server* side, with no
@@ -375,7 +378,7 @@ defmodule CodeMySpec.Agents.Work do
             lock: "FOR UPDATE"
         )
 
-      if agent && runnable_state?(agent), do: reserve(agent), else: :not_runnable
+      if agent && runnable_state?(scope, agent), do: reserve(agent), else: :not_runnable
     end)
   end
 
@@ -394,35 +397,11 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  defp runnable_state?(agent) do
+  # Waiting last: it is the only part that reads beyond the row.
+  defp runnable_state?(scope, agent) do
     agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id) and not awaiting_tap_out?(agent) and
-      not refused_until_later?(agent)
-  end
-
-  # The provider refused its last turn and named when to come back (044599cc).
-  # A turn offered before then would only be refused again.
-  defp refused_until_later?(%{provider_retry_at: %DateTime{} = at}),
-    do: DateTime.compare(at, DateTime.utc_now()) == :gt
-
-  defp refused_until_later?(_agent), do: false
-
-  @doc """
-  Whether this agent has a tap-out waiting on a person.
-
-  Read off the pending request rather than a blocked task: a tap-out with no
-  `task_id` blocks no task, and its agent was nudged 40+ times (fad1a314).
-  Schemaless because `Notifications`, which owns the row, depends on `Agents`.
-  """
-  @spec awaiting_tap_out?(Agent.t()) :: boolean()
-  def awaiting_tap_out?(%Agent{id: agent_id}) do
-    from(p in "permission_requests",
-      where:
-        p.agent_id == type(^agent_id, :binary_id) and p.tool_name == "tap_out" and
-          p.status == "pending"
-    )
-    |> Repo.exists?()
+      not is_nil(agent.working_copy_id) and is_nil(Waiting.reason(scope, agent, :wake))
   end
 
   # A reservation is the gap between stamping a turn and the agent reporting it
@@ -439,7 +418,7 @@ defmodule CodeMySpec.Agents.Work do
   #
   # Measured on the math project 2026-09-22: coding stamped a reservation at
   # 01:53, the harness restarted three times, and the row carried it through
-  # every one. `runnable_state?/1` requires no open reservation, so the agent
+  # every one. `runnable_state?/2` requires no open reservation, so the agent
   # was un-admittable for two hours while its own `spex_boundary_ready` sat
   # ready and the other three roles waited behind it.
   #

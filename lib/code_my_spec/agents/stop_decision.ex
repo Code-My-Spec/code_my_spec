@@ -41,8 +41,8 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -58,11 +58,12 @@ defmodule CodeMySpec.Agents.StopDecision do
   def deliver(scope, agent, opts \\ [])
 
   def deliver(%Scope{} = scope, %Agent{} = agent, opts) do
-    # Holding nothing and waiting on its tap-out: any message here only buys a
-    # "still waiting" turn (070d1bab). The decision wakes it.
-    if is_nil(Agent.active_task(agent)) and Work.awaiting_tap_out?(agent),
-      do: :ok,
-      else: decide_and_deliver(scope, agent, opts)
+    # Waiting on something that messages it when it lands: anything said here
+    # only buys a "still waiting" turn. `Work` holds the wake on the same list.
+    case Waiting.reason(scope, agent, :turn_end) do
+      nil -> decide_and_deliver(scope, agent, opts)
+      _waiting -> :ok
+    end
   end
 
   defp decide_and_deliver(scope, agent, opts) do
@@ -132,22 +133,6 @@ defmodule CodeMySpec.Agents.StopDecision do
   # per turn.
   @stuck_threshold 5
 
-  # An agent that asked a person something is allowed to stop.
-  #
-  # Refusing it is the shape of loop that looks like diligence and is waste: the
-  # agent has nothing to do until a human types, the menu it would be handed
-  # says so in a line it cannot act on, and every stop costs a turn. John: "it
-  # shouldn't hit the agent with the stop hook."
-  #
-  # Nothing is lost by stopping, because the answer comes back as a message —
-  # `Notifications.answer_question_request/2` dispatches it through
-  # `Agents.send_to_agent/3` the moment it lands. That is the difference from
-  # `check_answer`, which needs a running agent to do the checking and so cannot
-  # be combined with going quiet.
-  #
-  # Above the validation call rather than below it: a blocked tree is still no
-  # reason to hammer an agent that cannot act on anything until it hears back,
-  # and the findings will still be there when it wakes.
   defp decide_with_key(%Scope{} = scope, %Agent{} = agent, opts) do
     decide_with_work(scope, agent, opts)
   end
@@ -191,17 +176,6 @@ defmodule CodeMySpec.Agents.StopDecision do
   # arriving for free rather than as a second emptiness check that could
   # disagree with the first.
   defp keep_working(%Scope{} = scope, %Agent{continuous: true} = agent) do
-    # Waiting on runs it started is not idling: `AnalysisReport` messages it
-    # when each lands or fails, so a continuation now only buys a "still
-    # waiting" turn. Watched on metric_flow 2026-09-27, 5-27 of those an hour.
-    if Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id),
-      do: {nil, nil},
-      else: continuation(scope, agent)
-  end
-
-  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
-
-  defp continuation(scope, agent) do
     # Narrowed to this agent's own role — R10. A coding agent asked whether the
     # *project* has work is held open by product's queue and QA's, neither of
     # which it can do anything about, and it would loop until somebody else
@@ -212,6 +186,8 @@ defmodule CodeMySpec.Agents.StopDecision do
       menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
     end
   end
+
+  defp keep_working(%Scope{}, %Agent{}), do: {nil, nil}
 
   # `tag` separates the counters — `:decision`, `:continuing`, `:wake` — so one
   # slot per agent doesn't let them overwrite each other's count and reset a

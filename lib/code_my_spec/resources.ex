@@ -212,16 +212,20 @@ defmodule CodeMySpec.Resources do
   second `Provisioning.run/3` ever starting. The caller polls
   `Resources.report/1` (what `devops_status` already reads) to watch it
   converge.
+
+  `opts[:holder]` is what `RunLock.with_lock/3` records as the run's holder;
+  `opts[:on_finish]` is called with the run's result when it lands — how the
+  agent that started it is told, without this module knowing agents exist.
   """
-  @spec fix_async(Scope.t(), Ecto.UUID.t()) ::
+  @spec fix_async(Scope.t(), Ecto.UUID.t(), keyword()) ::
           {:ok, :started}
           | {:error, :not_found}
           | {:error, {:already_running, DateTime.t() | nil}}
           | {:error, :lock_handshake_timeout}
-  def fix_async(%Scope{} = scope, project_id) when is_binary(project_id) do
+  def fix_async(%Scope{} = scope, project_id, opts \\ []) when is_binary(project_id) do
     case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
       nil -> {:error, :not_found}
-      project -> start_fix(scope, project)
+      project -> start_fix(scope, project, opts)
     end
   end
 
@@ -235,7 +239,7 @@ defmodule CodeMySpec.Resources do
   """
   @spec fix_all_async(Scope.t()) :: [{Ecto.UUID.t(), term()}]
   def fix_all_async(%Scope{} = scope) do
-    for project <- deployable(scope), do: {project.id, start_fix(scope, project)}
+    for project <- deployable(scope), do: {project.id, start_fix(scope, project, [])}
   end
 
   # The handshake that makes `fix_async/2` genuinely async while still
@@ -251,34 +255,30 @@ defmodule CodeMySpec.Resources do
   # neither the Ecto Sandbox checkout nor the Req.Test stub allowances the
   # test process set up; against fakes there is nothing to wait for anyway,
   # so running synchronously costs nothing and shares both.
-  defp start_fix(scope, project) do
+  defp start_fix(scope, project, opts) do
     project_scope = project_scope(scope, project)
     options = Provisioning.setup_options(project)
 
-    if Application.get_env(:code_my_spec, :provisioning_async, true) do
-      start_fix_async(project_scope, project, options)
-    else
-      RunLock.with_lock(project.id, fn ->
-        Provisioning.run(project_scope, options, step_opts())
-      end)
-      |> case do
-        {:error, {:already_running, _}} = refused -> refused
-        _finished -> {:ok, :started}
-      end
+    if Application.get_env(:code_my_spec, :provisioning_async, true),
+      do: start_fix_async(project_scope, project, options, opts),
+      else: start_fix_inline(project_scope, project, options, opts)
+  end
+
+  defp start_fix_inline(project_scope, project, options, opts) do
+    case run_fix(project_scope, project, options, opts, fn -> :ok end) do
+      {:error, {:already_running, _}} = refused -> refused
+      _finished -> {:ok, :started}
     end
   end
 
-  defp start_fix_async(project_scope, project, options) do
+  defp start_fix_async(project_scope, project, options, opts) do
     parent = self()
     ref = make_ref()
+    locked = fn -> send(parent, {ref, :locked}) end
 
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        RunLock.with_lock(project.id, fn ->
-          send(parent, {ref, :locked})
-          Provisioning.run(project_scope, options, step_opts())
-        end)
-        |> case do
+        case run_fix(project_scope, project, options, opts, locked) do
           {:error, {:already_running, _}} = refused -> send(parent, {ref, refused})
           _finished -> :ok
         end
@@ -291,6 +291,27 @@ defmodule CodeMySpec.Resources do
       5_000 -> {:error, :lock_handshake_timeout}
     end
   end
+
+  # `on_finish` runs after the lock is released, so a starter it wakes is no
+  # longer held by the run.
+  defp run_fix(project_scope, project, options, opts, locked) do
+    result =
+      RunLock.with_lock(
+        project.id,
+        fn ->
+          locked.()
+          Provisioning.run(project_scope, options, step_opts())
+        end,
+        Keyword.get(opts, :holder, [])
+      )
+
+    finished(result, Keyword.get(opts, :on_finish))
+    result
+  end
+
+  defp finished({:error, {:already_running, _}}, _on_finish), do: :ok
+  defp finished(_result, nil), do: :ok
+  defp finished(result, on_finish), do: on_finish.(result)
 
   defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 

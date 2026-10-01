@@ -971,6 +971,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # past.
       Agents.Work.resume_held_tasks(scope, copy_id)
 
+      # The retry-time wakes of agents refused until later, which lived in the
+      # process a restart took down.
+      Agents.RefusalWake.rearm(scope, copy_id)
+
       # 73d0d505: neither call above reaches a role a restart killed outright
       # rather than merely interrupted -- both require `status == :running`,
       # and an agent the harness never reported back in is `:stopped`. Gated
