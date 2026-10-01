@@ -33,9 +33,14 @@ defmodule CodeMySpecWeb.PreviewComponents do
   an empty address renders a blank rectangle indistinguishable from an app that
   rendered nothing, so the failure would land on Sam as "my app is broken" when
   the truth is that we do not know where it is.
+
+  The address bar above the frame shows `src`, not where the app has since
+  navigated: a cross-origin frame's location is not readable from the host.
   """
 
   use Phoenix.Component
+
+  import CodeMySpecWeb.CoreComponents, only: [icon: 1]
 
   @widths %{
     "phone" => "w-[390px]",
@@ -86,6 +91,45 @@ defmodule CodeMySpecWeb.PreviewComponents do
         <p class="text-sm opacity-70">
           Your app is running, but we do not have an address for it yet.
         </p>
+      </div>
+
+      <div
+        :if={@state == :running and not is_nil(@src)}
+        data-test="preview-address"
+        class={["join mb-1 max-w-full", @width_class]}
+      >
+        <input
+          id="preview-url"
+          type="text"
+          value={@src}
+          readonly
+          aria-label="Preview address"
+          data-test="preview-url"
+          class="input input-sm input-bordered join-item flex-1 min-w-0 font-mono text-xs"
+        />
+        <button
+          id="preview-copy"
+          type="button"
+          data-to="#preview-url"
+          phx-hook="Copy"
+          data-test="preview-copy"
+          class="btn btn-sm join-item"
+          title="Copy address"
+          aria-label="Copy address"
+        >
+          <.icon name="hero-clipboard-document" class="size-4" />
+        </button>
+        <a
+          href={@src}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-test="preview-open"
+          class="btn btn-sm join-item"
+          title="Open in new tab"
+          aria-label="Open in new tab"
+        >
+          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+        </a>
       </div>
 
       <iframe
