@@ -109,8 +109,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       then_ "every step through the deploy has resources behind it", context do
         # "UAT and prod live" is the sequence through `deploy`: a repository,
         # keys, both boxes, the name, the records pointing at them, and the app
-        # serving. `DevopsStatus` lists what is missing as `project/step`
-        # lines, so a step absent from that list has resources behind it.
+        # serving. `DevopsStatus`'s `Missing (n):` line names what is
+        # missing as `project/step`, so a step absent from it has resources
+        # behind it.
         #
         # Not "Setup is complete", which this asserted before. The steps after
         # deploy prove things a run cannot cause on its own — the widget's
@@ -124,7 +125,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
         # John's call, 2026-08-16, asked directly: end 1961 at "uat and prod
         # are serving".
         for step <- ~w(repository secrets server domain dns deploy) do
-          refute context.report =~ "/#{step}",
+          refute context.report =~ ~r"Missing \(\d+\):[^\n]*/#{step}\b",
                  "expected #{step} to have resources behind it after the default plan.\n\n" <>
                    "The run said: #{context.run}\n\nThe status says: #{context.report}"
         end

@@ -79,16 +79,21 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   is what makes "started or refused" the only two outcomes here, the same
   handshake `Resources.fix_async/2` uses: the spawned task claims the lock
   and only then acks this call, so "started" means the run genuinely holds
-  it. Call `devops_status` afterward to watch it converge.
+  it. An agent that started the step is messaged its outcome when it lands;
+  any other caller watches `devops_status`.
   """
 
   use Anubis.Server.Component, type: :tool
 
+  require Logger
+
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Resources
 
   schema do
@@ -144,9 +149,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
          {:ok, project} <- Validators.devops_project(scope),
          {:ok, key} <- find_step(step),
          :ok <- require_environment(key, params) do
+      starter = {scope, frame.assigns[:agent_id], label(step, params)}
+
       scope
       |> Resources.project_scope(project)
-      |> start_step_async(project, key, run_opts(params))
+      |> start_step_async(project, key, run_opts(params), starter)
       |> reply(step, project, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
@@ -236,9 +243,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   # genuinely different process, so under test it holds neither the caller's
   # Ecto Sandbox checkout nor its `Req.Test` stub allowances. Synchronous
   # under test shares those instead of racing the test's own lifetime.
-  defp start_step_async(scope, project, key, opts) do
+  defp start_step_async(scope, project, key, opts, starter) do
     case Application.get_env(:code_my_spec, :provisioning_run_async, true) do
-      true -> spawn_step_async(scope, project, key, opts)
+      true -> spawn_step_async(scope, project, key, opts, starter)
       _ -> RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, key, opts) end)
     end
   end
@@ -250,7 +257,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   # itself. The step keeps running under `CodeMySpec.TaskSupervisor`, a
   # process this call's own transport timeout (or the sandbox's 30s wall
   # clock) cannot reach.
-  defp spawn_step_async(scope, project, key, opts) do
+  defp spawn_step_async(scope, project, key, opts, starter) do
     parent = self()
     ref = make_ref()
 
@@ -262,7 +269,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
         end)
         |> case do
           {:error, {:already_running, _}} = refused -> send(parent, {ref, refused})
-          _finished -> :ok
+          finished -> tell_starter(finished, starter, project)
         end
       end)
 
@@ -275,7 +282,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   end
 
   defp reply({:ok, :started}, step, project, frame) do
-    {:reply, ok("#{step} for #{project.name} started — call devops_status to watch it converge"),
+    {:reply, ok("#{step} for #{project.name} started — #{then_what(frame.assigns[:agent_id])}"),
      frame}
   end
 
@@ -310,6 +317,56 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
        "could not confirm #{step} started for #{project.name} — check devops_status, or try again shortly"
      ), frame}
   end
+
+  defp then_what(agent_id) when is_binary(agent_id),
+    do: "you'll be messaged how it ends. Don't poll; end your turn if nothing else is waiting."
+
+  defp then_what(_agent_id), do: "call devops_status to watch it converge"
+
+  defp label(step, %{environment: env}) when is_binary(env) and env != "", do: "#{step} (#{env})"
+  defp label(step, _params), do: step
+
+  # 1599c109: the starter ended its turn as told and nothing woke it when the
+  # step landed — eleven minutes idle, three times in a day. Same push
+  # `Promotion` uses for a restart's outcome. A caller with no agent row
+  # (Claude Code) watches `devops_status` instead.
+  defp tell_starter(_outcome, {_scope, nil, _label}, _project), do: :ok
+
+  defp tell_starter(outcome, {scope, agent_id, label}, project) do
+    text = outcome_message(outcome, label, project.name)
+
+    case Agents.dispatch_message(scope, agent_id, text) do
+      {:ok, _disposition, _message} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info(
+          "[Provisioning] could not tell agent #{agent_id} how #{label} ended: #{inspect(reason)}"
+        )
+    end
+  end
+
+  @doc false
+  def outcome_message({:ok, %{state: state}}, label, name),
+    do: "Your #{label} step for #{name} finished: #{state}. #{answer()}"
+
+  def outcome_message({:halt, %{state: :paused}, reason}, label, name),
+    do:
+      "Your #{label} step for #{name} paused: #{Truncate.head_and_tail(reason)}\n\n" <>
+        "It will not continue on its own. #{answer()}"
+
+  def outcome_message({:halt, %{state: :errored}, reason}, label, name),
+    do:
+      "Your #{label} step for #{name} errored: #{Truncate.head_and_tail(reason)}\n\n" <>
+        "It is no longer running. #{answer()}"
+
+  # A done step whose provider could not be read halts without demoting it.
+  def outcome_message({:halt, %{state: state}, reason}, label, name),
+    do:
+      "Your #{label} step for #{name} stopped, still #{state}: " <>
+        "#{Truncate.head_and_tail(reason)}\n\n#{answer()}"
+
+  defp answer, do: "This is the outcome of the step you started — act on it now."
 
   defp ok(text), do: Response.tool() |> Response.text(text)
 
