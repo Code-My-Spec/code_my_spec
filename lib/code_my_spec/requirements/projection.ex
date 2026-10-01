@@ -175,6 +175,38 @@ defmodule CodeMySpec.Requirements.Projection do
   end
 
   @doc """
+  The rows of `stories` named `names`, each read at its own placement copy.
+
+  For a reader whose role sees every story wherever it is placed (product,
+  a31f1cd6 step 4d). A placed story's nodes exist only at the copy it is
+  reserved for — that copy's `Preloader.load/2` is the only one that projects
+  it — so that copy's verdict is the one there is, and the one its team works
+  against. Edges are those between the rows read, which keeps each story's own
+  chain; an edge from another entity is left out, and for these requirements
+  none clamps (`RequirementGraph.actionable_for_role_from/4`).
+
+  Every story must carry its `working_copy_id`.
+  """
+  @spec placed([map()], [String.t()]) :: {[Requirement.t()], [map()]}
+  def placed([], _names), do: {[], []}
+
+  def placed(stories, names) do
+    copy_of = Map.new(stories, &{&1.id, &1.working_copy_id})
+    copies = copy_of |> Map.values() |> Enum.uniq()
+
+    rows =
+      Node
+      |> where([n], n.story_id in ^Map.keys(copy_of) and n.working_copy_id in ^copies)
+      |> where([n], n.name in ^names)
+      |> Repo.all()
+      |> Enum.filter(&(Map.get(copy_of, &1.story_id) == &1.working_copy_id))
+
+    ctx = %{stories: stories, components_by_id: %{}}
+    nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
+    {nodes, edges_for(Edge, rows, Map.new(rows, &{&1.id, &1}), ctx)}
+  end
+
+  @doc """
   Whose view of the project this read is.
 
   Satisfaction is stored per working copy because that is what it has always

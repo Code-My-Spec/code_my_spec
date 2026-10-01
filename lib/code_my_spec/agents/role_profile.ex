@@ -22,6 +22,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
       as a session does. `:story` and `:epic` read the agent's own `story_id`
       and are confined to it until it is complete; only a `:story` role is
       assigned a story of its epic by claiming its work (a31f1cd6).
+    * `story_vantage` — whose stories its requirements are read on. `:copy`
+      reads the stories its checkout can see; `:project` reads every story in
+      the project wherever it is placed, each at its placement copy's verdict
+      (a31f1cd6 step 4d).
     * `home_copy` — `:main` for the roles that live on the project's main
       checkout, `:feature` for the ones that staff a working copy. Only a
       `:main` role may start on the main copy.
@@ -50,6 +54,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     :role,
     :requirements,
     :scope,
+    :story_vantage,
     :home_copy,
     :wake,
     :waiting_on,
@@ -80,6 +85,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
           role: role(),
           requirements: [:tagged | :untagged],
           scope: :project | :epic | :story,
+          story_vantage: :copy | :project,
           home_copy: :main | :feature,
           wake: [wake()],
           waiting_on: [{:question_pending, [:turn_end | :offer | :resume]}],
@@ -281,6 +287,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # Any requirement no role is named on is main's (John, step 4b).
       requirements: [:tagged, :untagged],
       scope: :project,
+      story_vantage: :copy,
       home_copy: :main,
       # Findings because it fixes code; widget issues because a person filed
       # them for it (6da8e0e5); a teammate stalling or dying because it is the
@@ -318,6 +325,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       role: :product,
       requirements: [:tagged],
       scope: :epic,
+      # Owns all triage, three amigos and story design, so it sees every story
+      # wherever it is placed — from the main copy, where it lives (step 4d).
+      story_vantage: :project,
       home_copy: :main,
       # Teammates' questions about criteria and spec are routed to it
       # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
@@ -341,6 +351,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       role: :coding,
       requirements: [:tagged],
       scope: :story,
+      story_vantage: :copy,
       home_copy: :feature,
       # Findings because it fixes code. QA and product do not: a digest that
       # says "call `list_problems`" is a turn with no move for a role that
@@ -359,6 +370,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       role: :qa,
       requirements: [:tagged],
       scope: :story,
+      story_vantage: :copy,
       home_copy: :feature,
       wake: [:work_offer, :nudge, :resume],
       waiting_on: [],
@@ -413,6 +425,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @doc "What `role` works across; `nil` for anything that is not a role (a session)."
   @spec scope(atom() | String.t() | nil) :: :project | :epic | :story | nil
   def scope(role), do: get_field(role, :scope)
+
+  @doc "Whose stories `role` reads: `:copy` for anything that is not a role."
+  @spec story_vantage(atom() | String.t() | nil) :: :copy | :project
+  def story_vantage(role), do: get_field(role, :story_vantage) || :copy
 
   @doc "Whether `role` may start on the project's main checkout."
   @spec lives_on_main_copy?(atom() | String.t() | nil) :: boolean()

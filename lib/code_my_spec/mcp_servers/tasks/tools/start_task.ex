@@ -74,8 +74,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     agent_id = Map.get(params, :agent_id) || caller_agent_id
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, requirement} <- resolve_requirement(scope, params),
-         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id, agent_id) do
+         {:ok, owner} <- resolve_owner(scope, session_id, caller_agent_id, agent_id),
+         {:ok, requirement} <- resolve_requirement(scope, params, owner) do
       start_or_resume(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} ->
@@ -83,41 +83,53 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp resolve_requirement(scope, %{requirement_name: name, entity_type: type, entity_id: ref})
+  defp resolve_requirement(
+         scope,
+         %{requirement_name: name, entity_type: type, entity_id: ref},
+         owner
+       )
        when is_binary(name) and is_binary(type) and is_binary(ref) do
     case StoryRefs.entity_id(scope, type, ref) do
       nil -> {:error, "Story #{ref} not found"}
-      id -> resolve_from_graph(scope, name, type, id)
+      id -> resolve_from_graph(scope, name, type, id, owner)
     end
   end
 
-  defp resolve_requirement(scope, %{requirement_name: name, module_name: module_name})
+  defp resolve_requirement(scope, %{requirement_name: name, module_name: module_name}, owner)
        when is_binary(name) and is_binary(module_name) do
     case Components.get_component_by_module_name(scope, module_name) do
       nil -> {:error, "Component not found: #{module_name}"}
-      component -> resolve_from_graph(scope, name, "component", component.id)
+      component -> resolve_from_graph(scope, name, "component", component.id, owner)
     end
   end
 
-  defp resolve_requirement(_scope, _params) do
+  defp resolve_requirement(_scope, _params, _owner) do
     {:error,
      "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
-  defp resolve_from_graph(scope, name, entity_type, entity_id) do
+  defp resolve_from_graph(scope, name, entity_type, entity_id, owner) do
     # Find the matching node in the computed graph
     {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
-    case Enum.find(all_nodes, fn n ->
-           n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
-         end) do
-      nil ->
-        {:error, "Requirement #{name} not found for #{entity_type} #{entity_id}"}
+    found =
+      Enum.find(all_nodes, fn n ->
+        n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
+      end) || placed(scope, owner, name, entity_type, entity_id)
 
-      node ->
-        {:ok, node}
+    case found do
+      nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_id}"}
+      node -> {:ok, node}
     end
   end
+
+  # A story placed on another copy has no node here. Product reads every story
+  # wherever it is placed, so its own work on one is read at that copy, as
+  # `get_next_requirement` offered it (a31f1cd6 step 4d).
+  defp placed(scope, %Agent{role: role}, name, "story", story_id),
+    do: Requirements.placed_story_node(scope, role, name, story_id)
+
+  defp placed(_scope, _owner, _name, _entity_type, _entity_id), do: nil
 
   # An agent we run holds its own tasks, so it is the owner and no session is
   # involved at all. It has none and cannot get one — it fires no hooks, so

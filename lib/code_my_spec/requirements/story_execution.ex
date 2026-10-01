@@ -6,7 +6,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   The project graph remains available for status and dependency diagnostics.
   """
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Requirements.{GraphWatcher, Preloader, RequirementGraph}
+  alias CodeMySpec.Requirements.{GraphWatcher, Preloader, Projection, Registry, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
   @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing story_promoted qa_complete story_issues_resolved story_issues_triaged)
@@ -38,6 +38,8 @@ defmodule CodeMySpec.Requirements.StoryExecution do
          ctx = Map.put(ctx, :withheld?, withheld?),
          {{nodes, edges}, _actionable, _at} <-
            RequirementGraph.cached_graph_with_actionable(scope) do
+      {nodes, edges, ctx} = across_project(scope, role, nodes, edges, ctx)
+
       case selected(scope, copy, requested_number, assignment) do
         {:ok, story} ->
           scoped = from_graph(story, nodes, edges, ctx, role)
@@ -56,6 +58,32 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     else
       _ -> result(:unavailable, nil, "This session has no working copy on this project.")
     end
+  end
+
+  # Every story in the project, for a role that reads them wherever they are
+  # placed (a31f1cd6 step 4d). John: product owns all triage, three amigos and
+  # story design, and it lives on the main copy — whose vantage holds only the
+  # unassigned stories and its own. A story placed on a feature copy has nodes
+  # only at that copy, so its product requirements are read there, at the
+  # verdict that copy's team works against, rather than recomputed here.
+  #
+  # Only this role's own requirements are brought across, so a placed story
+  # never offers it another role's work and a role-less read of this copy is
+  # unchanged. The stories join `ctx.stories` for ordering by story priority.
+  defp across_project(scope, role, nodes, edges, ctx) do
+    case RoleProfile.story_vantage(role) do
+      :project -> with_placed(Preloader.placed_elsewhere(scope), role, nodes, edges, ctx)
+      :copy -> {nodes, edges, ctx}
+    end
+  end
+
+  defp with_placed([], _role, nodes, edges, ctx), do: {nodes, edges, ctx}
+
+  defp with_placed(stories, role, nodes, edges, ctx) do
+    {placed_nodes, placed_edges} =
+      Projection.placed(stories, Registry.requirement_names_for_role(role))
+
+    {nodes ++ placed_nodes, edges ++ placed_edges, %{ctx | stories: ctx.stories ++ stories}}
   end
 
   # A story with nothing in it for this role does not hide the project.

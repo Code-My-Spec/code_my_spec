@@ -451,6 +451,26 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Repo.all()
   end
 
+  @doc """
+  The ready stories reserved for a checkout other than this scope's.
+
+  For a role that reads every story wherever it is placed
+  (`RoleProfile.story_vantage/1` is `:project` — product, a31f1cd6 step 4d).
+  `load/2` leaves these out on purpose: a copy is offered its own stories and
+  the unassigned ones. Their verdicts live at their placement copy's vantage,
+  which `Projection.placed/2` reads. Empty for a scope naming no checkout, which
+  already reads every story.
+  """
+  @spec placed_elsewhere(Scope.t()) :: [Story.t()]
+  def placed_elsewhere(%Scope{active_working_copy_id: nil}), do: []
+
+  def placed_elsewhere(%Scope{active_project_id: project_id, active_working_copy_id: copy_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+    |> where([s], not is_nil(s.working_copy_id) and s.working_copy_id != ^copy_id)
+    |> Repo.all()
+  end
+
   defp scope_to_harness(query, nil), do: query
 
   defp scope_to_harness(query, working_copy_id),
