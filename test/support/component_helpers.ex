@@ -32,7 +32,12 @@ defmodule CodeMySpecSpex.ComponentHelpers do
     frame = %Frame{assigns: %{current_scope: scope}}
     params = attrs |> Enum.into(%{})
 
-    {:reply, _response, _frame} = CreateComponent.execute(params, frame)
+    {:reply, response, _frame} = CreateComponent.execute(params, frame)
+
+    # Asserts its own success: a refused create used to come back as `nil` here
+    # and fail somewhere later that had nothing to do with it.
+    if response.isError,
+      do: raise("create_component refused #{inspect(params)}: #{inspect(response.content)}")
 
     Fixtures.get_component_by_module_name(scope, params.module_name)
   end
