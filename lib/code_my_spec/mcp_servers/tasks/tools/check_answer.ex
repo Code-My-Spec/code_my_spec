@@ -58,6 +58,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
       {:error, {:pending, holder}} ->
         {:reply, Response.tool() |> Response.text(still_open(holder)), frame}
 
+      {:error, {:withdrawn, reason}} ->
+        {:reply,
+         Response.tool()
+         |> Response.text("You withdrew this question: #{reason}. Nothing will answer it."),
+         frame}
+
       {:error, :not_found} ->
         {:reply, Response.tool() |> Response.error(not_found(id)), frame}
 
@@ -107,6 +113,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
     """
   end
 
+  defp still_open("product_agent") do
+    """
+    Still waiting on the product agent — not an error. It owns the story's
+    criteria and spec, and answers or passes the question to the user.
+
+    Do something else useful, or stop, and check again with the same id later.
+    Do not re-ask the same question — that queues a duplicate.
+    """
+  end
+
   defp still_open(_holder) do
     """
     Still waiting on the user — not an error, they just haven't answered yet.
@@ -134,6 +150,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   defp labeled(%{answered_by: "main_agent"}, reply),
     do: "The main agent replied, from project records:\n#{reply}"
 
+  defp labeled(%{answered_by: "product_agent"}, reply),
+    do: "The product agent replied, as the owner of the criteria:\n#{reply}"
+
   defp labeled(_request, reply), do: "The user replied:\n#{reply}"
 
   # Same contract `QuestionClient.await_answer/2` had — `{:ok, answers}` and
@@ -149,7 +168,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
     end
   end
 
-  defp owned_request(id, frame) do
+  @doc """
+  The question `id`, if the caller asked it: the same agent, or the same
+  Claude Code session. `{:error, :not_found}` otherwise, whoever else's it is.
+  """
+  @spec owned_request(String.t(), map()) :: {:ok, map()} | {:error, :not_found}
+  def owned_request(id, frame) do
     case Notifications.get_question_request(id) do
       nil ->
         {:error, :not_found}
@@ -189,6 +213,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
 
       {:ok, %{status: "answered", answers: answers} = request} when is_map(answers) ->
         {:ok, request}
+
+      {:ok, %{status: "withdrawn", withdrawn_reason: reason}} ->
+        {:error, {:withdrawn, reason}}
 
       {:ok, %{holder: holder}} ->
         remaining = max(deadline - System.monotonic_time(:millisecond), 0)

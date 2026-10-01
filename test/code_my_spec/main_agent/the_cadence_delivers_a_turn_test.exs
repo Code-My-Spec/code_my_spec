@@ -52,25 +52,19 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
     agent
   end
 
-  test "a tick delivers the digest to the project's main agent" do
+  # a31f1cd6 step 4b, John: "hold them". A non-continuous agent is woken only by
+  # a person and its own replies, so the tick no longer pushes it the digest; a
+  # continuous main is offered a turn by `Work.consider_project/2` instead.
+  test "a tick holds the digest from a non-continuous main" do
     scope = full_scope_fixture()
-    main = main_agent(scope)
+    _main = main_agent(scope)
 
     assert Agents.main_agent(scope), "main_agent/1 cannot find the agent"
 
     {:ok, pid} = Cadence.start_link(scope)
     send(pid, :check_in)
 
-    assert_receive {:agent_message, id, text}, 5_000
-
-    assert id == main.id, """
-    The tick reached the transport but addressed the wrong agent.
-    """
-
-    assert is_binary(text) and text != "", """
-    The digest arrived empty. An empty check-in reads as all-quiet, which is the
-    reassuring answer, so it must not be what a tick sends by default.
-    """
+    refute_receive {:agent_message, _id, _text}, 1_000
   end
 
   test "a stood-down project's tick delivers nothing" do
@@ -109,30 +103,29 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
       )
   end
 
-  describe "a blocker raised by another agent" do
-    test "a question reaches main now, not at the next tick" do
+  # Step 4b: held for a non-continuous main as well; it collects them from
+  # `list_notifications` when a person brings it back.
+  describe "a blocker raised by another agent, to a non-continuous main" do
+    test "a question does not wake it" do
       scope = full_scope_fixture()
-      main = main_agent(scope)
+      _main = main_agent(scope)
       coder = coding_agent(scope)
       {:ok, _pid} = Cadence.start_link(scope)
 
       ask(scope, coder.id)
 
-      assert_receive {:agent_message, id, text}, 5_000
-      assert id == main.id
-      assert text =~ "Which way?"
+      refute_receive {:agent_message, _id, _text}, 1_000
     end
 
-    test "a tap-out reaches main now, not at the next tick" do
+    test "a tap-out does not wake it" do
       scope = full_scope_fixture()
-      main = main_agent(scope)
+      _main = main_agent(scope)
       coder = coding_agent(scope)
       {:ok, _pid} = Cadence.start_link(scope)
 
       {:ok, _request} = Notifications.request_agent_tap_out(scope, coder.id, nil, "stuck")
 
-      assert_receive {:agent_message, id, _text}, 5_000
-      assert id == main.id
+      refute_receive {:agent_message, _id, _text}, 1_000
     end
   end
 

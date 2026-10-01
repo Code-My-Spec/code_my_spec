@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3054Spex do
         Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
-        agent_id = running_agent(context)
+        agent_id = running_agent(context, %{"continuous" => true})
         # The agent wrote the file the finding is about.
         #
         # Recorded because that is now what makes a finding its own:

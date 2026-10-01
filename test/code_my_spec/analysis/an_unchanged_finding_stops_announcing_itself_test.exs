@@ -58,6 +58,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
     {:ok, _agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
+        continuous: true,
         engine: :alloy,
         role: "coding",
         working_copy: "/tmp/unchanged-#{System.unique_integer([:positive])}",
@@ -150,6 +151,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
     {:ok, agent} =
       AgentsRepository.create_agent(ctx.scope, %{
         provider: "anthropic",
+        continuous: true,
         engine: :alloy,
         role: "coding",
         working_copy: "/tmp/asked-#{System.unique_integer([:positive])}",
@@ -189,6 +191,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
     {:ok, agent} =
       AgentsRepository.create_agent(ctx.scope, %{
         provider: "anthropic",
+        continuous: true,
         engine: :alloy,
         role: "coding",
         working_copy: "/tmp/asker-#{System.unique_integer([:positive])}",

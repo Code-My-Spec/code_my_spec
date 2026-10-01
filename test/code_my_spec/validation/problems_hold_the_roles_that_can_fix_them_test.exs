@@ -33,8 +33,9 @@ defmodule CodeMySpec.Validation.ProblemsHoldTheRolesThatCanFixThemTest do
     assert :problems in live_classes(scope, :coding)
   end
 
-  test "main is held — it does everything", %{scope: scope} do
-    assert :problems in live_classes(scope, :main)
+  # a31f1cd6 step 4b, John: "holds_problems is coding only".
+  test "main is not held — fixing the tree is coding's", %{scope: scope} do
+    refute :problems in live_classes(scope, :main)
   end
 
   # The report. QA tests one story; a compile error somewhere else is not a

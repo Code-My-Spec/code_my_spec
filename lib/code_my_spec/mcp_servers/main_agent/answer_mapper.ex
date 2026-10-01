@@ -128,6 +128,13 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
     )
   end
 
+  def error(:not_yours),
+    do:
+      refuse(
+        "That question is not yours to answer: product answers the criteria questions " <>
+          "routed to it, and the rest are main's or the user's."
+      )
+
   def error(reason), do: refuse("Could not do that: #{inspect(reason)}")
 
   defp refuse(text), do: Response.tool() |> Response.error(text)

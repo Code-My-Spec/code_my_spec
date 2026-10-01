@@ -314,5 +314,6 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
   defp status_class("approved"), do: "badge-success"
   defp status_class("denied"), do: "badge-error"
   defp status_class("expired"), do: "badge-ghost"
+  defp status_class("withdrawn"), do: "badge-ghost"
   defp status_class(_), do: "badge-ghost"
 end

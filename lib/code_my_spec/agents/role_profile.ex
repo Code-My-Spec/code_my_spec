@@ -17,7 +17,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
 
     * `requirements` — which requirements the role is offered, as selectors
       `Requirements` interprets. `:tagged` is every requirement whose definition
-      names this role.
+      names this role; `:untagged` every one that names no role.
     * `scope` — what the role works across. `:project` reads its copy's story,
       as a session does. `:story` and `:epic` read the agent's own `story_id`
       and are confined to it until it is complete; only a `:story` role is
@@ -30,8 +30,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       `:work_offer` (the graph), `:nudge` (its turn-end review), `:resume`
       (a task it holds with no turn open), `:teammate_question` (questions
       other agents raised that it answers first), `:findings` (analysis
-      findings nobody asked it for), `:issue_filed` (widget issues) and
-      `:cadence` (the main agent's check-in timer).
+      findings nobody asked it for), `:issue_filed` (widget issues),
+      `:cadence` (the main agent's check-in timer) and `:teammate_stalled` /
+      `:teammate_died` (a teammate stalled, died or was reaped).
     * `waiting_on` — role-specific waits `Agents.Waiting` holds the turn-end
       nudge for. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
@@ -72,10 +73,12 @@ defmodule CodeMySpec.Agents.RoleProfile do
           | :findings
           | :issue_filed
           | :cadence
+          | :teammate_stalled
+          | :teammate_died
 
   @type t :: %__MODULE__{
           role: role(),
-          requirements: [:tagged],
+          requirements: [:tagged | :untagged],
           scope: :project | :epic | :story,
           home_copy: :main | :feature,
           wake: [wake()],
@@ -127,6 +130,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
     list_qa_attempts submit_qa_result invalidate_qa_attempt
+    withdraw_question
     call_mcp_server
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
@@ -191,7 +195,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     show_component_requirements show_architecture_overview
     create_component update_component validate_dependency_graph set_story_component
     list_requirements show_requirement
-    list_rules list_questions
+    list_rules list_questions withdraw_question
     list_issues get_issue create_issue resolve_issue
     list_knowledge read_knowledge semantic_search refresh_embeddings
     read_project_file write_project_file
@@ -240,6 +244,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     set_story_component create_component update_component delete_component
     validate_dependency_graph execute_proposal show_architecture_overview
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
+    list_notifications answer_notification escalate_question withdraw_question
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
   )
@@ -271,12 +276,24 @@ defmodule CodeMySpec.Agents.RoleProfile do
     # the others.
     %{
       role: :main,
-      requirements: [:tagged],
+      # Any requirement no role is named on is main's (John, step 4b).
+      requirements: [:tagged, :untagged],
       scope: :project,
       home_copy: :main,
       # Findings because it fixes code; widget issues because a person filed
-      # them for it (6da8e0e5).
-      wake: [:work_offer, :nudge, :resume, :teammate_question, :findings, :issue_filed, :cadence],
+      # them for it (6da8e0e5); a teammate stalling or dying because it is the
+      # one who restarts or unsticks it (step 4b).
+      wake: [
+        :work_offer,
+        :nudge,
+        :resume,
+        :teammate_question,
+        :findings,
+        :issue_filed,
+        :cadence,
+        :teammate_stalled,
+        :teammate_died
+      ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
       # A coding or QA agent's question blocks only the task it was asked
       # about (0b324cab).
@@ -286,7 +303,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
       questions_to: :user,
       tools: :all,
       browses?: true,
-      holds_problems?: true,
+      # Not held on problems: fixing a broken tree is coding's (John, step 4b).
+      holds_problems?: false,
       # Offered only its own work, but may take over any role's by hand to
       # unstick a teammate (John, 2026-10-01).
       claims_any?: true,
@@ -297,7 +315,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       requirements: [:tagged],
       scope: :epic,
       home_copy: :feature,
-      wake: [:work_offer, :nudge, :resume],
+      # Teammates' questions about criteria and spec are routed to it
+      # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
+      wake: [:work_offer, :nudge, :resume, :teammate_question],
       waiting_on: [],
       # The one role that owns questions: blocking it on them left the block
       # naming no actor (56cf5697).
@@ -409,7 +429,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   end
 
   @doc "The requirement selectors for `role`; `[]` for a role nobody defined."
-  @spec requirements(atom() | nil) :: [:tagged]
+  @spec requirements(atom() | nil) :: [:tagged | :untagged]
   def requirements(role) do
     case get(role) do
       nil -> []

@@ -61,6 +61,13 @@ defmodule CmsHarness.Agents.Tools.AskUserQuestion do
         task_id: %{
           type: ["string", "null"],
           description: "Task to block. Omit to use your active task; null asks without a task."
+        },
+        about: %{
+          type: "string",
+          enum: ["criteria"],
+          description:
+            "`criteria` when it is about a story's acceptance criteria or spec: it goes " <>
+              "to the product agent, which owns them, instead of up to the user."
         }
       },
       required: ["questions"]
