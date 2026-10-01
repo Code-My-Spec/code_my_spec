@@ -194,7 +194,9 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     refute_received {:agent_message, _, _}
 
     # Even a direct send is refused at the gate; nothing reaches the machine.
-    assert {:error, {:off, _}} = Agents.send_to_agent(ctx.agent.id, "use postgres")
+    assert {:error, {:off, _}} =
+             Agents.send_to_agent(ctx.agent.id, "use postgres", :question_answered)
+
     refute_received {:agent_dispatch, _, _, _}
   end
 
@@ -242,7 +244,9 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
         off_by: "Harness"
       })
 
-    assert {:error, {:off, _}} = Work.offer_turn_with(ctx.scope, off, "carry on")
+    assert {:error, {:off, _}} =
+             Work.offer_turn_with(ctx.scope, off, "carry on", :blocker_resolved)
+
     assert Conversations.list_messages(conversation) == []
   end
 end

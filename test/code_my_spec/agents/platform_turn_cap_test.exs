@@ -122,7 +122,7 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
       visitor_said(scope, agent, 10)
 
       assert {:error, {:turn_cap_reached, 10}} =
-               Agents.dispatch_message(scope, agent.id, "one more"),
+               Agents.dispatch_message(scope, agent.id, "one more", :operator_message),
              "the eleventh message went through, so the cap does not bind and the " <>
                "configuration that says this spend is bounded is not true. A cap " <>
                "that never fires is worse than none: it is a claim nobody checks."
@@ -137,7 +137,8 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
       # and that is exactly why it is worth asserting. Without it, the test
       # above passes whether the cap fires at ten or the dispatch simply always
       # fails, and those are indistinguishable from a green suite.
-      assert {:error, reason} = Agents.dispatch_message(scope, agent.id, "still allowed")
+      assert {:error, reason} =
+               Agents.dispatch_message(scope, agent.id, "still allowed", :operator_message)
 
       refute match?({:turn_cap_reached, _}, reason),
              "the cap refused a turn inside the allowance, so it is not counting -- " <>
@@ -153,7 +154,8 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
       agent = agent_row(scope, "anthropic")
       visitor_said(scope, agent, 2)
 
-      assert {:error, {:turn_cap_reached, 2}} = Agents.dispatch_message(scope, agent.id, "hi"),
+      assert {:error, {:turn_cap_reached, 2}} =
+               Agents.dispatch_message(scope, agent.id, "hi", :operator_message),
              "the cap is not configurable, or the refusal does not carry the number " <>
                "it enforced — and a message that has to hardcode the limit goes " <>
                "stale the first time somebody changes it."

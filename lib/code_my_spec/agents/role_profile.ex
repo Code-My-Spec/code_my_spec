@@ -25,9 +25,13 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `home_copy` — `:main` for the roles that live on the project's main
       checkout, `:feature` for the ones that staff a working copy. Only a
       `:main` role may start on the main copy.
-    * `wake` — what wakes it: `:events` (the graph, messages), `:cadence` (the
-      main agent's check-in timer) and `:teammate_questions` (questions other
-      agents raised that it answers first).
+    * `wake` — the `Agents.Wake` event kinds it is woken by, beyond those
+      relevant to everyone (a person's message, replies to its own requests):
+      `:work_offer` (the graph), `:nudge` (its turn-end review), `:resume`
+      (a task it holds with no turn open), `:teammate_question` (questions
+      other agents raised that it answers first), `:findings` (analysis
+      findings nobody asked it for), `:issue_filed` (widget issues) and
+      `:cadence` (the main agent's check-in timer).
     * `waiting_on` — role-specific waits `Agents.Waiting` holds the turn-end
       nudge for. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
@@ -36,7 +40,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `tools` — `:all`, or the explicit list it may call.
     * `browses?` — whether its machine's browser tools are added to its list.
     * `holds_problems?` — whether a broken tree holds it (it can fix one).
-    * `hears_findings?` — whether an analysis run's findings are broadcast to it.
     * `model_preference` — providers and models, most preferred first.
   """
 
@@ -55,19 +58,27 @@ defmodule CodeMySpec.Agents.RoleProfile do
     :browses?,
     :holds_problems?,
     :claims_any?,
-    :hears_findings?,
     :model_preference
   ]
   defstruct @enforce_keys
 
   @type role :: :main | :product | :coding | :qa
 
+  @type wake ::
+          :work_offer
+          | :nudge
+          | :resume
+          | :teammate_question
+          | :findings
+          | :issue_filed
+          | :cadence
+
   @type t :: %__MODULE__{
           role: role(),
           requirements: [:tagged],
           scope: :project | :epic | :story,
           home_copy: :main | :feature,
-          wake: [:events | :cadence | :teammate_questions],
+          wake: [wake()],
           waiting_on: [:question_pending],
           questions_block?: boolean(),
           questions_to: :main | :user,
@@ -75,7 +86,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
           browses?: boolean(),
           holds_problems?: boolean(),
           claims_any?: boolean(),
-          hears_findings?: boolean(),
           model_preference: [{String.t(), String.t()}]
         }
 
@@ -264,7 +274,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       requirements: [:tagged],
       scope: :project,
       home_copy: :main,
-      wake: [:cadence, :events, :teammate_questions],
+      # Findings because it fixes code; widget issues because a person filed
+      # them for it (6da8e0e5).
+      wake: [:work_offer, :nudge, :resume, :teammate_question, :findings, :issue_filed, :cadence],
       # Its own question holds the turn-end nudge: it has nothing else to do.
       # A coding or QA agent's question blocks only the task it was asked
       # about (0b324cab).
@@ -278,7 +290,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # Offered only its own work, but may take over any role's by hand to
       # unstick a teammate (John, 2026-10-01).
       claims_any?: true,
-      hears_findings?: true,
       model_preference: @strong
     },
     %{
@@ -286,7 +297,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       requirements: [:tagged],
       scope: :epic,
       home_copy: :feature,
-      wake: [:events],
+      wake: [:work_offer, :nudge, :resume],
       waiting_on: [],
       # The one role that owns questions: blocking it on them left the block
       # naming no actor (56cf5697).
@@ -296,7 +307,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
       browses?: false,
       holds_problems?: false,
       claims_any?: false,
-      hears_findings?: false,
       model_preference: @strong
     },
     %{
@@ -304,7 +314,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
       requirements: [:tagged],
       scope: :story,
       home_copy: :feature,
-      wake: [:events],
+      # Findings because it fixes code. QA and product do not: a digest that
+      # says "call `list_problems`" is a turn with no move for a role that
+      # does not carry it.
+      wake: [:work_offer, :nudge, :resume, :findings],
       waiting_on: [],
       questions_block?: true,
       questions_to: :main,
@@ -312,7 +325,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
       browses?: true,
       holds_problems?: true,
       claims_any?: false,
-      hears_findings?: true,
       model_preference: @strong
     },
     %{
@@ -320,7 +332,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       requirements: [:tagged],
       scope: :story,
       home_copy: :feature,
-      wake: [:events],
+      wake: [:work_offer, :nudge, :resume],
       waiting_on: [],
       questions_block?: true,
       questions_to: :main,
@@ -328,7 +340,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
       browses?: true,
       holds_problems?: false,
       claims_any?: false,
-      hears_findings?: false,
       model_preference: @cheap
     }
   ]
@@ -450,9 +461,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
 
   def questions_block?(_role), do: true
 
-  @doc "Whether `role` is woken by `trigger`."
+  @doc "Whether `role` is woken by `event` (an `Agents.Wake` event kind)."
   @spec wakes_on?(atom() | nil, atom()) :: boolean()
-  def wakes_on?(role, trigger), do: trigger in (get_field(role, :wake) || [])
+  def wakes_on?(role, event), do: event in (get_field(role, :wake) || [])
 
   @doc "Whether `Agents.Waiting` holds `role` on `wait`."
   @spec waits_on?(atom() | nil, atom()) :: boolean()

@@ -1,0 +1,121 @@
+defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
+  @moduledoc """
+  a31f1cd6 / metric_flow: the team's last story was promoted, its agents hold
+  no story (the step-3 backfill copied a nil `active_story_id`), and an issue
+  accepted on that story reopens it. Nobody selects it; the idle team has to
+  find it on its own — reserved to its copy, or released to nobody.
+  """
+
+  use CodeMySpecSpex.Case, async: false
+
+  import CodeMySpec.IssuesFixtures
+
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.Story
+  alias CodeMySpecSpex.StorySliceHelpers, as: Slice
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  setup ctx do
+    coding = CodeMySpecSpex.Fixtures.running_agent(ctx.scope, role: "coding")
+    qa = CodeMySpecSpex.Fixtures.running_agent(ctx.scope, role: "qa")
+    ctx = Map.merge(ctx, %{coding: coding, qa: qa}) |> Slice.complete() |> Slice.main_copy()
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    at = DateTime.add(DateTime.utc_now(), -3600)
+    {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.15", at: at)
+    Slice.assert_active(Slice.next(ctx, %{agent_id: coding.id}), ctx, "complete")
+
+    # Installed after the fixtures, which swap the transport themselves.
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
+    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    CodeMySpecTest.RecordingAgentTransport.listen()
+
+    # The backfill: nobody on the copy holds a story.
+    Repo.update_all(Agent, set: [story_id: nil, continuous: true])
+    %{ctx | coding: reload(coding), qa: reload(qa)}
+  end
+
+  defp reload(agent), do: Repo.get!(Agent, agent.id)
+
+  defp reopen(ctx) do
+    issue = issue_fixture(ctx.scope, %{story_id: ctx.story.id})
+    {:ok, issue} = Issues.accept_issue(ctx.scope, issue)
+    issue
+  end
+
+  defp release(ctx, false), do: ctx
+
+  defp release(ctx, true) do
+    Repo.update_all(Story, set: [working_copy_id: nil])
+    ctx
+  end
+
+  defp offered(ctx, agent) do
+    ctx.scope
+    |> Work.claimable_work(reload(agent))
+    |> Enum.map(&{&1.name, to_string(&1.entity_id)})
+  end
+
+  defp start(ctx, agent, name) do
+    Slice.call(
+      ctx,
+      StartTask,
+      %{requirement_name: name, entity_type: "story", entity_id: to_string(ctx.story.number)},
+      %{agent_id: agent.id}
+    )
+  end
+
+  for {label, released?} <- [{"reserved to this copy", false}, {"unassigned", true}] do
+    @released released?
+
+    test "a reopened story #{label} is picked up and seen through", ctx do
+      ctx = release(ctx, @released)
+      issue = reopen(ctx)
+      story_id = to_string(ctx.story.id)
+
+      assert {"story_issues_resolved", story_id} in offered(ctx, ctx.coding),
+             "the idle coder is offered the reopened story's issue work"
+
+      coding_id = ctx.coding.id
+
+      # The graph's own wake runs off-process; asking here as it does makes the
+      # offer deterministic, and whichever of the two lands first is the turn.
+      Work.consider_project(ctx.scope, :graph_changed)
+
+      assert_receive {:work_turn_requested, ^coding_id, ref, _prompt},
+                     500,
+                     "the idle continuous coder is offered the reopened story"
+
+      Work.release(ctx.scope, coding_id, ref)
+
+      start(ctx, ctx.coding, "story_issues_resolved")
+
+      assert reload(ctx.coding).story_id == ctx.story.id
+      assert reload(ctx.qa).story_id == ctx.story.id, "the whole team takes the story"
+
+      coding = reload(ctx.coding)
+      [task] = Enum.filter(coding.tasks || [], &(&1.status == :active))
+      {:ok, _} = Issues.resolve_issue(ctx.scope, issue, "fixed")
+      {:ok, _} = CodeMySpec.TaskOwner.complete_task(ctx.scope, coding, task.id)
+
+      assert {"story_promoted", story_id} in offered(ctx, ctx.coding),
+             "after the fix, the story goes back to promote"
+
+      assert reload(ctx.coding).story_id == ctx.story.id
+      assert reload(ctx.qa).story_id == ctx.story.id
+
+      story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+      at = DateTime.add(DateTime.utc_now(), 1)
+      {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.16", at: at)
+
+      Slice.assert_active(Slice.next(ctx, %{agent_id: ctx.coding.id}), ctx, "complete")
+      assert reload(ctx.qa).story_id == ctx.story.id
+    end
+  end
+end

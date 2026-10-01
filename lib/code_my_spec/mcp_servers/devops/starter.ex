@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.Devops.Starter do
   def tell({_scope, nil, _label}, _text), do: :ok
 
   def tell({scope, agent_id, label}, text) do
-    case Agents.dispatch_message(scope, agent_id, text) do
+    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
       {:ok, _disposition, _message} ->
         :ok
 

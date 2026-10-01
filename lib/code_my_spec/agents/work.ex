@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
-  alias CodeMySpec.Agents.Waiting
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
@@ -58,7 +58,7 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Offer a turn to agents left holding a task with no turn open.
 
-  `runnable_state?/2` refuses an agent with an active task, which is right while
+  `runnable_state?/3` refuses an agent with an active task, which is right while
   a turn is genuinely running and wrong the moment one is not. A turn discarded
   mid-flight — a harness restart is the common way — clears `turn_started_at`
   and leaves the task held, which is the exact combination every recovery path
@@ -85,17 +85,17 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # A held task with a turn ended to wait is not stranded: whatever it waits on
-  # messages it (`Waiting`).
+  # messages it (`Wake`, through `Waiting`).
   defp stranded?(scope, agent) do
-    agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
+    agent.status == :running and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id) and is_nil(Waiting.reason(scope, agent, :resume))
+      not is_nil(agent.working_copy_id) and Wake.decide(scope, agent, :resume) == :wake
   end
 
-  # Each offer asks the gate before it writes the prompt to the transcript, so
+  # Each offer asks `Wake` before it writes the prompt to the transcript, so
   # an off agent's thread never shows a turn it was not given (39af5611).
   defp resume(scope, agent) do
-    with :ok <- Transport.deliverable(agent),
+    with :ok <- Wake.allow?(scope, agent, :resume),
          {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
       turn_prompt = resume_prompt(reserved)
       Conversations.record_sent_to_agent(reserved, turn_prompt)
@@ -123,7 +123,7 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # Same row lock and stamp as `reserve/2`, against `stranded?/2` rather than
-  # `runnable_state?/2` — two events racing to resume one agent must still hand
+  # `runnable_state?/3` — two events racing to resume one agent must still hand
   # out a single turn.
   defp reserve_stranded(scope, id) do
     Repo.transaction(fn ->
@@ -159,12 +159,14 @@ defmodule CodeMySpec.Agents.Work do
 
   So the correction has to be what the agent is answering, not something it
   could answer past.
+
+  `event` is what `Wake` is asked about: `:question_answered` for an answer,
+  `:blocker_resolved` for a released block or a denied tap-out.
   """
-  def offer_turn_with(scope, %Agent{} = agent, preface) when is_binary(preface) do
+  def offer_turn_with(scope, %Agent{} = agent, preface, event) when is_binary(preface) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
-         true <- runnable_state?(scope, current),
-         :ok <- Transport.deliverable(current),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id) do
+         :ok <- admit(scope, current, event),
+         {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = preface <> "\n\n" <> prompt(reserved)
       Conversations.record_sent_to_agent(reserved, turn_prompt)
 
@@ -183,9 +185,7 @@ defmodule CodeMySpec.Agents.Work do
           error
       end
     else
-      false -> {:ok, :not_runnable}
-      {:ok, :not_runnable} = result -> result
-      error -> error
+      hold -> not_admitted(hold)
     end
   end
 
@@ -194,25 +194,29 @@ defmodule CodeMySpec.Agents.Work do
   when it cannot — then offer its copy a turn, so a busy agent still reads the
   notice on its next one.
   """
-  def wake_with_notice(scope, %Agent{} = agent, notice, reason) when is_binary(notice) do
-    case offer_turn_with(scope, agent, notice) do
+  def wake_with_notice(scope, %Agent{} = agent, notice, event) when is_binary(notice) do
+    case offer_turn_with(scope, agent, notice, event) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
       _not_admissible ->
         Conversations.record_sent_to_agent(agent, notice)
-        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, reason)
+        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, event)
         :ok
     end
   end
 
-  def request_turn_if_runnable(scope, %Agent{} = agent, _reason) do
+  @doc """
+  Offer `agent` a work turn if it is idle and `Wake` allows `event` — a
+  `:work_offer`, or main's `:teammate_question` — and there is work it has not
+  just declined. `reason` is why it is being asked, for the log.
+  """
+  def request_turn_if_runnable(scope, %Agent{} = agent, _reason, event \\ :work_offer) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
-         true <- runnable_state?(scope, current),
+         :ok <- admit(scope, current, event),
          {:work, offer} <- offer(scope, current),
          false <- already_declined?(current, offer),
-         :ok <- Transport.deliverable(current),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id) do
+         {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = prompt(reserved)
 
       # Recorded as well as sent, and recorded first — the same reasoning as
@@ -244,13 +248,23 @@ defmodule CodeMySpec.Agents.Work do
           error
       end
     else
-      false -> {:ok, :not_runnable}
       :none -> {:ok, :not_runnable}
       true -> {:ok, :offer_declined}
-      {:ok, :not_runnable} = result -> result
-      error -> error
+      hold -> not_admitted(hold)
     end
   end
+
+  # An off or retired agent answers as the gate always has; any other hold is
+  # simply not runnable.
+  defp not_admitted({:hold, _reason} = hold) do
+    case Wake.to_error(hold) do
+      {:error, {stood_down, _agent}} = error when stood_down in [:off, :retired] -> error
+      _held -> {:ok, :not_runnable}
+    end
+  end
+
+  defp not_admitted({:ok, :not_runnable} = result), do: result
+  defp not_admitted(error), do: error
 
   @doc """
   Record that this agent ended a turn without taking the work it was offered.
@@ -259,7 +273,7 @@ defmodule CodeMySpec.Agents.Work do
   finished with nothing claimed. Until this existed the agent was re-offered
   the same work immediately and forever: ending a turn clears `turn_started_at`
   and the reservation, and declining leaves `active_task` nil, so every
-  condition `runnable_state?/2` tests is satisfied again the instant the turn
+  condition `runnable_state?/3` tests is satisfied again the instant the turn
   ends. The next observation — and a turn ending is itself enough to produce
   one — fires `consider_project/2` and hands the agent the offer it just
   refused.
@@ -281,7 +295,7 @@ defmodule CodeMySpec.Agents.Work do
   A turn that cannot be delivered never becomes a turn, so the agent never ends
   one and `record_decline/3` — which fires on the turn-ended path — never runs.
   Nothing else damps it either: `release/3` clears the reservation, which puts
-  the agent straight back into `runnable_state?/2`, and the next observation
+  the agent straight back into `runnable_state?/3`, and the next observation
   offers it the same work again.
 
   So an agent whose machine is unreachable spins on the *server* side, with no
@@ -370,7 +384,7 @@ defmodule CodeMySpec.Agents.Work do
     :ok
   end
 
-  defp reserve(scope, id) do
+  defp reserve(scope, id, event) do
     Repo.transaction(fn ->
       agent =
         Repo.one(
@@ -381,7 +395,9 @@ defmodule CodeMySpec.Agents.Work do
             lock: "FOR UPDATE"
         )
 
-      if agent && runnable_state?(scope, agent), do: reserve(agent), else: :not_runnable
+      if agent && runnable_state?(scope, agent, event),
+        do: reserve(agent),
+        else: :not_runnable
     end)
   end
 
@@ -400,12 +416,21 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # Waiting last: it is the only part that reads beyond the row.
-  defp runnable_state?(scope, agent) do
-    agent.status == :running and agent.continuous and is_nil(agent.turn_started_at) and
+  # Whether a turn could start now — nothing in flight, nothing held, a copy to
+  # run on. Whether this agent should be woken for it at all is `Wake`'s.
+  defp idle?(agent) do
+    agent.status == :running and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
-      not is_nil(agent.working_copy_id) and is_nil(Waiting.reason(scope, agent, :wake))
+      not is_nil(agent.working_copy_id)
   end
+
+  defp admit(scope, agent, event) do
+    if idle?(agent), do: Wake.allow?(scope, agent, event), else: {:hold, :busy}
+  end
+
+  # Under the row lock: the same answer, without announcing it twice.
+  defp runnable_state?(scope, agent, event),
+    do: idle?(agent) and Wake.decide(scope, agent, event) == :wake
 
   # A reservation is the gap between stamping a turn and the agent reporting it
   # started — seconds. The turn itself is guarded by `turn_started_at`, so
@@ -421,7 +446,7 @@ defmodule CodeMySpec.Agents.Work do
   #
   # Measured on the math project 2026-09-22: coding stamped a reservation at
   # 01:53, the harness restarted three times, and the row carried it through
-  # every one. `runnable_state?/2` requires no open reservation, so the agent
+  # every one. `runnable_state?/3` requires no open reservation, so the agent
   # was un-admittable for two hours while its own `spex_boundary_ready` sat
   # ready and the other three roles waited behind it.
   #
@@ -552,9 +577,9 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
-  # `:teammate_questions` — the main agent (story 1052).
+  # `:teammate_question` — the main agent (story 1052).
   defp question_work?(scope, %{role: role}) do
-    RoleProfile.wakes_on?(role, :teammate_questions) and
+    RoleProfile.wakes_on?(role, :teammate_question) and
       Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == "main_agent"))
   end
 
@@ -562,11 +587,12 @@ defmodule CodeMySpec.Agents.Work do
   # reaches it from inside a script, and saying so is the difference between a
   # tool it can use and one it reports as broken.
   defp prompt(%{role: role}) do
-    if RoleProfile.wakes_on?(role, :teammate_questions),
+    if RoleProfile.wakes_on?(role, :teammate_question),
       do:
         @prompt <>
           " Questions are also waiting for you: read them with " <>
-          "`run_script` calling list_notifications.",
+          "`run_script` calling list_notifications, and answer each with " <>
+          "`answer_notification` so the answer is recorded and reaches the asker.",
       else: @prompt
   end
 

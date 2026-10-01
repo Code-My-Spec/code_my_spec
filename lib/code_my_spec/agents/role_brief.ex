@@ -80,6 +80,12 @@ defmodule CodeMySpec.Agents.RoleBrief do
     Questions reach you two ways — pushed to you when another agent raises one,
     and typed at you by a person. Treat them the same.
 
+    Answer a teammate's question with `answer_notification`, never by messaging
+    the agent: the answer is only recorded, and the question only closed, when
+    it goes through the notification. An agent told something in a message is
+    still waiting on its question, and is right to refuse an answer nothing
+    recorded.
+
     Answer it yourself when the project already knows. Its stories, epics,
     issues, agents and records are yours to read, so go and look rather than
     guessing, and say you do not know rather than filling the gap.

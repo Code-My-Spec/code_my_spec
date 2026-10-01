@@ -122,8 +122,12 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
       off_but_running(ctx)
 
       assert {:error, {:off, %Agent{}}} = Agents.message_agent(ctx.scope, ctx.agent.id, "hi")
-      assert {:error, {:off, %Agent{}}} = Agents.dispatch_message(ctx.scope, ctx.agent.id, "hi")
-      assert {:error, {:off, %Agent{}}} = Agents.send_to_agent(ctx.agent.id, "your answer")
+
+      assert {:error, {:off, %Agent{}}} =
+               Agents.dispatch_message(ctx.scope, ctx.agent.id, "hi", :operator_message)
+
+      assert {:error, {:off, %Agent{}}} =
+               Agents.send_to_agent(ctx.agent.id, "your answer", :question_answered)
 
       refute_received {:agent_message, _, _}
       refute_received {:agent_dispatch, _, _, _}
@@ -142,12 +146,16 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     test "a work offer is refused and never reaches the machine", ctx do
       agent = off_but_running(ctx)
 
-      assert {:error, {:off, _}} = Work.offer_turn_with(ctx.scope, agent, "carry on")
+      assert {:error, {:off, _}} =
+               Work.offer_turn_with(ctx.scope, agent, "carry on", :blocker_resolved)
+
       refute_received {:work_turn_requested, _, _, _}
     end
 
     test "the same offer reaches an agent that is on", ctx do
-      assert {:ok, ref} = Work.offer_turn_with(ctx.scope, ctx.agent, "carry on")
+      assert {:ok, ref} =
+               Work.offer_turn_with(ctx.scope, ctx.agent, "carry on", :blocker_resolved)
+
       assert is_binary(ref)
       assert_received {:work_turn_requested, _, _, _}
     end

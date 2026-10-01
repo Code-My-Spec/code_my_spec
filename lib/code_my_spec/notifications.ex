@@ -610,7 +610,7 @@ defmodule CodeMySpec.Notifications do
   # still has to be told — so that case falls back to the old shape rather than
   # dropping the notice.
   defp deliver_denial(scope, agent, copy_id, notice) do
-    case Work.offer_turn_with(scope, agent, notice) do
+    case Work.offer_turn_with(scope, agent, notice, :blocker_resolved) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
@@ -854,7 +854,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
-    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request))
+    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request), :own_reply)
     :ok
   end
 
@@ -1136,33 +1136,42 @@ defmodule CodeMySpec.Notifications do
   # to bring the agent back: metric_flow's coder asked f247789c, it was
   # answered at 16:18:35, and the coder sat idle until woken by hand. So an
   # idle continuous asker is offered one turn that opens with the answer —
-  # John, 10-01. `offer_turn_with/3` admits only an idle continuous agent
-  # holding no task; anything else keeps the answer for when it comes back.
+  # John, 10-01: "if the agent asked the question and it's continuous it should
+  # get the answer delivered". Whether it may be woken is `Agents.Wake`'s
+  # (`:question_answered`): a non-continuous asker collects it when it comes
+  # back (3219).
+  #
+  # Mid-turn the answer joins the turn whatever the question blocked. A
+  # task-less answer mid-turn used to go nowhere: the turn ended, nothing
+  # offered another, and the answer waited on `check_answer`.
+  #
+  # Idle with a task released: `TaskOwner.blocker_resolved/3` already woke it
+  # with the task named.
   defp deliver_answer_content(%{agent_id: nil}, _released?), do: :ok
 
-  defp deliver_answer_content(%{task_id: nil} = request, false) do
+  # A task-scoped answer that released nothing (3220's override of a task that
+  # already moved on) changes nothing in front of the agent, and says nothing.
+  defp deliver_answer_content(%{task_id: task_id}, false) when not is_nil(task_id), do: :ok
+
+  defp deliver_answer_content(request, released?) do
     case Repo.get(Agent, request.agent_id) do
-      %Agent{turn_started_at: nil} = agent ->
+      %Agent{turn_started_at: %DateTime{}} = agent ->
+        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request), :question_answered)
+        :ok
+
+      %Agent{} = agent when not released? ->
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.offer_turn_with(owner_scope(agent), agent, answer_message(request))
+          Work.offer_turn_with(
+            owner_scope(agent),
+            agent,
+            answer_message(request),
+            :question_answered
+          )
         end)
 
         :ok
 
-      _busy_or_gone ->
-        :ok
-    end
-  end
-
-  defp deliver_answer_content(_request, false), do: :ok
-
-  defp deliver_answer_content(request, true) do
-    case Repo.get(Agent, request.agent_id) do
-      %{turn_started_at: %DateTime{}} = agent ->
-        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request))
-        :ok
-
-      _idle_or_gone ->
+      _released_or_gone ->
         :ok
     end
   end

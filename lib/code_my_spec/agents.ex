@@ -77,6 +77,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.TurnTimeout
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -1305,10 +1306,15 @@ defmodule CodeMySpec.Agents do
   submission, and an agent whose machine has since gone away must not take the
   form with it — the answer is recorded either way, and an agent that missed it
   can still find it with `check_answer`.
+
+  `event` is what `Wake` is asked about — `:own_reply` for the answer to
+  something it asked of us, `:question_answered` for its question's answer. A
+  held message is still recorded, as a delivery that failed always was: what
+  was said is true whether or not anything was there to hear it.
   """
-  @spec send_to_agent(Ecto.UUID.t(), String.t(), timeout()) ::
+  @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), timeout()) ::
           {:ok, :started | :queued} | {:error, term()}
-  def send_to_agent(agent_id, text, timeout \\ @message_timeout_ms)
+  def send_to_agent(agent_id, text, event, timeout \\ @message_timeout_ms)
       when is_binary(agent_id) and is_binary(text) do
     case Repo.get(Agent, agent_id) do
       nil ->
@@ -1317,14 +1323,28 @@ defmodule CodeMySpec.Agents do
       agent ->
         Conversations.record_sent_to_agent(agent, text)
 
-        Transport.dispatch_message(
-          agent.working_copy_id,
-          agent,
-          "answer-" <> Ecto.UUID.generate(),
-          text,
-          timeout
-        )
+        case Wake.allow?(agent_scope(agent), agent, event) do
+          :ok ->
+            Transport.dispatch_message(
+              agent.working_copy_id,
+              agent,
+              "answer-" <> Ecto.UUID.generate(),
+              text,
+              timeout
+            )
+
+          hold ->
+            Wake.to_error(hold)
+        end
     end
+  end
+
+  defp agent_scope(%Agent{} = agent) do
+    %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id,
+      active_working_copy_id: agent.working_copy_id
+    }
   end
 
   # Running out of our own patience is not the message failing. The machine took
@@ -1368,22 +1388,22 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Tell the project's main agent something, if one is running. Delivered from a
-  task, because delivery waits on a turn the caller should not.
+  Tell the project's main agent about `event`, if one is running and `Wake`
+  allows it. Delivered from a task, because delivery waits on a turn the caller
+  should not.
   """
-  @spec notify_main(Scope.t(), String.t()) :: :ok
-  def notify_main(%Scope{} = scope, text) when is_binary(text) do
-    case main_agent(scope) do
-      nil ->
-        :ok
+  @spec notify_main(Scope.t(), Wake.event(), String.t()) :: :ok
+  def notify_main(%Scope{} = scope, event, text) when is_binary(text) do
+    with %Agent{} = main <- main_agent(scope),
+         :ok <- Wake.allow?(scope, main, event) do
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          message_agent(scope, main.id, text)
+        end)
 
-      main ->
-        {:ok, _pid} =
-          Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-            message_agent(scope, main.id, text)
-          end)
-
-        :ok
+      :ok
+    else
+      _nobody_or_held -> :ok
     end
   end
 
@@ -1933,13 +1953,18 @@ defmodule CodeMySpec.Agents do
 
   `{:ok, :started}` means the agent has it. `{:ok, :queued}` means it will when
   the turn ends, and until then it can be taken back.
+
+  `event` is what `Wake` is asked about: `:operator_message` for a person at a
+  page, `:own_reply` for the outcome of a run the agent started. A hold answers
+  as `Wake.to_error/1` says.
   """
-  @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
+  @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t(), Wake.event()) ::
           {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
-  def dispatch_message(%Scope{} = scope, id, text) when is_binary(text) do
+  def dispatch_message(%Scope{} = scope, id, text, event) when is_binary(text) do
     ref = Ecto.UUID.generate()
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, disposition} <-
            Transport.dispatch_message(
@@ -1952,6 +1977,13 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent),
          {:ok, message} <- record_sent(conversation, text, ref, disposition) do
       {:ok, disposition, message}
+    end
+  end
+
+  defp wake(scope, agent, event) do
+    case Wake.allow?(scope, agent, event) do
+      :ok -> :ok
+      hold -> Wake.to_error(hold)
     end
   end
 
@@ -2296,7 +2328,7 @@ defmodule CodeMySpec.Agents do
   defp send_off_channel(agent, text) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        send_to_agent(agent.id, text)
+        send_to_agent(agent.id, text, :own_reply)
       end)
 
     :ok

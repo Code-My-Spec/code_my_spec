@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.WidgetIssueNotice do
 
     Agents.notify_main(
       scope,
+      :issue_filed,
       "An issue was filed from the widget: \"#{issue.title}\" (#{issue.severity}), " <>
         "id #{issue.id}. `get_issue` with that id reads it."
     )
