@@ -75,21 +75,29 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   defp file_hash_matches?(project_id, source, path, file_hash) do
     from(e in DocEmbedding,
-      where:
-        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
-          e.file_hash == ^file_hash,
+      where: ^project_filter(project_id),
+      where: e.source == ^source and e.path == ^path and e.file_hash == ^file_hash,
       limit: 1,
       select: 1
     )
     |> Repo.one() == 1
   end
 
+  # `e.project_id == ^project_id` never matches a shared row: Postgres
+  # evaluates `column = NULL` to NULL, not true, even when the bound
+  # parameter happens to be nil — only `IS NULL` does. Every query in this
+  # module scoping by project needs this, not just equality, once shared
+  # (project_id IS NULL) rows exist.
+  defp project_filter(nil), do: dynamic([e], is_nil(e.project_id))
+  defp project_filter(project_id), do: dynamic([e], e.project_id == ^project_id)
+
   defp do_embed_file(project_id, source, path, content, file_hash) do
     chunks = chunk_text(content)
 
     existing_hashes =
       from(e in DocEmbedding,
-        where: e.project_id == ^project_id and e.source == ^source and e.path == ^path,
+        where: ^project_filter(project_id),
+        where: e.source == ^source and e.path == ^path,
         select: e.content_hash
       )
       |> Repo.all()
@@ -140,8 +148,9 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   defp backfill_file_hash(project_id, source, path, file_hash) do
     from(e in DocEmbedding,
+      where: ^project_filter(project_id),
       where:
-        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
+        e.source == ^source and e.path == ^path and
           (is_nil(e.file_hash) or e.file_hash != ^file_hash)
     )
     |> Repo.update_all(set: [file_hash: file_hash])
@@ -266,9 +275,9 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   defp delete_old_chunks(project_id, source, path, current_hashes) do
     from(e in DocEmbedding,
+      where: ^project_filter(project_id),
       where:
-        e.project_id == ^project_id and
-          e.source == ^source and
+        e.source == ^source and
           e.path == ^path and
           e.content_hash not in ^current_hashes
     )
@@ -278,9 +287,9 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   defp delete_stale(project_id, source, existing_paths) do
     {count, _} =
       from(e in DocEmbedding,
+        where: ^project_filter(project_id),
         where:
-          e.project_id == ^project_id and
-            e.source == ^source and
+          e.source == ^source and
             e.path not in ^existing_paths
       )
       |> Repo.delete_all()

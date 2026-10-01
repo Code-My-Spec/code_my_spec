@@ -1,35 +1,36 @@
 defmodule CodeMySpec.Embeddings.PgVectorBackend do
   @moduledoc """
-  Postgres/pgvector backend for the embedding pipeline, used by `:dev_sprite`.
+  Postgres/pgvector backend for the embedding pipeline.
 
   `EmbeddingService` is almost entirely adapter-agnostic — chunking, content
   hashing, the file_hash fast path, stale-chunk deletion and file walking are
-  all plain Ecto or plain Elixir. Exactly two statements were written against
-  sqlite_vec, and only those are reimplemented here:
+  all plain Ecto or plain Elixir, and only the chunk upsert and the
+  similarity search are reimplemented here, so the two backends cannot drift
+  on chunk sizes, hashing, or dedupe semantics.
 
-    * the chunk upsert, which used `vec_f32(?)` and `?N` placeholders
-    * the similarity query, which used `vec_distance_cosine(...)`
-
-  Everything else is delegated, so the two backends cannot drift on chunk
-  sizes, hashing, or dedupe semantics.
-
-  Vectors bind as `text` and are cast `::text::vector` in SQL rather than
-  `::vector` directly. A bare `::vector` cast makes the PARAMETER type
+  `search/3` is plain `Ecto.Query` — `dynamic/2` builds the scope clause
+  (the project's own rows, shared rows for its exact locked dependency
+  versions, and framework knowledge), which lets Postgrex handle parameter
+  binding rather than hand-counted `$N` placeholders. The vector cast still
+  needs a `fragment/1`: a bare `?::vector` cast makes the PARAMETER type
   `vector`, which Postgrex cannot encode without the pgvector extension
-  registered in a custom types module — casting from text keeps the parameter
-  a plain string and avoids the dependency. The `::text::uuid` casts are the
-  same trick for the same reason: a bare `::uuid` makes Postgrex demand a
-  16-byte binary rather than the string form used everywhere else. `<=>` is pgvector's
-  cosine-distance operator, matching the HNSW index built with
+  registered in a custom types module, so the vector is bound as `text` and
+  cast in SQL instead (`encode_vector/1`'s own JSON string). `<=>` is
+  pgvector's cosine-distance operator, matching the HNSW index built with
   `vector_cosine_ops`.
+
+  `store_embedded_chunk/8` stays raw SQL for the same reason, plus the
+  upsert's conflict target, which differs by whether the row is shared.
   """
 
   @behaviour CodeMySpec.Embeddings.Backend
 
   import Ecto.Query
 
+  alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings.{DocEmbedding, EmbeddingService, Serving}
   alias CodeMySpec.Repo
+  alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL, as: AdaptersSQL
 
   @impl true
@@ -41,13 +42,34 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   def delete_path(project_id, source, path) do
     {count, _} =
       from(e in DocEmbedding,
-        where: e.project_id == ^project_id and e.source == ^source and e.path == ^path
+        where: ^project_filter(project_id),
+        where: e.source == ^source and e.path == ^path
       )
       |> Repo.delete_all()
 
     {:ok, count}
   end
 
+  # `e.project_id == ^project_id` never matches a shared row: Postgres
+  # evaluates `column = NULL` to NULL, not true, even when the bound
+  # parameter happens to be nil — only `IS NULL` does.
+  defp project_filter(nil), do: dynamic([e], is_nil(e.project_id))
+  defp project_filter(project_id), do: dynamic([e], e.project_id == ^project_id)
+
+  @doc """
+  A project's own rows, plus shared rows for exactly the package versions
+  its `mix.lock` pins, plus framework knowledge.
+
+  Exact versions only, no fallback to another version of the same package —
+  a dependency whose docs haven't been embedded yet (or at all, if the
+  package has none) simply contributes nothing, same as before this existed.
+
+  Built with `dynamic/2` rather than hand-counted `$N` placeholders: the old
+  raw-SQL version was fine while the scope was one project_id, but a clause
+  per locked dependency makes manual parameter counting the kind of thing
+  that is right until the dependency list has a different length than it
+  did when it was tested.
+  """
   @impl true
   def search(project_id, query, opts) do
     limit = Keyword.get(opts, :limit, 10)
@@ -55,24 +77,53 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     source_prefix = Keyword.get(opts, :source_prefix)
 
     with {:ok, embedding} <- Serving.embed(query) do
-      {where, params} = build_where(project_id, source, source_prefix)
       vector = encode_vector(embedding)
-      n = length(params)
 
-      sql = """
-      SELECT e.source, e.path, e.chunk_index, e.content
-      FROM doc_embeddings e
-      #{where}
-      ORDER BY e.embedding <=> $#{n + 1}::text::vector
-      LIMIT $#{n + 2}
-      """
+      results =
+        DocEmbedding
+        |> where(^scope_filter(project_id))
+        |> where(^source_filter(source, source_prefix))
+        |> order_by([e], fragment("? <=> ?::vector", e.embedding, ^vector))
+        |> limit(^limit)
+        |> select([e], %{
+          source: e.source,
+          path: e.path,
+          chunk_index: e.chunk_index,
+          content: e.content
+        })
+        |> Repo.all()
 
-      case AdaptersSQL.query(Repo, sql, params ++ [vector, limit]) do
-        {:ok, %{rows: rows}} -> {:ok, Enum.map(rows, &row_to_result/1)}
-        {:error, reason} -> {:error, reason}
-      end
+      {:ok, results}
     end
   end
+
+  # "code_my_spec" with any version: framework knowledge is re-embedded on
+  # every release rather than pinned to one version the way a hex package is
+  # — see the embeddings rework design doc, "Framework knowledge".
+  @framework_package "code_my_spec"
+
+  defp scope_filter(project_id) do
+    own = dynamic([e], e.project_id == ^project_id)
+    framework = dynamic([e], is_nil(e.project_id) and e.package == ^@framework_package)
+
+    project_id
+    |> locked_dependencies()
+    |> Enum.reduce(dynamic(^own or ^framework), fn %{name: name, version: version}, acc ->
+      dep = dynamic([e], is_nil(e.project_id) and e.package == ^name and e.version == ^version)
+      dynamic(^acc or ^dep)
+    end)
+  end
+
+  defp locked_dependencies(project_id) do
+    Dependencies.list_dependencies(%Scope{active_project_id: project_id})
+  end
+
+  defp source_filter(source, _prefix) when not is_nil(source), do: dynamic([e], e.source == ^source)
+
+  defp source_filter(_source, prefix) when not is_nil(prefix),
+    do: dynamic([e], like(e.source, ^(prefix <> "%")))
+
+  defp source_filter(_source, _prefix), do: dynamic(true)
 
   @doc """
   Store one chunk. Called by `EmbeddingService` in place of its sqlite_vec
@@ -161,16 +212,4 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   # pgvector accepts its text form, "[1,2,3]" — the same shape Jason produces
   # for a list of floats.
   defp encode_vector(embedding), do: Jason.encode!(embedding)
-
-  defp build_where(project_id, source, _prefix) when not is_nil(source),
-    do: {"WHERE e.project_id = $1::text::uuid AND e.source = $2", [project_id, source]}
-
-  defp build_where(project_id, _source, prefix) when not is_nil(prefix),
-    do: {"WHERE e.project_id = $1::text::uuid AND e.source LIKE $2", [project_id, prefix <> "%"]}
-
-  defp build_where(project_id, _source, _prefix),
-    do: {"WHERE e.project_id = $1::text::uuid", [project_id]}
-
-  defp row_to_result([src, path, chunk_index, content]),
-    do: %{source: src, path: path, chunk_index: chunk_index, content: content}
 end

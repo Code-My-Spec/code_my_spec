@@ -128,6 +128,7 @@ defmodule CodeMySpec.Dependencies do
           name: entry.name,
           version: entry.version,
           source: entry.source,
+          checksum: entry.checksum,
           inserted_at: now,
           updated_at: now
         }
@@ -148,7 +149,7 @@ defmodule CodeMySpec.Dependencies do
           |> Enum.reduce(0, fn chunk, acc ->
             {count, _} =
               Repo.insert_all(Dependency, chunk,
-                on_conflict: {:replace, [:version, :source, :updated_at]},
+                on_conflict: {:replace, [:version, :source, :checksum, :updated_at]},
                 conflict_target: [:project_id, :name]
               )
 

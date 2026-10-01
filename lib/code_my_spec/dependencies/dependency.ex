@@ -21,6 +21,7 @@ defmodule CodeMySpec.Dependencies.Dependency do
     field :name, :string
     field :version, :string
     field :source, :string
+    field :checksum, :string
     field :projected_version, :string
 
     belongs_to :project, CodeMySpec.Projects.Project
@@ -30,7 +31,7 @@ defmodule CodeMySpec.Dependencies.Dependency do
 
   def changeset(dependency, attrs) do
     dependency
-    |> cast(attrs, [:name, :version, :source, :projected_version, :project_id])
+    |> cast(attrs, [:name, :version, :source, :checksum, :projected_version, :project_id])
     |> validate_required([:name, :project_id])
     |> unique_constraint([:project_id, :name])
   end

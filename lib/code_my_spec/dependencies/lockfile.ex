@@ -21,7 +21,7 @@ defmodule CodeMySpec.Dependencies.Lockfile do
   by the developer's own lock file and on the same trust footing as `mix.exs`.
   """
 
-  @type entry :: %{name: String.t(), version: String.t(), source: String.t()}
+  @type entry :: %{name: String.t(), version: String.t(), source: String.t(), checksum: String.t() | nil}
 
   @doc """
   Parse lock file contents into one entry per package.
@@ -46,22 +46,35 @@ defmodule CodeMySpec.Dependencies.Lockfile do
   end
 
   # `{:hex, :name, "1.2.3", inner_checksum, build_tools, deps, repo, outer_checksum}`
-  defp entry({name, {:{}, _, [:hex, _atom_name, version | _rest]}}) when is_binary(version) do
-    [%{name: to_string(name), version: version, source: "hex"}]
+  defp entry({name, {:{}, _, [:hex, _atom_name, version | rest]}}) when is_binary(version) do
+    [%{name: to_string(name), version: version, source: "hex", checksum: outer_checksum(rest)}]
   end
 
   # `{:git, url, sha, opts}` — the sha is the version, because for a git dep it
   # is the only thing that actually pins anything. A branch ref moves.
   defp entry({name, {:{}, _, [:git, _url, sha | _rest]}}) when is_binary(sha) do
-    [%{name: to_string(name), version: sha, source: "git"}]
+    [%{name: to_string(name), version: sha, source: "git", checksum: nil}]
   end
 
   defp entry({name, {:{}, _, [source | _rest]}}) when is_atom(source) do
-    [%{name: to_string(name), version: nil, source: to_string(source)}]
+    [%{name: to_string(name), version: nil, source: to_string(source), checksum: nil}]
   end
 
   # Anything the lock format grows that this does not recognise is skipped
   # rather than guessed at. It shows up as a package with no projected docs,
   # which is visible, instead of as a wrong version, which is not.
   defp entry(_pair), do: []
+
+  # The outer checksum is the last of the four trailing elements
+  # (inner_checksum, build_tools, deps, repo, outer_checksum) — the one that
+  # covers the whole tarball `mix deps.get` downloads, which is what a
+  # fetch-from-hex.pm reconciler verifies against.
+  defp outer_checksum(rest) when is_list(rest) do
+    case List.last(rest) do
+      checksum when is_binary(checksum) -> checksum
+      _ -> nil
+    end
+  end
+
+  defp outer_checksum(_rest), do: nil
 end

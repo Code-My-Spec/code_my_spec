@@ -43,6 +43,13 @@ defmodule CodeMySpec.Embeddings.DocEmbedding do
     field :file_hash, :string
     field :embedding, @embedding_type
 
+    # Set for shared rows (hex docs, framework knowledge); NULL for a
+    # project's own content. `model` keeps a serving swap from silently
+    # mixing vector spaces — a change becomes a re-embed, not a bad answer.
+    field :package, :string
+    field :version, :string
+    field :model, :string
+
     timestamps(type: :utc_datetime)
   end
 end
