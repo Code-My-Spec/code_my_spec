@@ -39,6 +39,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
           turn_started_at: DateTime.t() | nil,
           provider_refusal: String.t() | nil,
           provider_retry_at: DateTime.t() | nil,
+          turn_timeouts: %{count: pos_integer(), exec: String.t()} | nil,
           idle?: boolean(),
           machine_tools: [String.t()] | nil,
           problems: [map()],
@@ -61,6 +62,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     :continuous?,
     :provider_refusal,
     :provider_retry_at,
+    :turn_timeouts,
     :machine_tools,
     :damped,
     blocked_reasons: [],
@@ -99,6 +101,24 @@ defmodule CodeMySpec.MainAgent.AgentWork do
 
   def provider_block(%AgentWork{provider_refusal: refusal, provider_retry_at: at}),
     do: "provider — #{refusal} (retry after #{DateTime.to_iso8601(at)})"
+
+  @doc """
+  Whether the agent's latest turns died on the provider CLI's timeout
+  (eb09b076). A task and a recent `last said` otherwise read as working.
+  """
+  @spec timing_out?(t()) :: boolean()
+  def timing_out?(%AgentWork{turn_timeouts: %{count: n}}), do: n > 0
+  def timing_out?(%AgentWork{}), do: false
+
+  @doc "The run of timed-out turns, in one phrase for `check_in` and `list_agent_work`."
+  @spec turn_timeouts(t()) :: String.t() | nil
+  def turn_timeouts(%AgentWork{turn_timeouts: %{count: 1, exec: exec}}),
+    do: "last turn timed out (#{exec})"
+
+  def turn_timeouts(%AgentWork{turn_timeouts: %{count: n, exec: exec}}),
+    do: "last #{n} turns timed out (#{exec})"
+
+  def turn_timeouts(%AgentWork{}), do: nil
 
   @doc """
   What an agent with no task is doing while its role's queue holds work.

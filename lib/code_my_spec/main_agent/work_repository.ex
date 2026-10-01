@@ -29,6 +29,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
@@ -49,6 +50,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
 
     copies = working_copies(agents)
     last_said = last_said_at(agents)
+    timeouts = turn_timeouts(agents)
     questions = open_questions(agents)
     tapped_out = tapped_out(agents)
     problems = problems_by_copy(scope)
@@ -91,6 +93,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         continuous?: agent.continuous,
         provider_refusal: agent.provider_refusal,
         provider_retry_at: agent.provider_retry_at,
+        turn_timeouts: Map.get(timeouts, agent.id),
         # A claimed task means there is work whatever the queue says; idle is
         # only ever about an agent with nothing in hand.
         idle?: is_nil(task) and claimable == [],
@@ -157,6 +160,42 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
       select: {c.agent_id, max(m.inserted_at)}
     )
     |> Repo.all()
+    |> Map.new()
+  end
+
+  # How many of each agent's latest turns died on the provider CLI's timeout
+  # (eb09b076). A failed turn is written as the agent's message carrying the
+  # provider's error, so the run is its newest assistant rows that are timeouts.
+  @timeout_window 20
+
+  defp turn_timeouts(agents) do
+    ids = Enum.map(agents, & &1.id)
+
+    ranked =
+      from(m in Message,
+        join: c in Conversation,
+        on: c.id == m.conversation_id,
+        where: c.agent_id in ^ids and m.role == :assistant,
+        select: %{
+          agent_id: c.agent_id,
+          content: m.content,
+          rank: over(row_number(), partition_by: c.agent_id, order_by: [desc: m.inserted_at])
+        }
+      )
+
+    from(r in subquery(ranked),
+      where: r.rank <= @timeout_window,
+      order_by: [asc: r.rank],
+      select: {r.agent_id, r.content}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &Message.text(%Message{content: elem(&1, 1)}))
+    |> Enum.flat_map(fn {agent_id, texts} ->
+      case TurnTimeout.streak(texts) do
+        nil -> []
+        streak -> [{agent_id, streak}]
+      end
+    end)
     |> Map.new()
   end
 

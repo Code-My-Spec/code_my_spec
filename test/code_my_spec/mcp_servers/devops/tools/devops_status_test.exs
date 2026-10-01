@@ -9,7 +9,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
   alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.Provisioning.StepRepository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Resources
+
+  import Ecto.Query
 
   setup do
     scope = full_scope_fixture()
@@ -108,6 +114,91 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
 
       refute response_text(response) =~ "in progress"
     end
+
+    # 82f09c49: five checks in 75s all read "0 minutes ago". The age was
+    # live; floored to whole minutes it could not move, and the agent took a
+    # normal build for a hung run.
+    test "a run's age is to the second, and names the step it is on", %{
+      scope: scope,
+      project: project
+    } do
+      {:ok, _} = Configurations.update(scope, %{devops: :prod})
+      _ = step_row(scope, :server, :running, 0, %{})
+      test_pid = self()
+
+      {:ok, holder} =
+        Task.start(fn ->
+          RunLock.with_lock(project.id, fn ->
+            send(test_pid, :locked)
+
+            receive do
+              :release -> :ok
+            end
+          end)
+        end)
+
+      assert_receive :locked, 1_000
+
+      text = status_text(scope)
+      send(holder, :release)
+
+      assert text =~ ~r/in progress since \d\d:\d\d:\d\dZ \(\d+s ago\)/
+      assert text =~ "on #{project.name}/server"
+      refute text =~ "minutes ago"
+    end
+  end
+
+  describe "step states" do
+    setup %{scope: scope} do
+      {:ok, _} = Configurations.update(scope, %{devops: :prod})
+      :ok
+    end
+
+    # 82f09c49: an error from an earlier run read as fresh, and an errored
+    # step as "not converged yet".
+    test "an errored step says errored, how long ago, and why", %{scope: scope, project: project} do
+      _ =
+        step_row(scope, :server, :errored, 45 * 60, %{
+          attempted: "run the server step",
+          provider_error: "must be owner of database scratch"
+        })
+
+      assert status_text(scope) =~
+               "#{project.name}/server: errored 45m ago — must be owner of database scratch"
+    end
+
+    test "a done step says done and its age", %{scope: scope, project: project} do
+      _ = step_row(scope, :repository, :done, 2 * 3600 + 5 * 60, %{})
+
+      assert status_text(scope) =~ "#{project.name}/repository: done 2h 5m ago"
+    end
+
+    test "the first paused step is named as holding the sequence", %{
+      scope: scope,
+      project: project
+    } do
+      _ = step_row(scope, :email, :paused, 600, %{paused_instructions: "verify the domain"})
+      _ = step_row(scope, :inbound, :paused, 60, %{paused_instructions: "give an address"})
+
+      text = status_text(scope)
+
+      assert text =~
+               "#{project.name}/email: paused 10m ago, holding the sequence — verify the domain"
+
+      assert text =~ ~r"/inbound: paused 1m \d+s ago — give an address"
+    end
+
+    test "a running row with no run behind it is interrupted, not in progress", %{
+      scope: scope,
+      project: project
+    } do
+      _ = step_row(scope, :server, :running, 3 * 3600, %{})
+
+      text = status_text(scope)
+
+      assert text =~ "#{project.name}/server: interrupted"
+      refute text =~ "in progress"
+    end
   end
 
   # The bug this guards: a step's own error is trimmed to its most useful
@@ -119,17 +210,23 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   # inner fix preserved. Confirmed live: a kamal-install failure's real Ruby
   # backtrace never reached devops_status at all, only the label and exit
   # code in front of it.
-  describe "missing_line/1" do
+  describe "step_line/2" do
+    @ctx %{now: ~U[2026-09-30 22:30:00Z], run?: false, holder: nil}
+
+    defp errored(detail),
+      do: %{
+        project_name: "Market My Spec",
+        key: "deploy",
+        step_state: :errored,
+        recorded_at: ~U[2026-09-30 22:29:00Z],
+        detail: detail
+      }
+
     test "keeps both ends of a long reason, not just one" do
       detail =
-        "the reason starts here" <> String.duplicate("m", 2000) <> "the conclusion ends here"
+        "the reason starts here" <> String.duplicate("m", 3000) <> "the conclusion ends here"
 
-      line =
-        DevopsStatus.missing_line(%{
-          project_name: "Market My Spec",
-          key: "deploy",
-          detail: detail
-        })
+      line = DevopsStatus.step_line(errored(detail), @ctx)
 
       assert line =~ "the reason starts here"
       assert line =~ "the conclusion ends here"
@@ -137,24 +234,50 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
     end
 
     test "a short reason is unaffected" do
-      line =
-        DevopsStatus.missing_line(%{
-          project_name: "Market My Spec",
-          key: "deploy",
-          detail: "no server named x"
-        })
-
-      assert line == "Market My Spec/deploy — no server named x"
+      assert DevopsStatus.step_line(errored("no server named x"), @ctx) ==
+               "Market My Spec/deploy: errored 1m 0s ago — no server named x"
     end
 
     # 548b3173: per-environment steps listed twice with nothing to tell them apart.
     test "names the environment of a per-environment step" do
-      uat = %{project_name: "Metric Flow", key: :backups, environment: "uat", detail: nil}
+      uat = %{
+        project_name: "Metric Flow",
+        key: :backups,
+        environment: "uat",
+        step_state: :not_started
+      }
+
       prod = %{uat | environment: "prod"}
 
-      assert DevopsStatus.missing_line(uat) == "Metric Flow/uat/backups"
-      assert DevopsStatus.missing_line(prod) == "Metric Flow/prod/backups"
+      assert DevopsStatus.step_line(uat, @ctx) == "Metric Flow/uat/backups: not started"
+      assert DevopsStatus.step_line(prod, @ctx) == "Metric Flow/prod/backups: not started"
     end
+  end
+
+  # A step row whose state was recorded `ago` seconds before now.
+  defp step_row(scope, key, state, ago, attrs) do
+    row =
+      StepRepository.upsert(
+        scope,
+        key,
+        nil,
+        Map.merge(attrs, %{state: state, position: Sequence.position(key)})
+      )
+
+    at = DateTime.add(DateTime.utc_now(), -ago, :second)
+
+    {1, _} =
+      Repo.update_all(where(Step, id: ^row.id),
+        set: [updated_at: DateTime.truncate(at, :second), started_at: at]
+      )
+
+    row
+  end
+
+  defp status_text(scope) do
+    frame = %Frame{assigns: %{current_scope: scope}}
+    {:reply, response, ^frame} = DevopsStatus.execute(%{}, frame)
+    response_text(response)
   end
 
   defp response_text(response) do

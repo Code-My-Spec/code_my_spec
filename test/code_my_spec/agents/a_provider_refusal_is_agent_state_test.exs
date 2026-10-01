@@ -20,7 +20,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   @usage_limit """
   codex exec failed with status 1: OpenAI Codex v0.156.1 — ERROR: You've hit your usage limit. \
   Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at \
-  Sep 30th, 2026 11:20 PM.\
+  Sep 30th, 2099 11:20 PM.\
   """
 
   setup :register_log_in_setup_account
@@ -66,7 +66,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
 
     assert agent.provider_refusal =~ "You've hit your usage limit"
     refute agent.provider_refusal =~ "OpenAI Codex v0.156.1"
-    assert agent.provider_retry_at == ~U[2026-09-30 23:20:00.000000Z]
+    assert agent.provider_retry_at == ~U[2099-09-30 23:20:00.000000Z]
     assert %DateTime{} = agent.provider_refused_at
   end
 

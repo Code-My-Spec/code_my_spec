@@ -422,7 +422,12 @@ defmodule CodeMySpec.Resources do
         key: step.key,
         environment: step.environment,
         state: if(step.state == :done or step.resources != [], do: :present, else: :missing),
-        detail: step.provider_error
+        detail: step.provider_error,
+        # The last run's verdict and when it was recorded, beside the
+        # presence verdict above rather than instead of it (82f09c49).
+        step_state: step.state,
+        recorded_at: if(step.state == :running, do: step.started_at, else: step.completed_at),
+        paused_instructions: step.paused_instructions
       }
     end
   end

@@ -55,6 +55,7 @@ defmodule CmsHarness.Project.ChannelClient do
   require Logger
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
@@ -1948,8 +1949,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # through this channel — so a failure is the one outcome worth recording, and
   # inventing a body for a success would be writing down something nobody said.
   defp error_text(nil), do: nil
-  defp error_text(error) when is_binary(error), do: bound(error)
-  defp error_text(error), do: error |> inspect() |> bound()
+  defp error_text(error), do: error |> ToolResults.describe() |> bound()
 
   defp turn_event_text(envelope) do
     case envelope do

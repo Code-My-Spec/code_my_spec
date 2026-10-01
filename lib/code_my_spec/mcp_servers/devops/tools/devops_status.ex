@@ -72,13 +72,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   end
 
   defp summary(report, project) do
+    now = DateTime.utc_now()
+    started_at = RunLock.in_flight(project.id)
     missing = Enum.filter(report.checklist, &(&1.state == :missing))
     dangling = Enum.filter(report.resources, &(&1.status == :dangling))
 
     [
-      in_flight(project),
+      in_flight(started_at, report.checklist, now),
       headline(report, missing),
-      section("Missing", missing, &missing_line/1),
+      steps(report.checklist, started_at, now),
+      missing_section(missing),
       section("Dangling", dangling, &"#{&1.kind} #{&1.location}"),
       unreachable(report.errors)
     ]
@@ -94,21 +97,22 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   # already tracks a run's `started_at`; this is the first thing to read it
   # (6f982579).
   #
-  # Elapsed rather than left as a bare timestamp: "started 22 minutes ago"
-  # is what a caller actually needs to decide whether to keep waiting, next
-  # to whatever the observed real-run range for this kind of setup is.
-  defp in_flight(project) do
-    case RunLock.in_flight(project.id) do
-      nil ->
-        ""
+  # To the second, not floored to minutes: an agent checked five times in 75s,
+  # read "0 minutes ago" each time as a frozen clock, and escalated a normal
+  # three-minute build as hung (82f09c49).
+  defp in_flight(nil, _checklist, _now), do: ""
 
-      started_at ->
-        minutes = DateTime.diff(DateTime.utc_now(), started_at, :second) |> div(60)
+  defp in_flight(started_at, checklist, now) do
+    "A setup run has been in progress since #{clock(started_at)} " <>
+      "(#{age(started_at, now)} ago)#{running_on(checklist)}. The checklist " <>
+      "below is read live, so it may show partial progress rather than a finished " <>
+      "or a hung run — check again shortly rather than assuming either."
+  end
 
-        "A setup run has been in progress since #{DateTime.to_iso8601(started_at)} " <>
-          "(#{minutes} minute#{if minutes == 1, do: "", else: "s"} ago). The checklist " <>
-          "below is read live, so it may show partial progress rather than a finished " <>
-          "or a hung run — check again shortly rather than assuming either."
+  defp running_on(checklist) do
+    case Enum.filter(checklist, &(&1[:step_state] == :running)) do
+      [] -> ""
+      running -> ", on " <> Enum.map_join(running, ", ", &step_label/1)
     end
   end
 
@@ -120,6 +124,27 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   defp headline(_report, missing),
     do: "Setup is not complete: #{length(missing)} step(s) have nothing behind them."
+
+  # Each step's last recorded state and its age, read at call time. Only the
+  # error text used to show, so an old error read as fresh and an errored step
+  # as "not converged yet" (82f09c49).
+  defp steps([], _started_at, _now), do: ""
+
+  defp steps(checklist, started_at, now) do
+    ctx = %{
+      now: now,
+      run?: not is_nil(started_at),
+      holder: Enum.find(checklist, &(&1[:step_state] == :paused))
+    }
+
+    "Steps (as of #{clock(now)}):\n" <>
+      Enum.map_join(checklist, "\n", &("  - " <> step_line(&1, ctx)))
+  end
+
+  defp missing_section([]), do: ""
+
+  defp missing_section(missing),
+    do: "Missing (#{length(missing)}): " <> Enum.map_join(missing, ", ", &step_label/1)
 
   # The reason, when the step recorded one.
   #
@@ -144,14 +169,52 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   # back off, discarding exactly what the inner fix kept. Confirmed live,
   # across the same incident, in both directions.
   #
-  # `@doc false`: exists so the slice is assertable without standing up a
+  # `@doc false`: exists so the line is assertable without standing up a
   # real failing provider, the same reason `wrap_with_timeout/2` and
   # `image_tag/2` are public.
   @doc false
-  def missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
-    do: "#{step_label(entry)} — #{Truncate.head_and_tail(detail)}"
+  def step_line(entry, ctx), do: step_label(entry) <> ": " <> phrase(entry, ctx) <> reason(entry)
 
-  def missing_line(entry), do: step_label(entry)
+  defp phrase(%{step_state: :running} = entry, %{run?: true} = ctx),
+    do: "in progress, started #{ago(entry, ctx)}"
+
+  defp phrase(%{step_state: :running} = entry, ctx),
+    do: "interrupted — marked running #{ago(entry, ctx)} with no run active"
+
+  # The sequence halts at its first paused step, so later ones are not
+  # reached until it is resolved.
+  defp phrase(%{step_state: :paused} = entry, %{holder: entry} = ctx),
+    do: "paused #{ago(entry, ctx)}, holding the sequence"
+
+  defp phrase(%{step_state: state} = entry, ctx) when state in [:done, :errored, :paused],
+    do: "#{state} #{ago(entry, ctx)}"
+
+  defp phrase(_entry, _ctx), do: "not started"
+
+  defp ago(%{recorded_at: %DateTime{} = at}, %{now: now}), do: "#{age(at, now)} ago"
+  defp ago(_entry, _ctx), do: "at an unrecorded time"
+
+  defp reason(%{step_state: :errored, detail: text}) when is_binary(text) and text != "",
+    do: " — " <> Truncate.head_and_tail(text)
+
+  defp reason(%{step_state: :paused, paused_instructions: text})
+       when is_binary(text) and text != "",
+       do: " — " <> Truncate.head_and_tail(text)
+
+  defp reason(_entry), do: ""
+
+  # Seconds while a wait is short enough to watch, coarser once it is not.
+  defp age(at, now) do
+    case max(DateTime.diff(now, at, :second), 0) do
+      s when s < 60 -> "#{s}s"
+      s when s < 600 -> "#{div(s, 60)}m #{rem(s, 60)}s"
+      s when s < 3600 -> "#{div(s, 60)}m"
+      s when s < 86_400 -> "#{div(s, 3600)}h #{div(rem(s, 3600), 60)}m"
+      s -> "#{div(s, 86_400)}d #{div(rem(s, 86_400), 3600)}h"
+    end
+  end
+
+  defp clock(at), do: "#{at |> DateTime.truncate(:second) |> DateTime.to_time()}Z"
 
   # A per-environment step has one row per environment, so without the
   # environment `uat` and `prod` rows read as duplicates (548b3173).

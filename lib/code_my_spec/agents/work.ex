@@ -331,8 +331,13 @@ defmodule CodeMySpec.Agents.Work do
   #
   # So work done during the turn counts as work, whether or not it is still
   # open when the turn ends.
+  #
+  # A turn the provider refused declined nothing either: the agent never saw
+  # the offer. A refusal still standing at turn end is this turn's, since
+  # `refusal_outlived/2` clears an older one first.
   defp declined?(_scope, agent, turn_started_at) do
-    is_nil(Agent.active_task(agent)) and not closed_a_task?(agent, turn_started_at)
+    is_nil(Agent.active_task(agent)) and is_nil(agent.provider_refusal) and
+      not closed_a_task?(agent, turn_started_at)
   end
 
   # No start time to compare against — an interrupted turn, or a caller that

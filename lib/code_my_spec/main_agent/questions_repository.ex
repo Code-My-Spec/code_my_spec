@@ -172,7 +172,11 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   @doc "One answered question by id, or nil."
   @spec fetch_answered(Scope.t(), String.t()) :: QuestionRequest.t() | nil
   def fetch_answered(%Scope{user: %{id: user_id}}, id) do
-    Repo.get_by(QuestionRequest, id: id, user_id: user_id, status: "answered")
+    # A shortened id is no precedent, not a cast error (2999a0cb).
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get_by(QuestionRequest, id: uuid, user_id: user_id, status: "answered")
+      :error -> nil
+    end
   end
 
   def fetch_answered(%Scope{}, _id), do: nil

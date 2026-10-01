@@ -1365,8 +1365,19 @@ defmodule CodeMySpec.Notifications do
     |> Repo.exists?()
   end
 
-  @doc "Get a question request by ID."
-  def get_question_request(id), do: Repo.get(QuestionRequest, id)
+  @doc """
+  Get a question request by ID, or nil.
+
+  Nil for an id that is not a uuid, too. Agents shorten ids in their own notes
+  and call `check_answer` with `34a663ee`; `Repo.get/2` raised on the cast and
+  the tool crashed instead of saying there is no such question (2999a0cb).
+  """
+  def get_question_request(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get(QuestionRequest, uuid)
+      :error -> nil
+    end
+  end
 
   @doc """
   Every question asked during one Claude session, oldest first.

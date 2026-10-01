@@ -91,6 +91,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
       #{holding(work)}
       last said: #{moment(work.last_said_at)}
       in flight: #{in_flight(work)}
+      recent turns: #{AgentWork.turn_timeouts(work) || "none timed out"}
       blocked on: #{blocked(work)}
       #{problems(work)}
     """
