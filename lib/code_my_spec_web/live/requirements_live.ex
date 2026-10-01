@@ -16,7 +16,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   @graph_debounce_ms 750
 
   alias CodeMySpec.AgentTasks
-  alias CodeMySpec.Components
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
@@ -78,131 +77,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
       else
         {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
       end
-    end)
-  end
-
-  def handle_params(
-        %{"component_id" => component_id, "name" => req_name},
-        _uri,
-        %{assigns: %{live_action: :component_req_prompt}} = socket
-      ) do
-    with_project(socket, fn project, scope ->
-      component = Components.get_component!(scope, component_id)
-      slug = socket.assigns.slug
-      node = find_entity_node(scope, "component", component.id, req_name)
-
-      if node && node.satisfied_by do
-        task = %{component_id: component_id, component_module_name: component.module_name}
-
-        page = %{
-          kind: :command,
-          title: "#{component.module_name} / #{req_name}",
-          command: fetch_prompt_text(node.satisfied_by, scope, task),
-          back: %{
-            label: "← Back to #{req_name}",
-            to: "/app/projects/#{slug}/components/#{component_id}/requirements/#{req_name}"
-          }
-        }
-
-        assign_page(socket, project, scope, page)
-      else
-        {:noreply, assign(socket, error: "Requirement #{req_name} has no task module")}
-      end
-    end)
-  end
-
-  def handle_params(
-        %{"component_id" => component_id, "name" => req_name},
-        _uri,
-        %{assigns: %{live_action: :component_req_show}} = socket
-      ) do
-    with_project(socket, fn project, scope ->
-      component = Components.get_component!(scope, component_id)
-      slug = socket.assigns.slug
-      node = find_entity_node(scope, "component", component.id, req_name)
-
-      assign_component_req(socket, project, scope, component, slug, req_name, node)
-    end)
-  end
-
-  def handle_params(%{}, _uri, %{assigns: %{live_action: :components_graph}} = socket) do
-    with_project(socket, fn project, scope ->
-      assign_graph(socket, project, scope, GraphProjector.components_graph(scope))
-    end)
-  end
-
-  def handle_params(%{}, _uri, %{assigns: %{live_action: :components}} = socket) do
-    with_project(socket, fn project, scope ->
-      components = Components.list_components(scope)
-      {nodes, _computed_at} = Requirements.cached_all(scope)
-      slug = socket.assigns.slug
-
-      items =
-        Enum.map(components, fn component ->
-          {satisfied, total} = entity_counts(nodes, "component", component.id)
-
-          %{
-            label: component.module_name,
-            to: "/app/projects/#{slug}/components/#{component.id}",
-            satisfied: satisfied,
-            total: total
-          }
-        end)
-
-      page = %{
-        kind: :list,
-        title: "Components",
-        items: items,
-        back: %{label: "← Back to project", to: "/app/projects/#{slug}"}
-      }
-
-      assign_page(socket, project, scope, page)
-    end)
-  end
-
-  def handle_params(
-        %{"component_id" => component_id},
-        _uri,
-        %{assigns: %{live_action: :component_graph}} = socket
-      ) do
-    with_project(socket, fn project, scope ->
-      assign_graph(socket, project, scope, GraphProjector.component_graph(scope, component_id))
-    end)
-  end
-
-  def handle_params(
-        %{"component_id" => component_id},
-        _uri,
-        %{assigns: %{live_action: :component_show}} = socket
-      ) do
-    with_project(socket, fn project, scope ->
-      component = Components.get_component!(scope, component_id)
-      {nodes, _computed_at} = Requirements.cached_all(scope)
-      slug = socket.assigns.slug
-      {satisfied, total} = entity_counts(nodes, "component", component.id)
-
-      stories =
-        scope
-        |> Stories.list_component_stories(component.id)
-        |> Enum.map(fn s -> %{label: s.title, to: "/app/projects/#{slug}/stories/#{s.number}"} end)
-
-      req_items =
-        entity_req_items(nodes, "component", component.id, fn n ->
-          "/app/projects/#{slug}/components/#{component.id}/requirements/#{n.name}"
-        end)
-
-      page = %{
-        kind: :entity,
-        title: component.module_name,
-        subtitle: "Type: #{component.type}",
-        satisfied: satisfied,
-        total: total,
-        stories: stories,
-        req_items: req_items,
-        back: %{label: "← Back to requirements", to: "/app/projects/#{slug}/requirements"}
-      }
-
-      assign_page(socket, project, scope, page)
     end)
   end
 
@@ -907,13 +781,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp task_short_name(module),
     do: module |> inspect() |> String.split(".") |> List.last()
 
-  defp fetch_prompt_text(satisfied_by, scope, task) do
-    case satisfied_by.command(scope, task) do
-      {:ok, text} -> text
-      {:error, reason} -> "Error generating prompt: #{AgentTasks.format_error(reason)}"
-    end
-  end
-
   defp generate_command(task_module, scope) do
     case task_module.command(scope, %{}) do
       {:ok, text} -> text
@@ -965,46 +832,4 @@ defmodule CodeMySpecWeb.RequirementsLive do
      )}
   end
 
-  defp assign_component_req(socket, _project, _scope, _component, _slug, req_name, nil) do
-    {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-  end
-
-  defp assign_component_req(socket, project, scope, component, slug, req_name, node) do
-    prompt_to =
-      if node.satisfied_by,
-        do: "/app/projects/#{slug}/components/#{component.id}/requirements/#{req_name}/prompt",
-        else: nil
-
-    page = %{
-      kind: :requirement,
-      node: node,
-      back: %{
-        label: "← Back to #{component.module_name}",
-        to: "/app/projects/#{slug}/components/#{component.id}"
-      },
-      prereqs: [],
-      dependents: [],
-      command: nil,
-      prompt_to: prompt_to
-    }
-
-    assign_page(socket, project, scope, page)
-  end
-
-  # The component and components graphs, which are projections of their own and
-  # carry no cache provenance. Cleared rather than left alone: navigating from
-  # the project graph to a component's would otherwise keep the project graph's
-  # strip above a graph it does not describe.
-  defp assign_graph(socket, project, scope, graph_data) do
-    {:noreply,
-     assign(socket,
-       project: project,
-       scope: scope,
-       page: nil,
-       graph_data: graph_data,
-       graph_provenance: nil,
-       error: nil,
-       setup_error: nil
-     )}
-  end
 end

@@ -463,8 +463,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # The root of this graph since `project_setup` left it. Setup is no
         # longer a requirement: `cms new` covers it, and the mainline exits the
         # generator with it complete, so a generated project has nothing to do.
-        # Brownfield onboarding lives at /app/projects/:id/setup and is entered
-        # deliberately — see `CodeMySpecWeb.ProjectSetupLive`.
+        # Brownfield onboarding (`CodeMySpecWeb.ProjectSetupLive`,
+        # /app/projects/:id/setup) was retired (942e9566) rather than kept as a
+        # door into the workflow.
         prerequisites: [],
         # Manual so the stop hook doesn't short-circuit the multi-turn
         # intake conversation. The PM and agent need room to exchange

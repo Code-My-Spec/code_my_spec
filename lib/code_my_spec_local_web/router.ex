@@ -102,32 +102,10 @@ defmodule CodeMySpecLocalWeb.Router do
            MarkdownBrowserLive,
            :project_knowledge
 
-      # Brownfield onboarding, deliberately not under /requirements/. It stopped
-      # being a requirement when `cms new` took over setup — a generated project
-      # exits with it complete — so it is a door into the workflow rather than a
-      # step in it. See `ProjectSetupLive`.
-      live "/app/projects/:project_id/setup", ProjectSetupLive, :show
-      live "/app/projects/:project_id/setup/:step_id", ProjectSetupLive, :step
-
       live "/app/projects/:project_id/requirements", RequirementsLive, :index
       live "/app/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/app/projects/:project_id/requirements/stories", RequirementsLive, :stories
       live "/app/projects/:project_id/requirements/:name", RequirementsLive, :show
-      live "/app/projects/:project_id/components", RequirementsLive, :components
-      live "/app/projects/:project_id/components/graph", RequirementsLive, :components_graph
-      live "/app/projects/:project_id/components/:component_id", RequirementsLive, :component_show
-
-      live "/app/projects/:project_id/components/:component_id/graph",
-           RequirementsLive,
-           :component_graph
-
-      live "/app/projects/:project_id/components/:component_id/requirements/:name",
-           RequirementsLive,
-           :component_req_show
-
-      live "/app/projects/:project_id/components/:component_id/requirements/:name/prompt",
-           RequirementsLive,
-           :component_req_prompt
 
       live "/app/projects/:project_id/stories/:story_number/requirements/:name",
            RequirementsLive,

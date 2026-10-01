@@ -5,7 +5,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   Verifies that get_next_requirement guides the agent through:
   1. Init checklist (no project)
   2. Link project → computed graph returns the first requirement directly
-     (personas_complete since project_setup left the graph — see ProjectSetupLive)
+     (personas_complete since project_setup left the graph)
   """
   use ExUnit.Case, async: true
 

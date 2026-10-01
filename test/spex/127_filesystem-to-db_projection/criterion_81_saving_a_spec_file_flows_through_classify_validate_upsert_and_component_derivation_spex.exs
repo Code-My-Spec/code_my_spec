@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5924Spex do
 
   Covers Rule "A relevant filesystem event triggers the full chain."
   The chain's user-observable result is: a tracked File row whose role
-  is `spec` AND a derived component link visible in /files.
+  is `spec` AND its derived component named in /files.
   """
 
   use CodeMySpecSpex.Case
@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5924Spex do
         {:ok, Map.put(context, :files_live, files_live)}
       end
 
-      then_ "the spec file row carries role spec and a component link to FooContext",
+      then_ "the spec file row carries role spec and names its owning component FooContext",
             context do
         # Classified as :spec → role cell shows "spec"
         assert has_element?(
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5924Spex do
         # Upserted + component derivation hooked up the owning component
         assert has_element?(
                  context.files_live,
-                 "[data-file-path=\"#{@spec_path}\"] [data-test='file-component-link']",
+                 "[data-file-path=\"#{@spec_path}\"] [data-test='file-component']",
                  "FooContext"
                )
 

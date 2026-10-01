@@ -69,9 +69,9 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
 
         refute has_element?(
                  context.files_live,
-                 "#{orphan_row_selector} [data-test='file-component-link']"
+                 "#{orphan_row_selector} [data-test='file-component']"
                ),
-               "expected the CLAUDE.md row to omit a component link, since it has no owning component"
+               "expected the CLAUDE.md row to omit the component label, since it has no owning component"
 
         {:ok, context}
       end
