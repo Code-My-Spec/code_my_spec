@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1050.Criterion1603Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
-  alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -27,10 +26,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion1603Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    :ok = Fixtures.install_recording_agent_transport()
     :ok
   end
 

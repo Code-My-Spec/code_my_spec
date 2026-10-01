@@ -19,7 +19,6 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
   # A run that found a failing spec in a file neither agent touched.
@@ -34,10 +33,7 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    :ok = Fixtures.install_recording_agent_transport()
     :ok
   end
 

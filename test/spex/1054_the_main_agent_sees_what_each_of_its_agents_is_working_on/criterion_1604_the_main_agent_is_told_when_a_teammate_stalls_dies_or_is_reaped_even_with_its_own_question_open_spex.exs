@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
-  alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -25,10 +24,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    :ok = Fixtures.install_recording_agent_transport()
     :ok
   end
 
