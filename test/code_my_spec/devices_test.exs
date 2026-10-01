@@ -316,4 +316,33 @@ defmodule CodeMySpec.DevicesTest do
       assert {:error, :not_yours} = Devices.relabel(scope, theirs, "mine now")
     end
   end
+
+  describe "destroying a machine" do
+    test "a machine with no working copies is simply gone", %{scope: scope} do
+      {:ok, device} = Devices.announce(scope, nil, %{hostname: "orphan", kind: :local})
+
+      assert {:ok, _} = Devices.destroy(scope, device)
+      assert Devices.get_device(scope, device.id) == nil
+    end
+
+    test "its working copies go with it, not to the nil-device state (2dd9a959)",
+         %{scope: scope} do
+      {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
+      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
+
+      assert {:ok, _} = Devices.destroy(scope, device)
+
+      refute CodeMySpec.Repo.get(CodeMySpec.WorkingCopies.WorkingCopy, copy.id),
+             "migration 20260830120000 made this cascade deliberately (John's call, " <>
+               "criterion 2848) — a checkout with no machine left is a state that " <>
+               "stopped being legal, not one `destroy/2` should still be able to produce"
+    end
+
+    test "another account's device cannot be destroyed", %{scope: scope} do
+      other = full_scope_fixture()
+      {:ok, theirs} = Devices.announce(other, nil, %{hostname: "not-yours", kind: :local})
+
+      assert {:error, :not_yours} = Devices.destroy(scope, theirs)
+    end
+  end
 end

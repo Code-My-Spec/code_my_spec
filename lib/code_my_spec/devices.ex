@@ -349,16 +349,20 @@ defmodule CodeMySpec.Devices do
   end
 
   @doc """
-  Remove a machine, leaving its working copies behind.
+  Remove a machine.
 
   Destroying is a real act for a sprite, and uninstalling CMS from a laptop
   amounts to the same thing: the machine stops existing as far as this system is
-  concerned. The checkouts it served do not — they happened, and were worked in.
+  concerned.
 
-  So `working_copies.device_id` nullifies rather than cascading, and those rows
-  land in exactly the state of a copy that never reported a machine. The two
-  histories are indistinguishable from the row, which is correct: nothing can
-  tell them apart, so nothing should claim to.
+  Its working copies do not survive it: `working_copies.device_id` has
+  cascaded since migration `20260830120000` (John's call, criterion 2848) — a
+  checkout is "a projection of a directory nobody has any more" once its
+  machine is gone, so the row goes rather than being left to nullify. The
+  record of work done on it does survive — `agents`, `issues`, `problems` and
+  `sessions` are `SET NULL`, not cascaded, on the same migration. A caller
+  destroying a device that still has working copies attached is deleting
+  those copies, not detaching them.
   """
   @spec destroy(Scope.t(), Device.t()) :: {:ok, Device.t()} | {:error, :not_yours}
   def destroy(%Scope{active_account_id: account_id}, %Device{account_id: account_id} = device),

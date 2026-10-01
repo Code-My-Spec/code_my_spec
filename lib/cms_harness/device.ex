@@ -61,6 +61,7 @@ defmodule CmsHarness.Device do
   """
 
   require Logger
+  import Bitwise, only: [band: 2]
 
   alias CmsHarness.Config
   alias CmsHarness.Device.Client
@@ -212,8 +213,23 @@ defmodule CmsHarness.Device do
   #
   # Deliberately not "the interface getifaddrs happens to list first": that
   # order is not guaranteed stable across runs, so the lowest MAC among the
-  # non-loopback, non-zero ones is picked instead — the same input always
-  # sorts to the same answer.
+  # non-loopback, non-zero, globally-unique ones is picked instead — the
+  # same input always sorts to the same answer.
+  #
+  # Globally-unique, not merely non-zero: a laptop also carries interfaces
+  # whose address was assigned by software rather than burned into a NIC —
+  # AWDL, Personal Hotspot and similar virtual adapters, identifiable by the
+  # locally-administered bit (`0x02`) set in the first octet. Those addresses
+  # can change with whatever peripheral is paired or which of several such
+  # interfaces happens to exist at a given moment, and several of them sorted
+  # below this machine's one real hardware address — so a workspace's
+  # embedded harness (`Workspaces.Runner.Local`, which never shares
+  # `device.json` with the laptop's own install — see `path/0`) minted a
+  # different "stable" fingerprint on a different day and announced as a
+  # brand-new machine every time, leaving thousands of orphaned rows for one
+  # real laptop (2dd9a959). Excluding them first and falling back to the
+  # wider pool only when nothing globally-unique is visible keeps today's
+  # behaviour for a host with no real NIC the OS can see.
   #
   # A MAC is 48 bits and `devices.id` is a UUID column, so the raw address
   # cannot be stored as-is — it is hashed into 16 bytes and loaded through
@@ -223,14 +239,27 @@ defmodule CmsHarness.Device do
   # type and `Ecto.UUID.cast/1` both only check the string shape.
   defp machine_fingerprint do
     with {:ok, interfaces} <- :inet.getifaddrs(),
-         mac when is_binary(mac) <-
-           interfaces |> Enum.flat_map(&hwaddr/1) |> Enum.sort() |> List.first(),
+         mac when is_binary(mac) <- interfaces |> Enum.flat_map(&hwaddr/1) |> pick_mac(),
          {:ok, uuid} <- mac |> then(&:crypto.hash(:md5, &1)) |> Ecto.UUID.load() do
       uuid
     else
       _ -> nil
     end
   end
+
+  # Public and `@doc false`: the selection logic is worth proving directly
+  # against synthetic addresses, but `:inet.getifaddrs/0` itself is not
+  # something a test can usefully stub.
+  @doc false
+  @spec pick_mac([binary()]) :: binary() | nil
+  def pick_mac(candidates) do
+    case candidates |> Enum.reject(&locally_administered?/1) |> Enum.sort() do
+      [mac | _] -> mac
+      [] -> candidates |> Enum.sort() |> List.first()
+    end
+  end
+
+  defp locally_administered?(<<first, _rest::binary>>), do: band(first, 0x02) != 0
 
   defp hwaddr({_name, opts}) do
     with false <- :loopback in Keyword.get(opts, :flags, []),

@@ -188,4 +188,30 @@ defmodule CmsHarness.DeviceTest do
       assert {:ok, _} = Ecto.UUID.cast(id)
     end
   end
+
+  describe "picking a hardware address" do
+    # A real Mac mini observed live carrying both: en0's burned-in address
+    # alongside anpi0/anpi1/awdl0-style virtual interfaces whose addresses
+    # sorted below it. Picking "lowest of everything" chose one of those
+    # instead — different workspace boots saw a different one connected and
+    # announced as a different machine every time, 2dd9a959's thousands of
+    # orphaned devices for one real laptop.
+    test "prefers a globally-unique address over a locally-administered one that sorts lower" do
+      global = <<148, 5, 187, 209, 94, 222>>
+      local = <<10, 177, 72, 229, 214, 212>>
+
+      assert Device.pick_mac([local, global]) == global
+    end
+
+    test "falls back to the lowest address when nothing globally-unique is present" do
+      lower = <<10, 177, 72, 229, 214, 212>>
+      higher = <<38, 133, 99, 127, 183, 12>>
+
+      assert Device.pick_mac([higher, lower]) == lower
+    end
+
+    test "no candidates at all yields nil" do
+      assert Device.pick_mac([]) == nil
+    end
+  end
 end
