@@ -23,11 +23,11 @@ defmodule CodeMySpec.Hooks.Stop do
 
   require Logger
 
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
@@ -562,7 +562,7 @@ defmodule CodeMySpec.Hooks.Stop do
   # sending an agent to `get_next_requirement` while findings are outstanding,
   # which is what a hand-written directive here would have done.
   #
-  # `actionable_count/1` rather than `next_actionable/1`, and the difference is
+  # `Work.actionable/4` rather than `next_actionable/1`, and the difference is
   # not tidiness. `Menu`'s own comment records why: `next_actionable/1`
   # recomputes on a cache miss and globs the working copy, and for a
   # harness-served project the stop decision runs *inside the channel process*
@@ -593,7 +593,7 @@ defmodule CodeMySpec.Hooks.Stop do
         # unsatisfied in the menu: this branch would tell a continuous agent its
         # work was finished while the menu in the same response listed the work.
         # Criterion 3448 is what forbids those two disagreeing.
-        case Requirements.actionable_count(scope, nil) do
+        case length(Work.actionable(scope, nil, session)) do
           n when n > 0 ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"

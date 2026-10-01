@@ -50,6 +50,7 @@ defmodule CodeMySpec.DevState do
   import Ecto.Query
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
@@ -205,7 +206,8 @@ defmodule CodeMySpec.DevState do
   # In the agent's own scope. An agent computes the graph where it stands, and
   # the project-wide answer is a different number — 12 against 0 on Broken
   # Oaths, because the unfinished stories were parked on another working copy.
-  defp actionable_for(%{role: role, working_copy_id: copy_id, project_id: project_id})
+  # What it would be offered, so this agrees with the turn offer (a31f1cd6).
+  defp actionable_for(%{role: role, working_copy_id: copy_id, project_id: project_id} = agent)
        when is_binary(copy_id) do
     project = Repo.get(Project, project_id)
 
@@ -216,7 +218,7 @@ defmodule CodeMySpec.DevState do
       active_working_copy_id: copy_id
     }
 
-    CodeMySpec.Requirements.actionable_count(scope, role)
+    length(Work.actionable(scope, role, agent))
   rescue
     _ -> nil
   end

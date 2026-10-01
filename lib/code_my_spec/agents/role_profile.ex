@@ -51,6 +51,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     :tools,
     :browses?,
     :holds_problems?,
+    :claims_any?,
     :hears_findings?,
     :model_preference
   ]
@@ -70,6 +71,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
           tools: :all | [String.t()],
           browses?: boolean(),
           holds_problems?: boolean(),
+          claims_any?: boolean(),
           hears_findings?: boolean(),
           model_preference: [{String.t(), String.t()}]
         }
@@ -270,6 +272,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       tools: :all,
       browses?: true,
       holds_problems?: true,
+      # Offered only its own work, but may take over any role's by hand to
+      # unstick a teammate (John, 2026-10-01).
+      claims_any?: true,
       hears_findings?: true,
       model_preference: @strong
     },
@@ -287,6 +292,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       tools: @product_tools,
       browses?: false,
       holds_problems?: false,
+      claims_any?: false,
       hears_findings?: false,
       model_preference: @strong
     },
@@ -302,6 +308,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       tools: @coding_tools,
       browses?: true,
       holds_problems?: true,
+      claims_any?: false,
       hears_findings?: true,
       model_preference: @strong
     },
@@ -317,6 +324,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       tools: @qa_tools,
       browses?: true,
       holds_problems?: false,
+      claims_any?: false,
       hears_findings?: false,
       model_preference: @cheap
     }
@@ -410,6 +418,16 @@ defmodule CodeMySpec.Agents.RoleProfile do
     do: match?(%{holds_problems?: true}, get(role))
 
   def holds_problems?(_role), do: true
+
+  @doc """
+  Whether this role may start a requirement it is not offered. Anything that
+  is not a role atom (a person or a Claude Code session) may.
+  """
+  @spec claims_any?(term()) :: boolean()
+  def claims_any?(role) when is_atom(role) and not is_nil(role),
+    do: match?(%{claims_any?: true}, get(role))
+
+  def claims_any?(_role), do: true
 
   @doc """
   Whether an open question on the story blocks this role's story work. `nil`

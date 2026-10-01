@@ -18,6 +18,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Tasks.TasksMapper
@@ -210,8 +212,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end)
   end
 
-  defp handle_existing(nil, scope, owner, requirement, agent_id, frame),
-    do: create_and_activate(scope, owner, requirement, agent_id, frame)
+  defp handle_existing(nil, scope, owner, requirement, agent_id, frame) do
+    case role_may_claim(owner, requirement) do
+      :ok -> create_and_activate(scope, owner, requirement, agent_id, frame)
+      {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
+    end
+  end
 
   defp handle_existing(%{status: :active} = task, scope, owner, _req, agent_id, frame) do
     maybe_assign_agent(scope, owner, task, agent_id)
@@ -257,12 +263,37 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp owner_scope(scope, %Session{}), do: scope
 
+  # A fresh claim is checked against the caller's role as resuming one is
+  # (a31f1cd6): work its role is not offered is work nothing would hand it.
+  # A session has no role and claims as before. An agent holding an active task
+  # is told that first, by `TaskOwner`: it is the refusal it must act on before
+  # any other claim (story 1047).
+  defp role_may_claim(%Agent{role: role} = agent, requirement) when not is_nil(role) do
+    if RoleProfile.claims_any?(role) or Requirements.offered_to?(role, requirement.name) or
+         Agent.active_task(agent),
+       do: :ok,
+       else: {:error, not_your_role(role, requirement)}
+  end
+
+  defp role_may_claim(_owner, _requirement), do: :ok
+
+  defp not_your_role(role, requirement) do
+    whose =
+      case Map.get(requirement, :role) do
+        nil -> "not #{role}'s"
+        owner_role -> "#{owner_role}'s"
+      end
+
+    "`#{requirement.name}` is #{whose} work, and you are the #{role} agent, so you cannot " <>
+      "start it. `get_next_requirement` lists the work your role is offered."
+  end
+
   defp eligible_to_resume(scope, owner, requirement) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
 
     eligible? =
       scope
-      |> Requirements.actionable_for_role(role)
+      |> Work.actionable(role, owner)
       |> Enum.any?(fn node ->
         node.name == requirement.name and node.entity_type == requirement.entity_type and
           to_string(node.entity_id) == to_string(requirement.entity_id)

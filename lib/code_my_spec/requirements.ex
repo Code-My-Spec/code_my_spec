@@ -77,12 +77,11 @@ defmodule CodeMySpec.Requirements do
       do: StoryExecution.read(scope, role, requested_number, withheld?)
 
   @doc """
-  How many requirements this role can act on for this working copy.
+  How many requirements this role can act on for this working copy, before any
+  agent's claims. An agent's work — what it is offered, counted and told — is
+  `Agents.Work.work_for/4`, which adds its checkout and what it may not claim.
 
-  One definition of "your work", shared with `get_next_requirement` — they used
-  to have two, and the menu could advertise work that had already been done.
-
-  `story_execution/3` is that definition. With a story selected it is that
+  `story_execution/3` is the graph's definition. With a story selected it is that
   story's work; without one it is the project's requirements plus whatever
   stories are assigned to this copy. That fallback is what keeps project-level
   work — `issues_triaged`, `architecture_designed`, the QA journey — reaching
@@ -100,6 +99,14 @@ defmodule CodeMySpec.Requirements do
   @spec actionable_for_role(Scope.t(), atom() | nil) :: [map()]
   def actionable_for_role(%Scope{active_project_id: nil}, _role), do: []
   def actionable_for_role(%Scope{} = scope, role), do: story_execution(scope, role).actionable
+
+  @doc """
+  Whether requirement `name` is one `role` is offered, by its profile's
+  `requirements` selectors — the filter `actionable_for_role/2` applies.
+  """
+  @spec offered_to?(atom(), String.t()) :: boolean()
+  def offered_to?(role, name) when is_atom(role) and is_binary(name),
+    do: name in RequirementsRegistry.requirement_names_for_role(role)
 
   @doc """
   Which entities read stale right now — the expensive diff, run deliberately.

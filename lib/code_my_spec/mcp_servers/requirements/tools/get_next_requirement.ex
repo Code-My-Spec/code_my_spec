@@ -15,7 +15,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -40,13 +39,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
 
         agent = my_agent(frame, scope)
 
+        # The head of the same list the turn offer and the stop menu read
+        # (a31f1cd6); what `start_task` would refuse is withheld (467310a7).
         execution =
           scope
-          |> Requirements.story_execution(
-            agent && agent.role,
-            requested["story_number"],
-            withheld(scope, agent)
-          )
+          |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
           |> then(&StoryRefs.number_execution(scope, &1))
 
         {:reply, RequirementsMapper.story_execution_response(execution, active_subagents), frame}
@@ -68,7 +65,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # large project and perpetually invalidated the graph cache.
   #
   # The reason to remove it rather than narrow it again is correctness, not
-  # cost. `Agents.Work.graph_work?/2` decides whether to wake an agent by
+  # cost. `Agents.Work` decides whether to wake an agent by
   # reading the graph directly, with no sync. Syncing here meant admission and
   # the agent's own first question were answered from two different graphs, so
   # an agent could be woken for work that had moved by the time it asked —
@@ -87,15 +84,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
     else
       _ -> nil
     end
-  end
-
-  # What `start_task` would refuse this agent is not offered to it — its own
-  # task blocked on an unanswered tap_out was, and it spun (467310a7).
-  defp withheld(_scope, nil), do: fn _ -> false end
-
-  defp withheld(scope, agent) do
-    owners = Agents.list_agents(scope)
-    &Work.withheld?(owners, agent, &1)
   end
 
   # Resolves the currently-active sub-agents for the most recent session

@@ -72,6 +72,7 @@ defmodule CodeMySpec.Validation.Menu do
   """
 
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements
@@ -263,8 +264,11 @@ defmodule CodeMySpec.Validation.Menu do
   # `get_next_requirement` for it, and the agent was told there was none — every
   # six seconds, until enough recomputes caught the rows up. A count and the
   # list it counts, disagreeing, which is exactly what one source prevents.
-  defp count(scope, :requirements, role, _owner),
-    do: Requirements.actionable_count(scope, role)
+  #
+  # `Work.actionable/4` with the owner, so an agent's count is what it would be
+  # offered: it did not withhold, and counted work `start_task` refuses (a31f1cd6).
+  defp count(scope, :requirements, role, owner),
+    do: length(Work.actionable(scope, role, owner))
 
   # `[]` for every caller not given an owner — the class then counts 0 and the
   # menu reads exactly as it did before this existed.
