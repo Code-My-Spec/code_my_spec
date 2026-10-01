@@ -7,8 +7,9 @@ defmodule CmsHarness.Sync do
   that inline would stall the socket that holds the project's lease, and a
   stalled socket is a lease the server cannot tell from a live one.
 
-  The scan itself is `CodeMySpec.Files.Scanner` — the same code the server runs,
-  from `cms_scan`, so the two cannot disagree about what a file is.
+  The scan itself is `CodeMySpec.Files.Scanner` — the harness and the server
+  compile the same `lib/code_my_spec` module, so the two cannot disagree
+  about what a file is.
   """
 
   require Logger

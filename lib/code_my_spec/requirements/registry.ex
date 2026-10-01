@@ -5,8 +5,9 @@ defmodule CodeMySpec.Requirements.Registry do
 
   `Components.Registry` keeps component-type *metadata* — display name, icon,
   colour, document type, dependency order. That table is a fact about what a
-  component is, needs no database, and now lives in `cms_scan` so the light
-  harness classifies files exactly as the server does.
+  component is and needs no database — the harness and the server compile
+  the same `lib/code_my_spec` modules, so both classify files identically
+  with no separate copy to keep in sync.
 
   Everything that reads `RequirementDefinitionData` lives here instead. It used
   to live on `Components.Registry` too, which meant that module straddled the

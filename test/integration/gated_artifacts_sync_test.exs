@@ -91,8 +91,9 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
            An unclassified artifact is dropped in silence: the scan keeps
            reporting a constant file count, the server keeps accepting manifests,
            and the checker reports the file missing while it sits on disk. That
-           has cost five drills. Add the classifier clause, the role, the enum
-           migration, and the cms_scan port.
+           has cost five drills. Add the classifier clause and the role —
+           the harness and the server compile the same `Scanner`, so there is
+           nothing else to keep in sync.
            """
   end
 

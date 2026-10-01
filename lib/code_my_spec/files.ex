@@ -43,10 +43,11 @@ defmodule CodeMySpec.Files do
   story ids, and whether validation is strict.
 
   Here rather than on `Scanner` because it is the one part of scanning that
-  touches a database, and `Scanner` now ships in `cms_scan` so the light harness
-  can classify files without one. Everything else in that module is a function
-  of (environment, read model); this is where the read model comes from when
-  there *is* a database. A harness fetches the same struct over its channel.
+  touches a database. The harness and the server compile the same
+  `lib/code_my_spec` modules, `Scanner` included — a light harness holds no
+  database, so everything else in that module is a function of (environment,
+  read model), and this is where the read model comes from when there *is* a
+  database. A harness fetches the same struct over its channel.
   """
   @spec read_model(Scope.t()) :: ReadModel.t()
   def read_model(%Scope{} = scope) do

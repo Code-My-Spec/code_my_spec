@@ -3,10 +3,10 @@ defmodule CodeMySpec.Requirements.RegistryTest do
   The entry point for requirement definitions.
 
   `has_children?/1` lives here rather than on `Components.Registry` because it
-  answers its question by reading the graph template. Keeping it beside the type
-  table would have meant `cms_scan` — which holds that table so the light
-  harness can classify files without a database — calling back into the
-  application that consumes it.
+  answers its question by reading the graph template. Keeping it beside the
+  type table (a plain module needing no database, so the light harness can
+  classify files without one) would have meant that module calling back into
+  the application that consumes it.
   """
 
   use ExUnit.Case, async: true

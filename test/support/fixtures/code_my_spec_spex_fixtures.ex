@@ -1287,9 +1287,9 @@ defmodule CodeMySpecSpex.Fixtures do
   The harness's side of the wire, for Story 987.
 
   Scans the working copy with the real `Scanner.observe/2` — the same function
-  the harness runs, kept identical by cms_scan's drift test — serialises the
-  result the way the harness does, and pushes it through the **real channel
-  handler**.
+  the harness runs, since both compile it from `lib/code_my_spec` — serialises
+  the result the way the harness does, and pushes it through the **real
+  channel handler**.
 
   Going through the channel is the whole point. An earlier version of this
   bridge called `FileSync.reconcile/2` and `ComponentSync.sync_from_files/1`

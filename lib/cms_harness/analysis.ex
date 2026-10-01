@@ -12,9 +12,9 @@ defmodule CmsHarness.Analysis do
   them with the same `ProblemConverter` it has always used, which is what keeps
   a harness-run analyzer and a server-run analyzer producing identical rows.
 
-  The executors themselves are `cms_scan`'s copies of `CodeMySpec.Compile`,
-  `CodeMySpec.Tests` and `CodeMySpec.BddSpecs.Spex` — byte-identical to the
-  server's and pinned by `cms_scan`'s drift test — plus
+  The executors themselves are `CodeMySpec.Compile`, `CodeMySpec.Tests` and
+  `CodeMySpec.BddSpecs.Spex` — the harness and the server compile the same
+  `lib/code_my_spec` modules, so there is nothing to keep in sync — plus
   `StaticAnalysis.CredoRun`, which is the shell-out half of the server's Credo
   analyzer.
 
