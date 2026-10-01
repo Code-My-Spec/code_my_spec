@@ -64,11 +64,17 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   a dependency whose docs haven't been embedded yet (or at all, if the
   package has none) simply contributes nothing, same as before this existed.
 
-  Built with `dynamic/2` rather than hand-counted `$N` placeholders: the old
-  raw-SQL version was fine while the scope was one project_id, but a clause
-  per locked dependency makes manual parameter counting the kind of thing
-  that is right until the dependency list has a different length than it
-  did when it was tested.
+  Raw SQL via `AdaptersSQL.query/3`, same as before this scope grew:
+  `e.embedding`'s native type is pgvector's `vector`, which Postgrex's
+  default types module can't decode — fine when the column never has to
+  describe itself to the wire protocol (a plain `$N::text::vector` bind),
+  which going through `Ecto.Query` at all stops being true the moment
+  `embedding` is referenced anywhere in the query, ORDER BY included, even
+  though it is never selected. Measured directly: an `Ecto.Query` version of
+  this using `dynamic/2` for the scope clause compiled fine and failed every
+  call with `Postgrex.QueryError: type \`vector\` can not be handled`.
+  `dynamic/2`'s real benefit — not hand-counting `$N` placeholders — is kept
+  by building the clause list in Elixir and only joining/counting at the end.
   """
   @impl true
   def search(project_id, query, opts) do
@@ -77,23 +83,26 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     source_prefix = Keyword.get(opts, :source_prefix)
 
     with {:ok, embedding} <- Serving.embed(query) do
+      {scope_sql, scope_params} = scope_clause(project_id)
+      {source_sql, source_params} = source_clause(source, source_prefix, length(scope_params))
       vector = encode_vector(embedding)
+      params = scope_params ++ source_params
+      n = length(params)
 
-      results =
-        DocEmbedding
-        |> where(^scope_filter(project_id))
-        |> where(^source_filter(source, source_prefix))
-        |> order_by([e], fragment("? <=> ?::vector", e.embedding, ^vector))
-        |> limit(^limit)
-        |> select([e], %{
-          source: e.source,
-          path: e.path,
-          chunk_index: e.chunk_index,
-          content: e.content
-        })
-        |> Repo.all()
+      where = "WHERE (#{scope_sql})" <> if(source_sql, do: " AND #{source_sql}", else: "")
 
-      {:ok, results}
+      sql = """
+      SELECT e.source, e.path, e.chunk_index, e.content
+      FROM doc_embeddings e
+      #{where}
+      ORDER BY e.embedding <=> $#{n + 1}::text::vector
+      LIMIT $#{n + 2}
+      """
+
+      case AdaptersSQL.query(Repo, sql, params ++ [vector, limit]) do
+        {:ok, %{rows: rows}} -> {:ok, Enum.map(rows, &row_to_result/1)}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -102,28 +111,51 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   # — see the embeddings rework design doc, "Framework knowledge".
   @framework_package "code_my_spec"
 
-  defp scope_filter(project_id) do
-    own = dynamic([e], e.project_id == ^project_id)
-    framework = dynamic([e], is_nil(e.project_id) and e.package == ^@framework_package)
+  defp scope_clause(project_id) do
+    dep_clauses_and_params =
+      project_id
+      |> locked_dependencies()
+      |> Enum.flat_map(fn %{name: name, version: version} ->
+        [{"(e.project_id IS NULL AND e.package = ? AND e.version = ?)", [name, version]}]
+      end)
 
-    project_id
-    |> locked_dependencies()
-    |> Enum.reduce(dynamic(^own or ^framework), fn %{name: name, version: version}, acc ->
-      dep = dynamic([e], is_nil(e.project_id) and e.package == ^name and e.version == ^version)
-      dynamic(^acc or ^dep)
-    end)
+    clauses_and_params = [
+      {"e.project_id = ?::text::uuid", [project_id]},
+      {"(e.project_id IS NULL AND e.package = ?)", [@framework_package]} | dep_clauses_and_params
+    ]
+
+    {clauses, params} = Enum.unzip(clauses_and_params)
+    {number_placeholders(Enum.join(clauses, " OR ")), List.flatten(params)}
+  end
+
+  defp source_clause(source, _prefix, offset) when not is_nil(source),
+    do: {number_placeholders("e.source = ?", offset), [source]}
+
+  defp source_clause(_source, prefix, offset) when not is_nil(prefix),
+    do: {number_placeholders("e.source LIKE ?", offset), [prefix <> "%"]}
+
+  defp source_clause(_source, _prefix, _offset), do: {nil, []}
+
+  # Every clause above is written with bare `?` placeholders in source
+  # order, same convention sqlite_vec uses elsewhere in this pipeline — this
+  # is the one place that turns them into Postgres's `$1, $2, ...`, offset
+  # past whatever params already precede this clause.
+  defp number_placeholders(sql, offset \\ 0) do
+    parts = String.split(sql, "?")
+    {leading, [trailing]} = Enum.split(parts, length(parts) - 1)
+
+    leading
+    |> Enum.with_index(offset + 1)
+    |> Enum.map_join(fn {part, n} -> part <> "$#{n}" end)
+    |> Kernel.<>(trailing)
   end
 
   defp locked_dependencies(project_id) do
     Dependencies.list_dependencies(%Scope{active_project_id: project_id})
   end
 
-  defp source_filter(source, _prefix) when not is_nil(source), do: dynamic([e], e.source == ^source)
-
-  defp source_filter(_source, prefix) when not is_nil(prefix),
-    do: dynamic([e], like(e.source, ^(prefix <> "%")))
-
-  defp source_filter(_source, _prefix), do: dynamic(true)
+  defp row_to_result([src, path, chunk_index, content]),
+    do: %{source: src, path: path, chunk_index: chunk_index, content: content}
 
   @doc """
   Store one chunk. Called by `EmbeddingService` in place of its sqlite_vec

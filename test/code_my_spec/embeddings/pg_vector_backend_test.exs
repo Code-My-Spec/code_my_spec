@@ -46,7 +46,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
       |> Repo.update_all(set: [package: package, version: version, model: model])
   end
 
-  defp lock(project_id, name, version) do
+  defp lock_dependency(project_id, name, version) do
     %Dependency{}
     |> Dependency.changeset(%{project_id: project_id, name: name, version: version, source: "hex"})
     |> Repo.insert!()
@@ -80,7 +80,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
     test "a hex package's docs are visible when the project's lock pins that exact version",
          %{scope: scope} do
       project_id = scope.active_project_id
-      lock(project_id, "phoenix", "1.8.1")
+      lock_dependency(project_id, "phoenix", "1.8.1")
 
       put_shared_chunk("hexdocs:phoenix", "Phoenix.md", "Phoenix channels", "phoenix", "1.8.1", "minilm-l6-v2")
 
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
     test "a different version of the same package is not surfaced — exact versions only",
          %{scope: scope} do
       project_id = scope.active_project_id
-      lock(project_id, "phoenix", "1.8.1")
+      lock_dependency(project_id, "phoenix", "1.8.1")
 
       put_shared_chunk("hexdocs:phoenix", "Phoenix.md", "Phoenix channels", "phoenix", "1.7.0", "minilm-l6-v2")
 
