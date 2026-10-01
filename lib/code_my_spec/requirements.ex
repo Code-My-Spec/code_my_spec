@@ -67,14 +67,17 @@ defmodule CodeMySpec.Requirements do
   The current story's execution state; never falls back to project work.
 
   `withheld?` drops nodes the caller cannot claim, before the wave is cut.
+  `assignment` is whose story: `:copy` (the copy's active story) or
+  `{:agent, story_id}` (the calling agent's own).
   """
   def story_execution(
         scope,
         role \\ nil,
         requested_number \\ nil,
-        withheld? \\ fn _ -> false end
+        withheld? \\ fn _ -> false end,
+        assignment \\ :copy
       ),
-      do: StoryExecution.read(scope, role, requested_number, withheld?)
+      do: StoryExecution.read(scope, role, requested_number, withheld?, assignment)
 
   @doc """
   How many requirements this role can act on for this working copy, before any

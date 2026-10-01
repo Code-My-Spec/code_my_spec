@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Work do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Waiting
@@ -13,6 +14,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   # Only tools the agent actually carries directly.
   #
@@ -601,14 +603,60 @@ defmodule CodeMySpec.Agents.Work do
   @spec work_for(Scope.t(), atom() | nil, term(), keyword()) :: map()
   def work_for(%Scope{} = scope, role, owner \\ nil, opts \\ []) do
     scope = at_copy(scope, owner)
+    number = Keyword.get(opts, :story_number)
+    withheld? = withholding(scope, owner, opts)
+    assignment = assignment(scope, owner)
 
-    Requirements.story_execution(
-      scope,
-      role,
-      Keyword.get(opts, :story_number),
-      withholding(scope, owner, opts)
-    )
+    scope
+    |> Requirements.story_execution(role, number, withheld?, assignment)
+    |> advance(scope, team_member?(owner), fn assignment ->
+      Requirements.story_execution(scope, role, number, withheld?, assignment)
+    end)
   end
+
+  # The team takes its next story when its story is complete for all of it
+  # (a31f1cd6). John: "fine for the team to take a new story from the working
+  # copy when the team collectively finishes a story." The whole team moves,
+  # through `Assignment.advance/4`, which locks the team's rows so two
+  # teammates arriving at once move it once; then the answer is read again for
+  # the story the team is on now. Never on the main copy: `advance/4` refuses
+  # it, and the main agent reads `:project`, which has no story to finish.
+  #
+  # Only a team member's own read moves the team. A session, product or the
+  # main agent looking at the copy sees the finished story as finished.
+  defp advance(
+         %{status: :complete, story: %{id: from}, next_story: %{id: to}} = execution,
+         scope,
+         true,
+         read
+       ) do
+    case Assignment.advance(scope, scope.active_working_copy_id, from, to) do
+      {:ok, :moved} -> read.(team(scope.active_working_copy_id))
+      {:error, _reason} -> execution
+    end
+  end
+
+  defp advance(execution, _scope, _team_member?, _read), do: execution
+
+  defp team_member?(%Agent{role: role}), do: RoleProfile.scope(role) == :story
+  defp team_member?(_owner), do: false
+
+  # Whose story the answer is about (a31f1cd6). The main agent reads none —
+  # story work happens on feature copies, never on main. Everyone else reads
+  # the team's: a team member (coding, QA) the story it holds, product and a
+  # session the story their copy's team holds.
+  defp assignment(scope, %Agent{role: role} = agent) do
+    case RoleProfile.scope(role) do
+      :project -> :project
+      :story -> {:team, agent.story_id, agent.epic_id}
+      _epic -> team(scope.active_working_copy_id)
+    end
+  end
+
+  defp assignment(scope, _owner), do: team(scope.active_working_copy_id)
+
+  defp team(copy_id),
+    do: {:team, WorkingCopies.team_story_id(copy_id), Assignment.team_epic_id(copy_id)}
 
   @doc "`work_for/4`'s ordered actionable list."
   @spec actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]

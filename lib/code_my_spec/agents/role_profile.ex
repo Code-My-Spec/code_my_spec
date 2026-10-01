@@ -18,7 +18,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `requirements` — which requirements the role is offered, as selectors
       `Requirements` interprets. `:tagged` is every requirement whose definition
       names this role.
-    * `scope` — what the role works across: `:project` or one `:story`.
+    * `scope` — what the role works across. `:project` reads its copy's story,
+      as a session does. `:story` and `:epic` read the agent's own `story_id`
+      and are confined to it until it is complete; only a `:story` role is
+      assigned a story of its epic by claiming its work (a31f1cd6).
     * `home_copy` — `:main` for the roles that live on the project's main
       checkout, `:feature` for the ones that staff a working copy. Only a
       `:main` role may start on the main copy.
@@ -62,7 +65,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @type t :: %__MODULE__{
           role: role(),
           requirements: [:tagged],
-          scope: :project | :story,
+          scope: :project | :epic | :story,
           home_copy: :main | :feature,
           wake: [:events | :cadence | :teammate_questions],
           waiting_on: [:question_pending],
@@ -281,7 +284,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     %{
       role: :product,
       requirements: [:tagged],
-      scope: :story,
+      scope: :epic,
       home_copy: :feature,
       wake: [:events],
       waiting_on: [],
@@ -367,6 +370,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @spec roles_where_home(:main | :feature) :: [role()]
   def roles_where_home(home),
     do: for(profile <- all(), profile.home_copy == home, do: profile.role)
+
+  @doc "What `role` works across; `nil` for anything that is not a role (a session)."
+  @spec scope(atom() | String.t() | nil) :: :project | :epic | :story | nil
+  def scope(role), do: get_field(role, :scope)
 
   @doc "Whether `role` may start on the project's main checkout."
   @spec lives_on_main_copy?(atom() | String.t() | nil) :: boolean()

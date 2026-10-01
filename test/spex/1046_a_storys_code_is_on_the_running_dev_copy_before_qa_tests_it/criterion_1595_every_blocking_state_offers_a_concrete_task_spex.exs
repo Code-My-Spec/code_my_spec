@@ -23,9 +23,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
      `PromoteWork`.
   5. Promoted — `deploy` unsatisfied → `Deploy`.
 
-  One working copy carries one active story at a time
-  (`WorkingCopies.set_active_story/2`, `StoryExecution.selected/3`), so each
-  `then_` below switches the copy's active story immediately before asking —
+  A working copy's team works one story at a time (a31f1cd6: `set_active_story`
+  fans the story out to the copy's coding and QA agents, and
+  `StoryExecution.selected/3` reads it), so each `then_` below switches the
+  team's story immediately before asking —
   the tool an agent would actually call, not a shortcut around it.
   """
 
@@ -73,6 +74,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         # `restart_app`, only asks the graph what it would offer, so nothing
         # here needs a working `justfile`.
         context = designate_a_separate_main_copy(context)
+        # The team the story is set on: a copy without one cannot hold a story.
+        Fixtures.running_agent(context.scope, role: "coding")
+        Fixtures.running_agent(context.scope, role: "qa")
         {:ok, context}
       end
 

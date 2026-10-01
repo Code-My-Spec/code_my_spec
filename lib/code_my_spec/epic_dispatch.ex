@@ -151,6 +151,9 @@ defmodule CodeMySpec.EpicDispatch do
     with {:ok, _epic} <- result, %{} <- copy do
       place(scope, epic.id, copy.id)
       Agents.ensure_copy_agents(scope, copy)
+      # Again for the agents just staffed: `place/3` gave the epic to the ones
+      # already there.
+      Agents.assign_epic(scope, epic.id, copy.id)
     end
 
     result
@@ -276,9 +279,14 @@ defmodule CodeMySpec.EpicDispatch do
   a revision of the story's content, and nine PaperTrail versions saying
   "assigned" would bury the edits that are actually about the work. `updated_at`
   is set by hand because `update_all` does not touch timestamps.
+
+  The copy's agents get the epic too (`Agents.assign_epic/3`, a31f1cd6). The
+  team there takes one of its stories at a time, together: a story is assigned
+  to every coding and QA agent on the copy, by `set_active_story` or by the
+  first claim on a story's work while the team holds none.
   """
   @spec place(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: {:ok, non_neg_integer()}
-  def place(%Scope{active_project_id: project_id}, epic_id, working_copy_id)
+  def place(%Scope{active_project_id: project_id} = scope, epic_id, working_copy_id)
       when is_binary(project_id) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -286,6 +294,7 @@ defmodule CodeMySpec.EpicDispatch do
       from(s in Story, where: s.epic_id == ^epic_id and s.project_id == ^project_id)
       |> Repo.update_all(set: [working_copy_id: working_copy_id, updated_at: now])
 
+    Agents.assign_epic(scope, epic_id, working_copy_id)
     {:ok, count}
   end
 

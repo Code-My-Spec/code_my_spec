@@ -1,9 +1,10 @@
 defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   @moduledoc """
-  Discover the next orchestration wave for this working copy's active story.
+  Discover the next orchestration wave for the story the working copy's team
+  (its coding and QA agents) holds.
 
-  Discovery never selects another story. An explicit story must agree with the
-  working copy's active assignment. Use `start_task` on offered requirements.
+  Discovery never selects another story. An explicit story must agree with that
+  assignment. Use `start_task` on offered requirements.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -19,8 +20,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :story_number, :integer,
-      doc: "Optional story number; must match this working copy's active story"
+    field :story_number, :integer, doc: "Optional story number; must match your active story"
   end
 
   @impl true

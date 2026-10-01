@@ -25,8 +25,31 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   def activate(context) do
+    context = staff(context)
     call(context, SetActiveStory, %{story_number: context.story.number})
     context
+  end
+
+  @doc """
+  A coding and a QA agent on the scope's copy, unless it already has a team.
+  A story goes to the copy's team (a31f1cd6), so a copy needs one to hold it.
+  """
+  def staff(context) do
+    copy_id = context.scope.active_working_copy_id
+
+    staffed? =
+      context.scope
+      |> CodeMySpec.Agents.list_agents()
+      |> Enum.any?(&(&1.working_copy_id == copy_id and &1.role in [:coding, :qa]))
+
+    staff(context, staffed?)
+  end
+
+  defp staff(context, true), do: context
+
+  defp staff(context, false) do
+    team = for role <- ~w(coding qa), do: Fixtures.running_agent(context.scope, role: role)
+    Map.put(context, :team, team)
   end
 
   def call(context, tool, params, assigns \\ %{}) do
@@ -34,6 +57,30 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     {:reply, response, _frame} = tool.execute(params, frame)
     refute response.isError, response_text(response)
     response_text(response)
+  end
+
+  @doc "Call a tool and return `{error?, text}` — for a step whose refusal is the point."
+  def attempt(context, tool, params, assigns \\ %{}) do
+    frame = %Frame{assigns: Map.merge(%{current_scope: context.scope}, assigns)}
+    {:reply, response, _frame} = tool.execute(params, frame)
+    {response.isError, response_text(response)}
+  end
+
+  @doc """
+  A main copy beside the scope's own, with the main agent on it. Designated
+  first, so the scope's copy and any copy joined later are feature copies.
+  """
+  def main_copy(context) do
+    {:ok, copy} =
+      WorkingCopies.issue(context.scope, nil,
+        label: "the main checkout",
+        device: CodeMySpec.DevicesFixtures.device_fixture(context.scope)
+      )
+
+    {:ok, _} = CodeMySpec.Staffing.designate_main(context.scope, copy.id)
+    main_scope = %{context.scope | active_working_copy_id: copy.id}
+    main = Fixtures.running_agent(main_scope, role: "main")
+    Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})
   end
 
   def next(context, assigns \\ %{}) do

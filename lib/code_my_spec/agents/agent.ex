@@ -50,6 +50,7 @@ defmodule CodeMySpec.Agents.Agent do
 
   import Ecto.Changeset
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Projects.Project
 
   @statuses [:starting, :running, :stopped, :failed]
@@ -100,6 +101,8 @@ defmodule CodeMySpec.Agents.Agent do
           continuous: boolean() | nil,
           tasks: [CodeMySpec.Sessions.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
+          story_id: integer() | nil,
+          epic_id: Ecto.UUID.t() | nil,
           turn_started_at: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -173,6 +176,13 @@ defmodule CodeMySpec.Agents.Agent do
 
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
+
+    # The story and epic this agent works on (a31f1cd6). Its own, not its
+    # copy's: the coder and QA on one copy can hold different stories, and one
+    # switching does not move the other. `stories.working_copy_id` stays the
+    # checkout reservation.
+    field :story_id, :id
+    field :epic_id, Ecto.UUID
 
     # When the turn currently running started, and nil when none is.
     #
@@ -366,6 +376,8 @@ defmodule CodeMySpec.Agents.Agent do
       :provider_refused_at,
       :provider_retry_at,
       :working_copy_id,
+      :story_id,
+      :epic_id,
       :project_id,
       :account_id
     ])
@@ -379,6 +391,9 @@ defmodule CodeMySpec.Agents.Agent do
     ])
     |> maybe_require_working_copy_id(agent)
     |> foreign_key_constraint(:working_copy_id)
+    |> foreign_key_constraint(:story_id)
+    |> validate_story_holder()
+    |> foreign_key_constraint(:epic_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end
@@ -395,6 +410,19 @@ defmodule CodeMySpec.Agents.Agent do
     do: validate_required(changeset, [:working_copy_id])
 
   defp maybe_require_working_copy_id(changeset, %__MODULE__{}), do: changeset
+
+  # Only a team member — a story-scope role, coding or QA — holds a story
+  # (a31f1cd6). The main agent never does: John, "we don't want to do story
+  # work on main … main is what protects us from dogshit from the agents".
+  # Product holds an epic, not a story.
+  defp validate_story_holder(changeset) do
+    role = get_field(changeset, :role)
+
+    if is_nil(get_field(changeset, :story_id)) or
+         RoleProfile.scope(role) == :story,
+       do: changeset,
+       else: add_error(changeset, :story_id, "only a coding or QA agent holds a story")
+  end
 
   # Rule 4, enforced where it cannot be forgotten. A working copy is a git
   # repository whose purpose is to be committed and pushed — `agent.sh` runs

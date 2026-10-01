@@ -6,6 +6,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
@@ -68,7 +70,17 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       scope = %{scope | active_working_copy_id: copy.id}
       active = story_fixture(scope)
       other = story_fixture(scope)
-      {:ok, _} = WorkingCopies.set_active_story(scope, active.id)
+
+      {:ok, _coding} =
+        AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "zai",
+          working_copy: "/tmp/a-copy",
+          role: :coding,
+          working_copy_id: copy.id
+        })
+
+      {:ok, _} = Agents.assign_team(scope, copy.id, active.id)
       CodeMySpec.Requirements.recompute(scope)
 
       %{scope: scope, active: active, other: other}
@@ -99,7 +111,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
 
     test "a story_number on a copy that has chosen nothing is refused, not answered for the project",
          ctx do
-      {:ok, _} = WorkingCopies.set_active_story(ctx.scope, nil)
+      {:ok, _} = Agents.assign_team(ctx.scope, ctx.scope.active_working_copy_id, nil)
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       assert {:reply, response, _} =
@@ -115,7 +127,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
     # selection is still answered for the project. That is where the fourteen
     # project-level requirements reach anybody, and story 1005's rule.
     test "asked bare, a copy with no active story is still answered for the project", ctx do
-      {:ok, _} = WorkingCopies.set_active_story(ctx.scope, nil)
+      {:ok, _} = Agents.assign_team(ctx.scope, ctx.scope.active_working_copy_id, nil)
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       assert {:reply, response, _} = GetNextRequirement.execute(%{}, frame)

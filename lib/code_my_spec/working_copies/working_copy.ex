@@ -27,7 +27,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
 
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Stories.Story
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -40,7 +39,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
           last_seen_at: DateTime.t() | nil,
           path_missing_since: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
-          active_story_id: integer() | nil,
           app_status: String.t() | nil,
           app_checked_at: DateTime.t() | nil,
           app_url: String.t() | nil,
@@ -181,7 +179,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     belongs_to :device, Device
 
     belongs_to :project, Project
-    belongs_to :active_story, Story, type: :id
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -204,7 +201,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :last_seen_at,
       :path_missing_since,
       :project_id,
-      :active_story_id,
       :root,
       :device_id,
       :machine_tools,
@@ -224,7 +220,6 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
-    |> foreign_key_constraint(:active_story_id)
     |> unique_constraint(:main,
       name: :working_copies_one_main_per_project_index,
       message: "this project already has a main working copy"

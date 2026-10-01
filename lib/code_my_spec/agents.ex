@@ -52,6 +52,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
@@ -64,6 +65,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
@@ -150,6 +152,9 @@ defmodule CodeMySpec.Agents do
   defdelegate list_on_duty(scope), to: AgentsRepository
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
+  defdelegate assign_team(scope, copy_id, story_id), to: Assignment
+  defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
+  defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
