@@ -113,7 +113,8 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
           changed_files(scope, session_id)
         end)
 
-      refute log =~ "recorded no edits"
+      # This session's line only: capture_log sees every async test's logs.
+      refute log =~ "session #{session_id} recorded no edits"
     end
 
     # f8af8bf2: a small rebase looks identical to the spex case above — a
