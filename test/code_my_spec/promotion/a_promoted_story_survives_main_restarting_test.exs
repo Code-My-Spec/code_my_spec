@@ -1,0 +1,54 @@
+defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
+  @moduledoc """
+  ccedd2e7: `story_promoted` asked whether main was serving as well as whether
+  the story carried a stamp, so each restart of main after a promote flipped
+  every promoted story to unsatisfied. Work handed the first to a coder, who
+  ran the full gate and changed nothing — 26 times from 09-27 to 10-01.
+  """
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.DevicesFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Promotion.RunningCopy
+  alias CodeMySpec.Staffing
+  alias CodeMySpec.WorkingCopies
+
+  defp main_copy(scope, status) do
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
+    {:ok, copy} = Staffing.designate_main(scope, copy.id)
+    {:ok, copy} = WorkingCopies.record_preview_status(copy, status)
+    copy
+  end
+
+  test "a stamped story stays promoted while main is down" do
+    scope = full_scope_fixture()
+    main_copy(scope, "down")
+
+    {_unpromoted, promoted} =
+      RunningCopy.running_copy_verdicts(scope, [%{id: 50, promoted_version: "0.1.1"}])
+
+    assert {true, %{status: "Promoted at version 0.1.1"}} = promoted[50],
+           "main restarting un-promoted a story whose code it already holds"
+  end
+
+  test "an unstamped story is still unpromoted" do
+    scope = full_scope_fixture()
+    main_copy(scope, "serving")
+
+    {unpromoted, _promoted} = RunningCopy.running_copy_verdicts(scope, [])
+
+    assert {false, %{promoted: false}} = unpromoted
+  end
+
+  # Criterion 1183: working on main itself, nothing down there is a deploy
+  # elsewhere — it is the agent's own application.
+  test "working on main itself still asks whether main is answering" do
+    scope = full_scope_fixture()
+    main = main_copy(scope, "down")
+    scope = %{scope | active_working_copy_id: main.id}
+
+    assert {false, %{preview_status: "down"}} =
+             RunningCopy.running_copy_check(scope, %{promoted_version: "0.1.1"})
+  end
+end
