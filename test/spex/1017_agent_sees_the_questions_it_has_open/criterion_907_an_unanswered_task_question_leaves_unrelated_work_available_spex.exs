@@ -3,9 +3,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
   Story 1017 — Agent sees the questions it has open.
   Criterion 2414 — An unanswered task question leaves unrelated work available.
 
-  Two independently released stories provide real selectable work. The agent
-  claims the first, asks against it, ends its turn through the harness event
-  contract, and explicitly claims the second. No blocker is pre-seeded.
+  The agent claims a story's task, asks against it, ends its turn through the
+  harness event contract, and explicitly claims unrelated component work. Not
+  another story: the team sees its story through together (a31f1cd6). No blocker is pre-seeded.
   """
   use CodeMySpecSpex.Case
 
@@ -131,13 +131,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
         {:ok, context}
       end
 
-      then_ "the agent can deliberately claim the other story", context do
+      then_ "the agent can deliberately claim unrelated component work", context do
         {:reply, started, _} =
           StartTask.execute(
             %{
-              requirement_name: "bdd_specs_exist",
-              entity_type: "story",
-              entity_id: to_string(context.second_story.number)
+              requirement_name: "implementation_file",
+              entity_type: "component",
+              entity_id: to_string(context.component.id)
             },
             context.agent_frame
           )

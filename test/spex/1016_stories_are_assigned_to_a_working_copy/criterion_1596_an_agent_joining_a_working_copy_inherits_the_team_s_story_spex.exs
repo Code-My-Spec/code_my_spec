@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion1596Spex do
   """
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
