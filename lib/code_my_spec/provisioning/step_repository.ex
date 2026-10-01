@@ -68,8 +68,10 @@ defmodule CodeMySpec.Provisioning.StepRepository do
       |> Map.put(:environment, environment)
       |> Map.put(:project_id, project_id)
 
+    existing = get(scope, key, environment)
+
     step =
-      case get(scope, key, environment) do
+      case existing do
         nil ->
           %Step{}
           |> Step.changeset(attrs)
@@ -81,7 +83,13 @@ defmodule CodeMySpec.Provisioning.StepRepository do
           |> Repo.update!()
       end
 
-    setup_changed(scope)
+    # `deploy` waits on whether the checklist is complete, which only moves
+    # with `state` — a reverify that reconfirms an already-`:done` step writes
+    # a fresh `verified_at` on every call, and announcing that every time cost
+    # a full graph recompute per already-done step, on every single mount
+    # (a69525bd).
+    if is_nil(existing) or existing.state != step.state, do: setup_changed(scope)
+
     step
   end
 

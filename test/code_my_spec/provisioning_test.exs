@@ -5,6 +5,7 @@ defmodule CodeMySpec.ProvisioningTest do
 
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.{Sequence, StepRepository, Steps, Teardown}
+  alias CodeMySpec.Requirements.Invalidations
 
   doctest Sequence, only: [for_options: 1]
 
@@ -218,6 +219,35 @@ defmodule CodeMySpec.ProvisioningTest do
 
       assert Process.get(:ran)
       assert StepRepository.get(scope, :repository).state == :done
+    end
+  end
+
+  describe "reconfirming an unchanged step does not announce to the graph" do
+    # a69525bd: reverify/3 reconfirms every already-done step on every mount,
+    # writing a fresh verified_at each time — announcing that every time cost
+    # a full graph recompute per already-done step, on every single page load.
+    test "a second upsert with the same state adds no invalidation", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
+      before_count = length(Invalidations.pending(scope.active_project_id))
+
+      StepRepository.upsert(scope, :repository, nil, %{
+        state: :done,
+        position: 0,
+        verified_at: DateTime.utc_now()
+      })
+
+      assert length(Invalidations.pending(scope.active_project_id)) == before_count,
+             "reconfirming a step at the same state announced to the graph anyway"
+    end
+
+    test "a state change still announces", %{scope: scope} do
+      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
+      before_count = length(Invalidations.pending(scope.active_project_id))
+
+      StepRepository.upsert(scope, :repository, nil, %{state: :not_started, position: 0})
+
+      assert length(Invalidations.pending(scope.active_project_id)) > before_count,
+             "a real state change must still reach the graph"
     end
   end
 
