@@ -39,6 +39,7 @@ defmodule CodeMySpec.MainAgent do
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Devices,
+      CodeMySpec.Epics,
       CodeMySpec.Faults,
       CodeMySpec.Issues,
       CodeMySpec.Notifications,

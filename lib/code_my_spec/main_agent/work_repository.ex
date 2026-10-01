@@ -29,10 +29,12 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Epics.Epic
   alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
@@ -56,6 +58,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     problems = problems_by_copy(scope)
     owners = AgentsRepository.list_agents(scope)
     stories = story_titles(agents)
+    designing = designing(agents)
 
     Enum.map(agents, fn agent ->
       copy = Map.get(copies, agent.working_copy_id)
@@ -86,6 +89,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         task_status: task && task.status,
         task_started_at: task && task.started_at,
         story_title: task && Map.get(stories, task.story_id),
+        designing: Map.get(designing, agent.id),
         last_said_at: Map.get(last_said, agent.id),
         blocked_reasons: Map.get(questions, agent.id, []),
         tapped_out?: MapSet.member?(tapped_out, agent.id),
@@ -272,5 +276,23 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     from(s in Story, where: s.id in ^ids, select: {s.id, s.title})
     |> Repo.all()
     |> Map.new()
+  end
+
+  # The epic each epic-scope agent (product) is designing, by name. Coding and
+  # QA hold their team's epic too, but they build it rather than design it.
+  defp designing(agents) do
+    holders =
+      for agent <- agents,
+          RoleProfile.scope(agent.role) == :epic,
+          is_binary(agent.epic_id),
+          into: %{},
+          do: {agent.id, agent.epic_id}
+
+    names =
+      from(e in Epic, where: e.id in ^Enum.uniq(Map.values(holders)), select: {e.id, e.name})
+      |> Repo.all()
+      |> Map.new()
+
+    Map.new(holders, fn {agent_id, epic_id} -> {agent_id, Map.get(names, epic_id)} end)
   end
 end

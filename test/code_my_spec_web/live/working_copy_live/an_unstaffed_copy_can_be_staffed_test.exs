@@ -124,12 +124,26 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
   # there, which is the sentence that sends somebody looking for a control that
   # does not exist.
   test "the empty state says what to do about it", context do
+    # The project's first checkout is designated main; this one is a feature copy.
+    join_working_copy(context, "/tmp/says-what-main", "the main copy")
     copy = join_working_copy(context, "/tmp/says-what", "an unstaffed copy")
 
     html = context |> show(copy) |> render()
 
     assert html =~ "Staff it"
-    assert html =~ "product, coding and QA"
+    assert html =~ "starts its coding and QA agents"
+    refute html =~ "product"
+  end
+
+  # Step 4c: the main copy is staffed with main and product, not the team.
+  test "the main copy's empty state names its own roles", context do
+    copy = join_working_copy(context, "/tmp/main-says-what", "the main copy")
+    {:ok, _} = CodeMySpec.WorkingCopies.designate_main(context.scope, copy.working_copy_id)
+
+    html = context |> show(copy) |> render()
+
+    assert html =~ "starts its main and product agents"
+    refute html =~ "coding and QA agents"
   end
 
   # Rendering a button is not the feature. This presses it and asserts the page
