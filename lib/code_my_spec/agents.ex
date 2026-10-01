@@ -48,6 +48,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Integrations,
       CodeMySpec.MainAgent,
       CodeMySpec.Projects,
+      CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Users.Scope,
@@ -68,6 +69,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.ProviderRefusal
   alias CodeMySpec.Agents.Providers
+  alias CodeMySpec.Agents.RefusalWake
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.Transport
@@ -2208,10 +2210,16 @@ defmodule CodeMySpec.Agents do
 
       refusal ->
         AgentsRepository.update_agent(scope, agent, Map.put(refusal, :provider_refused_at, now))
+        wake_at_retry(scope, agent, refusal.provider_retry_at)
     end
   end
 
   defp record_refusal(_scope, _agent, _event), do: :ok
+
+  # The held turn end runs at the retry time; with none named, an operator
+  # restarts it, as before.
+  defp wake_at_retry(_scope, _agent, nil), do: :ok
+  defp wake_at_retry(scope, agent, retry_at), do: RefusalWake.schedule(scope, agent.id, retry_at)
 
   # A turn that ended without being refused clears the last refusal. A failed
   # turn also ends, so one refused *during* this turn stands.

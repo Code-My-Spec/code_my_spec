@@ -40,12 +40,17 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
   start a second one — the project is locked for the run's duration and the
   retry is told a run is already in progress, rather than racing the first
   run's writes against the same provider.
+
+  An agent that started the run is messaged how it ended instead, and is not
+  nudged meanwhile (`Starter`, `Agents.Waiting`).
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Resources
 
   schema do
@@ -55,24 +60,33 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
   def execute(_params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, %{}),
          {:ok, project} <- Validators.devops_project(scope) do
-      {:reply, ok(one(project.id, Resources.fix_async(scope, project.id))), frame}
+      starter = Starter.new(scope, frame, "devops setup")
+
+      result =
+        Resources.fix_async(scope, project.id,
+          holder: Starter.lock_holder(starter),
+          on_finish: &Starter.tell(starter, outcome_message(&1, project.name))
+        )
+
+      {:reply, ok(one(project.id, result, frame)), frame}
     else
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
 
-  defp one(id, {:error, :not_found}),
+  defp one(id, {:error, :not_found}, _frame),
     do: "No project #{id} on this account, or its devops level is `off` so it is not deployable."
 
-  defp one(id, result), do: "#{id}: #{outcome(result)}"
+  defp one(id, {:ok, :started}, frame),
+    do: "#{id}: started — #{Starter.then_what(frame.assigns[:agent_id])}"
+
+  defp one(id, result, _frame), do: "#{id}: #{outcome(result)}"
 
   # Named per outcome rather than inspected, same as before — but the
   # outcomes are now about whether the run *started*, not whether it
   # *finished*. `run_devops_setup` returns long before a real run does, so
   # there is no "complete"/"halted at"/"failed" to report here any more —
   # only whether this call caused a run to begin, and if not, why not.
-  defp outcome({:ok, :started}), do: "started — call devops_status to watch it converge"
-
   defp outcome({:error, {:already_running, started_at}}) do
     since = started_at && " (started #{started_at})"
     "a run is already in progress#{since} — call devops_status rather than retrying"
@@ -83,6 +97,29 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup do
 
   defp outcome({:error, reason}), do: "failed — #{inspect(reason)}"
   defp outcome(other), do: inspect(other)
+
+  @doc false
+  def outcome_message(%{halted_at: nil}, name),
+    do: "Your devops setup for #{name} finished: every step is done. #{answer()}"
+
+  def outcome_message(%{halted_at: key, reason: reason} = run, name) do
+    reason = Truncate.head_and_tail(reason)
+
+    case run.steps |> List.last() |> Map.get(:state) do
+      :paused ->
+        "Your devops setup for #{name} paused at #{key}: #{reason}\n\n" <>
+          "It will not continue on its own. #{answer()}"
+
+      :errored ->
+        "Your devops setup for #{name} errored at #{key}: #{reason}\n\n" <>
+          "It is no longer running. #{answer()}"
+
+      state ->
+        "Your devops setup for #{name} stopped at #{key}, still #{state}: #{reason}\n\n#{answer()}"
+    end
+  end
+
+  defp answer, do: "This is the outcome of the run you started — act on it now."
 
   defp ok(summary), do: Response.tool() |> Response.text(summary)
 

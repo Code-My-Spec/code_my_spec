@@ -54,12 +54,21 @@ defmodule CodeMySpec.Provisioning.RunLock do
   Must be called by the process that will actually do the work: the lock
   lives exactly as long as that process, which is what makes release
   automatic rather than something every caller has to remember.
+
+  `holder` names the agent that started the run (`:agent_id`) and what it
+  started (`:label`), so `held_by/1` can say that agent is waiting on it.
   """
-  @spec with_lock(Ecto.UUID.t(), (-> result)) ::
+  @spec with_lock(Ecto.UUID.t(), (-> result), keyword()) ::
           result | {:error, {:already_running, DateTime.t() | nil}}
         when result: term()
-  def with_lock(project_id, fun) when is_function(fun, 0) do
-    case Registry.register(__MODULE__, project_id, %{started_at: DateTime.utc_now()}) do
+  def with_lock(project_id, fun, holder \\ []) when is_function(fun, 0) do
+    meta = %{
+      started_at: DateTime.utc_now(),
+      agent_id: Keyword.get(holder, :agent_id),
+      label: Keyword.get(holder, :label)
+    }
+
+    case Registry.register(__MODULE__, project_id, meta) do
       {:ok, _owner} ->
         try do
           fun.()
@@ -79,5 +88,22 @@ defmodule CodeMySpec.Provisioning.RunLock do
       [{_pid, %{started_at: started_at}}] -> started_at
       [] -> nil
     end
+  end
+
+  @doc "The run `agent_id` started that is still in flight, or nil."
+  @spec held_by(Ecto.UUID.t() | nil) ::
+          %{project_id: Ecto.UUID.t(), label: String.t() | nil, started_at: DateTime.t()} | nil
+  def held_by(nil), do: nil
+
+  def held_by(agent_id) do
+    __MODULE__
+    |> Registry.select([{{:"$1", :_, :"$2"}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.find_value(fn
+      {project_id, %{agent_id: ^agent_id} = meta} ->
+        %{project_id: project_id, label: meta.label, started_at: meta.started_at}
+
+      _other ->
+        nil
+    end)
   end
 end
