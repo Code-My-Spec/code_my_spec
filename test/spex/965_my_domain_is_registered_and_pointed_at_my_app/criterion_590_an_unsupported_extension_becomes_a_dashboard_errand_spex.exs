@@ -8,13 +8,19 @@ defmodule CodeMySpecSpex.Story965.Criterion7993Spex do
   hands him a dashboard errand, then adopts the domain when he returns
   having done it. The API limit becomes a detour rather than a wall.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 586 made — see that spex's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp domain_search_done?(html),
+    do: not (html =~ ~s(data-test="domain" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,7 +31,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7993Spex do
     scenario "an out-of-beta TLD is handed off and then adopted on return" do
       given_ "Sam wants a domain whose extension the API cannot sell", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -34,10 +40,11 @@ defmodule CodeMySpecSpex.Story965.Criterion7993Spex do
       # unsupported, but the Registrar API sells it. `.museum` genuinely
       # returns `supported_tld: false`, which is the case under test.
       when_ "Sam checks a name whose extension the Registrar API cannot sell", context do
-        html =
-          context.view
-          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.museum"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.museum"})
+        |> render_submit()
+
+        html = await_operation(context.view, &domain_search_done?/1, &domain_search_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

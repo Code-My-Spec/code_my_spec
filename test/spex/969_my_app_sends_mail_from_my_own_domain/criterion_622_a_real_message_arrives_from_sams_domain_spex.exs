@@ -9,7 +9,12 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
   actually bought deliverability rather than just green ticks in a
   dashboard.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  probe moved off ProvisioningLive's blocking click into mail's Checks tab,
+  behind DiagnosticsPanel, running async via `start_async` — same move
+  criterion 613 made for the storage round-trip probe.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
   """
 
@@ -28,6 +33,9 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
   setup :setup_active_project
   setup :devops_on
   setup :fake_providers
+
+  defp mail_send_done?(html),
+    do: not (html =~ ~s(data-test="mail-send-probe-panel" data-state="running"))
 
   spex "A real message arrives from Sam's domain", criterion: 622 do
     scenario "the probe send is accepted and authenticated" do
@@ -48,18 +56,20 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
         verified_sending_domains(context.scope, project)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view = view
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/mail?tab=checks"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the app sends a message", context do
-        html =
-          context.view
-          |> element("[data-test='mail-send-probe']")
-          |> render_click()
+        context.view
+        |> element("[data-test='mail-send-probe']")
+        |> render_click()
+
+        html = await_operation(context.view, &mail_send_done?/1, &mail_send_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

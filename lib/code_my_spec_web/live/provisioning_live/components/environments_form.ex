@@ -17,6 +17,10 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm do
 
   attr :return_to, :string, required: true
   attr :environment_rows, :list, required: true
+  # False when embedded as a full page (the console) rather than a modal
+  # (the old provisioning page) — "Close" means nothing on a page with its
+  # own sidebar nav.
+  attr :show_close?, :boolean, default: true
 
   def environments_form(assigns) do
     ~H"""
@@ -79,7 +83,12 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm do
       </div>
 
       <div class="modal-action">
-        <.button data-test="close-environments-modal" class="btn" patch={@return_to}>
+        <.button
+          :if={@show_close?}
+          data-test="close-environments-modal"
+          class="btn"
+          patch={@return_to}
+        >
           Close
         </.button>
       </div>

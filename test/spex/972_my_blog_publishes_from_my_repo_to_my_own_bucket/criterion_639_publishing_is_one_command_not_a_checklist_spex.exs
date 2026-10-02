@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
   point of wiring the pipeline during setup is that publishing afterwards
   is a single gesture.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  publish verification moved off ProvisioningLive's blocking click into
+  publishing's Checks tab, behind DiagnosticsPanel, running async via
+  `start_async` — same move criterion 613 made for the storage probe.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.ContentPublishing`.
   """
 
@@ -17,6 +22,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
   alias CodeMySpec.Environments
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp publish_done?(html),
+    do: not (html =~ ~s(data-test="content-publish-probe" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,7 +51,10 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
         # standing infrastructure shared with those siblings, so it is not torn
         # down here.
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/publishing?tab=checks"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -51,13 +62,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
       when_ "he runs the publish command", context do
         # The publish command, not the setup step that wires the pipeline up.
         # Clicking the step's run button provisions the bucket and leaves
-        # `@content_publish` unset, so the result this criterion reads on was
+        # the publish result unset, so the result this criterion reads on was
         # never rendered and the failure read as "no publish happened".
         context.view
         |> element("[data-test='content-publish']")
         |> render_click()
 
-        html = render(context.view)
+        html = await_operation(context.view, &publish_done?/1, &publish_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

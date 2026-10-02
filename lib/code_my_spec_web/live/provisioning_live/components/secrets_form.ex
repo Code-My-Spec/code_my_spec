@@ -19,6 +19,10 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.SecretsForm do
   attr :secret_error, :string, default: nil
   attr :sops_recipients, :list, required: true
   attr :secret_sources, :list, required: true
+  # False when embedded as a full page (the console) rather than a modal
+  # (the old provisioning page) — "Close" means nothing on a page with its
+  # own sidebar nav.
+  attr :show_close?, :boolean, default: true
 
   def secrets_form(assigns) do
     ~H"""
@@ -91,7 +95,7 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.SecretsForm do
       </div>
 
       <div class="modal-action">
-        <.button data-test="close-secrets-modal" class="btn" patch={@return_to}>
+        <.button :if={@show_close?} data-test="close-secrets-modal" class="btn" patch={@return_to}>
           Close
         </.button>
       </div>

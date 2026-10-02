@@ -4792,6 +4792,96 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  # -- The console's own markup (provisioning-console-step6, unmerged) --
+  #
+  # `run_step_interaction`, `await_step` and friends above are coupled to
+  # ProvisioningLive's `setup-step` markup — a resource-detail page on the
+  # console renders `resource-step` instead, scoped to one environment at a
+  # time already, so there is no multi-row ambiguity to guard against the way
+  # `run_step_interaction/2` does. These four are the console's equivalents,
+  # named and shaped the same way so a spex reads the same regardless of
+  # which page it drives, and so there is one place to change when the
+  # console's markup moves rather than N retargeted spex each hand-rolling
+  # the same selector.
+
+  @doc "Trigger a resource's step run the way its own Config tab does."
+  def run_console_step(view, key) do
+    view
+    |> LiveViewTest.element(
+      "[data-test='resource-step'][data-step='#{key}'] [data-test='run-step']"
+    )
+    |> LiveViewTest.render_click()
+  end
+
+  @doc """
+  Wait for a resource's step to settle (done, errored or paused).
+
+  Synchronous in test (`config :code_my_spec, :provisioning_run_async,
+  false`), so a step is already settled by the time `run_console_step/2`
+  returns — this exists for the same reason `await_step/3` does on the old
+  page: an explicit wait reads as intent, and is what protects a retargeted
+  spex if that config ever changes.
+  """
+  def await_console_step(view, key, attempts \\ 600)
+
+  def await_console_step(view, key, attempts) do
+    state =
+      view
+      |> LiveViewTest.render()
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='resource-step'][data-step='#{key}']")
+      |> Floki.attribute("data-state")
+      |> List.first()
+
+    console_step_settled?(view, key, state, attempts)
+  end
+
+  defp console_step_settled?(_view, key, nil, _attempts) do
+    raise "no step named #{key} on the page — nothing to wait for"
+  end
+
+  defp console_step_settled?(_view, _key, state, _attempts)
+       when state in ~w(done errored paused),
+       do: :ok
+
+  defp console_step_settled?(view, key, _state, attempts) when attempts > 1 do
+    Process.sleep(500)
+    await_console_step(view, key, attempts - 1)
+  end
+
+  defp console_step_settled?(_view, key, state, _attempts) do
+    raise "the #{key} step is still #{state} after five minutes"
+  end
+
+  @doc """
+  Switch a resource-detail page to one of its tabs (config, checks,
+  activity) — scoped to `key` so a spex gets a clear failure if it is on the
+  wrong resource's page rather than silently clicking nothing.
+  """
+  def open_resource_tab(view, key, tab) do
+    view
+    |> LiveViewTest.element(
+      "[data-test='resource-detail'][data-resource='#{key}'] [data-test='resource-tab-#{tab}']"
+    )
+    |> LiveViewTest.render_click()
+  end
+
+  @doc """
+  Answer a paused step's confirmation form on the console and wait for the
+  run it starts — shaped like `resolve_inbound_probe_pause/2`, which this
+  replaces for console spex. `:inbound` is the only step with an actual form
+  to answer today; the other paused confirmations (`confirm_apex_repoint`,
+  `adopt_repository`, ...) are a single JS.push button each, not a form, so
+  they need no dedicated helper — an ordinary `element/2` click is enough.
+  """
+  def resolve_console_pause(view, :inbound, address) do
+    view
+    |> LiveViewTest.form("[data-test='inbound-probe-address']", %{"probe_to" => address})
+    |> LiveViewTest.render_submit()
+
+    await_console_step(view, :inbound)
+  end
+
   # -- Provider HTTP recording --
 
   @doc """

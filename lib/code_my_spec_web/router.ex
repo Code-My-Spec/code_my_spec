@@ -675,6 +675,22 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/provisioning/credentials", ProvisioningLive, :credentials
       live "/projects/:project_id/provisioning/environments", ProvisioningLive, :environments
       live "/projects/:project_id/provisioning/secrets", ProvisioningLive, :secrets
+      # The console (story: provisioning page becomes the project console).
+      # A new LiveView rather than new live_actions on ProvisioningLive — the
+      # two pages' render trees don't share a shape, and bolting the console
+      # onto the page it is replacing would undo what step 5 just did to it.
+      # Credentials, secrets and settings stay project-wide — environment
+      # selection (`?env=`) only scopes resources and deploys, the same
+      # ?param-over-route shape AgentConversationLive already uses for its own
+      # in-page selection.
+      live "/projects/:project_id/console", ConsoleLive, :overview
+      live "/projects/:project_id/console/resources", ConsoleLive, :resources
+      live "/projects/:project_id/console/resources/:key", ConsoleLive, :resource_detail
+      live "/projects/:project_id/console/deploys", ConsoleLive, :deploys
+      live "/projects/:project_id/console/secrets", ConsoleLive, :secrets
+      live "/projects/:project_id/console/credentials", ConsoleLive, :credentials
+      live "/projects/:project_id/console/activity", ConsoleLive, :activity
+      live "/projects/:project_id/console/settings", ConsoleLive, :settings
       live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit

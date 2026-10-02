@@ -9,13 +9,19 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
   tidiness property; this one is the difference between a re-run and a
   bill.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 586 made — see that spex's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp domain_search_done?(html),
+    do: not (html =~ ~s(data-test="domain" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,23 +47,25 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
         # does not depend on whose account is recording.
         zone_exists(context, "astralbi.com")
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
+
         own_domain(context.project, "astralbi.com")
 
         view
         |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
         |> render_submit()
 
-        assert render(view) =~ ~r/data-step="domain"[^>]*data-state="done"/,
+        html = await_operation(view, &domain_search_done?/1, &domain_search_done?/1)
+
+        assert html =~ ~r/data-step="domain"[^>]*data-state="done"/,
                "expected adopting the owned domain to complete the step"
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the domain step runs again", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='domain'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :domain)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
@@ -80,7 +88,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
           context.html
           |> Floki.parse_document!()
           |> Floki.find(
-            "[data-test='setup-step'][data-step='domain'] " <>
+            "[data-test='resource-step'][data-step='domain'] " <>
               "[data-test='provisioned-resource'][data-kind='domain']"
           )
 
