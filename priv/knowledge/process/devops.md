@@ -62,10 +62,11 @@ on main, so a promotion has exactly one target.
 7. **A second sweep**, of the running copy this time. The bar is *"the
    merge added no new problems"*, not *"the target is clean"*: problems
    the running copy already carried are subtracted before comparing.
-8. **Restart**, unconditionally.
+8. **Reload**, or restart when the change needs it. The answer's
+   `Deployment:` line says which and why.
 
 Promoting **from** the running copy is a restart only — no gate, no sweep,
-because a restart carries no code.
+no merge, so no change to judge a reload by.
 
 ### The sweep and its timeout
 
@@ -79,18 +80,24 @@ ten minutes is worse than one that tells you to come back.
 The practical consequence: **a timeout here is the common case, not the
 alarming one.**
 
-### The restart
+### Reload or restart
 
-Requires a `justfile` at the running root; without one the merge still
-landed and the app is still serving what it was. Otherwise it runs
-`just restart`, which kills whatever holds `:4000`, runs `mix ecto.migrate`
-unconditionally, starts a detached `mix phx.server`, polls for 20 seconds,
-and then refreshes the harness — because moving one without the other *is*
-the version skew.
+The main copy's harness brings the app current, detached from the promote.
 
-The restart is never conditional on "did this merge need one". Whatever
-would decide that is a second implementation of the code-reloading rules,
-and it would be wrong on exactly the changes that matter.
+- **Reload, by default.** `just reload` runs against the app that is already
+  up: `mix ecto.migrate`, a request to `/` so the code reloader loads what
+  changed, then `/health` (database answers, no migration pending). The app
+  keeps running, so agent turns and analysis runs on other copies survive.
+- **Restart** (`just serve`, as before) when the merge touches `mix.exs`,
+  `mix.lock`, `config/**`, any `application.ex`, `rel/**`,
+  `assets/package*.json` or `.tool-versions` (the list is
+  `BootVersion.restart_paths/0`); when the reload fails or `/health` is not
+  200; when the app was not running; when the project has no `reload`
+  recipe; when the harness predates reloads; or when you pass
+  `restart: true`. A failed reload restarts inside the same promote.
+
+Either way, main's harness then runs `just after-promote`, which restarts
+the harness itself, so harness and server land on one commit.
 
 ## Three ways a success reads as a failure
 
@@ -137,6 +144,10 @@ Emitted at boot, in `~/.codemyspec/web.log` (logfmt, `src=web`, with an
 
 **A new `inst=` is the proof the restart happened.** A matching sha is the
 proof your work is what is being served.
+
+A reload has no boot line and keeps its `inst=`: the app is the same
+process. Ask `ensure_app_running` instead — it names the commit being
+served, which a reload moves and the launch commit does not.
 
 Look in `web.log`, **not** `server.log` — `server.log` is the packaged
 `cms server` on `:4003` and knows nothing about `:4000`. Asking it returns

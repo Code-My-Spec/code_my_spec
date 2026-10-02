@@ -46,6 +46,13 @@ defmodule CodeMySpecWeb.Router do
     plug CodeMySpecWeb.Plugs.IntakeSession
   end
 
+  # Unauthenticated, no session: `just reload` asks it after a promote.
+  scope "/", CodeMySpecWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+  end
+
   scope "/", CodeMySpecWeb do
     pipe_through [:browser, :intake]
 

@@ -28,6 +28,8 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
       doc:
         "The story being promoted. Latched and stamped only if its spex pass. " <>
           "Omit for work that is not a story's, such as a fix from an issue."
+
+    field :restart, :boolean, doc: "Restart the app instead of reloading it."
   end
 
   @impl true
@@ -36,7 +38,12 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
       {:ok, scope} ->
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
-        result = Promotion.promote(scope, params[:story_number], notify: frame.assigns[:agent_id])
+        result =
+          Promotion.promote(scope, params[:story_number],
+            notify: frame.assigns[:agent_id],
+            restart: params[:restart] == true
+          )
+
         {:reply, Responses.respond(result), frame}
 
       {:error, _reason} ->

@@ -36,6 +36,23 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
     dispatch(working_copy_id, :restart_app, %{}, timeout, :restart_timed_out)
   end
 
+  @doc """
+  Ask the copy's machine to reload its running app in place — a promote's
+  default. Migrates, lets the app's code reloader compile, health-checks, then
+  runs the after-promote hook as a restart does. The far side restarts
+  instead when the app is not running or the project has no `reload` recipe,
+  and says so in `action`/`action_reason`.
+  """
+  @spec reload_app(String.t(), timeout()) :: {:ok, map()} | {:error, term()}
+  def reload_app(working_copy_id, timeout) do
+    dispatch(working_copy_id, :reload_app, %{}, timeout, :reload_timed_out)
+  end
+
+  @doc "Whether the copy's connected harness answers `reload_app`."
+  @spec reload_supported?(String.t()) :: boolean()
+  def reload_supported?(working_copy_id),
+    do: HarnessRegistry.supports?(working_copy_id, "reload_app")
+
   @doc "Ask the copy's machine to stop its app — idle, or offboarding."
   @spec stop_app(String.t(), timeout()) :: :ok | {:error, term()}
   def stop_app(working_copy_id, timeout) do

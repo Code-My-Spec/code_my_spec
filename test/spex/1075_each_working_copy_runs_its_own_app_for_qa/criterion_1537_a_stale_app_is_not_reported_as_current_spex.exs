@@ -30,7 +30,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4661Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "An app that never restarted still reports the commit it actually started on", criterion: 1537 do
+  spex "An app that never restarted still reports the commit it actually started on",
+    criterion: 1537 do
     scenario "HEAD moves after the app is already up, with no restart requested" do
       given_ "a working copy already running an older commit", context do
         rig = app_instance_rig(current_commit: "old0000")
@@ -44,12 +45,35 @@ defmodule CodeMySpecSpex.Story1108.Criterion4661Spex do
       end
 
       then_ "the app is still reported on the commit it was actually started with", context do
-        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "old0000"} = context.result
+        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "old0000"} =
+                 context.result
 
         refute context.result["app_commit"] == "new1111",
                "an ensure that never restarted the process must not claim to be " <>
                  "serving code it was never actually redeployed onto"
 
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A reload reports the commit it now serves, beside the one the app started on",
+    criterion: 1537 do
+    scenario "HEAD moves and a reload takes it in place" do
+      given_ "a working copy already running an older commit, able to reload", context do
+        rig = app_instance_rig(current_commit: "old0000", recipe: %{"reload" => true})
+        _ = push_app_event("restart_app")
+        {:ok, Map.merge(context, rig)}
+      end
+
+      when_ "HEAD moves and a reload is asked for", context do
+        FakeAppInstanceRunner.configure(current_commit: "new1111", recipe: %{"reload" => true})
+        _ = push_app_event("reload_app")
+        {:ok, Map.put(context, :result, push_app_event("ensure_app_running"))}
+      end
+
+      then_ "it reports serving the reloaded commit, and still started on the old one", context do
+        assert %{"app_serving_commit" => "new1111", "app_commit" => "old0000"} = context.result
         {:ok, context}
       end
     end

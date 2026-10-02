@@ -70,15 +70,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
 
         {head, 0} = git(context, context.running_root, ["rev-parse", "main"])
 
-        # The restart is dispatched, never awaited (54aa534c, phase two), so
-        # `promote/1` has already answered by the time this runs — but it
-        # dispatches through `WorkingCopies.AppTransport.restart_app/2` now,
-        # the same channel verb every working copy's app already answers to,
-        # not a direct `just restart` shell-out. Something has to be on the
-        # other end of that channel to answer it, the same way a real
-        # harness would — this is that harness, answering as the running
-        # copy's own.
-        answer_restart_app(context.running_socket, context.running_root)
+        # The deployment is dispatched, never awaited (54aa534c, phase two),
+        # so `promote/1` has already answered by the time this runs. It goes
+        # over the channel every working copy's app answers to — a reload for
+        # this code-only change — and this is the harness answering it.
+        answer_deployment(context.running_socket, context.running_root)
 
         {:ok,
          context
@@ -96,7 +92,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
         {:ok, context}
       end
 
-      then_ "it says the restart is dispatched rather than claiming a revision", context do
+      then_ "it says the deployment is dispatched rather than claiming a revision", context do
         text = response_text(context.response)
 
         assert text =~ "not yet confirmed" or text =~ "not awaited" or text =~ "unconfirmed",
@@ -107,9 +103,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
         {:ok, context}
       end
 
-      then_ "and the restart the merge triggered actually runs", context do
+      then_ "and the deployment the merge triggered actually runs", context do
         eventually(fn ->
-          assert exists?(context.running_root, ".restarted"),
+          assert exists?(context.running_root, ".deployed"),
                  "the merge landed but nothing ever ran the restart recipe, so " <>
                    ~s(the words "merged" and "running" remain two different ) <>
                    "claims — just not ones the response can settle any more. " <>
@@ -195,7 +191,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
     _ = out
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in")
+      join_working_copy_socket(context, running_root, "the checkout the dev app runs in",
+        app_verbs: ["reload_app"]
+      )
 
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
 
@@ -233,24 +231,21 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
     response
   end
 
-  # Standing in for the harness on the other end of `restart_app` — the
-  # channel verb `Promotion.Runner.restart/3` now dispatches through
-  # `WorkingCopies.AppTransport.restart_app/2`, the same one every working
-  # copy's own app already answers to. Writing `.restarted` here, rather
-  # than through a real `just restart`, is what `serve`'s own harness-side
-  # launch would have done; a spec's job is proving the promotion asked for
-  # it, not re-implementing the harness that answers.
+  # Standing in for the main copy's harness, which declared `reload_app` on
+  # join: a promote of a code-only change sends that verb (John, 2026-10-02),
+  # and the harness reloads in place, or restarts if the app was down.
+  # Writing `.deployed` here is what its deployment would have done; a spec's
+  # job is proving the promotion asked for it.
   #
   # Dispatched detached (54aa534c, phase two), so this push can arrive a
-  # moment after `promote/1` has already answered — the timeout is
-  # generous for that gap, not for anything slow.
-  defp answer_restart_app(socket, running_root) do
-    assert_push "restart_app", %{"ref" => ref}, 5_000
+  # moment after `promote/1` has already answered.
+  defp answer_deployment(socket, running_root) do
+    assert_push "reload_app", %{"ref" => ref}, 5_000
 
-    write(running_root, ".restarted", DateTime.to_string(DateTime.utc_now()))
+    write(running_root, ".deployed", DateTime.to_string(DateTime.utc_now()))
 
     reply_ref =
-      Phoenix.ChannelTest.push(socket, "restart_app_result", %{
+      Phoenix.ChannelTest.push(socket, "reload_app_result", %{
         "ref" => ref,
         "status" => "ok",
         "app_status" => "serving",
@@ -261,7 +256,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
     receive do
       %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
     after
-      1_000 -> flunk("restart_app_result was never acknowledged")
+      1_000 -> flunk("reload_app_result was never acknowledged")
     end
   end
 

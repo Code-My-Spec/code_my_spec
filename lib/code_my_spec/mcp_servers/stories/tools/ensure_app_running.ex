@@ -34,10 +34,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   defp ensure_running(%{active_working_copy_id: id}) when is_binary(id) do
     case AppTransport.ensure_app_running(id, @timeout) do
       {:ok, %{status: "serving", url: url, commit: commit} = info} ->
+        # What it serves, which a promote's reload moves past the launch commit.
+        serving = Map.get(info, :serving_commit) || commit
+
         Response.tool()
         |> Response.text(
-          "#{copy_name(id)} app is serving #{commit || "unknown commit"} at #{url}." <>
-            head_note(commit, Map.get(info, :head))
+          "#{copy_name(id)} app is serving #{serving || "unknown commit"} at #{url}." <>
+            head_note(serving, Map.get(info, :head))
         )
 
       {:ok, %{status: status, commit: commit}} ->

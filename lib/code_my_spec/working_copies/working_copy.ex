@@ -43,6 +43,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
           app_checked_at: DateTime.t() | nil,
           app_url: String.t() | nil,
           app_commit: String.t() | nil,
+          app_serving_commit: String.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -172,6 +173,10 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :app_url, :string
     field :app_commit, :string
 
+    # The commit the app serves now. A launch serves `app_commit`; a promote's
+    # hot reload moves this one and leaves `app_commit` on the launch.
+    field :app_serving_commit, :string
+
     # The machine this checkout is on. Nullable and staying that way: a copy
     # onboarded before devices existed has none until its daemon reconnects and
     # says which machine it is announcing from. That is a real state — "we have
@@ -216,7 +221,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :app_status,
       :app_checked_at,
       :app_url,
-      :app_commit
+      :app_commit,
+      :app_serving_commit
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
