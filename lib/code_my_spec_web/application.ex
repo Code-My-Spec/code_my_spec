@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Analytics.GoogleAnalytics
 
   @impl true
-  def start(_type, _args) do
+  def start(_type, args) do
     env = Application.get_env(:code_my_spec, :env, :prod)
     maybe_install_file_logger()
 
@@ -53,8 +53,7 @@ defmodule CodeMySpecWeb.Application do
         # process rather than real infrastructure being provisioned, so
         # being wrong here costs nothing to revisit.
         embeddings_configured?() &&
-          {FLAME.Pool,
-           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
+          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
@@ -188,6 +187,8 @@ defmodule CodeMySpecWeb.Application do
       ]
       |> Enum.filter(& &1)
       |> children(env)
+      # CodeMySpecDesktop.Application adds its own children here.
+      |> then(Keyword.get(args, :children, & &1))
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

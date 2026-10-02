@@ -4,10 +4,10 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.271",
+      version: "2.0.275",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
-      start_permanent: Mix.env() in [:prod, :prod_cli],
+      start_permanent: Mix.env() in [:prod, :prod_cli, :desktop],
       aliases: aliases(),
       deps: deps(),
       compilers: compilers(Mix.env()),
@@ -42,9 +42,16 @@ defmodule CodeMySpec.MixProject do
   end
 
   defp app_module do
-    if Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite],
-      do: {CodeMySpecLocalWeb.Application, []},
-      else: {CodeMySpecWeb.Application, []}
+    cond do
+      Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] ->
+        {CodeMySpecLocalWeb.Application, []}
+
+      Mix.env() == :desktop ->
+        {CodeMySpecDesktop.Application, []}
+
+      true ->
+        {CodeMySpecWeb.Application, []}
+    end
   end
 
   # Specifies which paths to compile per environment.
@@ -194,8 +201,6 @@ defmodule CodeMySpec.MixProject do
       {:nimble_csv, "~> 1.2"},
       {:ex_oauth2_provider, "~> 0.5.7"},
       {:earmark, "~> 1.4"},
-      {:mdex, "~> 0.5"},
-      {:mdex_mermaid, "~> 0.3"},
       {:floki, "~> 0.38"},
       # The Lua VM code mode runs agent scripts in (story 970). A Lua 5.3 VM
       # written in Elixir — no NIFs and no C, which is what makes it safe
@@ -251,7 +256,9 @@ defmodule CodeMySpec.MixProject do
   defp releases do
     [
       code_my_spec: [
-        overlays: "rel/overlays"
+        overlays: "rel/overlays",
+        # The desktop build ships as a tarball (installers/macos/codemyspec-desktop.rb).
+        steps: if(Mix.env() == :desktop, do: [:assemble, :tar], else: [:assemble])
       ]
     ] ++ cli_release()
   end

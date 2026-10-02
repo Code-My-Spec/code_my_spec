@@ -4,7 +4,11 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
 
-  @statuses ~w(all incoming accepted dismissed resolved)
+  # "open" is incoming + accepted, the default — what `list_issues` means by
+  # open. Resolved and dismissed show only when asked for.
+  @statuses ~w(open all incoming accepted dismissed resolved)
+  @open [:incoming, :accepted]
+  @status_order [:incoming, :accepted, :dismissed, :resolved]
   @severities ~w(all critical high medium low info)
   # The local index this view replaced could filter by scope; the cloud one
   # could not, so the merge quietly dropped it. Restored here rather than
@@ -42,38 +46,51 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     </div>
 
     <div id="issues" class="space-y-4 mt-6">
-      <div
-        :for={issue <- @issues}
-        id={"issue-#{issue.id}"}
-        class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-        phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
+      <section
+        :for={{status, issues} <- @groups}
+        id={"issues-#{status}"}
+        data-test="issue-group"
+        data-status={status}
+        class="space-y-4"
       >
-        <div class="card-body py-4">
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0">
-              <h2 class="card-title text-base">{issue.title}</h2>
-              <p class="text-sm text-base-content/70 mt-1 line-clamp-2">
-                {issue.description}
-              </p>
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+          {status} <span class="font-normal">({length(issues)})</span>
+        </h2>
+        <div
+          :for={issue <- issues}
+          id={"issue-#{issue.id}"}
+          class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+          phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
+        >
+          <div class="card-body py-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1 min-w-0">
+                <h2 class="card-title text-base">{issue.title}</h2>
+                <p class="text-sm text-base-content/70 mt-1 line-clamp-2">
+                  {issue.description}
+                </p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <.badge color={severity_color(issue.severity)}>
+                  {issue.severity}
+                </.badge>
+                <.badge color={status_color(issue.status)}>
+                  {issue.status}
+                </.badge>
+              </div>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <.badge color={severity_color(issue.severity)}>
-                {issue.severity}
-              </.badge>
-              <.badge color={status_color(issue.status)}>
-                {issue.status}
-              </.badge>
+            <div
+              :if={issue.story_id || issue.scope != :app}
+              class="flex gap-2 mt-2 text-xs text-base-content/50"
+            >
+              <span :if={issue.story_id}>Story #{@story_numbers[issue.story_id]}</span>
+              <span :if={issue.scope != :app} class="badge badge-xs badge-outline">
+                {issue.scope}
+              </span>
             </div>
-          </div>
-          <div
-            :if={issue.story_id || issue.scope != :app}
-            class="flex gap-2 mt-2 text-xs text-base-content/50"
-          >
-            <span :if={issue.story_id}>Story #{@story_numbers[issue.story_id]}</span>
-            <span :if={issue.scope != :app} class="badge badge-xs badge-outline">{issue.scope}</span>
           </div>
         </div>
-      </div>
+      </section>
     </div>
     """
   end
@@ -88,7 +105,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      socket
      |> assign(:section, :issues)
      |> assign(:page_title, "Issues")
-     |> assign(:filter_status, "all")
+     |> assign(:filter_status, "open")
      |> assign(:filter_severity, "all")
      |> assign(:filter_scope, "all")
      |> assign(:status_options, @statuses)
@@ -127,7 +144,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
         severity: params["severity"] || socket.assigns.filter_severity,
         scope: params["scope"] || socket.assigns.filter_scope
       ]
-      |> Enum.reject(fn {_k, v} -> v in [nil, "all"] end)
+      |> Enum.reject(fn {k, v} -> v in [nil, "", default(k)] end)
 
     {:noreply,
      push_patch(socket,
@@ -140,14 +157,30 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     {:noreply, load_issues(socket)}
   end
 
+  defp default(:status), do: "open"
+  defp default(_key), do: "all"
+
   defp load_issues(socket) do
     scope = socket.assigns.current_scope
     filters = build_filters(socket.assigns)
 
+    issues =
+      scope
+      |> Issues.list_filtered(Map.new(filters))
+      |> only_open(socket.assigns.filter_status)
+      |> Enum.sort_by(&{status_rank(&1.status), -DateTime.to_unix(&1.inserted_at, :microsecond)})
+
     socket
-    |> assign(:issues, Issues.list_filtered(scope, Map.new(filters)))
+    |> assign(:issues, issues)
+    |> assign(:groups, Enum.chunk_by(issues, & &1.status) |> Enum.map(&{hd(&1).status, &1}))
     |> assign(:story_numbers, story_numbers(scope))
   end
+
+  defp only_open(issues, "open"), do: Enum.filter(issues, &(&1.status in @open))
+  defp only_open(issues, _status), do: issues
+
+  defp status_rank(status),
+    do: Enum.find_index(@status_order, &(&1 == status)) || length(@status_order)
 
   # `%{story_id => number}`, so an issue's story is labelled the way the story's
   # own page labels it.
@@ -172,7 +205,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     |> maybe_add(:scope, assigns.filter_scope)
   end
 
-  defp maybe_add(filters, _key, "all"), do: filters
+  defp maybe_add(filters, _key, value) when value in ["all", "open"], do: filters
   defp maybe_add(filters, key, value), do: [{key, String.to_existing_atom(value)} | filters]
 
   defp severity_color(:critical), do: "error"

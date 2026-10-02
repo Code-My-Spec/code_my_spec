@@ -811,11 +811,20 @@ defmodule CodeMySpec.Conversations do
     #
     # Agent conversations are reachable from their own project surface. This is
     # the query the support inbox reads, so it is where the separation belongs.
+    #
+    # Latest message first; a thread with no messages ranks by when it opened.
     Conversation
+    |> join(:left, [c], l in subquery(last_message_at_query()), on: l.conversation_id == c.id)
     |> where([c], c.account_id == ^scope.active_account_id and c.type == :support)
-    |> order_by([c], asc: c.inserted_at)
+    |> order_by([c, l], desc: coalesce(l.at, c.inserted_at), desc: c.id)
     |> preload([c], messages: ^recent_messages_query())
     |> Repo.all()
+  end
+
+  defp last_message_at_query do
+    from m in Message,
+      group_by: m.conversation_id,
+      select: %{conversation_id: m.conversation_id, at: max(m.inserted_at)}
   end
 
   # Most recent `@default_page_size` messages per conversation, oldest-first.
@@ -999,7 +1008,7 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  Every agent conversation on a project, newest activity first, each with how
+  Every agent conversation on a project, latest message first, each with how
   many turns it holds and when it last moved.
 
   The counterpart to `get_agent_conversation/2`, which answers "the newest one"
@@ -1041,7 +1050,8 @@ defmodule CodeMySpec.Conversations do
       where: c.account_id == ^scope.active_account_id and c.project_id == ^project_id,
       where: c.type == :agent,
       where: not is_nil(c.agent_id) or not is_nil(c.session_external_id),
-      order_by: [desc: c.updated_at],
+      # Latest message first, not `updated_at`: a rename bumps that too.
+      order_by: [desc: coalesce(n.last_at, c.inserted_at), desc: c.id],
       select: %{
         conversation: c,
         message_count: coalesce(n.count, 0),

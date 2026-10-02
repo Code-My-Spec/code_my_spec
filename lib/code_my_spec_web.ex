@@ -99,7 +99,9 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
-      CodeMySpec.Workspaces
+      CodeMySpec.Workspaces,
+      # The desktop user's scope, in place of a session (bb8bc042).
+      CodeMySpecDesktop
     ],
     exports: :all
 

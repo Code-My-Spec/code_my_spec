@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
+  alias CodeMySpec.Conversations.Reads
   alias CodeMySpec.Epics
   alias CodeMySpec.Notifications
   alias CodeMySpec.ScreenState
@@ -204,7 +205,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # the version that does not depend on the agent remembering.
       Epics.subscribe(scope)
       Stories.subscribe_stories(scope)
+
+      # Every message in the account, for the activity panel's read marks.
+      Phoenix.PubSub.subscribe(
+        CodeMySpec.PubSub,
+        Conversations.inbox_topic(scope.active_account_id)
+      )
     end
+
+    mark_seen(socket, scope, conversation)
 
     # Computed once and reused: `team_status/3` cross-references the same
     # pending questions `@waiting` already carries rather than asking a
@@ -233,6 +242,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:pending, pending_for(conversation))
     |> assign(:waiting, waiting)
     |> assign(:copies, team_status(scope, project, waiting))
+    |> with_chat_states()
     # `assign_new`, because this is the screen's own state rather than the
     # conversation's. This function runs again on every PubSub update, and
     # `assign/3` here would slam a panel shut under someone's hand every time
@@ -652,6 +662,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # f096eba2: the team panel's own row for an agent, which may not be the one
   # this conversation has open. Same underlying call as the header's own
   # button below; only where the id comes from differs.
+  def handle_event("set_read", %{"id" => id, "read" => read}, socket) do
+    Reads.set_read(socket.assigns.current_scope, id, read == "true")
+    {:noreply, with_chat_states(socket)}
+  end
+
   def handle_event("toggle_agent_working", %{"agent-id" => agent_id}, socket) do
     scope = socket.assigns.current_scope
 
@@ -1039,6 +1054,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           task_label: task_label(scope, agent.id)
         }
       end)
+      |> latest_chat_first()
 
     %{
       row: row,
@@ -1047,6 +1063,58 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       empty_seats: empty_seats(row)
     }
   end
+
+  # Agents whose chat moved most recently on top; agents with no chat last, in
+  # the role order `Rows` gave them.
+  defp latest_chat_first(agents) do
+    Enum.sort_by(agents, &last_message_at/1, &newer_or_equal?/2)
+  end
+
+  defp last_message_at(%{chat: %{last_message_at: %DateTime{} = at}}), do: at
+  defp last_message_at(_agent), do: nil
+
+  defp newer_or_equal?(_a, nil), do: true
+  defp newer_or_equal?(nil, _b), do: false
+  defp newer_or_equal?(a, b), do: DateTime.compare(a, b) != :lt
+
+  defp mark_seen(socket, scope, %{id: id}) do
+    if connected?(socket), do: Reads.set_read(scope, id, true)
+  end
+
+  defp mark_seen(_socket, _scope, nil), do: nil
+
+  # Each panel chat's read mark and latest message, from one query, re-sorted.
+  defp with_chat_states(%{assigns: %{copies: copies, current_scope: scope}} = socket)
+       when is_list(copies) do
+    ids = for copy <- copies, %{chat: %{conversation: %{id: id}}} <- copy.agents, do: id
+    states = Reads.states(scope, ids)
+
+    assign(socket, :copies, Enum.map(copies, &apply_chat_states(&1, states)))
+  end
+
+  defp with_chat_states(socket), do: socket
+
+  defp apply_chat_states(copy, states) do
+    agents =
+      copy.agents
+      |> Enum.map(&apply_chat_state(&1, states))
+      |> latest_chat_first()
+
+    %{copy | agents: agents}
+  end
+
+  defp apply_chat_state(%{chat: %{conversation: %{id: id}} = chat} = agent, states) do
+    case Map.fetch(states, id) do
+      {:ok, %{unread?: unread?, last_message_at: at}} ->
+        %{agent | chat: %{chat | last_message_at: at || chat.last_message_at}}
+        |> Map.put(:unread?, unread?)
+
+      :error ->
+        Map.put(agent, :unread?, false)
+    end
+  end
+
+  defp apply_chat_state(agent, _states), do: Map.put(agent, :unread?, false)
 
   # A seat whose agent retired is empty and offers staffing (39af5611). Each
   # copy's seats are its home roles: main and product on the main copy.
@@ -1381,6 +1449,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, apply_analysis_event(socket, payload)}
   end
 
+  # Any chat in the account moved. The one on screen is being read; the panel's
+  # read marks and order are refreshed without rebuilding the team status.
+  def handle_info({:inbox_updated, conversation_id}, socket) do
+    conversation = socket.assigns[:conversation]
+
+    if match?(%{id: ^conversation_id}, conversation),
+      do: mark_seen(socket, socket.assigns.current_scope, conversation)
+
+    {:noreply, with_chat_states(socket)}
+  end
+
   def handle_info({:new_message, message}, socket) do
     {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
   end
@@ -1492,6 +1571,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:waiting, waiting)
     |> assign(:copies, team_status(scope, socket.assigns.project, waiting))
+    |> with_chat_states()
     |> refresh_main(scope)
   end
 

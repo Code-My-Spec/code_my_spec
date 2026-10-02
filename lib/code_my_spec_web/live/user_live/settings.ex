@@ -26,7 +26,14 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         </.header>
       </div>
 
-      <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
+      <%!-- Desktop: the user is the OS user, with no password and no sudo window. --%>
+      <.form
+        :if={!@desktop?}
+        for={@email_form}
+        id="email_form"
+        phx-submit="update_email"
+        phx-change="validate_email"
+      >
         <.input
           field={@email_form[:email]}
           type="email"
@@ -37,9 +44,10 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         <.button phx-disable-with="Changing...">Change Email</.button>
       </.form>
 
-      <div class="divider" />
+      <div :if={!@desktop?} class="divider" />
 
       <.form
+        :if={!@desktop?}
         for={@password_form}
         id="password_form"
         action={~p"/app/users/update-password"}
@@ -348,6 +356,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
     socket =
       socket
       |> assign(:current_email, user.email)
+      |> assign(:desktop?, CodeMySpecDesktop.Identity.active?())
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
