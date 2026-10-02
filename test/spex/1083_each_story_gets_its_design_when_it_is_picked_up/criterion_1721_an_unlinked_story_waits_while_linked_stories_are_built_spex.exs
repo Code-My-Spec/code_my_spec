@@ -8,7 +8,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -16,7 +19,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
 
   spex "An unlinked story waits while linked stories are built", criterion: 1721 do
     scenario "a linked story offers further work while an unlinked one offers only design" do
-      given_ "Sam's story A is linked to a component and story B is not", context do
+      given_ "Sam's story A is linked to a component, story B is not, and a team holds the copy",
+             context do
+        context = ProjectStateFixtures.apply_project_kickoff(context)
         app = context.project.module_name || "MyApp"
 
         component =
@@ -40,14 +45,23 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
             acceptance_criteria: ["Story B criterion"]
           )
 
+        Fixtures.running_agent(context.scope, role: "coding")
+        Fixtures.running_agent(context.scope, role: "qa")
+
         {:ok, Map.merge(context, %{story_a: story_a, story_b: story_b})}
       end
 
-      when_ "Sam's agents look for work on each story", context do
+      when_ "the copy's team is pointed at each story in turn and asks what to do next", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, _activated_a, _frame} =
+          SetActiveStory.execute(%{story_number: context.story_a.number}, frame)
 
         {:reply, response_a, _frame} =
           GetNextRequirement.execute(%{story_number: context.story_a.number}, frame)
+
+        {:reply, _activated_b, _frame} =
+          SetActiveStory.execute(%{story_number: context.story_b.number}, frame)
 
         {:reply, response_b, _frame} =
           GetNextRequirement.execute(%{story_number: context.story_b.number}, frame)
