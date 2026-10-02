@@ -4,9 +4,8 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
 
   `EmbeddingService` is almost entirely adapter-agnostic — chunking, content
   hashing, the file_hash fast path, stale-chunk deletion and file walking are
-  all plain Ecto or plain Elixir, and only the chunk upsert and the
-  similarity search are reimplemented here, so the two backends cannot drift
-  on chunk sizes, hashing, or dedupe semantics.
+  all plain Ecto or plain Elixir; only the chunk upsert and the similarity
+  search live here.
 
   `search/3` is plain `Ecto.Query` — `dynamic/2` builds the scope clause
   (the project's own rows, shared rows for its exact locked dependency
@@ -154,8 +153,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   defp source_clause(_source, _prefix, _offset), do: {nil, []}
 
   # Every clause above is written with bare `?` placeholders in source
-  # order, same convention sqlite_vec uses elsewhere in this pipeline — this
-  # is the one place that turns them into Postgres's `$1, $2, ...`, offset
+  # order — this is the one place that turns them into Postgres's `$1, $2, ...`, offset
   # past whatever params already precede this clause.
   defp number_placeholders(sql, offset \\ 0) do
     parts = String.split(sql, "?")
@@ -175,8 +173,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     do: %{source: src, path: path, chunk_index: chunk_index, content: content}
 
   @doc """
-  Store one chunk. Called by `EmbeddingService` in place of its sqlite_vec
-  INSERT when this backend is active.
+  Store one chunk. Called by `EmbeddingService` when this backend is active.
 
   `DO UPDATE`, not `DO NOTHING`: when a file changes, the row for this
   (project_id, source, path, chunk_index) already exists from the prior
