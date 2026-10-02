@@ -152,26 +152,16 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     end
   end
 
-  spex "An answer is claimed by checking it", criterion: 1675 do
-    scenario "an asker reads the answer it was woken with" do
+  spex "An answer is claimed by any tool call after it", criterion: 1675 do
+    scenario "an asker woken with its answer gets on with something" do
       given_ "an idle coder woken with the answer to its question, now mid-turn", context do
         :ok = Fixtures.install_recording_agent_transport()
-        context = start_session(context)
-        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
-        :ok = Fixtures.agent_said(context.scope, coder, "I need a decision first.")
-        question = ask(context, coder.id)
-        :ok = user_answers(context, question, "Yes")
-        id = coder.id
-        assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
-        :ok = Fixtures.put_agent_mid_turn(context.scope, id)
-        {:ok, Map.merge(context, %{coder: id, question: question})}
+        {:ok, woken_with_answer(context)}
       end
 
-      when_ "it calls check_answer and ends the turn", context do
+      when_ "it calls a tool and ends the turn", context do
         :ok =
-          Fixtures.agent_tool_call(context.scope, %{id: context.coder}, "c1", "check_answer", %{
-            "question_id" => context.question
-          })
+          Fixtures.agent_tool_call(context.scope, %{id: context.coder}, "c1", "list_tasks", %{})
 
         :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, context}
@@ -179,6 +169,27 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
 
       then_ "the answer offer is claimed", context do
         assert [%{status: "claimed"}] = offers(context, context.coder, %{kind: "answer"}),
+               listing(context)
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "An answer with no tool call after it is ignored", criterion: 1675 do
+    scenario "an asker woken with its answer does nothing" do
+      given_ "an idle coder woken with the answer to its question, now mid-turn", context do
+        :ok = Fixtures.install_recording_agent_transport()
+        {:ok, woken_with_answer(context)}
+      end
+
+      when_ "it ends the turn without calling a tool", context do
+        :ok = Fixtures.end_turn(context.scope, context.coder)
+        {:ok, context}
+      end
+
+      then_ "the answer offer is ignored", context do
+        assert [%{status: "ignored"}] = offers(context, context.coder, %{kind: "answer"}),
                listing(context)
 
         {:ok, context}
@@ -293,6 +304,20 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         {:ok, context}
       end
     end
+  end
+
+  # A continuous coder that asked a question, was woken with the answer, and
+  # has started that turn.
+  defp woken_with_answer(context) do
+    context = start_session(context)
+    coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+    :ok = Fixtures.agent_said(context.scope, coder, "I need a decision first.")
+    question = ask(context, coder.id)
+    :ok = user_answers(context, question, "Yes")
+    id = coder.id
+    assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
+    :ok = Fixtures.put_agent_mid_turn(context.scope, id)
+    Map.put(context, :coder, id)
   end
 
   defp ask(context, agent_id) do
