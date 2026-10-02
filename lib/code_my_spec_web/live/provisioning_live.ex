@@ -96,8 +96,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           <.button data-test="generate-project" phx-click="generate_project" class="btn btn-ghost">
             Generate deploy files
           </.button>
-          <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
-          <.button :if={@halted_at} data-test="resume-setup" phx-click="resume_setup">
+          <.button data-test="start-setup" phx-click="start_setup" disabled={@runs_in_flight?}>
+            Run setup
+          </.button>
+          <.button
+            :if={@halted_at}
+            data-test="resume-setup"
+            phx-click="resume_setup"
+            disabled={@runs_in_flight?}
+          >
             Resume
           </.button>
         </:actions>
@@ -262,6 +269,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           step={step}
           environments={@environments}
           age_key_environments={@age_key_environments}
+          runs_in_flight?={@runs_in_flight?}
         />
       </ol>
 
@@ -518,6 +526,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           step={step}
           environments={@environments}
           age_key_environments={@age_key_environments}
+          runs_in_flight?={@runs_in_flight?}
         />
       </ol>
 
@@ -534,6 +543,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             step={step}
             environments={@environments}
             age_key_environments={@age_key_environments}
+            runs_in_flight?={@runs_in_flight?}
           />
         </ol>
       </div>
@@ -806,6 +816,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   attr :step, :map, required: true
   attr :environments, :list, required: true
   attr :age_key_environments, :list, required: true
+  attr :runs_in_flight?, :boolean, required: true
 
   defp step_card(assigns) do
     ~H"""
@@ -845,21 +856,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               </span>
               <.button
                 :if={@step.key != :deploy}
-                data-test="run-step"
+                data-test={if @step.state == :errored, do: "retry-step", else: "run-step"}
                 phx-click="run_step"
                 phx-value-key={@step.key}
                 phx-value-environment={@step.environment}
+                disabled={@runs_in_flight?}
               >
-                Run
-              </.button>
-              <.button
-                :if={@step.state == :errored and @step.key != :deploy}
-                data-test="retry-step"
-                phx-click="run_step"
-                phx-value-key={@step.key}
-                phx-value-environment={@step.environment}
-              >
-                Retry
+                {if @step.state == :errored, do: "Retry", else: "Run"}
               </.button>
             </div>
           </div>
@@ -895,7 +898,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           >
             <input type="hidden" name="key" value={@step.key} />
             <input type="hidden" name="environment" value={@step.environment} />
-            <.button type="submit" data-test="deploy-environment-submit" class="btn btn-primary">
+            <.button
+              type="submit"
+              data-test="deploy-environment-submit"
+              class="btn btn-primary"
+              disabled={@runs_in_flight?}
+            >
               {if @step.state == :errored, do: "Retry", else: "Deploy"} {@step.environment}
             </.button>
           </form>
@@ -2276,8 +2284,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # report success.
   defp publish_opts(socket) do
     [
-      path: socket.assigns[:content_publish_path] || "/",
-      expect: socket.assigns[:content_publish_expect] || "<html",
+      path: "/",
+      expect: "<html",
       # The site to fetch the post back from. Without it `verify_render/2` falls
       # through to `published[:site_url]`, which the publish does not set, and
       # builds a URL of "/" — dying inside Finch with `scheme is required for
@@ -2408,6 +2416,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     socket
     |> assign(:environment_rows, Provisioning.environments(scope))
+    # RunLock already refuses a second run silently (just a log line, no
+    # caller to tell) — disabling the buttons that would start one is what
+    # makes that refusal visible instead of a click that quietly did nothing.
+    |> assign(:runs_in_flight?, Provisioning.runs_in_flight?(scope))
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
