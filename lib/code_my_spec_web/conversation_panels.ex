@@ -487,6 +487,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
               :if={a.chat}
               patch={conversation_path(@project_id, a.chat.conversation.id)}
               data-question={to_string(a.question?)}
+              data-unread={to_string(unread?(a))}
               data-current={to_string(current_agent?(a, @conversation_id))}
               aria-current={current_agent?(a, @conversation_id) && "true"}
               class={[
@@ -500,6 +501,12 @@ defmodule CodeMySpecWeb.ConversationPanels do
                 name="hero-question-mark-circle-solid"
                 class="size-3.5 shrink-0"
               />
+              <span
+                :if={unread?(a)}
+                data-test="unread-dot"
+                class="size-2 shrink-0 rounded-full bg-primary"
+              >
+              </span>
               <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
               <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
               <span class="shrink-0 opacity-60">{a.liveness.label}</span>
@@ -513,6 +520,23 @@ defmodule CodeMySpecWeb.ConversationPanels do
               <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
               <span class="shrink-0">{a.liveness.label}</span>
             </div>
+
+            <button
+              :if={a.chat}
+              type="button"
+              phx-click="set_read"
+              phx-value-id={a.chat.conversation.id}
+              phx-value-read={to_string(unread?(a))}
+              data-test="team-agent-read"
+              aria-label={if unread?(a), do: "Mark read", else: "Mark unread"}
+              title={if unread?(a), do: "Mark read", else: "Mark unread"}
+              class="btn btn-ghost btn-xs btn-square shrink-0"
+            >
+              <.icon
+                name={if unread?(a), do: "hero-envelope-open", else: "hero-envelope"}
+                class="size-3"
+              />
+            </button>
 
             <%!-- f096eba2: every agent controllable from here, not only the one
             whose conversation happens to be open — siblings of the link/div
@@ -593,6 +617,8 @@ defmodule CodeMySpecWeb.ConversationPanels do
     </div>
     """
   end
+
+  defp unread?(agent), do: Map.get(agent, :unread?, false)
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural
