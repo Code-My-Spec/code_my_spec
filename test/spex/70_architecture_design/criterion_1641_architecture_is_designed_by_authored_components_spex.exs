@@ -20,12 +20,10 @@ defmodule CodeMySpecSpex.Story70.Criterion1641Spex do
   spex "Architecture counts as designed without a proposal file once the project has an authored component, and a proposal file still counts as before",
     criterion: 1641 do
     scenario "the architect authors a component and writes no proposal" do
-      given_ "a project with no architecture yet", context do
+      when_ "the architect, finding no architecture yet, creates a component with the tools",
+            context do
         assert architecture_designed(context) =~ "No architecture yet"
-        {:ok, context}
-      end
 
-      when_ "the architect creates a component with the tools", context do
         ComponentHelpers.create(context.scope,
           name: "Accounts",
           module_name: "#{app(context)}.Accounts",
