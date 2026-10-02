@@ -3982,6 +3982,26 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Put this agent's outstanding turn request in the past.
+
+  A turn offered to an agent reserves it for five minutes; an agent that never
+  takes the turn is offered again once that lapses. Time passing has no
+  surface, so this backdates the reservation the way `age_agent_messages/3`
+  backdates a transcript.
+  """
+  @spec age_work_reservation(Scope.t(), String.t(), number()) :: :ok
+  def age_work_reservation(%Scope{} = _scope, agent_id, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+
+    from(a in CodeMySpec.Agents.Agent,
+      where: a.id == type(^agent_id, :binary_id) and not is_nil(a.work_request_id)
+    )
+    |> Repo.update_all(set: [work_requested_at: at])
+
+    :ok
+  end
+
+  @doc """
   Put this agent's transcript in the past.
 
   Backdates every message on the agent's own conversation, so a scenario can
