@@ -409,9 +409,11 @@ defmodule CodeMySpec.Agents.Work do
   # costs work rather than the one that costs a turn.
   defp closed_a_task?(_agent, nil), do: true
 
+  # A cancel stamps `completed_at` too, but claiming and dropping the offer is
+  # declining it, not work (7169d3cf).
   defp closed_a_task?(%Agent{tasks: tasks}, %DateTime{} = turn_started_at) do
     Enum.any?(tasks || [], fn task ->
-      not is_nil(task.completed_at) and
+      task.status != :cancelled and not is_nil(task.completed_at) and
         DateTime.compare(task.completed_at, turn_started_at) != :lt
     end)
   end
