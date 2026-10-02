@@ -120,7 +120,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
-  alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
   alias CodeMySpec.Content.CloudflareClient
@@ -2374,11 +2373,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
   defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
   defdelegate list_components(scope), to: CodeMySpec.Components
-
-  @doc "Attempt to write a component's stub spec through the scope's environment."
-  defdelegate write_component_stub(scope, attrs),
-    to: SpecStub,
-    as: :write_for_scope
 
   @doc """
   Whether a named requirement is satisfied for an entity, read off the computed

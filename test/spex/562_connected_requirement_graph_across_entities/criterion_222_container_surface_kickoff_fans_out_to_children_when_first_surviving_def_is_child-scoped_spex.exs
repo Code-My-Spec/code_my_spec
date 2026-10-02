@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Container kickoff fans out to children when first surviving def is child-scoped", criterion: 222 do
+  spex "Container kickoff fans out to children when first surviving def is child-scoped",
+    criterion: 222 do
     scenario "bdd_specs_exist edges land on each child's impl_file, not on the parent context" do
       given_ :context_with_module_typed_children
 

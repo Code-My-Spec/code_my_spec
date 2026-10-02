@@ -2,10 +2,9 @@
 
 What order component work happens in, and what finishes each step.
 
-None of the six task modules in this family has a playbook, because each
-one's prompt carries what it needs. What no prompt carries is the shape
-they form together — so an agent handed one task can do it correctly and
-still have no idea what it is in the middle of. That is what this is for.
+Each task's prompt carries what it needs. What no prompt carries is the
+shape they form together — so an agent handed one task can do it correctly
+and still have no idea what it is in the middle of. That is what this is for.
 
 ## Two different chains
 
@@ -13,65 +12,44 @@ Do not confuse them. They run at different grains and meet in one place.
 
 - **The story chain** — one story from shaped to shipped. In
   `process/product.md`.
-- **The component chain** — one component from specified to green. Below.
+- **The component chain** — one component from designed to built. Below.
 
 They meet at `component_linked`: a story names the component it is about,
 and that is the first requirement on the story chain. Component work and
 story work then proceed largely independently.
 
+## The design is records, not files
+
+A component, its type, its description, its parent and what it depends on
+are records, authored through the tools — `create_component`,
+`update_component`, `add_dependency`, `remove_dependency` — or by executing
+an architecture proposal. No spec file describes a component, and editing
+one changes nothing. Code that appears with no component behind it is
+picked up by the sync as *discovered*; the design is what was *authored*.
+
 ## The component chain
 
-The order, which is the thing worth memorising:
-
-```
-spec → valid → [children's specs] → review → valid
-     → [children's impl] → impl → test → passing
-```
-
-Read as prose: **specify the parent, specify its children, review the
-design as a whole, then build the children, then build the parent, then
-make the tests pass.**
-
-Step by step, with what satisfies each:
+One step per component:
 
 | Step | Requirement | Finished by |
 |---|---|---|
-| Parent spec written | `spec_file` | the spec file exists |
-| Parent spec is sound | `spec_valid` | the file parses and has its required sections |
-| Each child specified | `spec_file` (per child) | same, once per child |
-| Design reviewed | `review_file` | the review file exists |
-| Review is sound | `review_valid` | it parses |
-| Tests written | `test_file` | the test file exists |
-| Tests match the spec | `test_spec_alignment` | the tests assert what the spec says |
 | Code written | `implementation_file` | the file exists |
-| It works | `tests_passing` | the test run is green |
 
-### Why specs come before tests and tests before code
-
-The spec is the argument for what this thing should do. The test is that
-argument made executable. The code is what makes the test pass.
-
-Written in that order, each step has something to check itself against.
-Written backwards, the spec becomes a description of whatever got built,
-which is a document that can never disagree with the code and therefore
-cannot catch anything.
-
-### Why the review sits in the middle
-
-The design review runs after every spec exists and before any code does.
-It is the last point where changing the shape is cheap. A review that runs
-after implementation is a code review — useful, different, and too late to
-move a boundary.
-
-## The graph is per component type
-
-There is not one component graph. `context`, `live_context`, `controller`,
-`schema`, `behaviour`, `json` and `liveview` each have their own, and
-`infrastructure` has **no requirements at all** — an infrastructure
-component is deliberately not something this process builds.
+The order is in the prerequisites. A **context** builds its children first,
+then itself. A **live context** is a container: only its children are
+built. **Infrastructure** has no requirements at all — it is deliberately
+not something this process builds.
 
 So do not reason from "the component graph". Reason from the requirements
 you were actually handed.
+
+## Where the tests are
+
+Behaviour is held by the story, not the component. A story's acceptance
+criteria become BDD specs (`bdd_specs_exist`), and the story is not done
+until they pass (`bdd_specs_passing`). Write the spex first, then the code
+that makes them pass: written backwards, a test describes whatever got
+built and can never disagree with it.
 
 ## What "finished" means mechanically
 

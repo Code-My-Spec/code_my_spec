@@ -13,12 +13,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ArchitectureDesign,
       AgentTasks.CodeGeneration,
       AgentTasks.ComponentCode,
-      AgentTasks.ComponentSpec,
       AgentTasks.ComponentTest,
       AgentTasks.ContextComponentSpecs,
       AgentTasks.ContextDesignReview,
-      AgentTasks.ContextSpec,
-      AgentTasks.ControllerSpec,
       AgentTasks.DesignUi,
       AgentTasks.Deploy,
       AgentTasks.DevelopContext,
@@ -31,8 +28,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.FixIssues,
       AgentTasks.FixStoryIssues,
       AgentTasks.LinkStoryComponent,
-      AgentTasks.LiveContextSpec,
-      AgentTasks.LiveViewSpec,
       AgentTasks.PersonaResearch,
       AgentTasks.PromoteWork,
       AgentTasks.ProjectSetup,
@@ -59,12 +54,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ArchitectureDesign",
       "CodeGeneration",
       "ComponentCode",
-      "ComponentSpec",
       "ComponentTest",
       "ContextComponentSpecs",
       "ContextDesignReview",
-      "ContextSpec",
-      "ControllerSpec",
       "DesignUi",
       "Deploy",
       "DevelopContext",
@@ -77,8 +69,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "FixIssues",
       "FixStoryIssues",
       "LinkStoryComponent",
-      "LiveContextSpec",
-      "LiveViewSpec",
       "PersonaResearch",
       "PromoteWork",
       "ProjectSetup",
@@ -120,11 +110,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   # ============================================================================
 
   describe "cast/1" do
-    test "returns module atom for valid string name (e.g. \"ComponentSpec\" → AgentTasks.ComponentSpec)" do
-      assert {:ok, AgentTasks.ComponentSpec} = SessionType.cast("ComponentSpec")
+    test "returns module atom for valid string name (e.g. \"ComponentCode\" → AgentTasks.ComponentCode)" do
       assert {:ok, AgentTasks.ComponentCode} = SessionType.cast("ComponentCode")
       assert {:ok, AgentTasks.ComponentTest} = SessionType.cast("ComponentTest")
-      assert {:ok, AgentTasks.ContextSpec} = SessionType.cast("ContextSpec")
       assert {:ok, AgentTasks.ContextComponentSpecs} = SessionType.cast("ContextComponentSpecs")
       assert {:ok, AgentTasks.ContextDesignReview} = SessionType.cast("ContextDesignReview")
       assert {:ok, AgentTasks.ArchitectureDesign} = SessionType.cast("ArchitectureDesign")
@@ -137,7 +125,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.TechnicalStrategy} = SessionType.cast("TechnicalStrategy")
       assert {:ok, AgentTasks.ResearchTopic} = SessionType.cast("ResearchTopic")
       assert {:ok, AgentTasks.DevelopLiveContext} = SessionType.cast("DevelopLiveContext")
-      assert {:ok, AgentTasks.LiveContextSpec} = SessionType.cast("LiveContextSpec")
       assert {:ok, AgentTasks.QaApp} = SessionType.cast("QaApp")
       assert {:ok, AgentTasks.QaSetup} = SessionType.cast("QaSetup")
       assert {:ok, AgentTasks.QaStory} = SessionType.cast("QaStory")
@@ -166,9 +153,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   # ============================================================================
 
   describe "mapper/0" do
-    test "maps \"ComponentSpec\" to AgentTasks.ComponentSpec" do
+    test "maps \"ComponentCode\" to AgentTasks.ComponentCode" do
       mapper = SessionType.mapper()
-      assert mapper["ComponentSpec"] == AgentTasks.ComponentSpec
+      assert mapper["ComponentCode"] == AgentTasks.ComponentCode
     end
 
     test "includes all valid agent task types" do

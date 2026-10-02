@@ -124,6 +124,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -140,6 +141,10 @@ defmodule CodeMySpecSpex.SharedGivens do
   register_given :synced_context_component, context do
     scope = context.scope
     env = context.environment
+
+    ComponentGraphHelpers.design!(context, @component_module_name, [],
+      description: "An example context for BDD specs."
+    )
 
     :ok = Environments.write_file(env, @spec_path, spec_file_content())
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
@@ -177,6 +182,10 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     env = context.environment
     scope = context.scope
+
+    ComponentGraphHelpers.design!(context, @component_module_name, [],
+      description: "An example context for BDD specs."
+    )
 
     :ok = Environments.write_file(env, @spec_path, spec_file_content())
     :ok = Environments.write_file(env, @impl_path, impl_file_content())

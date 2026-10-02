@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
   a precision-0 column and two passes inside one second are indistinguishable.
 
   And the dependency edge, because this is the criterion where a cheap fix is
-  most tempting and most wrong. A component whose spec declares a dependency
+  most tempting and most wrong. A component designed with a dependency
   and whose graph carries no edge for it is a context that can be built before
   the thing it is built on — silently, with every requirement present and
   correct.
@@ -43,6 +43,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 4]
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
@@ -57,11 +58,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
   @moduletag timeout: 60_000
 
   @arriving "Billing"
-  @arriving_spec ".code_my_spec/spec/billing.spec.md"
   @arriving_impl "lib/billing.ex"
 
   spex "A component arriving is not a reason to recompute the others", criterion: 1513 do
-    scenario "a context is synced onto a settled graph" do
+    scenario "a context arrives on a settled graph" do
       given_ :synced_context_component
 
       given_ "a settled graph with work already in it", context do
@@ -87,8 +87,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
         {:ok, Map.put(context, :before, before)}
       end
 
-      when_ "a new context's spec is synced, declaring a dependency", context do
-        :ok = Environments.write_file(context.environment, @arriving_spec, spec_file())
+      when_ "a new context is designed with a dependency, its code written and synced", context do
+        design!(context, @arriving, [context.component.module_name],
+          description: "Charges for what the example context did."
+        )
+
         :ok = Environments.write_file(context.environment, @arriving_impl, impl_file())
 
         {:ok, files, _html} =
@@ -101,7 +104,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
         arrived = Fixtures.get_component_by_module_name(context.scope, @arriving)
 
         assert %_{} = arrived,
-               "the sync did not produce a component, so nothing arrived to measure"
+               "nothing arrived to measure"
 
         graph = read_graph(context)
 
@@ -150,7 +153,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
       then_ "and the dependency it declared is an edge in the graph", context do
         assert dependency_edge(context.graph, context.component.id, context.arrived.id) != nil,
                """
-               #{@arriving}'s spec declares a dependency on #{context.component.module_name}
+               #{@arriving} was designed to depend on #{context.component.module_name}
                and the graph carries no edge between them.
 
                This is the half a cheap fix breaks, and it breaks quietly: every
@@ -235,38 +238,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
     |> Enum.filter(fn {key, was} -> Map.has_key?(later, key) and Map.get(later, key) != was end)
     |> Enum.map(&elem(&1, 0))
     |> Enum.sort()
-  end
-
-  defp spec_file do
-    """
-    # #{@arriving}
-
-    ## Type
-
-    context
-
-    Charges for what the example context did.
-
-    ## Functions
-
-    ### charge/1
-
-    Charges an account.
-
-    ```elixir
-    @spec charge(term()) :: :ok
-    ```
-
-    ## Dependencies
-
-    - ExampleContext
-
-    ## Components
-
-    ### #{@arriving}.Charge
-
-    Placeholder child module.
-    """
   end
 
   defp impl_file do

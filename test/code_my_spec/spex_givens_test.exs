@@ -230,7 +230,7 @@ defmodule CodeMySpec.SpexGivensTest do
   # `put_to_work`, `start_task` and turn events and asserts the offer it
   # expects arrived, so a given naming one has made its precondition true.
   @establishes ~w(
-    ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( freeze(
+    ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( freeze( design!( design_coded!(
     Slice.
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette

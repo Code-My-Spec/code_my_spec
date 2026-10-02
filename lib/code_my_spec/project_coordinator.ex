@@ -285,7 +285,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   @doc """
   Derive a suffix from a task module name.
 
-  CodeMySpec.AgentTasks.ComponentSpec → "component_spec"
+  CodeMySpec.AgentTasks.ComponentCode → "component_code"
   """
   @spec task_module_suffix(module()) :: String.t()
   def task_module_suffix(module) do

@@ -1,11 +1,12 @@
 defmodule CodeMySpecSpex.Story127.Criterion1637Spex do
   @moduledoc """
   Story 127 — Filesystem-to-DB Projection
-  Criterion 1637 — In a frozen project, a discovered component whose code is gone from every live checkout is removed by the next sync, unless an authored dependency or a story still points at it.
+  Criterion 1637 — A discovered component whose code is gone from every live checkout is removed by the next sync, unless an authored dependency or a story still points at it.
 
-  Components as records, step 4 (3aeb66cf): once a project is frozen, a sync
-  stops treating its files as the description of its components. Surface:
-  files written into the working copy, `sync_project`, `freeze_components`;
+  Components as records (3aeb66cf): a sync reads no spec and writes nothing
+  about an existing component; it only discovers what live code names and
+  prunes what it discovered once the code is gone. Surface: files written into
+  the working copy, `create_component`, `add_dependency`, `sync_project`;
   observed through `get_component`, `list_components` and `show_architecture`.
   """
 
@@ -16,15 +17,13 @@ defmodule CodeMySpecSpex.Story127.Criterion1637Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "In a frozen project, a discovered component whose code is gone from every live checkout is removed by the next sync, unless an authored dependency or a story still points at it",
+  spex "A discovered component whose code is gone from every live checkout is removed by the next sync, unless an authored dependency or a story still points at it",
     criterion: 1637 do
     scenario "two discovered components lose their code, and Web depends on one" do
-      given_ "a frozen project whose Accounts and Web have specs", context do
+      given_ "Accounts and Web, designed", context do
         app = app(context)
-        spec!(context, "#{app}.Accounts", [], description: "Accounts, as specified")
-        spec!(context, "#{app}.Web")
-        sync!(context)
-        freeze(context, write: true)
+        design!(context, "#{app}.Accounts", [], description: "Accounts, as designed")
+        design!(context, "#{app}.Web")
         {:ok, context}
       end
 
