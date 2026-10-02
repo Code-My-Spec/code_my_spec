@@ -744,7 +744,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             data-test="provisioned-resource"
             data-kind={resource.kind}
             data-location={resource.location}
-            data-environment={resource_environment(resource)}
+            data-environment={resource_environment(resource, @environments)}
             data-name={resource_name(resource)}
             data-owner={resource_owner(resource)}
             data-verified={to_string(owned.verified?)}
@@ -1409,7 +1409,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             :for={v <- Enum.filter(@step.resources, &(&1.kind == "dns_verification"))}
             data-test="dns-verified"
             data-source="resolver"
-            data-environment={resource_environment(v)}
+            data-environment={resource_environment(v, @environments)}
             data-host={v.location}
             class="text-xs opacity-70"
           >
@@ -1421,7 +1421,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           <span
             :for={record <- Enum.filter(@step.resources, &(&1.kind == "dns_record"))}
             data-test="dns-record"
-            data-environment={resource_environment(record)}
+            data-environment={resource_environment(record, @environments)}
             data-target={resource_target(record)}
             data-name={resource_name(record)}
             data-proxied="false"
@@ -1436,7 +1436,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               data-test="provisioned-resource"
               data-kind={resource.kind}
               data-location={resource.location}
-              data-environment={resource_environment(resource)}
+              data-environment={resource_environment(resource, @environments)}
               data-name={resource_name(resource)}
               data-owner={resource_owner(resource)}
               data-disposition={resource_disposition(resource)}
@@ -1492,7 +1492,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           Provisioning.subscribe(scope)
         end
 
-        {:ok, load(socket, options)}
+        {:ok, socket |> assign_mount_state() |> load(options)}
 
       :error ->
         {:ok,
@@ -2373,14 +2373,41 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign(halted_at: halted_at, halt_reason: reason)
   end
 
+  # Mount-only UI state: assigned once, from `mount/2`, and never touched by
+  # `load/2` again. None of it is derived from a step row — a run result, a
+  # probe's output, a form's last error — so re-asserting it on every event
+  # and every PubSub announce (which is what `load/2` used to do, if only as
+  # a no-op `assign_new`) mixed a one-time default into a function whose job
+  # is to re-read what changed.
+  defp assign_mount_state(socket) do
+    socket
+    |> assign(:backups, [])
+    |> assign(:backup_health, nil)
+    |> assign(:restore_result, nil)
+    |> assign(:secret_error, nil)
+    |> assign(:domain_name, nil)
+    |> assign(:domain_check, nil)
+    |> assign(:domain_error, nil)
+    |> assign(:mail_send_result, nil)
+    |> assign(:mail_inbound_result, nil)
+    |> assign(:widget_degradation, nil)
+    |> assign(:content_publish, nil)
+    |> assign(:storage_objects, [])
+    |> assign(:storage_readbacks, [])
+    |> assign(:halted_at, nil)
+    |> assign(:halt_reason, nil)
+  end
+
   defp load(socket, options) do
-    plan = Provisioning.plan(socket.assigns.current_scope, options)
+    scope = socket.assigns.current_scope
+    # One read, threaded everywhere it's needed below — `load/2` used to call
+    # this about six times (directly, and again inside `age_key_environments/1`
+    # and `secret_sources/1`), once per assign that happened to need it.
+    environments = environments(scope)
+    plan = Provisioning.plan(scope, options)
 
     socket
-    |> assign_new(:backups, fn -> [] end)
-    |> assign_new(:backup_health, fn -> nil end)
-    |> assign_new(:restore_result, fn -> nil end)
-    |> assign(:environment_rows, Provisioning.environments(socket.assigns.current_scope))
+    |> assign(:environment_rows, Provisioning.environments(scope))
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
@@ -2394,63 +2421,37 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # announce arrived inside or outside the cassette block decided whether it
     # consumed an interaction or hit the network. Credentials are proved when
     # they are saved and when Sam asks — `refresh_credentials/1`.
-    |> assign_new(:credentials, fn -> credentials(socket.assigns.current_scope) end)
-    |> assign_new(:missing_credentials, fn ->
-      Credentials.missing(socket.assigns.current_scope)
-    end)
-    |> assign(
-      :sops_recipients,
-      Steps.recipients(socket.assigns.current_scope, environments(socket.assigns.current_scope))
-    )
-    |> assign(:age_key_environments, age_key_environments(socket.assigns.current_scope))
-    |> assign(:secret_sources, secret_sources(socket.assigns.current_scope))
-    |> assign_new(:secret_error, fn -> nil end)
-    |> assign_new(:domain_name, fn -> nil end)
-    |> assign_new(:domain_check, fn -> nil end)
-    |> assign_new(:domain_error, fn -> nil end)
-    |> assign(:domain_registered, registered_domain(socket.assigns.current_scope))
-    |> then(fn socket ->
-      names = environments(socket.assigns.current_scope)
-      Process.put(:cms_environment_names, names)
-      assign(socket, :environments, names)
-    end)
-    |> assign(
-      :primary_environment,
-      Provisioning.primary_environment(socket.assigns.current_scope)
-    )
-    |> assign(:storage_ready?, Storage.credentials(socket.assigns.current_scope, []) != :none)
+    |> assign_new(:credentials, fn -> credentials(scope) end)
+    |> assign_new(:missing_credentials, fn -> Credentials.missing(scope) end)
+    |> assign(:sops_recipients, Steps.recipients(scope, environments))
+    |> assign(:age_key_environments, age_key_environments(scope, environments))
+    |> assign(:secret_sources, secret_sources(environments))
+    |> assign(:domain_registered, registered_domain(scope))
+    |> assign(:environments, environments)
+    |> assign(:primary_environment, Provisioning.primary_environment(scope))
+    |> assign(:storage_ready?, Storage.credentials(scope, []) != :none)
     # Read once and kept, not re-read on every event. `mail_state/2` and
     # `mail_domains/1` each call Resend live, so re-reading here meant three
     # provider round-trips per button click — slow, rate-limit-prone, and
     # nondeterministic under a sequential cassette, where a spex that clicked
     # one more time than the recording consumed an interaction that was not
     # there. `refresh_mail/1` re-reads when mail could actually have changed.
-    |> then(fn socket ->
-      # No provider call while mounting. `mail_state/3` and `mail_domains/2`
-      # both reach Resend, and a mount cannot be covered by a cassette — the
-      # idiom everywhere is mount, then act under one — so every page load with
-      # a project domain put a `GET /domains` where no recording could reach
-      # it. On replay that raises `cannot find mock/stub …Resend`, which names
-      # process scoping and sends the reader after a `Req.Test` sharing problem
-      # that is not there.
-      #
-      # `:if={@mail}` on the section means nil is a rendered state, not a
-      # crash: the panel is absent until there is something to say. It fills in
-      # from `refresh_mail/1`, which already runs when the email or inbound
-      # step finishes — the moment its contents could have changed, and inside
-      # whatever cassette the caller opened to run that step.
-      socket
-      |> assign_new(:mail, fn -> nil end)
-      |> assign_new(:mail_domains, fn -> [] end)
-    end)
-    |> assign_new(:mail_send_result, fn -> nil end)
-    |> assign_new(:mail_inbound_result, fn -> nil end)
-    |> assign_new(:widget_degradation, fn -> nil end)
-    |> assign_new(:content_publish, fn -> nil end)
-    |> assign_new(:storage_objects, fn -> [] end)
-    |> assign_new(:storage_readbacks, fn -> [] end)
-    |> assign_new(:halted_at, fn -> nil end)
-    |> assign_new(:halt_reason, fn -> nil end)
+    #
+    # No provider call while mounting either way. `mail_state/3` and
+    # `mail_domains/2` both reach Resend, and a mount cannot be covered by a
+    # cassette — the idiom everywhere is mount, then act under one — so every
+    # page load with a project domain put a `GET /domains` where no recording
+    # could reach it. On replay that raises `cannot find mock/stub …Resend`,
+    # which names process scoping and sends the reader after a `Req.Test`
+    # sharing problem that is not there.
+    #
+    # `:if={@mail}` on the section means nil is a rendered state, not a
+    # crash: the panel is absent until there is something to say. It fills in
+    # from `refresh_mail/1`, which already runs when the email or inbound
+    # step finishes — the moment its contents could have changed, and inside
+    # whatever cassette the caller opened to run that step.
+    |> assign_new(:mail, fn -> nil end)
+    |> assign_new(:mail_domains, fn -> [] end)
   end
 
   # The bucket a resource belongs to encodes its environment as a suffix, which
@@ -2460,8 +2461,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # page cannot know the names: a project may have `qa`, or one environment per
   # story. Matching a hardcoded list against a location suffix only ever found
   # the two that used to be hardcoded.
-  defp resource_environment(resource) do
-    tagged(resource) || suffixed(resource)
+  defp resource_environment(resource, environments) do
+    tagged(resource) || suffixed(resource, environments)
   end
 
   # Steps that fan out over environments tag what they made, because the page
@@ -2482,20 +2483,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   #
   # Matched against the project's own environments rather than a pattern, so a
   # name that merely happens to end in `-something` is not mistaken for one.
-  defp suffixed(%{location: location}) when is_binary(location) do
-    Enum.find(environment_names(), fn environment ->
+  defp suffixed(%{location: location}, environments) when is_binary(location) do
+    Enum.find(environments, fn environment ->
       String.ends_with?(location, "-" <> environment)
     end)
   end
 
-  defp suffixed(_), do: nil
-
-  # Read from the process dictionary rather than threaded through every render
-  # helper: `resource_environment/1` is called from four places in the template
-  # and the list is the same for the whole render.
-  defp environment_names do
-    Process.get(:cms_environment_names, [])
-  end
+  defp suffixed(_resource, _environments), do: nil
 
   # The IP an environment's record points at — the first half of the tagged
   # identifier the DNS step writes.
@@ -3108,15 +3102,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp describe_domain_error(reason) when is_binary(reason), do: reason
   defp describe_domain_error(reason), do: inspect(reason)
 
-  defp age_key_environments(scope) do
-    Enum.filter(environments(scope), &ProjectSecrets.has_value?(scope, "age_private_key_#{&1}"))
+  defp age_key_environments(scope, environments) do
+    Enum.filter(environments, &ProjectSecrets.has_value?(scope, "age_private_key_#{&1}"))
   end
 
   # Criterion 8002: the laptop and the deploy read the *same* committed files.
   # Rendered rather than asserted in prose so the claim is checkable, and so it
   # breaks if the two ever diverge.
-  defp secret_sources(scope) do
-    for consumer <- ["local", "deploy"], environment <- environments(scope) do
+  defp secret_sources(environments) do
+    for consumer <- ["local", "deploy"], environment <- environments do
       %{consumer: consumer, path: Sops.env_file(environment)}
     end
   end
