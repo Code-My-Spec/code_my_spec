@@ -98,6 +98,7 @@ defmodule CmsHarness.Web.HooksController do
       {:ok, project} -> ask(hook, project, working_dir, params)
       {:error, {:invalid_config, _}} -> refuse(hook, :invalid_config, working_dir, params)
       {:error, :unreadable_config} -> refuse(hook, :invalid_config, working_dir, params)
+      {:error, :restarting} -> refuse(hook, :restarting, working_dir, params)
       {:error, _reason} -> refuse(hook, :no_project, working_dir, params)
     end
   end
