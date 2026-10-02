@@ -38,6 +38,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Knowledge,
       CodeMySpec.MainAgent,
       CodeMySpec.Notifications,
+      CodeMySpec.Observability,
       CodeMySpec.Paths,
       CodeMySpec.Permissions,
       CodeMySpec.Personas,

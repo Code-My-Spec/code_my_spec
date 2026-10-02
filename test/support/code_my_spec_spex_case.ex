@@ -5812,7 +5812,10 @@ defmodule CodeMySpecSpex.Case do
       # Step 3's reconciler (577de9bb): fetches a package's tarball from
       # hex.pm. Caught by this same check the moment it was added — added here
       # straight away rather than waiting for a spex to find it first.
-      CodeMySpec.Embeddings.HexPackageFetch
+      CodeMySpec.Embeddings.HexPackageFetch,
+      # Story 1116's ClickHouse telemetry reads. Same reasoning, added
+      # before any spex could find the omission for us.
+      CodeMySpec.Observability.ClickHouseClient
     ]
   end
 
