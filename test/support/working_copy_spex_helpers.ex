@@ -74,6 +74,7 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
     base
     |> put_device(context, Keyword.fetch(opts, :device_id))
     |> put_preview(Keyword.fetch(opts, :preview_url))
+    |> put_app_verbs(Keyword.fetch(opts, :app_verbs))
   end
 
   defp put_device(payload, _context, {:ok, device_id}),
@@ -88,6 +89,12 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
   # thing to be filled in.
   defp put_preview(payload, {:ok, url}), do: Map.put(payload, "preview_url", url)
   defp put_preview(payload, :error), do: payload
+
+  # The app verbs a harness declares on join beyond the ones every harness
+  # answers. A harness that can reload its app in place says `["reload_app"]`;
+  # one that does not is sent a restart.
+  defp put_app_verbs(payload, {:ok, verbs}), do: Map.put(payload, "app_verbs", verbs)
+  defp put_app_verbs(payload, :error), do: payload
 
   @doc """
   Have the checkout report whether its own app is answering, the way a real

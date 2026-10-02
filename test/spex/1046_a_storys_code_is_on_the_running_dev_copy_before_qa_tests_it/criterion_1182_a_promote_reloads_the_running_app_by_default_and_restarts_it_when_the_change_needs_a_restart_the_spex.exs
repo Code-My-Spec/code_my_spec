@@ -1,26 +1,19 @@
 defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion 3175 — The application is restarted every time, not conditionally.
+  Criterion 1182 — A promote reloads the running app by default, and restarts
+  it when the change needs a restart, the reload fails, or a restart is asked
+  for.
 
   Rule: The running application must be serving the code that was promoted.
 
-  John's call on the topology, made against the alternative of restarting only
-  when something looked like it needed it: "let's go with always restart."
-
-  A conditional restart is a cache with no invalidation story. Whatever decides
-  "this merge did not need a restart" — no `.ex` files touched, no deps changed
-  — is a second implementation of the code-reloading rules, and when it is
-  wrong the application serves a build nobody can identify while every signal
-  says the promotion completed. Restarting an app that did not need it costs
-  seconds.
-
-  `Workspaces.boot/1` is deliberately the other way round — "a workspace that is
-  already running is returned as-is rather than started twice" — so this
-  criterion is the reason a promotion cannot simply call it.
-
-  The scenario is therefore the one a conditional implementation would skip:
-  the work is already on main and the application is already serving it.
+  John (2026-10-02) reversed "always restart": a restart killed every agent
+  turn and analysis run on the box for a change the app's own code reloader
+  picks up. So a reload is the default, and the paths a reload cannot take —
+  deps, config, application.ex, releases, asset deps, the toolchain, MCP tool
+  registrations — are one list (`BootVersion.restart_paths/0`) that sends the
+  app a restart instead. A reload that fails is not left there: the same
+  promote restarts.
   """
 
   use CodeMySpecSpex.Case
@@ -45,54 +38,94 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
     :ok
   end
 
-  spex "The app is restarted whether or not it looks like it needs to be", criterion: 1182 do
-    scenario "the work is already merged and the app already serves it" do
-      given_ "a story branch already merged into main", context do
+  spex "A code-only change is reloaded, not restarted", criterion: 1182 do
+    scenario "the story changes a module and nothing a reload cannot take" do
+      given_ "a story branch that changes only a module", context do
         context = a_promotable_project(context)
-
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
-
-        {_, 0} =
-          git(context, context.running_root, ["merge", "-q", "--no-edit", "story/war"])
-
-        story = a_promotable_story(context)
-        {:ok, Map.put(context, :story, story)}
-      end
-
-      given_ "so a merge would change nothing", context do
-        {out, 0} =
-          git(context, context.running_root, ["log", "--oneline", "main..story/war"])
-
-        assert String.trim(out) == "",
-               "the premise failed: the branch still has commits main does not " <>
-                 "have, so a restart could be justified by the merge itself"
-
-        {:ok, context}
+        {:ok, Map.put(context, :story, a_promotable_story(context))}
       end
 
       given_ "both copies' analyzers are current", context do
         {:ok, analyzers_are_current(context)}
       end
 
-      when_ "the agent promotes anyway", context do
+      when_ "the agent promotes", context do
         response = promote(context, context.story.number)
-        answer_restart_app(context.running_socket, context.running_root)
+        answer_app(context.running_socket, "reload_app", "ok")
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the application is restarted regardless", context do
-        # Polled, not asserted immediately: the restart is dispatched and never
-        # awaited (54aa534c, phase two), so `promote` answering is not evidence
-        # the recipe has run yet — only that it has been handed off.
-        eventually(fn ->
-          assert exists?(context.running_root, ".restarted"),
-                 "the promotion skipped the restart because nothing looked like " <>
-                   "it had changed, which is a second implementation of the " <>
-                   "code-reloading rules and wrong the moment it disagrees. " <>
-                   "Got: #{response_text(context.response)}"
-        end)
+      then_ "the app is reloaded, and the promote says so", context do
+        assert response_text(context.response) =~ "Deployment: reload",
+               "expected a reload: #{response_text(context.response)}"
 
+        refute_push "restart_app", _, 200
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A change a reload cannot take restarts the app", criterion: 1182 do
+    scenario "the story changes compile-time config" do
+      given_ "a story branch that changes config", context do
+        context = a_promotable_project(context)
+
+        write(
+          context.agent_root,
+          "config/config.exs",
+          "import Config\nconfig :broken_oaths, war: true\n"
+        )
+
+        {_, 0} = git(context, context.agent_root, ["add", "-A"])
+        {_, 0} = git(context, context.agent_root, ["commit", "-q", "-m", "the story's config"])
+        {:ok, Map.put(context, :story, a_promotable_story(context))}
+      end
+
+      given_ "both copies' analyzers are current", context do
+        {:ok, analyzers_are_current(context)}
+      end
+
+      when_ "the agent promotes", context do
+        response = promote(context, context.story.number)
+        answer_app(context.running_socket, "restart_app", "ok")
+        {:ok, Map.put(context, :response, response)}
+      end
+
+      then_ "the app is restarted, and the promote names the reason", context do
+        text = response_text(context.response)
+        assert text =~ "Deployment: restart", "expected a restart: #{text}"
+
+        assert text =~ "config/config.exs",
+               "the restart does not say which change needed it: #{text}"
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A reload that fails is followed by a restart", criterion: 1182 do
+    scenario "the app does not come back from the reload" do
+      given_ "a story branch that changes only a module", context do
+        context = a_promotable_project(context)
+        write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
+        {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+        {:ok, Map.put(context, :story, a_promotable_story(context))}
+      end
+
+      given_ "both copies' analyzers are current", context do
+        {:ok, analyzers_are_current(context)}
+      end
+
+      when_ "the agent promotes and the reload fails", context do
+        _response = promote(context, context.story.number)
+        answer_app(context.running_socket, "reload_app", "error")
+        {:ok, context}
+      end
+
+      then_ "the same promote restarts the app", context do
+        answer_app(context.running_socket, "restart_app", "ok")
         {:ok, context}
       end
     end
@@ -172,7 +205,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
     _ = out
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in")
+      join_working_copy_socket(context, running_root, "the checkout the dev app runs in",
+        app_verbs: ["reload_app"]
+      )
 
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
 
@@ -210,35 +245,26 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
     response
   end
 
-  # Standing in for the harness on the other end of `restart_app` — the
-  # channel verb `Promotion.Runner.restart/3` now dispatches through
-  # `WorkingCopies.AppTransport.restart_app/2`, the same one every working
-  # copy's own app already answers to. Writing `.restarted` here, rather
-  # than through a real `just restart`, is what `serve`'s own harness-side
-  # launch would have done; a spec's job is proving the promotion asked for
-  # it, not re-implementing the harness that answers.
-  #
-  # Dispatched detached (54aa534c, phase two), so this push can arrive a
-  # moment after `promote/1` has already answered — the timeout is
-  # generous for that gap, not for anything slow.
-  defp answer_restart_app(socket, running_root) do
-    assert_push "restart_app", %{"ref" => ref}, 5_000
-
-    write(running_root, ".restarted", DateTime.to_string(DateTime.utc_now()))
+  # Standing in for the harness on the other end of `verb` (`reload_app` or
+  # `restart_app`), answering `status`. Dispatched detached, so the push can
+  # arrive a moment after `promote/1` has answered; the timeout is for that gap.
+  defp answer_app(socket, verb, status) do
+    assert_push ^verb, %{"ref" => ref}, 5_000
 
     reply_ref =
-      Phoenix.ChannelTest.push(socket, "restart_app_result", %{
+      Phoenix.ChannelTest.push(socket, verb <> "_result", %{
         "ref" => ref,
-        "status" => "ok",
+        "status" => status,
         "app_status" => "serving",
         "app_url" => "http://127.0.0.1:4000",
-        "app_commit" => "cafef00d"
+        "app_commit" => "cafef00d",
+        "error" => "the app did not answer /health"
       })
 
     receive do
       %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
     after
-      1_000 -> flunk("restart_app_result was never acknowledged")
+      1_000 -> flunk("#{verb}_result was never acknowledged")
     end
   end
 
@@ -262,6 +288,4 @@ defmodule CodeMySpecSpex.Story1046.Criterion3175Spex do
   defp disk(root), do: Environment.new(:local, root)
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
-
-  defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
 end
