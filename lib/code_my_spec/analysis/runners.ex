@@ -239,8 +239,7 @@ defmodule CodeMySpec.Analysis.Runners do
   def from_raw("credo", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
 
-    {:ok,
-     summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
+    {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
   end
 
   # `mix test` exited nonzero without reporting a single failure: bad args, a
@@ -606,10 +605,20 @@ defmodule CodeMySpec.Analysis.Runners do
   # `CmsHarness.Web.UpstreamError.exception_text/1` reached the same conclusion
   # for Phoenix debug pages and is the precedent — "the marker wins where there
   # is one: it is the line naming what broke".
+  #
+  # The *last* marker that opens a line, though, not the first one anywhere. A
+  # full suite logs `Postgrex.Protocol ... disconnected: ** (DBConnection.
+  # ConnectionError) client #PID<...> exited` whenever a task dies mid-query,
+  # and the first marker in 181 seconds of output is that log line, not
+  # whatever ended `mix test`. A crash prints its exception at the start of a
+  # line, at the end. Run 54391 was recorded with exactly that log line as its
+  # reason, which sent the flake hunt after the database.
   defp error_excerpt(output) do
-    case String.split(output, "** (", parts: 2) do
-      [_before, rest] -> "** (" <> (rest |> String.split("\n") |> hd() |> String.slice(0, 300))
-      [_no_marker] -> tail_excerpt(output)
+    case output
+         |> String.split("\n")
+         |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "** (")) do
+      [] -> tail_excerpt(output)
+      markers -> markers |> List.last() |> String.trim() |> String.slice(0, 300)
     end
   end
 
