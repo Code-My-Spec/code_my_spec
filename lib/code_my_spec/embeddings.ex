@@ -29,6 +29,7 @@ defmodule CodeMySpec.Embeddings do
     ],
     exports: :all
 
+  alias CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
   alias CodeMySpec.Embeddings.HexDocReconciler
   alias CodeMySpec.Users.Scope
 
@@ -80,20 +81,17 @@ defmodule CodeMySpec.Embeddings do
   source `"knowledge"` and the file's path relative to the knowledge
   root. Backend dedup skips unchanged content.
 
-  Honors `Application.get_env(:code_my_spec, :framework_knowledge_dir)`
-  for tests; otherwise reads `:code.priv_dir(:code_my_spec) ++ "/knowledge"`.
+  Reads `FrameworkKnowledgeReconciler.knowledge_dir/0`.
+
+  A no-op on `PgVectorBackend`: there the corpus is shared rows, reconciled
+  on server boot by `FrameworkKnowledgeReconciler`, and a per-project copy
+  would duplicate it in search.
   """
   def sync_framework_knowledge(%Scope{} = scope) do
     case backend() do
-      nil ->
-        {:error, :embeddings_unavailable}
-
-      _mod ->
-        knowledge_dir =
-          Application.get_env(:code_my_spec, :framework_knowledge_dir) ||
-            Application.app_dir(:code_my_spec, "priv/knowledge")
-
-        do_sync_framework_knowledge(scope, knowledge_dir)
+      nil -> {:error, :embeddings_unavailable}
+      CodeMySpec.Embeddings.PgVectorBackend -> :ok
+      _mod -> do_sync_framework_knowledge(scope, FrameworkKnowledgeReconciler.knowledge_dir())
     end
   end
 
