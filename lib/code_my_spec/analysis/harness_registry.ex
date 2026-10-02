@@ -85,6 +85,32 @@ defmodule CodeMySpec.Analysis.HarnessRegistry do
   end
 
   @doc """
+  Record that the calling channel's harness answers `verb` for this copy.
+
+  An older harness logs an unknown push and never replies, so a caller that
+  sent it one would wait out its whole timeout. Asking here first lets it
+  pick a verb that harness has. Dies with the channel, like the executor slot.
+  """
+  @spec register_verb(String.t(), String.t()) :: :ok
+  def register_verb(working_copy_id, verb) do
+    _ = Registry.register(__MODULE__, {:verb, verb, to_string(working_copy_id)}, true)
+    :ok
+  end
+
+  @doc "Whether the channel connected for this copy declared `verb` at join."
+  @spec supports?(String.t(), String.t()) :: boolean()
+  def supports?(working_copy_id, verb),
+    do: Registry.lookup(__MODULE__, {:verb, verb, to_string(working_copy_id)}) != []
+
+  @doc "Whether any connected harness serves the checkout at `root`."
+  @spec connected_at?(String.t()) :: boolean()
+  def connected_at?(root) do
+    __MODULE__
+    |> Registry.select([{{:_, :_, {:_, :"$1"}}, [{:==, :"$1", root}], [true]}])
+    |> Enum.any?()
+  end
+
+  @doc """
   Who is holding this working copy's executor slot, if anyone.
 
   Exists for the refusal message. "A second agent is refused" is only half of

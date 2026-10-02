@@ -96,7 +96,12 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   defp main_checkout_path(root) do
-    case Environments.cmd(local(root), "git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], []) do
+    case Environments.cmd(
+           local(root),
+           "git",
+           ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+           []
+         ) do
       {out, 0} -> out |> String.trim() |> Path.dirname()
       _ -> nil
     end
@@ -117,13 +122,17 @@ defmodule CmsHarness.AppInstance.Runner.Local do
            Environments.cmd(
              env,
              "bash",
-             ["-c", "pg_dump #{Enum.join(@pg, " ")} #{main_database} | psql #{Enum.join(@pg, " ")} -q #{database}"],
+             [
+               "-c",
+               "pg_dump #{Enum.join(@pg, " ")} #{main_database} | psql #{Enum.join(@pg, " ")} -q #{database}"
+             ],
              []
            ) do
       _ = out
       :ok
     else
-      {out, status} -> {:error, "cloning #{main_database} into #{database} failed (exit #{status}): #{out}"}
+      {out, status} ->
+        {:error, "cloning #{main_database} into #{database} failed (exit #{status}): #{out}"}
     end
   end
 
@@ -156,7 +165,16 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host \\ nil) do
+  def launch(
+        root,
+        port,
+        https_port,
+        database,
+        log_path,
+        main?,
+        tunnel_held_by_harness?,
+        host \\ nil
+      ) do
     File.mkdir_p!(Path.dirname(log_path))
 
     env_prefix =
@@ -189,6 +207,31 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
       {out, status} ->
         {:error, "launch exited #{status}: #{String.trim(out)}"}
+    end
+  end
+
+  # In the foreground, unlike `launch/8`: the recipe ends once the running app
+  # has migrated, compiled and answered, and its exit status is the verdict.
+  # Output goes to the app's own log, beside what `serve` wrote there.
+  @impl true
+  def reload(root, port, https_port, database, log_path) do
+    env =
+      [{"PORT", to_string(port)}, {"DATABASE_NAME", database}] ++
+        if(https_port, do: [{"HTTPS_PORT", to_string(https_port)}], else: [])
+
+    {out, status} =
+      Environments.cmd(local(root), "just", ["reload"], env: env, stderr_to_stdout: true)
+
+    File.mkdir_p!(Path.dirname(log_path))
+    File.write!(log_path, "\n--- just reload ---\n" <> out, [:append])
+
+    case status do
+      0 ->
+        :ok
+
+      _ ->
+        {:error,
+         "`just reload` failed (#{status}): #{out |> String.trim() |> String.slice(-2000, 2000)}"}
     end
   end
 
@@ -280,7 +323,9 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   @impl true
   def listener_pid(port) do
-    case System.cmd("lsof", ["-nP", "-iTCP:#{port}", "-sTCP:LISTEN", "-t"], stderr_to_stdout: true) do
+    case System.cmd("lsof", ["-nP", "-iTCP:#{port}", "-sTCP:LISTEN", "-t"],
+           stderr_to_stdout: true
+         ) do
       {out, 0} ->
         out
         |> String.split("\n", trim: true)
@@ -386,7 +431,9 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   @impl true
   def process_root(os_pid) do
-    case System.cmd("lsof", ["-a", "-p", Integer.to_string(os_pid), "-d", "cwd", "-Fn"], stderr_to_stdout: true) do
+    case System.cmd("lsof", ["-a", "-p", Integer.to_string(os_pid), "-d", "cwd", "-Fn"],
+           stderr_to_stdout: true
+         ) do
       {out, 0} ->
         out
         |> String.split("\n", trim: true)

@@ -619,6 +619,10 @@ defmodule CmsHarness.Project.ChannelClient do
        # server ignores the field and sweeps everything, which is what it does
        # today.
        "active_runs" => AnalysisServer.in_flight(project.root),
+       # App verbs newer than the contract version. The server pushes one only
+       # to a harness that declared it: an unknown push is logged here and
+       # never answered, which would hold a promote for its whole timeout.
+       "app_verbs" => ["reload_app"],
        # What this harness believes the channel contract is.
        #
        # Skew between the two ends surfaces today as `{:error, %{"reason" =>
@@ -1593,6 +1597,20 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A promote's default: reload main's app in place rather than restart it.
+  # Answers `reload_app_result`; `AppInstance.reload/2` restarts instead when
+  # it cannot reload, and says so.
+  def handle_message(_topic, "reload_app", %{"ref" => ref} = msg, socket) do
+    dispatch_app_call(socket, ref, "reload_app_result", fn ->
+      CmsHarness.AppInstance.reload(
+        socket.assigns.project.root,
+        [main?: msg["main"] == true] ++ tunnel_opt(msg)
+      )
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "stop_app", %{"ref" => ref}, socket) do
     dispatch_app_call(socket, ref, "stop_app_result", fn ->
       CmsHarness.AppInstance.stop_app(socket.assigns.project.root)
@@ -2069,7 +2087,10 @@ defmodule CmsHarness.Project.ChannelClient do
     %{"status" => "ok", "app_status" => status}
     |> maybe_put("app_url", Map.get(info, :url))
     |> maybe_put("app_commit", Map.get(info, :commit))
+    |> maybe_put("app_serving_commit", Map.get(info, :serving_commit))
     |> maybe_put("app_head", Map.get(info, :head))
+    |> maybe_put("app_action", Map.get(info, :action))
+    |> maybe_put("app_action_reason", Map.get(info, :action_reason))
   end
 
   defp encode_app_result({:error, reason}),

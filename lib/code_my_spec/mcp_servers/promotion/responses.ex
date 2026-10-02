@@ -93,7 +93,7 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     Restarted the application on the running dev copy.
 
     Running from: #{root}
-    #{story_line(report)}#{serving_line(serving)}
+    #{story_line(report)}#{serving_line(serving, report)}
 
     You are working on the running copy, so nothing had to be merged — the work
     was already where a promotion would put it. What was missing was a running
@@ -107,11 +107,27 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
     Promoted #{branch} to the running dev copy.
 
     Merged into: #{root}
-    #{story_line(report)}#{serving_line(serving)}#{swept_line(report)}#{untracked_line(report)}
+    #{story_line(report)}#{deployment_line(report)}#{serving_line(serving, report)}#{swept_line(report)}#{untracked_line(report)}
 
-    #{closing_line(serving)}
+    #{closing_line(serving, report)}
     """
     |> String.trim()
+  end
+
+  # Reload or restart, and why, so a restart is never a surprise and a reload
+  # is never mistaken for one.
+  defp deployment_line(%{deployment: _} = report) do
+    {action, why} = CodeMySpec.Promotion.deployment_words(report)
+    "Deployment: #{action} — #{why}\n"
+  end
+
+  defp deployment_line(_report), do: ""
+
+  defp gerund(report) do
+    case CodeMySpec.Promotion.deployment_words(report) do
+      {"reload", _} -> "reloading"
+      _ -> "restarting"
+    end
   end
 
   # The closing sentence has to agree with the serving line above it.
@@ -126,13 +142,13 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   # tests the merged code, and the merge has landed. Claiming the application is
   # already serving it is the part that was not verified and cannot be, from
   # here.
-  defp closing_line(%{unconfirmed: _}) do
+  defp closing_line(%{unconfirmed: _}, report) do
     "QA on these stories can start against the merge. The application is still " <>
-      "restarting — that is dispatched rather than waited on, so this answer " <>
+      "#{gerund(report)} — that is dispatched rather than waited on, so this answer " <>
       "does not confirm it."
   end
 
-  defp closing_line(_serving) do
+  defp closing_line(_serving, _report) do
     "The application is running this work now, so QA on these stories will test " <>
       "what you wrote."
   end
@@ -148,13 +164,15 @@ defmodule CodeMySpec.McpServers.Promotion.Responses do
   # The standard shape now (54aa534c, phase two): the restart is dispatched,
   # never awaited, so there is no revision to report here — only that it is
   # running, not confirmed.
-  defp serving_line(%{unconfirmed: _}),
-    do:
-      "Serving: restart dispatched, not yet confirmed — check what is serving " <>
-        "if you want to know before QA does"
+  defp serving_line(%{unconfirmed: _}, report) do
+    {action, _why} = CodeMySpec.Promotion.deployment_words(report)
 
-  defp serving_line(%{revision: nil}), do: "Serving: restarted (revision unavailable)"
-  defp serving_line(%{revision: revision}), do: "Serving: #{revision}"
+    "Serving: #{action} dispatched, not yet confirmed — check what is serving " <>
+      "if you want to know before QA does"
+  end
+
+  defp serving_line(%{revision: nil}, _report), do: "Serving: restarted (revision unavailable)"
+  defp serving_line(%{revision: revision}, _report), do: "Serving: #{revision}"
 
   # Named, not refused. An untracked file may be a source file nobody added, and
   # a promotion that omitted it would put QA in front of an application missing
