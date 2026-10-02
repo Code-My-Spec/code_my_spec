@@ -73,6 +73,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -845,15 +846,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             </div>
 
             <div class="flex items-center gap-2">
-              <span class="badge">{@step.state}</span>
-              <span
-                :if={@step.state == :done}
-                data-test="checked-note"
-                data-step={@step.key}
-                class="text-xs opacity-60"
-              >
-                {checked_note(@step)}
-              </span>
+              <StatusBadge.status_badge
+                state={@step.state}
+                step_key={@step.key}
+                verified_at={@step.verified_at}
+              />
               <.button
                 :if={@step.key != :deploy}
                 data-test={if @step.state == :errored, do: "retry-step", else: "run-step"}
@@ -2688,22 +2685,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # setup waited rather than declaring victory first.
   defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_verified_at(_), do: nil
-
-  # Checks are manual only: a done step's `verified_at` is the last time a
-  # provider actually confirmed it, not when the step last ran. Nothing sets
-  # it but a check, so a step that has never been checked says so plainly
-  # rather than reading as confirmed on the strength of having finished.
-  defp checked_note(%{verified_at: %DateTime{} = at}), do: "checked #{ago(at)}"
-  defp checked_note(_step), do: "unchecked"
-
-  defp ago(%DateTime{} = at) do
-    case DateTime.diff(DateTime.utc_now(), at, :second) do
-      s when s < 90 -> "#{s}s ago"
-      s when s < 5400 -> "#{div(s, 60)}m ago"
-      s when s < 86_400 -> "#{div(s, 3600)}h ago"
-      s -> "#{div(s, 86_400)}d ago"
-    end
-  end
 
   defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_started_at(_), do: nil
