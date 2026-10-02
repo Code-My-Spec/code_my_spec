@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Offers do
       on it is `:declined` with its reason. A questions-only offer (main) wants
       `answer_notification`.
     * `:problems`, `:menu`, `:retry` — any tool call after delivery.
-    * `:answer` — `check_answer`, or resuming the task the question blocked.
+    * `:answer` — `check_answer`, or `start_task` with nothing still blocked on it.
     * `:unblocked` — resuming a task the blocker held.
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
@@ -223,11 +223,12 @@ defmodule CodeMySpec.Agents.Offers do
   defp outcome(%Offer{kind: :answer} = offer, agent, calls),
     do:
       claimed_if(
-        called?(calls, "check_answer") or resumed_blocked_by?(agent, offer, offer.subject_key)
+        called?(calls, "check_answer") or
+          (called?(calls, "start_task") and not blocked_by?(agent, offer.subject_key))
       )
 
   defp outcome(%Offer{kind: :unblocked} = offer, agent, _calls),
-    do: claimed_if(resumed_blocked_by?(agent, offer, offer.subject_key))
+    do: claimed_if(resumed?(agent, offer.subject_key))
 
   defp claimed_if(true), do: %{status: :claimed}
   defp claimed_if(false), do: %{status: :ignored}
@@ -264,14 +265,13 @@ defmodule CodeMySpec.Agents.Offers do
 
   defp tasks_on(_agent, _key), do: []
 
-  defp resumed_blocked_by?(%Agent{tasks: tasks}, offer, blocker_id) when is_binary(blocker_id) do
-    Enum.any?(
-      tasks || [],
-      &(&1.blocker_id == blocker_id and started_since?(&1, offer.inserted_at))
-    )
-  end
+  # Resuming clears the task's blocker and keeps its `started_at`, so a resumed
+  # task is one no longer blocked by this blocker, with the agent back on a task.
+  defp resumed?(%Agent{} = agent, blocker_id),
+    do: not blocked_by?(agent, blocker_id) and Agent.active_task(agent) != nil
 
-  defp resumed_blocked_by?(_agent, _offer, _blocker_id), do: false
+  defp blocked_by?(%Agent{tasks: tasks}, blocker_id),
+    do: Enum.any?(tasks || [], &(&1.status == :blocked and &1.blocker_id == blocker_id))
 
   defp started_since?(%{started_at: %DateTime{} = at}, since),
     do: DateTime.compare(at, since) != :lt

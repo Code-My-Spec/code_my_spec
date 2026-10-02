@@ -181,19 +181,28 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert settled(offered).status == :claimed
     end
 
+    # Resuming clears the blocker; `start_task` is how the agent resumed.
     test "is claimed by resuming the task the question blocked", ctx do
+      offered = offer(ctx, :answer, {"question", "q-1"})
+      holding(ctx, %{status: :active, requirement_name: "story_promoted"})
+      called(ctx, "start_task")
+      end_turn(ctx)
+      assert settled(offered).status == :claimed
+    end
+
+    test "is ignored when the task it blocked is still blocked", ctx do
       offered = offer(ctx, :answer, {"question", "q-1"})
 
       holding(ctx, %{
-        status: :active,
+        status: :blocked,
         requirement_name: "story_promoted",
         blocker_type: :question,
-        blocker_id: "q-1",
-        started_at: DateTime.utc_now()
+        blocker_id: "q-1"
       })
 
+      called(ctx, "start_task")
       end_turn(ctx)
-      assert settled(offered).status == :claimed
+      assert settled(offered).status == :ignored
     end
 
     test "is ignored otherwise", ctx do
@@ -204,19 +213,32 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
     end
   end
 
+  # A resumed task has its blocker cleared and keeps its `started_at`.
   test "an unblocked offer is claimed by resuming a task the blocker held", ctx do
     offered = offer(ctx, :unblocked, {"blocker", "i-1"})
 
     holding(ctx, %{
       status: :active,
       requirement_name: "story_promoted",
-      blocker_type: :issue,
-      blocker_id: "i-1",
-      started_at: DateTime.utc_now()
+      started_at: DateTime.add(DateTime.utc_now(), -600, :second)
     })
 
     end_turn(ctx)
     assert settled(offered).status == :claimed
+  end
+
+  test "an unblocked offer is ignored while the task stays blocked", ctx do
+    offered = offer(ctx, :unblocked, {"blocker", "i-1"})
+
+    holding(ctx, %{
+      status: :blocked,
+      requirement_name: "story_promoted",
+      blocker_type: :issue,
+      blocker_id: "i-1"
+    })
+
+    end_turn(ctx)
+    assert settled(offered).status == :ignored
   end
 
   test "a check-in is n_a and notes what the turn called", ctx do
