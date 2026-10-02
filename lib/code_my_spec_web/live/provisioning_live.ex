@@ -61,7 +61,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     ContentPublishing,
     Credentials,
     Dns,
-    Hetzner,
     Registry,
     Resend,
     Sops,
@@ -78,6 +77,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpecWeb.ProvisioningLive.Components.RepositoryConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.ServerConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
 
   # The environments setup manages. Named once so the probe form, the resource
@@ -1288,28 +1288,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           >
             {@step.provider_error}
           </p>
-          <!-- The firewall's inbound rules, from the deterministic rule set:
-                 only the web ports and key-only SSH face the internet, and the
-                 database port never does (criterion 8004). Rendered when the
-                 server step has recorded its firewall. -->
-          <div
-            :if={@step.key == :server and Enum.any?(@step.resources, &(&1.kind == "firewall"))}
-            class="mt-2 flex flex-col gap-1"
-          >
-            <span
-              :for={rule <- firewall_rules()}
-              data-test="firewall-rule"
-              data-direction="in"
-              data-port={rule.port}
-              data-source={hd(rule.source_ips)}
-              class="text-xs font-mono opacity-70"
-            >
-              in {rule.port} from {Enum.join(rule.source_ips, ", ")}
-            </span>
-            <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
-              enforced at the Hetzner cloud firewall, not on the box
-            </span>
-          </div>
+          <ServerConfig.server_config :if={@step.key == :server} step={@step} />
 
           <span
             :for={v <- Enum.filter(@step.resources, &(&1.kind == "environment_verification"))}
@@ -2877,8 +2856,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         assign(socket, :domain_error, "Could not record #{name} on the project.")
     end
   end
-
-  defp firewall_rules, do: Hetzner.default_firewall_rules()
 
   defp availability_label(%{availability: :available}), do: "available"
   defp availability_label(%{availability: :taken}), do: "taken"
