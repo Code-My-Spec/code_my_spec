@@ -28,11 +28,15 @@ defmodule CodeMySpecWeb.ConsoleLive do
   dropping it would make it unreachable). Each group's ResourceDetail
   Config tab reuses the exact per-step components step 5 extracted
   (DnsConfig, DeployConfig, and so on), once per step key the group holds.
-  Checks and Activity tabs are placeholders: the five probes
-  (storage_probe, check_domain, content_publish, probe_restore,
-  mail_inbound_probe) still run exactly as they did on the old page, not yet
-  moved into a DiagnosticsPanel or converted to async — that is still owed,
-  and is the main thing left before this is more than a layout.
+  Checks moves probes in one at a time behind `DiagnosticsPanel`, async via
+  `start_async`/`handle_async` instead of the old page's blocking
+  `phx-submit`. Storage's round-trip probe is converted (storage_backups'
+  Checks tab); check_domain, content_publish, probe_restore and
+  mail_inbound_probe still run exactly as they did on the old page —
+  check_domain in particular is a multi-step search/purchase flow, not a
+  single "run and read a result" diagnostic like the other four, so it
+  needs its own look before it can follow the same pattern. Activity is
+  still a placeholder.
 
   Overview's "recent activity" is derived from each step's own
   started_at/completed_at/verified_at, sorted — not a persisted event log.
@@ -46,8 +50,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.Steps
+  alias CodeMySpec.Provisioning.Storage
+  alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Users.Scope
 
+  alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
   alias CodeMySpecWeb.ConsoleLive.Components.ResourceDetail
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
@@ -67,6 +75,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
     # replacing, and that page's mount is settled, promoted code.
     case scope_for(socket.assigns.current_scope, params["project_id"]) do
       {:ok, scope} ->
+        # Same as ProvisioningLive.mount/3 — subscribed so a step's own
+        # broadcast refreshes the plan once it changes, instead of the page
+        # only finding out on the next patch. Not a "check": the run already
+        # wrote the row, this just stops trusting a stale in-memory copy of
+        # it (without this, a run's own state transitions were invisible
+        # until something else happened to patch the URL).
+        if connected?(socket), do: Provisioning.subscribe(scope)
+
         {:ok, assign(socket, :current_scope, scope)}
 
       :error ->
@@ -80,29 +96,45 @@ defmodule CodeMySpecWeb.ConsoleLive do
   @impl true
   def handle_params(params, _url, socket) do
     scope = socket.assigns.current_scope
-    options = Provisioning.setup_options(scope)
-    plan = Provisioning.plan(scope, options)
-    environments = Provisioning.environment_names(scope)
+    socket = refresh(socket)
+    environments = socket.assigns.environments
 
     environment =
       params["env"] || Provisioning.primary_environment(scope) || List.first(environments)
 
     socket =
       socket
-      |> assign(:options, options)
-      |> assign(:plan, plan)
-      |> assign(:environments, environments)
       |> assign(:environment, environment)
       |> assign(:resource_key, string_to_key(params["key"]))
       |> assign(:tab, params["tab"] || "config")
       |> assign_new(:credentials, fn -> Credentials.list(scope) end)
       |> assign_new(:missing_credentials, fn -> Credentials.missing(scope) end)
-      |> assign(:environment_rows, Provisioning.environments(scope))
-      |> assign(:sops_recipients, Provisioning.Steps.recipients(scope, environments))
-      |> assign(:secret_sources, secret_sources(environments))
       |> assign_new(:secret_error, fn -> nil end)
+      |> assign_new(:storage_ready?, fn -> Storage.credentials(scope, []) != :none end)
+      |> assign_new(:storage_probe_running?, fn -> false end)
+      |> assign_new(:storage_probe_result, fn -> nil end)
 
     {:noreply, socket}
+  end
+
+  # Everything `handle_params` reads straight from the scope rather than the
+  # URL — the plan, the environment list and rows, who gets a secret. Pulled
+  # out so an event that changes one of these (add/remove an environment)
+  # can refresh the same way, without re-deriving `environment`/`resource_key`/
+  # `tab` from params that have not changed.
+  defp refresh(socket) do
+    scope = socket.assigns.current_scope
+    options = Provisioning.setup_options(scope)
+    plan = Provisioning.plan(scope, options)
+    environments = Provisioning.environment_names(scope)
+
+    socket
+    |> assign(:options, options)
+    |> assign(:plan, plan)
+    |> assign(:environments, environments)
+    |> assign(:environment_rows, Provisioning.environments(scope))
+    |> assign(:sops_recipients, Steps.recipients(scope, environments))
+    |> assign(:secret_sources, secret_sources(environments))
   end
 
   # A made-up :key in the URL must read as "no such resource", not crash the
@@ -265,7 +297,77 @@ defmodule CodeMySpecWeb.ConsoleLive do
       tab={@tab}
       project_id={@current_scope.active_project_id}
       environment={@environment}
-    />
+    >
+      <:checks :if={@resource_key == :storage_backups && @storage_ready?}>
+        <div data-test="storage-probe" data-state={storage_probe_state(assigns)}>
+          <DiagnosticsPanel.diagnostics_panel
+            title="Storage round-trip"
+            checked_at={storage_probe_field(@storage_probe_result, :checked_at)}
+          >
+            <p class="opacity-70 text-sm">
+              Writes an object and reads it back. A bucket that accepted a write
+              is not the same as a bucket you can get your file out of again.
+            </p>
+
+            <form
+              data-test="storage-probe-form"
+              phx-submit="run_storage_probe"
+              class="mt-3 flex flex-wrap gap-2 items-end"
+            >
+              <label class="form-control">
+                <span class="label-text">Environment</span>
+                <select name="probe[environment]" class="select select-bordered">
+                  <option :for={environment <- @environments} value={environment}>
+                    {environment}
+                  </option>
+                </select>
+              </label>
+
+              <label class="form-control">
+                <span class="label-text">Key</span>
+                <input name="probe[key]" value="probe.txt" class="input input-bordered" />
+              </label>
+
+              <label class="form-control">
+                <span class="label-text">Content</span>
+                <input name="probe[body]" value="hello" class="input input-bordered" />
+              </label>
+
+              <.button type="submit" data-test="run-storage-probe" disabled={@storage_probe_running?}>
+                {if @storage_probe_running?, do: "Running…", else: "Write and read back"}
+              </.button>
+            </form>
+
+            <ul class="mt-3 flex flex-col gap-1">
+              <li
+                :for={object <- storage_probe_field(@storage_probe_result, :objects) || []}
+                data-test="storage-object"
+                data-key={object.key}
+                data-environment={object.environment}
+                data-bucket={object.bucket}
+              >
+                wrote {object.key} to {object.bucket}
+              </li>
+            </ul>
+
+            <ul class="mt-1 flex flex-col gap-1">
+              <li
+                :for={readback <- storage_probe_field(@storage_probe_result, :readbacks) || []}
+                data-test="storage-readback"
+                data-key={readback.key}
+                data-environment={readback.environment}
+                data-status={readback.status}
+                data-matches-written={to_string(readback.matches)}
+                data-reason={readback[:reason]}
+              >
+                read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
+                <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
+              </li>
+            </ul>
+          </DiagnosticsPanel.diagnostics_panel>
+        </div>
+      </:checks>
+    </ResourceDetail.resource_detail>
     """
   end
 
@@ -473,10 +575,173 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope = socket.assigns.current_scope
 
     :ok =
-      Provisioning.run_step_async(scope, String.to_existing_atom(key), environment: environment)
+      Provisioning.run_step_async(
+        scope,
+        String.to_existing_atom(key),
+        Keyword.put(step_opts(), :environment, environment)
+      )
 
     {:noreply, put_flash(socket, :info, "Started.")}
   end
+
+  # Same as ProvisioningLive.handle_event("run_step", ...) — the per-step
+  # Run/Retry button ResourceDetail reuses from step 5's extraction carries
+  # the same `phx-click="run_step"` contract, so it needs the same handler.
+  # Missing this meant every Run/Retry click on the console crashed with no
+  # matching clause; nothing in step 6's own smoke tests exercises the
+  # button, so it went unnoticed until wiring the storage probe needed to
+  # provision a bucket through it.
+  def handle_event("run_step", %{"key" => key} = params, socket) do
+    scope = socket.assigns.current_scope
+
+    opts =
+      case Map.get(params, "environment") do
+        environment when is_binary(environment) and environment != "" ->
+          Keyword.put(step_opts(), :environment, environment)
+
+        _ ->
+          step_opts()
+      end
+
+    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), opts)
+
+    {:noreply, put_flash(socket, :info, "Started.")}
+  end
+
+  # Manual, async, one result — not the old page's accumulating list. Sam
+  # re-runs the probe to prove the bucket again, and that proof replaces the
+  # last one rather than piling up; "checked … ago" is what makes a stale
+  # result visible, not keeping every past attempt on screen.
+  def handle_event("run_storage_probe", %{"probe" => probe}, socket) do
+    scope = socket.assigns.current_scope
+    environment = Map.get(probe, "environment", "prod")
+    key = Map.get(probe, "key", "probe.txt")
+    content = Map.get(probe, "body", "")
+
+    socket =
+      socket
+      |> assign(:storage_probe_running?, true)
+      |> start_async(:storage_probe, fn -> run_storage_probe(scope, environment, key, content) end)
+
+    {:noreply, socket}
+  end
+
+  # Same as ProvisioningLive.handle_event("save_credentials", ...). The
+  # Credentials section reuses `CredentialsForm` as-is, which still fires
+  # this event — without a matching clause here the form submit crashed the
+  # page, same gap "run_step" had.
+  def handle_event("save_credentials", params, socket) do
+    scope = socket.assigns.current_scope
+    values = Map.get(params, "credentials", params)
+
+    saved =
+      Credentials.catalogue()
+      |> Enum.filter(fn field ->
+        field.kind == :secret and
+          case Map.get(values, field.key) do
+            value when is_binary(value) -> String.trim(value) != ""
+            _ -> false
+          end
+      end)
+      |> Enum.map(fn field ->
+        Credentials.put_value(scope, field, String.trim(Map.fetch!(values, field.key)))
+        field
+      end)
+
+    saved_keys = Enum.map(saved, & &1.key)
+    saved_labels = Enum.map(saved, & &1.label)
+
+    socket =
+      case saved_labels do
+        [] -> put_flash(socket, :info, "Nothing to save — every field was blank.")
+        labels -> put_flash(socket, :info, "Saved #{Enum.join(labels, ", ")}.")
+      end
+
+    {:noreply,
+     socket
+     |> assign(:credentials, Credentials.list(scope, check: saved_keys))
+     |> assign(:missing_credentials, Credentials.missing(scope))}
+  end
+
+  def handle_event("check_credentials", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     socket
+     |> assign(:credentials, Credentials.list(scope, check?: true))
+     |> assign(:missing_credentials, Credentials.missing(scope))}
+  end
+
+  # Same as ProvisioningLive.handle_event("put_secret", ...) — SecretsForm's
+  # own submit.
+  def handle_event("put_secret", %{"secret" => params}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Steps.put_secret(
+           scope,
+           params["environment"] || hd(socket.assigns.environments),
+           String.trim(params["key"] || ""),
+           params["value"] || ""
+         ) do
+      {:ok, %{key: key, environment: environment}} ->
+        {:noreply,
+         socket
+         |> assign(:secret_error, nil)
+         |> put_flash(:info, "Encrypted #{key} into #{environment}.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :secret_error, reason)}
+    end
+  end
+
+  # Same as ProvisioningLive.handle_event("add_environment"/"remove_environment",
+  # ...) — EnvironmentsForm's own submit and its confirm dialog's JS.push.
+  # `refresh/1` instead of `load/2`: adding or removing an environment
+  # changes the plan and the environment list, not the URL, so the same
+  # recompute `handle_params` does on a patch has to happen here by hand.
+  def handle_event("add_environment", %{"environment" => %{"name" => name}}, socket) do
+    scope = socket.assigns.current_scope
+    name = String.trim(name)
+
+    if name == "" do
+      {:noreply, put_flash(socket, :error, "an environment needs a name")}
+    else
+      case Provisioning.put_environment(scope, name) do
+        {:ok, _environment} -> {:noreply, refresh(socket)}
+        {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
+      end
+    end
+  end
+
+  def handle_event("remove_environment", %{"name" => name}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Teardown.environment(scope, name) do
+      {:ok, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, removed_summary(name, removed))
+         |> refresh()}
+
+      {:error, {:left_behind, left}, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           removed_summary(name, removed) <>
+             " Still there, and worth removing by hand: " <>
+             Enum.map_join(left, ", ", & &1.location)
+         )
+         |> refresh()}
+    end
+  end
+
+  defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
+
+  defp removed_summary(name, removed),
+    do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
+
+  defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
   defp registry_image(scope) do
     case Provisioning.Registry.image(scope) do
@@ -498,4 +763,95 @@ defmodule CodeMySpecWeb.ConsoleLive do
       _ -> nil
     end
   end
+
+  @impl true
+  def handle_async(:storage_probe, {:ok, {:error, :no_credentials}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:storage_probe_running?, false)
+     |> put_flash(:error, Storage.credentials_instructions())}
+  end
+
+  def handle_async(:storage_probe, {:ok, result}, socket) do
+    {:noreply,
+     socket
+     |> assign(:storage_probe_running?, false)
+     |> assign(:storage_probe_result, Map.put(result, :checked_at, DateTime.utc_now()))}
+  end
+
+  def handle_async(:storage_probe, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:storage_probe_running?, false)
+     |> put_flash(:error, "Storage probe crashed: #{inspect(reason)}")}
+  end
+
+  # Same as ProvisioningLive.handle_info({:provisioning, :step/:finished, ...}).
+  # `refresh/1` instead of `load/2`: a broadcast only ever changes the plan
+  # and the environment-derived state, never the URL-driven `environment`/
+  # `resource_key`/`tab` assigns, so the cheaper recompute is the right one.
+  @impl true
+  def handle_info({:provisioning, :step, _row}, socket), do: {:noreply, refresh(socket)}
+  def handle_info({:provisioning, :finished, _result}, socket), do: {:noreply, refresh(socket)}
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp storage_probe_state(%{storage_probe_running?: true}), do: "running"
+  defp storage_probe_state(%{storage_probe_result: nil}), do: "unchecked"
+  defp storage_probe_state(_assigns), do: "checked"
+
+  defp storage_probe_field(nil, _key), do: nil
+  defp storage_probe_field(result, key), do: Map.get(result, key)
+
+  # Ported from ProvisioningLive.handle_event("storage_probe", ...) and its
+  # private helpers (storage_probe/5, storage_readback/5, probe_failure/3) —
+  # same round-trip, same data shape, run inside start_async instead of
+  # inline in the handler so the page doesn't block on the provider call.
+  defp run_storage_probe(scope, environment, key, content) do
+    case Storage.credentials(scope, []) do
+      :none ->
+        {:error, :no_credentials}
+
+      {:ok, credentials} ->
+        bucket = Storage.bucket_name(scope.active_project, environment)
+        {objects, readbacks} = storage_round_trip(bucket, key, content, credentials, environment)
+        %{objects: objects, readbacks: readbacks}
+    end
+  end
+
+  defp storage_round_trip(bucket, key, content, credentials, environment) do
+    case Storage.put_object(bucket, key, content, credentials) do
+      :ok ->
+        object = %{key: key, environment: environment, bucket: bucket}
+        {[object], [storage_readback(bucket, key, content, credentials, environment)]}
+
+      {:error, reason} ->
+        {[], [probe_failure(key, environment, reason)]}
+    end
+  end
+
+  defp storage_readback(bucket, key, content, credentials, environment) do
+    case Storage.get_object(bucket, key, credentials) do
+      {:ok, ^content} ->
+        %{key: key, environment: environment, status: "200", matches: true, reason: nil}
+
+      {:ok, _other} ->
+        %{key: key, environment: environment, status: "200", matches: false, reason: "bytes differ"}
+
+      {:error, reason} ->
+        probe_failure(key, environment, reason)
+    end
+  end
+
+  defp probe_failure(key, environment, reason) do
+    %{
+      key: key,
+      environment: environment,
+      status: "error",
+      matches: false,
+      reason: format_probe_error(reason)
+    }
+  end
+
+  defp format_probe_error(reason) when is_binary(reason), do: String.slice(reason, 0, 200)
+  defp format_probe_error(reason), do: reason |> inspect() |> String.slice(0, 200)
 end

@@ -9,7 +9,12 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
   cannot work on. Splitting the docs out is a deliberate later operation, not
   the default a new project is born with.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged):
+  `ResourceDetail`'s Config tab carries the same per-step
+  `provisioned-resource` listing `step_card` did, so the resource-detail
+  page is what "one repository, recorded under its own step" means now.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Repository`.
   """
 
@@ -29,20 +34,19 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
     scenario "the step creates a single repository and records it as the remote" do
       given_ "Sam is on the setup status page with GitHub connected", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the repository step runs", context do
+        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
+        # false) — the step is already settled by the time render_click
+        # returns, same as the old page's equivalent run.
         context.view
-        |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
+        |> element("[data-test='resource-step'][data-step='repository'] [data-test='run-step']")
         |> render_click()
 
-        # Waited for, then read. The step runs under a supervised task — a deploy
-        # or a push takes longer than a LiveView event may — so `render_click/1`
-        # returns while it is still running and the page has not caught up.
-        await_step(context.view, :repository)
         html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
@@ -52,11 +56,13 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
         repos =
           context.html
           |> Floki.parse_document!()
-          # Scoped to the step — the page renders each resource twice (under
-          # the step and in the record at the bottom), so an unscoped count
-          # sees one repository as two.
+          # Scoped to the step, same selector the old page's spex used —
+          # there is no separate global panel here yet to disambiguate
+          # against, but an unscoped count would also catch a resource from
+          # another step in the same group if one ever carried kind
+          # "repository" too.
           |> Floki.find(
-            "[data-test='setup-step'][data-step='repository'] " <>
+            "[data-test='resource-step'][data-step='repository'] " <>
               "[data-test='provisioned-resource'][data-kind='repository']"
           )
 

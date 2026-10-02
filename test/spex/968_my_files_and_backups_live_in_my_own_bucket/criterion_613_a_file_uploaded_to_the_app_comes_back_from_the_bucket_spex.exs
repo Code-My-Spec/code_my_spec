@@ -11,7 +11,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
   Round-trip, not just write — a spec that only asserted the PUT
   succeeded would pass against an app whose reads still hit local disk.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  probe moved off ProvisioningLive's blocking `phx-submit` into storage_backups'
+  Checks tab, behind DiagnosticsPanel, running async via `start_async` —
+  so the click only starts it, and `await_operation` is what waits for the
+  result, the same two-phase wait `resume_setup`'s own retargeted spex use.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Hetzner`.
   """
 
@@ -32,31 +38,50 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
   setup :devops_on
   setup :fake_providers
 
+  defp probe_done?(html),
+    do: not (html =~ ~s(data-test="storage-probe" data-state="running"))
+
   spex "A file uploaded to the app comes back from the bucket", criterion: 613 do
     scenario "the object written through the app reads back identical" do
       given_ "the app is deployed and wired to its bucket", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         tear_down_after(context.scope, [:storage])
 
         # Pasting is inside the cassette because saving a credential now
         # proves it with a real call (criterion 7983) — it is a provider
         # interaction, not just a write.
-        paste_storage_credentials(view)
+        paste_storage_credentials(credentials_view)
 
-        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "prod")
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups?env=prod"
+          )
+
+        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
+        # false) — the step is already settled by the time render_click
+        # returns, same as the old page's equivalent run.
+        view
+        |> element(
+          "[data-test='resource-step'][data-step='storage'] [data-test='run-step']"
+        )
+        |> render_click()
+
+        view |> element("[data-test='resource-tab-checks']") |> render_click()
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam uploads a file through the app and requests it back", context do
-        html =
-          context.view
-          |> form("[data-test='storage-probe-form']",
-            probe: %{environment: "prod", key: "round-trip.txt", body: @body}
-          )
-          |> render_submit()
+        context.view
+        |> form("[data-test='storage-probe-form']",
+          probe: %{environment: "prod", key: "round-trip.txt", body: @body}
+        )
+        |> render_submit()
+
+        html = await_operation(context.view, &probe_done?/1, &probe_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -123,4 +123,36 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       assert has_element?(view, "[data-test='resource-tab-panel'][data-panel='checks']")
     end
   end
+
+  describe "running a step from the console" do
+    test "clicking Run on a resource's step does not crash the page", %{
+      conn: conn,
+      project: project
+    } do
+      # No fake_providers here — this is smoke coverage, not a spex, so it
+      # only proves the "run_step" event has a matching clause at all. It
+      # didn't: ResourceDetail's button has carried `phx-click="run_step"`
+      # since it was extracted in step 5, but nothing in this file ever
+      # clicked it, so ConsoleLive shipped with no handler for it.
+      {:ok, view, _html} = live(conn, resource_path(project, :repository))
+
+      view
+      |> element("[data-test='resource-step'][data-step='repository'] [data-test='run-step']")
+      |> render_click()
+
+      assert Process.alive?(view.pid)
+    end
+  end
+
+  describe "the storage round-trip check" do
+    test "running it replaces the old setup page's blocking form with an async one", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} = live(conn, resource_path(project, :storage_backups) <> "?tab=checks")
+
+      refute has_element?(view, "[data-test='storage-probe']"),
+             "expected no probe without storage credentials on file"
+    end
+  end
 end

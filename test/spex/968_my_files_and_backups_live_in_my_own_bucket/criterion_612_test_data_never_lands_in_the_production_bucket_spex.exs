@@ -8,13 +8,21 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
   Sharing one bucket across environments means test uploads mixed into
   real customer data with no way to tell them apart afterwards.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 613 made — see that spex's moduledoc for why the probe is
+  `await_operation`-driven now instead of reading `render_submit`'s own
+  return.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Hetzner`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp probe_done?(html),
+    do: not (html =~ ~s(data-test="storage-probe" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,30 +32,47 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
   spex "Test data never lands in the production bucket", criterion: 612 do
     scenario "a file uploaded in UAT appears only in the UAT bucket" do
       given_ "both environments are set up with their own buckets", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        paste_storage_credentials(view)
+        paste_storage_credentials(credentials_view)
         tear_down_after(context.scope, [:storage])
 
         # One click per environment now — storage's own card only ever
         # touches the environment it belongs to, and both need their own
-        # bucket for the isolation this criterion is about.
-        for environment <- ["prod", "uat"] do
-          CodeMySpecSpex.Case.run_step_interaction(view, :storage, environment)
-          CodeMySpecSpex.Case.await_step(view, :storage, environment, 600)
-        end
+        # bucket for the isolation this criterion is about. Synchronous in
+        # test (config :code_my_spec, :provisioning_run_async, false), so
+        # each run is settled by the time its own render_click returns.
+        views =
+          for environment <- ["prod", "uat"], into: %{} do
+            {:ok, view, _html} =
+              live(
+                context.conn,
+                "/app/projects/#{context.project.id}/console/resources/storage_backups?env=#{environment}"
+              )
 
-        html = render(view)
+            view
+            |> element(
+              "[data-test='resource-step'][data-step='storage'] [data-test='run-step']"
+            )
+            |> render_click()
+
+            {environment, view}
+          end
 
         buckets_by_env =
-          html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='provisioned-resource'][data-kind='bucket']")
-          |> Map.new(fn el ->
-            {el |> Floki.attribute("data-environment") |> List.first(),
-             el |> Floki.attribute("data-name") |> List.first()}
-          end)
+          for {environment, view} <- views, into: %{} do
+            resource =
+              view
+              |> render()
+              |> Floki.parse_document!()
+              |> Floki.find(
+                "[data-test='resource-step'][data-step='storage'] " <>
+                  "[data-test='provisioned-resource'][data-kind='bucket']"
+              )
+
+            {environment, resource |> Floki.attribute("data-name") |> List.first()}
+          end
 
         # Anchor: separate buckets exist per environment, which is what makes
         # the isolation below possible at all.
@@ -57,16 +82,23 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
         refute buckets_by_env["uat"] == buckets_by_env["prod"],
                "expected UAT and production to have distinct buckets, both #{inspect(buckets_by_env["uat"])}"
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:buckets, buckets_by_env)}
+        uat_view = Map.fetch!(views, "uat")
+        uat_view |> element("[data-test='resource-tab-checks']") |> render_click()
+
+        {:ok,
+         context
+         |> Map.put(:view, uat_view)
+         |> Map.put(:buckets, buckets_by_env)}
       end
 
       when_ "a file is uploaded in UAT", context do
-        html =
-          context.view
-          |> form("[data-test='storage-probe-form']",
-            probe: %{environment: "uat", key: "probe.txt"}
-          )
-          |> render_submit()
+        context.view
+        |> form("[data-test='storage-probe-form']",
+          probe: %{environment: "uat", key: "probe.txt"}
+        )
+        |> render_submit()
+
+        html = await_operation(context.view, &probe_done?/1, &probe_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

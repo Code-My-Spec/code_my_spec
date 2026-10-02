@@ -9,11 +9,12 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   (RepositoryConfig, ServerConfig, DnsConfig, and so on), the run/retry
   button, paused-instructions and escalation — the same markup `step_card`
   showed, once per step in the group, under a tab instead of always-on.
-  Checks is a placeholder: the five probes (storage, domain, content,
-  restore, inbound) still run from the old `/provisioning` page, not yet
-  moved here or converted to async — see the moduledoc on `ConsoleLive`.
-  Activity combines every step's own timestamps, the same stand-in
-  `ConsoleLive`'s Overview uses, not a persisted event log.
+  Checks renders whatever `ConsoleLive` passes through the `:checks` slot —
+  one `DiagnosticsPanel` per probe that group owns — and falls back to a
+  placeholder for groups that don't have one wired up yet (see the
+  moduledoc on `ConsoleLive` for which do). Activity combines every step's
+  own timestamps, the same stand-in `ConsoleLive`'s Overview uses, not a
+  persisted event log.
   """
 
   use CodeMySpecWeb, :html
@@ -29,6 +30,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
   alias CodeMySpecWeb.ProvisioningLive.Components.TlsConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.WidgetConfig
+  alias CodeMySpecWeb.ProvisioningLive.ResourceFields
 
   attr :group, :map, default: nil
   attr :steps, :list, required: true
@@ -38,6 +40,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   attr :tab, :string, required: true
   attr :project_id, :any, required: true
   attr :environment, :string, required: true
+  slot :checks
 
   def resource_detail(%{group: nil} = assigns) do
     ~H"""
@@ -93,6 +96,8 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
           :for={step <- @steps}
           data-test="resource-step"
           data-step={step.key}
+          data-state={step.state}
+          data-environment={step.environment}
           class="card bg-base-100"
         >
           <div class="card-body p-4 gap-2">
@@ -158,15 +163,49 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
             <ContentConfig.content_config :if={step.key == :content} step={step} />
             <WidgetConfig.widget_config :if={step.key == :widget} step={step} />
             <BackupsConfig.backups_config :if={step.key == :backups} step={step} />
+
+            <div :if={step.resources != []} class="mt-1 flex flex-col gap-1">
+              <span
+                :for={resource <- step.resources}
+                data-test="provisioned-resource"
+                data-kind={resource.kind}
+                data-location={resource.location}
+                data-environment={ResourceFields.resource_environment(resource, @environments)}
+                data-name={ResourceFields.resource_name(resource)}
+                data-owner={ResourceFields.resource_owner(resource)}
+                data-disposition={ResourceFields.resource_disposition(resource)}
+                data-verified={to_string(step.state == :done)}
+                class={[
+                  "badge badge-outline",
+                  step.state != :done && "badge-warning opacity-70"
+                ]}
+              >
+                {resource.kind} — {resource.location}
+                <span
+                  :if={step.state != :done}
+                  data-test="unverified-resource"
+                  data-step={step.key}
+                  class="ml-1"
+                >
+                  ({unverified_note(step)})
+                </span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div :if={@tab == "checks"} data-test="resource-tab-panel" data-panel="checks">
-        <p class="opacity-70 text-sm" data-test="checks-placeholder">
-          Manual checks move here in a follow-up — the five probes still run
-          from the old setup page for now.
+      <div
+        :if={@tab == "checks"}
+        data-test="resource-tab-panel"
+        data-panel="checks"
+        class="flex flex-col gap-4"
+      >
+        <p :if={@checks == []} class="opacity-70 text-sm" data-test="checks-placeholder">
+          Manual checks move here in a follow-up — the remaining probes still
+          run from the old setup page for now.
         </p>
+        {render_slot(@checks)}
       </div>
 
       <div
@@ -198,6 +237,13 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
     do: instructions =~ "Confirm to publish anyway"
 
   defp inbound_mx_conflict?(_step), do: false
+
+  # Same as ProvisioningLive.unverified_note/1 — duplicated for the same
+  # reason inbound_mx_conflict?/1 above is.
+  defp unverified_note(%{verified_at: %DateTime{} = at}),
+    do: "not found #{Calendar.strftime(at, "%b %-d %H:%M")}"
+
+  defp unverified_note(_step), do: "unverified"
 
   defp activity_entries(steps) do
     for step <- steps,
