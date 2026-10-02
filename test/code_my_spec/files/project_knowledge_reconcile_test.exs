@@ -16,6 +16,7 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.EmbeddingService
@@ -104,6 +105,23 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
       assert :ok = LockfileSweep.sweep_now()
 
       assert [%{content: "second"}] = rows(scope)
+    end
+  end
+
+  describe "a manifest that changes mix.lock" do
+    @lock ~s(%{"jason": {:hex, :jason, "1.4.4", "c5eb0cab91f094599f94d55bc63409236a8ec69a21a67814529e8d5f6cc90b3b", [:mix], [], "hexpm", "fbd2a0e24876b27c1e9b8d3b1fdc52b5f8c0edc9f6ac96d2c5d0d68b1cb9cf3b"}}\n)
+
+    test "on the main copy updates the project's dependencies without the sweep" do
+      %{scope: scope, dir: dir} = copy(main?: true)
+      File.write!(Path.join(dir, "mix.lock"), @lock)
+      serve_harness(scope, dir)
+
+      manifest(scope, dir)
+
+      assert [%{name: "jason", version: "1.4.4"}] =
+               scope
+               |> Dependencies.list_dependencies()
+               |> Enum.map(&Map.take(&1, [:name, :version]))
     end
   end
 

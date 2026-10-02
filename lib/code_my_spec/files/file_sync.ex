@@ -349,16 +349,16 @@ defmodule CodeMySpec.Files.FileSync do
               removed: summary.removed,
               changed: length(summary.changed_entries),
               components: project_components(scope, summary),
-              knowledge_moved?: knowledge_moved?(summary.changed_entries, summary.removed_records)
+              moved: moved_roles(summary.changed_entries, summary.removed_records)
             }
           end,
           timeout: @reconcile_timeout_ms
         )
 
       log_duration(scope, observations, System.monotonic_time(:millisecond) - started, result)
-      maybe_reconcile_project_knowledge(scope, result.knowledge_moved?)
+      after_manifest(scope, result.moved)
 
-      Map.delete(result, :knowledge_moved?)
+      Map.delete(result, :moved)
     rescue
       error ->
         log_failure(scope, observations, System.monotonic_time(:millisecond) - started, error)
@@ -655,25 +655,34 @@ defmodule CodeMySpec.Files.FileSync do
 
   # -- Project knowledge reconcile (577de9bb step 5) --
 
-  defp knowledge_moved?(changed_entries, removed_records) do
-    Enum.any?(changed_entries ++ removed_records, &(Map.get(&1, :role) == :project_knowledge))
+  # The manifest-fed roles whose content the server reads back over the
+  # harness: `mix.lock` (step 3) and project knowledge (step 5).
+  defp moved_roles(changed_entries, removed_records) do
+    roles = MapSet.new(changed_entries ++ removed_records, &Map.get(&1, :role))
+    %{lockfile: :lockfile in roles, knowledge: :project_knowledge in roles}
   end
 
   # After the transaction commits, and off the caller: the manifest's caller
   # may be the channel itself (inline mode), and a read from there self-calls.
-  defp maybe_reconcile_project_knowledge(_scope, false), do: :ok
+  defp after_manifest(_scope, %{lockfile: false, knowledge: false}), do: :ok
 
-  defp maybe_reconcile_project_knowledge(scope, true) do
+  defp after_manifest(scope, moved) do
     if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
-      reconcile_project_knowledge(scope)
+      reconcile_moved(scope, moved)
     else
       {:ok, _pid} =
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          reconcile_project_knowledge(scope)
+          reconcile_moved(scope, moved)
         end)
 
       :ok
     end
+  end
+
+  defp reconcile_moved(scope, moved) do
+    if moved.lockfile, do: reconcile_lockfile(scope)
+    if moved.knowledge, do: reconcile_project_knowledge(scope)
+    :ok
   end
 
   @doc """
