@@ -29,6 +29,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
   port reads as more honest and is not reachable: `config/test.exs` pins every
   client to `Req.Test`, so the request never leaves and raises `no mock or
   stub` instead of connecting.
+
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 639 made — see that spex's moduledoc.
   """
 
   use CodeMySpecSpex.Case
@@ -42,6 +45,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
   setup :devops_on
   setup :fake_providers
   setup :trigger_unreachable
+
+  defp publish_done?(html),
+    do: not (html =~ ~s(data-test="content-publish-probe" data-state="running"))
 
   spex "A lost trigger is reported, not swallowed", criterion: 644 do
     scenario "a publish whose trigger cannot land reports the failure" do
@@ -68,7 +74,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
           |> Map.put(:project, project)
           |> Map.put(:scope, %{context.scope | active_project: project})
 
-        {:ok, Map.put(context, :view, mount_provisioning(context))}
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/publishing?tab=checks"
+          )
+
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the trigger fails to land", context do
@@ -79,7 +91,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
         |> element("[data-test='content-publish']")
         |> render_click()
 
-        {:ok, Map.put(context, :html, render(context.view))}
+        html = await_operation(context.view, &publish_done?/1, &publish_done?/1)
+
+        {:ok, Map.put(context, :html, html)}
       end
 
       then_ "Sam is told the publish did not reach the site", context do

@@ -11,13 +11,19 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
   Observably: the setup record names the account the domain landed in, and
   it is Sam's, not a platform account.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 586 made — see that spex's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp domain_search_done?(html),
+    do: not (html =~ ~s(data-test="domain" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,7 +41,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
         # does not depend on whose account is recording.
         zone_exists(context, "astralbi.com")
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend outside every cassette.
@@ -44,6 +51,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
         view
         |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
         |> render_submit()
+
+        await_operation(view, &domain_search_done?/1, &domain_search_done?/1)
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -54,7 +63,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
           # Scoped to the step — the page renders each resource twice (step and
           # record), and `element/2` demands exactly one.
           |> element(
-            "[data-test='setup-step'][data-step='domain'] " <>
+            "[data-test='resource-step'][data-step='domain'] " <>
               "[data-test='provisioned-resource'][data-kind='domain']"
           )
           |> render()

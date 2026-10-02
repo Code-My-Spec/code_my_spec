@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
   normal state of a broken mail setup; the only proof is a message
   arriving.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  step itself and its own `inbound-delivery-proof` are unchanged —
+  `InboundConfig` is reused as-is — only the route and the markup it's
+  nested under moved, same as criterion 651.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend` (inbound).
   """
 
@@ -51,17 +56,18 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
         verified_sending_domains(context.scope, project, ["prod"], receiving: true)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        _ = Phoenix.LiveViewTest.render(view)
-        view = view
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "setup verifies the step", context do
+        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
+        # false), so the click settles before resolving the pause below —
+        # no await_step needed, and it's coupled to the old page's
+        # setup-step markup anyway.
         context.view
-        |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
+        |> element("[data-test='resource-step'][data-step='inbound'] [data-test='run-step']")
         |> render_click()
 
         # The plain "Run" click carries no address, so :inbound settles at
@@ -69,8 +75,9 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
         # published, and the pause is only about proving delivery. Answer it
         # the way 2f8c4208 gave the page to, then read the page after the
         # run rather than what the click handed back.
-        CodeMySpecSpex.Case.await_step(context.view, :inbound)
-        CodeMySpecSpex.Case.resolve_inbound_probe_pause(context.view, "sam@c8033.astralbi.com")
+        context.view
+        |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@c8033.astralbi.com"})
+        |> render_submit()
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
@@ -103,7 +110,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
 
         done_at =
           context.parsed
-          |> Floki.find("[data-test='setup-step'][data-step='inbound']")
+          |> Floki.find("[data-test='resource-step'][data-step='inbound']")
           |> Floki.attribute("data-completed-at")
           |> List.first()
 

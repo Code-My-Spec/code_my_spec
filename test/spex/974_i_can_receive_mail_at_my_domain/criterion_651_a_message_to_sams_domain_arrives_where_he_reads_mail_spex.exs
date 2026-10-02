@@ -22,6 +22,15 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
   (a053b5dd), so the recorded request never matched the next run's. Against a
   fake the address is whatever the run uses, and the delivery is looked up by
   the domain rather than by a string recorded on some earlier day.
+
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  probe moved off ProvisioningLive's blocking click into mail's Checks tab,
+  behind DiagnosticsPanel, running async via `start_async` — same move
+  criterion 613 made for the storage round-trip probe. `:email` and
+  `:inbound` are driven through `resource-step`, the console's own markup,
+  since `run_step_interaction` is coupled to the old page's `setup-step`.
+  `click_inbound_probe/1` and `resolve_inbound_probe_pause/2` are unchanged
+  — both already select by `data-test`, which the ported markup kept.
   """
 
   use CodeMySpecSpex.Case
@@ -35,39 +44,52 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
   setup :devops_on
   setup :fake_providers
 
+  defp mail_inbound_done?(html),
+    do: not (html =~ ~s(data-test="mail-inbound-probe-panel" data-state="running"))
+
   spex "A message to Sam's domain arrives where he reads mail", criterion: 651 do
     scenario "an inbound probe is delivered to Sam's destination" do
       given_ "the inbound step has run", context do
         own_domain(context.project, @domain)
         zone_exists(context, @domain)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         # Sending first: Resend grants receiving on a domain it already knows,
         # and an inbox on a domain it does not is the case that silently drops
-        # every probe.
+        # every probe. Synchronous in test (config :code_my_spec,
+        # :provisioning_run_async, false), so each click settles before the
+        # next.
         for step <- [:email, :inbound] do
           view
-          |> element("[data-test='setup-step'][data-step='#{step}'] [data-test='run-step']")
+          |> element("[data-test='resource-step'][data-step='#{step}'] [data-test='run-step']")
           |> render_click()
-
-          CodeMySpecSpex.Case.await_step(view, step)
         end
 
         # The plain "Run" click above carries no address, so :inbound settles
         # at :paused rather than :done (7df39199) — its records are already
         # published, and the pause is only about proving delivery. Answer it
-        # the way 2f8c4208 gave the page to.
-        CodeMySpecSpex.Case.resolve_inbound_probe_pause(view, "sam@#{@domain}")
+        # the way 2f8c4208 gave the page to. Not
+        # CodeMySpecSpex.Case.resolve_inbound_probe_pause/2: it calls
+        # await_step/2, which is coupled to the old page's setup-step markup
+        # — synchronous in test anyway, so the plain submit is enough.
+        view
+        |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@#{@domain}"})
+        |> render_submit()
 
         assert render(view) =~ ~r/data-step="inbound"[^>]*data-state="done"/,
                "expected inbound to be set up before a probe is sent to it"
+
+        view |> element("[data-test='resource-tab-checks']") |> render_click()
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "someone sends a message to an address at his domain", context do
-        html = click_inbound_probe(context.view)
+        click_inbound_probe(context.view)
+
+        html = await_operation(context.view, &mail_inbound_done?/1, &mail_inbound_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

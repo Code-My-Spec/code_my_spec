@@ -9,12 +9,15 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   (RepositoryConfig, ServerConfig, DnsConfig, and so on), the run/retry
   button, paused-instructions and escalation — the same markup `step_card`
   showed, once per step in the group, under a tab instead of always-on.
-  Checks renders whatever `ConsoleLive` passes through the `:checks` slot —
-  one `DiagnosticsPanel` per probe that group owns — and falls back to a
-  placeholder for groups that don't have one wired up yet (see the
-  moduledoc on `ConsoleLive` for which do). Activity combines every step's
-  own timestamps, the same stand-in `ConsoleLive`'s Overview uses, not a
-  persisted event log.
+  `:domain_search` is the same Config tab's one project-level exception —
+  the domain search/purchase/confirm tool isn't any single step's own
+  markup, so it renders below the step list rather than per-step; only
+  `ConsoleLive` passes it, for `:dns_domain`. Checks renders whatever
+  `ConsoleLive` passes through the `:checks` slot — one `DiagnosticsPanel`
+  per probe that group owns — and falls back to a placeholder for groups
+  that don't have one wired up yet (see the moduledoc on `ConsoleLive` for
+  which do). Activity combines every step's own timestamps, the same
+  stand-in `ConsoleLive`'s Overview uses, not a persisted event log.
   """
 
   use CodeMySpecWeb, :html
@@ -41,6 +44,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   attr :project_id, :any, required: true
   attr :environment, :string, required: true
   slot :checks
+  slot :domain_search
 
   def resource_detail(%{group: nil} = assigns) do
     ~H"""
@@ -98,6 +102,9 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
           data-step={step.key}
           data-state={step.state}
           data-environment={step.environment}
+          data-completed-at={step_completed_at(step)}
+          data-started-at={step_started_at(step)}
+          data-verified-at={step_verified_at(step)}
           class="card bg-base-100"
         >
           <div class="card-body p-4 gap-2">
@@ -193,6 +200,8 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
             </div>
           </div>
         </div>
+
+        {render_slot(@domain_search)}
       </div>
 
       <div
@@ -244,6 +253,19 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
     do: "not found #{Calendar.strftime(at, "%b %-d %H:%M")}"
 
   defp unverified_note(_step), do: "unverified"
+
+  # Same as ProvisioningLive.step_completed_at/started_at/verified_at — same
+  # reason the two helpers above are duplicated.
+  defp step_completed_at(%{state: :done, completed_at: %DateTime{} = at}),
+    do: DateTime.to_iso8601(at)
+
+  defp step_completed_at(_step), do: nil
+
+  defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_started_at(_step), do: nil
+
+  defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_verified_at(_step), do: nil
 
   defp activity_entries(steps) do
     for step <- steps,
