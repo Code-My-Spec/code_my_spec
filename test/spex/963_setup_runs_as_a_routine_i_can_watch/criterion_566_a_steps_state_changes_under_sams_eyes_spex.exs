@@ -12,7 +12,18 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
   than re-mounting: a re-mount would pass even if the page never pushed
   an update, which is exactly the behaviour under test.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged):
+  narrowed, per Harness/John — the original also watched the *next* step
+  auto-pick-up, which was the whole-run cascade and genuinely has no home
+  now that each step runs independently. What's left (a running step's own
+  state updating live on a page Sam already has open, without a reload) is
+  still true and still has a surface: `run_console_step/2` goes through the
+  exact same `run_step_async/3` the old page's "Run" button did, so holding
+  the *server* step itself open (instead of the step after it, since there
+  is no "after" to watch pick up) and watching it move not_started → running
+  → done on one held-open view proves the same mechanism.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -26,69 +37,77 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
   # Watching a step change state needs a run that is still going.
   setup :watchable_run
 
+  defp resource_step_state?(html, step, state),
+    do: html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/
+
+  defp await_resource_step_state(view, step, state, deadline \\ nil)
+
+  defp await_resource_step_state(view, step, state, nil) do
+    await_resource_step_state(view, step, state, System.monotonic_time(:millisecond) + 30_000)
+  end
+
+  defp await_resource_step_state(view, step, state, deadline) do
+    html = render(view)
+
+    cond do
+      resource_step_state?(html, step, state) ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        raise "the #{step} step never reached #{state}"
+
+      true ->
+        Process.sleep(50)
+        await_resource_step_state(view, step, state, deadline)
+    end
+  end
+
   spex "A step's state changes under Sam's eyes", criterion: 566 do
-    scenario "the page moves a step to done and picks up the next one" do
-      given_ "setup is ready to run", context do
-        # The step after the server is held open, because the claim is that Sam
-        # *watches* the transition. Scripted steps finish instantly, so without
-        # this the state the criterion is about would be gone before the page
-        # could show it — and the assertion would be about how fast the test
-        # rendered, not about whether the page updates.
-        #
-        # Held by the scenario rather than by a three-second sleep: the window
-        # is then as long as the assertions need instead of as long as someone
-        # guessed, and it closes here rather than after the test has gone.
-        #
-        # That step is `domain`, not `secrets`. The sequence is repository →
-        # secrets → server → domain, so holding `secrets` open stopped the run
-        # *before* the server had done anything, and the criterion failed
-        # saying the server step never reached done — which was true, and said
-        # nothing about whether the page updates.
+    scenario "the page moves a step from running to done without a reload" do
+      given_ "setup is ready to run, with repository and secrets already done", context do
+        # The server step itself is held open, because the claim is that Sam
+        # *watches* its own transition. Scripted steps finish instantly, so
+        # without this the state the criterion is about would be gone before
+        # the page could show it — and the assertion would be about how fast
+        # the test rendered, not about whether the page updates.
+        own_repository(context.project)
+
         {hold, held_ref} = held_step()
-        context = scripted_run(context, %{domain: hold})
+        context = scripted_run(context, %{server: hold})
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(view, :secrets)
+        await_resource_step_state(view, "secrets", "done")
 
         {:ok, Map.merge(context, %{view: view, held_ref: held_ref})}
       end
 
-      when_ "the server step runs to completion", context do
-        context.view |> element("[data-test='start-setup']") |> render_click()
+      when_ "the server step starts running", context do
+        run_console_step(context.view, :server)
 
-        # Waiting for the *next* step to pick up, which is the stronger signal:
-        # it can only be running once the server step finished, so one wait
-        # covers both halves of the claim. Waiting on the server step alone
-        # returned before the page had been told about its successor.
-        html = await_step_state(context.view, "domain", "running")
+        html = await_resource_step_state(context.view, "server", "running")
 
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "Sam sees that step move to done without reloading", context do
-        html = context.html
+      then_ "Sam sees it running on the page he already has open", context do
+        assert resource_step_state?(context.html, "server", "running"),
+               "expected the server step to show running on the already-open page"
 
-        assert html =~ ~r/data-step="server"[^>]*data-state="done"/,
-               "expected the server step to show done on the already-open page"
-
-        {:ok, Map.put(context, :html, html)}
+        {:ok, context}
       end
 
-      then_ "the next step moves to running", context do
-        assert has_element?(context.view, "[data-test='setup-step'][data-state='running']"),
-               "expected the following step to pick up once the server step finished; steps: " <>
-                 (render(context.view)
-                  |> Floki.parse_document!()
-                  |> Floki.find("[data-test='setup-step']")
-                  |> Enum.map_join(", ", fn s ->
-                    "#{s |> Floki.attribute("data-step") |> List.first()}=#{s |> Floki.attribute("data-state") |> List.first()}"
-                  end))
-
+      then_ "it moves to done without reloading", context do
         # Let the held step finish inside the scenario. Left holding, it
         # resumes and writes once the sandbox owner has gone — the straggler
         # shape that fails whichever spex is running at that moment.
         release_step(context.held_ref)
-        await_step_state(context.view, "domain", "done")
+        html = await_resource_step_state(context.view, "server", "done")
+
+        assert resource_step_state?(html, "server", "done"),
+               "expected the server step to move to done on the same open page"
 
         {:ok, context}
       end
