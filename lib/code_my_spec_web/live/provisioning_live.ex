@@ -2110,14 +2110,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # without them gave the run no provider options, no target organisation
     # and no injected probe — so a resumed run behaved differently from the
     # same steps run any other way, which is the one thing resume must not do.
-    result =
-      Provisioning.resume(
+    #
+    # Started, not awaited — `resume/3` used to run every remaining step
+    # inline here, holding the socket for however long that took. The page
+    # follows it the same way it follows "Run setup": `apply_result/2` runs
+    # from `handle_info({:provisioning, :finished, ...})` once it lands.
+    :ok =
+      Provisioning.resume_async(
         socket.assigns.current_scope,
         socket.assigns.options,
         step_opts()
       )
 
-    {:noreply, apply_result(socket, result)}
+    {:noreply, assign(socket, halted_at: nil, halt_reason: nil)}
   end
 
   # Retry is the same call as run — a step verifies before it acts, so

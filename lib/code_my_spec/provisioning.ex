@@ -877,28 +877,45 @@ defmodule CodeMySpec.Provisioning do
     end
   end
 
-  defp spawn_run(scope, enabled_options, opts) do
+  defp spawn_run(%Scope{active_project_id: project_id} = scope, enabled_options, opts) do
     {:ok, pid} =
       Task.start(fn ->
-        # The caller is subscribed to the topic, not linked to this task, so a
-        # step that raises must not take the page down with it — it is
-        # reported like any other failure.
-        result =
-          try do
-            run(scope, enabled_options, opts)
-          rescue
-            error -> %{steps: [], halted_at: :unknown, reason: Exception.message(error)}
-          end
-
-        # The caller already subscribed before starting this run (`mount`'s
-        # `Provisioning.subscribe/1`), so this is the only delivery it needs.
-        # A second copy sent straight to the caller's mailbox landed twice —
-        # once from the broadcast, once from this `send` — which is the
-        # double `:finished` `handle_info/2` saw on every run.
-        announce(scope, {:provisioning, :finished, result})
+        run_locked(project_id, scope, "start_setup", fn ->
+          run_or_rescue(scope, enabled_options, opts)
+        end)
       end)
 
     {:ok, pid}
+  end
+
+  # The caller is subscribed to the topic, not linked to this task, so a step
+  # that raises must not take the page down with it — it is reported like any
+  # other failure.
+  defp run_or_rescue(scope, enabled_options, opts) do
+    run(scope, enabled_options, opts)
+  rescue
+    error -> %{steps: [], halted_at: :unknown, reason: Exception.message(error)}
+  end
+
+  # Under the same lock a single-step retry already claims — without it,
+  # start_setup, resume_setup and a per-step Run/Retry could all be mid-write
+  # to the same project's rows at once, which is exactly the race RunLock
+  # exists to close (see its moduledoc).
+  #
+  # The caller already subscribed before starting this run (`mount`'s
+  # `Provisioning.subscribe/1`), so announcing here is the only delivery the
+  # result needs — a second copy sent straight to the caller's mailbox too
+  # was the double `:finished` `handle_info/2` used to see on every run.
+  defp run_locked(project_id, scope, label, fun) do
+    case RunLock.with_lock(project_id, fun) do
+      {:error, {:already_running, _}} ->
+        Logger.info(
+          "[Provisioning] #{label} skipped — a run for this project is already in flight"
+        )
+
+      result ->
+        announce(scope, {:provisioning, :finished, result})
+    end
   end
 
   @doc """
@@ -976,6 +993,37 @@ defmodule CodeMySpec.Provisioning do
           {:halt, %{acc | steps: acc.steps ++ [row], halted_at: step.key, reason: reason}}
       end
     end)
+  end
+
+  @doc """
+  Continue a stopped run in the background and return immediately.
+
+  `resume/3` used to run inline in the LiveView's `handle_event` — minutes of
+  provider calls holding the socket hostage, the same problem `run_async/3`
+  exists to avoid for a fresh run. Same shape here: started, not awaited, and
+  under the same `RunLock` as `start_setup` and a single-step retry, so a
+  resume cannot write to the same project's rows a run already in flight is
+  writing to.
+  """
+  @spec resume_async(Scope.t(), [atom()], keyword()) :: :ok
+  def resume_async(%Scope{} = scope, enabled_options, opts \\ []) do
+    if Application.get_env(:code_my_spec, :provisioning_run_async, true) do
+      spawn_resume(scope, enabled_options, opts)
+    else
+      # Synchronous under test, for the same reason run_async/3 is.
+      result = resume(scope, enabled_options, opts)
+      announce(scope, {:provisioning, :finished, result})
+    end
+
+    :ok
+  end
+
+  defp spawn_resume(%Scope{active_project_id: project_id} = scope, enabled_options, opts) do
+    Task.start(fn ->
+      run_locked(project_id, scope, "resume_setup", fn -> resume(scope, enabled_options, opts) end)
+    end)
+
+    :ok
   end
 
   defp done?(%Step{state: :done}), do: true
