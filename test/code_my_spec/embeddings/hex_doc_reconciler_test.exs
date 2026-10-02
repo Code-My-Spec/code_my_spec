@@ -172,17 +172,18 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
                |> Repo.all()
     end
 
-    # The shape this would take live: two sweep attempts of the same
-    # package overlapping across a restart, both reaching the chunk
-    # insert. Simulated here by pre-seeding the exact row a losing
-    # concurrent attempt would collide with — same (source, path,
-    # chunk_index), a different identity, so it conflicts on
-    # doc_embeddings_shared_path_chunk_index even though the
-    # (package, version, model, path, chunk_index) index this reconciler
-    # targets would not. The point: that conflict must come back as a
-    # recorded `failed` marker, never a raised exception that leaves the
-    # package stuck retrying forever.
-    test "a store conflict with an existing row is marked failed, not raised", %{scope: scope} do
+    # This used to collide: `doc_embeddings_shared_path_chunk_index` had no
+    # version column, so a different version of the same package landing on
+    # the same (source, path, chunk_index) raised a unique_violation that
+    # rolled back the whole transaction with no `doc_packages` row written
+    # — the exact live bug 577de9bb step 3's follow-up fixed. That index is
+    # gone now, and the identity index this reconciler targets includes
+    # version and model, so the stale row below is simply a different
+    # identity, not a conflict — this is the regression test for staying
+    # that way.
+    test "a differently-versioned row with the same path does not block storing this version", %{
+      scope: scope
+    } do
       tarball = HexTarballFixtures.build(%{"lib/race.ex" => "defmodule Race do\n  @moduledoc \"hi\"\nend\n"})
       seed_dependency(scope, "race_pkg", "1.0.0", tarball)
       stub_tarball("race_pkg", "1.0.0", tarball)
@@ -203,10 +204,12 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
 
       :ok = HexDocReconciler.reconcile_all()
 
-      assert %DocPackage{status: "failed", error: error} =
+      assert %DocPackage{status: "embedded"} =
                Repo.get_by(DocPackage, package: "race_pkg", version: "1.0.0")
 
-      assert error =~ "unique_violation" or error =~ "doc_embeddings_shared_path_chunk_index"
+      assert [%{content: "stale"}] =
+               from(e in DocEmbedding, where: e.version == "0.9.0", select: %{content: e.content})
+               |> Repo.all()
     end
 
     test "a package with no documented modules is marked no_docs, not retried forever", %{
@@ -251,13 +254,34 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
 
       :ok = HexDocReconciler.reconcile_all()
 
-      assert %DocPackage{status: "failed"} =
+      # hex.pm's own 5xx says nothing about this package's content — recorded
+      # as `pending` with one attempt charged against it, not `failed`, so
+      # the next sweep tries again instead of giving up on the first blip.
+      assert %DocPackage{status: "pending", attempts: 1, error: error} =
                Repo.get_by(DocPackage, package: "flaky_pkg", version: "1.0.0")
 
-      # Marked failed rather than left silently missing — but still distinct
-      # from "embedded", so a future design that wants to retry failures
-      # (not built here) has something to select on.
-      refute Repo.get_by(DocPackage, package: "flaky_pkg", version: "1.0.0").status == "embedded"
+      assert error =~ "500"
+      assert [%{name: "flaky_pkg", version: "1.0.0"}] = HexDocReconciler.pending()
+    end
+
+    test "a deferred package exhausts its attempts and becomes failed", %{scope: scope} do
+      tarball = HexTarballFixtures.build(%{"lib/dying.ex" => "defmodule Dying do\n  @moduledoc \"hi\"\nend\n"})
+      seed_dependency(scope, "dying_pkg", "1.0.0", tarball)
+      stub_http_error("dying_pkg", "1.0.0", 500)
+
+      :ok = HexDocReconciler.reconcile_all()
+      assert %DocPackage{status: "pending", attempts: 1} = Repo.get_by(DocPackage, package: "dying_pkg")
+
+      :ok = HexDocReconciler.reconcile_all()
+      assert %DocPackage{status: "pending", attempts: 2} = Repo.get_by(DocPackage, package: "dying_pkg")
+
+      :ok = HexDocReconciler.reconcile_all()
+
+      assert %DocPackage{status: "failed", error: error} =
+               Repo.get_by(DocPackage, package: "dying_pkg", version: "1.0.0")
+
+      assert error =~ "exhausted"
+      assert HexDocReconciler.pending() == []
     end
 
     test "a git dependency is never sent to hex.pm", %{scope: scope} do
