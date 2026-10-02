@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
   alias CodeMySpec.Environments
 
   @impl_path "lib/example_context.ex"
-  @spec_path ".code_my_spec/spec/example_context.spec.md"
+  @anchor_path ".code_my_spec/rules/example.md"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,9 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
     scenario "deleted impl file disappears from /files after re-sync" do
       given_ :synced_context_component
 
-      given_ "the impl file appears in the Files projection", context do
+      given_ "the impl file appears in the Files projection, beside a rules file", context do
+        :ok = Environments.write_file(context.environment, @anchor_path, "# Example rules\n")
+
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
 
@@ -51,10 +53,10 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
                  "[data-file-path=\"#{@impl_path}\"]"
                )
 
-        # Anchor: the spec file is still present, proving the table rendered.
+        # Anchor: the rules file is present, proving the table rendered.
         assert has_element?(
                  context.files_live,
-                 "[data-file-path=\"#{@spec_path}\"]"
+                 "[data-file-path=\"#{@anchor_path}\"]"
                )
 
         {:ok, context}

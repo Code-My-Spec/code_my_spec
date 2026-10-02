@@ -132,7 +132,6 @@ defmodule CodeMySpecSpex.SharedGivens do
   @endpoint CodeMySpecLocalWeb.Endpoint
 
   @component_module_name "ExampleContext"
-  @spec_path ".code_my_spec/spec/example_context.spec.md"
   @impl_path "lib/example_context.ex"
 
   # Writes a context spec file into the in-memory environment, triggers the
@@ -146,7 +145,6 @@ defmodule CodeMySpecSpex.SharedGivens do
       description: "An example context for BDD specs."
     )
 
-    :ok = Environments.write_file(env, @spec_path, spec_file_content())
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
@@ -187,7 +185,6 @@ defmodule CodeMySpecSpex.SharedGivens do
       description: "An example context for BDD specs."
     )
 
-    :ok = Environments.write_file(env, @spec_path, spec_file_content())
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
@@ -1035,38 +1032,6 @@ defmodule CodeMySpecSpex.SharedGivens do
       [_, persona_id] -> persona_id
       _ -> nil
     end
-  end
-
-  defp spec_file_content do
-    """
-    # ExampleContext
-
-    ## Type
-
-    context
-
-    An example context for BDD specs.
-
-    ## Functions
-
-    ### noop/0
-
-    Returns `:ok`.
-
-    ```elixir
-    @spec noop() :: :ok
-    ```
-
-    ## Dependencies
-
-    - None
-
-    ## Components
-
-    ### ExampleContext.Noop
-
-    Placeholder child module.
-    """
   end
 
   defp impl_file_content do

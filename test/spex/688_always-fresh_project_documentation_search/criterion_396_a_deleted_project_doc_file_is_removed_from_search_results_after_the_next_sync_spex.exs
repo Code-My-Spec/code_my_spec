@@ -38,7 +38,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Agent does not see deleted project doc files in semantic search results", criterion: 396 do
+  spex "Agent does not see deleted project doc files in semantic search results",
+    criterion: 396 do
     scenario "a deleted rule file disappears from search after the watcher syncs the delete" do
       given_ "rules/legacy.md is embedded in the project doc store", context do
         :ok = Environments.write_file(context.environment, @rule_path, @rule_content)

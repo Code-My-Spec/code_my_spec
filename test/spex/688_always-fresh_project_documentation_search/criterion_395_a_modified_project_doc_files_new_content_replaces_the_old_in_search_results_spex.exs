@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
-  @spec_path ".code_my_spec/spec/widget.spec.md"
+  @doc_path ".code_my_spec/rules/widget.md"
 
   @v1_content """
   # Widget Context
@@ -43,34 +43,35 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Agent sees updated content in semantic search after a doc file is edited", criterion: 395 do
-    scenario "a modified spec file's new content shows up in search and the old content does not" do
-      given_ "widget.spec.md is embedded with the v1 (arity-2) content", context do
-        :ok = Environments.write_file(context.environment, @spec_path, @v1_content)
-        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
+  spex "Agent sees updated content in semantic search after a doc file is edited",
+    criterion: 395 do
+    scenario "a modified rules file's new content shows up in search and the old content does not" do
+      given_ "widget.md is embedded with the v1 (arity-2) content", context do
+        :ok = Environments.write_file(context.environment, @doc_path, @v1_content)
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @doc_path)
         {:ok, context}
       end
 
       when_ "the agent rewrites the file as v2 (arity-3) and the watcher syncs it", context do
-        :ok = Environments.write_file(context.environment, @spec_path, @v2_content)
-        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
+        :ok = Environments.write_file(context.environment, @doc_path, @v2_content)
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @doc_path)
         {:ok, context}
       end
 
-      then_ "search for the v2 wording returns the updated content from widget.spec.md",
+      then_ "search for the v2 wording returns the updated content from widget.md",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
           SemanticSearch.execute(
-            %{query: "create_widget arity 3 attrs", source: "spec", limit: 5},
+            %{query: "create_widget arity 3 attrs", source: "rules", limit: 5},
             frame
           )
 
         body = TaskResponseHelpers.response_text(response)
 
-        assert body =~ "widget.spec.md",
-               "Expected SemanticSearch to cite widget.spec.md, got:\n#{body}"
+        assert body =~ "widget.md",
+               "Expected SemanticSearch to cite widget.md, got:\n#{body}"
 
         assert body =~ "create_widget/3",
                "Expected v2 content to appear in results, got:\n#{body}"
@@ -83,14 +84,14 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
 
         {:reply, response, _frame} =
           SemanticSearch.execute(
-            %{query: "create_widget arity 2 scope", source: "spec", limit: 5},
+            %{query: "create_widget arity 2 scope", source: "rules", limit: 5},
             frame
           )
 
         body = TaskResponseHelpers.response_text(response)
 
         # Anchor: a search header rendered, so this is a real "no match"
-        # against widget.spec.md, not a swallowed error.
+        # against widget.md, not a swallowed error.
         assert body =~ "Search:"
 
         refute body =~ "inserts a new widget for the given scope.\n",

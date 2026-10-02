@@ -54,10 +54,10 @@ defmodule CodeMySpecSpex.Story687.Criterion5948Spex do
       end
 
       then_ "the malformed file's row carries an invalid status indicator", context do
-        # Anchor: the valid spec we synced should still be on the page —
+        # Anchor: the valid implementation we synced should still be on the page —
         # without this assertion an empty page would pass every refute below.
-        assert render(context.files_live) =~ "example_context.spec.md",
-               "expected the valid spec row to anchor the page"
+        assert render(context.files_live) =~ "lib/example_context.ex",
+               "expected the valid implementation row to anchor the page"
 
         invalid_row_selector =
           "[data-test='file-row'][data-file-path*='criterion_1_broken_spex.exs']"
@@ -81,8 +81,8 @@ defmodule CodeMySpecSpex.Story687.Criterion5948Spex do
         assert html =~ "criterion_1_broken_spex.exs",
                "expected the malformed spex to remain visible under the invalid filter"
 
-        refute html =~ "example_context.spec.md",
-               "expected the valid spec to be filtered out under the invalid-only filter"
+        refute html =~ "lib/example_context.ex",
+               "expected the valid implementation to be filtered out under the invalid-only filter"
 
         {:ok, context}
       end

@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story127.Criterion5945Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Engineer sees File.fingerprint stay stable when content is byte-identical across writes", criterion: 91 do
+  spex "Engineer sees File.fingerprint stay stable when content is byte-identical across writes",
+    criterion: 91 do
     scenario "rewriting the same content advances mtime but leaves fingerprint unchanged" do
       given_ "the agent has written content A and the engineer has synced", context do
         :ok = Environments.write_file(context.environment, @impl_path, content_a())

@@ -41,11 +41,11 @@ defmodule CodeMySpec.AgentTasks do
   @doc """
   Validate an explicitly requested artifact without adding it to the work graph.
 
-  Optional spec, review, and test authoring commands still check their output.
-  These checks read the checkout's file projection directly.
+  The test authoring command still checks its output, reading the checkout's
+  file projection directly.
   """
   def artifact_feedback(scope, component, role) do
-    key = %{spec: :spec_file, review: :review_file, test: :test_file}[role]
+    key = %{test: :test_file}[role]
     path = Map.fetch!(CodeMySpec.Utils.component_files(component, scope.active_project), key)
 
     case CodeMySpec.Files.get_by_path(scope, path) do

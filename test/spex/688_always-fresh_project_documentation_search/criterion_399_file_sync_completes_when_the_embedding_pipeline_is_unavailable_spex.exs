@@ -25,8 +25,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5974Spex do
 
   alias CodeMySpec.Environments
 
-  @spec_path ".code_my_spec/spec/widget.spec.md"
-  @spec_content """
+  @doc_path ".code_my_spec/rules/widget.md"
+  @doc_content """
   # Widget Context
 
   The Widget context exposes `create_widget/2`.
@@ -36,10 +36,11 @@ defmodule CodeMySpecSpex.Story688.Criterion5974Spex do
   setup :setup_active_project
   setup :force_embedding_pipeline_unavailable
 
-  spex "Engineer can sync the project even on a runtime without the embedding pipeline", criterion: 399 do
+  spex "Engineer can sync the project even on a runtime without the embedding pipeline",
+    criterion: 399 do
     scenario "sync succeeds and surfaces normal results when embeddings are unavailable" do
-      given_ "the agent has written a new spec file", context do
-        :ok = Environments.write_file(context.environment, @spec_path, @spec_content)
+      given_ "the agent has written a new rules file", context do
+        :ok = Environments.write_file(context.environment, @doc_path, @doc_content)
         {:ok, context}
       end
 
@@ -73,8 +74,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5974Spex do
       then_ "the file row appears in the projection", context do
         html = render(context.files_live)
 
-        assert html =~ @spec_path,
-               "Expected widget.spec.md to be present in the Files projection after sync, got:\n#{html}"
+        assert html =~ @doc_path,
+               "Expected widget.md to be present in the Files projection after sync, got:\n#{html}"
 
         {:ok, context}
       end

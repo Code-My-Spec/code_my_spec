@@ -25,8 +25,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert {:test, _} = swap(FileSync.classify("test/my_app/accounts_test.exs"))
     end
 
-    test "classifies spec files" do
-      assert {:spec, _} = swap(FileSync.classify(".code_my_spec/spec/my_app/accounts.spec.md"))
+    test "does not track component spec files" do
+      assert nil == FileSync.classify(".code_my_spec/spec/my_app/accounts.spec.md")
     end
 
     test "classifies bdd spec files" do
@@ -141,12 +141,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       # Seed some files
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        "# MyApp.Accounts\n\n## Type\n\nschema"
-      )
-
+      write_file(tmp_dir, ".code_my_spec/rules/context.md", "# Context rules")
       write_file(tmp_dir, "CLAUDE.md", "# Project")
 
       {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
@@ -158,7 +153,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       paths = Enum.map(files, & &1.path)
 
       assert "lib/my_app/accounts.ex" in paths
-      assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths
+      assert ".code_my_spec/rules/context.md" in paths
       assert "CLAUDE.md" in paths
     end
 
@@ -285,40 +280,23 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        "# MyApp.Accounts\n\n## Type\n\nschema"
-      )
-
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
       assert impl_file.component_id == component.id
       assert impl_file.role == :implementation
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
-      assert spec_file.component_id == component.id
-      assert spec_file.role == :spec
     end
 
-    test "a spec file is tracked and valid by existence, and parsed for nothing" do
+    test "a spec file is not tracked at all" do
       {scope, tmp_dir} = setup_project()
 
-      # Components are records (3aeb66cf, step 7d): a spec describes nothing,
-      # so even one missing every section is simply a file that exists.
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\r\n")
-      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      # Components are records (3aeb66cf); a spec describes nothing and is not
+      # a project file anything reads.
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n")
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert spec_file.role == :spec
-      assert spec_file.valid == true
-      assert spec_file.validation_errors == nil
-
-      impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
-      assert impl_file.valid == true
+      refute Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
     end
 
     test "validates test files against spec test assertions" do
@@ -667,50 +645,32 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert result.changed_path == nil
     end
 
-    test "tracks a spec file without parsing it" do
-      {scope, tmp_dir} = setup_project()
-
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/broken.spec.md",
-        "# MyApp.Broken\n\n## Type\n\nschema\n"
-      )
-
-      abs_path = Path.join(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md")
-
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert file.valid == true
-      assert file.validation_errors == nil
-    end
-
     # The watcher's per-file dispatch route. `FileSync.sync_path/3`
     # mirrors `sync/2`'s embedding hook so file changes detected by
     # `:fs` events drive embedding in real time, not only on the
     # next stop hook batch.
-    test "embeds a newly-created spec file" do
+    test "embeds a newly-created rules file" do
       TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      path = ".code_my_spec/rules/widget.md"
       write_file(tmp_dir, path, "# Widget\n\nThe widget context exposes create_widget.")
       abs_path = Path.join(tmp_dir, path)
 
       {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
 
       {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
+        CodeMySpec.Embeddings.search(scope, "create_widget", source: "rules", limit: 5)
 
       assert Enum.any?(results, &(&1.path == path)),
-             "Expected sync_path to embed the new spec file. Got: #{inspect(results)}"
+             "Expected sync_path to embed the new rules file. Got: #{inspect(results)}"
     end
 
     test "re-embeds when a file's content changes (fingerprint diff)" do
       TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      path = ".code_my_spec/rules/widget.md"
       abs_path = Path.join(tmp_dir, path)
 
       write_file(tmp_dir, path, "# Widget\n\nThe widget exposes create_widget/2.")
@@ -721,7 +681,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       {:ok, results} =
         CodeMySpec.Embeddings.search(scope, "create_widget attrs arity 3",
-          source: "spec",
+          source: "rules",
           limit: 5
         )
 
@@ -766,7 +726,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       TestBackend.reset()
       {scope, tmp_dir} = setup_project()
 
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      path = ".code_my_spec/rules/widget.md"
       abs_path = Path.join(tmp_dir, path)
 
       content = "# Widget\n\nThe widget exposes create_widget/2."
@@ -784,7 +744,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       # the contract this asserts is that no error is raised and the
       # search result is stable).
       {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
+        CodeMySpec.Embeddings.search(scope, "create_widget", source: "rules", limit: 5)
 
       assert Enum.count(results, &(&1.path == path)) == 1
     end

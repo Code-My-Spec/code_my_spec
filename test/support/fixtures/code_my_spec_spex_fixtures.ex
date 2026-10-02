@@ -1198,7 +1198,8 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Paths (conventional project resource paths) --
   defdelegate base_dir(), to: Paths
   defdelegate proposal_path(), to: Paths
-  defdelegate spec_file(module_path), to: Paths
+  @doc "Where a component spec file used to live; for showing nothing writes one."
+  def spec_file(module_path), do: ".code_my_spec/spec/#{module_path}.spec.md"
 
   # -- Project Sync (file-change events) --
   @doc """

@@ -311,10 +311,8 @@ defmodule CodeMySpec.Requirements.Handlers do
   # `has_role?/3`'s own mapping, and `nil` for a role with no canonical place —
   # a `:bdd_spec` path is assigned per criterion, not derived from the module.
   @expected_file_key %{
-    spec: :spec_file,
     implementation: :code_file,
-    test: :test_file,
-    review: :review_file
+    test: :test_file
   }
 
   @doc """

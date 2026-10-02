@@ -4,7 +4,7 @@ defmodule CodeMySpec.Files.Scanner do
   sync.
 
   Everything here needs the working copy: walking it, hashing it, reading file
-  contents to decide whether a spec is valid. None of it needs the database,
+  contents to decide whether a document is valid. None of it needs the database,
   and nothing it returns contains file content — validation happens here and
   only its verdict travels.
 
@@ -14,7 +14,7 @@ defmodule CodeMySpec.Files.Scanner do
   Scanning cannot: it has to be where the files are.
 
   The one thing scanning needs from the domain is a `ReadModel` — component
-  module names, the project's story ids, and whether spec validation is strict.
+  module names, the project's story ids, and whether document validation is strict.
   It is small, it changes slowly, and it is passed in rather than queried so
   this module holds no repo of its own.
   """
@@ -399,8 +399,6 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   @valid_by_existence_roles [
-    :spec,
-    :review,
     :test,
     :rule,
     :config,
@@ -410,7 +408,6 @@ defmodule CodeMySpec.Files.Scanner do
     :qa_result,
     :qa_script,
     :json,
-    :review,
     :architecture,
     :credo_check,
     :integration,
@@ -821,7 +818,6 @@ defmodule CodeMySpec.Files.Scanner do
     Enum.find_value(
       [
         &classify_setup_artifact/1,
-        &classify_spec_or_review/1,
         &classify_code/1,
         &classify_credo_check/1,
         &classify_docs/1,
@@ -891,21 +887,6 @@ defmodule CodeMySpec.Files.Scanner do
          String.ends_with?(base, "_spex_fixtures.ex") or
          base == "conn_case.ex" or
          base == "data_case.ex")
-  end
-
-  defp classify_spec_or_review(path) do
-    spec_prefix = Paths.spec_dir() <> "/"
-
-    cond do
-      String.starts_with?(path, spec_prefix) and String.ends_with?(path, ".spec.md") ->
-        {path, :spec}
-
-      String.starts_with?(path, spec_prefix) and String.ends_with?(path, "/design_review.md") ->
-        {path, :review}
-
-      true ->
-        nil
-    end
   end
 
   defp classify_code(path) do
@@ -1150,7 +1131,7 @@ defmodule CodeMySpec.Files.Scanner do
   # `Components.ConventionalPaths`.
   defp owner_for(entry, %ReadModel{} = read_model)
        when is_map_key(entry, :role) and
-              entry.role in [:implementation, :test, :spec] do
+              entry.role in [:implementation, :test] do
     by_module = read_model.component_by_module
 
     component_id =
@@ -1178,25 +1159,6 @@ defmodule CodeMySpec.Files.Scanner do
        when role in [:qa_brief, :qa_result] do
     story_number = extract_story_number_from_qa_path(path)
     {nil, Map.get(read_model.story_ids_by_number, story_number)}
-  end
-
-  defp owner_for(%{path: path, role: :review}, %ReadModel{} = read_model) do
-    # `.code_my_spec/spec/metric_flow/integrations/design_review.md` →
-    # `MetricFlow.Integrations`. The path index answers this exactly — design
-    # reviews are one of the paths `ConventionalPaths.for_component/1` projects
-    # — and the derivation below carries the same capitalization loss as every
-    # other path → module guess, so it is the fallback rather than the rule.
-    module_name =
-      path
-      |> String.replace_prefix(Paths.spec_dir() <> "/", "")
-      |> Path.dirname()
-      |> path_segments_to_module()
-
-    component_id =
-      Map.get(read_model.component_by_path, path) ||
-        Map.get(read_model.component_by_module, module_name)
-
-    {component_id, nil}
   end
 
   defp owner_for(_entry, %ReadModel{}), do: {nil, nil}
@@ -1269,13 +1231,6 @@ defmodule CodeMySpec.Files.Scanner do
     path
     |> String.replace_prefix("test/", "")
     |> String.replace_suffix("_test.exs", "")
-    |> path_segments_to_module()
-  end
-
-  defp path_to_module_name(path, :spec) do
-    path
-    |> String.replace_prefix(Paths.spec_dir() <> "/", "")
-    |> String.replace_suffix(".spec.md", "")
     |> path_segments_to_module()
   end
 

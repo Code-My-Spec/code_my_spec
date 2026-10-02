@@ -44,8 +44,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
-  @spec_path ".code_my_spec/spec/widget.spec.md"
-  @spec_content """
+  @doc_path ".code_my_spec/rules/widget.md"
+  @doc_content """
   # Widget Context
 
   The Widget context exposes `create_widget/2` which inserts a new
@@ -56,31 +56,31 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
   setup :setup_active_project
 
   spex "Agent sees newly added project doc files in semantic search after sync", criterion: 394 do
-    scenario "a new spec file becomes searchable after the watcher syncs it" do
-      given_ "no `widget.spec.md` exists in the project tree", context do
-        refute Environments.file_exists?(context.environment, @spec_path)
+    scenario "a new rules file becomes searchable after the watcher syncs it" do
+      given_ "no `widget.md` exists in the project tree", context do
+        refute Environments.file_exists?(context.environment, @doc_path)
         {:ok, context}
       end
 
-      when_ "the agent writes the new spec file and the watcher syncs it", context do
-        :ok = Environments.write_file(context.environment, @spec_path, @spec_content)
-        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
+      when_ "the agent writes the new rules file and the watcher syncs it", context do
+        :ok = Environments.write_file(context.environment, @doc_path, @doc_content)
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @doc_path)
         {:ok, context}
       end
 
-      then_ "semantic_search returns a chunk citing widget.spec.md", context do
+      then_ "semantic_search returns a chunk citing widget.md", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
           SemanticSearch.execute(
-            %{query: "create_widget function", source: "spec", limit: 5},
+            %{query: "create_widget function", source: "rules", limit: 5},
             frame
           )
 
         body = TaskResponseHelpers.response_text(response)
 
-        assert body =~ "widget.spec.md",
-               "Expected SemanticSearch to cite widget.spec.md after the watcher synced it, got:\n#{body}"
+        assert body =~ "widget.md",
+               "Expected SemanticSearch to cite widget.md after the watcher synced it, got:\n#{body}"
 
         # Anchor: response renders as a real search header, not an error.
         assert body =~ "Search:"

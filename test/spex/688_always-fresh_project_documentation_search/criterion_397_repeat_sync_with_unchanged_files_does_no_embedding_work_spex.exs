@@ -37,7 +37,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5972Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Engineer sees no churn from re-syncing when nothing on disk has changed", criterion: 397 do
+  spex "Engineer sees no churn from re-syncing when nothing on disk has changed",
+    criterion: 397 do
     scenario "a second sync with no edits reports zero changed files" do
       given_ "the project has been synced once with widget.spec.md present", context do
         :ok = Environments.write_file(context.environment, @spec_path, @spec_content)
