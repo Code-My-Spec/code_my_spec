@@ -1,9 +1,26 @@
 # A Hetzner-hosted FLAME burst box — design notes (577de9bb, step 7 follow-on)
 
+**SUPERSEDED.** This file's own "two shapes John left open" question —
+ephemeral-per-call vs. persistent-power-cycled — is resolved, and not in
+either direction this file argued for. John's actual model, stated directly
+in a later review of this work: one long-lived burst box *per environment*
+(ours hosts our embeddings and our builds; a customer's hosts theirs),
+checked near the end of its Hetzner billing hour and deleted only if idle —
+not an ephemeral box per runner (what this file recommended) and not a
+power-cycled on/off box either (this file's rejected alternative). See
+`CodeMySpec.Provisioning.BurstBox.Lifecycle` and `.Sweep` for the actual
+policy, and `CodeMySpec.Embeddings.HetznerFlameBackend`'s current moduledoc
+for the reshaped backend. Everything below is kept for its still-accurate
+research — the FLAME-internals reading (`handle_info/2` never firing for a
+normal finish, `Terminator` dialing out rather than being dialed) does not
+change — but its "recommendation" section and its billing-while-off question
+are no longer the open question driving this.
+
 Status: **groundwork only, not wired up, not provable against a real account
 from this task.** Read `CodeMySpec.Embeddings.HetznerFlameBackend`'s own
-moduledoc first — it documents the same gaps from the code's point of view;
-this file is the comparison and recommendation the task asked for.
+moduledoc first — it documents the current gaps from the code's point of
+view; this file is a comparison and recommendation from an earlier pass,
+now superseded by the note above.
 
 ## Why this exists
 

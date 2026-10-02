@@ -1,49 +1,48 @@
 defmodule CodeMySpec.Embeddings.HetznerFlameBackendTest do
   @moduledoc """
-  Every Hetzner call is injected (`:create_server` / `:destroy_server`), the
-  same reason `CodeMySpec.Provisioning.BuilderTest` injects them: this stays
-  a unit test, and it is also the only option here — this module cannot
-  reference `CodeMySpec.Provisioning.Hetzner` at all without a boundary
-  violation (see the module's own moduledoc).
+  Every Hetzner-reaching call is injected (`:ensure_box` / `:start_runner` /
+  `:stop_runner`), the same reason `CodeMySpec.Provisioning.BuilderTest`
+  injects its own closures: this stays a unit test, and it is also the only
+  option here — this module cannot reference
+  `CodeMySpec.Provisioning.BurstBox` at all without a boundary violation (see
+  the module's own moduledoc).
 
   `remote_spawn_monitor/2`'s success path and `system_shutdown/0` are not
   exercised: the first needs a second, actually-connected distributed node,
   and the second calls `System.stop/0`, which would end this test run. Both
-  are a straight line to `FLAME.FlyBackend`'s own proven shape (`Node.spawn_monitor/2,4`,
-  `System.stop/0`) — what is worth proving here is this module's *own* logic
-  layered around them: config validation, the `FLAME.Parent` encoding, the
-  cloud-init it builds, and the boot/timeout/create-failure paths through
+  are a straight line to `FLAME.FlyBackend`'s own proven shape
+  (`Node.spawn_monitor/2,4`, `System.stop/0`) — what is worth proving here is
+  this module's *own* logic layered around them: config validation, the
+  `FLAME.Parent` encoding, and the boot/timeout/ensure-failure paths through
   `remote_boot/1`.
   """
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Embeddings.HetznerFlameBackend
 
-  defp server(id \\ 7), do: %{"id" => id, "name" => "cms-flame-abc"}
+  defp server(id \\ 7), do: %{"id" => id, "name" => "burst-platform"}
 
-  defp recording_destroy(owner) do
-    fn id ->
-      send(owner, {:destroyed, id})
-      {:ok, %{}}
+  defp recording_stop(owner) do
+    fn server, runner_name ->
+      send(owner, {:stopped, server, runner_name})
+      :ok
     end
   end
 
   defp base_opts(overrides \\ []) do
     Keyword.merge(
       [
-        server_type: "cpx31",
-        location: "fsn1",
-        image: "registry.example.com/code_my_spec:abc123",
-        ssh_key_ids: [1],
-        create_server: fn _name, _opts -> {:ok, server()} end,
-        destroy_server: fn _id -> {:ok, %{}} end
+        box_name: "burst-platform",
+        ensure_box: fn _name -> {:ok, server()} end,
+        start_runner: fn _server, _runner_name, _env -> :ok end,
+        stop_runner: fn _server, _runner_name -> :ok end
       ],
       overrides
     )
   end
 
   describe "init/1 — validation" do
-    for key <- [:server_type, :location, :image, :create_server, :destroy_server, :ssh_key_ids] do
+    for key <- [:box_name, :ensure_box, :start_runner, :stop_runner] do
       test "raises without :#{key}" do
         opts = Keyword.delete(base_opts(), unquote(key))
 
@@ -52,48 +51,41 @@ defmodule CodeMySpec.Embeddings.HetznerFlameBackendTest do
         end
       end
     end
-
-    test "an empty :ssh_key_ids list is treated as missing, same as Hetzner.create_server/3 itself" do
-      assert_raise ArgumentError, ~r/missing :ssh_key_ids/, fn ->
-        HetznerFlameBackend.init(base_opts(ssh_key_ids: []))
-      end
-    end
   end
 
   describe "init/1 — state" do
     test "fills in the documented defaults" do
       assert {:ok, state} = HetznerFlameBackend.init(base_opts())
 
-      assert state.hetzner_image == "ubuntu-24.04"
-      assert state.boot_timeout == 120_000
+      assert state.boot_timeout == 180_000
+      assert state.box_name == "burst-platform"
       assert String.starts_with?(state.runner_name, "cms-flame-")
     end
 
     test "an explicit option overrides the default" do
-      assert {:ok, state} =
-               HetznerFlameBackend.init(base_opts(hetzner_image: "cms-flame-snapshot"))
-
-      assert state.hetzner_image == "cms-flame-snapshot"
+      assert {:ok, state} = HetznerFlameBackend.init(base_opts(boot_timeout: 5_000))
+      assert state.boot_timeout == 5_000
     end
 
     test "application config and opts merge, with opts winning" do
-      Application.put_env(:flame, HetznerFlameBackend, location: "hel1", boot_timeout: 5_000)
+      Application.put_env(:flame, HetznerFlameBackend, box_name: "burst-from-config", boot_timeout: 5_000)
 
       on_exit(fn -> Application.delete_env(:flame, HetznerFlameBackend) end)
 
-      assert {:ok, state} = HetznerFlameBackend.init(base_opts(location: "ash"))
+      assert {:ok, state} = HetznerFlameBackend.init(base_opts(box_name: "burst-from-opts"))
 
       # opts wins over application config for a key both set.
-      assert state.location == "ash"
+      assert state.box_name == "burst-from-opts"
       # application config alone still reaches state for a key opts left out.
       assert state.boot_timeout == 5_000
     end
 
-    test "every runner gets its own name" do
+    test "every runner gets its own name, even though the box name is shared" do
       assert {:ok, a} = HetznerFlameBackend.init(base_opts())
       assert {:ok, b} = HetznerFlameBackend.init(base_opts())
 
       refute a.runner_name == b.runner_name
+      assert a.box_name == b.box_name
     end
 
     test "env always carries FLAME_PARENT and PHX_SERVER=false, with a caller's own env merged in" do
@@ -122,73 +114,56 @@ defmodule CodeMySpec.Embeddings.HetznerFlameBackendTest do
     end
   end
 
-  describe "cloud_init/1" do
-    test "runs the configured image with the computed env, and logs in to nothing by default" do
-      assert {:ok, state} = HetznerFlameBackend.init(base_opts(env: %{"EXTRA" => "1"}))
-
-      script = HetznerFlameBackend.cloud_init(state)
-
-      assert script =~ "docker run -d --name " <> "'" <> state.runner_name <> "'"
-      assert script =~ "'registry.example.com/code_my_spec:abc123'"
-      assert script =~ "-e 'EXTRA=1'"
-      assert script =~ "-e 'PHX_SERVER=false'"
-      refute script =~ "docker login"
-    end
-
-    test "a registry credential adds a docker login line ahead of the run, and is shell-safe" do
-      assert {:ok, state} =
-               HetznerFlameBackend.init(
-                 base_opts(registry_auth: %{username: "cms", password: "it's a secret"})
-               )
-
-      script = HetznerFlameBackend.cloud_init(state)
-      lines = String.split(script, "\n")
-
-      login_at = Enum.find_index(lines, &String.contains?(&1, "docker login"))
-      run_at = Enum.find_index(lines, &String.contains?(&1, "docker run"))
-
-      assert login_at && run_at && login_at < run_at
-      assert Enum.at(lines, login_at) =~ "registry.example.com"
-      # The single quote inside the password survives shell-quoting rather
-      # than breaking out of the quoted string.
-      assert Enum.at(lines, login_at) =~ "'it'\\''s a secret'"
-    end
-  end
-
-  describe "remote_boot/1 — create failure" do
-    test "a create failure is returned as-is, with nothing to destroy" do
+  describe "remote_boot/1 — ensure_box failure" do
+    test "is returned as-is, with no runner ever started and nothing to stop" do
       owner = self()
 
       opts =
         base_opts(
-          create_server: fn _name, _opts -> {:error, :capacity_unavailable} end,
-          destroy_server: fn id -> send(owner, {:destroyed, id}) end
+          ensure_box: fn _name -> {:error, :capacity_unavailable} end,
+          start_runner: fn _server, _runner_name, _env ->
+            flunk("a runner must never be started when the box could not be ensured")
+          end,
+          stop_runner: recording_stop(owner)
         )
 
       assert {:ok, state} = HetznerFlameBackend.init(opts)
       assert {:error, :capacity_unavailable} = HetznerFlameBackend.remote_boot(state)
-      refute_received {:destroyed, _}
+      refute_received {:stopped, _, _}
     end
+  end
 
-    test "the created server's own fields reach create_server as a Hetzner create_server/3 payload" do
-      test_pid = self()
-
-      create_server = fn name, create_opts ->
-        send(test_pid, {:create_called, name, create_opts})
-        {:ok, server()}
-      end
+  describe "remote_boot/1 — start_runner failure" do
+    test "is returned as-is, once the box is already known" do
+      owner = self()
 
       opts =
         base_opts(
-          server_type: "cpx41",
-          location: "ash",
-          hetzner_image: "cms-flame-snapshot",
-          ssh_key_ids: [9],
-          network_ids: [3],
-          labels: %{"team" => "platform"},
-          create_server: create_server
+          start_runner: fn _server, _runner_name, _env -> {:error, :no_capacity_on_box} end,
+          stop_runner: recording_stop(owner)
         )
 
+      assert {:ok, state} = HetznerFlameBackend.init(opts)
+      assert {:error, :no_capacity_on_box} = HetznerFlameBackend.remote_boot(state)
+      refute_received {:stopped, _, _}
+    end
+  end
+
+  describe "remote_boot/1 — boot success" do
+    test "ensures the box, starts a runner on it by this runner's own name, and returns the terminator pid" do
+      test_pid = self()
+
+      ensure_box = fn name ->
+        send(test_pid, {:ensure_box_called, name})
+        {:ok, server(99)}
+      end
+
+      start_runner = fn server, runner_name, env ->
+        send(test_pid, {:start_runner_called, server, runner_name, env})
+        :ok
+      end
+
+      opts = base_opts(ensure_box: ensure_box, start_runner: start_runner)
       assert {:ok, state} = HetznerFlameBackend.init(opts)
 
       # Deliver the remote-up message before booting: `remote_boot/1` blocks
@@ -196,63 +171,37 @@ defmodule CodeMySpec.Embeddings.HetznerFlameBackendTest do
       # message only has to be in the mailbox before that `receive` runs.
       send(self(), {state.parent_ref, {:remote_up, self()}})
 
-      assert {:ok, _pid, _new_state} = HetznerFlameBackend.remote_boot(state)
-      assert_received {:create_called, name, create_opts}
-
-      assert name == state.runner_name
-      assert create_opts[:server_type] == "cpx41"
-      assert create_opts[:location] == "ash"
-      assert create_opts[:image] == "cms-flame-snapshot"
-      assert create_opts[:ssh_key_ids] == [9]
-      assert create_opts[:network_ids] == [3]
-      assert create_opts[:labels] == %{"team" => "platform", "cms-flame-role" => "embed"}
-      assert is_binary(create_opts[:user_data])
-    end
-  end
-
-  describe "remote_boot/1 — boot success" do
-    test "returns the terminator pid and records the runner id and node" do
-      opts = base_opts(create_server: fn _name, _opts -> {:ok, server(99)} end)
-      assert {:ok, state} = HetznerFlameBackend.init(opts)
-
-      send(self(), {state.parent_ref, {:remote_up, self()}})
-
       assert {:ok, pid, new_state} = HetznerFlameBackend.remote_boot(state)
 
       assert pid == self()
-      assert new_state.runner_id == 99
+      assert new_state.server == server(99)
       assert new_state.runner_node_name == node(self())
       assert new_state.remote_terminator_pid == self()
-    end
 
-    test "reads the server id through Hetzner's {\"server\" => ...} create envelope too" do
-      opts = base_opts(create_server: fn _name, _opts -> {:ok, %{"server" => server(5)}} end)
-      assert {:ok, state} = HetznerFlameBackend.init(opts)
-
-      send(self(), {state.parent_ref, {:remote_up, self()}})
-
-      assert {:ok, _pid, new_state} = HetznerFlameBackend.remote_boot(state)
-      assert new_state.runner_id == 5
+      assert_received {:ensure_box_called, "burst-platform"}
+      assert_received {:start_runner_called, %{"id" => 99}, runner_name, env}
+      assert runner_name == state.runner_name
+      assert env["FLAME_PARENT"] == state.env["FLAME_PARENT"]
     end
   end
 
   describe "remote_boot/1 — boot timeout" do
-    test "destroys the box it just created and returns :timeout, rather than leaving it running" do
+    test "stops just this runner, not the box, and returns :timeout" do
       owner = self()
 
       opts =
         base_opts(
           boot_timeout: 1,
-          create_server: fn _name, _opts -> {:ok, server(42)} end,
-          destroy_server: recording_destroy(owner)
+          stop_runner: recording_stop(owner)
         )
 
       assert {:ok, state} = HetznerFlameBackend.init(opts)
 
-      # No `{parent_ref, {:remote_up, _}}` is ever sent — this box never
+      # No `{parent_ref, {:remote_up, _}}` is ever sent — this runner never
       # dials home within `boot_timeout`.
       assert {:error, :timeout} = HetznerFlameBackend.remote_boot(state)
-      assert_received {:destroyed, 42}
+      assert_received {:stopped, %{"id" => 7}, runner_name}
+      assert runner_name == state.runner_name
     end
   end
 

@@ -117,6 +117,14 @@ defmodule CodeMySpec.Provisioning.Builder do
   # mechanism `create_image/3` writes it with.
   @builder_image_label "cms-builder-role"
 
+  # The same mechanism, for the burst box's own snapshot (story 877) rather
+  # than an ordinary customer build box. A different label, not a different
+  # value under the same one: a burst-box snapshot and an ordinary builder
+  # snapshot are never interchangeable (only the former carries this app's own
+  # OTP release — see `ensure_burst_box_image/3`), and one list call must
+  # never return the other by accident.
+  @burst_box_image_label "cms-burst-image-role"
+
   # How old a `builder-*` box has to be before it stops being read as
   # in-flight. A build either finishes or fails in minutes (see moduledoc);
   # nothing here is legitimately long-lived, so a box past this age is not
@@ -310,6 +318,93 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
+  @doc """
+  The burst box's own snapshot for `architecture` — everything
+  `ensure_builder_image/3` gives an ordinary builder (kamal, docker-ce)
+  *plus* this app's own OTP release installed directly on the box, found by
+  label if one already exists, built once if not (story 877).
+
+  A burst box's own embedding runners need the release on the box itself,
+  not inside a container: "our own embedding jobs on it run as FLAME
+  runners, no container layer needed — it's our own trusted workload."
+  Customer builds on the same box still run in throwaway Docker containers
+  (criteria 789/790), which is exactly what docker-ce and the kamal gem are
+  still for — this snapshot is a superset of the ordinary builder image, not
+  a different one.
+
+  `:install_release` is required and has no default: `(run, server, opts ->
+  :ok | {:error, term()})`, called once, after kamal and before the disk is
+  synced for the snapshot — same place `ensure_kamal/1` itself runs. This
+  module does not know how a release gets built — same reason `:create`,
+  `:destroy` and `:build_fun` elsewhere in this file are injected rather than
+  called directly — but the shape a real caller wires up is: build this
+  app's own `Dockerfile` for `ref` the same way `Remote.build/4` already
+  builds a customer's, then extract `/app` from the built image
+  (`docker create` + `docker cp` + `docker rm`) onto the box's filesystem
+  rather than pushing it anywhere or running it as a container. That
+  extraction has not been run against a real box by this change — see the
+  field report for what is proven here and what is not.
+
+  One snapshot per Hetzner account, same as `ensure_builder_image/3`:
+  `list_images/2` is already scoped to the calling account's own token, so a
+  customer's environment and ours can never find each other's burst-box
+  image by accident, and nothing here assumes a snapshot is portable across
+  accounts at all.
+  """
+  @spec ensure_burst_box_image(Scope.t(), :arm | :x86, keyword()) ::
+          {:ok, String.t() | integer()} | {:error, term()}
+  def ensure_burst_box_image(%Scope{} = scope, architecture, opts \\ []) do
+    list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    selector = "#{@burst_box_image_label}=#{architecture}"
+
+    case list_images.(scope, label_selector: selector, status: "available") do
+      {:ok, [image | _]} -> {:ok, image["id"]}
+      {:ok, []} -> build_burst_box_image(scope, architecture, opts)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # Same temporary-box discipline as `build_builder_image/3`: bootstrapped,
+  # snapshotted, destroyed either way. The only difference is which label the
+  # snapshot carries and the one extra step `bootstrap_and_snapshot/6` runs
+  # before syncing the disk — both threaded through `opts` rather than a
+  # bigger arity, so the ordinary builder path above is untouched by this
+  # one's existence.
+  defp build_burst_box_image(scope, architecture, opts) do
+    with {:ok, spec} <- builder_spec(architecture) do
+      create = Keyword.get(opts, :create, &Hetzner.create_server/3)
+      destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
+      create_image = Keyword.get(opts, :create_image, &Hetzner.create_image/3)
+      install_release = Keyword.fetch!(opts, :install_release)
+      name = "cms-burst-bootstrap-#{architecture}-#{System.unique_integer([:positive])}"
+
+      create_opts = [
+        server_type: spec.server_type,
+        location: Keyword.get(opts, :builder_location) || spec.location,
+        image: @builder_image,
+        ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
+        network_ids: Keyword.get(opts, :network_ids)
+      ]
+
+      case create.(scope, name, create_opts) do
+        {:ok, server} ->
+          opts =
+            opts
+            |> Keyword.put(:image_label, @burst_box_image_label)
+            |> Keyword.put(:extra_bootstrap, install_release)
+            |> Keyword.put_new(
+              :image_description,
+              "CodeMySpec burst box (#{architecture})"
+            )
+
+          bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
+
+        {:error, _reason} = error ->
+          error
+      end
+    end
+  end
+
   # The source server is not destroyed until the snapshot Hetzner is taking
   # *of* it is confirmed done. `create_image/3`'s own moduledoc says the
   # caller polls for the image to actually appear rather than trusting a
@@ -319,19 +414,33 @@ defmodule CodeMySpec.Provisioning.Builder do
   # bug this discipline exists to close. `Builder.build/3`'s own "every path
   # destroys" only ever meant "eventually", not "before the thing being
   # destroyed still owes something to a request already in flight."
+  #
+  # `:image_label` and `:extra_bootstrap` (both via `opts`, not a bigger
+  # arity) are how `build_burst_box_image/3` reuses this unchanged for a
+  # burst box's own snapshot: a different label so the two kinds of image
+  # are never confused by a list call, and one extra step — installing this
+  # app's own release — run after kamal and before the disk is synced, so
+  # the same `sync` covers whatever that step wrote too. Neither key is set
+  # by `build_builder_image/3`, so the ordinary builder path keeps its
+  # original label and runs no extra step, exactly as before this existed.
   defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
     run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
     attempts = Keyword.get(opts, :ssh_attempts, 90)
     list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    label = Keyword.get(opts, :image_label, @builder_image_label)
+
+    description =
+      Keyword.get(opts, :image_description, "CodeMySpec builder (#{architecture})")
 
     result =
       with :ok <- Remote.await_ssh(run, attempts, opts),
            :ok <- Remote.ensure_kamal(run),
+           :ok <- maybe_extra_bootstrap(run, server, opts),
            :ok <- sync_disk(run),
            {:ok, %{"image" => image}} <-
              create_image.(scope, server_id(server),
-               description: "CodeMySpec builder (#{architecture})",
-               labels: %{@builder_image_label => to_string(architecture)}
+               description: description,
+               labels: %{label => to_string(architecture)}
              ),
            :ok <- await_image_ready(list_images, scope, image["id"], architecture, opts) do
         {:ok, image["id"]}
@@ -339,6 +448,13 @@ defmodule CodeMySpec.Provisioning.Builder do
 
     destroy_temp_server(destroy, scope, server, architecture)
     result
+  end
+
+  defp maybe_extra_bootstrap(run, server, opts) do
+    case Keyword.get(opts, :extra_bootstrap) do
+      nil -> :ok
+      step -> step.(run, server, opts)
+    end
   end
 
   # A process exiting 0 says its writes were issued, not that they have
@@ -407,7 +523,8 @@ defmodule CodeMySpec.Provisioning.Builder do
   end
 
   defp await_image_ready(list_images, scope, image_id, architecture, opts, attempts) do
-    selector = "#{@builder_image_label}=#{architecture}"
+    label = Keyword.get(opts, :image_label, @builder_image_label)
+    selector = "#{label}=#{architecture}"
 
     case list_images.(scope, label_selector: selector, status: "available") do
       {:ok, images} ->

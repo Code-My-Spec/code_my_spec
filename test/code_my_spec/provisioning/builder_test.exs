@@ -479,6 +479,153 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
+  describe "ensure_burst_box_image/3" do
+    test "finds an existing burst-box image by its own label, distinct from an ordinary builder's" do
+      list_images = fn _scope, opts ->
+        assert opts[:label_selector] == "cms-burst-image-role=x86"
+        {:ok, [%{"id" => 909}]}
+      end
+
+      create = fn _scope, _name, _create_opts ->
+        flunk("a matching burst-box image already exists — nothing should be created")
+      end
+
+      assert {:ok, 909} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create
+               )
+    end
+
+    test "builds one from scratch, runs :install_release after kamal and before the disk is synced, then destroys the temp box" do
+      owner = self()
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, opts ->
+        assert opts[:label_selector] == "cms-burst-image-role=x86"
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
+      end
+
+      create = fn _scope, name, create_opts ->
+        assert name =~ "cms-burst-bootstrap-x86-"
+        assert create_opts[:image] == "docker-ce"
+        {:ok, server()}
+      end
+
+      run = fn
+        ["command -v kamal" <> _] ->
+          {"", 1}
+
+        ["sync"] ->
+          # By the time the disk is synced, the release must already have
+          # been installed — asserted here, at the one call that matters,
+          # the same way `ensure_builder_image/3`'s own sync-ordering test
+          # pins it above.
+          assert_received :release_installed
+          send(owner, :synced)
+          {"", 0}
+
+        [_command] ->
+          {"", 0}
+      end
+
+      install_release = fn _run, srv, _opts ->
+        assert srv["id"] == 42
+        send(owner, :release_installed)
+        :ok
+      end
+
+      create_image = fn _scope, 42, image_opts ->
+        assert image_opts[:labels] == %{"cms-burst-image-role" => "x86"}
+        assert image_opts[:description] =~ "burst box"
+        assert_received :synced
+        {:ok, %{"image" => %{"id" => 777}}}
+      end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:ok, 777} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    test "a failed :install_release still destroys the temp box and is returned as the error" do
+      owner = self()
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> {:error, :release_build_failed} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:error, :release_build_failed} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 destroy: destroy
+               )
+
+      assert_received :destroyed
+    end
+
+    test "is required — there is no silent default that skips installing the release" do
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+
+      assert_raise KeyError, fn ->
+        Builder.ensure_burst_box_image(scope(), :x86, list_images: list_images, create: create)
+      end
+    end
+
+    test "never reuses or writes the ordinary builder's own image label" do
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, opts ->
+        refute opts[:label_selector] == "cms-builder-role=x86"
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> :ok end
+
+      create_image = fn _scope, 42, image_opts ->
+        refute Map.has_key?(image_opts[:labels], "cms-builder-role")
+        {:ok, %{"image" => %{"id" => 777}}}
+      end
+
+      destroy = fn _scope, 42 -> {:ok, %{}} end
+
+      assert {:ok, 777} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+    end
+  end
+
   # `build/3` never fails because the optimization failed — the stock image
   # plus `Remote.ensure_kamal/1`'s own install is the path that has worked
   # all along, and an account with no Hetzner token configured yet must not
