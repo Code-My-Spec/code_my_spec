@@ -25,7 +25,7 @@ defmodule CodeMySpec.Paths do
   @doc "Persona research directory (`.code_my_spec/personas`)."
   def personas_dir, do: Path.join(@base_dir, "personas")
 
-  @doc "Architecture views directory (`.code_my_spec/architecture`)."
+  @doc "Architecture directory (`.code_my_spec/architecture`): the proposal and decisions."
   def architecture_dir, do: Path.join(@base_dir, "architecture")
 
   @doc "Architecture decision records directory (`.code_my_spec/architecture/decisions`)."

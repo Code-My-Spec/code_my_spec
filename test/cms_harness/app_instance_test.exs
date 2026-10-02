@@ -17,7 +17,8 @@ defmodule CmsHarness.AppInstanceTest do
 
   describe "result/1" do
     test "a copy nothing has started reports down with no address" do
-      assert AppInstance.result(%AppInstance{}) == %{status: "down", url: nil, commit: nil}
+      assert AppInstance.result(%AppInstance{}) ==
+               %{status: "down", url: nil, commit: nil, serving_commit: nil}
     end
 
     test "a serving copy reports its own local address and commit" do
@@ -26,8 +27,20 @@ defmodule CmsHarness.AppInstanceTest do
       assert AppInstance.result(state) == %{
                status: "serving",
                url: "http://127.0.0.1:51234",
-               commit: "abc123"
+               commit: "abc123",
+               serving_commit: "abc123"
              }
+    end
+
+    test "a reloaded copy serves its reload commit and keeps its launch commit" do
+      state = %AppInstance{
+        status: "serving",
+        port: 1,
+        commit: "launch0",
+        serving_commit: "reload1"
+      }
+
+      assert %{commit: "launch0", serving_commit: "reload1"} = AppInstance.result(state)
     end
 
     test "an erroring copy still reports the address a 500 is coming from" do

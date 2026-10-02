@@ -49,16 +49,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     record_session_start_state(env, proposal_exists?)
 
-    # Generate fresh architecture views
-    output_dir =
-      if working_dir do
-        Path.join(working_dir, Paths.architecture_dir())
-      else
-        Paths.architecture_dir()
-      end
-
-    prompt =
-      build_prompt(project, stories, component_count, output_dir, proposal_exists?)
+    prompt = build_prompt(project, stories, component_count, proposal_exists?)
 
     {:ok, prompt}
   end
@@ -154,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @doc """
   Evaluate the architecture design session output.
 
-  Reads the proposal file, validates it, and executes it (creating specs and linking stories).
+  Reads the proposal file, validates it, and executes it (creating components and linking stories).
   Returns:
   - {:ok, :valid} if proposal is valid and execution succeeds
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
@@ -359,7 +350,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   # Private functions
 
-  defp build_prompt(project, stories, component_count, output_dir, proposal_exists?) do
+  defp build_prompt(project, stories, component_count, proposal_exists?) do
     stories_section = format_stories(stories)
     app_name = get_app_name(project)
 
@@ -368,14 +359,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         """
         ## Current Architecture
 
-        The project has #{component_count} existing components. Review the architecture views for details:
+        The project has #{component_count} existing components. Read them:
 
-        - **Overview:** #{Path.join(output_dir, "overview.md")}
-        - **Dependency Graph:** #{Path.join(output_dir, "dependency_graph.mmd")}
-        - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
-
-        Read the existing components:
-        - `show_architecture_overview`
+        - `show_architecture_overview` for the whole graph
+        - `get_component` for one component and its dependencies
         - Use `validate_dependency_graph` tool to check for circular dependencies
         """
       else

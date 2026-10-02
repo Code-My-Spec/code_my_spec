@@ -564,6 +564,12 @@ config :code_my_spec, CodeMySpec.Embeddings.HexPackageFetch,
 config :code_my_spec, CodeMySpec.Integrations.Providers.ApiKey,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.ApiKey}
 
+# Story 1116's ClickHouse telemetry reads (577de9bb's observability
+# follow-on). Pinned for the same reason as every other provider client
+# here — unset, a test that forgets to stub would reach a real host.
+config :code_my_spec, CodeMySpec.Observability.ClickHouseClient,
+  plug: {Req.Test, CodeMySpec.Observability.ClickHouseClient}
+
 config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
 config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
 config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}

@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Analytics,
+      CodeMySpec.AppHealth,
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
       CodeMySpec.BddRules,

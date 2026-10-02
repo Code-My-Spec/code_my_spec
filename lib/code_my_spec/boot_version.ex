@@ -299,6 +299,51 @@ defmodule CodeMySpec.BootVersion do
   def analyzer_changed?(booted, current), do: changed?(booted, current, @analyzer_paths)
 
   @doc """
+  The paths a running app cannot take by hot reload, so a promote touching
+  any of them restarts the app rather than reloading it (John, 2026-10-02).
+
+  Deps and the lockfile, compile-time config, supervision trees, releases,
+  asset deps and the toolchain pin. Phoenix's own reloader refuses the first
+  three outright ("You must restart your server after changing configuration
+  files or your dependencies"); the rest load nothing new until a boot. MCP
+  servers register their tools at boot, so a changed registration does too.
+
+  Globs: `**` spans directories, `*` stays inside one.
+  """
+  @restart_paths ~w(
+    mix.exs
+    mix.lock
+    config/**
+    lib/**/application.ex
+    rel/**
+    assets/package*.json
+    .tool-versions
+    lib/code_my_spec/mcp_servers/*_server.ex
+    lib/code_my_spec/mcp_servers/scriptable_tools.ex
+  )
+
+  @spec restart_paths() :: [String.t()]
+  def restart_paths, do: @restart_paths
+
+  @doc "The entries of `changed` (repo-relative paths) that need a restart, not a reload."
+  @spec needs_restart([String.t()]) :: [String.t()]
+  def needs_restart(changed) when is_list(changed) do
+    patterns = Enum.map(@restart_paths, &glob_regex/1)
+    Enum.filter(changed, fn path -> Enum.any?(patterns, &Regex.match?(&1, path)) end)
+  end
+
+  defp glob_regex(glob) do
+    body =
+      glob
+      |> Regex.escape()
+      |> String.replace("\\*\\*/", "(?:.*/)?")
+      |> String.replace("\\*\\*", ".*")
+      |> String.replace("\\*", "[^/]*")
+
+    Regex.compile!("^" <> body <> "$")
+  end
+
+  @doc """
   How the analyzer should describe its own build alongside a result.
 
   `nil` when there is nothing to say — no drift, or the range cannot be read.

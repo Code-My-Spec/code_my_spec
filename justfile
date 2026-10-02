@@ -440,9 +440,35 @@ serve:
 
     exec mix phx.server
 
+# A promote's default deployment (John, 2026-10-02): bring the app `serve`
+# started current without restarting it. `CmsHarness.AppInstance.reload/2`
+# runs this, in the foreground, with the same PORT/DATABASE_NAME `serve` had;
+# a non-zero exit makes the promote restart instead. A project without this
+# recipe is always restarted.
+#
+# Migrate first: that compiles out of process, and the running app's
+# `Phoenix.CodeReloader` listener then loads what changed on the next request.
+# Requesting a page before migrating would hit Phoenix's "you must restart"
+# check on the promote's own `mix.exs` version bump. The request to `/` is
+# that load; `/health` then says the database answers and nothing is pending.
+#
+# A change the reloader cannot take (deps, config, application.ex) never gets
+# here: `BootVersion.restart_paths/0` sends those promotes to a restart.
+reload:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    : "${PORT:?PORT must be set}"
+    : "${DATABASE_NAME:?DATABASE_NAME must be set}"
+
+    mix ecto.migrate
+    curl -sf -o /dev/null --max-time 600 "http://127.0.0.1:$PORT/"
+    curl -sf --max-time 30 "http://127.0.0.1:$PORT/health"
+
 # Story 1108, criterion 4663: the project-specific half of a promote's
-# restart. `CmsHarness.AppInstance` runs this, if declared, right after
-# the app it just (re)started is confirmed serving — the generic half
+# deployment. `CmsHarness.AppInstance` runs this, if declared, right after
+# the app it just reloaded or (re)started is confirmed serving — after a
+# failed reload, only once the restart that follows it serves — the generic half
 # (bringing the app back up at all) is `serve` above, the same for every
 # project; this is the one where server and harness are the same
 # codebase and have to land on the same commit together.

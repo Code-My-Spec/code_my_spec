@@ -56,10 +56,16 @@ defmodule CmsHarness.AppInstance do
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real
   # minutes to do it.
-  defp idle_timeout, do: Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms, to_timeout(minute: 30))
+  defp idle_timeout,
+    do: Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms, to_timeout(minute: 30))
 
   defp idle_check_interval,
-    do: Application.get_env(:code_my_spec, :app_instance_idle_check_interval_ms, to_timeout(minute: 2))
+    do:
+      Application.get_env(
+        :code_my_spec,
+        :app_instance_idle_check_interval_ms,
+        to_timeout(minute: 2)
+      )
 
   defstruct [
     :root,
@@ -67,7 +73,12 @@ defmodule CmsHarness.AppInstance do
     :https_port,
     :database,
     :os_pid,
+    # The commit the process launched from.
     :commit,
+    # The commit the app serves now: `commit` after a launch, the reload's
+    # commit after a reload. Its own field so a reloaded app is not read as
+    # still on its launch commit, and a launch commit is not rewritten.
+    :serving_commit,
     :status,
     :log_path,
     :state_path,
@@ -131,6 +142,24 @@ defmodule CmsHarness.AppInstance do
   def restart(root, opts \\ []) do
     with {:ok, pid} <- find_or_start(root) do
       GenServer.call(pid, {:restart, main?(opts), tunnel(opts)}, op_timeout())
+    end
+  end
+
+  @doc """
+  Bring the running app current without restarting it: the project's
+  `reload` recipe (migrate, let the code reloader compile, health-check), then
+  the probe. On success the reply carries `action: "reloaded"` and the new
+  `serving_commit`, and main runs its after-promote hook, as `restart/2` does.
+
+  Restarts instead — `action: "restarted"`, `action_reason` saying why — when
+  the app is not running or the project declares no `reload` recipe. A reload
+  that fails replies an error and runs no hook: the caller restarts, and that
+  restart runs it.
+  """
+  @spec reload(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def reload(root, opts \\ []) do
+    with {:ok, pid} <- find_or_start(root) do
+      GenServer.call(pid, {:reload, main?(opts), tunnel(opts)}, reload_timeout())
     end
   end
 
@@ -248,6 +277,12 @@ defmodule CmsHarness.AppInstance do
 
   defp op_timeout, do: Application.get_env(:code_my_spec, :app_instance_op_timeout_ms, 120_000)
 
+  # A reload compiles in place, and a promote's version bump to `mix.exs`
+  # recompiles the whole project, so it gets the server's own restart ceiling.
+  defp reload_timeout,
+    do:
+      Application.get_env(:code_my_spec, :app_instance_reload_timeout_ms, to_timeout(minute: 10))
+
   # --- Server ---
 
   @impl true
@@ -289,28 +324,21 @@ defmodule CmsHarness.AppInstance do
   @impl true
   def handle_call({:restart, main?, tunnel}, from, state) do
     state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
-    stopped = if running?(state), do: stop_process(state), else: state
+    restart_and_reply(state, from, main?, tunnel, %{})
+  end
 
-    case start_app(stopped, tunnel) do
-      {:ok, new_state} when main? ->
-        new_state = ensure_tunnel(new_state, main?, tunnel)
-        # Replied before the hook runs, not after: this repo's own
-        # after-promote recipe (`just refresh-harness`) kills the very
-        # harness BEAM that is answering this call, partway through running
-        # it. Nothing queued behind that kill ever leaves this process, so
-        # the confirmation has to already be handed off — reply first, then
-        # run the hook and only log what it does.
-        GenServer.reply(from, {:ok, result(new_state)})
-        after_promote(new_state)
-        {:noreply, new_state, idle_timeout()}
+  def handle_call({:reload, main?, tunnel}, from, state) do
+    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
 
-      {:ok, new_state} ->
-        new_state = ensure_tunnel(new_state, main?, tunnel)
-        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+    cond do
+      not running?(state) ->
+        restart_instead(state, from, main?, tunnel, "the app was not running")
 
-      {:error, reason} ->
-        stopped = ensure_tunnel(stopped, main?, tunnel)
-        {:reply, {:error, reason}, stopped, idle_timeout()}
+      not Runner.recipe?(state.root, "reload") ->
+        restart_instead(state, from, main?, tunnel, "this project declares no reload recipe")
+
+      true ->
+        reload_in_place(state, from, main?, tunnel)
     end
   end
 
@@ -388,14 +416,99 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
+  # --- Internals: restart and reload ---
+
+  # `extra` rides on the success reply: empty for a plain restart, the
+  # `action`/`action_reason` pair for a reload that restarted instead.
+  defp restart_and_reply(state, from, main?, tunnel, extra) do
+    stopped = if running?(state), do: stop_process(state), else: state
+
+    case start_app(stopped, tunnel) do
+      {:ok, new_state} ->
+        new_state = ensure_tunnel(new_state, main?, tunnel)
+        reply_then_hook(from, {:ok, Map.merge(result(new_state), extra)}, new_state, main?)
+
+      {:error, reason} ->
+        stopped = ensure_tunnel(stopped, main?, tunnel)
+        {:reply, {:error, reason}, stopped, idle_timeout()}
+    end
+  end
+
+  defp restart_instead(state, from, main?, tunnel, why) do
+    Logger.info("[CmsHarness] reload of #{state.root}: restarting instead, #{why}")
+    restart_and_reply(state, from, main?, tunnel, %{action: "restarted", action_reason: why})
+  end
+
+  # The app stays up: migrations and the code reloader's compile run against
+  # the live process, and the probe decides whether it took. A failure
+  # replies an error and runs no hook — the caller restarts, and that
+  # restart runs the hook, so the harness restarts once either way.
+  defp reload_in_place(state, from, main?, tunnel) do
+    Logger.info("[CmsHarness] reload of #{state.root}: running `just reload` on #{state.port}")
+
+    case Runner.reload(state.root, state.port, state.https_port, state.database, state.log_path) do
+      :ok ->
+        state |> probe() |> reloaded(from, main?, tunnel)
+
+      {:error, reason} ->
+        Logger.warning("[CmsHarness] reload of #{state.root} failed: #{inspect(reason)}")
+        {:reply, {:error, {:reload_failed, reason}}, state, idle_timeout()}
+    end
+  end
+
+  defp reloaded(%__MODULE__{status: "serving"} = probed, from, main?, tunnel) do
+    new_state = %{probed | serving_commit: current_commit(probed)}
+    persist!(new_state)
+    new_state = ensure_tunnel(new_state, main?, tunnel)
+
+    Logger.info(
+      "[CmsHarness] reload of #{new_state.root} done, serving #{new_state.serving_commit}"
+    )
+
+    reply_then_hook(
+      from,
+      {:ok, Map.put(result(new_state), :action, "reloaded")},
+      new_state,
+      main?
+    )
+  end
+
+  defp reloaded(probed, _from, _main?, _tunnel) do
+    Logger.warning(
+      "[CmsHarness] reload of #{probed.root} ran, but the app answers #{probed.status}"
+    )
+
+    {:reply, {:error, {:reload_unhealthy, probed.status}}, probed, idle_timeout()}
+  end
+
+  # Main replies before the hook runs, not after: this repo's own
+  # after-promote recipe (`just refresh-harness`) kills the very harness BEAM
+  # that is answering this call, partway through running it. Nothing queued
+  # behind that kill ever leaves this process, so the confirmation has to
+  # already be handed off — reply first, then run the hook and only log what
+  # it does. A reload and a restart reach the hook the same way.
+  defp reply_then_hook(from, reply, new_state, true) do
+    GenServer.reply(from, reply)
+    after_promote(new_state)
+    {:noreply, new_state, idle_timeout()}
+  end
+
+  defp reply_then_hook(_from, reply, new_state, false),
+    do: {:reply, reply, new_state, idle_timeout()}
+
   # --- Internals: status ---
 
   @doc """
   Public only so the shape can be tested without booting a real process —
   same reasoning as `AnalysisServer.insert_by_cost/2`.
   """
-  def result(%__MODULE__{status: status, port: port, commit: commit}) do
-    %{status: status || "down", url: url(port, status), commit: commit}
+  def result(%__MODULE__{status: status, port: port, commit: commit} = state) do
+    %{
+      status: status || "down",
+      url: url(port, status),
+      commit: commit,
+      serving_commit: state.serving_commit || commit
+    }
   end
 
   @doc "A stopped copy never reports the address it used to answer on."
@@ -480,13 +593,16 @@ defmodule CmsHarness.AppInstance do
          :ok <- ensure_port_free(state, port),
          :ok <- ensure_database(state, database),
          {:ok, os_pid} <- launch(state, port, https_port, database, tunnel) do
+      commit = current_commit(state)
+
       new_state = %{
         state
         | port: port,
           https_port: https_port,
           database: database,
           os_pid: os_pid,
-          commit: current_commit(state),
+          commit: commit,
+          serving_commit: commit,
           status: "starting"
       }
 
@@ -551,7 +667,12 @@ defmodule CmsHarness.AppInstance do
     do: Application.get_env(:code_my_spec, :app_instance_first_start_probe_attempts, 30)
 
   defp first_start_ceiling_ms,
-    do: Application.get_env(:code_my_spec, :app_instance_first_start_ceiling_ms, to_timeout(minute: 10))
+    do:
+      Application.get_env(
+        :code_my_spec,
+        :app_instance_first_start_ceiling_ms,
+        to_timeout(minute: 10)
+      )
 
   defp first_start_ceiling_minutes, do: div(first_start_ceiling_ms(), 60_000)
 
@@ -569,7 +690,8 @@ defmodule CmsHarness.AppInstance do
   # justfile, run from here — the same `Runner.recipe?/2` check `serve`
   # already uses — right after the app it names is confirmed serving.
   #
-  # Only called for `main?`, and only from `:restart` — never `:ensure_running`'s
+  # Only called for `main?`, and only from a successful `:restart` or `:reload`
+  # (a promote deploys by one or the other) — never `:ensure_running`'s
   # "already running, just probe" or "never started before" branches, and
   # never for a non-main copy's own "HEAD moved" restart. The recipe lives in
   # this project's *shared* justfile, so every working copy's checkout has it
@@ -645,7 +767,11 @@ defmodule CmsHarness.AppInstance do
   # Skipping it is what cost code_my_spec's own copy its first real start:
   # `HTTPS_PORT` unset fell back to config's default 4001, and boot failed
   # `:eaddrinuse` against main's own dev server already holding it.
-  defp ensure_port_and_database(%__MODULE__{port: port, https_port: https_port, database: database})
+  defp ensure_port_and_database(%__MODULE__{
+         port: port,
+         https_port: https_port,
+         database: database
+       })
        when is_integer(port) and is_integer(https_port) and is_binary(database) do
     {:ok, {port, https_port, database}}
   end
@@ -712,7 +838,13 @@ defmodule CmsHarness.AppInstance do
   # needing to ask anything for an id.
   defp database_name(state) do
     app = Runner.app_name(state.root) || "app"
-    suffix = state.root |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower) |> binary_part(0, 8)
+
+    suffix =
+      state.root
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
+      |> binary_part(0, 8)
+
     "#{app}_dev_wc_#{suffix}"
   end
 
@@ -807,7 +939,8 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  defp health_wait_attempts, do: Application.get_env(:code_my_spec, :app_instance_health_wait_attempts, 15)
+  defp health_wait_attempts,
+    do: Application.get_env(:code_my_spec, :app_instance_health_wait_attempts, 15)
 
   defp health_wait_interval_ms,
     do: Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)
@@ -870,9 +1003,15 @@ defmodule CmsHarness.AppInstance do
   # have died on its own, and `start_tunnel/2` starts it unlinked for
   # exactly this reason (see its own doc) — a dead tunnel should read as
   # "not running," not crash the process supervising it.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid, tunnel_id: id} = state, true, %{tunnel_id: id} = tunnel)
+  defp ensure_tunnel(
+         %__MODULE__{tunnel_pid: pid, tunnel_id: id} = state,
+         true,
+         %{tunnel_id: id} = tunnel
+       )
        when is_pid(pid) do
-    if Process.alive?(pid), do: state, else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
+    if Process.alive?(pid),
+      do: state,
+      else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
   # Holding a tunnel already, but for different credentials — re-provisioned
@@ -916,7 +1055,8 @@ defmodule CmsHarness.AppInstance do
   # port is fixed and known from its own `config/dev.exs` regardless of
   # whether its app ever came up, the same source `ensure_port_and_database/1`
   # already reads it from.
-  defp tunnel_origin(%__MODULE__{port: port}) when is_integer(port), do: "http://127.0.0.1:#{port}"
+  defp tunnel_origin(%__MODULE__{port: port}) when is_integer(port),
+    do: "http://127.0.0.1:#{port}"
 
   defp tunnel_origin(%__MODULE__{root: root}) do
     case Runner.main_ports(root) do
@@ -936,6 +1076,7 @@ defmodule CmsHarness.AppInstance do
       "database" => state.database,
       "os_pid" => state.os_pid,
       "commit" => state.commit,
+      "serving_commit" => state.serving_commit,
       "status" => state.status
     }
 
@@ -963,6 +1104,7 @@ defmodule CmsHarness.AppInstance do
         database: decoded["database"],
         os_pid: decoded["os_pid"],
         commit: decoded["commit"],
+        serving_commit: decoded["serving_commit"],
         status: decoded["status"]
     }
   end
@@ -980,6 +1122,10 @@ defmodule CmsHarness.AppInstance do
   end
 
   defp instances_root do
-    Application.get_env(:code_my_spec, :app_instances_root, Path.expand("~/.codemyspec/app-instances"))
+    Application.get_env(
+      :code_my_spec,
+      :app_instances_root,
+      Path.expand("~/.codemyspec/app-instances")
+    )
   end
 end

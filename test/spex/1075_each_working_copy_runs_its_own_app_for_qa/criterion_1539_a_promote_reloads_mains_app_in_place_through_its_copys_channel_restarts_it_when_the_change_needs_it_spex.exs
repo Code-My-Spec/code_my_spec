@@ -1,10 +1,20 @@
 defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   @moduledoc """
   Story 1108 — Each working copy runs its own app for QA.
-  Criterion 4663 — A promote restarts main's app through restart.
+  Criterion 1539 — A promote reloads main's app in place through its copy's
+  channel, restarts it when the change needs it, and runs main's
+  after-promote hook exactly once.
 
   Rule: Main's dev app runs under the same start, restart and stop, and a
-  promote restarts it.
+  promote reloads it — or restarts it when a reload cannot take the change
+  (John, 2026-10-02).
+
+  The first two blocks are the reload: `Promotion.Runner.reload/3` sends main's
+  harness the `reload_app` verb, tagged `main: true`, to a harness that
+  declared it; the harness reloads in place when the app is running and has a
+  `reload` recipe, and runs after-promote once for main only. Without a reload
+  recipe it restarts instead. The blocks after them are the restart path, which
+  every promote that needs one still takes.
 
   `Promotion.Runner.restart/3` used to shell `just restart` directly,
   through `Steps.restart/2`. It now calls
@@ -54,10 +64,122 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Promotion's restart step goes through the same channel verb every copy's app uses", criterion: 1539 do
+  spex "Promotion's reload goes to main's harness on the channel every copy's app uses",
+    criterion: 1539 do
+    scenario "the project's designated main copy, its harness able to reload" do
+      given_ "this copy is the project's designated main, its harness declaring reload_app",
+             context do
+        {:ok, main_copy} =
+          WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)
+
+        {:ok, _reply, socket} = join_harness_project(context, ["reload_app"])
+        {:ok, context |> Map.put(:socket, socket) |> Map.put(:main_copy, main_copy)}
+      end
+
+      when_ "promotion reloads this working copy's app", context do
+        task =
+          Task.async(fn ->
+            Runner.reload(context.scope, context.main_copy.root, context.main_copy.id)
+          end)
+
+        {:ok, Map.put(context, :task, task)}
+      end
+
+      then_ "the harness is asked to reload, told this is main, and the reply reports the commit now serving",
+            context do
+        assert_push "reload_app", %{"ref" => ref, "main" => true}
+
+        reply(context.socket, "reload_app_result", %{
+          "ref" => ref,
+          "status" => "ok",
+          "app_status" => "serving",
+          "app_url" => "http://127.0.0.1:4000",
+          "app_commit" => "cafef00d",
+          "app_serving_commit" => "beadfeed"
+        })
+
+        assert {:ok, %{revision: "beadfeed"}} = Task.await(context.task)
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A reload runs main's after-promote hook once",
+    criterion: 1539 do
+    scenario "a running app whose project declares reload and after-promote recipes" do
+      given_ "a running working copy whose project declares reload and after-promote recipes",
+             context do
+        rig =
+          app_instance_rig(
+            current_commit: "cafef00d",
+            recipe: %{"after-promote" => true, "reload" => true}
+          )
+
+        assert %{"status" => "ok"} = push_app_event("restart_app")
+        {:ok, Map.merge(context, rig)}
+      end
+
+      when_ "the server asks this copy, marked main, to reload", context do
+        {:ok, Map.put(context, :main_result, push_app_event_as_main("reload_app"))}
+      end
+
+      then_ "it reloaded in place and ran after-promote once", context do
+        assert %{"status" => "ok", "app_action" => "reloaded"} = context.main_result
+        sync_after_reply(context.root)
+
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:reload, _}, &1)) == 1
+
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) ==
+                 1
+
+        {:ok, context}
+      end
+
+      when_ "the server asks the same copy to reload again, not marked main", context do
+        {:ok, Map.put(context, :ordinary_result, push_app_event("reload_app"))}
+      end
+
+      then_ "it reloads without running after-promote again", context do
+        assert %{"status" => "ok", "app_action" => "reloaded"} = context.ordinary_result
+        sync_after_reply(context.root)
+
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) ==
+                 1
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A copy with no reload recipe restarts when asked to reload", criterion: 1539 do
+    scenario "a running app whose project has no reload recipe" do
+      given_ "a running working copy with no reload recipe", context do
+        rig = app_instance_rig(current_commit: "cafef00d", recipe: %{"reload" => false})
+        assert %{"status" => "ok"} = push_app_event("restart_app")
+        {:ok, Map.merge(context, rig)}
+      end
+
+      when_ "the server asks it to reload", context do
+        {:ok, Map.put(context, :result, push_app_event("reload_app"))}
+      end
+
+      then_ "it restarts instead, and says why", context do
+        assert %{"status" => "ok", "app_action" => "restarted", "app_action_reason" => reason} =
+                 context.result
+
+        assert reason =~ "reload"
+        refute Enum.any?(FakeAppInstanceRunner.calls(), &match?({:reload, _}, &1))
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "Promotion's restart step goes through the same channel verb every copy's app uses",
+    criterion: 1539 do
     scenario "the project's designated main copy" do
       given_ "this copy is the project's designated main, harness connected", context do
-        {:ok, main_copy} = WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)
+        {:ok, main_copy} =
+          WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)
 
         {:ok, _reply, socket} = join_harness_project(context)
 
@@ -122,7 +244,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
         # 9192ad367, well before today).
         sync_after_reply(context.root)
 
-        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) == 1,
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) ==
+                 1,
                "a successful restart with the recipe declared should still have run it"
 
         {:ok, context}
@@ -140,7 +263,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
       then_ "the after-promote recipe was not run a second time — a promote is main's alone",
             context do
-        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) == 1,
+        assert Enum.count(FakeAppInstanceRunner.calls(), &match?({:run_after_promote, _}, &1)) ==
+                 1,
                "the recipe lives in the shared justfile every working copy's checkout has; " <>
                  "running it for an ordinary copy's own restart would bounce the one shared " <>
                  "harness on every agent's commit, not just a promote"
@@ -167,7 +291,11 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
       when_ "the server asks the same copy to restart again while its port is held by a process that turns out not to be this checkout at all",
             context do
-        FakeAppInstanceRunner.configure(listener_pid: 88_888, process_root: "/some/other/checkout")
+        FakeAppInstanceRunner.configure(
+          listener_pid: 88_888,
+          process_root: "/some/other/checkout"
+        )
+
         {:ok, Map.put(context, :refuse_result, push_app_event_as_main("restart_app"))}
       end
 
@@ -185,14 +313,15 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
     end
   end
 
-  defp join_harness_project(context) do
+  defp join_harness_project(context, app_verbs \\ []) do
     scope = context.scope
 
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/app",
       "harness_id" => scope.active_working_copy_id,
-      "device" => %{"id" => device_id(context)}
+      "device" => %{"id" => device_id(context)},
+      "app_verbs" => app_verbs
     })
   end
 

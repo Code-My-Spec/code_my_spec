@@ -22,6 +22,8 @@ defmodule CodeMySpec.Agents.Offers do
   import Ecto.Query
   require Logger
 
+  require Logger
+
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.OfferMessage
@@ -34,8 +36,8 @@ defmodule CodeMySpec.Agents.Offers do
   # Bump a kind's version when its prompt text changes, so claim rates can be
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
   # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
-  # `Validation.Menu`; `:retry` in `Agents`; `:answer` and `:unblocked` in
-  # `Notifications` and `TaskOwner`.
+  # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
+  # `:answer` and `:unblocked` in `Notifications` and `TaskOwner`.
   @template_versions %{
     work: "work/1",
     menu: "menu/1",
@@ -55,7 +57,8 @@ defmodule CodeMySpec.Agents.Offers do
   no message there, the offer stands unlinked.
 
   An open offer of the same kind and subject is superseded. Answers the offer,
-  or nil when none was written, for `undelivered/1`.
+  or nil when none was written, for `undelivered/1`. A failed write is logged
+  at warning and never raised: recording must not change what is sent (f5699eb9).
   """
   @spec record(term(), Agent.t(), Offer.kind(), subject()) :: Offer.t() | nil
   def record(recorded, %Agent{id: agent_id} = agent, kind, {type, key})
@@ -78,8 +81,8 @@ defmodule CodeMySpec.Agents.Offers do
 
       {:error, changeset} ->
         Logger.warning(
-          "[Offers] record failed for agent #{agent_id} kind=#{kind} subject_type=#{type}: " <>
-            inspect(changeset.errors)
+          "[Offers] offer not recorded: kind=#{inspect(kind)} subject=#{inspect({type, key})} " <>
+            "agent=#{agent_id} errors=#{inspect(errors(changeset))}"
         )
 
         nil
@@ -334,9 +337,22 @@ defmodule CodeMySpec.Agents.Offers do
     %{offer_id: offer.id, message_id: message_id}
     |> OfferMessage.changeset()
     |> Repo.insert()
+    |> tap(fn
+      {:ok, _link} ->
+        :ok
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Offers] offer #{offer.id} not linked to message #{message_id}: " <>
+            "errors=#{inspect(errors(changeset))}"
+        )
+    end)
   end
 
   defp link(_offer, _not_recorded), do: {:ok, nil}
+
+  defp errors(changeset),
+    do: Ecto.Changeset.traverse_errors(changeset, fn {message, _opts} -> message end)
 
   defp subject_key(nil), do: nil
   defp subject_key(key) when is_binary(key), do: key

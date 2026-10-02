@@ -85,8 +85,7 @@ defmodule CodeMySpec.Analysis.Runners do
   # because that generic interface answers `{:ok, [Problem.t()]}` for every
   # analyzer it wraps — no raw output channel. `run_with_output/2` is the one
   # place that contract was loosened, for exactly this caller — Sobelow now
-  # has the same, below; SpecAlignment still shares the generic contract
-  # because nothing has needed its raw output yet. `available?/1` is checked
+  # has the same, below. `available?/1` is checked
   # here explicitly since skipping `StaticRunner` also skips its availability
   # check.
   def run("credo", %Scope{} = scope, args, opts) do

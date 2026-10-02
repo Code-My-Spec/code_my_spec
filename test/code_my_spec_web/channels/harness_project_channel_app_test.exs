@@ -73,7 +73,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
       assert Task.await(task) ==
                {:ok,
-                %{status: "serving", url: "http://127.0.0.1:51234", commit: "abc123", head: nil}}
+                %{
+                  status: "serving",
+                  url: "http://127.0.0.1:51234",
+                  commit: "abc123",
+                  serving_commit: nil,
+                  head: nil,
+                  action: nil,
+                  action_reason: nil
+                }}
     end
 
     # 048d1f4f: an agent read its own copy's app, launched before HEAD moved,
@@ -110,7 +118,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
       assert_push "ensure_app_running", %{"ref" => ref}
-      answer(socket, "ensure_app_running_result", ref, %{"status" => "error", "reason" => "no_start_recipe"})
+
+      answer(socket, "ensure_app_running_result", ref, %{
+        "status" => "error",
+        "reason" => "no_start_recipe"
+      })
 
       assert Task.await(task) == {:error, "no_start_recipe"}
     end
@@ -130,6 +142,51 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       })
 
       assert {:ok, %{status: "serving"}} = Task.await(task)
+    end
+  end
+
+  describe "reload_app" do
+    test "a harness that never declared it is refused at once, never pushed", %{socket: socket} do
+      task = call_async(socket.channel_pid, {:reload_app, %{}})
+
+      assert Task.await(task) == {:error, :reload_not_supported}
+      refute_push "reload_app", _
+    end
+
+    test "a harness that declared it gets the push, and the serving commit is recorded" do
+      scope = full_scope_fixture()
+
+      {:ok, _reply, socket} =
+        socket(UserSocket, "harness_test", %{scope: scope})
+        |> subscribe_and_join(
+          HarnessProjectChannel,
+          "harness_project:#{scope.active_project_id}",
+          %{
+            "label" => @label,
+            "harness_id" => scope.active_working_copy_id,
+            "device" => %{"id" => device_fixture(scope).id},
+            "app_verbs" => ["reload_app"]
+          }
+        )
+
+      task = call_async(socket.channel_pid, {:reload_app, %{}})
+
+      assert_push "reload_app", %{"ref" => ref}
+
+      answer(socket, "reload_app_result", ref, %{
+        "status" => "ok",
+        "app_status" => "serving",
+        "app_commit" => "launch0",
+        "app_serving_commit" => "reload1",
+        "app_action" => "reloaded"
+      })
+
+      assert {:ok, %{serving_commit: "reload1", commit: "launch0", action: "reloaded"}} =
+               Task.await(task)
+
+      {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
+      assert copy.app_commit == "launch0"
+      assert copy.app_serving_commit == "reload1"
     end
   end
 
@@ -160,7 +217,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
       {:ok, _reply, socket} = join_as(%{scope | active_working_copy_id: copy.id})
 
-      for {verb, event} <- [{:ensure_app_running, "ensure_app_running"}, {:restart_app, "restart_app"}] do
+      for {verb, event} <- [
+            {:ensure_app_running, "ensure_app_running"},
+            {:restart_app, "restart_app"}
+          ] do
         task = call_async(socket.channel_pid, {verb, %{}})
 
         assert_push ^event, %{"ref" => ref, "main" => true, "tunnel" => tunnel}
@@ -201,7 +261,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
     # connector of its own, only main may be.
     test "a non-main copy is never told to run a tunnel, even one sharing another's" do
       scope = full_scope_fixture()
-      {:ok, worktree} = WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+
+      {:ok, worktree} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
 
       {:ok, worktree} =
         WorkingCopies.record_app_status(worktree, %{

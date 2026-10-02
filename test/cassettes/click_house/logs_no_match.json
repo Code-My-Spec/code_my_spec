@@ -1,0 +1,63 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-10-02T13:15:57.557061Z",
+      "request": {
+        "body": "SELECT Timestamp, Body\nFROM otel_logs\nWHERE TraceId = {trace_id:String}\n",
+        "body_type": "text",
+        "headers": {
+          "user-agent": [
+            "req/0.7.4"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-user": [
+            "tel_test_uat"
+          ]
+        },
+        "method": "POST",
+        "query_string": "param_trace_id=no-such-trace",
+        "uri": "http://localhost:18123"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "connection": [
+            "Keep-Alive"
+          ],
+          "content-type": [
+            "application/x-ndjson; charset=UTF-8"
+          ],
+          "date": [
+            "Fri, 02 Oct 2026 13:15:57 GMT"
+          ],
+          "keep-alive": [
+            "timeout=10, max=9998"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-query-id": [
+            "b555b863-21d2-42f8-ac00-79a48cc134bf"
+          ],
+          "x-clickhouse-server-display-name": [
+            "dff8d1416c45"
+          ],
+          "x-clickhouse-summary": [
+            "{\"read_rows\":\"3\",\"read_bytes\":\"60\",\"written_rows\":\"0\",\"written_bytes\":\"0\",\"total_rows_to_read\":\"3\",\"result_rows\":\"0\",\"result_bytes\":\"0\",\"elapsed_ns\":\"4272166\"}"
+          ],
+          "x-clickhouse-timezone": [
+            "UTC"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
