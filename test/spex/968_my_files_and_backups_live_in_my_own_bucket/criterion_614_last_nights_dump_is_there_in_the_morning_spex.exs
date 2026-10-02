@@ -76,8 +76,14 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
           )
 
         run_console_step(view, :storage)
+        run_console_step(view, :backups)
 
-        html = run_console_step(view, :backups)
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
+        html = render(view)
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
                "expected the backup step to complete before checking for dumps, got: " <>

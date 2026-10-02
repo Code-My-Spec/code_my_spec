@@ -14,7 +14,10 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
   `/console/resources/servers`'s Config tab — `prod` is the default
   environment there, same as every other per-environment step criterion
   603's moduledoc describes retargeting. `run_step_interaction/3` is
-  coupled to the old page, so this uses `run_console_step/2` instead.
+  coupled to the old page, so this uses `run_console_step/2` instead —
+  followed by its own `render/1`, since `run_step`'s handler only
+  reassigns `@plan` when the step's PubSub broadcast is handled, not
+  inside the `handle_event` call `render_click/1` returns from.
 
   Surface: `CodeMySpecWeb.ConsoleLive` for the placement, HTTP for the
   proof it works.
@@ -49,7 +52,14 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
       end
 
       when_ "setup finishes placing the callback credential", context do
-        html = run_console_step(context.view, :callback_credential)
+        run_console_step(context.view, :callback_credential)
+
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

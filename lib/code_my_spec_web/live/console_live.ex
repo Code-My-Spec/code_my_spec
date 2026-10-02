@@ -1592,7 +1592,16 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # and the environment-derived state, never the URL-driven `environment`/
   # `resource_key`/`tab` assigns, so the cheaper recompute is the right one.
   @impl true
-  def handle_info({:provisioning, :step, _row}, socket), do: {:noreply, refresh(socket)}
+  def handle_info({:provisioning, :step, row}, socket) do
+    socket = refresh(socket)
+
+    # Same as ProvisioningLive's own handle_info — `refresh/1` keeps the
+    # cached mail state the same way `load/2` does; the steps that actually
+    # change it say so here, so a page that just registered a sending domain
+    # shows it without every other announce paying for a Resend round-trip.
+    {:noreply, if(row.key in [:email, :inbound], do: refresh_mail(socket), else: socket)}
+  end
+
   def handle_info({:provisioning, :finished, _result}, socket), do: {:noreply, refresh(socket)}
   def handle_info(_message, socket), do: {:noreply, socket}
 

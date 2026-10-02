@@ -78,7 +78,14 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
       end
 
       when_ "it verifies itself", context do
-        html = run_console_step(context.view, :backups)
+        run_console_step(context.view, :backups)
+
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
