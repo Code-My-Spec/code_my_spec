@@ -720,6 +720,31 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
   def fake(%{fakes: fakes}, :github), do: Map.fetch!(fakes, CodeMySpec.GitHub)
 
+  @doc """
+  Make `Provisioning.verify/3`'s injected `:verify` option raise if called —
+  the same proof `provisioning_live_test.exs`'s `stub_verifier/1` uses for
+  "checks are manual only" (John, 2026-10-02), pulled up here so a spex can
+  reach for it too. A scenario asserting that some page or action makes no
+  provider check installs this first; if anything still calls `verify/3`,
+  the raise surfaces exactly where it happened instead of the claim passing
+  by accident.
+  """
+  def refuse_verify_calls do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :verify, fn _scope, key ->
+        raise "checks are manual only — nothing should call verify(#{inspect(key)}) here"
+      end)
+    )
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+  end
+
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @doc """
   The servers the account holds, for a `then_` asking what a run built.

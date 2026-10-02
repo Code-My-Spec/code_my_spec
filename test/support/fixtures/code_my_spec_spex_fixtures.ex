@@ -825,6 +825,23 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Back-date a step's last check, without re-running or re-verifying it.
+
+  There is no surface path to fast-forward the clock — "checked a week ago"
+  is a precondition a real run cannot produce inside a test. Leaves every
+  other field (state, resources, position) exactly as the real run left it;
+  only `verified_at` moves.
+  """
+  @spec age_step_check(Scope.t(), atom(), String.t() | nil, non_neg_integer()) :: :ok
+  def age_step_check(scope, key, environment, ago_seconds) do
+    StepRepository.upsert(scope, key, environment, %{
+      verified_at: DateTime.add(DateTime.utc_now(), -ago_seconds, :second)
+    })
+
+    :ok
+  end
+
+  @doc """
   Read one agent back, for criteria whose claim is about what the row now says.
 
   Here rather than in a spex for the same reason `running_agent/3` is: the
