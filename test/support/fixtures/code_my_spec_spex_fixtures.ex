@@ -2608,6 +2608,90 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate verify_script_exists?(env, name), to: QaIntegrationPlanFixtures
 
   # -- Embeddings --
+
+  @doc """
+  Embed the way the server does: the pgvector store, the `EmbedPool` the app
+  runs, and `knowledge_dir` as the release's knowledge folder. A recording
+  serving stands in for Ortex and sends `{:embedded, texts, priority}` to the
+  calling process for every batch.
+
+  A server's store and the boot that fills it have no surface a spex can
+  drive, so this and `server_starts/0` are the seam (577de9bb step 4).
+  """
+  @spec embed_on_pgvector(String.t()) :: :ok
+  def embed_on_pgvector(knowledge_dir) do
+    keys = [:embeddings_backend, :embedding_serving, :framework_knowledge_dir]
+    previous = Map.new(keys, &{&1, Application.get_env(:code_my_spec, &1)})
+
+    Application.put_env(:code_my_spec, :embeddings_backend, CodeMySpec.Embeddings.PgVectorBackend)
+
+    Application.put_env(
+      :code_my_spec,
+      :embedding_serving,
+      CodeMySpecTest.RecordingEmbeddingServing
+    )
+
+    Application.put_env(:code_my_spec, :framework_knowledge_dir, knowledge_dir)
+    CodeMySpecTest.RecordingEmbeddingServing.listen(self())
+
+    start_embed_pool(Process.whereis(CodeMySpec.EmbedPool))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Enum.each(previous, fn
+        {key, nil} -> Application.delete_env(:code_my_spec, key)
+        {key, value} -> Application.put_env(:code_my_spec, key, value)
+      end)
+
+      CodeMySpecTest.RecordingEmbeddingServing.reset()
+    end)
+
+    :ok
+  end
+
+  # Once per test: a second scenario in the same test reuses it.
+  defp start_embed_pool(nil) do
+    ExUnit.Callbacks.start_supervised!(
+      {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: FLAME.LocalBackend}
+    )
+  end
+
+  defp start_embed_pool(_running), do: :ok
+
+  @doc "Make every embedding batch fail (`true`) or succeed again (`false`)."
+  @spec fail_embedding(boolean()) :: :ok
+  def fail_embedding(fail?) do
+    CodeMySpecTest.RecordingEmbeddingServing.fail(fail?)
+    :ok
+  end
+
+  @doc "Embed with a different model from now on, as a model upgrade would."
+  @spec switch_embedding_model(String.t()) :: :ok
+  def switch_embedding_model(name) do
+    CodeMySpecTest.RecordingEmbeddingServing.model(name)
+    :ok
+  end
+
+  @doc """
+  The server starting, as far as framework knowledge goes: the boot child
+  the application lists, run to completion. Answers once it has exited.
+  """
+  @spec server_starts() :: :ok
+  def server_starts do
+    child =
+      Supervisor.child_spec(CodeMySpec.Embeddings.FrameworkKnowledgeReconciler,
+        id: make_ref()
+      )
+
+    pid = ExUnit.Callbacks.start_supervised!(child)
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      30_000 -> raise "the framework knowledge boot child did not finish"
+    end
+  end
+
   defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
   defdelegate simulate_framework_knowledge_boot_embed(scope), to: EmbeddingsFixtures
 
