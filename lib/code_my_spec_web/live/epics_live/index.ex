@@ -345,6 +345,41 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
     """
   end
 
+  # Sortable drags only from the grip, so a click on Open navigates instead
+  # of starting a drag.
+  attr :id, :string, required: true
+  attr :story, :map, required: true
+  attr :href, :string, required: true
+
+  defp story_card(assigns) do
+    ~H"""
+    <li
+      id={@id}
+      data-story-id={@story.id}
+      class="rounded bg-base-200 px-2 py-2 flex items-center justify-between gap-2"
+    >
+      <span
+        data-drag-handle
+        class="cursor-grab active:cursor-grabbing opacity-50 shrink-0"
+        title="Drag"
+      >
+        <.icon name="hero-bars-2" class="size-4" />
+      </span>
+      <.link
+        navigate={@href}
+        data-test="open-story"
+        aria-label={"Open #{@story.title}"}
+        title="Open"
+        class="btn btn-ghost btn-xs btn-square shrink-0"
+      >
+        <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+      </.link>
+      <span class="truncate text-sm flex-1 min-w-0">{@story.title}</span>
+      <.story_readiness_toggle story={@story} />
+    </li>
+    """
+  end
+
   defp noun(1), do: "story"
   defp noun(_), do: "stories"
 
@@ -538,15 +573,12 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                 data-epic-id={epic.id}
                 class="min-h-14 rounded border border-dashed border-base-300 p-2 space-y-2"
               >
-                <li
+                <.story_card
                   :for={story <- epic_stories(epic)}
                   id={"epic-#{epic.id}-story-#{story.id}"}
-                  data-story-id={story.id}
-                  class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
-                >
-                  <span class="truncate text-sm">{story.title}</span>
-                  <.story_readiness_toggle story={story} />
-                </li>
+                  story={story}
+                  href={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}")}
+                />
               </ul>
             </div>
           </div>
@@ -567,15 +599,12 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
                 data-epic-id=""
                 class="min-h-24 max-h-[60vh] overflow-y-auto rounded border border-dashed border-base-300 p-2 space-y-2"
               >
-                <li
+                <.story_card
                   :for={story <- @unassigned}
                   id={"unassigned-story-#{story.id}"}
-                  data-story-id={story.id}
-                  class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
-                >
-                  <span class="truncate text-sm">{story.title}</span>
-                  <.story_readiness_toggle story={story} />
-                </li>
+                  story={story}
+                  href={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}")}
+                />
               </ul>
 
               <p :if={@unassigned == []} class="text-sm opacity-60 mt-2">
@@ -623,6 +652,7 @@ defmodule CodeMySpecWeb.EpicsLive.Index do
         mounted() {
           this.sortable = new window.Sortable(this.el, {
             group: "epic-board",
+            handle: "[data-drag-handle]",
             animation: 150,
             ghostClass: "opacity-40",
             dragClass: "shadow-2xl",
