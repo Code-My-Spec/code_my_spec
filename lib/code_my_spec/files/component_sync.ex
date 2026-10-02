@@ -324,9 +324,10 @@ defmodule CodeMySpec.Files.ComponentSync do
       content
       |> ComponentExtract.extract_aliases()
       |> Enum.map(&Map.get(component_map, &1))
-      |> Enum.reject(&is_nil/1)
-      |> Enum.reject(&(&1.id == source.id))
-      |> Enum.reject(&(owning_context_id(source, by_id) == owning_context_id(&1, by_id)))
+      |> Enum.reject(fn target ->
+        is_nil(target) or target.id == source.id or
+          owning_context_id(source, by_id) == owning_context_id(target, by_id)
+      end)
       |> Enum.map(&{source.id, &1.id})
     else
       _ -> []

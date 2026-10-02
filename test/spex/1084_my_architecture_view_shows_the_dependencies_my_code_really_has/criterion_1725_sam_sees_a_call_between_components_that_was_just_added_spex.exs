@@ -71,9 +71,11 @@ defmodule CodeMySpecSpex.Story1084.Criterion1725Spex do
   end
 
   defp dependency_marker(section_text, module_name) do
-    case Regex.run(~r/#{Regex.escape(module_name)}[^()]*\(([^)]*)\)/, section_text) do
-      [_, marker] -> marker
-      _ -> nil
-    end
+    ~r/#{Regex.escape(module_name)}[^()]*\(([^)]*)\)/
+    |> Regex.run(section_text)
+    |> marker_from_match()
   end
+
+  defp marker_from_match([_, marker]), do: marker
+  defp marker_from_match(_), do: nil
 end
