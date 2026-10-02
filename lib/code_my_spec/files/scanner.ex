@@ -413,7 +413,6 @@ defmodule CodeMySpec.Files.Scanner do
     :integration,
     :agents_md,
     :project_knowledge,
-    :hex_doc,
     :deploy_artifact
   ]
 
@@ -909,17 +908,15 @@ defmodule CodeMySpec.Files.Scanner do
   # in `.md` classifies as that role. Order doesn't matter; the dirs
   # don't overlap.
   #
-  # Framework knowledge (the `"knowledge"` source) is intentionally
-  # absent — it lives in `priv/knowledge/` and is embedded directly
-  # by `Embeddings.sync_framework_knowledge/1`. Nothing under the
-  # project tree resolves to that role.
+  # Framework knowledge is intentionally absent — it lives in
+  # `priv/knowledge/` and `FrameworkKnowledgeReconciler` embeds it on boot.
+  # Nothing under the project tree resolves to that role.
   defp doc_dir_roles do
     [
       {&Paths.rules_dir/0, :rule},
       {&Paths.architecture_dir/0, :architecture},
       {&Paths.integrations_dir/0, :integration},
-      {&Paths.knowledge_dir/0, :project_knowledge},
-      {&Paths.hex_docs_dir/0, :hex_doc}
+      {&Paths.knowledge_dir/0, :project_knowledge}
     ]
   end
 

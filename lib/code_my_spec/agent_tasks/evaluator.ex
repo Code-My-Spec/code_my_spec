@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   Both `EvaluateTask` (MCP tool) and `TaskEvaluator` (StopHook) delegate here.
   The flow:
 
-  1. Sync files from filesystem → DB (safety net; FileWatcherServer handles real-time)
+  1. Sync files from filesystem → DB
   2. Run optional `before_evaluate/2` callback on the task module (side effects)
   3. Check requirement satisfaction via RequirementCalculator (single source of truth)
   4. Format feedback from unsatisfied requirement details + problem feedback
@@ -107,13 +107,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   defp sync_files(%Scope{cwd: nil}), do: :ok
 
   defp sync_files(%Scope{cwd: cwd} = scope) do
-    # `embed: false` — the stop-hook evaluator fires on every turn and
-    # has no business re-embedding the framework knowledge corpus or
-    # re-projecting hex docs each time. `FileWatcherServer`'s boot pass
-    # + mix.lock-poll keep the embedding store fresh during a session;
-    # the explicit `sync_project` MCP tool is the manual-full-sync
-    # surface that opts back into the embed pre-pass.
-    case FileSync.sync(scope, base_dir: cwd, embed: false) do
+    case FileSync.sync(scope, base_dir: cwd) do
       {:ok, file_result} ->
         FileComponentSync.sync_from_files(scope,
           base_dir: cwd,

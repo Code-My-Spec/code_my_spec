@@ -203,7 +203,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_requirements show_requirement
     list_rules list_questions withdraw_question
     list_issues get_issue create_issue resolve_issue
-    list_knowledge read_knowledge semantic_search refresh_embeddings
+    list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks clear_problems list_problems
     install_credo_checks

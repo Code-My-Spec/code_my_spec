@@ -11,12 +11,11 @@ defmodule CmsHarness.Agents.Tools.SyncProject do
   @impl true
   def description do
     """
-    Reconcile the project's files and components with what is on disk, and
-    re-embed the knowledge corpus.
+    Reconcile the project's files and components with what is on disk.
 
-    The explicit full pass. `get_next_requirement` syncs files on its own
-    without embedding, so reach for this when something about the project's
-    shape has changed rather than before every requirement.
+    The explicit full pass. `get_next_requirement` syncs files on its own, so
+    reach for this when something about the project's shape has changed rather
+    than before every requirement.
     """
   end
 

@@ -2,10 +2,9 @@ defmodule CmsHarness.Project.Watcher do
   @moduledoc """
   One project's filesystem watcher.
 
-  Per project, not per harness. The server's `FileWatcherServer` is a singleton
-  managing every project at once, so one project's crash stops watching for all
-  of them; a child under each project's own supervisor is what fixes that, and
-  it is the whole reason the tree has a `DynamicSupervisor` in it.
+  Per project, not per harness: a child under each project's own supervisor, so
+  one project's crash does not stop watching for the others. That is the whole
+  reason the tree has a `DynamicSupervisor` in it.
 
   ## It stops watching when the harness is disconnected
 

@@ -2,8 +2,8 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   @moduledoc """
   Generates and stores embeddings for project documentation.
 
-  Chunks markdown files, generates embeddings via Bumblebee (all-MiniLM-L6-v2, 384 dims),
-  and stores them in the doc_embeddings table with sqlite_vec for vector search.
+  Chunks markdown, embeds it through `Embeddings.Serving`, and stores it in
+  `doc_embeddings` through the configured backend's `store_chunk/7`.
 
   Content-hash deduplication: unchanged chunks skip re-embedding.
   """
@@ -21,47 +21,13 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   @chunk_overlap 200
 
   @doc """
-  Embed all docs for a source (e.g. "knowledge", "project_knowledge", "spec", "rules").
-
-  Walks the directory, chunks each markdown file, and embeds changed chunks.
-  Returns `{:ok, %{embedded: n, skipped: n, deleted: n}}`.
-  """
-  def embed_directory(project_id, source, dir_path) do
-    if File.dir?(dir_path) do
-      do_embed_directory(project_id, source, dir_path)
-    else
-      {:error, "Directory not found: #{dir_path}"}
-    end
-  end
-
-  defp do_embed_directory(project_id, source, dir_path) do
-    files = walk_markdown_files(dir_path)
-
-    results =
-      Enum.map(files, fn path ->
-        relative = Path.relative_to(path, dir_path)
-        content = File.read!(path)
-        embed_file(project_id, source, relative, content)
-      end)
-
-    existing_paths = Enum.map(files, &Path.relative_to(&1, dir_path))
-    deleted = delete_stale(project_id, source, existing_paths)
-
-    embedded = Enum.sum(Enum.map(results, fn {:ok, r} -> r.embedded end))
-    skipped = Enum.sum(Enum.map(results, fn {:ok, r} -> r.skipped end))
-
-    {:ok, %{embedded: embedded, skipped: skipped, deleted: deleted}}
-  end
-
-  @doc """
   Embed a single file's content. Chunks, deduplicates by hash, embeds new chunks.
 
   File-level short-circuit: if any existing chunk for this
   `(project_id, source, path)` already carries the same `file_hash` as
   the incoming bytes, we know nothing changed and return immediately
   — no chunking, no SELECT of existing chunk hashes, no DELETE of
-  stale rows. This is the hot path on every boot of
-  `sync_framework_knowledge`.
+  stale rows.
   """
   def embed_file(project_id, source, path, content) do
     file_hash = content_hash(content)
@@ -290,43 +256,5 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
           e.content_hash not in ^current_hashes
     )
     |> Repo.delete_all()
-  end
-
-  defp delete_stale(project_id, source, existing_paths) do
-    {count, _} =
-      from(e in DocEmbedding,
-        where: ^project_filter(project_id),
-        where:
-          e.source == ^source and
-            e.path not in ^existing_paths
-      )
-      |> Repo.delete_all()
-
-    count
-  end
-
-  # -- File walking --
-
-  defp walk_markdown_files(dir) do
-    case File.ls(dir) do
-      {:ok, entries} ->
-        entries
-        |> Enum.reject(&String.starts_with?(&1, "."))
-        |> Enum.sort()
-        |> Enum.flat_map(&expand_entry(dir, &1))
-
-      _ ->
-        []
-    end
-  end
-
-  defp expand_entry(dir, name) do
-    full = Path.join(dir, name)
-
-    cond do
-      File.dir?(full) -> walk_markdown_files(full)
-      String.ends_with?(name, ".md") -> [full]
-      true -> []
-    end
   end
 end

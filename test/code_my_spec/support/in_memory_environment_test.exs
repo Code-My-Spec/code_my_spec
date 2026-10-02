@@ -178,9 +178,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
     # asserted `{:ok, []}` — which is what `File.ls` answers for a directory
     # that is there and empty, not for one that is absent. That gap was load
     # bearing: callers branch on the tuple, so `match?({:ok, _}, ...)` made
-    # every path a directory. `HexDocProjector.dir?/2` is exactly that, so an
-    # uninstalled package still looked installed and its orphaned markdown was
-    # never dropped — five tests failing while the projector reported success.
+    # every path a directory.
     #
     # A map keyed by file path cannot distinguish an empty directory from an
     # absent one, and absent is the answer worth being right about: the

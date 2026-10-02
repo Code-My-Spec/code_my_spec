@@ -2,10 +2,8 @@ defmodule CodeMySpec.Dependencies.Dependency do
   @moduledoc """
   One package a project depends on, as recorded from its `mix.lock`.
 
-  `projected_version` is what makes this more than a list: a package needs its
-  documentation projected exactly when `projected_version != version`. NULL
-  means never projected. That single comparison is what replaced a ten-second
-  settle timer, and unlike the timer it has an end state something can wait for.
+  `projected_version` is unused: it tracked the retired working-tree hex doc
+  projector. The column stays until a migration drops it.
   """
 
   use Ecto.Schema

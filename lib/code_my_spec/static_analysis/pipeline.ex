@@ -369,7 +369,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # spawning `mix credo`. Mirrors `compile_output_file` /
   # `exunit_output_file` / `spex_output_file` already on the runner
   # analyzers. Lets criterion 5100 etc. exercise the credo block path
-  # without losing the race against FileWatcherServer.
+  # deterministically.
   defp with_test_output(runner_opts, :credo, validation_opts) do
     case Keyword.get(validation_opts, :credo_output_file) do
       nil -> runner_opts

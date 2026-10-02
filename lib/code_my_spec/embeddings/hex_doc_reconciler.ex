@@ -9,7 +9,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   embedded. This is the convergence between the two: for every
   `{package, version}` no project's `doc_packages` row has reached yet,
   fetch the hex.pm tarball, verify it against the checksum the lock itself
-  pinned, parse its `.ex` sources with `HexDocProjector`'s pure functions,
+  pinned, parse its `.ex` sources with `HexDocParser`,
   chunk and embed each module's docs, and write the `doc_packages` marker
   last — in the same transaction as the final chunk, so "present" means
   "complete" even across a crash mid-package.
@@ -75,7 +75,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   alias CodeMySpec.Dependencies.Dependency
   alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.EmbeddingService
-  alias CodeMySpec.Embeddings.HexDocProjector
+  alias CodeMySpec.Embeddings.HexDocParser
   alias CodeMySpec.Embeddings.HexPackageFetch
   alias CodeMySpec.Embeddings.HexTarball
   alias CodeMySpec.Embeddings.PgVectorBackend
@@ -321,7 +321,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     docs =
       sources
       |> Map.values()
-      |> Enum.flat_map(&HexDocProjector.docs_from_source/1)
+      |> Enum.flat_map(&HexDocParser.docs_from_source/1)
       # A module documented from more than one source file (seen live:
       # bandit's Bandit.Clock) would otherwise chunk and store under the
       # same path twice, tripping the identity index's own uniqueness on

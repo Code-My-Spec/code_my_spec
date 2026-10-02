@@ -7,15 +7,14 @@ defmodule CodeMySpec.EmbeddingsFixtures do
   `:framework_knowledge_dir` to a controlled tmp directory, then need
   to seed/overwrite real files in that directory — this is the one
   spot where a real `File.write!` is the contract under test, since
-  `Embeddings.sync_framework_knowledge/1` reads the directory off
-  disk on purpose.
+  `FrameworkKnowledgeReconciler` reads the directory off disk on purpose.
 
   Routing those writes through this fixture keeps the
   `SpexDeniedCalls` credo rule honest — specs don't call `File.*`
   directly, they call this fixture.
   """
 
-  alias CodeMySpec.Embeddings
+  alias CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -29,21 +28,15 @@ defmodule CodeMySpec.EmbeddingsFixtures do
   end
 
   @doc """
-  Simulate the file watcher's boot embed pass for framework knowledge.
+  Run the server's boot reconcile of framework knowledge.
 
-  In production, `FileWatcherServer.run_boot_embed_pass/1` calls
-  `Embeddings.sync_framework_knowledge/1` on watcher startup —
-  triggered when the cms binary itself is upgraded and restarts. The
-  /files engineer-facing buttons no longer drive this path; the boot
-  pass is the always-fresh-after-upgrade surface.
-
-  Specs that need to assert post-upgrade embedding state call this
-  helper as the test analog of "the binary restarted with new bundled
-  knowledge content."
+  Kept for the old story 688 criterion 400 spex, which still calls it; the
+  `scope` it takes is unused, as the corpus is shared rows. New spex use
+  `server_starts/0`.
   """
   @spec simulate_framework_knowledge_boot_embed(Scope.t()) :: :ok
-  def simulate_framework_knowledge_boot_embed(%Scope{} = scope) do
-    Embeddings.sync_framework_knowledge(scope)
+  def simulate_framework_knowledge_boot_embed(%Scope{}) do
+    _ = FrameworkKnowledgeReconciler.reconcile()
     :ok
   end
 end

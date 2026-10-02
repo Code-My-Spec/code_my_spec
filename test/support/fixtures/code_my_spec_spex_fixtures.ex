@@ -1560,7 +1560,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_files(Scope.t()) :: :ok
   def sync_files(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
     {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
     :ok
   end
@@ -4937,7 +4937,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
     # fingerprints of the file set).
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
@@ -5002,7 +5002,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the step production cannot skip.
   """
   def scan_working_copy(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, embed: false)
+    {:ok, _} = FileSync.sync(scope)
     :ok
   end
 

@@ -6,14 +6,13 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   documentation chunks for a natural language query.
 
   Searches across every embedded source — project knowledge, the
-  framework knowledge base, specs, rules, and compiled hex dependency
-  docs — or filters to a single source.
+  framework knowledge base, and hex dependency docs — or filters to a
+  single source.
 
   ## Sources
 
   - `knowledge` — framework reference (LiveView, DaisyUI, etc.)
   - `project_knowledge` — project-specific research and decisions
-  - `spec` / `rules` — embedded spec and rule files
   - `hexdocs` — every embedded hex package (prefix match, `hexdocs:*`)
   - `hexdocs:<package>` — a specific hex package, e.g. `hexdocs:phoenix`
 
@@ -37,7 +36,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
 
     field :source, :string,
       description:
-        "Filter to a source. One of: 'knowledge', 'project_knowledge', 'spec', 'rules', " <>
+        "Filter to a source. One of: 'knowledge', 'project_knowledge', " <>
           "'hexdocs' (all hex packages), or 'hexdocs:<package>' (one package). " <>
           "Omit to search everything."
 
@@ -67,12 +66,11 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
 
       # Names what to do instead, not only why it failed.
       #
-      # This said "the embed pipeline (Ortex + sqlite_vec) ships only with the
-      # CodeMySpec CLI binary" and stopped — an explanation of the
-      # implementation to an agent that needs a next step. Every internal agent
-      # carries this tool (`ToolSets` gives it to coding, product and main), and
-      # in this runtime every call fails, so the message is the only thing
-      # standing between a failed lookup and a dropped question (`084b8351`).
+      # An explanation of the implementation alone is no use to an agent that
+      # needs a next step. Every internal agent carries this tool (`ToolSets`
+      # gives it to coding, product and main), and in this runtime every call
+      # fails, so the message is the only thing standing between a failed lookup
+      # and a dropped question (`084b8351`).
       #
       # `list_knowledge` and `read_knowledge` do work here — measured, the same
       # session that filed this read `devops/README.md` fine. What is missing is
@@ -81,9 +79,9 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
       {:error, :embeddings_unavailable} ->
         {:reply,
          error_response(
-           "Embeddings are unavailable in this runtime — the embed pipeline ships only " <>
-             "with the CodeMySpec CLI binary, so no query will work here and retrying or " <>
-             "rephrasing will not help.\n\n" <>
+           "Embeddings are unavailable in this runtime — no embeddings backend is " <>
+             "configured, so no query will work here and retrying or rephrasing will " <>
+             "not help.\n\n" <>
              "`list_knowledge` and `read_knowledge` do work: browse the tree and read by " <>
              "path. Knowledge is organised by area, so a topic usually lives under a " <>
              "directory you can guess — `devops/`, for instance — and `list_knowledge` " <>

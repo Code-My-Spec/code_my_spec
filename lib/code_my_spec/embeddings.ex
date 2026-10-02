@@ -2,19 +2,16 @@ defmodule CodeMySpec.Embeddings do
   @moduledoc """
   Context for document embeddings and semantic search.
 
-  Manages embedding generation for project documentation (knowledge,
-  specs, rules) and provides vector similarity search across all
-  embedded content.
+  The server reconciles every corpus itself; nothing watches a working tree:
 
-  Storage is dispatched through `Embeddings.Backend` to a configured
-  implementation. Two impls ship today:
+  * framework knowledge — `FrameworkKnowledgeReconciler`, on boot;
+  * hex docs — `HexDocReconciler` / `HexDocSweep`, from `mix.lock`;
+  * project knowledge — `ProjectKnowledgeReconciler`, from the main copy's
+    `project_knowledge` file rows (`FileSync.reconcile_project_knowledge/1`).
 
-  * `SqliteVecBackend` — production CLI binary (Ortex + sqlite_vec).
-  * `TestBackend` — ETS-backed in-memory store for `:test`.
-
-  When no backend is configured (the Phoenix dev server, or any
-  runtime that hasn't opted in), `available?/0` returns false and
-  every entry point returns `{:error, :embeddings_unavailable}`.
+  Search is dispatched through `Embeddings.Backend` to the configured
+  implementation (`PgVectorBackend` on the server, `TestBackend` in `:test`).
+  When none is configured, `search/3` returns `{:error, :embeddings_unavailable}`.
   """
 
   use Boundary,
@@ -29,114 +26,19 @@ defmodule CodeMySpec.Embeddings do
     ],
     exports: :all
 
-  alias CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
   alias CodeMySpec.Embeddings.HexDocReconciler
   alias CodeMySpec.Users.Scope
 
   @pg_vector CodeMySpec.Embeddings.PgVectorBackend
-  @project_knowledge "project_knowledge"
 
   @doc "Retry failed hex doc packages; see `HexDocReconciler.reset_failed/1`."
   defdelegate reset_failed_doc_packages(opts \\ []), to: HexDocReconciler, as: :reset_failed
 
   @doc """
-  Returns `:ok` if a backend is configured, `{:error, :embeddings_unavailable}`
-  otherwise.
-  """
-  def available? do
-    backend() != nil
-  end
-
-  @doc """
-  Embed a single file's content into the project's doc embedding store.
-
-  Used by the file sync pipeline to keep embeddings in step with disk:
-  whenever a tracked doc file (spec / rule / knowledge / project_knowledge)
-  is added or modified, the sync pipeline calls this to upsert the
-  file's chunks. Content-hash deduplication keeps the call cheap when
-  nothing actually changed.
-
-  A no-op for `"project_knowledge"` on `PgVectorBackend`: there
-  `ProjectKnowledgeReconciler` owns those rows, from the main copy only.
-  """
-  def embed_file(%Scope{active_project_id: project_id}, source, path, content) do
-    case backend() do
-      nil -> {:error, :embeddings_unavailable}
-      @pg_vector when source == @project_knowledge -> {:ok, %{embedded: 0, skipped: :reconciled}}
-      mod -> mod.embed_file(project_id, source, path, content)
-    end
-  end
-
-  @doc """
-  Drop all embeddings for a file path.
-
-  Used by the file sync pipeline when a tracked doc file is removed
-  from disk so semantic search can't surface stale references.
-
-  A no-op for `"project_knowledge"` on `PgVectorBackend`, as `embed_file/4`.
-  """
-  def delete_path(%Scope{active_project_id: project_id}, source, path) do
-    case backend() do
-      nil -> {:error, :embeddings_unavailable}
-      @pg_vector when source == @project_knowledge -> {:ok, 0}
-      mod -> mod.delete_path(project_id, source, path)
-    end
-  end
-
-  @doc """
-  True when the server reconciles corpora itself (`PgVectorBackend`), so
-  per-project embed paths stand down and the reconcilers run.
+  True when the server reconciles corpora itself (`PgVectorBackend`).
   """
   @spec server_reconciled?() :: boolean()
   def server_reconciled?, do: backend() == @pg_vector
-
-  @doc """
-  Sync the bundled framework knowledge corpus directly from
-  `priv/knowledge/` into the embedding store.
-
-  No working-tree copy. Each markdown file's content is embedded with
-  source `"knowledge"` and the file's path relative to the knowledge
-  root. Backend dedup skips unchanged content.
-
-  Reads `FrameworkKnowledgeReconciler.knowledge_dir/0`.
-
-  A no-op on `PgVectorBackend`: there the corpus is shared rows, reconciled
-  on server boot by `FrameworkKnowledgeReconciler`, and a per-project copy
-  would duplicate it in search.
-  """
-  def sync_framework_knowledge(%Scope{} = scope) do
-    case backend() do
-      nil -> {:error, :embeddings_unavailable}
-      CodeMySpec.Embeddings.PgVectorBackend -> :ok
-      _mod -> do_sync_framework_knowledge(scope, FrameworkKnowledgeReconciler.knowledge_dir())
-    end
-  end
-
-  defp do_sync_framework_knowledge(scope, knowledge_dir) do
-    if File.dir?(knowledge_dir) do
-      knowledge_dir
-      |> walk_markdown_files()
-      |> Enum.each(&embed_knowledge_file(scope, knowledge_dir, &1))
-    end
-
-    :ok
-  end
-
-  defp embed_knowledge_file(scope, knowledge_dir, abs_path) do
-    rel = Path.relative_to(abs_path, knowledge_dir)
-
-    case File.read(abs_path) do
-      {:ok, content} -> embed_file(scope, "knowledge", rel, content)
-      {:error, _} -> :ok
-    end
-  end
-
-  defp walk_markdown_files(dir) do
-    dir
-    |> Path.join("**/*.md")
-    |> Path.wildcard()
-    |> Enum.filter(&File.regular?/1)
-  end
 
   @doc """
   Semantic search across all embedded project docs.

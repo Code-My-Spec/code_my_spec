@@ -151,7 +151,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
-  component(CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)

@@ -17,7 +17,6 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Dependencies
-  alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.EmbeddingService
   alias CodeMySpec.Embeddings.PgVectorBackend
@@ -154,18 +153,6 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
 
       assert [%{model: "fake-test-model"}] = rows(scope)
       assert search_paths(scope) == [@path]
-    end
-  end
-
-  describe "the per-project embed path on Postgres" do
-    test "writes and deletes no project_knowledge rows" do
-      %{scope: scope} = copy(main?: true)
-
-      assert {:ok, %{skipped: :reconciled}} =
-               Embeddings.embed_file(scope, "project_knowledge", @path, "content")
-
-      assert rows(scope) == []
-      assert {:ok, 0} = Embeddings.delete_path(scope, "project_knowledge", @path)
     end
   end
 

@@ -15,7 +15,7 @@ defmodule CodeMySpecTest.WorkspaceWatchers do
       |> Enum.each(&Process.exit(&1, :kill))
 
   which is every child of an **application-wide** supervisor, not every child
-  this test started. `Provisioning`, `Workspaces`, `refresh_embeddings` and
+  this test started. `Provisioning`, `Workspaces`, `FileSync` and
   `HarnessProjectChannel` all start children there, so that line kills other
   tests' work as readily as its own.
 

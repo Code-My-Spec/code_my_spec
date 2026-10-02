@@ -2,16 +2,11 @@ defmodule CodeMySpec.McpServers.Knowledge.SemanticSearchRefusalTest do
   @moduledoc """
   When search cannot run, the refusal names what does.
 
-  The embed pipeline ships only with the CodeMySpec CLI binary, so in the server
-  BEAM every `semantic_search` call fails. That is a known gap parked behind
-  story 688's embeddings rework — what is not acceptable is what the failure
-  used to say.
-
-  It explained the implementation ("Ortex + sqlite_vec ships only with the
-  CodeMySpec CLI binary") and stopped. `ToolSets` gives this tool to the coding,
-  product and main agents, so in this runtime every internal agent carries a
-  tool that always fails, and the message is the only thing between a failed
-  lookup and a dropped question (`084b8351`).
+  A runtime with no embeddings backend configured fails every `semantic_search`
+  call. The failure used to explain the implementation and stop. `ToolSets`
+  gives this tool to the coding, product and main agents, so there every
+  internal agent carries a tool that always fails, and the message is the only
+  thing between a failed lookup and a dropped question (`084b8351`).
 
   `list_knowledge` and `read_knowledge` work here — the session that filed the
   issue read `devops/README.md` fine while every query failed. So the agent is
@@ -46,15 +41,15 @@ defmodule CodeMySpec.McpServers.Knowledge.SemanticSearchRefusalTest do
     assert text =~ "`list_knowledge` and `read_knowledge` do work"
   end
 
-  # The tool stays on the internal agents' lists, because it works in the CLI
-  # runtime where the pipeline ships. Removing it there to spare the server a
-  # failed call would take the capability from the place it exists.
+  # The tool stays on the internal agents' lists, because it works wherever a
+  # backend is configured. Removing it to spare an unconfigured runtime a failed
+  # call would take the capability from the places it exists.
   test "the tool is still offered to the agents that have a runtime for it" do
     granted? =
       Enum.any?(RoleProfile.roles(), &RoleProfile.carries?(&1, "semantic_search"))
 
     assert granted?,
-           "the gap is the runtime, not the grant — the CLI binary can search"
+           "the gap is the runtime, not the grant"
   end
 
   test "the module still exposes the tool" do
