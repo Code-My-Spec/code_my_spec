@@ -194,8 +194,6 @@ defmodule CodeMySpec.MixProject do
       {:nimble_csv, "~> 1.2"},
       {:ex_oauth2_provider, "~> 0.5.7"},
       {:earmark, "~> 1.4"},
-      {:mdex, "~> 0.5"},
-      {:mdex_mermaid, "~> 0.3"},
       {:floki, "~> 0.38"},
       # The Lua VM code mode runs agent scripts in (story 970). A Lua 5.3 VM
       # written in Elixir — no NIFs and no C, which is what makes it safe
