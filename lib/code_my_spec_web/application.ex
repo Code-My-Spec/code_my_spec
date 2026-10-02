@@ -256,6 +256,10 @@ defmodule CodeMySpecWeb.Application do
       ]
   end
 
+  # Desktop (bb8bc042 step 4): the harness in the same tree, after the
+  # Endpoint it talks to. Same child the test suite starts in test_helper.exs.
+  def children(children, :desktop), do: children ++ [CmsHarness.Supervisor]
+
   def children(children, _), do: children
 
   # `tunnel_config` is main's own tunnel — a hardcoded hostname, tunnel id and

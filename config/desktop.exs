@@ -22,7 +22,10 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4000],
   check_origin: false
 
-config :code_my_spec, CmsHarness.Web.Endpoint, http: [ip: {127, 0, 0, 1}, port: 4004]
+# config.exs leaves it `server: false`; desktop's harness serves hooks.
+config :code_my_spec, CmsHarness.Web.Endpoint,
+  server: true,
+  http: [ip: {127, 0, 0, 1}, port: 4004]
 
 # Postgres, not harness.exs's SQLite — same reversal as dev_sprite.
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
