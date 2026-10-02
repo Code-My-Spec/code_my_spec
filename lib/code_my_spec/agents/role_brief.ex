@@ -128,9 +128,8 @@ defmodule CodeMySpec.Agents.RoleBrief do
     where coding and QA build it. Making, offboarding and looping working
     copies is the main agent's, not yours.
 
-    When you ask a question, you wait for its answer: you hold one line of
-    thought through a design, so no other work is offered to you until it is
-    answered.
+    A question you ask blocks only the task it is about; carry on with other
+    work while it is open.
 
     Choosing which component implements a story is yours as well.
     `component_linked` is a product requirement and `set_story_component`,

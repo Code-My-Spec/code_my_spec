@@ -96,7 +96,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
   test "the pending tap_out is listed and answer_notification settles it", ctx do
     task_id = claim(ctx)
     {:reply, _, _} = TapOut.execute(%{task_id: task_id}, ctx.frame)
-    request = Notifications.get_pending_tap_out_request(ctx.agent.id)
+    request = Notifications.get_pending_tap_out_request(ctx.agent.id, task_id)
     main = %Frame{assigns: %{current_scope: ctx.scope}}
 
     {:reply, listed, _} = ListNotifications.execute(%{}, main)
