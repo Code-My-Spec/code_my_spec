@@ -51,11 +51,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
                 "/app/projects/#{context.project.id}/console/resources/storage_backups?env=#{environment}"
               )
 
-            view
-            |> element(
-              "[data-test='resource-step'][data-step='storage'] [data-test='run-step']"
-            )
-            |> render_click()
+            run_console_step(view, :storage)
 
             {environment, view}
           end
@@ -83,7 +79,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
                "expected UAT and production to have distinct buckets, both #{inspect(buckets_by_env["uat"])}"
 
         uat_view = Map.fetch!(views, "uat")
-        uat_view |> element("[data-test='resource-tab-checks']") |> render_click()
+        open_resource_tab(uat_view, :storage_backups, "checks")
 
         {:ok,
          context

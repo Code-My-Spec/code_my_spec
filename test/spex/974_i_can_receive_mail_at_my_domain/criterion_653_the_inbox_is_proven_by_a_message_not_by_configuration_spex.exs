@@ -62,22 +62,14 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
       end
 
       when_ "setup verifies the step", context do
-        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
-        # false), so the click settles before resolving the pause below —
-        # no await_step needed, and it's coupled to the old page's
-        # setup-step markup anyway.
-        context.view
-        |> element("[data-test='resource-step'][data-step='inbound'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :inbound)
 
         # The plain "Run" click carries no address, so :inbound settles at
         # :paused rather than :done (7df39199) — its records are already
         # published, and the pause is only about proving delivery. Answer it
         # the way 2f8c4208 gave the page to, then read the page after the
         # run rather than what the click handed back.
-        context.view
-        |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@c8033.astralbi.com"})
-        |> render_submit()
+        resolve_console_pause(context.view, :inbound, "sam@c8033.astralbi.com")
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

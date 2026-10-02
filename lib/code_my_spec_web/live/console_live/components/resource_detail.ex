@@ -9,10 +9,11 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   (RepositoryConfig, ServerConfig, DnsConfig, and so on), the run/retry
   button, paused-instructions and escalation — the same markup `step_card`
   showed, once per step in the group, under a tab instead of always-on.
-  `:domain_search` is the same Config tab's one project-level exception —
-  the domain search/purchase/confirm tool isn't any single step's own
-  markup, so it renders below the step list rather than per-step; only
-  `ConsoleLive` passes it, for `:dns_domain`. Checks renders whatever
+  `:domain_search` and `:mail_panel` are the same Config tab's project-level
+  exceptions — the domain search/purchase/confirm tool and the outbound
+  mail/DKIM panel aren't any single step's own markup, so they render below
+  the step list rather than per-step; `ConsoleLive` passes them for
+  `:dns_domain` and `:mail` respectively. Checks renders whatever
   `ConsoleLive` passes through the `:checks` slot — one `DiagnosticsPanel`
   per probe that group owns — and falls back to a placeholder for groups
   that don't have one wired up yet (see the moduledoc on `ConsoleLive` for
@@ -45,6 +46,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   attr :environment, :string, required: true
   slot :checks
   slot :domain_search
+  slot :mail_panel
 
   def resource_detail(%{group: nil} = assigns) do
     ~H"""
@@ -202,6 +204,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
         </div>
 
         {render_slot(@domain_search)}
+        {render_slot(@mail_panel)}
       </div>
 
       <div

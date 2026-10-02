@@ -54,9 +54,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
       end
 
       when_ "the repository step runs", context do
-        context.view
-        |> element("[data-test='resource-step'][data-step='repository'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :repository)
 
         html = render(context.view)
 

@@ -65,11 +65,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
       end
 
       when_ "the domain step runs again", context do
-        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
-        # false) — settled by the time render_click returns.
-        context.view
-        |> element("[data-test='resource-step'][data-step='domain'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :domain)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

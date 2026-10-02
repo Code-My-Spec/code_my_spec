@@ -60,9 +60,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
         {:ok, servers_view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        servers_view
-        |> element("[data-test='resource-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(servers_view, :server)
 
         {:ok, view, _html} =
           live(
@@ -70,15 +68,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
             "/app/projects/#{context.project.id}/console/resources/storage_backups"
           )
 
-        view
-        |> element("[data-test='resource-step'][data-step='storage'] [data-test='run-step']")
-        |> render_click()
-
-        view
-        |> element("[data-test='resource-step'][data-step='backups'] [data-test='run-step']")
-        |> render_click()
-
-        view |> element("[data-test='resource-tab-checks']") |> render_click()
+        run_console_step(view, :storage)
+        run_console_step(view, :backups)
+        open_resource_tab(view, :storage_backups, "checks")
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -27,10 +27,11 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
   probe moved off ProvisioningLive's blocking click into mail's Checks tab,
   behind DiagnosticsPanel, running async via `start_async` — same move
   criterion 613 made for the storage round-trip probe. `:email` and
-  `:inbound` are driven through `resource-step`, the console's own markup,
-  since `run_step_interaction` is coupled to the old page's `setup-step`.
-  `click_inbound_probe/1` and `resolve_inbound_probe_pause/2` are unchanged
-  — both already select by `data-test`, which the ported markup kept.
+  `:inbound` run through `run_console_step/2`/`resolve_console_pause/3`,
+  the console's own support helpers, since `run_step_interaction` and
+  `resolve_inbound_probe_pause/2` are coupled to the old page's `setup-step`
+  markup. `click_inbound_probe/1` is unchanged — it already selects by
+  `data-test`, which the ported markup kept.
   """
 
   use CodeMySpecSpex.Case
@@ -58,30 +59,19 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
 
         # Sending first: Resend grants receiving on a domain it already knows,
         # and an inbox on a domain it does not is the case that silently drops
-        # every probe. Synchronous in test (config :code_my_spec,
-        # :provisioning_run_async, false), so each click settles before the
-        # next.
-        for step <- [:email, :inbound] do
-          view
-          |> element("[data-test='resource-step'][data-step='#{step}'] [data-test='run-step']")
-          |> render_click()
-        end
+        # every probe.
+        for step <- [:email, :inbound], do: run_console_step(view, step)
 
         # The plain "Run" click above carries no address, so :inbound settles
         # at :paused rather than :done (7df39199) — its records are already
         # published, and the pause is only about proving delivery. Answer it
-        # the way 2f8c4208 gave the page to. Not
-        # CodeMySpecSpex.Case.resolve_inbound_probe_pause/2: it calls
-        # await_step/2, which is coupled to the old page's setup-step markup
-        # — synchronous in test anyway, so the plain submit is enough.
-        view
-        |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@#{@domain}"})
-        |> render_submit()
+        # the way 2f8c4208 gave the page to.
+        resolve_console_pause(view, :inbound, "sam@#{@domain}")
 
         assert render(view) =~ ~r/data-step="inbound"[^>]*data-state="done"/,
                "expected inbound to be set up before a probe is sent to it"
 
-        view |> element("[data-test='resource-tab-checks']") |> render_click()
+        open_resource_tab(view, :mail, "checks")
 
         {:ok, Map.put(context, :view, view)}
       end

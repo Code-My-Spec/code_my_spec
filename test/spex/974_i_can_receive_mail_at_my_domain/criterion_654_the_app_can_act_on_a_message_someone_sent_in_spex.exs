@@ -58,31 +58,20 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
 
         # Both steps, because an inbox needs a verified sending domain behind
         # it — Resend grants receiving on a domain it already knows.
-        # Synchronous in test (config :code_my_spec,
-        # :provisioning_run_async, false), so each click settles before the
-        # next.
-        for step <- [:email, :inbound] do
-          view
-          |> element("[data-test='resource-step'][data-step='#{step}'] [data-test='run-step']")
-          |> render_click()
-        end
+        for step <- [:email, :inbound], do: run_console_step(view, step)
 
         # The plain "Run" click above carries no address, so :inbound settles
         # at :paused rather than :done (7df39199) — its records are already
         # published, and the pause is only about proving delivery. Answer it
-        # the way 2f8c4208 gave the page to. Not
-        # CodeMySpecSpex.Case.resolve_inbound_probe_pause/2: it calls
-        # await_step/2, coupled to the old page's setup-step markup.
-        view
-        |> form("[data-test='inbound-probe-address']", %{"probe_to" => "sam@#{@domain}"})
-        |> render_submit()
+        # the way 2f8c4208 gave the page to.
+        resolve_console_pause(view, :inbound, "sam@#{@domain}")
 
         html = render(view)
 
         assert html =~ ~r/data-step="inbound"[^>]*data-state="done"/,
                "expected inbound to be set up before a message is sent to it"
 
-        view |> element("[data-test='resource-tab-checks']") |> render_click()
+        open_resource_tab(view, :mail, "checks")
 
         {:ok, Map.put(context, :view, view)}
       end

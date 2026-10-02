@@ -40,12 +40,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
       end
 
       when_ "the repository step runs", context do
-        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
-        # false) — the step is already settled by the time render_click
-        # returns, same as the old page's equivalent run.
-        context.view
-        |> element("[data-test='resource-step'][data-step='repository'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :repository)
 
         html = render(context.view)
 

@@ -56,9 +56,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.Backups
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.ContentPublishing
+  alias CodeMySpec.Provisioning.Dns
+  alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.Provisioning.Widget
   alias CodeMySpec.Users.Scope
 
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
@@ -130,6 +133,16 @@ defmodule CodeMySpecWeb.ConsoleLive do
       |> assign_new(:domain_error, fn -> nil end)
       |> assign_new(:domain_check_running?, fn -> false end)
       |> assign_new(:domain_purchase_running?, fn -> false end)
+      |> assign_new(:mail_send_running?, fn -> false end)
+      |> assign_new(:mail_send_result, fn -> nil end)
+      |> assign_new(:widget_degradation_running?, fn -> false end)
+      |> assign_new(:widget_degradation, fn -> nil end)
+      # Each callback calls list_domains/1 independently rather than once up
+      # front, so a real Resend round-trip only happens the first time either
+      # key is actually missing — assign_new is a no-op on every later patch,
+      # same as every other assign_new above it.
+      |> assign_new(:mail, fn -> mail_state(scope, "prod", list_domains(scope)) end)
+      |> assign_new(:mail_domains, fn -> mail_domains(scope, list_domains(scope)) end)
 
     {:noreply, socket}
   end
@@ -501,6 +514,143 @@ defmodule CodeMySpecWeb.ConsoleLive do
           </DiagnosticsPanel.diagnostics_panel>
         </div>
       </:checks>
+
+      <:checks :if={@resource_key == :mail}>
+        <div data-test="mail-send-probe-panel" data-state={mail_send_state(assigns)}>
+          <DiagnosticsPanel.diagnostics_panel
+            title="Outbound send"
+            checked_at={mail_send_field(@mail_send_result, :checked_at)}
+          >
+            <p class="opacity-70 text-sm">
+              Sends a real message and records what the provider accepted it
+              from — a domain can verify and still refuse to send if the
+              sending identity is wrong.
+            </p>
+
+            <.button
+              data-test="mail-send-probe"
+              phx-click="run_mail_send_probe"
+              class="btn btn-primary mt-3"
+              disabled={@mail_send_running?}
+            >
+              {if @mail_send_running?, do: "Sending…", else: "Send a test message"}
+            </.button>
+
+            <div
+              :if={@mail_send_result}
+              data-test="mail-send-result"
+              data-from={@mail_send_result.from}
+              data-accepted={to_string(@mail_send_result.accepted)}
+              data-provider-id={@mail_send_result.provider_id}
+              data-completed-at={@mail_send_result.completed_at}
+              data-dkim={@mail_send_result.dkim}
+              data-domain={@mail_send_result.domain}
+              data-reason={@mail_send_result.reason}
+            >
+              sent from {@mail_send_result.from}: {if @mail_send_result.accepted,
+                do: "accepted",
+                else: "refused"}
+              <span :if={@mail_send_result.reason}>— {@mail_send_result.reason}</span>
+            </div>
+          </DiagnosticsPanel.diagnostics_panel>
+        </div>
+      </:checks>
+
+      <:checks :if={@resource_key == :widget}>
+        <div data-test="widget-degradation-probe-panel" data-state={widget_degradation_state(assigns)}>
+          <DiagnosticsPanel.diagnostics_panel
+            title="Graceful degradation"
+            checked_at={widget_degradation_field(@widget_degradation, :checked_at)}
+          >
+            <p class="opacity-70 text-sm">
+              Asks the deployed site how it looks when the widget backend is
+              gone — the claim is about the page staying usable, not about
+              the widget itself.
+            </p>
+
+            <.button
+              data-test="widget-degradation-probe"
+              phx-click="run_widget_degradation_probe"
+              class="btn btn-primary mt-3"
+              disabled={@widget_degradation_running?}
+            >
+              {if @widget_degradation_running?,
+                do: "Checking…",
+                else: "Check the site with the widget backend down"}
+            </.button>
+
+            <div
+              :if={@widget_degradation}
+              data-test="widget-degradation-result"
+              data-page-status={@widget_degradation.page_status}
+              data-page-usable={to_string(@widget_degradation.page_usable)}
+              data-widget-state={@widget_degradation.widget_state}
+            >
+              {@widget_degradation.summary}
+            </div>
+          </DiagnosticsPanel.diagnostics_panel>
+        </div>
+      </:checks>
+
+      <:mail_panel :if={@resource_key == :mail}>
+        <section data-test="mail" :if={@mail} class="my-6">
+          <h2 class="text-lg font-semibold">Outbound mail</h2>
+
+          <div
+            :for={entry <- @mail_domains}
+            data-test="mail-sending-domain"
+            data-domain={entry.domain}
+            data-name={entry.domain}
+            data-environment={entry.environment}
+            data-status={entry.status}
+            data-provider-id={entry.provider_id}
+            data-manual-step-required={to_string(entry.manual_step_required)}
+            data-verified-separately={to_string(entry.status == "verified")}
+          >
+            {entry.environment}: {entry.domain} — {entry.status}
+          </div>
+
+          <div
+            data-test="mail-verification"
+            data-status={@mail.status}
+            data-attempts={@mail.attempts}
+            data-verified-at={@mail.verified_at}
+            data-dkim={@mail.dkim}
+            data-manual-step-required={to_string(@mail.manual_step_required)}
+          >
+            verification: {@mail.status} after {@mail.attempts} check(s)
+          </div>
+
+          <ul class="mt-2 flex flex-col gap-1">
+            <li
+              :for={record <- @mail.records}
+              data-test="mail-dns-record"
+              data-type={record.type}
+              data-name={record.name}
+              data-verified={to_string(record.verified)}
+              data-resolved={to_string(record.resolved)}
+              data-content={record.content}
+            >
+              {record.type} {record.name} — {if record.verified, do: "verified", else: "pending"}
+            </li>
+          </ul>
+
+          <div
+            :if={@mail.missing_records != []}
+            data-test="dns-record-deleted"
+            data-name={List.first(@mail.missing_records)}
+          >
+            a record this domain needs is no longer published: {Enum.join(
+              @mail.missing_records,
+              ", "
+            )}
+          </div>
+
+          <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="btn btn-primary mt-2">
+            Re-check DNS
+          </.button>
+        </section>
+      </:mail_panel>
 
       <:domain_search :if={@resource_key == :dns_domain}>
         <section data-test="domain" data-state={domain_search_state(assigns)} class="my-6">
@@ -965,6 +1115,44 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
+  # Ported from ProvisioningLive.handle_event("mail_send_probe", ...) — same
+  # manual/async/one-result shape as the other probes above.
+  def handle_event("run_mail_send_probe", params, socket) do
+    scope = socket.assigns.current_scope
+    probe = Map.get(params, "probe", %{})
+    to = Map.get(probe, "to", "delivered@resend.dev")
+    environment = Map.get(probe, "environment", "prod")
+
+    socket =
+      socket
+      |> assign(:mail_send_running?, true)
+      |> start_async(:mail_send_probe, fn -> run_mail_send_probe(scope, to, environment) end)
+
+    {:noreply, socket}
+  end
+
+  # Ported from ProvisioningLive.handle_event("refresh_mail_dns", ...) — a
+  # Config action rather than a Checks probe: it re-reads the outbound mail
+  # panel's own state, not a one-shot diagnostic with a "checked … ago".
+  def handle_event("refresh_mail_dns", _params, socket) do
+    {:noreply, refresh_mail(socket)}
+  end
+
+  # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...).
+  def handle_event("run_widget_degradation_probe", _params, socket) do
+    scope = socket.assigns.current_scope
+    site = site_url(scope.active_project.domain)
+
+    socket =
+      socket
+      |> assign(:widget_degradation_running?, true)
+      |> start_async(:widget_degradation_probe, fn ->
+        widget_degradation(site && Widget.probe_degraded(site, []))
+      end)
+
+    {:noreply, socket}
+  end
+
   # Same as ProvisioningLive.handle_event("save_credentials", ...). The
   # Credentials section reuses `CredentialsForm` as-is, which still fires
   # this event — without a matching clause here the form submit crashed the
@@ -1292,6 +1480,34 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> put_flash(:error, "Domain purchase crashed: #{inspect(reason)}")}
   end
 
+  def handle_async(:mail_send_probe, {:ok, result}, socket) do
+    {:noreply,
+     socket
+     |> assign(:mail_send_running?, false)
+     |> assign(:mail_send_result, Map.put(result, :checked_at, DateTime.utc_now()))}
+  end
+
+  def handle_async(:mail_send_probe, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:mail_send_running?, false)
+     |> put_flash(:error, "Mail send probe crashed: #{inspect(reason)}")}
+  end
+
+  def handle_async(:widget_degradation_probe, {:ok, result}, socket) do
+    {:noreply,
+     socket
+     |> assign(:widget_degradation_running?, false)
+     |> assign(:widget_degradation, Map.put(result, :checked_at, DateTime.utc_now()))}
+  end
+
+  def handle_async(:widget_degradation_probe, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:widget_degradation_running?, false)
+     |> put_flash(:error, "Widget degradation probe crashed: #{inspect(reason)}")}
+  end
+
   # Same as ProvisioningLive.handle_info({:provisioning, :step/:finished, ...}).
   # `refresh/1` instead of `load/2`: a broadcast only ever changes the plan
   # and the environment-derived state, never the URL-driven `environment`/
@@ -1483,6 +1699,20 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp domain_search_state(%{domain_purchase_running?: true}), do: "running"
   defp domain_search_state(_assigns), do: "idle"
 
+  defp mail_send_state(%{mail_send_running?: true}), do: "running"
+  defp mail_send_state(%{mail_send_result: nil}), do: "unchecked"
+  defp mail_send_state(_assigns), do: "checked"
+
+  defp mail_send_field(nil, _key), do: nil
+  defp mail_send_field(result, key), do: Map.get(result, key)
+
+  defp widget_degradation_state(%{widget_degradation_running?: true}), do: "running"
+  defp widget_degradation_state(%{widget_degradation: nil}), do: "unchecked"
+  defp widget_degradation_state(_assigns), do: "checked"
+
+  defp widget_degradation_field(nil, _key), do: nil
+  defp widget_degradation_field(result, key), do: Map.get(result, key)
+
   defp mail_inbound_field(nil, _key), do: nil
   defp mail_inbound_field(result, key), do: Map.get(result, key)
 
@@ -1607,4 +1837,206 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp describe_domain_error(:confirmation_required), do: "Registration needs an explicit yes."
   defp describe_domain_error(reason) when is_binary(reason), do: reason
   defp describe_domain_error(reason), do: inspect(reason)
+
+  # Ported from ProvisioningLive.handle_event("mail_send_probe", ...) and
+  # mail_state/3's own dependency chain (fetch_full_domain/2,
+  # verification_attempts/1, mail_record/2, apex_mx_records/1, resolves?/3,
+  # apex_or_qualified/2, qualify_record/2, dkim_state/1) — moved wholesale
+  # since the outbound mail panel this proof and refresh_mail_dns both read
+  # needs the same DNS/Resend state either way.
+  defp run_mail_send_probe(scope, to, environment) do
+    case Resend.send_probe(scope, to, environment: environment) do
+      {:ok, sent} ->
+        state = mail_state(scope, environment, list_domains(scope))
+
+        %{
+          from: sent.from,
+          accepted: true,
+          provider_id: sent.id,
+          completed_at: DateTime.to_iso8601(DateTime.utc_now()),
+          dkim: state && state.dkim,
+          domain: state && state.domain,
+          reason: nil
+        }
+
+      {:error, reason} ->
+        %{
+          from: Resend.probe_from(scope, environment),
+          accepted: false,
+          provider_id: nil,
+          completed_at: DateTime.to_iso8601(DateTime.utc_now()),
+          dkim: nil,
+          domain: nil,
+          reason: inspect(reason) |> String.slice(0, 200)
+        }
+    end
+  end
+
+  # Ported from ProvisioningLive.handle_event("refresh_mail_dns", ...) and
+  # refresh_mail/1 — assigns rather than assign_new, which is what
+  # "re-check" has to mean.
+  defp refresh_mail(socket) do
+    scope = socket.assigns.current_scope
+    domains = list_domains(scope)
+
+    socket
+    |> assign(:mail, mail_state(scope, "prod", domains))
+    |> assign(:mail_domains, mail_domains(scope, domains))
+  end
+
+  defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
+    case Resend.list_domains(scope) do
+      {:ok, domains} when is_list(domains) -> domains
+      _ -> []
+    end
+  end
+
+  defp list_domains(_scope), do: []
+
+  defp mail_domains(scope, domains) do
+    scope
+    |> Provisioning.environment_names()
+    |> Enum.map(&mail_state(scope, &1, domains))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp mail_state(scope, environment, domains) do
+    with %{domain: base} when is_binary(base) and base != "" <- scope.active_project,
+         sending <- Resend.sending_domain(base, environment),
+         found when is_map(found) <- Enum.find(domains, &(&1["name"] == sending)),
+         {:ok, domain} <- fetch_full_domain(scope, found) do
+      records = Resend.records(domain)
+
+      %{
+        domain: domain["name"],
+        environment: environment,
+        status: domain["status"],
+        provider_id: domain["id"],
+        attempts: verification_attempts(scope),
+        verified_at: domain["created_at"],
+        dkim: dkim_state(records),
+        manual_step_required: domain["status"] not in ["verified", "pending"],
+        records:
+          Enum.map(records, &mail_record(&1, domain["name"])) ++
+            apex_mx_records(domain["name"]),
+        missing_records:
+          records |> Enum.filter(&(&1["status"] == "not_started")) |> Enum.map(& &1["name"])
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp fetch_full_domain(scope, %{"id" => id} = found) do
+    case Resend.get_domain(scope, id) do
+      {:ok, %{"data" => domain}} -> {:ok, domain}
+      {:ok, domain} when is_map(domain) -> {:ok, domain}
+      _ -> {:ok, found}
+    end
+  end
+
+  defp verification_attempts(scope) do
+    scope
+    |> Provisioning.plan([:email])
+    |> Enum.find(&(&1.key == :email))
+    |> case do
+      %{resources: resources} ->
+        resources
+        |> Enum.find(&(&1.kind == "verification"))
+        |> case do
+          %{location: location} -> location |> to_string() |> String.replace(~r/\D/, "")
+          _ -> "0"
+        end
+
+      _ ->
+        "0"
+    end
+  end
+
+  defp mail_record(record, base) do
+    verified = record["status"] in ["verified", "success"]
+    name = apex_or_qualified(record["name"], base)
+
+    %{
+      type: record["type"],
+      name: name,
+      verified: verified,
+      resolved: resolves?(name, base, record["type"]),
+      content: record["value"]
+    }
+  end
+
+  defp resolves?(name, base, type) do
+    query = if name == "@", do: base, else: name
+
+    record_type =
+      case String.upcase(to_string(type)) do
+        "MX" -> :mx
+        "TXT" -> :txt
+        "CNAME" -> :cname
+        _ -> :a
+      end
+
+    case Application.get_env(:code_my_spec, :dns_resolver) do
+      resolver when is_function(resolver, 2) -> resolver.(query, record_type)
+      _ -> Dns.lookup_authoritative(query, record_type) != []
+    end
+  end
+
+  defp apex_mx_records(base) do
+    if resolves?("@", base, "MX") do
+      [%{type: "MX", name: "@", verified: true, resolved: true, content: base}]
+    else
+      []
+    end
+  end
+
+  defp apex_or_qualified(name, _base) when name in [nil, "", "@"], do: "@"
+  defp apex_or_qualified(name, base), do: qualify_record(name, base)
+
+  defp qualify_record(name, base) when name in [nil, "", "@"], do: base
+
+  defp qualify_record(name, base) do
+    zone = base |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+    if String.ends_with?(name, zone), do: name, else: "#{name}.#{zone}"
+  end
+
+  defp dkim_state(records) do
+    case Enum.find(records, &(String.upcase(to_string(&1["record"] || "")) =~ "DKIM")) do
+      nil -> "unknown"
+      %{"status" => status} when status in ["verified", "success"] -> "pass"
+      _ -> "fail"
+    end
+  end
+
+  # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...)
+  # and widget_degradation/1 + probe_field/2.
+  defp widget_degradation({:ok, probe}) do
+    %{
+      page_status: to_string(probe_field(probe, :page_status)),
+      page_usable: probe_field(probe, :page_usable),
+      widget_state: probe_field(probe, :widget_state),
+      summary: "the page served, and claimed no widget connection"
+    }
+  end
+
+  defp widget_degradation({:error, probe}) do
+    %{
+      page_status: to_string(probe_field(probe, :page_status)),
+      page_usable: false,
+      widget_state: probe_field(probe, :widget_state) || "unknown",
+      summary: "the page did not serve"
+    }
+  end
+
+  defp widget_degradation(_no_site) do
+    %{
+      page_status: nil,
+      page_usable: false,
+      widget_state: "unknown",
+      summary: "no domain set on the project — nothing to probe"
+    }
+  end
+
+  defp probe_field(probe, key), do: Map.get(probe, key) || Map.get(probe, Atom.to_string(key))
 end

@@ -60,16 +60,8 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
             "/app/projects/#{context.project.id}/console/resources/storage_backups?env=prod"
           )
 
-        # Synchronous in test (config :code_my_spec, :provisioning_run_async,
-        # false) — the step is already settled by the time render_click
-        # returns, same as the old page's equivalent run.
-        view
-        |> element(
-          "[data-test='resource-step'][data-step='storage'] [data-test='run-step']"
-        )
-        |> render_click()
-
-        view |> element("[data-test='resource-tab-checks']") |> render_click()
+        run_console_step(view, :storage)
+        open_resource_tab(view, :storage_backups, "checks")
 
         {:ok, Map.put(context, :view, view)}
       end
