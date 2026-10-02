@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.Offers do
   """
 
   import Ecto.Query
+  require Logger
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Offer
@@ -75,7 +76,12 @@ defmodule CodeMySpec.Agents.Offers do
         link(offer, recorded)
         offer
 
-      {:error, _changeset} ->
+      {:error, changeset} ->
+        Logger.warning(
+          "[Offers] record failed for agent #{agent_id} kind=#{kind} subject_type=#{type}: " <>
+            inspect(changeset.errors)
+        )
+
         nil
     end
   end

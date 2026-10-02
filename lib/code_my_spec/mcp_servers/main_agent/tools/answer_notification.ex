@@ -60,6 +60,10 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   end
 
   @impl true
+  def execute(params, frame) when not is_map(params) do
+    {:reply, AnswerMapper.error(:missing_id), frame}
+  end
+
   def execute(params, frame) do
     case Validators.validate_local_scope(frame, params) do
       {:ok, scope} -> settle(scope, params, frame)
