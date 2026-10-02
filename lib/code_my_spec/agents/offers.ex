@@ -12,16 +12,15 @@ defmodule CodeMySpec.Agents.Offers do
     * `:work` — `start_task` on the subject this turn; a task-scoped `tap_out`
       on it is `:declined` with its reason. A questions-only offer (main) wants
       `answer_notification`.
-    * `:problems`, `:menu`, `:retry`, `:answer` — any tool call after delivery.
-      An answer's text is in the delivered message, so it wants no fetch.
+    * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
+      after delivery. An answer's text is in the delivered message, so it wants
+      no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
     * `:unblocked` — resuming a task the blocker held.
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
   """
 
   import Ecto.Query
-  require Logger
-
   require Logger
 
   alias CodeMySpec.Agents.Agent
@@ -37,7 +36,8 @@ defmodule CodeMySpec.Agents.Offers do
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
   # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
   # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
-  # `:answer` and `:unblocked` in `Notifications` and `TaskOwner`.
+  # `:answer` and `:unblocked` in `Notifications` and `TaskOwner`; `:stalled` in
+  # `MainAgent.Cadence.announce_stalls/2`.
   @template_versions %{
     work: "work/1",
     menu: "menu/1",
@@ -46,7 +46,8 @@ defmodule CodeMySpec.Agents.Offers do
     retry: "retry/1",
     answer: "answer/1",
     unblocked: "unblocked/1",
-    check_in: "check_in/1"
+    check_in: "check_in/1",
+    stalled: "stalled/1"
   }
 
   @type subject :: {String.t(), term()}
@@ -215,7 +216,7 @@ defmodule CodeMySpec.Agents.Offers do
     do: %{status: :n_a, note: tools_note(calls)}
 
   defp outcome(%Offer{kind: kind}, _agent, calls)
-       when kind in [:problems, :menu, :retry, :answer],
+       when kind in [:problems, :menu, :retry, :answer, :stalled],
        do: claimed_if(calls != [])
 
   defp outcome(%Offer{kind: :work, subject_type: "questions"}, _agent, calls),

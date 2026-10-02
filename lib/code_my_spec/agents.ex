@@ -1478,21 +1478,40 @@ defmodule CodeMySpec.Agents do
   Tell the project's main agent about `event`, if one is running and `Wake`
   allows it. Delivered from a task, because delivery waits on a turn the caller
   should not.
-  """
-  @spec notify_main(Scope.t(), Wake.event(), String.t()) :: :ok
-  def notify_main(%Scope{} = scope, event, text) when is_binary(text) do
-    with %Agent{} = main <- main_agent(scope),
-         :ok <- Wake.allow?(scope, main, event) do
-      {:ok, _pid} =
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          message_agent(scope, main.id, text)
-        end)
 
-      :ok
-    else
-      _nobody_or_held -> :ok
+  Options: `:offer` — `{kind, subject}` to record the notice on main's
+  conversation and as an offer (`Offers`), marked undelivered when held or
+  when the send fails.
+  """
+  @spec notify_main(Scope.t(), Wake.event(), String.t(), keyword()) :: :ok
+  def notify_main(%Scope{} = scope, event, text, opts \\ []) when is_binary(text) do
+    case main_agent(scope) do
+      %Agent{} = main -> notify(scope, main, event, text, opts[:offer])
+      nil -> :ok
     end
   end
+
+  defp notify(scope, main, event, text, offer) do
+    offered = offer_notice(main, text, offer)
+
+    case Wake.allow?(scope, main, event) do
+      :ok ->
+        {:ok, _pid} =
+          Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+            scope |> message_agent(main.id, text) |> undelivered_on_failure(offered)
+          end)
+
+        :ok
+
+      _held ->
+        Offers.undelivered(offered)
+    end
+  end
+
+  defp offer_notice(_main, _text, nil), do: nil
+
+  defp offer_notice(main, text, offer),
+    do: main |> Conversations.record_sent_to_agent(text) |> record_offer(main, offer)
 
   # Role as well as copy. This matched on the working copy alone, so "the main
   # agent" was whichever agent happened to be running on the main checkout —

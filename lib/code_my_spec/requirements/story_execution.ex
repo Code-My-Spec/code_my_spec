@@ -148,8 +148,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # unclamped). A bound agent is never offered project-level work, so
   # project-level prerequisites do not clamp its story either: `qa_setup →
   # component_linked` held every story's chain behind work nobody bound could
-  # take. Its story's own unsatisfied nodes, and its components', still order
-  # it. Everyone else is clamped as before.
+  # take. Nor does another story's work: once the story's members are known the
+  # seeds narrow to its own nodes and its member components' (`story_seeds/3`),
+  # which still order it. Everyone else is clamped as before.
   #
   # The same view decides completion: a project-level node upstream of a bound
   # story is not one of its blockers, or a story finished locally would never
@@ -159,12 +160,17 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   defp seeds_of(context), do: Map.get(context, :seeds, :all)
 
-  defp seed?(%{entity_type: "project"}, context), do: seeds_of(context) == :all
-  defp seed?(_node, _context), do: true
+  # Narrowed to the story once its members are known: a bound story is held by
+  # its own unsatisfied nodes and its subtree's, and by no other story's.
+  defp story_seeds(story, ids, :local), do: {:story, story.id, ids}
+  defp story_seeds(_story, _ids, seeds), do: seeds
+
+  defp seed?(node, context), do: RequirementGraph.seed?(node, seeds_of(context))
 
   @doc """
   Whether `node` is `story`'s work: one of its own requirements or one of its
-  linked components'. What an agent bound to `story` may claim (4292518a).
+  member components' (`RequirementGraph.story_component_ids/2`). What an agent
+  bound to `story` may claim (4292518a, d1a69b4e).
   """
   @spec story_work?(map(), map(), map()) :: boolean()
   def story_work?(story, node, ctx),
@@ -438,7 +444,13 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     story_nodes = Enum.filter(local, &(&1.entity_type == "story"))
     present = MapSet.new(story_nodes, & &1.name)
     missing = Enum.reject(@completion_names, &MapSet.member?(present, &1))
-    context = Map.merge(ctx, %{stories: [story], execution_component_ids: ids})
+
+    context =
+      Map.merge(ctx, %{
+        stories: [story],
+        execution_component_ids: ids,
+        seeds: story_seeds(story, ids, seeds_of(ctx))
+      })
 
     cond do
       blocks_on_questions?(questions, role) ->

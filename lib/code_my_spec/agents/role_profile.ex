@@ -34,9 +34,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       `:work_offer` (the graph), `:nudge` (its turn-end review), `:resume`
       (a task it holds with no turn open), `:teammate_question` (questions
       other agents raised that it answers first), `:findings` (analysis
-      findings nobody asked it for), `:issue_filed` (widget issues),
-      `:cadence` (the main agent's check-in timer) and `:teammate_stalled` /
-      `:teammate_died` (a teammate stalled, died or was reaped).
+      findings nobody asked it for), `:cadence` (the main agent's check-in
+      timer) and `:teammate_stalled` / `:teammate_died` (a teammate stalled,
+      died or was reaped).
     * `waiting_on` — role-specific waits, each with the `Agents.Waiting`
       paths it holds. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
@@ -76,7 +76,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
           | :resume
           | :teammate_question
           | :findings
-          | :issue_filed
           | :cadence
           | :teammate_stalled
           | :teammate_died
@@ -295,16 +294,15 @@ defmodule CodeMySpec.Agents.RoleProfile do
       scope: :project,
       story_vantage: :copy,
       home_copy: :main,
-      # Findings because it fixes code; widget issues because a person filed
-      # them for it (6da8e0e5); a teammate stalling or dying because it is the
-      # one who restarts or unsticks it (step 4b).
+      # Findings because it fixes code; a teammate stalling or dying because it
+      # is the one who restarts or unsticks it (step 4b). Not widget issues: a
+      # new issue reaches the fleet as `issues_triaged` work (criterion 1755).
       wake: [
         :work_offer,
         :nudge,
         :resume,
         :teammate_question,
         :findings,
-        :issue_filed,
         :cadence,
         :teammate_stalled,
         :teammate_died

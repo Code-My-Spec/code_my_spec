@@ -295,7 +295,10 @@ defmodule CodeMySpec.MainAgent.Cadence do
     {newly, MapSet.new(stalled, & &1.agent_id)}
   end
 
-  @doc "Tell main about each teammate that has just stalled (`:teammate_stalled`)."
+  @doc """
+  Tell main about each teammate that has just stalled (`:teammate_stalled`),
+  each recorded as a `:stalled` offer on `{"agent", id}` (criterion 1756).
+  """
   @spec announce_stalls(Scope.t(), [AgentWork.t()]) :: :ok
   def announce_stalls(%Scope{} = scope, entries) do
     Enum.each(entries, fn entry ->
@@ -304,7 +307,8 @@ defmodule CodeMySpec.MainAgent.Cadence do
         :teammate_stalled,
         "Teammate stalled: the #{entry.role} agent #{entry.agent_id} on working copy " <>
           "#{entry.working_copy_id}#{root(entry.working_copy_root)} — " <>
-          AgentWork.unclaimed_work(entry)
+          AgentWork.unclaimed_work(entry),
+        offer: {:stalled, {"agent", entry.agent_id}}
       )
     end)
   end

@@ -45,6 +45,7 @@ defmodule CmsHarness.HookDecision do
           | :no_reply
           | :no_harness
           | :invalid_config
+          | :restarting
           | {:refused, term()}
           | {:unknown_harness, String.t()}
           | {:server_unreachable, String.t(), term()}
@@ -122,6 +123,8 @@ defmodule CmsHarness.HookDecision do
   def summarize(:no_project), do: "no project id for this directory"
 
   def summarize(:invalid_config), do: "config.yml found but no project id could be read from it"
+
+  def summarize(:restarting), do: "the harness is restarting"
 
   def summarize({:unknown_harness, id}) do
     "the server does not recognise harness #{id}, or has no location recorded for it"
@@ -295,9 +298,13 @@ defmodule CmsHarness.HookDecision do
 
   defp explain(:no_project, working_dir) do
     """
-    The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}`, or set CMS_PROJECT_ID, and restart the harness.
+    The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}` and restart the harness.
     """
     |> String.trim()
+  end
+
+  defp explain(:restarting, _working_dir) do
+    "The harness is restarting — a promote restarts it. Stop again in a few seconds."
   end
 
   defp explain(:invalid_config, working_dir) do

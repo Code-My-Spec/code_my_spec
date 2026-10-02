@@ -159,6 +159,26 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert excerpt =~ "did not match"
     end
 
+    # Run 54391: the first `** (` in a full suite's output is a logged
+    # disconnect, not what ended `mix test`; the crash opens a line, last.
+    test "the excerpt is the crash that ended the run, not an earlier logged error" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "error",
+        "output" =>
+          "....12:00:01 [error] Postgrex.Protocol (#PID<0.1.0>) disconnected: " <>
+            "** (DBConnection.ConnectionError) client #PID<0.2.0> exited\n" <>
+            "........\n" <>
+            "** (RuntimeError) after_suite blew up\n" <>
+            "    test/test_helper.exs:150: anonymous fn/1",
+        "stats" => %{},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, 1, excerpt}} = Runners.from_raw("exunit", raw)
+      assert excerpt == "** (RuntimeError) after_suite blew up"
+    end
+
     # The same trap reached through a *zero* exit. The clause above keys on
     # `execution_status: "error"`; this run reports success, so nothing above
     # catches it, and `{:ok, problems: []}` from a suite that executed nothing
