@@ -8,7 +8,11 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
   safe: the second run finds the repository from the first and adopts it
   rather than making a second one.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  per-step `provisioned-resource` listing criterion 748 moved onto — see
+  that spex's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Repository`.
   """
 
@@ -43,17 +47,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
         # the criterion for a repository that merely happens to exist.
         own_repository(context.project)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the repository step runs", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :repository)
 
-        await_step(context.view, :repository)
         html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
@@ -63,12 +65,9 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
         repo =
           context.html
           |> Floki.parse_document!()
-          # Scoped to the step. The page renders resources twice — once under
-          # the step that made them and once in the record at the bottom — and
-          # counting across both conflates "two renderings" with "two
-          # repositories", which is the thing under test.
+          # Scoped to the step, same as criterion 748's own retargeting.
           |> Floki.find(
-            "[data-test='setup-step'][data-step='repository'] " <>
+            "[data-test='resource-step'][data-step='repository'] " <>
               "[data-test='provisioned-resource'][data-kind='repository']"
           )
 

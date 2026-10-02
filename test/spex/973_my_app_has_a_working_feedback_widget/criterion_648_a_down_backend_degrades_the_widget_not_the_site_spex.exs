@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
   down with it is a liability Sam did not sign up for by adding a feedback
   box.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  probe moved off ProvisioningLive's blocking click into widget's Checks
+  tab, behind DiagnosticsPanel, running async via `start_async` — same move
+  criterion 613 made for the storage round-trip probe.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Widget`.
   """
 
@@ -22,6 +27,9 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
   setup :fake_providers
   setup :widget_on_the_fleet
 
+  defp widget_degradation_done?(html),
+    do: not (html =~ ~s(data-test="widget-degradation-probe-panel" data-state="running"))
+
   spex "A down backend degrades the widget, not the site", criterion: 648 do
     scenario "the page renders normally while the widget fails quietly" do
       # Installed for real, because the criterion is about how an installed
@@ -31,7 +39,13 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
       # site carries the widget, and the probe below reads it back off the
       # page rather than trusting that the step ran.
       given_ "the widget is installed on Sam's site", context do
-        {:ok, Map.put(context, :view, mount_provisioning(context))}
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/widget?tab=checks"
+          )
+
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "CodeMySpec is unreachable and a visitor loads the site", context do
@@ -40,10 +54,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
         # claiming to work.
         widget_backend_is_down(context)
 
+        context.view
+        |> element("[data-test='widget-degradation-probe']")
+        |> render_click()
+
         html =
-          context.view
-          |> element("[data-test='widget-degradation-probe']")
-          |> render_click()
+          await_operation(context.view, &widget_degradation_done?/1, &widget_degradation_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

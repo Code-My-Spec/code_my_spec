@@ -28,6 +28,9 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
   The fake delivers a message addressed to a receiving-enabled domain back
   through `GET /emails/receiving`, exactly as Resend does, and refuses to for
   a sending-only one — which is the distinction that cost this story a night.
+
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 651 made — see that spex's moduledoc.
   """
 
   use CodeMySpecSpex.Case
@@ -41,40 +44,42 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
   setup :devops_on
   setup :fake_providers
 
+  defp mail_inbound_done?(html),
+    do: not (html =~ ~s(data-test="mail-inbound-probe-panel" data-state="running"))
+
   spex "The app can act on a message someone sent in", criterion: 654 do
     scenario "an inbound message is delivered to the app, not just forwarded" do
       given_ "inbound mail is set up", context do
         own_domain(context.project, @domain)
         zone_exists(context, @domain)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         # Both steps, because an inbox needs a verified sending domain behind
         # it — Resend grants receiving on a domain it already knows.
-        for step <- [:email, :inbound] do
-          view
-          |> element("[data-test='setup-step'][data-step='#{step}'] [data-test='run-step']")
-          |> render_click()
-
-          CodeMySpecSpex.Case.await_step(view, step)
-        end
+        for step <- [:email, :inbound], do: run_console_step(view, step)
 
         # The plain "Run" click above carries no address, so :inbound settles
         # at :paused rather than :done (7df39199) — its records are already
         # published, and the pause is only about proving delivery. Answer it
         # the way 2f8c4208 gave the page to.
-        CodeMySpecSpex.Case.resolve_inbound_probe_pause(view, "sam@#{@domain}")
+        resolve_console_pause(view, :inbound, "sam@#{@domain}")
 
         html = render(view)
 
         assert html =~ ~r/data-step="inbound"[^>]*data-state="done"/,
                "expected inbound to be set up before a message is sent to it"
 
+        open_resource_tab(view, :mail, "checks")
+
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "someone sends a message to an address the app owns", context do
-        html = click_inbound_probe(context.view)
+        click_inbound_probe(context.view)
+
+        html = await_operation(context.view, &mail_inbound_done?/1, &mail_inbound_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

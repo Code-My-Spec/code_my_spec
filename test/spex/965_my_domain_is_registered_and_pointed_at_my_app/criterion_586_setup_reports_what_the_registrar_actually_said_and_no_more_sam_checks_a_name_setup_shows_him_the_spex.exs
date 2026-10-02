@@ -12,13 +12,21 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
   ReqCassette — the spec drives the page and the app's own Req client is
   what gets intercepted.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  domain search moved as-is (same markup and handlers, ported wholesale,
+  not a diagnostic) onto DNS and domain's Config tab, with the Cloudflare
+  calls behind `start_async` so the page doesn't block on them.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp domain_search_done?(html),
+    do: not (html =~ ~s(data-test="domain" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,16 +37,17 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
     scenario "an available domain comes back with its price before he commits" do
       given_ "Sam is on the setup status page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he types the domain he wants and setup checks it", context do
-        html =
-          context.view
-          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
+        |> render_submit()
+
+        html = await_operation(context.view, &domain_search_done?/1, &domain_search_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

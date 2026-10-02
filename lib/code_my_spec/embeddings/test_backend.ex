@@ -6,8 +6,7 @@ defmodule CodeMySpec.Embeddings.TestBackend do
   `content`. Search ranks by token overlap (case-insensitive word
   intersection) — enough to make the spec contract observable
   ("query that mentions tokens from a chunk surfaces that chunk")
-  without dragging Ortex / sqlite_vec into the Postgres-backed test
-  env.
+  without dragging Ortex into the test env.
 
   Tests don't need vector relevance — they assert on whether the
   expected file path appears in the response. Token overlap is

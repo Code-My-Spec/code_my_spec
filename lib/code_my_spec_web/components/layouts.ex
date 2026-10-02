@@ -229,6 +229,13 @@ defmodule CodeMySpecWeb.Layouts do
               <li>
                 <a href={~p"/app/projects/#{project.id}/provisioning"}>Provisioning</a>
               </li>
+              <%!-- The step 6 console (provisioning-console-step6, unmerged):
+                    same project, a PaaS-style sidebar+tabs layout instead of
+                    one long page. Linked alongside Provisioning rather than
+                    replacing it while the branch is still under review. --%>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/console"}>Console</a>
+              </li>
               <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
               <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
               <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>

@@ -45,7 +45,7 @@ config :code_my_spec, adapter: Ecto.Adapters.Postgres
 # sequences. On Postgres it can run as it does on the server.
 config :paper_trail, strict_mode: true
 
-# pgvector rather than sqlite_vec — see the doc_embeddings migration.
+# pgvector — see the doc_embeddings migration.
 config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend
 
 # Connection details come from runtime.exs so one image can be pointed at a

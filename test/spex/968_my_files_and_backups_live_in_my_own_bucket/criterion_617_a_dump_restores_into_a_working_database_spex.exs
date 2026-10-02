@@ -7,7 +7,15 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
   completes, and the data that was in the source database is present. A
   file that cannot be restored is not a backup — it is a file.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  restore proof moved off ProvisioningLive's blocking click into
+  storage_backups' Checks tab, behind DiagnosticsPanel, running async via
+  `start_async` — same move criterion 613 made for the storage round-trip
+  probe. `run_steps`/`mount_provisioning` are coupled to the old page's
+  `setup-step` markup, so the three steps this needs are driven by hand
+  instead.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -23,6 +31,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
   setup :real_backup_database
   setup :confirm_new_servers
 
+  defp restore_done?(html),
+    do: not (html =~ ~s(data-test="restore-probe" data-state="running"))
+
   spex "A dump restores into a working database", criterion: 617 do
     scenario "the restore completes and the source data is present" do
       given_ "a dump is in the bucket", context do
@@ -30,27 +41,46 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
         # empty database succeeds trivially, so without this the `then_`
         # asserting "the source data is present" was the first thing to
         # notice, and it reads as a restore bug rather than a missing dump.
-        view = mount_provisioning(context)
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # The backups step refuses on a project that is not deploy-ready, and it
         # is right to: a dump schedule on a project that cannot be deployed is a
         # schedule for nothing. Generating those files is what makes the premise
         # true (story 970).
-        view |> element("[data-test='generate-project']") |> render_click()
-        paste_storage_credentials(view)
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
+
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_storage_credentials(credentials_view)
 
         # The server first: `bin/backup` runs on the environment's own box,
         # and the server step is what mints the key that gets there.
-        run_steps(view, [:server, :storage, :backups])
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups"
+          )
+
+        run_console_step(view, :storage)
+        run_console_step(view, :backups)
+        open_resource_tab(view, :storage_backups, "checks")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it is restored into an empty database", context do
-        html =
-          context.view
-          |> element("[data-test='backup-restore-probe']")
-          |> render_click()
+        context.view
+        |> element("[data-test='backup-restore-probe']")
+        |> render_click()
+
+        html = await_operation(context.view, &restore_done?/1, &restore_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

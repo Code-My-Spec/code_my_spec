@@ -14,10 +14,9 @@ config :code_my_spec,
 # The harness serves its own endpoint; the main web endpoint stays off.
 config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
-# Local-first: SQLite with the embedding pipeline on sqlite_vec (Ortex).
-# dev_sprite overrides all three for Postgres.
+# Local-first: SQLite. dev_sprite overrides it for Postgres. No embeddings
+# backend: search lives on the server.
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
-config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
 
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
 # Versions are still recorded but `first_version_id` / `current_version_id`

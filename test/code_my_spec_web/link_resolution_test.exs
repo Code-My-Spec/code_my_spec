@@ -307,7 +307,15 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/stories/scheduler",
     "/app/projects/:project_id/requirements/stories",
     "/app/projects/:project_id/architecture/overview",
-    "/app/projects/:project_id/architecture/namespaces"
+    "/app/projects/:project_id/architecture/namespaces",
+    # The console's own sections (provisioning-console-step6, unmerged):
+    # reached from its own sidebar once you're on `/console`, same as the
+    # tabs above — only the surface itself, `/console`, belongs in the
+    # cloud app's nav.
+    "/app/projects/:project_id/console/deploys",
+    "/app/projects/:project_id/console/secrets",
+    "/app/projects/:project_id/console/credentials",
+    "/app/projects/:project_id/console/activity"
   ]
 
   @doc false

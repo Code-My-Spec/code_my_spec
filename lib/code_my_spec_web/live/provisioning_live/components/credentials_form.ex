@@ -16,6 +16,10 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm do
   attr :return_to, :string, required: true
   attr :missing_credentials, :list, required: true
   attr :credentials, :list, required: true
+  # False when embedded as a full page (the console) rather than a modal
+  # (the old provisioning page) — "Close" means nothing on a page with its
+  # own sidebar nav.
+  attr :show_close?, :boolean, default: true
 
   def credentials_form(assigns) do
     ~H"""
@@ -104,7 +108,12 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm do
         </div>
 
         <div class="modal-action">
-          <.button data-test="close-credentials-modal" class="btn" patch={@return_to}>
+          <.button
+            :if={@show_close?}
+            data-test="close-credentials-modal"
+            class="btn"
+            patch={@return_to}
+          >
             Close
           </.button>
           <.button type="button" data-test="check-credentials" phx-click="check_credentials">

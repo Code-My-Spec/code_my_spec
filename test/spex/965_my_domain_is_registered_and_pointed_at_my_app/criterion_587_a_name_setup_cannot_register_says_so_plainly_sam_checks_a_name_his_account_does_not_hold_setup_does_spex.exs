@@ -7,13 +7,19 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
   and asks for another — and attempts no charge. A registration attempt
   against a taken domain is money at risk for nothing.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 586 made — see that spex's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp domain_search_done?(html),
+    do: not (html =~ ~s(data-test="domain" data-state="running"))
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,16 +30,17 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
     scenario "an unavailable domain is reported and no charge is attempted" do
       given_ "Sam is on the setup status page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he checks a domain someone else already owns", context do
-        html =
-          context.view
-          |> form("[data-test='domain-form']", domain: %{name: "google.com"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='domain-form']", domain: %{name: "google.com"})
+        |> render_submit()
+
+        html = await_operation(context.view, &domain_search_done?/1, &domain_search_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

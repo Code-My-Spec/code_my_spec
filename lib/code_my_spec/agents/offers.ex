@@ -12,8 +12,8 @@ defmodule CodeMySpec.Agents.Offers do
     * `:work` — `start_task` on the subject this turn; a task-scoped `tap_out`
       on it is `:declined` with its reason. A questions-only offer (main) wants
       `answer_notification`.
-    * `:problems`, `:menu`, `:retry` — any tool call after delivery.
-    * `:answer` — `check_answer`, or `start_task` with nothing still blocked on it.
+    * `:problems`, `:menu`, `:retry`, `:answer` — any tool call after delivery.
+      An answer's text is in the delivered message, so it wants no fetch.
     * `:unblocked` — resuming a task the blocker held.
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
@@ -205,8 +205,9 @@ defmodule CodeMySpec.Agents.Offers do
   defp outcome(%Offer{kind: :check_in}, _agent, calls),
     do: %{status: :n_a, note: tools_note(calls)}
 
-  defp outcome(%Offer{kind: kind}, _agent, calls) when kind in [:problems, :menu, :retry],
-    do: claimed_if(calls != [])
+  defp outcome(%Offer{kind: kind}, _agent, calls)
+       when kind in [:problems, :menu, :retry, :answer],
+       do: claimed_if(calls != [])
 
   defp outcome(%Offer{kind: :work, subject_type: "questions"}, _agent, calls),
     do: claimed_if(called?(calls, "answer_notification"))
@@ -219,13 +220,6 @@ defmodule CodeMySpec.Agents.Offers do
       tapped -> %{status: :declined, reason: tapped.blocked_reason}
     end
   end
-
-  defp outcome(%Offer{kind: :answer} = offer, agent, calls),
-    do:
-      claimed_if(
-        called?(calls, "check_answer") or
-          (called?(calls, "start_task") and not blocked_by?(agent, offer.subject_key))
-      )
 
   defp outcome(%Offer{kind: :unblocked} = offer, agent, _calls),
     do: claimed_if(resumed?(agent, offer.subject_key))
