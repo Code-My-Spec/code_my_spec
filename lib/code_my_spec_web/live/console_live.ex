@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Users.Scope
@@ -51,12 +52,9 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
-  alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
 
   alias CodeMySpec.Provisioning.Credentials
-
-  import CodeMySpecWeb.ProvisioningLive.ResourceFields
 
   @impl true
   def mount(params, _session, socket) do
@@ -83,7 +81,9 @@ defmodule CodeMySpecWeb.ConsoleLive do
     options = Provisioning.setup_options(scope)
     plan = Provisioning.plan(scope, options)
     environments = Provisioning.environment_names(scope)
-    environment = params["env"] || Provisioning.primary_environment(scope) || List.first(environments)
+
+    environment =
+      params["env"] || Provisioning.primary_environment(scope) || List.first(environments)
 
     socket =
       socket
@@ -178,10 +178,15 @@ defmodule CodeMySpecWeb.ConsoleLive do
         </div>
       </div>
 
-      <div data-test="console-resource-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div
+        data-test="console-resource-grid"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+      >
         <.link
           :for={step <- environment_scoped(@plan, @environment)}
-          navigate={~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"}
+          navigate={
+            ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"
+          }
           data-test="resource-card"
           data-step={step.key}
           class="card bg-base-100 hover:shadow-md transition-shadow"
@@ -219,7 +224,9 @@ defmodule CodeMySpecWeb.ConsoleLive do
     <section data-test="console-resources" class="flex flex-col gap-2">
       <.link
         :for={step <- environment_scoped(@plan, @environment)}
-        navigate={~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"}
+        navigate={
+          ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"
+        }
         data-test="resource-row"
         data-step={step.key}
         class="card bg-base-100 hover:shadow-md transition-shadow"
@@ -348,9 +355,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp deploy_steps(plan, environment) do
-    plan
-    |> Enum.filter(&(&1.key == :deploy))
-    |> Enum.filter(&(is_nil(&1.environment) or &1.environment == environment))
+    Enum.filter(plan, &(&1.key == :deploy and &1.environment == environment))
   end
 
   defp resource_step(plan, key, environment) do
@@ -360,7 +365,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp age_key_environments(scope, environments) do
-    Enum.filter(environments, &CodeMySpec.ProjectSecrets.has_value?(scope, "age_private_key_#{&1}"))
+    Enum.filter(
+      environments,
+      &CodeMySpec.ProjectSecrets.has_value?(scope, "age_private_key_#{&1}")
+    )
   end
 
   # Not a persisted event log — see the moduledoc. Every timestamp a step
@@ -418,8 +426,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope = socket.assigns.current_scope
     project = scope.active_project
 
-    case CodeMySpec.Generators.DeployArtifacts.generate(scope.environment,
-           app: CodeMySpec.Generators.DeployArtifacts.otp_app_name(project),
+    case DeployArtifacts.generate(scope.environment,
+           app: DeployArtifacts.otp_app_name(project),
            host: project.domain || "example.com",
            owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
            registry: Provisioning.Registry.default_host(),
@@ -439,10 +447,16 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  def handle_event("run_step_with_environment", %{"key" => key, "environment" => environment}, socket)
+  def handle_event(
+        "run_step_with_environment",
+        %{"key" => key, "environment" => environment},
+        socket
+      )
       when is_binary(environment) and environment != "" do
     scope = socket.assigns.current_scope
-    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), environment: environment)
+
+    :ok =
+      Provisioning.run_step_async(scope, String.to_existing_atom(key), environment: environment)
 
     {:noreply, put_flash(socket, :info, "Started.")}
   end
