@@ -10,15 +10,9 @@ defmodule CodeMySpecSpex.ComponentHelpers do
   Use this when a spec needs a Component without going through the
   full architecture-proposal flow but does want surface-driven
   creation.
-
-  Note: `CreateComponent` writes a stub spec file at the canonical
-  path as a side effect — the spec body is left for the
-  `ComponentSpec` phase to fill in. Specs that need a "no spec file
-  on disk" precondition can call `delete_stub/2` to strip it.
   """
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpecSpex.Fixtures
 
@@ -40,28 +34,5 @@ defmodule CodeMySpecSpex.ComponentHelpers do
       do: raise("create_component refused #{inspect(params)}: #{inspect(response.content)}")
 
     Fixtures.get_component_by_module_name(scope, params.module_name)
-  end
-
-  @doc """
-  Removes the stub spec file `CreateComponent` writes as a side
-  effect. Use when a spec needs the `spec_file` requirement to
-  remain unsatisfied after the component is created.
-  """
-  @spec delete_stub(map(), term()) :: :ok | {:error, term()}
-  def delete_stub(scope, component) do
-    spec_path = canonical_spec_path(component.module_name)
-    Environments.delete_file(scope.environment, spec_path)
-  end
-
-  # Mirrors `CodeMySpec.Architecture.SpecStub.canonical_spec_path/1` —
-  # the canonical spec lives at `.code_my_spec/spec/<module>.spec.md`
-  # with the module path under_scored.
-  defp canonical_spec_path(module_name) when is_binary(module_name) do
-    relative =
-      module_name
-      |> String.split(".")
-      |> Enum.map_join("/", &Macro.underscore/1)
-
-    ".code_my_spec/spec/#{relative}.spec.md"
   end
 end

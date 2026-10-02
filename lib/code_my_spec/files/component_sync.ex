@@ -506,7 +506,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   # Authored mode (3aeb66cf, step 4). An existing component is the record and
   # is not touched: its description, type and parent are authored or were set
   # when it was discovered. A module code names that has no component is new,
-  # and is created as discovered.
+  # and is created as discovered. One that predates provenance — created after
+  # the freeze by the old path — is code's too, so it becomes discovered.
   defp adopt_component(scope, data, synced_at, existing_map) do
     case Map.get(existing_map, data.module_name) do
       nil ->
@@ -520,6 +521,9 @@ defmodule CodeMySpec.Files.ComponentSync do
           }
           |> maybe_put(:type, data.type)
         )
+
+      %{provenance: nil} = existing ->
+        existing |> Ecto.Changeset.change(provenance: :discovered) |> Repo.update!()
 
       existing ->
         existing

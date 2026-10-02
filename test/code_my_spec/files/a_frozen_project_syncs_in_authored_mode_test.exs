@@ -202,6 +202,20 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
       assert "MyApp.Storied" in names
     end
 
+    # Criterion 1651: a row from before provenance existed, which only legacy
+    # data produces — LiveCopies was one, created between the freeze and step 4.
+    test "marks an unmarked component live code names as discovered, and leaves the rest", ctx do
+      component_fixture(ctx.scope, %{name: "Coded", module_name: "MyApp.Coded"})
+      component_fixture(ctx.scope, %{name: "Designed", module_name: "MyApp.Designed"})
+      code!(ctx.scope, "MyApp.Coded")
+
+      {:ok, _} = ComponentSync.sync_from_files(ctx.scope)
+
+      components = by_name(ctx.scope)
+      assert components["MyApp.Coded"].provenance == :discovered
+      assert components["MyApp.Designed"].provenance == nil
+    end
+
     test "still links files to their component", ctx do
       {:ok, _} = ComponentSync.sync_from_files(ctx.scope)
 
