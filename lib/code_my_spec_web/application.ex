@@ -57,10 +57,13 @@ defmodule CodeMySpecWeb.Application do
         # since this app is already a Fly machine — `FLY_APP_NAME` and
         # `FLY_IMAGE_REF` are Fly's own runtime env, so the only new
         # requirement is the `FLY_API_TOKEN` secret (not auto-injected by
-        # Fly for security reasons). A Hetzner backend was the original
-        # plan, but the app isn't Hetzner-deployed at all — nothing
-        # portable exists there yet for a runner to boot from, while Fly
-        # already has exactly that. dev/test keep `LocalBackend`, where a
+        # Fly for security reasons). `embed_pool_backend/1` falls back to
+        # `LocalBackend` when that secret isn't set yet, so a prod boot
+        # before it's configured still works — see that function. A
+        # Hetzner backend was the original plan, but the app isn't
+        # Hetzner-deployed at all — nothing portable exists there yet for
+        # a runner to boot from, while Fly already has exactly that.
+        # dev/test keep `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
           {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
@@ -234,8 +237,25 @@ defmodule CodeMySpecWeb.Application do
       CodeMySpec.Embeddings.PgVectorBackend
   end
 
-  defp embed_pool_backend(:prod), do: FLAME.FlyBackend
+  # `min: 0` means no runner boots at app start regardless — `FlyBackend.init/1`
+  # only ever runs lazily, inside the pool's own async boot task, the first
+  # time a burst actually needs a runner. That isolates a missing token to
+  # one failed boot attempt rather than a boot-time crash, but "isolated"
+  # still means every burst fails until someone notices — checking the token
+  # is present is the one fact that tells `FlyBackend.init/1` apart from
+  # "will actually boot something" before committing to it.
+  defp embed_pool_backend(:prod) do
+    if fly_api_token_configured?(), do: FLAME.FlyBackend, else: FLAME.LocalBackend
+  end
+
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
+
+  defp fly_api_token_configured? do
+    case System.get_env("FLY_API_TOKEN") do
+      token when is_binary(token) and token != "" -> true
+      _ -> false
+    end
+  end
 
   defp maybe_install_file_logger do
     if Application.get_env(:code_my_spec, :install_file_logger, false) do
