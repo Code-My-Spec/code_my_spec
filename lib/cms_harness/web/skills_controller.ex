@@ -82,6 +82,7 @@ defmodule CmsHarness.Web.SkillsController do
       {:ok, project} -> ask(project, params)
       {:error, {:invalid_config, _}} -> refuse(:invalid_config, working_dir)
       {:error, :unreadable_config} -> refuse(:invalid_config, working_dir)
+      {:error, :restarting} -> refuse(:restarting, working_dir)
       {:error, _reason} -> refuse(:no_project, working_dir)
     end
   end

@@ -466,8 +466,11 @@ defmodule CmsHarness.Web.McpController do
 
   def message(:no_project_id),
     do:
-      "This directory does not say which project it is. Put a `project_id` in " <>
-        ".code_my_spec/config.yml, or set CMS_PROJECT_ID."
+      "This directory does not say which project it is: neither " <>
+        ".code_my_spec/config.yml nor .cms_harness.json names a `project_id`."
+
+  def message(:restarting),
+    do: "The harness is restarting (a promote restarts it). Call again in a few seconds."
 
   def message(:unreadable_config),
     do: "The harness could not read .code_my_spec/config.yml in this directory."
