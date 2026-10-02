@@ -49,7 +49,9 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
       assert {:ok, prompt} = QaJourney.command(scope, task)
       assert prompt =~ "Phase 1: Journey Planning"
       assert prompt =~ "Phase 2: Journey Execution"
-      assert prompt =~ "Phase 3: Wallaby Test Generation"
+      assert prompt =~ "Phase 3: LiveView Tests"
+      assert prompt =~ "Phoenix.LiveViewTest"
+      refute prompt =~ ~r/wallaby/i
     end
 
     test "includes journey plan and result output paths", %{scope: scope, task: task} do
@@ -111,7 +113,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
       assert prompt =~ ".code_my_spec/architecture/overview.md"
     end
 
-    test "notes existing wallaby tests when present", %{scope: scope, task: task} do
+    test "notes existing journey tests when present", %{scope: scope, task: task} do
       write_file!(scope.environment, "test/journeys/registration_test.exs", """
       defmodule MyAppWeb.Journeys.RegistrationTest do
         use MyAppWeb.FeatureCase, async: false

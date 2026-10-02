@@ -132,8 +132,8 @@ defmodule CodeMySpec.Requirements.Profiles do
       story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
       by_component_role: index_by(files, :component_id),
       by_story_role: index_by(files, :story_id),
-      # For the six project `path_exists` requirements, which ask about named
-      # paths and one prefix rather than about an owner's roles. Same read.
+      # For the five project `path_exists` requirements, which ask about named
+      # paths rather than about an owner's roles. Same read.
       by_path: Map.new(files, &{&1.path, &1}),
       all: files
     }

@@ -306,8 +306,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   end
 
   @doc """
-  Satisfies `qa_journey_plan`, `qa_journey_execute`, and `qa_journey_wallaby`
-  by writing the three journey artifacts.
+  Satisfies `qa_journey_plan` and `qa_journey_execute` by writing the two
+  journey artifacts.
   """
   @spec apply_journey_artifacts(map()) :: map()
   def apply_journey_artifacts(context) do
@@ -322,13 +322,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         ".code_my_spec/qa/journey_result.md",
         qa_journey_result_content()
       )
-
-    # `qa_journey_wallaby` checker looks under `Paths.qa_journey_wallaby_dir/0`
-    # which is `test/journeys`, not `test/e2e`. Writing to the wrong dir
-    # was the silent fixture gap that left this requirement unsatisfied
-    # after `:fully_satisfied_project` and broke story 811's empty-queue
-    # spex (criterion 6491).
-    :ok = Environments.write_file(env, "test/journeys/sample_journey_test.exs", wallaby_content())
 
     synced(context)
   end
@@ -626,15 +619,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     ### Empty-state user reaches a working app
 
     All steps executed successfully — user reached /app/projects with active project.
-    """
-  end
-
-  defp wallaby_content do
-    """
-    defmodule MyApp.E2E.SampleJourneyTest do
-      use ExUnit.Case
-      @moduletag :pending
-    end
     """
   end
 

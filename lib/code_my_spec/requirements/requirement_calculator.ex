@@ -393,7 +393,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   read failures, and a key per missing section for setup files. Join the values
   rather than guessing at a shape.
 
-  Public for `Requirements.Handlers`, which settles the six project
+  Public for `Requirements.Handlers`, which settles the five project
   `path_exists` requirements from a profile and has to produce the same
   sentence. It had its own rendering and the diff caught the drift: the keys
   were interpolated too, so `qa_journey_plan` explained itself as

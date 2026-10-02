@@ -116,11 +116,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # surface it is mounted on. Granting the client tests the surface as a caller.
   # John's call, 2026-09-15.
   #
-  # `read_project_file`/`write_project_file` because all four of QA's own
+  # `read_project_file`/`write_project_file` because all three of QA's own
   # project requirements are `path_exists` checks on files QA writes:
-  # `qa_setup` wants `.code_my_spec/qa/plan.md`, `qa_journey_plan` and
-  # `qa_journey_execute` want their two docs beside it, and
-  # `qa_journey_wallaby` wants tests under `test/journeys/`. The role carried
+  # `qa_setup` wants `.code_my_spec/qa/plan.md`, and `qa_journey_plan` and
+  # `qa_journey_execute` want their two docs beside it. The role carried
   # no file tool of any kind, so it could not satisfy a single one of them —
   # `submit_qa_result` files a verdict on a story and writes nothing to disk.
   #

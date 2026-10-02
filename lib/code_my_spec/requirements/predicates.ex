@@ -108,7 +108,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   ## `:path_exists`
 
   Project-scoped, where the two above are entity-scoped: these correlate on
-  `project_id`. Six definitions use it and all six name a `.code_my_spec/` path
+  `project_id`. Five definitions use it and all five name a `.code_my_spec/` path
   — a technical strategy, a QA plan, a journey.
 
   Two config shapes, matching the interpreter: an exact `path`, or a

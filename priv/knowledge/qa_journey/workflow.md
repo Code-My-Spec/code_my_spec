@@ -1,18 +1,18 @@
 # QA Journey Workflow
 
 The `qa_journey` task is a three-phase pipeline that takes an app from
-"no end-to-end coverage" to "passing journeys codified as Wallaby
-regression tests."
+"no end-to-end coverage" to "passing journeys codified as LiveView
+tests."
 
 | Phase | Artifact | Requirement node |
 |---|---|---|
 | 1. Plan | `.code_my_spec/qa/journey_plan.md` | `qa_journey_plan` |
 | 2. Execute | `.code_my_spec/qa/journey_result.md` | `qa_journey_execute` |
-| 3. Codify | `test/journeys/*_test.exs` | `qa_journey_wallaby` |
+| 3. Codify | `test/journeys/*_test.exs` | none — same session as Phase 2 |
 
-The same module satisfies all three nodes. Each phase is gated by a
-`:path_exists` check on the previous phase's artifact, so the agent walks
-forward one phase per session. The command prompt always announces all
+The same module satisfies both nodes. Each is gated by a `:path_exists`
+check on the previous phase's artifact, so the agent walks forward one
+phase per session. The command prompt always announces all
 three phases — phases whose artifacts already exist are marked **SKIP**;
 the agent works on the first un-skipped phase.
 
@@ -110,39 +110,34 @@ verification.
   obvious that the plan missed, exercise it and add a journey for
   next run.
 
-## Phase 3: Wallaby Test Generation
+## Phase 3: LiveView Tests
 
-**Artifact:** `test/journeys/{journey_name}_test.exs` — one feature
-test per **passing** journey from Phase 2.
+**Artifact:** `test/journeys/{journey_name}_test.exs` — one test per
+**passing** journey from Phase 2. Written in the same session as Phase 2;
+no requirement gates it.
 
 ### Procedure
 
-1. Read the plan and the result.
-2. For each journey marked `pass` in the result:
-   - Create a Wallaby feature test at
-     `test/journeys/{journey_name}_test.exs`.
-   - Use the project's feature case (`use MyAppWeb.FeatureCase` or
-     equivalent). Read an existing feature test if one is present to
-     copy the case module and setup conventions.
-   - Translate journey steps into Wallaby calls: `visit/2`,
-     `fill_in/3`, `click/2`, `assert_has/2`.
-   - Pull seed setup and auth from the prerequisites section.
-3. Make each test idempotent — it should pass standalone and in any
-   order. Don't rely on state from another test.
-4. Run the test file once to confirm it passes against the running app
-   before stopping the session.
+1. For each journey marked `pass` in the result, write a
+   `Phoenix.LiveViewTest` test at `test/journeys/{journey_name}_test.exs`
+   using the project's `ConnCase`. No browser driver.
+2. Translate steps into `live/2`, `form/3` + `render_submit/1`,
+   `element/3` + `render_click/1`, `follow_redirect/2`, and assert on
+   `render/1` / `has_element?/3`.
+3. Pull seed setup and auth from the prerequisites section
+   (`log_in_user/2` or the project's equivalent).
+4. Make each test independent — standalone, any order.
+5. Run the file once and confirm it passes before stopping.
 
 ### When journey tests already exist
 
 If `test/journeys/*_test.exs` files exist (the prompt lists them),
-update or extend them rather than duplicating. A new journey on the
-same surface usually means adding a test, not rewriting the file.
+extend them rather than duplicating.
 
 ### Anti-patterns
 
 - Writing tests for failed journeys. Codify what passes; the
   failure is a bug to fix upstream.
-- Inline shell commands or hardcoded credentials. Pull from
-  prerequisites; load credentials from env vars.
-- Skipping the local test run. A Wallaby test that's never been
-  green is no better than no test.
+- Hardcoded credentials. Pull from prerequisites or fixtures.
+- Skipping the local test run. A test that's never been green is no
+  better than no test.

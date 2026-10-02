@@ -279,7 +279,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       journey_index =
         Enum.find_index(
           names,
-          &(&1 in ["qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"])
+          &(&1 in ["qa_journey_plan", "qa_journey_execute"])
         )
 
       other_index =

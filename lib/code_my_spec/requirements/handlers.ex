@@ -222,7 +222,6 @@ defmodule CodeMySpec.Requirements.Handlers do
     "qa_setup" => [:files],
     "qa_journey_plan" => [:files],
     "qa_journey_execute" => [:files],
-    "qa_journey_wallaby" => [:files],
     "component_linked" => [:links],
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
@@ -299,14 +298,13 @@ defmodule CodeMySpec.Requirements.Handlers do
     "implementation_file" => {:exists, :implementation, "component"}
   }
 
-  # The six project `path_exists` requirements, by what they look for.
+  # The five project `path_exists` requirements, by what they look for.
   @path_requirements %{
     "technical_strategy" => {:path, ".code_my_spec/architecture/decisions.md"},
     "code_generation" => {:path, ".code_my_spec/tasks/code_generation.sh"},
     "qa_setup" => {:path, ".code_my_spec/qa/plan.md"},
     "qa_journey_plan" => {:path, ".code_my_spec/qa/journey_plan.md"},
-    "qa_journey_execute" => {:path, ".code_my_spec/qa/journey_result.md"},
-    "qa_journey_wallaby" => {:prefix, "test/journeys/"}
+    "qa_journey_execute" => {:path, ".code_my_spec/qa/journey_result.md"}
   }
 
   # Which file key `Utils.component_files/2` holds the expected path under.
@@ -516,7 +514,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The six project `path_exists` requirements.
+  # The five project `path_exists` requirements.
   #
   # One entity each, so the sweep is one row and `except` is always empty — the
   # shape is kept anyway so every requirement settles through one path.
@@ -765,16 +763,6 @@ defmodule CodeMySpec.Requirements.Handlers do
 
       _file ->
         {true, %{path: path}}
-    end
-  end
-
-  # `check_path_prefix/3`. Matched in Elixir rather than with a `LIKE` for the
-  # reason `prefix_count/3` gives: `_` is a single-character wildcard in both
-  # Postgres and SQLite, and a prefix containing one would quietly over-match.
-  defp path_verdict({:prefix, prefix}, profile) do
-    case Enum.count(profile.all, &String.starts_with?(&1.path, prefix)) do
-      0 -> {false, %{reason: "No files at #{prefix}"}}
-      n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
     end
   end
 

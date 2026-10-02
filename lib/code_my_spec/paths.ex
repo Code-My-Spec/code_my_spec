@@ -95,8 +95,8 @@ defmodule CodeMySpec.Paths do
   @doc "QA journey result document."
   def qa_journey_result, do: Path.join(@base_dir, "qa/journey_result.md")
 
-  @doc "QA journey Wallaby test directory (relative, target project)."
-  def qa_journey_wallaby_dir, do: "test/journeys"
+  @doc "QA journey LiveView test directory (relative, target project)."
+  def qa_journey_tests_dir, do: "test/journeys"
 
   @doc "Integrations index file (`.code_my_spec/integrations.md`)."
   def integrations_index, do: Path.join(@base_dir, "integrations.md")
