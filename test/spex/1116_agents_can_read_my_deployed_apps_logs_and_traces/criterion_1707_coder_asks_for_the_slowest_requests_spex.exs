@@ -10,8 +10,8 @@ defmodule CodeMySpecSpex.Story1116.Criterion1707Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.ClickHouseCassetteHelpers
   alias CodeMySpec.McpServers.Observability.Tools.SlowSpans
+  alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account

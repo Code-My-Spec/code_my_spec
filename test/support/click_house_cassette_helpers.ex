@@ -1,4 +1,4 @@
-defmodule CodeMySpec.ClickHouseCassetteHelpers do
+defmodule CodeMySpecSpex.ClickHouseCassetteHelpers do
   @moduledoc """
   Cassette wiring for `Observability.ClickHouseClient`.
 

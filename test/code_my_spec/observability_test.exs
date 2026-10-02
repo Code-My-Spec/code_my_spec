@@ -10,10 +10,10 @@ defmodule CodeMySpec.ObservabilityTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.ClickHouseCassetteHelpers
   alias CodeMySpec.Observability
   alias CodeMySpec.Observability.ClickHouseClient
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpecSpex.ClickHouseCassetteHelpers
 
   setup do
     scope = full_scope_fixture()

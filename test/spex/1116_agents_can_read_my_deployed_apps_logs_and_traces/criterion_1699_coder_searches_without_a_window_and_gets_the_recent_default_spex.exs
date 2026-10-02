@@ -11,8 +11,8 @@ defmodule CodeMySpecSpex.Story1116.Criterion1699Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.ClickHouseCassetteHelpers
   alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
+  alias CodeMySpecSpex.ClickHouseCassetteHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
