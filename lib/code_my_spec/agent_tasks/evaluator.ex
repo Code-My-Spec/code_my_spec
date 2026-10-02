@@ -257,19 +257,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
     "Requirement not met: #{reason}"
   end
 
-  defp problem_feedback_for(scope, component, :component, project) do
-    # Determine which problem feedback to use based on the task artifact type
-    # For now, include all problems for the component
-    code_feedback = ProblemFeedback.for_code_task(scope, component, project)
-    spec_feedback = ProblemFeedback.for_spec_task(scope, component, project)
-
-    case {code_feedback, spec_feedback} do
-      {nil, nil} -> nil
-      {code, nil} -> code
-      {nil, spec} -> spec
-      {code, spec} -> "#{code}\n\n#{spec}"
-    end
-  end
+  defp problem_feedback_for(scope, component, :component, project),
+    do: ProblemFeedback.for_code_task(scope, component, project)
 
   defp join_feedback(req, nil), do: req
   defp join_feedback(req, problem), do: "#{req}\n\n#{problem}"

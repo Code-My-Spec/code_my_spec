@@ -2,8 +2,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @moduledoc """
   QA-test a single user story end-to-end.
 
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_story.spec.md`.
-
   ## Deprecation notice
 
   The file-rename approach (`result.md` → `result_complete.md`) that this
@@ -731,7 +729,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp format_component_files(files) do
     files
     |> Enum.map(fn
-      {:spec_file, path} -> "- Spec: `#{path}`"
       {:code_file, path} -> "- Source: `#{path}`"
       {:test_file, path} -> "- Tests: `#{path}`"
       _ -> nil

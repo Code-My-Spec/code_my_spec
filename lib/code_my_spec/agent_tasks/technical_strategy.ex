@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @moduledoc """
   Identify project technology decisions and document each as an ADR.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/technical_strategy.spec.md`.
   """
 
   require Logger

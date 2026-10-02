@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.PersonaResearch do
   @moduledoc """
   Run a persona research session with the PM.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/persona_research.spec.md`.
   """
 
   alias CodeMySpec.Requirements.{CheckerResult, PersonasChecker}

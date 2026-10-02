@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.CodeGeneration do
   @moduledoc """
   Run CodeMySpec generators (phx.gen.auth + cms_gen.*) to scaffold a new project.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/code_generation.spec.md`.
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
@@ -12,14 +10,14 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
 
   @generators [
     {"phx_gen_auth", "mix phx.gen.auth Users User users --live",
-     "Authentication with registration, login, session management",
-     nil, "lib/APP/users/scope.ex"},
+     "Authentication with registration, login, session management", nil,
+     "lib/APP/users/scope.ex"},
     {"cms_gen_accounts", "mix cms_gen.accounts",
-     "Multi-tenant accounts with members and invitations",
-     "phx_gen_auth", "lib/APP/accounts/account.ex"},
+     "Multi-tenant accounts with members and invitations", "phx_gen_auth",
+     "lib/APP/accounts/account.ex"},
     {"cms_gen_integrations", "mix cms_gen.integrations",
-     "OAuth integration scaffolding with encrypted token storage",
-     "phx_gen_auth", "lib/APP/integrations/integration.ex"},
+     "OAuth integration scaffolding with encrypted token storage", "phx_gen_auth",
+     "lib/APP/integrations/integration.ex"},
     # Not `cms_gen.feedback_widget`, which is deprecated in the generators
     # package in favour of this one and is a different thing besides: it talks
     # OAuth/REST and needs `cms_gen.integrations` first, while the support

@@ -48,20 +48,6 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedback do
   end
 
   @doc """
-  Query problems for a component's spec file.
-
-  Returns formatted feedback string or nil if no problems exist.
-  """
-  @spec for_spec_task(term(), term(), term()) :: String.t() | nil
-  def for_spec_task(scope, component, project) do
-    %{spec_file: spec_file} = Utils.component_files(component, project)
-
-    problems = Problems.list_project_problems(scope, file_path: spec_file)
-
-    format_if_present(problems, context: "Spec file has problems:")
-  end
-
-  @doc """
   Merge requirement feedback and problem feedback into an evaluate result tuple.
 
   Returns {:ok, :valid} when both are nil, or {:ok, :invalid, feedback} with

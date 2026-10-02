@@ -102,7 +102,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       Test File: #{test_file_path}
 
       Implementation Instructions:
-      1. Read the component and what it depends on with `get_component` and `show_architecture`
+      1. Read the component with `get_component` (module_name `#{component.module_name}`) — its description, parent, dependencies and files; `show_architecture_overview` for the wider picture
       2. Read the test file to understand the expected behavior and any test fixtures
       3. Read the linked story's BDD spex (under `test/spex/<story_number>_*/`) — they are the contract for this component's public API
       4. Create all necessary module files

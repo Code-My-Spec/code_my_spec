@@ -248,40 +248,6 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedbackTest do
   end
 
   # ============================================================================
-  # for_spec_task/3
-  # ============================================================================
-
-  describe "for_spec_task/3" do
-    setup [:create_scope, :create_project, :create_component]
-
-    test "returns nil when no problems exist", %{
-      scope: scope,
-      component: component,
-      project: project
-    } do
-      assert ProblemFeedback.for_spec_task(scope, component, project) == nil
-    end
-
-    test "returns formatted feedback when spec file has validation problems", %{
-      scope: scope,
-      component: component,
-      project: project
-    } do
-      %{spec_file: spec_file} = Utils.component_files(component, project)
-
-      create_problem(scope, %{
-        file_path: spec_file,
-        source: "spec_validation",
-        message: "Missing required section: Functions"
-      })
-
-      feedback = ProblemFeedback.for_spec_task(scope, component, project)
-      assert is_binary(feedback)
-      assert feedback =~ "Missing required section"
-    end
-  end
-
-  # ============================================================================
   # combine/2
   # ============================================================================
 

@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.StoryInterview do
   @moduledoc """
   Run a guided story interview or review session with the PM.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/story_interview.spec.md`.
   """
 
   alias CodeMySpec.Requirements.{CheckerResult, StoriesChecker}

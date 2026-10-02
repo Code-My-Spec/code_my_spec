@@ -58,17 +58,6 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
     })
   end
 
-  def context_with_children_created(context, children, spec_paths) do
-    Response.tool()
-    |> Response.json(%{
-      success: true,
-      message: "Context and child components created successfully",
-      context: component_summary(context),
-      children: Enum.map(children, &component_summary/1),
-      spec_paths: spec_paths
-    })
-  end
-
   defp format_proposal(proposal) do
     %{
       contexts: Enum.map(proposal.contexts, &format_proposal_context/1),
@@ -93,79 +82,6 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
       description: comp.description,
       story_ids: Map.get(comp, :story_ids, [])
     }
-  end
-
-  def spec_created(component, spec_path) do
-    Response.tool()
-    |> Response.json(%{
-      success: true,
-      message: "Spec file created successfully",
-      component: component_summary(component),
-      spec_path: spec_path
-    })
-  end
-
-  def spec_updated(component, spec_path) do
-    Response.tool()
-    |> Response.json(%{
-      success: true,
-      message: "Spec metadata updated successfully",
-      component: component_summary(component),
-      spec_path: spec_path
-    })
-  end
-
-  def spec_response(component, spec_path, spec_content) do
-    Response.tool()
-    |> Response.json(%{
-      component: component_detail(component),
-      spec_path: spec_path,
-      spec_content: spec_content
-    })
-  end
-
-  def spec_not_found_response(component, spec_path) do
-    Response.tool()
-    |> Response.json(%{
-      component: component_detail(component),
-      spec_path: spec_path,
-      spec_exists: false,
-      message: "Spec file does not exist yet. Use create_spec to create it."
-    })
-  end
-
-  def specs_list_response(components) do
-    Response.tool()
-    |> Response.json(%{
-      specs: Enum.map(components, &spec_summary/1)
-    })
-  end
-
-  def specs_list_paginated_response(%{
-        specs: specs,
-        total: total,
-        limit: limit,
-        offset: offset,
-        has_more: has_more
-      }) do
-    Response.tool()
-    |> Response.json(%{
-      specs: Enum.map(specs, &spec_summary/1),
-      pagination: %{
-        total: total,
-        limit: limit,
-        offset: offset,
-        has_more: has_more
-      }
-    })
-  end
-
-  def spec_names_response(names) do
-    Response.tool()
-    |> Response.json(%{
-      count: length(names),
-      specs: names
-    })
   end
 
   def architecture_summary_response(summary) do
@@ -255,48 +171,5 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
       module_name: component.module_name,
       description: component.description
     }
-  end
-
-  defp component_detail(component) do
-    base = component_summary(component)
-
-    dependencies =
-      case Map.get(component, :outgoing_dependencies, :not_loaded) do
-        %Ecto.Association.NotLoaded{} -> []
-        deps when is_list(deps) -> Enum.map(deps, & &1.target_component.module_name)
-        _ -> []
-      end
-
-    dependents =
-      case Map.get(component, :incoming_dependencies, :not_loaded) do
-        %Ecto.Association.NotLoaded{} -> []
-        deps when is_list(deps) -> Enum.map(deps, & &1.source_component.module_name)
-        _ -> []
-      end
-
-    Map.merge(base, %{
-      dependencies: dependencies,
-      dependents: dependents
-    })
-  end
-
-  defp spec_summary(component) do
-    %{
-      id: component.id,
-      name: component.name,
-      type: component.type,
-      module_name: component.module_name,
-      description: component.description,
-      spec_path: build_spec_path(component.module_name)
-    }
-  end
-
-  defp build_spec_path(module_name) do
-    path_parts =
-      module_name
-      |> String.split(".")
-      |> Enum.map(&Macro.underscore/1)
-
-    Path.join([CodeMySpec.Paths.spec_dir() | path_parts]) <> ".spec.md"
   end
 end
