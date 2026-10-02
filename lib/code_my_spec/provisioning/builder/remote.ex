@@ -355,9 +355,25 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # its own builder and deploys with `--skip-push`, so nothing else was ever
   # going to add it — the pull succeeded and the very next command rejected
   # what it had just pulled.
+  #
+  # `--force-rm` closes a gap story 877's revised criteria (789/790) actually
+  # care about: "a failed build still takes its container with it." Checked
+  # live rather than assumed, on both builders this box could end up running:
+  # with `DOCKER_BUILDKIT=0` (the legacy builder), a failing `RUN` step's
+  # intermediate container survives by design — `--rm`'s default only removes
+  # them on a *successful* build, kept on failure so a human can `docker
+  # commit` and debug it — confirmed by running a deliberately-failing build
+  # and finding the exited container still in `docker ps -a` afterward.
+  # `--force-rm` is the documented flag for exactly this: it removed that same
+  # container even on the failing step. Under BuildKit (the default on any
+  # Docker new enough that this box's `docker-ce` almost certainly runs it),
+  # a failed build already leaves nothing in `docker ps -a` at all — BuildKit
+  # never materializes build steps as inspectable containers the way the
+  # legacy builder does — so `--force-rm` is accepted and does nothing there.
+  # Correct either way, with no need to detect which builder is active.
   defp docker_build(run, reference, ref, dir, opts) do
     labels = "--label commit=#{ref}" <> service_label(Keyword.get(opts, :service))
-    flags = labels <> platform_flag(Keyword.get(opts, :platform))
+    flags = "--force-rm " <> labels <> platform_flag(Keyword.get(opts, :platform))
 
     case run.(["cd #{dir} && docker build #{flags} -t #{reference} ."]) do
       {_, 0} -> :ok

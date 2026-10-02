@@ -106,6 +106,19 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       refute build_command() =~ "--label service"
     end
 
+    # Story 877's criteria 789/790: "a failed build still takes its container
+    # with it." Confirmed live (not assumed) that the legacy builder leaves a
+    # failing step's container behind unless told `--force-rm`, and that
+    # BuildKit leaves nothing to clean up either way — see the comment above
+    # `docker_build/5`. One flag, correct under both.
+    test "docker build always carries --force-rm" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} = Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      assert build_command() =~ "docker build --force-rm "
+    end
+
     test "reads the architecture off the image rather than trusting the request" do
       # The point of the whole check: a build that quietly produced x86 must
       # report x86, so Builder can refuse it.
