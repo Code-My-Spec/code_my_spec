@@ -2033,9 +2033,27 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.reduce(MapSet.new(), &block_from_seed(&1, &2, outgoing, entity_of, role_names))
   end
 
-  defp seed?(%{satisfied: true}, _seeds), do: false
-  defp seed?(%{entity_type: "project"}, :local), do: false
-  defp seed?(_node, _seeds), do: true
+  @doc """
+  Whether an unsatisfied `node` holds back what it reaches, under `seeds`.
+
+    * `:all` — every unsatisfied node does.
+    * `:local` — all but project-level ones (4292518a, unclamped).
+    * `{:story, story_id, component_ids}` — only the bound story's own nodes
+      and its member components' (`story_component_ids/2`). Another story's
+      unmet `bdd_specs_exist`, reached through a kickoff edge, held story
+      1084's coder on work nobody bound to 1084 could take.
+  """
+  def seed?(%{satisfied: true}, _seeds), do: false
+  def seed?(%{entity_type: "project"}, :local), do: false
+
+  def seed?(%{entity_type: "story", entity_id: id}, {:story, story_id, _ids}),
+    do: to_string(id) == to_string(story_id)
+
+  def seed?(%{entity_type: "component", entity_id: id}, {:story, _story_id, ids}),
+    do: MapSet.member?(ids, id)
+
+  def seed?(_node, {:story, _story_id, _ids}), do: false
+  def seed?(_node, _seeds), do: true
 
   defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
     seed_entity = {seed.entity_type, seed.entity_id}
@@ -2260,7 +2278,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # context exits through its children's implementations.
   # `children_by_parent` is built once here rather than per story.
   #
-  # `expand_with_parent_chain_descendants/2` needs it and used to group all of
+  # `story_components/2` needs it and used to group all of
   # `ctx.components` on every call — once per story, so 93 × 880 components on
   # this project to rebuild an identical map 93 times. It depends only on the
   # context, so the loop was the wrong place for it.
@@ -2320,45 +2338,50 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.group_by(& &1.parent_component_id)
   end
 
-  @doc "Component membership shared by story execution and the story kickoff topology."
-  def story_component_ids(story, ctx) do
-    case Map.get(ctx.components_by_id, story.component_id) do
-      nil ->
-        MapSet.new()
+  @doc """
+  A story's subgraph: its surface, the surface's descendants, and everything
+  those depend on, transitively. The one set of a story's components — kickoff
+  gating, priority within a story, what a bound team is offered, and what holds
+  it (4292518a).
 
-      surface ->
-        surface
-        |> transitive_dep_closure(ctx)
-        |> expand_with_parent_chain_descendants(ctx)
-        |> MapSet.new(& &1.id)
-    end
+  A dependency context brings its direct children, since a context is
+  implemented through them; nothing recurses further. Expanding every
+  dependency's descendants, and their descendants' dependencies, made story
+  1083 (surface `CodeMySpec.Architecture`) 568 of 1,319 components, phantom
+  modules of retired stories among them (d1a69b4e).
+  """
+  def story_component_ids(story, ctx) do
+    story |> story_components(ctx) |> MapSet.new(& &1.id)
   end
 
-  @doc """
-  The components a story is *about*: its surface and the surface's own
-  descendants. What an agent bound to the story may work on (4292518a).
-
-  Not `story_component_ids/2`, which adds the surface's transitive dependency
-  closure and everything under it — the set a story waits on, built for
-  kickoff gating. Measured on Code My Spec (d1a69b4e): story 1083's surface,
-  `CodeMySpec.Architecture`, reached `AgentTasks` through `Components` and
-  `Requirements`, and with descendants that is 568 of 1,319 components, so its
-  bound coder was handed phantom `AgentTasks` modules of retired stories.
-  Dependencies still hold the story through their edges; they are not its
-  team's work.
-  """
-  def story_surface_ids(story, ctx) do
+  defp story_components(story, ctx) do
     case Map.get(ctx.components_by_id, story.component_id) do
       nil ->
-        MapSet.new()
+        []
 
       surface ->
         children_by_parent = ctx[:children_by_parent] || children_by_parent(ctx)
 
-        [surface | descendants_of(surface, children_by_parent, MapSet.new())]
-        |> MapSet.new(& &1.id)
+        subtree = [surface | descendants_of(surface, children_by_parent, MapSet.new())]
+
+        closure =
+          subtree |> Enum.flat_map(&transitive_dep_closure(&1, ctx)) |> Enum.uniq_by(& &1.id)
+
+        (closure ++ Enum.flat_map(closure, &context_children(&1, children_by_parent)))
+        |> Enum.uniq_by(& &1.id)
     end
   end
+
+  # A context is implemented through its children (its kickoff targets them),
+  # so depending on one is depending on its direct children too — story 561,
+  # criteria 3590 and 3601. Direct only, and not their dependencies: John, for
+  # d1a69b4e.
+  @containers ~w(context live_context)
+
+  defp context_children(%{type: type, id: id}, children_by_parent) when type in @containers,
+    do: Map.get(children_by_parent, id, [])
+
+  defp context_children(_component, _children_by_parent), do: []
 
   defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
@@ -2366,10 +2389,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         {[], acc}
 
       surface ->
-        {closure_us, closure} = :timer.tc(fn -> transitive_dep_closure(surface, ctx) end)
-
-        {expand_us, kickoff_components} =
-          :timer.tc(fn -> expand_with_parent_chain_descendants(closure, ctx) end)
+        {closure_us, kickoff_components} = :timer.tc(fn -> story_components(story, ctx) end)
+        expand_us = 0
 
         kickoff_ids = MapSet.new(kickoff_components, & &1.id)
 
@@ -2391,25 +2412,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         {kickoff_edges ++ exit_edges, acc}
     end
-  end
-
-  # Expand a list of components to include every parent_component_id
-  # descendant. Priority cascades through parent chains (story 561
-  # rule f24fa177, criterion 6259); the kickoff fan-out should mirror
-  # that cascade so descendants of cross-context deps are gated by
-  # upstream work the same way their priority-source ancestor is.
-  # Without this expansion, a non-container intermediate (e.g.
-  # `Environments.Cli`) leaves its descendants (`Cli.TmuxAdapter`)
-  # priority-tethered but edge-orphaned — actionable even when the
-  # whole project chain is unsatisfied. Container-template chains
-  # add their own edges; `Topology.transitive_reduction/1` removes
-  # the resulting redundancies downstream.
-  defp expand_with_parent_chain_descendants(components, ctx) do
-    children_by_parent = ctx[:children_by_parent] || children_by_parent(ctx)
-
-    components
-    |> Enum.flat_map(&[&1 | descendants_of(&1, children_by_parent, MapSet.new())])
-    |> Enum.uniq_by(& &1.id)
   end
 
   defp descendants_of(component, children_by_parent, visited) do
