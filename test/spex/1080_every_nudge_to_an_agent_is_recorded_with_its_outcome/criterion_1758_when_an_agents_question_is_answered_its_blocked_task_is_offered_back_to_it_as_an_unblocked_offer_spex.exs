@@ -37,40 +37,49 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
   end
 
   spex "An answer reaching a busy agent is not a second active task", criterion: 1758 do
-    scenario "product is answered while it triages" do
+    scenario "product is answered about one design while it works another" do
       given_ "the project has completed kickoff", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
 
       given_ :synced_context_component
 
-      given_ "product asked about a design, then took triage in its next turn", context do
-        context = asked_then_triaging(context)
+      given_ "product asked about one design, then took up another and ended its turn",
+             context do
+        context = asked_about_design(context)
         :ok = Fixtures.start_turn(context.scope, context.product_id)
-        {:ok, context}
+
+        other =
+          StoryHelpers.create_and_link(context.scope, context.component.module_name,
+            title: "Receipt formatting",
+            description: "A story still to be designed",
+            acceptance_criteria: ["Receipts are readable"]
+          )
+
+        {:reply, started, _} = start_design(context, other)
+        refute started.isError, response_text(started)
+        :ok = Fixtures.end_turn(context.scope, context.product_id, [])
+        flush_transport()
+        {:ok, Map.put(context, :other_task, extract_task_id!(started))}
       end
 
-      when_ "the user answers the question", context do
+      when_ "the user answers the first question", context do
         :ok = Fixtures.answer_question(context.scope, context.question, "Shopper")
         {:ok, context}
       end
 
-      then_ "product is sent the answer once, telling it to finish triage first", context do
+      then_ "product is offered nothing yet", context do
         product_id = context.product_id
-        assert_receive {:agent_dispatch, ^product_id, _ref, answer}, 2_000
-        assert answer =~ "Finish your active task first"
-        refute_receive {:agent_dispatch, ^product_id, _ref, _}, 500
-        refute_received {:agent_message, ^product_id, _}
-        refute_received {:work_turn_requested, ^product_id, _ref, _prompt}
+        refute_receive {:work_turn_requested, ^product_id, _ref, _prompt}, 1_000
+        assert offers(context, product_id, %{kind: "unblocked"}) == [], listing(context)
         {:ok, context}
       end
 
-      then_ "and the design stays blocked; triage is its only active task", context do
-        assert active(context) == [context.triage_task]
-
+      then_ "and the answered design cannot be resumed beside the active one", context do
         {:reply, refused, _} = start_design(context)
-        assert refused.isError, response_text(refused)
-        assert active(context) == [context.triage_task]
+        assert refused.isError
+        assert response_text(refused) =~ "beside your active task"
+        assert active(context) == [context.other_task]
         {:ok, context}
       end
     end
@@ -130,9 +139,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
     end
   end
 
-  # Product designs a story, asks the user about it (blocking that task), ends
-  # the turn, and in its next turn takes triage of a filed issue.
-  defp asked_then_triaging(context) do
+  # Product designs a story, asks the user about it (blocking that task), and
+  # ends the turn.
+  defp asked_about_design(context) do
     story =
       StoryHelpers.create_and_link(context.scope, context.component.module_name,
         title: "Refund policy",
@@ -168,6 +177,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
     {:reply, tasks, _} = ListTasks.execute(%{}, frame)
     [_, question] = Regex.run(~r/blocked on question `([0-9a-f-]+)`/, response_text(tasks))
+    Map.merge(context, %{design_task: design_task, question: question})
+  end
+
+  # Then, in its next turn, takes triage of a filed issue.
+  defp asked_then_triaging(context) do
+    context = asked_about_design(context)
+    frame = context.product_frame
 
     {:reply, filed, _} =
       CreateIssue.execute(
@@ -191,20 +207,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
     refute triage.isError, response_text(triage)
     flush_transport()
 
-    Map.merge(context, %{
-      design_task: design_task,
-      question: question,
-      issue: issue,
-      triage_task: extract_task_id!(triage)
-    })
+    Map.merge(context, %{issue: issue, triage_task: extract_task_id!(triage)})
   end
 
-  defp start_design(context) do
+  defp start_design(context, story \\ nil) do
     StartTask.execute(
       %{
         requirement_name: "three_amigos_complete",
         entity_type: "story",
-        entity_id: to_string(context.story.number)
+        entity_id: to_string((story || context.story).number)
       },
       context.product_frame
     )
