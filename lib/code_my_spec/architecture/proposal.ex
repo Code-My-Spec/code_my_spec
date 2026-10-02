@@ -13,9 +13,7 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   require Logger
 
-  alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
   alias CodeMySpec.Stories
 
   defstruct [
@@ -212,12 +210,16 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   @doc """
-  Executes the proposal, creating all specs and linking stories.
+  Executes the proposal: writes its components, their parents and their
+  dependencies as records, and links stories. Writes no files.
 
   Options:
   - `:dry_run` - If true, returns what would be created without making changes
   - `:story_labels` - `%{story_id => story_number}`, so warnings name stories
     by number
+
+  `:env` and `:working_dir` are accepted and ignored: execution used to write
+  spec stubs, and needs no working copy now.
   """
   @spec execute(t(), Scope.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def execute(%__MODULE__{} = proposal, scope, opts \\ []) do
@@ -743,52 +745,20 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
+  # Components as records, step 2 (3aeb66cf). Execution writes the graph as
+  # records: components, their parents and their dependency edges, all marked
+  # `:authored`. It used to write a spec stub per component and upsert only
+  # name, type, description and module; the edges arrived later, when
+  # `ComponentSync` parsed each stub's `## Dependencies`, and re-executing never
+  # rewrote a stub that already existed — so a changed dependency list was
+  # silently lost. No spec file is written, and no working copy is needed.
   defp do_execute(proposal, scope, opts) do
     components = to_components(proposal)
-
-    case resolve_env(opts) do
-      {:ok, env, owned?} ->
-        try do
-          do_execute_with_env(proposal, scope, components, env, opts)
-        after
-          if owned?, do: Environments.destroy(env)
-        end
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  defp resolve_env(opts) do
-    case Keyword.get(opts, :env) do
-      nil -> resolve_env_from_working_dir(opts)
-      env -> {:ok, env, false}
-    end
-  end
-
-  # Executing a proposal writes spec files. Defaulting the directory
-  # to this process's meant writing them into the server's own
-  # checkout, so the caller must say where.
-  defp resolve_env_from_working_dir(opts) do
-    case Keyword.get(opts, :working_dir) do
-      nil ->
-        {:error, :no_working_copy}
-
-      working_dir ->
-        case Environments.create(:cli, working_dir: working_dir) do
-          {:ok, env} -> {:ok, env, true}
-          {:error, _} = err -> err
-        end
-    end
-  end
-
-  defp do_execute_with_env(proposal, scope, components, env, opts) do
     pre_existing_db_names = list_db_component_names(scope)
 
-    with {:ok, created_components} <- write_all_spec_files(env, components) do
-      linked_count = sync_and_link_components(scope, created_components)
-
-      Logger.debug("[Proposal] sync_and_link_components complete, linked_count: #{linked_count}")
+    with {:ok, by_module} <- upsert_components(scope, components) do
+      sync_dependencies(scope, components, by_module)
+      linked_count = link_stories(scope, components, by_module)
 
       warnings =
         collect_warnings(proposal, Keyword.get(opts, :story_labels, %{})) ++
@@ -798,7 +768,7 @@ defmodule CodeMySpec.Architecture.Proposal do
         {:ok,
          %{
            created_contexts: Enum.count(proposal.contexts),
-           created_components: length(created_components),
+           created_components: map_size(by_module),
            linked_stories: linked_count,
            warnings: warnings
          }}
@@ -824,72 +794,87 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
-  # Order is preserved (ordered: true default) so surface components, which
-  # come last in `to_components/1`, are still processed after contexts in
-  # `sync_and_link_components/2`. That ordering is what makes surface links
-  # win when a story is claimed by both a context and a surface component.
-  defp write_all_spec_files(env, components) do
-    components
-    |> Task.async_stream(fn comp -> {comp, write_one_spec(env, comp)} end,
-      on_timeout: :kill_task
-    )
-    |> Enum.reduce_while({:ok, []}, fn
-      {:ok, {comp, :ok}}, {:ok, acc} ->
-        {:cont, {:ok, [comp | acc]}}
+  # In `to_components/1` order, which puts every parent before its children, so
+  # a child's parent already has an id when the child is written.
+  #
+  # `:authored` on every one: writing a component the proposal names is
+  # authoring it, and a component discovered from code under the same module
+  # name becomes authored here (criterion 1626).
+  defp upsert_components(scope, components) do
+    Enum.reduce_while(components, {:ok, %{}}, fn attrs, {:ok, by_module} ->
+      parent_id = with %{id: id} <- by_module[Map.get(attrs, :parent_module)], do: id
 
-      {:ok, {_comp, {:error, _} = err}}, _ ->
-        {:halt, err}
+      case Components.upsert_component(scope, %{
+             module_name: attrs.module_name,
+             type: attrs.type,
+             description: attrs.description,
+             name: attrs.module_name |> String.split(".") |> List.last(),
+             parent_component_id: parent_id,
+             provenance: :authored
+           }) do
+        %{id: _} = component ->
+          {:cont, {:ok, Map.put(by_module, attrs.module_name, component)}}
 
-      {:exit, reason}, _ ->
-        {:halt, {:error, reason}}
+        {:error, reason} ->
+          {:halt, {:error, "Could not write component #{attrs.module_name}: #{inspect(reason)}"}}
+      end
     end)
-    |> case do
-      {:ok, acc} -> {:ok, Enum.reverse(acc)}
-      err -> err
-    end
   end
 
-  # Infrastructure components are framework-generated modules (OTP application,
-  # web endpoint, mailer, etc.). They get a Component row in the DB but no spec
-  # stub — their requirement graph template is empty, so no agent work is
-  # driven for them.
-  defp write_one_spec(_env, %{type: "infrastructure"}), do: :ok
-  defp write_one_spec(env, comp_attrs), do: write_spec_file(env, comp_attrs)
+  # The proposal's edges are the whole truth about its own components' outgoing
+  # dependencies: declared ones are added, and any other outgoing edge one of
+  # them has is removed (criterion 1620). A target outside the proposal is
+  # resolved from the database; validation has already refused any that is in
+  # neither.
+  defp sync_dependencies(scope, components, by_module) do
+    existing = Map.new(Components.list_components(scope), &{&1.module_name, &1})
+
+    Enum.each(components, fn attrs ->
+      source = Map.fetch!(by_module, attrs.module_name)
+
+      declared =
+        attrs
+        |> Map.get(:dependencies, [])
+        |> Enum.map(&(by_module[&1] || existing[&1]))
+        |> Enum.reject(&(is_nil(&1) or &1.id == source.id))
+        |> MapSet.new(& &1.id)
+
+      current = Components.list_component_dependencies(scope, source.id)
+      current_ids = MapSet.new(current, & &1.target_component_id)
+
+      declared
+      |> MapSet.difference(current_ids)
+      |> Enum.each(fn target_id ->
+        Components.create_dependency(scope, %{
+          source_component_id: source.id,
+          target_component_id: target_id,
+          provenance: :authored
+        })
+      end)
+
+      current
+      |> Enum.reject(&MapSet.member?(declared, &1.target_component_id))
+      |> Enum.each(&Components.delete_dependency(scope, &1))
+    end)
+  end
 
   # Two stages:
-  #   1. Upsert every component locally and build the (story_id, component_id)
-  #      link list in input order. Surface components come last in the input,
-  #      so duplicate story claims (context + surface) end up with the surface
-  #      link last — that's what gives surface its "wins on overwrite" property
-  #      once the bulk call applies them in order.
+  #   1. Build the (story_id, component_id) link list in input order. Surface
+  #      components come last in the input, so duplicate story claims (context
+  #      + surface) end up with the surface link last — that's what gives
+  #      surface its "wins on overwrite" property once the bulk call applies
+  #      them in order.
   #   2. One `Stories.bulk_set_story_component/2` call. On the CLI this is a
   #      single HTTP POST + a single local-cache write-through transaction,
   #      replacing 2N round-trips.
-  defp sync_and_link_components(scope, components) do
-    Logger.debug("[Proposal] sync_and_link_components: #{length(components)} components")
-
+  defp link_stories(scope, components, by_module) do
     raw_links =
-      Enum.flat_map(components, fn comp_attrs ->
-        case sync_component_to_db(scope, comp_attrs) do
-          %{id: component_id} ->
-            comp_attrs
-            |> Map.get(:story_ids, [])
-            |> Enum.map(&%{story_id: &1, component_id: component_id})
+      Enum.flat_map(components, fn attrs ->
+        %{id: component_id} = Map.fetch!(by_module, attrs.module_name)
 
-          {:error, reason} ->
-            Logger.error(
-              "[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}"
-            )
-
-            []
-
-          other ->
-            Logger.error(
-              "[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}"
-            )
-
-            []
-        end
+        attrs
+        |> Map.get(:story_ids, [])
+        |> Enum.map(&%{story_id: &1, component_id: component_id})
       end)
 
     # Dedupe by story_id keeping the LAST occurrence. `components` is ordered
@@ -926,24 +911,6 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp child_story_links(child) do
     Enum.map(Map.get(child, :story_ids, []), fn story_id -> {story_id, child.name} end)
-  end
-
-  defp sync_component_to_db(scope, attrs) do
-    component_attrs = %{
-      module_name: attrs.module_name,
-      type: attrs.type,
-      description: attrs.description,
-      name: attrs.module_name |> String.split(".") |> List.last()
-    }
-
-    Components.upsert_component(scope, component_attrs)
-  end
-
-  defp write_spec_file(env, attrs) do
-    case SpecStub.write(env, attrs) do
-      :ok -> :ok
-      {:error, _} = err -> err
-    end
   end
 
   defp count_linked_stories(proposal) do

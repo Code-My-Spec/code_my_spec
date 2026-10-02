@@ -172,7 +172,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   def evaluate(%{environment: nil}, _task), do: {:error, :no_environment}
 
   def evaluate(scope, _task) do
-    working_dir = scope.environment && scope.environment.cwd
     env = scope.environment
 
     # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
@@ -184,7 +183,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     if patch_mode?(env) do
       evaluate_patch_mode(scope)
     else
-      evaluate_initial_mode(scope, env, working_dir)
+      evaluate_initial_mode(scope, env)
     end
   end
 
@@ -212,12 +211,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @spec execute_proposal(map()) ::
           {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def execute_proposal(scope) do
-    working_dir = scope.environment && scope.environment.cwd
-    env = scope.environment
-    evaluate_initial_mode(scope, env, working_dir)
+    evaluate_initial_mode(scope, scope.environment)
   end
 
-  defp evaluate_initial_mode(scope, env, working_dir) do
+  defp evaluate_initial_mode(scope, env) do
     project = scope.active_project
     app_name = get_app_name(project)
 
@@ -231,11 +228,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
          {:ok, _validated} <-
            Proposal.validate(proposal, story_ids: story_numbers, db_components: db_components),
          {:ok, result} <-
-           Proposal.execute(linked, scope,
-             env: env,
-             working_dir: working_dir,
-             story_labels: labels
-           ) do
+           Proposal.execute(linked, scope, story_labels: labels) do
       case Map.get(result, :warnings, []) do
         [] -> {:ok, :valid}
         warnings -> {:ok, :valid, format_warnings(warnings)}

@@ -1,16 +1,16 @@
 defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
   @moduledoc """
   Story 682 — Architect Agent Surface
-  Criterion 5832 — Architect creates a stub component via the create_component tool.
+  Criterion 369 — Architect creates a component via the create_component tool.
 
   When the architect calls `create_component` with a module name, type, and
-  description, the system creates a component DB row and writes a stub spec
-  file at the conventional path. The body of the stub is left empty for the
-  ComponentSpec phase to fill in later. This is the lightweight, single-call
-  alternative to rewriting the full proposal in patch mode.
+  description, the component is recorded. The lightweight, single-call
+  alternative to rewriting the full proposal in patch mode. It used to write a
+  stub spec as well; components are records now (3aeb66cf), and criterion 1622
+  covers that no file is written.
 
   Surface: `create_component` MCP tool, then `list_components` to observe the
-  new component, plus a filesystem read for the spec stub.
+  new component.
   """
 
   use CodeMySpecSpex.Case
@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The architect creates a stub component via the create_component tool", criterion: 369 do
-    scenario "stub spec and DB row are created without writing the full spec body" do
+  spex "Architect creates a component via the create_component tool", criterion: 369 do
+    scenario "the component is recorded" do
       given_ "no spec file exists at the conventional path for the new component",
              context do
         app = context.project.module_name || "MyApp"
@@ -71,26 +71,6 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
 
         assert body =~ context.module_name,
                "expected #{context.module_name} in list_components output, got: #{inspect(body)}"
-
-        {:ok, context}
-      end
-
-      then_ "a stub spec file exists at the conventional path", context do
-        assert CodeMySpec.Environments.file_exists?(context.environment, context.spec_path),
-               "expected stub spec at #{context.spec_path} to be created by create_component"
-
-        {:ok, context}
-      end
-
-      then_ "the stub spec references the module name and type", context do
-        {:ok, content} =
-          CodeMySpec.Environments.read_file(context.environment, context.spec_path)
-
-        assert content =~ context.module_name,
-               "expected stub spec to mention the module name, got: #{inspect(content)}"
-
-        assert content =~ "context",
-               "expected stub spec to declare the component type, got: #{inspect(content)}"
 
         {:ok, context}
       end

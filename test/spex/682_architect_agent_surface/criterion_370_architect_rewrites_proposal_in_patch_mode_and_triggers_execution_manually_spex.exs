@@ -132,14 +132,18 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         {:ok, context}
       end
 
-      then_ "spec stubs exist for the new components", context do
+      then_ "the new components are recorded", context do
         app = context.project.module_name || "MyApp"
 
-        for module_name <- ["#{app}Web.FeatureLive", "#{app}.Feature"] do
-          spec_path = Fixtures.spec_file(Macro.underscore(module_name))
+        {:reply, listed, _frame} =
+          ListComponents.execute(
+            %{},
+            %Frame{assigns: %{current_scope: context.scope}}
+          )
 
-          assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
-                 "expected stub spec at #{spec_path} to be created by execute_proposal"
+        for module_name <- ["#{app}Web.FeatureLive", "#{app}.Feature"] do
+          assert response_text(listed) =~ module_name,
+                 "expected new component #{module_name} to be recorded by execution"
         end
 
         {:ok, context}

@@ -14,7 +14,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
   """
 
   use CodeMySpecSpex.Case
+
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -157,18 +159,22 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
         {:ok, context}
       end
 
-      then_ "execution creates spec stubs for any new components", context do
+      then_ "execution records the new components", context do
         app = context.project.module_name || "MyApp"
+
+        {:reply, listed, _frame} =
+          ListComponents.execute(
+            %{},
+            %Frame{assigns: %{current_scope: context.scope}}
+          )
 
         for module_name <- [
               "#{app}Web.FeatureOneLive",
               "#{app}Web.FeatureTwoLive",
               "#{app}.Features"
             ] do
-          spec_path = Fixtures.spec_file(Macro.underscore(module_name))
-
-          assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
-                 "expected spec stub at #{spec_path} to be written by execution"
+          assert response_text(listed) =~ module_name,
+                 "expected component #{module_name} to be recorded by execution"
         end
 
         {:ok, context}
