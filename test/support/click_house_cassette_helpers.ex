@@ -24,6 +24,9 @@ defmodule CodeMySpec.ClickHouseCassetteHelpers do
         mix test test/code_my_spec/observability/click_house_client_test.exs
   """
 
+  alias CodeMySpec.ProjectSecrets
+  alias Plug.Conn
+
   @cassette_dir "test/cassettes/click_house"
 
   def cassette_opts(extra \\ []) do
@@ -78,4 +81,101 @@ defmodule CodeMySpec.ClickHouseCassetteHelpers do
   def pick_for_table(body, traces_result, logs_result) do
     if String.contains?(body, "FROM otel_traces"), do: traces_result, else: logs_result
   end
+
+  @doc """
+  Writes a project's ClickHouse connection into `ProjectSecrets` for one
+  environment — the same mechanism story 1081 (provisioning) will use,
+  not a shortcut around it. Returns the connection map for convenience
+  (e.g. to assert a stub only ever sees this exact username).
+  """
+  def configure!(scope, opts \\ []) do
+    env = Keyword.get(opts, :environment, "uat")
+    conn = %{
+      url: Keyword.get(opts, :url, "http://ch-#{scope.active_project_id}.test"),
+      username: Keyword.get(opts, :username, "tel_#{scope.active_project_id}_#{env}"),
+      password: Keyword.get(opts, :password, "secret")
+    }
+
+    {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_URL", conn.url, environment: env)
+
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_USERNAME", conn.username, environment: env)
+
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_PASSWORD", conn.password, environment: env)
+
+    conn
+  end
+
+  @doc "Stubs a flat JSON-lines response — every call gets the same rows."
+  def stub_rows(rows) do
+    body = Enum.map_join(rows, "\n", &Jason.encode!/1)
+    Req.Test.stub(CodeMySpec.Observability.ClickHouseClient, fn conn -> Conn.send_resp(conn, 200, body) end)
+  end
+
+  @doc """
+  Stubs a response that only ever answers requests authenticated as
+  `expected_username` — anything else fails the test loudly, from inside
+  the stub, rather than silently returning the wrong project's data. This
+  is the client-side half of rule `094d4f4b` ("nothing it passes can
+  widen that"): the only thing that can change which rows come back is
+  which credentials the scope resolved to, never a tool argument.
+  """
+  def stub_rows_for_username(expected_username, rows) do
+    stub_rows_by_username(%{expected_username => rows})
+  end
+
+  @doc """
+  Like `stub_rows_for_username/2`, but for a stub that has to tell two
+  (or more) projects' connections apart and answer each with its own
+  canned rows — a username not in `rows_by_username` fails the test
+  loudly, from inside the stub, rather than silently answering with
+  someone else's data. This is the client-side half of rule `094d4f4b`
+  ("nothing it passes can widen that").
+  """
+  def stub_rows_by_username(rows_by_username) do
+    Req.Test.stub(CodeMySpec.Observability.ClickHouseClient, fn conn ->
+      body_for_username(rows_by_username, auth_username(conn))
+      |> then(&Conn.send_resp(conn, 200, &1))
+    end)
+  end
+
+  defp body_for_username(rows_by_username, username) do
+    case Map.fetch(rows_by_username, username) do
+      {:ok, rows} -> Enum.map_join(rows, "\n", &Jason.encode!/1)
+      :error -> raise "unexpected ClickHouse auth #{inspect(username)} — " <>
+                  "a query reached a connection no project configured for this stub"
+    end
+  end
+
+  defp auth_username(conn) do
+    case Conn.get_req_header(conn, "x-clickhouse-user") do
+      [username] -> username
+      other -> raise "expected exactly one X-ClickHouse-User header, got #{inspect(other)}"
+    end
+  end
+
+  @doc """
+  Stubs ClickHouseClient, recording the request's SQL body and query
+  params where a spex's `then_` can read them back via
+  `captured_request/1` — a side channel that keeps the spex file itself
+  free of a raw `send`/`case`, neither of which `_spex.exs` files may use
+  directly.
+  """
+  def stub_and_capture(expected_username, response_body \\ "") do
+    {:ok, agent} = Agent.start_link(fn -> nil end)
+
+    Req.Test.stub(CodeMySpec.Observability.ClickHouseClient, fn conn ->
+      {:ok, body, conn} = Conn.read_body(conn)
+      conn = Conn.fetch_query_params(conn)
+      ^expected_username = auth_username(conn)
+      Agent.update(agent, fn _ -> {body, conn.params} end)
+      Conn.send_resp(conn, 200, response_body)
+    end)
+
+    agent
+  end
+
+  @doc "The `{body, params}` the last request `stub_and_capture/2` saw."
+  def captured_request(agent), do: Agent.get(agent, & &1)
 end
