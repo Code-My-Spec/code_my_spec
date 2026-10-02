@@ -704,9 +704,11 @@ defmodule CodeMySpec.Agents.Work do
       `withheld?/3` holds back from it. Anything else (a `Session`, `nil`) is
       answered at the scope's checkout with nothing withheld.
 
-  Withholding happens before the story's wave is cut and before the fallback to
-  project-level work, so an agent whose story work is all held still gets the
-  project's.
+  Withholding happens before the story's wave is cut.
+
+  An agent with an active story (`bound_story_id/1`) is offered that story's
+  work and nothing else (4292518a): no project-level work beyond what the
+  story waits on, and no other story's. Without one it is answered as before.
 
   Options: `:story_number` narrows to that story or refuses, as
   `get_next_requirement` takes it; `:owners` is the project's agents, so a
@@ -743,7 +745,7 @@ defmodule CodeMySpec.Agents.Work do
          read
        ) do
     case Assignment.advance(scope, scope.active_working_copy_id, from, to) do
-      {:ok, :moved} -> read.(team(scope.active_working_copy_id))
+      {:ok, :moved} -> read.(bind(team(scope.active_working_copy_id)))
       {:error, _reason} -> execution
     end
   end
@@ -757,10 +759,12 @@ defmodule CodeMySpec.Agents.Work do
   # story work happens on feature copies, never on main. Everyone else reads
   # the team's: a team member (coding, QA) the story it holds, product and a
   # session the story their copy's team holds.
+  #
+  # A team member holding a story is bound to it (`bound_story_id/1`).
   defp assignment(scope, %Agent{role: role} = agent) do
     case RoleProfile.scope(role) do
       :project -> :project
-      :story -> {:team, agent.story_id, agent.epic_id}
+      :story -> bind({:team, bound_story_id(agent), agent.epic_id})
       _epic -> team(scope.active_working_copy_id)
     end
   end
@@ -769,6 +773,27 @@ defmodule CodeMySpec.Agents.Work do
 
   defp team(copy_id),
     do: {:team, WorkingCopies.team_story_id(copy_id), Assignment.team_epic_id(copy_id)}
+
+  defp bind({:team, nil, _epic} = unbound), do: unbound
+  defp bind({:team, story_id, epic_id}), do: {:bound, story_id, epic_id}
+
+  @doc """
+  The story `agent` is bound to, or nil (4292518a).
+
+  John: an agent on a working copy with an active story is bound by that story,
+  and while it is active is not even offered work outside it. The active story
+  is the agent's own `story_id`, which only a team member — coding or QA — ever
+  holds (`Agent.changeset/2`, `Assignment`). The main agent reads the project
+  and product reads every story from the main copy; neither holds one, so
+  neither is bound, and an agent without a story is answered as before.
+
+  What counts as the story's work is `StoryExecution.story_work?/3`.
+  """
+  @spec bound_story_id(term()) :: integer() | nil
+  def bound_story_id(%Agent{role: role, story_id: id}),
+    do: if(Assignment.team_member?(role), do: id)
+
+  def bound_story_id(_owner), do: nil
 
   @doc "`work_for/4`'s ordered actionable list."
   @spec actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]

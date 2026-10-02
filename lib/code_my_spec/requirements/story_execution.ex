@@ -22,6 +22,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   #     can move the whole team onto it.
   #   * `:copy` — the story the copy's team holds, read here. For callers below
   #     `Agents` that cannot resolve a team.
+  #   * `{:bound, story_id, epic_id}` — an agent bound to its active story
+  #     (4292518a): as `{:team, …}`, but offered that story's work and nothing
+  #     else — see `bound/4`.
   #   * `:project` — no story at all. The main agent's: story work happens on
   #     feature copies, never on main.
   def read(
@@ -46,11 +49,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
           next = next_story(scoped, assignment, requested_number, nodes, edges, ctx)
 
           scoped
-          |> story_or_project(nodes, edges, ctx, role, requested_number)
+          |> story_or_project(story, assignment, {nodes, edges, ctx}, role, requested_number)
           |> Map.put(:next_story, next)
 
         {:refused, reason} ->
           result(:unavailable, nil, reason)
+
+        {:unavailable, story} ->
+          unavailable_bound(story, assignment)
 
         :none ->
           from_copy(nodes, edges, ctx, role)
@@ -119,12 +125,103 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # story is blocked on this" rather than "go triage issues". The issue needing
   # triage is that story's own. An agent asking what *it* should do is the case
   # that was broken, and it always names a role.
-  defp story_or_project(story_scoped, _nodes, _edges, _ctx, nil, nil), do: story_scoped
+  #
+  # Never for an agent bound to its story (4292518a): see `bound/4`.
+  defp story_or_project(story_scoped, story, {:bound, _id, _epic}, graph, role, _requested),
+    do: bound(story_scoped, story, graph, role)
 
-  defp story_or_project(%{actionable: []} = story_scoped, nodes, edges, ctx, role, nil),
-    do: project_level(nodes, edges, ctx, role, story_scoped)
+  defp story_or_project(story_scoped, _story, _assignment, _graph, nil, nil), do: story_scoped
 
-  defp story_or_project(story_scoped, _nodes, _edges, _ctx, _role, _requested), do: story_scoped
+  defp story_or_project(%{actionable: []} = story_scoped, _story, _assignment, graph, role, nil),
+    do: project_level(graph, role, story_scoped)
+
+  defp story_or_project(story_scoped, _story, _assignment, _graph, _role, _requested),
+    do: story_scoped
+
+  # An agent with an active story is offered that story's work and nothing else
+  # (John, 4292518a). A coding agent on story 1083 whose story work was blocked
+  # fell through to the project-level `issues_resolved` — every open issue in
+  # the project, a task with no finish — and sat on it while 1083 never started.
+  #
+  # The story's work is its own nodes (`member?/3`: its requirements and its
+  # linked components') and the project-level requirements its own unsatisfied
+  # nodes wait on. The second is the story's critical path, not a fallback: with
+  # every team member bound, nobody else holds this role's `spex_boundary_ready`
+  # or `qa_setup`, which is the stall the unbound fallback above was written
+  # for. `issues_resolved` gates no story node, so it is never one of them.
+  #
+  # A finished story stays `:complete`, so `Agents.Work` moves the team on.
+  defp bound(%{actionable: [], status: :blocked} = story_scoped, story, graph, role) do
+    case prerequisites_for(story, graph, role) do
+      [] -> story_scoped
+      actionable -> ready(story_scoped, actionable)
+    end
+  end
+
+  defp bound(story_scoped, _story, _graph, _role), do: story_scoped
+
+  defp prerequisites_for(story, {nodes, edges, ctx}, role) do
+    keys = story |> prerequisite_nodes(nodes, edges, ctx) |> MapSet.new(&key/1)
+
+    nodes
+    |> actionable_nodes(edges, ctx, role)
+    |> Enum.filter(&MapSet.member?(keys, key(&1)))
+  end
+
+  # Unsatisfied project-level nodes upstream of the story's own.
+  defp prerequisite_nodes(story, nodes, edges, ctx) do
+    ids = RequirementGraph.story_component_ids(story, ctx)
+    local = Enum.filter(nodes, &member?(&1, story.id, ids))
+
+    nodes
+    |> blocking_nodes(edges, local)
+    |> Enum.filter(&(&1.entity_type == "project"))
+  end
+
+  @doc """
+  Whether `node` is `story`'s work: one of its own requirements, one of its
+  linked components', or a project-level requirement its own unsatisfied
+  nodes wait on. What an agent bound to `story` may claim (4292518a).
+  """
+  @spec story_work?(map(), map(), {list(), list(), map()}) :: boolean()
+  def story_work?(story, node, {nodes, edges, ctx}) do
+    member?(node, story.id, RequirementGraph.story_component_ids(story, ctx)) or
+      Enum.any?(prerequisite_nodes(story, nodes, edges, ctx), &(key(&1) == key(node)))
+  end
+
+  # A bound agent's story that cannot be read here: not ready for development,
+  # or reserved for another checkout. Nothing is offered instead (4292518a).
+  defp unavailable_bound(nil, {:bound, id, _epic}),
+    do:
+      result(
+        :blocked,
+        nil,
+        "Your team's active story (id #{id}) does not exist. Nothing outside it is " <>
+          "offered until the team is given another with `set_active_story`."
+      )
+
+  defp unavailable_bound(story, _assignment),
+    do:
+      result(
+        :blocked,
+        story,
+        "Your team's active story #{story.number} is not available on this working copy: " <>
+          "it is not ready for development, or it is reserved elsewhere. Nothing outside " <>
+          "it is offered until it is."
+      )
+
+  defp ready(base, actionable) do
+    wave = next_wave(actionable)
+
+    %{
+      base
+      | status: :ready,
+        actionable: actionable,
+        wave: wave,
+        remaining: length(actionable) - length(wave),
+        reason: ""
+    }
+  end
 
   # Project-scope work, and nothing else, for a copy whose story holds none.
   #
@@ -137,7 +234,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # With nothing at project level either, the story's own answer stands. It
   # already says complete, or blocked and why, and replacing that with a
   # project-shaped "nothing to do" would lose which story the copy is on.
-  defp project_level(nodes, edges, ctx, role, story_scoped) do
+  defp project_level({nodes, edges, ctx}, role, story_scoped) do
     nodes
     |> actionable_nodes(edges, ctx, role)
     |> Enum.filter(&(&1.entity_type == "project"))
@@ -183,13 +280,19 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # The team's story must still be reserved for its checkout: the reservation
   # (`stories.working_copy_id`) is where the code lives, and the team's
   # `story_id` is which of the copy's stories it works.
+  #
+  # A bound agent's ineligible story is `{:unavailable, story}`, not `:none`:
+  # `:none` answers for the whole project, which a bound agent is not offered
+  # (4292518a).
   defp selected(scope, copy, nil, assignment) do
-    with id when not is_nil(id) <- assigned_id(copy, assignment),
-         %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
-         true <- story.working_copy_id == copy.id do
-      {:ok, story}
-    else
-      _ -> :none
+    id = assigned_id(copy, assignment)
+    story = id && Stories.get_story(scope, id)
+
+    cond do
+      is_nil(id) -> :none
+      eligible?(story, copy) -> {:ok, story}
+      match?({:bound, _, _}, assignment) -> {:unavailable, story}
+      true -> :none
     end
   end
 
@@ -210,7 +313,11 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   defp assigned_id(copy, :copy), do: WorkingCopies.team_story_id(copy.id)
   defp assigned_id(_copy, {:team, story_id, _epic_id}), do: story_id
+  defp assigned_id(_copy, {:bound, story_id, _epic_id}), do: story_id
   defp assigned_id(_copy, :project), do: nil
+
+  defp eligible?(%{ready_for_dev: true, working_copy_id: id}, %{id: id}), do: true
+  defp eligible?(_story, _copy), do: false
 
   # The story a team whose story is complete takes next (a31f1cd6). John:
   # "fine for the team to take a new story from the working copy when the team
@@ -223,12 +330,13 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # eligible: the team stays "complete".
   defp next_story(
          %{status: :complete, story: current},
-         {:team, _id, epic_id},
+         {team, _id, epic_id},
          nil,
          nodes,
          edges,
          ctx
-       ) do
+       )
+       when team in [:team, :bound] do
     ctx.stories
     |> Enum.filter(&(&1.id != current.id and is_nil(&1.retired_at) and in_epic?(&1, epic_id)))
     |> Enum.sort_by(&{&1.priority || 999, age(&1.inserted_at)})
