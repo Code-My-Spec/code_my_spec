@@ -128,8 +128,10 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
   alias CodeMySpec.Faults
+  alias CodeMySpec.Embeddings.HexDocSweep
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.LockfileSweep
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
@@ -1322,7 +1324,16 @@ defmodule CodeMySpecSpex.Fixtures do
   def deliver_manifest(%Scope{} = scope, opts \\ []) do
     read_model = Keyword.get(opts, :read_model, %Scanner.ReadModel{})
 
-    {:ok, entries} = Scanner.observe(scope.environment, read_model)
+    # `:observe_in` scans a directory on this machine while the channel keeps
+    # the harness-addressed scope: what a remote harness scans is its own
+    # disk, and what the server reads back goes over the wire.
+    observed_env =
+      case Keyword.get(opts, :observe_in) do
+        nil -> scope.environment
+        dir -> CodeMySpec.Environments.Environment.new(:local, dir)
+      end
+
+    {:ok, entries} = Scanner.observe(observed_env, read_model)
     observations = Enum.map(entries, &serialize_observation/1)
 
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
@@ -2656,6 +2667,25 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defp start_embed_pool(_running), do: :ok
+
+  @doc """
+  A hex package tarball holding `sources` (path => Elixir source), and the
+  outer checksum a `mix.lock` entry for it carries. For `Req.Test.stub` on
+  `CodeMySpec.Embeddings.HexPackageFetch`: hex.pm is the provider here.
+  """
+  @spec hex_tarball(map()) :: {binary(), String.t()}
+  def hex_tarball(sources) do
+    tarball = CodeMySpecTest.HexTarballFixtures.build(sources)
+    {tarball, CodeMySpecTest.HexTarballFixtures.checksum(tarball)}
+  end
+
+  @doc "The 2-minute hex docs sweep, run now: the timer has no surface."
+  @spec hex_doc_sweep_runs() :: :ok
+  def hex_doc_sweep_runs, do: HexDocSweep.sweep_now()
+
+  @doc "The 15-minute lockfile and project-knowledge sweep, run now."
+  @spec lockfile_sweep_runs() :: :ok
+  def lockfile_sweep_runs, do: LockfileSweep.sweep_now()
 
   @doc "Make every embedding batch fail (`true`) or succeed again (`false`)."
   @spec fail_embedding(boolean()) :: :ok
