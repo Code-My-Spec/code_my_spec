@@ -73,6 +73,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.DnsConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.RepositoryConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
@@ -888,34 +889,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {if @step.state == :errored, do: "Retry", else: "Deploy"} {@step.environment}
             </.button>
           </form>
-          
-    <!-- The apex already points somewhere, and this run would move it.
-                 Not a default: a live site going dark is less reversible than
-                 the domain purchase that already demands a second step — the
-                 money comes back, the downtime does not. Behind a dialog
-                 rather than a bare click, and not `data-confirm`, whose
-                 browser confirm() is invisible to the driver QA runs. -->
-          <div
-            :if={@step.key == :dns and @step.state == :paused}
-            data-test="apex-repoint"
-            class="mt-3 flex gap-2"
-          >
-            <.button
-              data-test="confirm-apex-repoint"
-              class="btn btn-warning"
-              phx-click={show_confirm("confirm-apex-repoint")}
-            >
-              Repoint it anyway
-            </.button>
 
-            <.confirm_dialog
-              id="confirm-apex-repoint"
-              title="Repoint the apex?"
-              message={@step.paused_instructions}
-              confirm_label="Repoint it"
-              on_confirm={JS.push("confirm_apex_repoint")}
-            />
-          </div>
+          <DnsConfig.dns_config :if={@step.key == :dns} step={@step} environments={@environments} />
 
           <RepositoryConfig.repository_config :if={@step.key == :repository} step={@step} />
           
@@ -1357,33 +1332,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             class="mt-1 block text-xs opacity-70"
           >
             monitoring {m.location}
-          </span>
-          
-    <!-- Confirmed by asking a public resolver, which is the only check that
-                 distinguishes a working record from one that merely exists. -->
-          <span
-            :for={v <- Enum.filter(@step.resources, &(&1.kind == "dns_verification"))}
-            data-test="dns-verified"
-            data-source="resolver"
-            data-environment={resource_environment(v, @environments)}
-            data-host={v.location}
-            class="text-xs opacity-70"
-          >
-            {v.location} resolves
-          </span>
-          
-    <!-- One row per environment's record, so "each environment resolves to
-                 its own server" is readable off the page rather than inferred. -->
-          <span
-            :for={record <- Enum.filter(@step.resources, &(&1.kind == "dns_record"))}
-            data-test="dns-record"
-            data-environment={resource_environment(record, @environments)}
-            data-target={resource_target(record)}
-            data-name={resource_name(record)}
-            data-proxied="false"
-            class="text-xs opacity-70"
-          >
-            {resource_name(record)} → {resource_target(record)}
           </span>
 
           <div :if={@step.resources != []} class="mt-3 flex flex-col gap-1">
