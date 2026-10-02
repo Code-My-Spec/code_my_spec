@@ -4,13 +4,14 @@ defmodule CodeMySpecWeb.UserAuthDesktopTest do
   use CodeMySpecTest.ConnCase, async: false
 
   import CodeMySpec.UsersFixtures
+  import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Desktop
+  alias CodeMySpecDesktop.Identity
   alias CodeMySpecWeb.UserAuth
   alias Phoenix.LiveView
 
   setup %{conn: conn} do
-    user = user_fixture(%{email: Desktop.email()})
+    user = user_fixture(%{email: Identity.email()})
     %{user: user, conn: init_test_session(conn, %{})}
   end
 
@@ -31,6 +32,14 @@ defmodule CodeMySpecWeb.UserAuthDesktopTest do
         assert {:cont, socket} = UserAuth.on_mount(hook, %{}, %{}, %LiveView.Socket{})
         assert socket.assigns.current_scope.user.id == user.id
       end
+    end
+
+    # The desktop user has no password and no sudo window, so the forms whose
+    # handlers assert sudo mode are not offered.
+    test "settings offers no email or password change", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/app/users/settings")
+      refute has_element?(lv, "#email_form")
+      refute has_element?(lv, "#password_form")
     end
   end
 

@@ -352,17 +352,16 @@ if config_env() == :desktop and System.get_env("CMS_EMBEDDINGS") in ~w(true 1) d
 end
 
 if config_env() == :desktop do
+  # No user or password: Postgrex's default, $PGUSER or the OS user, which is
+  # the superuser a fresh Homebrew Postgres has.
   config :code_my_spec, CodeMySpec.Repo,
-    url:
-      System.get_env("DATABASE_URL") ||
-        "ecto://postgres:postgres@localhost/code_my_spec_desktop",
+    url: System.get_env("DATABASE_URL") || "ecto://localhost/code_my_spec_desktop",
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
-  # Loopback only, no login. TODO(bb8bc042 step 6): generate one per install.
+  # Per install, created on first boot.
   config :code_my_spec, CodeMySpecWeb.Endpoint,
     secret_key_base:
-      System.get_env("SECRET_KEY_BASE") ||
-        String.duplicate("cms_desktop_local_only", 4)
+      System.get_env("SECRET_KEY_BASE") || CodeMySpecDesktop.Secret.read_or_create!()
 end
 
 if config_env() == :prod do

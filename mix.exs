@@ -42,9 +42,16 @@ defmodule CodeMySpec.MixProject do
   end
 
   defp app_module do
-    if Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite],
-      do: {CodeMySpecLocalWeb.Application, []},
-      else: {CodeMySpecWeb.Application, []}
+    cond do
+      Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] ->
+        {CodeMySpecLocalWeb.Application, []}
+
+      Mix.env() == :desktop ->
+        {CodeMySpecDesktop.Application, []}
+
+      true ->
+        {CodeMySpecWeb.Application, []}
+    end
   end
 
   # Specifies which paths to compile per environment.
@@ -249,7 +256,9 @@ defmodule CodeMySpec.MixProject do
   defp releases do
     [
       code_my_spec: [
-        overlays: "rel/overlays"
+        overlays: "rel/overlays",
+        # The desktop build ships as a tarball (installers/macos/codemyspec-desktop.rb).
+        steps: if(Mix.env() == :desktop, do: [:assemble, :tar], else: [:assemble])
       ]
     ] ++ cli_release()
   end

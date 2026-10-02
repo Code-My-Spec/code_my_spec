@@ -1,13 +1,8 @@
-defmodule CodeMySpec.Desktop do
+defmodule CodeMySpecDesktop.Identity do
   @moduledoc """
-  The desktop build's one user (bb8bc042): `<os user>@localhost`, put on every
-  browser scope without a login.
+  The desktop build's one user: `<os user>@localhost`, put on every browser
+  scope without a login.
   """
-
-  use Boundary,
-    top_level?: true,
-    deps: [CodeMySpec.UserPreferences, CodeMySpec.Users],
-    exports: :all
 
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
@@ -21,5 +16,8 @@ defmodule CodeMySpec.Desktop do
     end
   end
 
-  def scope, do: email() |> Users.get_user_by_email() |> UserPreferences.scope_for()
+  @doc "The desktop user's scope; nil outside desktop or before first boot."
+  def scope do
+    if active?(), do: email() |> Users.get_user_by_email() |> UserPreferences.scope_for()
+  end
 end

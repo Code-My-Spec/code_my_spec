@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Desktop.FirstBoot do
+defmodule CodeMySpecDesktop.FirstBoot do
   @moduledoc """
   Every desktop boot, after the Repo and before anything reads it (bb8bc042
   step 6): migrate, ensure the desktop user and an account it owns, and hand
@@ -6,27 +6,15 @@ defmodule CodeMySpec.Desktop.FirstBoot do
   so it occupies no process.
   """
 
-  use Boundary,
-    top_level?: true,
-    deps: [
-      CodeMySpec.Accounts,
-      CodeMySpec.Desktop,
-      CodeMySpec.Oauth,
-      CodeMySpec.Release,
-      CodeMySpec.Repo,
-      CodeMySpec.UserPreferences,
-      CodeMySpec.Users
-    ]
-
   import Ecto.Query
 
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Desktop
   alias CodeMySpec.Oauth.AccessToken
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
+  alias CodeMySpecDesktop.Identity
 
   def child_spec(_), do: %{id: __MODULE__, start: {__MODULE__, :run, []}, restart: :temporary}
 
@@ -39,6 +27,19 @@ defmodule CodeMySpec.Desktop.FirstBoot do
     :ignore
   end
 
+  @doc """
+  Creates the database if it is missing. Called before the tree starts: the
+  Repo's pool, started against a database that does not exist yet, would sit
+  in reconnect backoff when `run/0` first queries it.
+  """
+  def ensure_database do
+    case Repo.__adapter__().storage_up(Repo.config()) do
+      :ok -> :ok
+      {:error, :already_up} -> :ok
+      {:error, reason} -> raise "could not create the CodeMySpec database: #{inspect(reason)}"
+    end
+  end
+
   defp require_pgvector! do
     if Repo.query!("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'").num_rows == 0 do
       raise "CodeMySpec needs the pgvector extension in this Postgres. " <>
@@ -47,8 +48,8 @@ defmodule CodeMySpec.Desktop.FirstBoot do
   end
 
   defp ensure_user do
-    with nil <- Users.get_user_by_email(Desktop.email()) do
-      {:ok, user} = Users.register_user(%{email: Desktop.email()})
+    with nil <- Users.get_user_by_email(Identity.email()) do
+      {:ok, user} = Users.register_user(%{email: Identity.email()})
       user |> User.confirm_changeset() |> Repo.update!()
     end
   end

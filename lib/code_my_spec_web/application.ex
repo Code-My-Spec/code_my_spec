@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Analytics.GoogleAnalytics
 
   @impl true
-  def start(_type, _args) do
+  def start(_type, args) do
     env = Application.get_env(:code_my_spec, :env, :prod)
     maybe_install_file_logger()
 
@@ -53,8 +53,7 @@ defmodule CodeMySpecWeb.Application do
         # process rather than real infrastructure being provisioned, so
         # being wrong here costs nothing to revisit.
         embeddings_configured?() &&
-          {FLAME.Pool,
-           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
+          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
@@ -184,6 +183,8 @@ defmodule CodeMySpecWeb.Application do
       ]
       |> Enum.filter(& &1)
       |> children(env)
+      # CodeMySpecDesktop.Application adds its own children here.
+      |> then(Keyword.get(args, :children, & &1))
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -254,18 +255,6 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.AgentHarness.WorkSource,
         CodeMySpecLocalWeb.Endpoint
       ]
-  end
-
-  # Desktop (bb8bc042 step 4): the harness in the same tree, after the
-  # Endpoint it talks to. Same child the test suite starts in test_helper.exs.
-  # Step 6: FirstBoot after the Repo and PubSub (account creation broadcasts)
-  # — migrations, the desktop user, the harness token — before any child
-  # reads the database.
-  def children(children, :desktop) do
-    Enum.flat_map(children, fn
-      {Phoenix.PubSub, _} = pubsub -> [pubsub, CodeMySpec.Desktop.FirstBoot]
-      child -> [child]
-    end) ++ [CmsHarness.Supervisor]
   end
 
   def children(children, _), do: children
