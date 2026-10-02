@@ -69,7 +69,7 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       {:noreply, socket} =
         Index.handle_params(%{"status" => "", "severity" => "bogus"}, "/", socket)
 
-      assert socket.assigns.filter_status == "all"
+      assert socket.assigns.filter_status == "open"
       assert socket.assigns.filter_severity == "all"
       assert Enum.map(socket.assigns.issues, & &1.title) == ["kept"]
     end
@@ -87,13 +87,13 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       assert Enum.map(socket.assigns.issues, & &1.title) == ["qa issue"]
     end
 
-    test "empty params leave both filters at all" do
+    test "empty params default to open issues, any severity and scope" do
       {project, scope} = setup_local_project()
 
       socket = build_socket(project, scope)
       {:noreply, socket} = Index.handle_params(%{}, "/", socket)
 
-      assert socket.assigns.filter_status == "all"
+      assert socket.assigns.filter_status == "open"
       assert socket.assigns.filter_severity == "all"
       assert socket.assigns.filter_scope == "all"
     end
@@ -213,10 +213,10 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
         section: :issues,
         page_title: "Issues",
         issues: [],
-        filter_status: "all",
+        filter_status: "open",
         filter_severity: "all",
         filter_scope: "all",
-        status_options: ~w(all incoming accepted dismissed resolved),
+        status_options: ~w(open all incoming accepted dismissed resolved),
         severity_options: ~w(all critical high medium low info),
         scope_options: ~w(all app qa docs framework),
         error: nil,
