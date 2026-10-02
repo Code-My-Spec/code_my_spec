@@ -3339,8 +3339,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @late_project_reqs MapSet.new([
                        "issues_resolved",
                        "qa_journey_plan",
-                       "qa_journey_execute",
-                       "qa_journey_wallaby"
+                       "qa_journey_execute"
                      ])
 
   defp sort_by_story_priority(nodes, ctx) do

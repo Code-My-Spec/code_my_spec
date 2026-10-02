@@ -74,20 +74,12 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "Strongly prefer hand-written `Req` clients over third-party API-wrapper libraries. A thin module that builds the request and pattern-matches the response is easier to read, owns its own error handling, adds no transitive dependencies, and never drifts from the API behind a generated abstraction. Test these clients with ReqCassette: inject the cassette plug via `Application.get_env` so production code stays unaware of tests, filter authorization headers out of cassettes, and replay in CI. This yields deterministic, async-safe, offline tests that document the exact API interactions the system depends on. Only reach for a wrapper library when the surface is genuinely large and the library is first-party and well-maintained."
     },
     %{
-      topic: "wallaby",
-      title: "Use Wallaby for browser-based integration testing",
-      context:
-        "We need a way to drive a real browser for end-to-end testing that handles LiveView's async rendering and integrates with Ecto's sandbox for database isolation.",
-      decision:
-        "Use Wallaby (`wallaby`) with ChromeDriver for all browser-based integration tests. It provides concurrent test execution, automatic retry/wait for async content (critical for LiveView), Ecto sandbox integration via user_agent metadata, and a clean DSL for interacting with pages (visit, fill_in, click, assert_has)."
-    },
-    %{
       topic: "bdd-testing",
-      title: "Use BDD specs with SexySpex and Wallaby for end-to-end testing",
+      title: "Use BDD specs with SexySpex and Phoenix.LiveViewTest for end-to-end testing",
       context:
-        "We need a testing approach that validates user-facing behavior through a real browser and bridges the gap between stories and code.",
+        "We need a testing approach that validates user-facing behavior end to end and bridges the gap between stories and code.",
       decision:
-        "Use BDD specifications with SexySpex (`sexy_spex`) for the Given-When-Then DSL and Wallaby (`wallaby`) for browser-driven interactions. Write specs that test real user workflows through a real browser via ChromeDriver, interacting with LiveView the way a user would — clicking, filling forms, and asserting on visible content."
+        "Use BDD specifications with SexySpex (`sexy_spex`) for the Given-When-Then DSL and `Phoenix.LiveViewTest` for interactions. Drive pages the way a user would — `live/2`, `form/3` + `render_submit/1`, `element/3` + `render_click/1`, `follow_redirect/2` — and assert on rendered content. Use `Phoenix.ConnTest` for controller and API routes. No browser driver."
     },
     %{
       topic: "dotenvy",
@@ -115,7 +107,8 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     },
     %{
       topic: "pow-assent-integrations",
-      title: "Use PowAssent and CodeMySpec generators for integrations, multi-tenancy, and feedback",
+      title:
+        "Use PowAssent and CodeMySpec generators for integrations, multi-tenancy, and feedback",
       context:
         "We need OAuth/third-party integrations, multi-tenant account isolation, and an embeddable feedback widget — all scaffolded consistently and wired into the standard stack.",
       decision:
@@ -296,7 +289,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
     Identify the technology decisions this project still needs to make and
     write an ADR for each. ADRs for the standard CodeMySpec stack (Elixir,
-    Phoenix, LiveView, Tailwind, DaisyUI, ReqCassette, Wallaby, SexySpex BDD,
+    Phoenix, LiveView, Tailwind, DaisyUI, ReqCassette, SexySpex BDD,
     Dotenvy, Resend, Hetzner deployment, PowAssent) have already been
     auto-written before this prompt — they show up in the Existing Decisions
     section below. Focus on project-specific topics the pre-made set doesn't
@@ -386,5 +379,4 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   # ============================================================================
   # Evaluation
   # ============================================================================
-
 end

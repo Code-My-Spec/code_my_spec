@@ -107,6 +107,27 @@ defmodule CodeMySpec.McpServers.Components.AuthoringTheComponentGraphTest do
     end
   end
 
+  # What a sync reads to leave them alone (a_sync_leaves_authored_records_alone_test).
+  test "what the tools write is marked as authored", ctx do
+    AddDependency.execute(
+      %{source_component_id: ctx.web.id, target_component_id: ctx.accounts.id},
+      ctx.frame
+    )
+
+    {:reply, _created, _} =
+      CreateComponent.execute(
+        %{name: "Billing", module_name: "MyApp.Billing", type: "context"},
+        %{ctx.frame | assigns: %{current_scope: %{ctx.scope | environment: nil}}}
+      )
+
+    assert [%{provenance: :authored}] = Components.list_dependencies(ctx.scope)
+
+    assert %{provenance: :authored} =
+             ctx.scope
+             |> Components.list_components()
+             |> Enum.find(&(&1.module_name == "MyApp.Billing"))
+  end
+
   test "the roles that author architecture carry the dependency tools" do
     for role <- [:product, :coding, :main], tool <- ~w(add_dependency remove_dependency) do
       assert RoleProfile.carries?(role, tool), "#{role} cannot #{tool}"

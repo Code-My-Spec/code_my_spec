@@ -9,12 +9,12 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   alias CodeMySpec.{Environments, Paths, Stories}
 
   @stories_file Path.join(Paths.qa_dir(), "stories_summary.md")
-  @wallaby_dir Paths.qa_journey_wallaby_dir()
+  @journey_tests_dir Paths.qa_journey_tests_dir()
 
   def dispatch(_node) do
     "Plan, execute, and codify end-to-end QA journeys: design cross-story " <>
       "user paths, walk them in a browser, then convert passing journeys " <>
-      "into Wallaby regression tests under `test/journeys/`. Use when " <>
+      "into LiveView tests under `test/journeys/`. Use when " <>
       "BDD specs pass but the app has no end-to-end coverage."
   end
 
@@ -37,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
       qa_plan_exists: Environments.file_exists?(env, Paths.qa_plan()) == true,
       journey_plan_exists: Environments.file_exists?(env, Paths.qa_journey_plan()) == true,
       journey_result_exists: Environments.file_exists?(env, Paths.qa_journey_result()) == true,
-      existing_wallaby: list_wallaby_tests(env),
+      existing_tests: list_journey_tests(env),
       architecture_exists:
         Environments.file_exists?(env, Path.join(Paths.architecture_dir(), "overview.md")) == true
     }
@@ -53,8 +53,8 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     Stories.list_stories(scope)
   end
 
-  defp list_wallaby_tests(env) do
-    case Environments.glob(env, Path.join(@wallaby_dir, "*_test.exs")) do
+  defp list_journey_tests(env) do
+    case Environments.glob(env, Path.join(@journey_tests_dir, "*_test.exs")) do
       files when is_list(files) -> files
       _ -> []
     end
@@ -107,9 +107,9 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     """
     # QA Journey: Plan → Execute → Codify
 
-    Three phases, one session at a time. Each phase produces an artifact;
-    phases whose artifacts already exist are marked SKIP — work the first
-    un-skipped phase. The full procedure lives in the playbook
+    Three phases. Each produces an artifact; phases whose artifacts already
+    exist are marked SKIP — work the first un-skipped phase. Phase 3 follows
+    Phase 2 in the same session. The full procedure lives in the playbook
     (read `qa_journey/workflow.md` via the `read_knowledge` MCP tool).\
     """
   end
@@ -215,7 +215,9 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
 
   # -- Phase 3 -----------------------------------------------------------------
 
-  defp build_phase_3(%{existing_wallaby: existing}) do
+  # No requirement gates this phase: `qa_journey_execute` is the end of the
+  # chain, so the tests are written in the same session as the result.
+  defp build_phase_3(%{existing_tests: existing}) do
     existing_note =
       case existing do
         [] ->
@@ -227,13 +229,13 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
       end
 
     """
-    ## Phase 3: Wallaby Test Generation
+    ## Phase 3: LiveView Tests
 
-    **Artifact:** `#{@wallaby_dir}/{journey_name}_test.exs`
+    **Artifact:** `#{@journey_tests_dir}/{journey_name}_test.exs`
 
-    Convert each **passing** journey from Phase 2 into a Wallaby feature
-    test under `#{@wallaby_dir}/`. Run the file once to confirm it's
-    green before stopping. Conventions live in the playbook.#{existing_note}\
+    In the same session as Phase 2, convert each **passing** journey into a
+    `Phoenix.LiveViewTest` test under `#{@journey_tests_dir}/`. No browser
+    driver. Run the file once to confirm it's green before stopping.#{existing_note}\
     """
   end
 
@@ -244,7 +246,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     Read `qa_journey/workflow.md` via the `read_knowledge` MCP tool —
     full three-phase procedure, server-prereq checklist, tool-by-pipeline
     rules (browser tools vs curl), screenshot evidence requirements,
-    Wallaby conventions, anti-patterns per phase.\
+    LiveView test conventions, anti-patterns per phase.\
     """
   end
 end

@@ -9,8 +9,8 @@ before the session starts.
 
 When the task fires, it writes ADRs for every standard-stack topic
 that doesn't already have one. The auto-written set covers: Elixir,
-Phoenix, LiveView, Tailwind, DaisyUI, phx.gen.auth, ExVCR, Wallaby,
-SexySpex BDD, Dotenvy, Resend, Hetzner deployment, and PowAssent +
+Phoenix, LiveView, Tailwind, DaisyUI, phx.gen.auth, ExVCR,
+SexySpex BDD (Phoenix.LiveViewTest), Dotenvy, Resend, Hetzner deployment, and PowAssent +
 CodeMySpec generators.
 
 You'll see these in the "Existing Decisions" section of the prompt.

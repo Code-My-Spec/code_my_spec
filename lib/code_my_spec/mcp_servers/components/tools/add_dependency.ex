@@ -33,7 +33,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.AddDependency do
          {:ok, _dependency} <-
            Components.create_dependency(scope, %{
              source_component_id: source.id,
-             target_component_id: target.id
+             target_component_id: target.id,
+             provenance: :authored
            }) do
       {:reply,
        Response.tool()

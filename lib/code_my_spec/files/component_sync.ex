@@ -639,11 +639,14 @@ defmodule CodeMySpec.Files.ComponentSync do
       })
     end)
 
-    # Remove old
+    # Remove old — but never an edge an agent authored with `add_dependency`.
+    # A spec's `## Dependencies` was the only way to write an edge, so it was
+    # the whole truth; an authored edge is not in it, and deleting it here
+    # undid the tool on every full sync (3aeb66cf).
     removed = MapSet.difference(current_target_ids, declared_target_ids)
 
     Enum.each(current_deps, fn dep ->
-      if dep.target_component_id in removed do
+      if dep.target_component_id in removed and dep.provenance != :authored do
         Components.delete_dependency(scope, dep)
       end
     end)
@@ -651,9 +654,11 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Cleanup --
 
+  # Never an authored component: it is the intended architecture whether or not
+  # a file names it yet (3aeb66cf). Only `delete_component` removes one.
   defp cleanup_removed(%Scope{} = scope, existing, current_names) do
     existing
-    |> Enum.reject(&(&1.module_name in current_names))
+    |> Enum.reject(&(&1.provenance == :authored or &1.module_name in current_names))
     |> Enum.each(&Components.delete_component(scope, &1))
   end
 
@@ -668,7 +673,10 @@ defmodule CodeMySpec.Files.ComponentSync do
   defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
     module_names
     |> Enum.map(&Map.get(existing_map, &1))
-    |> Enum.reject(&(is_nil(&1) or component_still_claimed?(project_id, &1.module_name)))
+    |> Enum.reject(
+      &(is_nil(&1) or &1.provenance == :authored or
+          component_still_claimed?(project_id, &1.module_name))
+    )
     |> Enum.each(&Components.delete_component(scope, &1))
   end
 

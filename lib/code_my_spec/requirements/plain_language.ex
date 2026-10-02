@@ -132,14 +132,6 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
       detail:
         "Somebody is going through your software the way your users will, and writing " <>
           "down what actually happens."
-    },
-    "qa_journey_wallaby" => %{
-      phase: :proving,
-      title: "Keeping it working",
-      abbrev: "keep",
-      detail:
-        "Those journeys are being turned into checks that run on their own, so a change " <>
-          "later cannot quietly break what already worked."
     }
   }
 
@@ -161,7 +153,6 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     qa_setup
     qa_journey_plan
     qa_journey_execute
-    qa_journey_wallaby
   )
 
   @phases [

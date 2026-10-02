@@ -23,6 +23,10 @@ defmodule CodeMySpec.Components.Dependency do
     belongs_to :source_component, Component, type: :binary_id
     belongs_to :target_component, Component, type: :binary_id
 
+    # `:authored` when an agent added it with `add_dependency`. A spec file's
+    # `## Dependencies` never removes an authored edge (3aeb66cf).
+    field :provenance, Ecto.Enum, values: [:authored, :discovered]
+
     timestamps(type: :utc_datetime)
   end
 
@@ -31,7 +35,7 @@ defmodule CodeMySpec.Components.Dependency do
   """
   def changeset(dependency, attrs) do
     dependency
-    |> cast(attrs, [:source_component_id, :target_component_id])
+    |> cast(attrs, [:source_component_id, :target_component_id, :provenance])
     |> validate_required([:source_component_id, :target_component_id])
     |> validate_no_self_dependency()
     |> unique_constraint([:source_component_id, :target_component_id])

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   - `architecture_designed` — via `Fixtures.with_proposal/2`
   - `issues_triaged`, `issues_resolved` — vacuous (no incoming issues)
   - `qa_setup` — write `.code_my_spec/qa/plan.md`
-  - `qa_journey_plan`, `qa_journey_execute`, `qa_journey_wallaby` — files written
+  - `qa_journey_plan`, `qa_journey_execute` — files written
 
   Story-level requirements:
   - `component_linked` — `set_story_component` MCP

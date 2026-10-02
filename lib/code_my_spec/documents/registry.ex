@@ -766,12 +766,12 @@ defmodule CodeMySpec.Documents.Registry do
 
   Examples:
   - ## Options Considered
-    ### Option A: Wallaby
-    - **Pros:** Real browser testing, JavaScript support
-    - **Cons:** Requires ChromeDriver, slower tests
-    ### Option B: Hound
-    - **Pros:** Lightweight, fast
-    - **Cons:** Less maintained, fewer features
+    ### Option A: Phoenix.LiveViewTest
+    - **Pros:** In-process, fast, no browser driver, ships with LiveView
+    - **Cons:** Does not run client-side JavaScript hooks
+    ### Option B: A browser driver
+    - **Pros:** Exercises JavaScript in a real browser
+    - **Cons:** Needs ChromeDriver, slower and flakier tests
   """
 
   @adr_decision """
@@ -786,8 +786,8 @@ defmodule CodeMySpec.Documents.Registry do
 
   Examples:
   - ## Decision
-    Use Wallaby for browser-based integration testing. It provides real browser
-    interaction via ChromeDriver and integrates well with Phoenix test infrastructure.
+    Use Phoenix.LiveViewTest for end-to-end testing. It drives LiveViews in-process
+    with the Ecto sandbox and needs no browser driver.
   """
 
   @adr_consequences """
