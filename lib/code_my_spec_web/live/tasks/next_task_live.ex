@@ -42,7 +42,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
     scope = socket.assigns.scope
     socket = assign(socket, sync_status: :running, sync_error: nil)
 
-    with {:ok, _file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: false),
+    with {:ok, _file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, _comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       {:noreply,
        socket

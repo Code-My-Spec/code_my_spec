@@ -9,7 +9,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   embedded. This is the convergence between the two: for every
   `{package, version}` no project's `doc_packages` row has reached yet,
   fetch the hex.pm tarball, verify it against the checksum the lock itself
-  pinned, parse its `.ex` sources with `HexDocProjector`'s pure functions,
+  pinned, parse its `.ex` sources with `HexDocParser`,
   chunk and embed each module's docs, and write the `doc_packages` marker
   last — in the same transaction as the final chunk, so "present" means
   "complete" even across a crash mid-package.
@@ -75,7 +75,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   alias CodeMySpec.Dependencies.Dependency
   alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.EmbeddingService
-  alias CodeMySpec.Embeddings.HexDocProjector
+  alias CodeMySpec.Embeddings.HexDocParser
   alias CodeMySpec.Embeddings.HexPackageFetch
   alias CodeMySpec.Embeddings.HexTarball
   alias CodeMySpec.Embeddings.PgVectorBackend
@@ -132,6 +132,51 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     )
     |> Repo.all()
   end
+
+  @doc """
+  Puts `failed` markers at the current model back to `pending` with no
+  attempts and no error, so the next sweep tries them again. For failures
+  whose cause has since been fixed — a terminal marker is otherwise final.
+
+  Options narrow which: `:packages` (only these names), `:except` (not
+  these names), `:error_like` (only markers whose error contains this
+  text, e.g. `"unique_violation"`). Returns how many were reset.
+  """
+  @spec reset_failed(keyword()) :: non_neg_integer()
+  def reset_failed(opts \\ []) do
+    model = Serving.model_name()
+
+    {count, _} =
+      from(p in DocPackage, where: p.status == "failed" and p.model == ^model)
+      |> only_packages(Keyword.get(opts, :packages))
+      |> except_packages(Keyword.get(opts, :except))
+      |> error_like(Keyword.get(opts, :error_like))
+      |> Repo.update_all(
+        set: [
+          status: "pending",
+          attempts: 0,
+          error: nil,
+          updated_at: DateTime.truncate(DateTime.utc_now(), :second)
+        ]
+      )
+
+    count
+  end
+
+  defp only_packages(query, names) when is_list(names) and names != [],
+    do: where(query, [p], p.package in ^names)
+
+  defp only_packages(query, _names), do: query
+
+  defp except_packages(query, names) when is_list(names) and names != [],
+    do: where(query, [p], p.package not in ^names)
+
+  defp except_packages(query, _names), do: query
+
+  defp error_like(query, text) when is_binary(text) and text != "",
+    do: where(query, [p], like(p.error, ^"%#{text}%"))
+
+  defp error_like(query, _text), do: query
 
   @doc """
   Reconcile every pending package@version, up to `@max_concurrency` at
@@ -225,7 +270,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     mark_failed(name, version, "http_status_#{status}")
   end
 
-  defp handle_fetch_failure(name, version, reason) when reason in [:checksum_mismatch, :no_checksum] do
+  defp handle_fetch_failure(name, version, reason)
+       when reason in [:checksum_mismatch, :no_checksum] do
     mark_failed(name, version, to_string(reason))
   end
 
@@ -245,7 +291,10 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   # past that, a failure that keeps recurring identically stops being
   # "probably transient" and gets recorded as `failed` instead.
   defp defer(name, version, reason) do
-    Logger.warning("[HexDocReconciler] #{name}@#{version} deferred (retryable): #{inspect(reason)}")
+    Logger.warning(
+      "[HexDocReconciler] #{name}@#{version} deferred (retryable): #{inspect(reason)}"
+    )
+
     model = Serving.model_name()
     attempts = current_attempts(name, version, model) + 1
 
@@ -272,7 +321,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     docs =
       sources
       |> Map.values()
-      |> Enum.flat_map(&HexDocProjector.docs_from_source/1)
+      |> Enum.flat_map(&HexDocParser.docs_from_source/1)
       # A module documented from more than one source file (seen live:
       # bandit's Bandit.Clock) would otherwise chunk and store under the
       # same path twice, tripping the identity index's own uniqueness on

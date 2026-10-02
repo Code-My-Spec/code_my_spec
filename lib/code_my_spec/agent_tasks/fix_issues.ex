@@ -4,8 +4,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   minimum blocking severity. The threshold lives on
   `ProjectConfiguration.fix_issues_min_severity` (default `:medium`);
   issues strictly below it are tracked but don't gate the pipeline.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/fix_issues.spec.md`.
   """
 
   alias CodeMySpec.{Configurations, Issues, Paths}

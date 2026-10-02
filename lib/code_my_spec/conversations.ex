@@ -442,6 +442,23 @@ defmodule CodeMySpec.Conversations do
 
   def record_sent_to_agent(_agent, _what), do: :ok
 
+  @doc "The tool calls on this agent's conversation since `since`, oldest first."
+  @spec tool_calls_since(Ecto.UUID.t(), DateTime.t()) :: [
+          %{name: String.t(), arguments: map(), at: DateTime.t()}
+        ]
+  def tool_calls_since(agent_id, %DateTime{} = since) when is_binary(agent_id) do
+    Message
+    |> join(:inner, [m], c in Conversation, on: c.id == m.conversation_id)
+    |> where([m, c], c.agent_id == ^agent_id and m.inserted_at >= ^since)
+    |> where([m], not is_nil(m.tool_calls))
+    |> order_by([m], asc: m.inserted_at)
+    |> select([m], {m.inserted_at, m.tool_calls})
+    |> Repo.all()
+    |> Enum.flat_map(fn {at, calls} ->
+      Enum.map(calls, &%{name: &1["name"] || "", arguments: &1["arguments"] || %{}, at: at})
+    end)
+  end
+
   defp agent_turn(conversation, attrs) do
     %Message{}
     |> Message.agent_changeset(Map.put(attrs, :conversation_id, conversation.id))

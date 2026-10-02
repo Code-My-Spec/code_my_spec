@@ -38,16 +38,13 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
     assert "lib/my_app.ex" in paths
   end
 
-  test "a context writes both halves, and both are recognised", %{scope: scope, env: env} do
+  test "a context writes its implementation, and it is recognised", %{scope: scope, env: env} do
     project =
       ProjectBuilder.new(env, app: "my_app")
       |> ProjectBuilder.context("Accounts")
       |> ProjectBuilder.write!()
 
     paths = synced_paths(scope)
-
-    assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths,
-           "The spec did not sync. Check it lands under Paths.spec_dir() and ends in .spec.md."
 
     assert "lib/my_app/accounts.ex" in paths
     assert "MyApp.Accounts" in project.modules
@@ -75,21 +72,6 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
            would look full and behave empty. Either the path convention moved
            or the builder is writing somewhere nobody reads.
            """
-  end
-
-  test "spec_only and impl_only produce genuinely different halves", %{scope: scope, env: env} do
-    ProjectBuilder.new(env, app: "my_app")
-    |> ProjectBuilder.spec_only("Billing")
-    |> ProjectBuilder.impl_only("Shipping")
-    |> ProjectBuilder.write!()
-
-    paths = synced_paths(scope)
-
-    assert ".code_my_spec/spec/my_app/billing.spec.md" in paths
-    refute "lib/my_app/billing.ex" in paths
-
-    assert "lib/my_app/shipping.ex" in paths
-    refute ".code_my_spec/spec/shipping.spec.md" in paths
   end
 
   test "nothing is written until write!/1", %{scope: scope, env: env} do

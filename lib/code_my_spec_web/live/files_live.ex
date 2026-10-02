@@ -96,15 +96,11 @@ defmodule CodeMySpecWeb.FilesLive do
   end
 
   @impl true
-  def handle_event("sync", _params, socket), do: do_sync(socket, embed: false)
-  def handle_event("embed", _params, socket), do: do_embed(socket)
-
-  defp do_sync(socket, opts) do
+  def handle_event("sync", _params, socket) do
     scope = socket.assigns.scope
-    embed? = Keyword.get(opts, :embed, false)
     socket = assign(socket, sync_status: :running, sync_result: nil)
 
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: embed?),
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       result =
         list_page(scope,
@@ -130,22 +126,6 @@ defmodule CodeMySpecWeb.FilesLive do
 
         {:noreply, assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
     end
-  end
-
-  defp do_embed(socket) do
-    scope = socket.assigns.scope
-    socket = assign(socket, sync_status: :running, sync_result: nil)
-
-    {:ok, result} = FileSync.embed_only(scope)
-
-    {:noreply,
-     assign(socket,
-       sync_status: :done,
-       sync_result: [
-         {"Embedded", result.embedded},
-         {"Elapsed", "#{result.elapsed_ms}ms"}
-       ]
-     )}
   end
 
   @impl true
@@ -191,21 +171,10 @@ defmodule CodeMySpecWeb.FilesLive do
             data-test="sync-button"
             disabled={@sync_status == :running}
             class="btn btn-primary"
-            title="Walk filesystem and project files into the DB (no embeddings)"
+            title="Walk filesystem and project files into the DB"
           >
             <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
             {if @sync_status == :running, do: "Syncing…", else: "Sync"}
-          </button>
-          <button
-            type="button"
-            phx-click="embed"
-            data-test="embed-button"
-            disabled={@sync_status == :running}
-            class="btn btn-secondary"
-            title="Run embedding hooks against currently-tracked files (slow)"
-          >
-            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-            Embed
           </button>
         </div>
       </div>

@@ -197,13 +197,13 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # tool the role that receives it cannot call.
   @coding_tools ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    show_component_requirements show_architecture_overview
+    show_component_requirements show_architecture_overview get_component
     create_component update_component validate_dependency_graph set_story_component
     add_dependency remove_dependency
     list_requirements show_requirement
     list_rules list_questions withdraw_question
     list_issues get_issue create_issue resolve_issue
-    list_knowledge read_knowledge semantic_search refresh_embeddings
+    list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks clear_problems list_problems
     install_credo_checks
@@ -253,7 +253,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     propose_epic tag_stories list_project_tags analyze_stories
     set_story_component create_component update_component delete_component
     add_dependency remove_dependency
-    validate_dependency_graph execute_proposal show_architecture_overview
+    validate_dependency_graph execute_proposal show_architecture_overview get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
     list_notifications answer_notification escalate_question withdraw_question
     list_knowledge read_knowledge semantic_search

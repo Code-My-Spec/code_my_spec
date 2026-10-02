@@ -9,22 +9,12 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   disk to stat, which is the normal case on the light harness.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
+  alias CodeMySpec.AgentTasks.Setup.Context
 
   def check(%Context{} = ctx) do
     base = CodeMySpec.Paths.base_dir()
-    app = Context.app_name(ctx)
 
-    required =
-      [base, Path.join(base, "rules"), Path.join(base, "spec")] ++
-        if app do
-          [
-            Path.join([base, "spec", app]),
-            Path.join([base, "spec", "#{app}_web"])
-          ]
-        else
-          []
-        end
+    required = [base, Path.join(base, "rules")]
 
     # Only `:absent` counts. `:unobservable` means there is no disk to look at
     # (the light harness), and reporting those as missing makes a step the agent
@@ -46,8 +36,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   defp wrap(:valid), do: {:ok, :valid}
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
-  def command(scope, _task) do
-    app_name = Helpers.app_name(scope)
+  def command(_scope, _task) do
     base = CodeMySpec.Paths.base_dir()
 
     {:ok,
@@ -55,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
      # Create Project Structure
 
      ```bash
-     mkdir -p #{base}/rules #{base}/spec/#{app_name} #{base}/spec/#{app_name}_web
+     mkdir -p #{base}/rules
      ```
      """}
   end

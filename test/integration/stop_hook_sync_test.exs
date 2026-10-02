@@ -38,8 +38,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     test "FileSync reports only fingerprint-changed paths on each sync" do
       {scope, tmp_dir} = setup_component_scenario()
 
-      write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
       write_impl_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
+      File.mkdir_p!(Path.join(tmp_dir, "test/my_app"))
+      File.write!(Path.join(tmp_dir, "test/my_app/accounts_test.exs"), "# accounts test\n")
 
       # First sync sees both files as new — both must appear as changed.
       {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
@@ -217,21 +218,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     }
 
     {scope, tmp_dir}
-  end
-
-  defp write_spec_file(tmp_dir, module_path, module_name) do
-    spec_path = Path.join([tmp_dir, ".code_my_spec", "spec", "#{module_path}.spec.md"])
-    File.mkdir_p!(Path.dirname(spec_path))
-
-    File.write!(spec_path, """
-    # #{module_name}
-
-    A test component.
-
-    ## Type
-
-    schema
-    """)
   end
 
   defp write_impl_file(tmp_dir, module_path, module_name) do

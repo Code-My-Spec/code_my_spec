@@ -127,9 +127,11 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Embeddings.HexDocSweep
   alias CodeMySpec.Faults
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.LockfileSweep
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
@@ -1198,7 +1200,8 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Paths (conventional project resource paths) --
   defdelegate base_dir(), to: Paths
   defdelegate proposal_path(), to: Paths
-  defdelegate spec_file(module_path), to: Paths
+  @doc "Where a component spec file used to live; for showing nothing writes one."
+  def spec_file(module_path), do: ".code_my_spec/spec/#{module_path}.spec.md"
 
   # -- Project Sync (file-change events) --
   @doc """
@@ -1321,7 +1324,16 @@ defmodule CodeMySpecSpex.Fixtures do
   def deliver_manifest(%Scope{} = scope, opts \\ []) do
     read_model = Keyword.get(opts, :read_model, %Scanner.ReadModel{})
 
-    {:ok, entries} = Scanner.observe(scope.environment, read_model)
+    # `:observe_in` scans a directory on this machine while the channel keeps
+    # the harness-addressed scope: what a remote harness scans is its own
+    # disk, and what the server reads back goes over the wire.
+    observed_env =
+      case Keyword.get(opts, :observe_in) do
+        nil -> scope.environment
+        dir -> CodeMySpec.Environments.Environment.new(:local, dir)
+      end
+
+    {:ok, entries} = Scanner.observe(observed_env, read_model)
     observations = Enum.map(entries, &serialize_observation/1)
 
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
@@ -1548,7 +1560,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_files(Scope.t()) :: :ok
   def sync_files(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
     {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
     :ok
   end
@@ -2607,8 +2619,110 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate verify_script_exists?(env, name), to: QaIntegrationPlanFixtures
 
   # -- Embeddings --
+
+  @doc """
+  Embed the way the server does: the pgvector store, the `EmbedPool` the app
+  runs, and `knowledge_dir` as the release's knowledge folder. A recording
+  serving stands in for Ortex and sends `{:embedded, texts, priority}` to the
+  calling process for every batch.
+
+  A server's store and the boot that fills it have no surface a spex can
+  drive, so this and `server_starts/0` are the seam (577de9bb step 4).
+  """
+  @spec embed_on_pgvector(String.t()) :: :ok
+  def embed_on_pgvector(knowledge_dir) do
+    keys = [:embeddings_backend, :embedding_serving, :framework_knowledge_dir]
+    previous = Map.new(keys, &{&1, Application.get_env(:code_my_spec, &1)})
+
+    Application.put_env(:code_my_spec, :embeddings_backend, CodeMySpec.Embeddings.PgVectorBackend)
+
+    Application.put_env(
+      :code_my_spec,
+      :embedding_serving,
+      CodeMySpecTest.RecordingEmbeddingServing
+    )
+
+    Application.put_env(:code_my_spec, :framework_knowledge_dir, knowledge_dir)
+    CodeMySpecTest.RecordingEmbeddingServing.listen(self())
+
+    start_embed_pool(Process.whereis(CodeMySpec.EmbedPool))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Enum.each(previous, fn
+        {key, nil} -> Application.delete_env(:code_my_spec, key)
+        {key, value} -> Application.put_env(:code_my_spec, key, value)
+      end)
+
+      CodeMySpecTest.RecordingEmbeddingServing.reset()
+    end)
+
+    :ok
+  end
+
+  # Once per test: a second scenario in the same test reuses it.
+  defp start_embed_pool(nil) do
+    ExUnit.Callbacks.start_supervised!(
+      {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: FLAME.LocalBackend}
+    )
+  end
+
+  defp start_embed_pool(_running), do: :ok
+
+  @doc """
+  A hex package tarball holding `sources` (path => Elixir source), and the
+  outer checksum a `mix.lock` entry for it carries. For `Req.Test.stub` on
+  `CodeMySpec.Embeddings.HexPackageFetch`: hex.pm is the provider here.
+  """
+  @spec hex_tarball(map()) :: {binary(), String.t()}
+  def hex_tarball(sources) do
+    tarball = CodeMySpecTest.HexTarballFixtures.build(sources)
+    {tarball, CodeMySpecTest.HexTarballFixtures.checksum(tarball)}
+  end
+
+  @doc "The 2-minute hex docs sweep, run now: the timer has no surface."
+  @spec hex_doc_sweep_runs() :: :ok
+  def hex_doc_sweep_runs, do: HexDocSweep.sweep_now()
+
+  @doc "The 15-minute lockfile and project-knowledge sweep, run now."
+  @spec lockfile_sweep_runs() :: :ok
+  def lockfile_sweep_runs, do: LockfileSweep.sweep_now()
+
+  @doc "Make every embedding batch fail (`true`) or succeed again (`false`)."
+  @spec fail_embedding(boolean()) :: :ok
+  def fail_embedding(fail?) do
+    CodeMySpecTest.RecordingEmbeddingServing.fail(fail?)
+    :ok
+  end
+
+  @doc "Embed with a different model from now on, as a model upgrade would."
+  @spec switch_embedding_model(String.t()) :: :ok
+  def switch_embedding_model(name) do
+    CodeMySpecTest.RecordingEmbeddingServing.model(name)
+    :ok
+  end
+
+  @doc """
+  The server starting, as far as framework knowledge goes: the boot child
+  the application lists, run to completion. Answers once it has exited.
+  """
+  @spec server_starts() :: :ok
+  def server_starts do
+    child =
+      Supervisor.child_spec(CodeMySpec.Embeddings.FrameworkKnowledgeReconciler,
+        id: make_ref()
+      )
+
+    pid = ExUnit.Callbacks.start_supervised!(child)
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      30_000 -> raise "the framework knowledge boot child did not finish"
+    end
+  end
+
   defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
-  defdelegate simulate_framework_knowledge_boot_embed(scope), to: EmbeddingsFixtures
 
   # -- Continuous mode (Story 538) --
   @doc """
@@ -3976,6 +4090,26 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Put this agent's outstanding turn request in the past.
+
+  A turn offered to an agent reserves it for five minutes; an agent that never
+  takes the turn is offered again once that lapses. Time passing has no
+  surface, so this backdates the reservation the way `age_agent_messages/3`
+  backdates a transcript.
+  """
+  @spec age_work_reservation(Scope.t(), String.t(), number()) :: :ok
+  def age_work_reservation(%Scope{} = _scope, agent_id, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+
+    from(a in CodeMySpec.Agents.Agent,
+      where: a.id == type(^agent_id, :binary_id) and not is_nil(a.work_request_id)
+    )
+    |> Repo.update_all(set: [work_requested_at: at])
+
+    :ok
+  end
+
+  @doc """
   Put this agent's transcript in the past.
 
   Backdates every message on the agent's own conversation, so a scenario can
@@ -4802,7 +4936,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
     # fingerprints of the file set).
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd, embed: false)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
@@ -4867,7 +5001,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the step production cannot skip.
   """
   def scan_working_copy(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, embed: false)
+    {:ok, _} = FileSync.sync(scope)
     :ok
   end
 

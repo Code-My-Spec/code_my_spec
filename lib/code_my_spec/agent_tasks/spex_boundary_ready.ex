@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   @moduledoc """
   Install the project-local infrastructure that protects the BDD spec boundary.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/spex_boundary_ready.spec.md`.
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers

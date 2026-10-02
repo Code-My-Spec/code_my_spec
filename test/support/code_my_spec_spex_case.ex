@@ -6126,9 +6126,8 @@ defmodule CodeMySpecSpex.Case do
     stub_dir = CodeMySpec.TempFile.dir("spex")
     File.mkdir_p!(stub_dir)
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
-    # Real subdirs so FileWatcherServer.start_watcher/1 finds watchable
-    # roots and doesn't error with :no_watchable_dirs. The memfs still
-    # owns content; these are just empty directories on disk.
+    # Real subdirs on disk. The memfs still owns content; these are just
+    # empty directories.
     File.mkdir_p!(Path.join(stub_dir, "lib"))
     File.mkdir_p!(Path.join(stub_dir, "test"))
     File.mkdir_p!(Path.join(stub_dir, ".code_my_spec/spec"))

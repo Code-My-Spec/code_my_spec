@@ -83,7 +83,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   - `:per_page` — page size (default `25`)
   - `:filter` — `:all` (default) or one of the source strings
     (`"credo"`, `"compiler"`, `"exunit"`, `"spex"`,
-    `"spec_validation"`, `"qa_validation"`).
+    `"qa_validation"`).
   - `:severity` — `:error`, `:warning` or `:info`. Omit for all.
 
   Severity narrows the scope before the counts are taken, so

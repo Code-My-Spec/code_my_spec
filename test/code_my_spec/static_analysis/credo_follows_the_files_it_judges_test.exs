@@ -57,7 +57,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoFollowsTheFilesItJudgesTest do
   test "a spex file still schedules what it already scheduled" do
     analyzers = analyzers_for(:bdd_spec)
 
-    assert :validate_bdd in analyzers
+    assert :credo in analyzers
     assert :spex_stale in analyzers
   end
 

@@ -17,14 +17,13 @@ defmodule CodeMySpec.Files.FileSync do
 
   alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
-  alias CodeMySpec.Embeddings.HexDocProjector
+  alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.SpecBinding
-  alias CodeMySpec.Paths
   alias CodeMySpec.Problems
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -36,34 +35,6 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
-  # Files whose role makes them part of the project doc embedding corpus.
-  # Updates and deletions for these flow into the Embeddings backend on
-  # every sync so semantic_search stays current with disk.
-  #
-  # Most roles map 1:1 to a fixed source string. `:hex_doc` is the
-  # exception — its source is `"hexdocs:<package>"`, derived from the
-  # path segment under `Paths.hex_docs_dir/0`. Resolution happens in
-  # `embeddable_source/2`.
-  #
-  # Framework knowledge (the `"knowledge"` source) does NOT live in
-  # the working tree; `Embeddings.sync_framework_knowledge/1` reads
-  # it directly from `priv/knowledge/`. So no role here points at
-  # `"knowledge"` — that's a corpus the file walker never touches.
-  @fixed_role_sources %{
-    spec: "spec",
-    rule: "rules",
-    project_knowledge: "project_knowledge"
-  }
-
-  defp embeddable_source(:hex_doc, path) do
-    case String.replace_prefix(path, Paths.hex_docs_dir() <> "/", "") do
-      ^path -> nil
-      rest -> "hexdocs:" <> (rest |> String.split("/") |> hd())
-    end
-  end
-
-  defp embeddable_source(role, _path), do: Map.get(@fixed_role_sources, role)
-
   # Whitelist of roots walked on sync. Anything outside these trees is invisible
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
   # are never touched. Keep in sync with `classify/1`.
@@ -73,32 +44,11 @@ defmodule CodeMySpec.Files.FileSync do
 
   Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path]}}`.
 
-  Options:
-
-    * `:embed` — when `false`, skips the embedding hooks (framework knowledge
-      sync, hex doc projection, and per-file embedding upserts). Use for
-      fast UI refreshes where staleness of semantic_search is acceptable.
-      Defaults to `true`.
+  Embeds nothing: embeddings are reconciled server-side (`Embeddings`).
   """
   @spec sync(Scope.t(), keyword()) :: {:ok, map()}
-  def sync(%Scope{environment: env} = scope, opts \\ []) do
-    embed? = Keyword.get(opts, :embed, true)
+  def sync(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
-
-    if embed? do
-      # Sync the bundled framework knowledge corpus directly from
-      # `priv/knowledge/` into the embedding store. No working-tree
-      # copy — the embedding backend's content-hash dedup keeps no-op
-      # syncs cheap.
-      Embeddings.sync_framework_knowledge(scope)
-
-      # Project dependency docs from `deps/<pkg>` source into the working
-      # tree before walking files. Newly-installed/updated/removed
-      # packages produce markdown changes the walker then catches via
-      # fingerprint diff, routing them through the same embedding hook
-      # every other doc role uses.
-      HexDocProjector.project(scope)
-    end
 
     # One read model for the whole pass. The pre-split code queried components
     # twice — once for ownership, once for validation — and the config flag
@@ -106,7 +56,7 @@ defmodule CodeMySpec.Files.FileSync do
     read_model = Files.read_model(scope)
 
     with {:ok, observations} <- observe(scope, env, read_model) do
-      finish_sync(scope, env, observations, start, embed?)
+      finish_sync(scope, observations, start)
     end
   end
 
@@ -144,7 +94,7 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp finish_sync(scope, env, observations, start, embed?) do
+  defp finish_sync(scope, observations, start) do
     scan_ms = System.monotonic_time(:millisecond) - start
 
     %{
@@ -157,7 +107,6 @@ defmodule CodeMySpec.Files.FileSync do
     file_entries = observations
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
-    if embed?, do: sync_embeddings(scope, env, changed_entries, removed_records)
     maybe_reconcile_lockfile(scope, changed_entries)
 
     total_ms = System.monotonic_time(:millisecond) - start
@@ -347,15 +296,17 @@ defmodule CodeMySpec.Files.FileSync do
               upserted: summary.upserted,
               removed: summary.removed,
               changed: length(summary.changed_entries),
-              components: project_components(scope, summary)
+              components: project_components(scope, summary),
+              moved: moved_roles(summary.changed_entries, summary.removed_records)
             }
           end,
           timeout: @reconcile_timeout_ms
         )
 
       log_duration(scope, observations, System.monotonic_time(:millisecond) - started, result)
+      after_manifest(scope, result.moved)
 
-      result
+      Map.delete(result, :moved)
     rescue
       error ->
         log_failure(scope, observations, System.monotonic_time(:millisecond) - started, error)
@@ -650,98 +601,80 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  @doc """
-  Run the embedding side of sync against the currently-tracked corpus,
-  without re-walking the filesystem or upserting File records.
+  # -- Project knowledge reconcile (577de9bb step 5) --
 
-  Three steps:
-
-    * `Embeddings.sync_framework_knowledge/1` — push bundled `priv/knowledge/`
-      into the embedding store.
-    * `HexDocProjector.project/1` — project hex docs from `deps/` source
-      into the working tree.
-    * Embed every currently-tracked file whose role belongs to the doc corpus.
-
-  No-ops gracefully when the embedding backend is unavailable. The
-  backend's content-hash dedup keeps this cheap on repeat calls.
-  """
-  @spec embed_only(Scope.t()) :: {:ok, map()}
-  def embed_only(%Scope{environment: env} = scope) do
-    start = System.monotonic_time(:millisecond)
-
-    Embeddings.sync_framework_knowledge(scope)
-    HexDocProjector.project(scope)
-
-    embeddable_records =
-      scope
-      |> Files.list_files()
-      |> Enum.filter(&embeddable_source(&1.role, &1.path))
-
-    if Embeddings.available?() do
-      Enum.each(embeddable_records, &embed_entry(scope, env, &1))
-    end
-
-    elapsed = System.monotonic_time(:millisecond) - start
-
-    Logger.info("[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms")
-
-    {:ok, %{embedded: length(embeddable_records), elapsed_ms: elapsed}}
+  # The manifest-fed roles whose content the server reads back over the
+  # harness: `mix.lock` (step 3) and project knowledge (step 5).
+  defp moved_roles(changed_entries, removed_records) do
+    roles = MapSet.new(changed_entries ++ removed_records, &Map.get(&1, :role))
+    %{lockfile: :lockfile in roles, knowledge: :project_knowledge in roles}
   end
 
-  # Push doc-corpus changes (spec / rule / knowledge / project_knowledge)
-  # into the configured Embeddings backend. New and modified files are
-  # re-embedded; removed files have their embeddings dropped. No-ops
-  # gracefully when the backend is unavailable (Phoenix dev server).
-  defp sync_embeddings(_scope, _env, [], []), do: :ok
+  # After the transaction commits, and off the caller: the manifest's caller
+  # may be the channel itself (inline mode), and a read from there self-calls.
+  defp after_manifest(_scope, %{lockfile: false, knowledge: false}), do: :ok
 
-  defp sync_embeddings(scope, env, changed_entries, removed_records) do
-    if Embeddings.available?() do
-      Enum.each(changed_entries, &embed_entry(scope, env, &1))
-      Enum.each(removed_records, &delete_embeddings_for(scope, &1))
+  defp after_manifest(scope, moved) do
+    if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
+      reconcile_moved(scope, moved)
+    else
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          reconcile_moved(scope, moved)
+        end)
+
+      :ok
     end
+  end
 
+  defp reconcile_moved(scope, moved) do
+    if moved.lockfile, do: reconcile_lockfile(scope)
+    if moved.knowledge, do: reconcile_project_knowledge(scope)
     :ok
   end
 
-  defp embed_entry(scope, env, entry) do
-    case embeddable_source(entry.role, entry.path) do
-      nil -> :ok
-      source -> embed_changed_entry(scope, env, source, entry.path)
+  @doc """
+  Bring the project's `project_knowledge` embeddings in line with its main
+  copy's `project_knowledge` file rows, reading changed content over the
+  copy's harness.
+
+  Called by a manifest that moved a knowledge row and by `LockfileSweep`.
+  A no-op off the main copy and off `PgVectorBackend`. An unreachable
+  harness leaves changed files pending for the next pass; it never deletes
+  their rows.
+  """
+  @spec reconcile_project_knowledge(Scope.t()) :: :ok
+  def reconcile_project_knowledge(%Scope{active_project: %Project{} = project} = scope) do
+    if Embeddings.server_reconciled?() and main_copy?(scope) do
+      do_reconcile_project_knowledge(scope, project)
+    else
+      :ok
     end
   end
 
-  defp delete_embeddings_for(scope, record) do
-    case embeddable_source(record.role, record.path) do
-      nil -> :ok
-      source -> do_delete_embeddings(scope, source, record.path)
-    end
-  end
+  def reconcile_project_knowledge(%Scope{}), do: :ok
 
-  defp do_delete_embeddings(scope, source, path) do
-    case Embeddings.delete_path(scope, source, path) do
-      {:ok, _} ->
+  defp do_reconcile_project_knowledge(%Scope{environment: env} = scope, project) do
+    desired =
+      scope
+      |> Files.list_files_with_role(:project_knowledge)
+      |> Map.new(&{&1.path, &1.fingerprint})
+
+    case ProjectKnowledgeReconciler.reconcile(
+           project.id,
+           desired,
+           &Environments.read_file(env, &1)
+         ) do
+      {:ok, _summary} ->
         :ok
 
-      {:error, reason} ->
-        Logger.warning("[FileSync] delete_path failed for #{source}/#{path}: #{inspect(reason)}")
-    end
-  end
+      {:error, {:deferred, reason}, summary} ->
+        Logger.info(
+          "[FileSync] #{working_copy(scope)}: project knowledge reconcile deferred after " <>
+            "#{summary.embedded} file(s) (#{inspect(reason, limit: 5)})"
+        )
 
-  defp embed_changed_entry(scope, env, source, path) do
-    case Environments.read_file(env, path) do
-      {:ok, content} ->
-        case Embeddings.embed_file(scope, source, path, content) do
-          {:ok, _} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning(
-              "[FileSync] embed_file failed for #{source}/#{path}: #{inspect(reason)}"
-            )
-        end
-
-      {:error, reason} ->
-        Logger.warning("[FileSync] read_file failed for #{path}: #{inspect(reason)}")
+        :ok
     end
   end
 
@@ -757,17 +690,6 @@ defmodule CodeMySpec.Files.FileSync do
   def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
-    # Note: framework_knowledge sync and hex doc projection are NOT
-    # pre-passes here. Both walk every file/dep-source file and would
-    # re-embed (or re-render markdown) on every stop hook even when
-    # nothing changed — the chunk-hash dedup downstream prevents
-    # inference but the surrounding DB queries and source-parsing work
-    # still runs. Stop hooks fire often; we don't want that overhead each
-    # time. Triggers that actually need them:
-    #   * Manual full sync — `FileSync.sync/2` (e.g. /files page button)
-    #   * App boot — `FileWatcherServer.handle_continue/2`
-    #   * Dep change — `FileWatcherServer` mix.lock-poll handler runs
-    #     `HexDocProjector.project/1` after a debounce settle window
     with {:ok, stream} <- walk(scope, env) do
       finish_sync_changed(scope, env, Enum.to_list(stream), start)
     end
@@ -847,7 +769,7 @@ defmodule CodeMySpec.Files.FileSync do
         end
       end)
 
-    {upserted, embedding_changed_entries} =
+    {upserted, fingerprint_changed_entries} =
       case mtime_changed_entries do
         [] ->
           {0, []}
@@ -876,9 +798,8 @@ defmodule CodeMySpec.Files.FileSync do
     # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
     # Validation drives analyzer selection and `:block_changed` scope from this
     # set — a rewrite of byte-identical impl content still needs the runner
-    # analyzers to pick up the corresponding test failures. Fingerprint diff
-    # gates embedding work only; that's why `embedding_changed_entries` stays
-    # internal to `sync_embeddings/4` below.
+    # analyzers to pick up the corresponding test failures. The fingerprint
+    # diff gates the lockfile reconcile and the specs_ready clear below.
     changed_paths = Enum.map(mtime_changed_entries, & &1.path)
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
@@ -893,10 +814,9 @@ defmodule CodeMySpec.Files.FileSync do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
 
-    sync_embeddings(scope, env, embedding_changed_entries, removed_records)
-    maybe_reconcile_lockfile(scope, embedding_changed_entries)
+    maybe_reconcile_lockfile(scope, fingerprint_changed_entries)
 
-    clear_specs_ready_for_rewritten_specs(scope, embedding_changed_entries, removed_records)
+    clear_specs_ready_for_rewritten_specs(scope, fingerprint_changed_entries, removed_records)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -979,7 +899,6 @@ defmodule CodeMySpec.Files.FileSync do
       nil ->
         Files.delete_by_paths(scope, [path])
         removed_records = if existing, do: [existing], else: []
-        sync_embeddings(scope, env, [], removed_records)
         clear_specs_ready_for_rewritten_specs(scope, [], removed_records)
         announce_watched_change(scope, existing != nil)
         {:ok, %{changed_path: path}}
@@ -991,11 +910,9 @@ defmodule CodeMySpec.Files.FileSync do
         # out-of-band consumers can react to content change in real time.
         #
         # Owner resolution and component-aware validation only run for
-        # roles that actually have component/story owners. Hex doc and
-        # other doc-corpus files would otherwise trigger expensive
-        # `list_components` + `parent_component_id IN (?,?,...)` queries
-        # for every individual write — that's catastrophic when the
-        # projector lands hundreds of markdown files.
+        # roles that actually have component/story owners. Doc-corpus files
+        # would otherwise trigger expensive `list_components` +
+        # `parent_component_id IN (?,?,...)` queries for every individual write.
         entry =
           cond do
             owner_bearing_role?(role) ->
@@ -1028,11 +945,10 @@ defmodule CodeMySpec.Files.FileSync do
               |> Map.put(:validation_errors, nil)
           end
 
-        embedding_changed_entries =
+        fingerprint_changed_entries =
           if fingerprint_changed?(entry, existing), do: [entry], else: []
 
         Files.upsert_file_metadata(scope, entry)
-        sync_embeddings(scope, env, embedding_changed_entries, [])
 
         # Here, not only in the stop hook's pass, because this is the pass that
         # can still see the change.
@@ -1058,9 +974,9 @@ defmodule CodeMySpec.Files.FileSync do
         # it was built — stayed *enforced*. `Promotion.gate/1` is per-copy, so
         # one enforced red stopped every other story promoting from that
         # checkout, and nothing an agent could call would clear it.
-        clear_specs_ready_for_rewritten_specs(scope, embedding_changed_entries, [])
+        clear_specs_ready_for_rewritten_specs(scope, fingerprint_changed_entries, [])
 
-        announce_watched_change(scope, embedding_changed_entries != [])
+        announce_watched_change(scope, fingerprint_changed_entries != [])
         {:ok, %{changed_path: path}}
     end
   end
@@ -1090,7 +1006,7 @@ defmodule CodeMySpec.Files.FileSync do
     do: GraphInputs.announce(scope, "FileSync.watched", [], :this_checkout)
 
   # Roles that have a meaningful component or story owner. Other
-  # roles (hex_doc, project_knowledge, rule, architecture, etc.) are
+  # roles (project_knowledge, rule, architecture, etc.) are
   # standalone documents — there's no owner to resolve, no component
   # to look up, and no spec-alignment validation that needs running.
   defp owner_bearing_role?(role)

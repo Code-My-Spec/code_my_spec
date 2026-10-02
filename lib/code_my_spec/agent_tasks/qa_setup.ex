@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaSetup do
   @moduledoc """
   Produce the project-wide QA plan at `.code_my_spec/qa/plan.md`.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_setup.spec.md`.
   """
 
   alias CodeMySpec.Documents.DocumentSpecProjector

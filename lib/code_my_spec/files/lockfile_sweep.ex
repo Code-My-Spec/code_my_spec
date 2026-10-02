@@ -14,6 +14,10 @@ defmodule CodeMySpec.Files.LockfileSweep do
   project with a main copy, whether or not anything changed recently —
   cheap, because the function itself re-derives "does this actually need
   doing" from stored state before touching the harness.
+
+  Also the backstop for `FileSync.reconcile_project_knowledge/1` (step 5),
+  for the same reason: a knowledge file left pending by an offline harness
+  has nothing else to re-trigger it.
   """
 
   use GenServer
@@ -45,7 +49,12 @@ defmodule CodeMySpec.Files.LockfileSweep do
   end
 
   defp reconcile_one(scope) do
-    FileSync.reconcile_lockfile(scope)
+    guarded(scope, &FileSync.reconcile_lockfile/1)
+    guarded(scope, &FileSync.reconcile_project_knowledge/1)
+  end
+
+  defp guarded(scope, reconcile) do
+    reconcile.(scope)
   rescue
     e ->
       Logger.error(

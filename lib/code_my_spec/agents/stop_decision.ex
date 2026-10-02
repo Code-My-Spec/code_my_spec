@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
@@ -98,7 +99,9 @@ defmodule CodeMySpec.Agents.StopDecision do
         continuing(scope, agent, message, Agent.active_task(agent))
 
       {message, key} ->
-        if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
+        if stuck?(agent, key),
+          do: :ok,
+          else: send_to(scope, agent, message, {:problems, {"problem_set", problem_key(key)}})
     end
   end
 
@@ -199,9 +202,20 @@ defmodule CodeMySpec.Agents.StopDecision do
   # repeat-silencing as any other class.
   defp continuing(scope, agent, _message, nil), do: request_turn(scope, agent)
 
-  defp continuing(scope, agent, message, _task) do
-    if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+  # The menu is one offer per held task: it only goes out while a task is
+  # held, and every item on it is "carry on". Recording each item would claim
+  # the agent was offered choices the menu does not ask it to make.
+  defp continuing(scope, agent, message, task) do
+    if stuck?(agent, message, :continuing),
+      do: :ok,
+      else: send_to(scope, agent, message, {:menu, {"menu", task.id}})
   end
+
+  # `Validation.blocking_key/1` is a hash already; anything else is made one.
+  defp problem_key(key) when is_binary(key), do: key
+
+  defp problem_key(key),
+    do: :crypto.hash(:sha256, :erlang.term_to_binary(key)) |> Base.encode16(case: :lower)
 
   # Off this process for the reason `dispatch` is (ad8c1213): `deliver/3` runs
   # inside the harness channel at turn end, and the turn request is a call back
@@ -244,7 +258,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # agent mid-turn is queued rather than interrupted — the engine decides
   # started-or-queued without running anything, and a decision that barged into
   # a turn in flight would lose whatever that turn was part-way through.
-  defp send_to(scope, agent, message) do
+  defp send_to(scope, agent, message, {kind, subject}) do
     # Recorded as well as sent, and recorded first.
     #
     # `Conversations.record_sent_to_agent/2` because this dispatches through the
@@ -259,8 +273,12 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Unless it is off or retired: then there is no decision for it (39af5611).
     case Transport.deliverable(agent) do
       :ok ->
-        Conversations.record_sent_to_agent(agent, message)
-        deliver_message(scope, agent, message)
+        offered =
+          agent
+          |> Conversations.record_sent_to_agent(message)
+          |> Offers.record(agent, kind, subject)
+
+        deliver_message(scope, agent, message, offered)
 
       {:error, _stood_down} ->
         :ok
@@ -271,7 +289,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # nudge records its own line with its own `kind` and sends through here, so
   # there is one definition of how a message reaches an agent and no second one
   # to forget to call.
-  defp deliver_message(scope, agent, message) do
+  defp deliver_message(scope, agent, message, offered) do
     ref = "stop-decision-" <> Ecto.UUID.generate()
 
     # Off this process, and that is not an optimisation.
@@ -292,7 +310,7 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Nothing is waiting on the answer. The record is already written above, and
     # the only outcomes below are `:ok` and a line in the log.
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      dispatch(scope, agent, ref, message)
+      dispatch(scope, agent, ref, message, offered)
     end)
 
     :ok
@@ -317,7 +335,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # `agent.working_copy_id` is the only thing here that knows where the agent
   # is, and it is right on every path — including the original one, where it
   # equals what the scope carried.
-  defp dispatch(_scope, agent, ref, message) do
+  defp dispatch(_scope, agent, ref, message, offered) do
     case Transport.dispatch_message(
            agent.working_copy_id,
            agent,
@@ -333,6 +351,8 @@ defmodule CodeMySpec.Agents.StopDecision do
       # delivery. Logged at info so the absence is visible without reading as
       # something to fix.
       {:error, reason} ->
+        Offers.undelivered(offered)
+
         Logger.info(
           "[StopDecision] agent #{agent.id} was not told (#{inspect(reason)}) — " <>
             "nothing is wrong if it has stopped"

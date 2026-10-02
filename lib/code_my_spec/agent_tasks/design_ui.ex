@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.DesignUi do
   @moduledoc """
   Interview the engineer to establish the project's design system.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/design_ui.spec.md`.
   """
 
   alias CodeMySpec.Environments

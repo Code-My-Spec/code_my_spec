@@ -78,9 +78,6 @@ defmodule CodeMySpec.Files.AcronymOwnershipTest do
 
     assert "lib/demo/cli.ex" in paths
     assert "test/demo/cli_test.exs" in paths
-
-    assert Enum.any?(paths, &String.ends_with?(&1, "demo/cli.spec.md")),
-           "the spec path is what `require_specs` gates on"
   end
 
   test "a liveview keeps its Phoenix directory", %{scope: scope} do

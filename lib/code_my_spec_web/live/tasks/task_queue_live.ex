@@ -71,7 +71,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
 
     # File-only changes (project_setup satisfaction, spec file edits, etc.)
     # don't broadcast on the components or issues topics. ProjectSync.Sync
-    # broadcasts on `"project:<id>:watcher"` whenever the file watcher
+    # broadcasts on `"project:<id>:watcher"` whenever a single-path sync
     # syncs a file change, which is the broadest signal for "the
     # requirement graph might have shifted." Subscribing here keeps the
     # queue live for file-only events too.

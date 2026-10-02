@@ -68,8 +68,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   #
   # These fixtures exist to leave a requirement satisfied, and a file on disk
   # that the graph has never seen satisfies nothing. In production
-  # `FileWatcherServer` drives `ProjectSync.Sync` per changed path; there is no
-  # watcher in a spex, so the fixture does it.
+  # the harness manifest carries changed paths; there is no harness in a spex,
+  # so the fixture does it.
   #
   # It used to happen by accident. `GetNextRequirement` opened with a full
   # `FileSync.sync/2`, so any file written before the agent asked was picked up

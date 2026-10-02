@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   @moduledoc """
   Identify third-party integrations from ADRs and verify each against real credentials.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_integration_plan.spec.md`.
   """
 
   def dispatch(_node) do

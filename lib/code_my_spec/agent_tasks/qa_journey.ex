@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaJourney do
   @moduledoc """
   Plan, execute, and codify end-to-end QA journeys as a three-phase pipeline.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_journey.spec.md`.
   """
 
   alias CodeMySpec.Documents.DocumentSpecProjector

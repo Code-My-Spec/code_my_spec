@@ -128,9 +128,9 @@ defmodule CodeMySpec.Qa.Evidence do
     # that promises not to change.
     #
     # Scoped to the one story's directory. A submodule with unrelated dirt in it
-    # is the normal state of this repo — `hex_docs/` churns constantly — and
-    # refusing a QA pass over somebody else's uncommitted file would be a gate
-    # that fires for reasons the reader cannot act on.
+    # is the normal state of this repo, and refusing a QA pass over somebody
+    # else's uncommitted file would be a gate that fires for reasons the reader
+    # cannot act on.
     # `-uall` because plain `--porcelain` collapses a wholly-untracked directory
     # to a single `qa/874/` entry. That is the common case here — a QA pass
     # writes a brief and a screenshots folder into a directory git has never

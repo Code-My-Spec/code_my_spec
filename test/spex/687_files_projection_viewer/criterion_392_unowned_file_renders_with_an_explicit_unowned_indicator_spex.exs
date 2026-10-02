@@ -54,9 +54,9 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
       end
 
       then_ "the orphan row carries the unowned indicator and no component link", context do
-        # Anchor: the synced spec proves the page rendered with content.
-        assert context.html =~ "example_context.spec.md",
-               "expected the synced spec to anchor the page"
+        # Anchor: the synced implementation proves the page rendered with content.
+        assert context.html =~ "lib/example_context.ex",
+               "expected the synced implementation to anchor the page"
 
         orphan_row_selector =
           "[data-test='file-row'][data-file-path='CLAUDE.md']"

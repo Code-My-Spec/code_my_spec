@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
   alias CodeMySpec.Problems
 
   @per_page 25
-  @sources ~w(compiler credo exunit spex spec_validation qa_validation)
+  @sources ~w(compiler credo exunit spex qa_validation)
 
   @impl true
   def mount(_params, _session, socket) do

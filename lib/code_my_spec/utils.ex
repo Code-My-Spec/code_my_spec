@@ -107,22 +107,13 @@ defmodule CodeMySpec.Utils do
     base_files = %{
       design_file: Paths.design_file(module_path),
       code_file: "lib/#{source_path}.ex",
-      test_file: "test/#{source_path}_test.exs",
-      spec_file: Paths.spec_file(module_path)
+      test_file: "test/#{source_path}_test.exs"
     }
 
-    # Add type-specific files
-    cond do
-      type in ["context", "coordination_context"] ->
-        Map.put(base_files, :review_file, Paths.review_file(module_path))
-
-      type == "controller" ->
-        json_path = derive_json_path(source_path)
-        Map.put(base_files, :json_file, "lib/#{json_path}.ex")
-
-      true ->
-        base_files
-    end
+    # A controller's JSON view sits beside it.
+    if type == "controller",
+      do: Map.put(base_files, :json_file, "lib/#{derive_json_path(source_path)}.ex"),
+      else: base_files
   end
 
   def component_files(module_name) do
@@ -131,8 +122,7 @@ defmodule CodeMySpec.Utils do
     %{
       design_file: Paths.design_file(module_path),
       code_file: "lib/#{module_path}.ex",
-      test_file: "test/#{module_path}_test.exs",
-      spec_file: Paths.spec_file(module_path)
+      test_file: "test/#{module_path}_test.exs"
     }
   end
 

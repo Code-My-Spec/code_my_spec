@@ -27,14 +27,14 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     CodeMySpec is attached to this directory because it contains `mix.exs` with
     `:phoenix` in its deps. The harness reads `mix.exs`, walks `lib/`, and writes
-    specs and rules relative to here. If a future session ever attaches to a
+    rules and BDD files relative to here. If a future session ever attaches to a
     non-Phoenix directory, the init checklist will fail loudly — the user fix is
     always to relaunch Claude Code from the project root.
 
     ### How It Works
 
-    CodeMySpec tracks every artifact your project needs — specs, tests, implementations,
-    reviews, BDD scenarios — as a **requirement graph**. Each requirement has prerequisites,
+    CodeMySpec tracks every artifact your project needs — stories, components,
+    implementations, BDD scenarios, QA — as a **requirement graph**. Each requirement has prerequisites,
     so you always know what to work on next and in what order.
 
     ### Your Workflow
@@ -43,19 +43,20 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
        whose prerequisites are all met.
     2. **`start_task`** — begins work on that requirement. Returns a detailed prompt
        with context, rules, file paths, and instructions.
-    3. **Do the work** — write the spec, test, implementation, or review as instructed.
+    3. **Do the work** — write the implementation, spex, or whatever the prompt asks for.
     4. The harness **automatically evaluates** your output on stop, checking file existence,
        validity, compilation, and test results. If something is wrong, you get feedback.
     5. **Repeat** — call `get_next_requirement` again.
 
     ### Key Rules
 
-    - **Always follow the task prompt.** It contains spec templates, design rules, file paths,
+    - **Always follow the task prompt.** It contains design rules, file paths,
       and test patterns specific to the component you're working on.
-    - **Read before you write.** The task prompt tells you which specs, rules, and existing
+    - **Read before you write.** The task prompt tells you which components, rules, and existing
       files to read. Do it.
     - **One requirement at a time.** The graph handles ordering. Don't skip ahead.
-    - Specs live in `#{base}/spec/`, rules in `#{base}/rules/`, architecture in `#{base}/architecture/`.
+    - Components and their dependencies are records: read one with `get_component`, all of
+      them with `show_architecture_overview`; no spec file describes them. Rules live in `#{base}/rules/`.
     #{@claude_md_end_marker}
     """
   end
@@ -72,13 +73,13 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     CodeMySpec is a requirements-driven development harness. It models your project as a
     graph of **stories**, **components**, and **requirements**, then guides you through
-    building each piece in the right order: specs → tests → implementations → reviews → QA.
+    building each piece in the right order: architecture → BDD spex → implementations → QA.
 
     ## Prerequisite: Phoenix project root
 
     CodeMySpec is attached to a **Phoenix project root** — the folder containing
     `mix.exs` with `:phoenix` in its deps. The harness reads `mix.exs`, walks
-    `lib/`, and writes specs, rules, and BDD files relative to that directory.
+    `lib/`, and writes rules and BDD files relative to that directory.
     If a future session ever attaches to the wrong directory, the init checklist
     surfaces it loudly; the user-side fix is to relaunch Claude Code from the
     project root.
@@ -105,7 +106,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     `entity_id` (or `module_name` for components). This creates a task on your session and
     returns a **detailed work prompt** containing:
 
-    - Which files to read (specs, rules, existing code)
+    - What to read (components, rules, existing code)
     - The exact file path to write to
     - Templates and format requirements
     - Design rules and coding standards for the component type
@@ -138,7 +139,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     ```
     #{base}/
     ├── architecture/     Component graph, dependency diagram, decisions
-    ├── spec/             Module specifications (*.spec.md)
     ├── rules/            Design and test rules by component type
     ├── status/           Implementation status per component
     ├── issues/           Known bugs (incoming/, accepted/, dismissed/)
@@ -221,19 +221,19 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     - **repository** — Data access layer (`#{base}/rules/repository_design.md`)
     - **liveview** — Phoenix LiveView page (`#{base}/rules/liveview_design.md`)
     - **liveview_component** — Reusable LiveView component (`#{base}/rules/liveview_component_design.md`)
-    - **live_context** — LiveView grouping (spec + review only)
+    - **live_context** — LiveView grouping (only its children are built)
     - **controller** — Phoenix HTTP handler
     - **genserver** — Stateful process
     - **task** — Background job
-    - **behaviour** — Callback definition (spec + implementation only)
+    - **behaviour** — Callback definition
 
     General Elixir rules: `#{base}/rules/elixir_design.md`, `#{base}/rules/elixir_test.md`
 
     ## Key Principles
 
     1. **The graph is the plan.** Don't decide what to work on — ask `get_next_requirement`.
-    2. **Specs before code.** Every component gets a specification first. Tests are written
-       from the spec. Implementation satisfies the tests.
+    2. **Behaviour before code.** A story's acceptance criteria become BDD spex first;
+       the implementation makes them pass. Components are designed as records, not files.
     3. **Read the task prompt.** It contains everything you need: templates, rules, file paths,
        and patterns from similar components.
     4. **One requirement at a time.** Complete it, let evaluation run, then get the next one.

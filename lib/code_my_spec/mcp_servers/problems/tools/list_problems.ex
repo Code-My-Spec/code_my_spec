@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
   schema do
     field :source, :string,
       doc:
-        "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex`, `spec_validation` or `qa_validation`."
+        "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`."
 
     field :severity, :string,
       doc: "Filter by severity — `error`, `warning` or `info`. Omit for all."

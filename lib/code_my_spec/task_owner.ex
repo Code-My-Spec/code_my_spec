@@ -336,11 +336,11 @@ defmodule CodeMySpec.TaskOwner do
   # it which task to resume.
   defp wake_holder(_scope, _owner, _released, {:question, _id, :withdrawn}, _opts), do: :ok
 
-  defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
+  defp wake_holder(scope, %Agent{} = agent, released, {_type, id, _outcome} = blocker, opts) do
     notice = blocker_resolved_notice(released, blocker, Keyword.get(opts, :detail))
 
     Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Work.wake_with_notice(scope, agent, notice, :blocker_resolved)
+      Work.wake_with_notice(scope, agent, notice, :blocker_resolved, {"blocker", id})
     end)
 
     :ok

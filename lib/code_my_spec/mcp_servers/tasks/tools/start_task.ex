@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   schema do
     field :requirement_name, :string,
       required: true,
-      doc: "Name of the requirement (e.g., spec_file, implementation_file)"
+      doc: "Name of the requirement (e.g., implementation_file, bdd_specs_passing)"
 
     field :entity_type, :string,
       required: true,

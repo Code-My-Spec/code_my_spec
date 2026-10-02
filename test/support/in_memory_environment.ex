@@ -298,10 +298,8 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
 
     # `{:error, :enoent}` for a path with nothing under it, because that is what
     # `File.ls` answers and callers branch on it. Returning `{:ok, []}` made
-    # every directory exist: `HexDocProjector.dir?/2` is
-    # `match?({:ok, _}, list_directory(...))`, so an uninstalled package still
-    # looked installed, nothing was ever an orphan, and five deletion tests
-    # failed while the projector reported success.
+    # every directory exist to a caller that checks
+    # `match?({:ok, _}, list_directory(...))`.
     #
     # A directory with no files cannot be told from one that was never created
     # in a map keyed by file path, and that is the right trade: the analyzers
@@ -386,8 +384,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
     # `lib/foo.ex` as well as `lib/a/b.ex`. Translating it as `.*/` requires a
     # subdirectory, so a package whose sources sit directly in `lib/` globs to
     # nothing — the caller sees an empty list, which is indistinguishable from
-    # a directory that really is empty. `HexDocProjector` projected zero
-    # modules that way, and reported `:ok` doing it.
+    # a directory that really is empty.
     pattern
     |> Regex.escape()
     |> String.replace("\\*\\*/", "\x01")

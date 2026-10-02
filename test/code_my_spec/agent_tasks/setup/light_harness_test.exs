@@ -124,8 +124,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
           Setup.ApplicationInWeb,
           Setup.SpexCase,
           Setup.TestSupportNamespace,
-          Setup.TestBoundaries,
-          Setup.ProjectStructure
+          Setup.TestBoundaries
         ] do
       test "#{inspect(step)}.command/2 builds a prompt naming the real app", %{scope: scope} do
         sync_mix_exs(scope, "my_app")

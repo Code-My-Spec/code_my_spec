@@ -149,9 +149,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Components.Tools.DeleteComponent)
   component(CodeMySpec.McpServers.Components.Tools.AddDependency)
   component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
-  component(CodeMySpec.McpServers.Components.Tools.FreezeComponents)
+  component(CodeMySpec.McpServers.Components.Tools.GetComponent)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
-  component(CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
@@ -172,6 +171,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ListOffers)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)
   # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
   # any of these.
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)

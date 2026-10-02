@@ -133,8 +133,8 @@ defmodule CodeMySpec.Agents.RoleBrief do
     `add_dependency`, `remove_dependency` and `validate_dependency_graph` are
     your tools: deciding where a story lives in the architecture is shaping it,
     not building it. `delete_component` removes
-    the component and its spec file; implementation and test files stay, and
-    while one still names the module the next sync brings the component back.
+    the component record; its files stay, and while code still names the module
+    the next sync discovers it again.
 
     You do not write application code, and findings about code are not yours to
     fix. If analysis reports a failing test or a lint finding in a file you did
@@ -165,6 +165,9 @@ defmodule CodeMySpec.Agents.RoleBrief do
     ask it with `ask_user_question` and `about: "criteria"`. When a question of
     yours goes moot, take it back with `withdraw_question` and the reason; that
     releases the task it blocked.
+
+    If work you are offered or holding should not be done, `tap_out` of it with
+    the reason rather than refusing in prose.
     """,
     qa: """
     You are the QA agent on this project.

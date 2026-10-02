@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Rules
@@ -92,8 +92,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   defp build_test_prompt(scope, component, project, test_rules, diagnostics) do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
 
-    %{spec_file: spec_file_path, test_file: test_file_path} =
-      Utils.component_files(component, project)
+    %{test_file: test_file_path} = Utils.component_files(component, project)
 
     implementation_exists = implementation_exists?(scope, component)
 
@@ -101,25 +100,13 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       if implementation_exists do
         """
         The component implementation already exists.
-        Write tests that validate the existing implementation against the design specification.
+        Write tests that validate the existing implementation against its design.
         """
       else
         """
         The component doesn't exist yet.
         You are to write the tests before we implement the module, TDD style.
-        Only write the tests defined in the Test Assertions section of the design.
-        If you want to write more cases, you must modify the design first.
         """
-      end
-
-    parent_spec_file_path =
-      case component.parent_component do
-        %Component{} = parent_component ->
-          %{spec_file: parent_spec_file_path} = Utils.component_files(parent_component, project)
-          parent_spec_file_path
-
-        _ ->
-          "no parent design"
       end
 
     prompt =
@@ -128,7 +115,6 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       #{tdd_section}
       #{diagnostics}
       Tests should be grouped by describe blocks that match the function signature EXACTLY.
-      Any blocks that don't match the test assertions in the spec will be rejected and you'll have to redo them.
 
       describe "get_test_assertions/1" do
         test "extracts test names from test blocks", %{tmp_dir: tmp_dir} do
@@ -141,8 +127,10 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       Component Name: #{component.name}
       Component Type: #{component.type}
 
-      Parent Context Design File: #{parent_spec_file_path}
-      Component Design File: #{spec_file_path}
+      The component, its parent context and what it depends on are records: read
+      the component with `get_component` (module_name `#{component.module_name}`), and
+      the wider picture with `show_architecture_overview`. The linked story's BDD spex
+      (under `test/spex/<story_number>_*/`) are the contract for its behaviour.
 
       Test Rules:
       #{test_rules_text}
@@ -150,13 +138,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       Write the test file to #{test_file_path}.
 
       Focus on:
-      - Reading the design files to understand the component architecture and parent context
+      - Reading the component and its parent context to understand the architecture
       - Creating reusable fixture functions for test data
       - Testing all public API functions
       - Testing edge cases and error conditions
       - Testing with valid and invalid data
       - Following test and fixture organization patterns from the rules
-      - Only implementing the test assertions from the design file
       """
 
     {:ok, prompt}

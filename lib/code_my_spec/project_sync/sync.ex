@@ -3,15 +3,12 @@ defmodule CodeMySpec.ProjectSync.Sync do
   Orchestrates a single-path filesystem-to-DB sync.
 
   Decouples "a relevant file changed" from "what triggered the event."
-  Production code reaches here through `FileWatcherServer` after an OS
-  `:file_event` arrives; specs reach here directly with a memfs scope.
-  Both call paths run the same orchestration so the projection contract
-  is exercised identically.
+  Specs reach here directly with a memfs scope.
 
   Side effects per call, in order:
 
     1. `FileSync.sync_path/3` — upsert/delete the File row, refresh
-       fingerprint, run embeddings hooks.
+       fingerprint.
     2. `FileComponentSync.sync_from_files/2` — re-derive the owning
        component when the path's role is component-relevant.
     3. `Phoenix.PubSub` broadcast on `"project:<id>:watcher"` so
@@ -27,9 +24,8 @@ defmodule CodeMySpec.ProjectSync.Sync do
   @pubsub CodeMySpec.PubSub
 
   @doc """
-  Sync a single absolute path. Same orchestration the file watcher
-  invokes from an OS file event; safe to call directly from specs or
-  any caller that has a scoped trigger.
+  Sync a single absolute path. Safe to call directly from specs or any
+  caller that has a scoped trigger.
 
   Returns `{:ok, result}` where `result.changed_path` is the relative
   path that was upserted/deleted (nil if the path was ignored by

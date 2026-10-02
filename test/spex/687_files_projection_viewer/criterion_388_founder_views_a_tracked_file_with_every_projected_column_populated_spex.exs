@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
   the columns a founder needs to debug filesystem-to-DB drift: path,
   role, validity, mtime, and the owning component's name.
 
-  The spec file `synced_context_component` writes is the anchor row —
+  The implementation file `synced_context_component` writes is the anchor row —
   it has a component_id (ExampleContext) and ought to render every
   projected column.
   """
@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
   setup :setup_active_project
 
   spex "Founder views a tracked file with every projected column populated", criterion: 388 do
-    scenario "the spec file row carries path, role, validity, mtime, and a component link" do
+    scenario "the implementation row carries path, role, validity, mtime, and a component link" do
       given_ :synced_context_component
 
       when_ "the founder opens the files page", context do
@@ -28,40 +28,40 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
         {:ok, Map.merge(context, %{files_live: files_live, html: html})}
       end
 
-      then_ "the spec file's path appears on the page", context do
+      then_ "the implementation's path appears on the page", context do
         # Anchor: a literal path proves the page rendered with real rows.
-        assert context.html =~ ".code_my_spec/spec/example_context.spec.md",
-               "expected the spec file's path to appear as a row on the files page"
+        assert context.html =~ "lib/example_context.ex",
+               "expected the implementation's path to appear as a row on the files page"
 
         {:ok, context}
       end
 
-      then_ "the spec row exposes role, validity, and mtime cells", context do
+      then_ "the row exposes role, validity, and mtime cells", context do
         row_selector =
-          "[data-test='file-row'][data-file-path*='example_context.spec.md']"
+          "[data-test='file-row'][data-file-path='lib/example_context.ex']"
 
         assert has_element?(context.files_live, "#{row_selector} [data-test='file-role']"),
-               "expected the spec row to carry [data-test='file-role']"
+               "expected the row to carry [data-test='file-role']"
 
         assert has_element?(context.files_live, "#{row_selector} [data-test='file-validity']"),
-               "expected the spec row to carry [data-test='file-validity']"
+               "expected the row to carry [data-test='file-validity']"
 
         assert has_element?(context.files_live, "#{row_selector} [data-test='file-mtime']"),
-               "expected the spec row to carry [data-test='file-mtime']"
+               "expected the row to carry [data-test='file-mtime']"
 
         {:ok, context}
       end
 
-      then_ "the spec row names the owning component", context do
+      then_ "the row names the owning component", context do
         row_selector =
-          "[data-test='file-row'][data-file-path*='example_context.spec.md']"
+          "[data-test='file-row'][data-file-path='lib/example_context.ex']"
 
         assert has_element?(
                  context.files_live,
                  "#{row_selector} [data-test='file-component']",
                  "ExampleContext"
                ),
-               "expected the spec row to show the owning component's name, ExampleContext"
+               "expected the row to show the owning component's name, ExampleContext"
 
         {:ok, context}
       end

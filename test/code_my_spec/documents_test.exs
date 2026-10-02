@@ -3,471 +3,74 @@ defmodule CodeMySpec.DocumentsTest do
   doctest CodeMySpec.Documents
 
   alias CodeMySpec.Documents
-  alias CodeMySpec.Environments.Environment
 
-  describe "create_dynamic_document/2" do
-    test "creates a valid schema document from markdown" do
-      markdown = """
-      # UserSchema
-      Represents user account entities with authentication credentials.
+  # `qa_result`: required status and scenarios, optional evidence and issues,
+  # nothing else allowed.
+  @valid_result """
+  # QA Result
 
-      ## Fields
-      | Field | Type | Required | Description | Constraints |
-      |-------|------|----------|-------------|-------------|
-      | email | string | Yes | User email address | Unique |
-      | name | string | Yes | User full name | Min: 1, Max: 255 |
+  ## Status
 
-      ## Dependencies
-      - CodeMySpec.MyModule
-      """
+  pass
 
-      {:ok, document} = Documents.create_dynamic_document(markdown, "schema")
+  ## Scenarios
 
-      assert document.type == "schema"
-      assert is_list(document.sections["fields"])
+  ### The page loads
+
+  It loaded.
+  """
+
+  describe "create_dynamic_document/3" do
+    test "creates a document whose required sections are present" do
+      assert {:ok, document} = Documents.create_dynamic_document(@valid_result, "qa_result")
+      assert document.type == "qa_result"
+      assert Map.has_key?(document.sections, "status")
     end
 
-    test "returns error for missing required sections" do
-      markdown = """
-      # Incomplete
+    test "returns an error naming the missing required section" do
+      markdown = "# QA Result\n\n## Status\n\npass\n"
 
-      ## Purpose
-      Only has purpose.
-      """
-
-      {:error, error} = Documents.create_dynamic_document(markdown, "schema")
-
+      assert {:error, error} = Documents.create_dynamic_document(markdown, "qa_result")
       assert error =~ "Missing required sections"
-      assert error =~ "fields"
+      assert error =~ "scenarios"
     end
 
-    test "allows additional sections when allowed_additional_sections is '*'" do
-      markdown = """
-      # Context
-      Does context things.
-
-      ## Entity Ownership
-      Owns entities.
-
-      ## Access Patterns
-      Scoped access.
-
-      ## Public API
-      API functions.
-
-      ## State Management Strategy
-      Uses database.
-
-      ## Execution Flow
-      Process flow.
-
-      ## Dependencies
-      - Some.Module
-
-      ## Components
-      Component list.
-
-      ## Test Strategies
-      Testing approach.
-
-      ## Test Assertions
-      - test assertions
-
-      ## Custom Section
-      Extra content allowed for contexts.
-
-      ## Delegates
-      - func/1: Other.func/1
-      """
-
-      {:ok, document} = Documents.create_dynamic_document(markdown, "dynamic_document")
-
-      assert document.sections["custom section"] == "Extra content allowed for contexts."
+    test "allows an optional section" do
+      markdown = @valid_result <> "\n## Evidence\n\nA screenshot.\n"
+      assert {:ok, _} = Documents.create_dynamic_document(markdown, "qa_result")
     end
 
-    test "rejects additional sections when allowed_additional_sections is []" do
-      markdown = """
-      # MyModule.Spec
+    test "rejects a section the type does not allow, naming it" do
+      markdown = @valid_result <> "\n## Musings\n\nUnrelated.\n"
 
-      ## Delegates
-      - func/1: Other.func/1
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Dependencies
-      - Other.Module
-
-      ## Custom Section
-      This should not be allowed for specs!
-      """
-
-      {:error, error} = Documents.create_dynamic_document(markdown, "spec")
-
-      assert error =~ "Disallowed sections found"
-      assert error =~ "custom section"
+      assert {:error, error} = Documents.create_dynamic_document(markdown, "qa_result")
+      assert error =~ "musings"
     end
 
-    test "allows multiple disallowed sections in error message" do
-      markdown = """
-      # MyModule.Spec
+    test "allows any section when allowed_additional_sections is '*'" do
+      markdown = "# Anything\n\n## Whatever\n\nText.\n\n## Something Else\n\nMore.\n"
 
-      ## Delegates
-      - func/1: Other.func/1
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Dependencies
-      - Other.Module
-
-      ## Custom One
-      Not allowed.
-
-      ## Custom Two
-      Also not allowed.
-      """
-
-      {:error, error} = Documents.create_dynamic_document(markdown, "spec")
-
-      assert error =~ "Disallowed sections found"
-      assert error =~ "custom one"
-      assert error =~ "custom two"
+      assert {:ok, document} = Documents.create_dynamic_document(markdown, "dynamic_document")
+      assert Map.has_key?(document.sections, "whatever")
     end
 
-    test "allows optional sections for spec documents" do
-      markdown = """
-      # MyModule.Spec
-
-      ## Delegates
-      - func/1: Other.func/1
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Dependencies
-      - Other.Module
-
-      ## Fields
-      | Field | Type | Required |
-      |-------|------|----------|
-      | name | string | Yes |
-      """
-
-      {:ok, document} = Documents.create_dynamic_document(markdown, "spec")
-
-      assert document.type == "spec"
-      assert is_list(document.sections["fields"])
+    test "an unknown type is read as a dynamic document" do
+      assert {:ok, _} = Documents.create_dynamic_document("# A\n\n## B\n\nC.\n", "no_such_type")
     end
 
-    test "validates OR logic - succeeds when first alternative is present" do
-      markdown = """
-      # Test
-
-      ## Delegates
-      - func/1: Other.func/1
-
-      ## Dependencies
-      - Other.Module
-
-      ## Components
-      Component list.
-      """
-
-      # Temporarily test with context_spec which has [["delegates", "functions"], "dependencies", "components"]
-      {:ok, document} = Documents.create_dynamic_document(markdown, "context_spec")
-
-      assert document.type == "context_spec"
-    end
-
-    test "validates OR logic - succeeds when second alternative is present" do
-      markdown = """
-      # Test
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Dependencies
-      - Other.Module
-
-      ## Components
-      Component list.
-      """
-
-      {:ok, document} = Documents.create_dynamic_document(markdown, "context_spec")
-
-      assert document.type == "context_spec"
-    end
-
-    test "validates OR logic - fails when none of the alternatives are present" do
-      markdown = """
-      # Test
-
-      ## Dependencies
-      - Other.Module
-
-      ## Components
-      Component list.
-      """
-
-      {:error, error} = Documents.create_dynamic_document(markdown, "context_spec")
-
-      assert error =~ "Missing required sections"
-      assert error =~ "delegates OR functions"
-    end
-
-    test "validates mixed OR and regular required sections" do
-      markdown = """
-      # Test
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Components
-      Component list.
-      """
-
-      {:error, error} = Documents.create_dynamic_document(markdown, "context_spec")
-
-      assert error =~ "Missing required sections"
-      assert error =~ "dependencies"
-      refute error =~ "delegates OR functions"
-    end
-
-    test "returns error when document_type is nil" do
-      markdown = """
-      # MyModule
-
-      ## Functions
-
-      ### my_func/1
-      Does something.
-
-      ## Dependencies
-      - Other.Module
-      """
-
-      assert {:error, error} = Documents.create_dynamic_document(markdown, nil)
+    test "returns an error when document_type is nil" do
+      assert {:error, error} = Documents.create_dynamic_document(@valid_result, nil)
       assert error =~ "Document type is required"
     end
 
-    test "returns error when document_type is empty string" do
-      markdown = "# MyModule\n\n## Functions\n\n### f/0\nDoes stuff.\n\n## Dependencies\nNone\n"
-
-      assert {:error, error} = Documents.create_dynamic_document(markdown, "")
+    test "returns an error when document_type is empty" do
+      assert {:error, error} = Documents.create_dynamic_document(@valid_result, "")
       assert error =~ "Document type is required"
     end
 
-    test "allows ## Type section in any document type" do
-      markdown = """
-      # MyModule.Spec
-
-      ## Type
-
-      genserver
-
-      ## Delegates
-      - func/1: Other.func/1
-
-      ## Dependencies
-      - Other.Module
-      """
-
-      assert {:ok, document} = Documents.create_dynamic_document(markdown, "spec")
-      assert document.sections["type"] == "genserver"
-    end
-
-    test "allows ## Type section in liveview document type" do
-      markdown = """
-      # MyAppWeb.DashboardLive
-
-      ## Type
-
-      liveview
-
-      ## Route
-
-      `/dashboard`
-
-      ## User Interactions
-
-      - **phx-click="refresh"**: Reload data.
-
-      ## Dependencies
-
-      - MyApp.Accounts
-
-      ## Design
-
-      It looks awesome
-      """
-
-      assert {:ok, document} = Documents.create_dynamic_document(markdown, "liveview")
-      assert document.sections["type"] == "liveview"
-    end
-  end
-
-  describe "validate_h1_matches_path/2" do
-    test "returns :ok when H1 matches expected module from path" do
-      content = """
-      # CodeMySpec.Accounts.User
-
-      User module description.
-      """
-
-      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
-
-      assert :ok = Documents.validate_h1_matches_path(content, path)
-    end
-
-    test "returns error when H1 doesn't match path" do
-      content = """
-      # User
-
-      Short module name.
-      """
-
-      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
-
-      assert {:error, message} = Documents.validate_h1_matches_path(content, path)
-      assert message =~ "does not match expected"
-      assert message =~ "CodeMySpec.Accounts.User"
-    end
-
-    test "returns error when H1 is missing" do
-      content = """
-      Just some content without an H1.
-      """
-
-      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
-
-      assert {:error, message} = Documents.validate_h1_matches_path(content, path)
-      assert message =~ "Missing H1 title"
-    end
-
-    test "handles nested paths correctly" do
-      content = """
-      # CodeMySpec.McpServers.Architecture.Tools.GetComponentView
-
-      Nested module.
-      """
-
-      path =
-        "/project/.code_my_spec/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
-
-      assert :ok = Documents.validate_h1_matches_path(content, path)
-    end
-  end
-
-  describe "validate_internal_dependencies/2" do
-    setup do
-      tmp_dir = CodeMySpec.TempFile.dir("docs_validation_test")
-      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts"))
-      File.mkdir_p!(Path.join(tmp_dir, "lib/code_my_spec/accounts"))
-
-      File.write!(
-        Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts/user.spec.md"),
-        "# CodeMySpec.Accounts.User\n"
-      )
-
-      File.write!(
-        Path.join(tmp_dir, "lib/code_my_spec/accounts/account.ex"),
-        "defmodule CodeMySpec.Accounts.Account do\nend"
-      )
-
-      on_exit(fn -> File.rm_rf!(tmp_dir) end)
-      %{tmp_dir: tmp_dir}
-    end
-
-    test "returns no warnings when all internal dependencies exist", %{tmp_dir: tmp_dir} do
-      content = """
-      # CodeMySpec.Test
-
-      ## Dependencies
-
-      - CodeMySpec.Accounts.User
-      - CodeMySpec.Accounts.Account
-      """
-
-      assert {:ok, []} =
-               Documents.validate_internal_dependencies(
-                 content,
-                 tmp_dir,
-                 Environment.new(:local, File.cwd!())
-               )
-    end
-
-    test "returns warnings for missing internal dependencies", %{tmp_dir: tmp_dir} do
-      content = """
-      # CodeMySpec.Test
-
-      ## Dependencies
-
-      - CodeMySpec.Accounts.User
-      - CodeMySpec.Accounts.Missing
-      """
-
-      assert {:ok, warnings} =
-               Documents.validate_internal_dependencies(
-                 content,
-                 tmp_dir,
-                 Environment.new(:local, File.cwd!())
-               )
-
-      assert length(warnings) == 1
-      assert hd(warnings) =~ "CodeMySpec.Accounts.Missing"
-      assert hd(warnings) =~ "not found"
-    end
-
-    test "ignores external dependencies", %{tmp_dir: tmp_dir} do
-      content = """
-      # CodeMySpec.Test
-
-      ## Dependencies
-
-      - Ecto.Schema
-      - Phoenix.LiveView
-      - File
-      """
-
-      assert {:ok, []} =
-               Documents.validate_internal_dependencies(
-                 content,
-                 tmp_dir,
-                 Environment.new(:local, File.cwd!())
-               )
-    end
-
-    test "handles mixed internal and external dependencies", %{tmp_dir: tmp_dir} do
-      content = """
-      # CodeMySpec.Test
-
-      ## Dependencies
-
-      - CodeMySpec.Accounts.User
-      - Ecto.Repo
-      - CodeMySpec.Missing.Module
-      """
-
-      assert {:ok, warnings} =
-               Documents.validate_internal_dependencies(
-                 content,
-                 tmp_dir,
-                 Environment.new(:local, File.cwd!())
-               )
-
-      assert length(warnings) == 1
-      assert hd(warnings) =~ "CodeMySpec.Missing.Module"
+    test "normalises CRLF before validating" do
+      crlf = String.replace(@valid_result, "\n", "\r\n")
+      assert {:ok, _} = Documents.create_dynamic_document(crlf, "qa_result")
     end
   end
 end

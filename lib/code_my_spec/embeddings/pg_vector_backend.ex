@@ -106,22 +106,39 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     end
   end
 
-  # "code_my_spec" with any version: framework knowledge is re-embedded on
-  # every release rather than pinned to one version the way a hex package is
-  # — see the embeddings rework design doc, "Framework knowledge".
+  # Framework knowledge: only the version the complete `doc_packages` marker
+  # names at the current model (see `FrameworkKnowledgeReconciler`).
   @framework_package "code_my_spec"
 
+  @framework_clause """
+  (e.project_id IS NULL AND e.package = ? AND e.model = ? AND e.version IN
+    (SELECT p.version FROM doc_packages p
+     WHERE p.package = ? AND p.model = ? AND p.status = 'embedded'))\
+  """
+
+  # Project knowledge only at the current model (`ProjectKnowledgeReconciler`
+  # re-embeds the rest); other project sources are unstamped legacy rows.
+  @project_knowledge "project_knowledge"
+
+  @project_clause "(e.project_id = ?::text::uuid AND (e.source <> ? OR e.model = ?))"
+
   defp scope_clause(project_id) do
+    model = Serving.model_name()
+
     dep_clauses_and_params =
       project_id
       |> locked_dependencies()
       |> Enum.flat_map(fn %{name: name, version: version} ->
-        [{"(e.project_id IS NULL AND e.package = ? AND e.version = ?)", [name, version]}]
+        [
+          {"(e.project_id IS NULL AND e.package = ? AND e.version = ? AND e.model = ?)",
+           [name, version, model]}
+        ]
       end)
 
     clauses_and_params = [
-      {"e.project_id = ?::text::uuid", [project_id]},
-      {"(e.project_id IS NULL AND e.package = ?)", [@framework_package]} | dep_clauses_and_params
+      {@project_clause, [project_id, @project_knowledge, model]},
+      {@framework_clause, [@framework_package, model, @framework_package, model]}
+      | dep_clauses_and_params
     ]
 
     {clauses, params} = Enum.unzip(clauses_and_params)

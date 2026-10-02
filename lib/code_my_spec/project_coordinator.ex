@@ -93,8 +93,6 @@ defmodule CodeMySpec.ProjectCoordinator do
 
       Invoke the appropriate subagent for each prompt file:
 
-      - For spec prompts: `@"CodeMySpec:spec-writer (agent)"`
-      - For design review prompts: `@"CodeMySpec:spec-writer (agent)"`
       - For test prompts: `@"CodeMySpec:test-writer (agent)"`
       - For code prompts: `@"CodeMySpec:code-writer (agent)"`
 
@@ -361,10 +359,8 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   defp agent_for_suffix(suffix) do
     cond do
-      String.contains?(suffix, "spec") -> "`@\"CodeMySpec:spec-writer (agent)\"`"
       String.contains?(suffix, "test") -> "`@\"CodeMySpec:test-writer (agent)\"`"
       String.contains?(suffix, "code") -> "`@\"CodeMySpec:code-writer (agent)\"`"
-      String.contains?(suffix, "review") -> "`@\"CodeMySpec:spec-writer (agent)\"`"
       true -> "appropriate subagent"
     end
   end

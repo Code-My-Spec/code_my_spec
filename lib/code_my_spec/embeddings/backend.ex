@@ -2,14 +2,14 @@ defmodule CodeMySpec.Embeddings.Backend do
   @moduledoc """
   Behaviour for embedding storage and retrieval implementations.
 
-  Two production impls:
+  Implementations:
 
-  * `CodeMySpec.Embeddings.SqliteVecBackend` — wraps the existing
-    `EmbeddingService` (Ortex generation + sqlite_vec storage). Used in
-    `:dev_cli` / `:prod_cli` runtimes that ship with the CLI binary.
-  * `CodeMySpec.Embeddings.TestBackend` — ETS-backed in-memory store
-    for the test env, where Ortex isn't loaded and the doc_embeddings
-    table doesn't exist (Postgres test DB).
+  * `CodeMySpec.Embeddings.PgVectorBackend` — the server (`:dev`, `:prod`,
+    opt-in `:desktop`).
+  * `CodeMySpec.Embeddings.SqliteVecBackend` — still selected by the CLI
+    envs (`config/harness.exs`), though nothing there writes embeddings now.
+  * `CodeMySpec.Embeddings.TestBackend` — ETS-backed in-memory store for
+    the test env.
 
   The active backend is selected via `Application.get_env(:code_my_spec,
   :embeddings_backend)`. If unset, embeddings are unavailable and all

@@ -36,7 +36,7 @@ defmodule CodeMySpec.Requirements.Predicates do
 
       Node
       |> from(as: :node)
-      |> Predicates.satisfied(:file_exists, %{role: :spec})
+      |> Predicates.satisfied(:file_exists, %{role: :implementation})
 
   That is what makes this different from the interpreter it replaces. The
   interpreter answers one node at a time and cannot be asked a question about

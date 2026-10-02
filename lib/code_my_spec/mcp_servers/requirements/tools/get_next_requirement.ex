@@ -72,9 +72,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # measured as `main: ["technical_strategy"]` at admission and
   # `bdd_specs_passing` (coding) one turn later. Issue c83c5b58.
   #
-  # Nothing is lost. Files reach the graph incrementally: `FileWatcherServer`
-  # drives `ProjectSync.Sync` per changed path, and `FileSync.sync_changed/2`
-  # runs in the validation path. The Files page's Sync button remains the
+  # Nothing is lost. Files reach the graph incrementally: the harness manifest
+  # reconciles changed paths, and `FileSync.sync_changed/2` runs in the
+  # validation path. The Files page's Sync button remains the
   # deliberate full pass.
 
   defp my_agent(frame, scope) do
