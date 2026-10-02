@@ -2334,6 +2334,32 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
+  @doc """
+  The components a story is *about*: its surface and the surface's own
+  descendants. What an agent bound to the story may work on (4292518a).
+
+  Not `story_component_ids/2`, which adds the surface's transitive dependency
+  closure and everything under it — the set a story waits on, built for
+  kickoff gating. Measured on Code My Spec (d1a69b4e): story 1083's surface,
+  `CodeMySpec.Architecture`, reached `AgentTasks` through `Components` and
+  `Requirements`, and with descendants that is 568 of 1,319 components, so its
+  bound coder was handed phantom `AgentTasks` modules of retired stories.
+  Dependencies still hold the story through their edges; they are not its
+  team's work.
+  """
+  def story_surface_ids(story, ctx) do
+    case Map.get(ctx.components_by_id, story.component_id) do
+      nil ->
+        MapSet.new()
+
+      surface ->
+        children_by_parent = ctx[:children_by_parent] || children_by_parent(ctx)
+
+        [surface | descendants_of(surface, children_by_parent, MapSet.new())]
+        |> MapSet.new(& &1.id)
+    end
+  end
+
   defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
       nil ->

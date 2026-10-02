@@ -164,11 +164,19 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   @doc """
   Whether `node` is `story`'s work: one of its own requirements or one of its
-  linked components'. What an agent bound to `story` may claim (4292518a).
+  surface component's, the surface and its descendants. What an agent bound to
+  `story` may claim (4292518a; d1a69b4e for why not its dependencies).
   """
   @spec story_work?(map(), map(), map()) :: boolean()
   def story_work?(story, node, ctx),
-    do: member?(node, story.id, RequirementGraph.story_component_ids(story, ctx))
+    do: member?(node, story.id, RequirementGraph.story_surface_ids(story, ctx))
+
+  # A bound read counts only the story's own components as its work; everyone
+  # else's read keeps the dependency closure the story's chain is gated on.
+  defp member_ids(story, %{seeds: :local} = ctx),
+    do: RequirementGraph.story_surface_ids(story, ctx)
+
+  defp member_ids(story, ctx), do: RequirementGraph.story_component_ids(story, ctx)
 
   # A bound agent's story that cannot be read here: not ready for development,
   # or reserved for another checkout. Nothing is offered instead (4292518a).
@@ -432,13 +440,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   @doc false
   def from_graph(story, nodes, edges, ctx, role) do
     nodes = Enum.sort_by(nodes, &{&1.entity_name || "", &1.name, to_string(&1.entity_id)})
-    ids = RequirementGraph.story_component_ids(story, ctx)
+    closure = RequirementGraph.story_component_ids(story, ctx)
+    ids = member_ids(story, ctx)
     local = Enum.filter(nodes, &member?(&1, story.id, ids))
     questions = Enum.filter(Map.get(ctx.questions_by_story, story.id, []), &(&1.status == :open))
     story_nodes = Enum.filter(local, &(&1.entity_type == "story"))
     present = MapSet.new(story_nodes, & &1.name)
     missing = Enum.reject(@completion_names, &MapSet.member?(present, &1))
-    context = Map.merge(ctx, %{stories: [story], execution_component_ids: ids})
+    context = Map.merge(ctx, %{stories: [story], execution_component_ids: closure})
 
     cond do
       blocks_on_questions?(questions, role) ->
