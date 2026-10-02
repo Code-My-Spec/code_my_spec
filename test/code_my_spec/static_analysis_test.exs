@@ -146,10 +146,6 @@ defmodule CodeMySpec.StaticAnalysisTest do
     end
 
     test "executes all available analyzers and returns aggregated Problems", %{scope: scope} do
-      # Create spec directory to make SpecAlignment available
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
       use_cmd_cassette "static_analysis_run_all" do
         assert {:ok, problems} = StaticAnalysis.run_all(scope)
         assert is_list(problems)
@@ -157,10 +153,6 @@ defmodule CodeMySpec.StaticAnalysisTest do
     end
 
     test "delegates to Runner.run_all/2 with options", %{scope: scope} do
-      # Create spec directory
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
       use_cmd_cassette "static_analysis_run_all" do
         # Run with custom timeout
         assert {:ok, problems} = StaticAnalysis.run_all(scope, timeout: 60_000)
@@ -180,10 +172,6 @@ defmodule CodeMySpec.StaticAnalysisTest do
     end
 
     test "logs warnings for failed analyzers", %{scope: scope} do
-      # Create spec directory
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
-
       use_cmd_cassette "static_analysis_run_all" do
         log =
           capture_log(fn ->

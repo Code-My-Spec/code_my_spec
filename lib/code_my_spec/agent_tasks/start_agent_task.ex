@@ -291,7 +291,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp architecture_reference do
-    "For system component graph and dependencies, read `#{Paths.architecture_dir()}/overview.md`."
+    "For the component graph and dependencies, call `show_architecture_overview`."
   end
 
   # Validation

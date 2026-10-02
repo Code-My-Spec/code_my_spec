@@ -4,8 +4,8 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.{Environments, Paths}
-  alias CodeMySpec.Requirements.{CheckerResult, SpexBoundaryChecker}
+  alias CodeMySpec.Paths
+  alias CodeMySpec.Requirements.{ArchitectureChecker, CheckerResult, SpexBoundaryChecker}
 
   # ============================================================================
   # orchestrate — relevance signal for the requirement graph
@@ -16,7 +16,7 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
       "(function-level denies only), a project-local deny check that fills " <>
       "in whole-module denies (stdlib + app contexts), a curated " <>
       "`<App>Spex.Fixtures` bridge as its own top-level Boundary, and a " <>
-      "project BDD spec plan. Use when the architecture proposal exists " <>
+      "project BDD spec plan. Use once the architecture is planned " <>
       "and the project is about to start writing BDD specs but the boundary " <>
       "infrastructure isn't on disk yet."
   end
@@ -35,10 +35,10 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     env = scope.environment
     app_name = Helpers.extract_app_name(env) || "your_app"
     app_module = camelize(app_name)
-    proposal_path = Path.join(Paths.architecture_dir(), "proposal.md")
-    proposal_present? = Environments.file_exists?(env, proposal_path) == true
+    # The same "a plan exists" that satisfies `architecture_designed`.
+    {planned?, _} = ArchitectureChecker.complete?(scope, nil)
 
-    {:ok, build_prompt(app_name, app_module, proposal_path, proposal_present?)}
+    {:ok, build_prompt(app_name, app_module, planned?)}
   end
 
   # ============================================================================
@@ -57,10 +57,10 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   # MCP tool) — pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
-  defp build_prompt(app_name, app_module, proposal_path, proposal_present?) do
+  defp build_prompt(app_name, app_module, planned?) do
     [
       header_section(),
-      proposal_section(proposal_path, proposal_present?),
+      architecture_section(planned?),
       playbook_section(),
       project_specifics_section(app_name, app_module),
       done_signal_section(app_name)
@@ -93,22 +93,22 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     """
   end
 
-  defp proposal_section(proposal_path, true) do
+  defp architecture_section(true) do
     """
-    ## Architecture proposal
+    ## Architecture
 
-    Read `#{proposal_path}` — every `<App>` context listed there that isn't
-    already a dep of the spec boundary belongs on the project-local deny
-    list (plus `<App>.Repo`).\
+    Read the contexts with `show_architecture_overview` — every `<App>`
+    context that isn't already a dep of the spec boundary belongs on the
+    project-local deny list (plus `<App>.Repo`).\
     """
   end
 
-  defp proposal_section(proposal_path, false) do
+  defp architecture_section(false) do
     """
-    ## Architecture proposal — MISSING
+    ## Architecture — MISSING
 
-    `#{proposal_path}` doesn't exist. **Stop and resolve
-    `architecture_designed` first.** Without the proposal, the project-local
+    The project has no architecture yet. **Stop and resolve
+    `architecture_designed` first.** Without its contexts, the project-local
     Credo check has nothing to derive its deny list from.\
     """
   end

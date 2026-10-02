@@ -50,8 +50,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   Same as `run/2`, and also the raw text Credo printed (JSON, per
   `build_credo_args/2`'s fixed output flags).
 
-  Not part of `AnalyzerBehaviour` — that contract is shared with Sobelow and
-  SpecAlignment, and changing it to carry raw output would mean every
+  Not part of `AnalyzerBehaviour` — that contract is shared with Sobelow,
+  and changing it to carry raw output would mean every
   implementer answers a question only this one currently has an answer for.
   This exists instead for the one caller that needs the tool's own output
   rather than a summary reformatted from `problems`

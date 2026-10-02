@@ -142,6 +142,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_tasks list_session_subagents list_notifications
     web_search web_fetch
     browser
+    query_logs get_trace slow_spans error_summary
   )
 
   # Writing code against a spec, and reading everything that says what the spec
@@ -211,6 +212,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     browser
     promote
     ensure_app_running restart_app stop_app
+    query_logs get_trace slow_spans error_summary
   )
 
   # Shaping what gets built, and never building it. The product half of the
@@ -258,6 +260,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_notifications answer_notification escalate_question withdraw_question
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
+    query_logs get_trace slow_spans error_summary
   )
 
   # Models, most preferred first; the first whose provider the account holds a

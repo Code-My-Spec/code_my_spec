@@ -229,6 +229,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # Story 1080's state builders (`CodeMySpecSpex.OfferHelpers`): each drives
   # `put_to_work`, `start_task` and turn events and asserts the offer it
   # expects arrived, so a given naming one has made its precondition true.
+  # Story 1116's `ClickHouseCassetteHelpers.configure!/2` and
+  # `.stub_rows_for_username/2`: the same precedent as `Fixtures.` and
+  # `Req.Test.stub` combined — the first writes a real `ProjectSecrets` row
+  # through the same function story 1081 will use, the second pins the
+  # provider seam the way `Req.Test.stub` always does, just wrapped so every
+  # criterion in that story doesn't repeat the same four lines.
   @establishes ~w(
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
@@ -263,6 +269,7 @@ defmodule CodeMySpec.SpexGivensTest do
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
     refuse_verify_calls
+    ClickHouseCassetteHelpers.
   )
 
   # The failure message has always offered a second remedy — "if the

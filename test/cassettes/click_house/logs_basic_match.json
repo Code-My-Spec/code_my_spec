@@ -1,0 +1,63 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-10-02T13:15:57.563522Z",
+      "request": {
+        "body": "SELECT Timestamp, SeverityText, Body, TraceId, SpanId\nFROM otel_logs\nWHERE Timestamp >= {since:DateTime64} AND Timestamp <= {until:DateTime64}\nORDER BY Timestamp DESC\nLIMIT {limit:UInt32}\n",
+        "body_type": "text",
+        "headers": {
+          "user-agent": [
+            "req/0.7.4"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-user": [
+            "tel_test_uat"
+          ]
+        },
+        "method": "POST",
+        "query_string": "param_limit=10&param_since=2025-10-01+00%3A00%3A00&param_until=2025-10-03+00%3A00%3A00",
+        "uri": "http://localhost:18123"
+      },
+      "response": {
+        "body": "{\"Timestamp\":\"2025-10-02 08:00:10.000000000\",\"SeverityText\":\"ERROR\",\"Body\":\"Ecto.QueryError: column does not exist\",\"TraceId\":\"def456trace\",\"SpanId\":\"span010\"}\n{\"Timestamp\":\"2025-10-02 08:00:05.000000000\",\"SeverityText\":\"ERROR\",\"Body\":\"Ecto.QueryError: column does not exist\",\"TraceId\":\"abc123trace\",\"SpanId\":\"span002\"}\n{\"Timestamp\":\"2025-10-02 08:00:00.000000000\",\"SeverityText\":\"INFO\",\"Body\":\"GET \\/app 200\",\"TraceId\":\"abc123trace\",\"SpanId\":\"span001\"}\n",
+        "body_type": "text",
+        "headers": {
+          "connection": [
+            "Keep-Alive"
+          ],
+          "content-type": [
+            "application/x-ndjson; charset=UTF-8"
+          ],
+          "date": [
+            "Fri, 02 Oct 2026 13:15:57 GMT"
+          ],
+          "keep-alive": [
+            "timeout=10, max=9997"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-query-id": [
+            "b6a46969-dd3b-46e0-b459-ed3966a86a52"
+          ],
+          "x-clickhouse-server-display-name": [
+            "dff8d1416c45"
+          ],
+          "x-clickhouse-summary": [
+            "{\"read_rows\":\"3\",\"read_bytes\":\"250\",\"written_rows\":\"0\",\"written_bytes\":\"0\",\"total_rows_to_read\":\"3\",\"result_rows\":\"0\",\"result_bytes\":\"0\",\"elapsed_ns\":\"2684667\"}"
+          ],
+          "x-clickhouse-timezone": [
+            "UTC"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

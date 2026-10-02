@@ -137,11 +137,9 @@ defmodule CodeMySpec.Support.TestAdapter.Pool do
   # resource: two processes with the same working tree, one running `git reset`
   # and `File.rm_rf` while the other asserted against it.
   #
-  # It surfaced as `SpecAlignment` finding no misalignment in a tree whose specs
-  # another suite had just deleted — "Expected truthy, got false", passing on
-  # every rerun in isolation. `spec_alignment_test.exs` already guards the
-  # in-suite version of this and says so in a comment; no in-suite guard can see
-  # another OS process.
+  # It surfaced as an analyzer reading a tree whose files another suite had
+  # just deleted — "Expected truthy, got false", passing on every rerun in
+  # isolation. No in-suite guard can see another OS process.
   #
   # Keyed by OS pid rather than a random suffix so the directories of a dead run
   # can be recognised and swept.
