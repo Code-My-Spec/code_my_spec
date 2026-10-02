@@ -154,6 +154,11 @@ defmodule CodeMySpec.Projects.Project do
       ],
       default: :created
 
+    # When this project's components were frozen into records (3aeb66cf).
+    # Written only by `Files.ComponentFreeze`; a stamped project is never
+    # frozen again.
+    field :components_authored_at, :utc_datetime_usec
+
     timestamps(type: :utc_datetime)
   end
 
