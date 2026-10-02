@@ -226,6 +226,10 @@ defmodule CodeMySpec.SpexGivensTest do
   # environment, `sync_project`, `execute_proposal`, `add_dependency` — and
   # assert their own success (3aeb66cf). Listed by the same precedent as
   # `StoryHelpers.`: a helper whose body is the drive.
+  # Story 1016's 1749-1754 builders (`CodeMySpecSpex.StoryBoundHelpers`):
+  # set_active_story, accept_issue and sync_project through their tools, each
+  # asserting it took.
+  #
   # Story 1080's state builders (`CodeMySpecSpex.OfferHelpers`): each drives
   # `put_to_work`, `start_task` and turn events and asserts the offer it
   # expects arrived, so a given naming one has made its precondition true.
@@ -268,6 +272,7 @@ defmodule CodeMySpec.SpexGivensTest do
     app_instance_rig push_app_event push_app_event_as_main
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
+    team_on_a_story issue_accepted qa_plan_missing
     refuse_verify_calls
     ClickHouseCassetteHelpers.
   )
