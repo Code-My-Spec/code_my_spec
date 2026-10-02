@@ -878,8 +878,6 @@ defmodule CodeMySpec.Provisioning do
   end
 
   defp spawn_run(scope, enabled_options, opts) do
-    parent = self()
-
     {:ok, pid} =
       Task.start(fn ->
         # The caller is subscribed to the topic, not linked to this task, so a
@@ -892,8 +890,12 @@ defmodule CodeMySpec.Provisioning do
             error -> %{steps: [], halted_at: :unknown, reason: Exception.message(error)}
           end
 
+        # The caller already subscribed before starting this run (`mount`'s
+        # `Provisioning.subscribe/1`), so this is the only delivery it needs.
+        # A second copy sent straight to the caller's mailbox landed twice —
+        # once from the broadcast, once from this `send` — which is the
+        # double `:finished` `handle_info/2` saw on every run.
         announce(scope, {:provisioning, :finished, result})
-        send(parent, {:provisioning, :finished, result})
       end)
 
     {:ok, pid}
@@ -1212,6 +1214,8 @@ defmodule CodeMySpec.Provisioning do
   defp field(resource, key), do: Map.get(resource, key)
 
   defp mark(scope, key, environment, state, attrs) do
+    previous = StepRepository.get(scope, key, environment)
+
     row =
       StepRepository.upsert(
         scope,
@@ -1220,7 +1224,16 @@ defmodule CodeMySpec.Provisioning do
         Map.merge(attrs, %{state: state, position: Sequence.position(key)})
       )
 
-    announce(scope, {:provisioning, :step, row})
+    # A reverify that reconfirms an already-done step writes a fresh
+    # `verified_at` without changing `state` — announcing that anyway is the
+    # "still done" confirmation that flooded every open tab's `load/2` once
+    # per already-done step on every single mount (a69525bd). Mount no
+    # longer reverifies at all, but a manual re-check still shouldn't repeat
+    # that flood.
+    if is_nil(previous) or previous.state != row.state do
+      announce(scope, {:provisioning, :step, row})
+    end
+
     row
   end
 end

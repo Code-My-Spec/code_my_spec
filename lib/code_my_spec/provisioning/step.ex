@@ -25,14 +25,19 @@ defmodule CodeMySpec.Provisioning.Step do
   loses exactly the detail that tells the agent which token permission to
   add, so `provider_error` holds the provider's message verbatim.
 
-  ## State is checked, not remembered
+  ## State is checked, not remembered — but only when something checks
 
-  Criterion 7970 requires a step's state to be validated against the provider
-  rather than read back from this row, and criterion 7964 requires a resource
-  deleted behind setup's back to be rebuilt rather than skipped. So this
-  schema is a record of the last observation, not the source of truth about
-  the world. Persisted `:done` is a claim to re-verify, never a reason to
-  skip work.
+  Criterion 7964 requires a resource deleted behind setup's back to be
+  rebuilt rather than skipped, so this schema is a record of the last
+  observation, not the source of truth about the world. Persisted `:done`
+  is a claim to re-verify when a run or a manual check actually does so,
+  never a reason to skip work at that point.
+
+  Checks are manual only (John, 2026-10-02; criterion 7970): nothing
+  re-verifies a `:done` row on its own — not on mount, not on a timer, not
+  as a side effect of another action. `verified_at` is exactly when a check
+  last happened, which is what lets the page say "checked … ago" instead of
+  claiming a row is current just because it says `:done`.
   """
 
   use Ecto.Schema

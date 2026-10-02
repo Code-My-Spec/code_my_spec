@@ -25,6 +25,18 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   (see `OrtexServing`'s moduledoc), so a package with hundreds of chunks
   embedded as one call would make a pending search wait behind the whole
   thing; slicing into capped calls bounds that wait to one small batch.
+
+  ## A failure is recorded once, not retried every sweep
+
+  Every step from the fetch down to the final chunk insert resolves to
+  `{:ok, _} | {:error, reason}` — never a raise. That is what lets
+  `embed_and_store/3` turn any of them into one `mark_failed/2` call: a
+  `doc_packages` row with `status: "failed"` and the reason, which
+  `pending/0`'s "no row yet" check then excludes from every later sweep on
+  its own, with no separate retry bookkeeping needed. `reconcile_one/1`
+  still carries a `rescue` around the whole thing — not as the normal
+  failure path, but as the last line against a genuinely unanticipated
+  crash, and it marks `failed` too rather than swallowing silently.
   """
 
   require Logger
@@ -116,6 +128,13 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
       sources
       |> Map.values()
       |> Enum.flat_map(&HexDocProjector.docs_from_source/1)
+      # A module documented from more than one source file (seen live:
+      # bandit's Bandit.Clock) would otherwise chunk and store under the
+      # same path twice, tripping doc_embeddings_shared_path_chunk_index on
+      # the second write and crashing the whole package. First occurrence
+      # wins — deterministic, and which file "owns" the docs is not a
+      # distinction this pipeline needs to make.
+      |> Enum.uniq_by(fn {module_name, _markdown} -> module_name end)
 
     entries = Enum.flat_map(docs, &chunk_entries/1)
     embed_and_store(name, version, entries)
@@ -144,12 +163,12 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     source = "hexdocs:#{name}"
     model = Serving.model_name()
 
-    case embed_all(entries) do
-      {:ok, embedded} ->
-        store_and_mark(name, version, model, source, embedded)
-
+    with {:ok, embedded} <- embed_all(entries),
+         :ok <- store_and_mark(name, version, model, source, embedded) do
+      :ok
+    else
       {:error, reason} ->
-        Logger.warning("[HexDocReconciler] #{name}@#{version} embedding failed: #{inspect(reason)}")
+        Logger.warning("[HexDocReconciler] #{name}@#{version} failed: #{inspect(reason)}")
         mark_failed(name, version, inspect(reason))
     end
   end
@@ -172,26 +191,22 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     end)
   end
 
+  # Any ordinary failure here — including the unique-violation two
+  # concurrent attempts at the same package@version would race into, since
+  # nothing claims a package as "in progress" before starting it — has to
+  # come back as `{:error, _}`, never a raised exception. A raise rolls the
+  # transaction back exactly the same way `Repo.rollback/1` does, but
+  # leaves nothing for `embed_and_store/3` to catch: the package stays
+  # pending forever instead of landing a recorded `failed` marker, which is
+  # the one outcome `pending/0`'s "no doc_packages row yet" check cannot
+  # tell apart from "never attempted".
   defp store_and_mark(name, version, model, source, embedded) do
     Repo.transaction(fn ->
-      Enum.each(embedded, fn {{path, index, chunk, file_hash}, embedding} ->
-        :ok =
-          PgVectorBackend.store_embedded_chunk(
-            nil,
-            source,
-            path,
-            index,
-            chunk,
-            file_hash,
-            embedding,
-            package: name,
-            version: version,
-            model: model
-          )
-      end)
-
-      case mark_in_transaction(name, version, model, "embedded", chunk_count: length(embedded)) do
-        {:ok, doc_package} -> doc_package
+      with :ok <- store_all_chunks(name, version, model, source, embedded),
+           {:ok, doc_package} <-
+             mark_in_transaction(name, version, model, "embedded", chunk_count: length(embedded)) do
+        doc_package
+      else
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
@@ -199,6 +214,26 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp store_all_chunks(name, version, model, source, embedded) do
+    Enum.reduce_while(embedded, :ok, fn {{path, index, chunk, file_hash}, embedding}, :ok ->
+      case PgVectorBackend.store_embedded_chunk(
+             nil,
+             source,
+             path,
+             index,
+             chunk,
+             file_hash,
+             embedding,
+             package: name,
+             version: version,
+             model: model
+           ) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp mark(name, version, status, attrs) do
