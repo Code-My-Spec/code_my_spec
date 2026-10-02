@@ -203,6 +203,12 @@ defmodule CodeMySpecWeb.Router do
     # `current_scope` those plugs build reaches the tools untouched — which is
     # the same route `working_dir` takes on the local mount.
     #
+    # `X-Project-ID` alone names a project, not a working copy —
+    # `scope.environment` stays nil. Add `X-Harness-Id` (see
+    # `ProjectScopeOverride`'s moduledoc) to also name the working copy; any
+    # tool here that touches files — `evaluate_task` on a task whose checker
+    # reads the environment, for one — answers `:no_environment` without it.
+    #
     # `Validators.validate_local_scope/2` already prefers a frame scope that
     # carries an `active_project_id` and only falls back to resolving one from a
     # working directory. Here there is no working directory and no fallback: a
