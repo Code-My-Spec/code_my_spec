@@ -523,7 +523,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description:
-          "Architecture proposal executed and every component is covered (story-linked, transitively depended on, or infrastructure)",
+          "Architecture written down (a proposal executed, or components authored) and every component is covered (story-linked, transitively depended on, or infrastructure)",
         prerequisites: [4]
       }),
       new!(%{
