@@ -48,6 +48,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   require Logger
 
+  import CodeMySpecWeb.ProvisioningLive.ResourceFields
+
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSecrets
@@ -2211,20 +2213,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp environments_summary([]), do: "None yet."
   defp environments_summary(rows), do: Enum.map_join(rows, ", ", & &1.name)
 
-  # `key=value key=value` — the shape every proof resource uses for its
-  # identifier, so the page can pull one field without knowing the order.
-  defp proof_field(identifier, key) do
-    identifier
-    |> to_string()
-    |> String.split(" ")
-    |> Enum.find_value(fn part ->
-      case String.split(part, "=", parts: 2) do
-        [^key, value] -> value
-        _ -> nil
-      end
-    end)
-  end
-
   # Blank means "leave it alone", not "clear it". The field renders empty for a
   # secret that is already set — because the value is never sent back to the
   # browser — so treating blank as a delete would wipe every other credential
@@ -2417,92 +2405,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:mail_domains, fn -> [] end)
   end
 
-  # The bucket a resource belongs to encodes its environment as a suffix, which
-  # is what makes criterion 8012 checkable from the page: a UAT upload and a
-  # production one are distinguishable without asking the provider.
-  # The steps that fan out over environments tag what they made, because the
-  # page cannot know the names: a project may have `qa`, or one environment per
-  # story. Matching a hardcoded list against a location suffix only ever found
-  # the two that used to be hardcoded.
-  defp resource_environment(resource, environments) do
-    tagged(resource) || suffixed(resource, environments)
-  end
-
-  # Steps that fan out over environments tag what they made, because the page
-  # cannot know the names: a project may have `qa`, or one per story.
-  defp tagged(%{identifier: identifier}) when is_binary(identifier) do
-    case Regex.run(~r/environment=([a-z0-9-]+)/, identifier) do
-      [_, environment] -> environment
-      nil -> nil
-    end
-  end
-
-  defp tagged(_), do: nil
-
-  # Not everything carries the tag. A bucket encodes its environment as a
-  # suffix on the name — `app-uat` — and that is what makes criterion 8012
-  # checkable from the page at all. Reading only the tag reported every bucket
-  # as belonging to no environment.
-  #
-  # Matched against the project's own environments rather than a pattern, so a
-  # name that merely happens to end in `-something` is not mistaken for one.
-  defp suffixed(%{location: location}, environments) when is_binary(location) do
-    Enum.find(environments, fn environment ->
-      String.ends_with?(location, "-" <> environment)
-    end)
-  end
-
-  defp suffixed(_resource, _environments), do: nil
-
-  # The IP an environment's record points at — the first half of the tagged
-  # identifier the DNS step writes.
-  defp resource_target(%{identifier: identifier}) when is_binary(identifier),
-    do: identifier |> String.split(" ") |> List.first()
-
-  defp resource_target(_), do: nil
-
-  # Only a built image reports one — an image that already existed was not
-  # built here, so this page has nothing to say about what it was built for.
-  # Absent rather than guessed, for the same reason the build reads it off the
-  # image instead of echoing the request.
-  defp image_architecture(resource), do: identifier_field(resource, "architecture")
-
-  # Resources tag their identifier as `key=value key=value`, which several
-  # steps already rely on. Read by name rather than by position: a resource
-  # that gains a field should not silently shift what another attribute means.
-  defp identifier_field(%{identifier: identifier}, key) when is_binary(identifier) do
-    identifier
-    |> String.split(" ")
-    |> Enum.find_value(fn part ->
-      case String.split(part, "=", parts: 2) do
-        [^key, value] -> value
-        _ -> nil
-      end
-    end)
-  end
-
-  defp identifier_field(_resource, _key), do: nil
-
-  # Recorded by the provider rather than asserted by the page. Story 968's
-  # whole claim is that these are Sam's, so a hardcoded "user" would make the
-  # attribute decorative — it would read the same for a platform-owned bucket.
-  # The bare name, not the endpoint-qualified location. Isolation is checked
-  # by comparing one environment's bucket against another's, and that reads
-  # far better as `app-uat` vs `app-prod` than as two URLs differing in a
-  # suffix.
+  # Isolation is checked by comparing one environment's bucket against
+  # another's, and that reads far better as `app-uat` vs `app-prod` than as
+  # two URLs differing in a suffix.
   defp format_probe_error(reason) when is_binary(reason), do: String.slice(reason, 0, 200)
   defp format_probe_error(reason), do: reason |> inspect() |> String.slice(0, 200)
-
-  defp resource_name(%{location: location}) when is_binary(location),
-    do: location |> String.split("/") |> List.last()
-
-  defp resource_name(_), do: nil
-
-  defp resource_disposition(%{kind: "repository", identifier: d}) when is_binary(d), do: d
-  defp resource_disposition(_), do: nil
-
-  defp resource_owner(%{kind: "bucket", identifier: owner}) when is_binary(owner), do: owner
-  defp resource_owner(_), do: "user"
 
   defp project(scope), do: scope.active_project
 
