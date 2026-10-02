@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.UserAuth do
   import Phoenix.Controller
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Desktop
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
@@ -70,7 +71,13 @@ defmodule CodeMySpecWeb.UserAuth do
 
   Will reissue the session token if it is older than the configured age.
   """
-  def fetch_current_scope_for_user(conn, _opts) do
+  def fetch_current_scope_for_user(conn, opts) do
+    if Desktop.active?(),
+      do: assign(conn, :current_scope, Desktop.scope()),
+      else: fetch_session_scope(conn, opts)
+  end
+
+  defp fetch_session_scope(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Users.get_user_by_session_token(token) do
       conn
@@ -271,7 +278,7 @@ defmodule CodeMySpecWeb.UserAuth do
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
-    if Users.sudo_mode?(socket.assigns.current_scope.user, -10) do
+    if Desktop.active?() or Users.sudo_mode?(socket.assigns.current_scope.user, -10) do
       {:cont, socket}
     else
       socket =
@@ -326,13 +333,17 @@ defmodule CodeMySpecWeb.UserAuth do
 
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      {user, _} =
-        if user_token = session["user_token"] do
-          Users.get_user_by_session_token(user_token)
-        end || {nil, nil}
-
-      UserPreferences.scope_for(user)
+      if Desktop.active?(), do: Desktop.scope(), else: session_scope(session)
     end)
+  end
+
+  defp session_scope(session) do
+    {user, _} =
+      if user_token = session["user_token"] do
+        Users.get_user_by_session_token(user_token)
+      end || {nil, nil}
+
+    UserPreferences.scope_for(user)
   end
 
   @doc """

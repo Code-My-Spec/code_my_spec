@@ -43,6 +43,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Content,
       CodeMySpec.ContentPublishing,
       CodeMySpec.Conversations,
+      CodeMySpec.Desktop,
       CodeMySpec.Devices,
       CodeMySpec.DevState,
       CodeMySpec.Environments,
