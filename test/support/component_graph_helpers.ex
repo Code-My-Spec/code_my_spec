@@ -24,6 +24,8 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   alias CodeMySpec.McpServers.Components.Tools.GetComponent
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
+  alias CodeMySpec.McpServers.Components.Tools.UpdateComponent
+  alias CodeMySpec.McpServers.Requirements.Tools.ShowRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpecSpex.Fixtures
 
@@ -197,6 +199,24 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
     app = app(context)
     node = &(qualify(app, &1) |> String.replace(".", "_") |> String.downcase())
     "#{node.(from)} --> #{node.(to)}"
+  end
+
+  @doc "`show_requirement` for the project's `architecture_designed`, as text."
+  def architecture_designed(context) do
+    {:reply, reply, _} =
+      ShowRequirement.execute(
+        %{name: "architecture_designed", entity_type: "project"},
+        frame(context)
+      )
+
+    response_text(reply)
+  end
+
+  @doc "`update_component` to `type` for the component named `module`."
+  def retype!(context, module, type) do
+    id = Fixtures.get_component_by_module_name(context.scope, module).id
+    {:reply, reply, _} = UpdateComponent.execute(%{id: id, type: type}, frame(context))
+    ok!(reply, "update_component #{module} -> #{type}")
   end
 
   @doc "`list_components`' text."
