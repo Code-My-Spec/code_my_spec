@@ -17,8 +17,7 @@ defmodule CodeMySpec.Files.ComponentFreeze do
 
   ## Live checkouts only
 
-  A spec counts only from a live checkout: its path is not missing, and it is
-  the main checkout or was seen within 7 days. Old worktrees keep specs the
+  A spec counts only from a live checkout (`Files.LiveCopies`). Old worktrees keep specs the
   project has since deleted — metric_flow's dead ReviewMetrics component stayed
   alive that way — so a component named only by a stale checkout's spec is
   marked discovered and listed separately for review.
@@ -33,11 +32,9 @@ defmodule CodeMySpec.Files.ComponentFreeze do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.LiveCopies
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.WorkingCopies.WorkingCopy
-
-  @live_within_days 7
 
   @type report :: %{
           project_id: String.t(),
@@ -126,23 +123,15 @@ defmodule CodeMySpec.Files.ComponentFreeze do
 
   # `{live, stale}` module names, by whether a live checkout's spec names them.
   defp spec_modules(project_id) do
-    cutoff = DateTime.add(DateTime.utc_now(), -@live_within_days * 86_400)
+    live_ids = LiveCopies.ids(project_id)
 
     rows =
       Repo.all(
         from(f in File,
-          join: w in WorkingCopy,
-          on: w.id == f.working_copy_id,
           where: f.project_id == ^project_id and f.role == :spec,
           select: {
             fragment("?->'data'->>'module_name'", f.validation_errors),
-            fragment(
-              "? IS NULL AND (COALESCE(?, false) OR COALESCE(? > ?, false))",
-              w.path_missing_since,
-              w.main,
-              w.last_seen_at,
-              ^cutoff
-            )
+            f.working_copy_id in ^live_ids
           }
         )
       )

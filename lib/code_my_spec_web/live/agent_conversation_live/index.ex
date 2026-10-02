@@ -43,6 +43,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Reads
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @impl true
@@ -93,6 +94,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
   @impl true
   def handle_event("rename", %{"id" => id}, socket) do
     {:noreply, assign(socket, :renaming, id)}
+  end
+
+  def handle_event("set_read", %{"id" => id, "read" => read}, socket) do
+    Reads.set_read(socket.assigns.current_scope, id, read == "true")
+    {:noreply, load(socket)}
   end
 
   def handle_event("cancel_rename", _params, socket) do
@@ -146,7 +152,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
         socket.assigns.project.id
       )
 
-    assign(socket, rows: rows, now: DateTime.utc_now())
+    reads = Reads.states(socket.assigns.current_scope, Enum.map(rows, & &1.conversation.id))
+
+    assign(socket, rows: rows, reads: reads, now: DateTime.utc_now())
   end
 
   @impl true
@@ -180,11 +188,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
             :for={row <- @rows}
             data-test="agent-conversation"
             data-conversation-id={row.conversation.id}
+            data-unread={to_string(Reads.unread?(@reads, row.conversation.id))}
             class="card card-compact border border-base-300 bg-base-100"
           >
             <div class="card-body gap-2">
               <div class="flex items-start gap-3">
                 <.icon name="hero-cpu-chip" class="mt-0.5 size-5 shrink-0 opacity-60" />
+                <span
+                  :if={Reads.unread?(@reads, row.conversation.id)}
+                  data-test="unread-dot"
+                  class="mt-2 size-2 shrink-0 rounded-full bg-primary"
+                >
+                </span>
 
                 <div class="min-w-0 flex-1">
                   <.link
@@ -193,7 +208,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
                       ~p"/app/projects/#{@project.id}/agent-conversation?#{[conversation: row.conversation.id]}"
                     }
                     data-test="open-agent-conversation"
-                    class="block min-w-0 truncate font-medium link link-hover"
+                    class={[
+                      "block min-w-0 truncate link link-hover",
+                      if(Reads.unread?(@reads, row.conversation.id),
+                        do: "font-bold",
+                        else: "font-medium"
+                      )
+                    ]}
                   >
                     {Conversations.display_name(row.conversation)}
                   </.link>
@@ -236,6 +257,26 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
                     {Liveness.since(row.last_message_at, @now)}
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  phx-click="set_read"
+                  phx-value-id={row.conversation.id}
+                  phx-value-read={to_string(Reads.unread?(@reads, row.conversation.id))}
+                  data-test="toggle-read"
+                  aria-label={read_label(Reads.unread?(@reads, row.conversation.id))}
+                  title={read_label(Reads.unread?(@reads, row.conversation.id))}
+                  class="btn btn-ghost btn-xs btn-square shrink-0"
+                >
+                  <.icon
+                    name={
+                      if Reads.unread?(@reads, row.conversation.id),
+                        do: "hero-envelope-open",
+                        else: "hero-envelope"
+                    }
+                    class="size-4"
+                  />
+                </button>
               </div>
 
               <button
@@ -255,6 +296,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
     </Layouts.app>
     """
   end
+
+  defp read_label(true), do: "Mark read"
+  defp read_label(false), do: "Mark unread"
 
   defp turns(1), do: "1 turn"
   defp turns(count), do: "#{count} turns"

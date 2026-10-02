@@ -90,4 +90,36 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
                "used to render both states with no variant at all"
     end
   end
+
+  describe "open link" do
+    test "every story card links to its story page, outside the drag handle" do
+      scope = local_board_scope()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Board epic"})
+
+      filed = story_fixture(scope, %{title: "Filed story"})
+      {:ok, _} = CodeMySpec.Epics.assign_story(scope, filed, epic)
+      unfiled = story_fixture(scope, %{title: "Unfiled story"})
+
+      project_id = scope.active_project.id
+      {:ok, view, _html} = board(project_id)
+
+      for {card, story} <- [
+            {"#epic-#{epic.id}-story-#{filed.id}", filed},
+            {"#unassigned-story-#{unfiled.id}", unfiled}
+          ] do
+        href = "/app/projects/#{project_id}/stories/#{story.number}"
+
+        assert has_element?(view, "#{card} a[data-test=open-story][href='#{href}']")
+        assert has_element?(view, "#{card} [data-drag-handle]")
+        refute has_element?(view, "#{card} [data-drag-handle] a")
+      end
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> element("#unassigned-story-#{unfiled.id} a[data-test=open-story]")
+               |> render_click()
+
+      assert to == "/app/projects/#{project_id}/stories/#{unfiled.number}"
+    end
+  end
 end

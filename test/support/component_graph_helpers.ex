@@ -24,6 +24,8 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   alias CodeMySpec.McpServers.Components.Tools.GetComponent
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
+  alias CodeMySpec.McpServers.Components.Tools.UpdateComponent
+  alias CodeMySpec.McpServers.Requirements.Tools.ShowRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpecSpex.Fixtures
 
@@ -53,8 +55,9 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   @doc """
   A spec file for `module`, declaring `dependencies` (module names). What an
   agent writing specs by hand produces; a sync turns it into a component.
+  `opts` may set the spec's `:type` and `:description`.
   """
-  def spec!(context, module, dependencies \\ []) do
+  def spec!(context, module, dependencies \\ [], opts \\ []) do
     deps =
       case dependencies do
         [] -> "- None"
@@ -65,11 +68,11 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
       Environments.write_file(context.environment, spec_path(module), """
       # #{module}
 
+      #{Keyword.get(opts, :description, "#{module}, written as a spec.")}
+
       ## Type
 
-      context
-
-      #{module}, written as a spec.
+      #{Keyword.get(opts, :type, "context")}
 
       ## Functions
 
@@ -79,7 +82,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
       """)
   end
 
-  @doc "Removes the spec file `spec!/3` wrote for `module`."
+  @doc "Removes the spec file `spec!/4` wrote for `module`."
   def remove_spec!(context, module),
     do: :ok = Environments.delete_file(context.environment, spec_path(module))
 
@@ -92,6 +95,10 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
         "defmodule #{module} do\n  @moduledoc false\nend\n"
       )
   end
+
+  @doc "Removes the implementation file `implementation!/2` wrote for `module`."
+  def remove_implementation!(context, module),
+    do: :ok = Environments.delete_file(context.environment, "lib/#{Macro.underscore(module)}.ex")
 
   @doc "A full sync, through `sync_project`."
   def sync!(context) do
@@ -192,6 +199,24 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
     app = app(context)
     node = &(qualify(app, &1) |> String.replace(".", "_") |> String.downcase())
     "#{node.(from)} --> #{node.(to)}"
+  end
+
+  @doc "`show_requirement` for the project's `architecture_designed`, as text."
+  def architecture_designed(context) do
+    {:reply, reply, _} =
+      ShowRequirement.execute(
+        %{name: "architecture_designed", entity_type: "project"},
+        frame(context)
+      )
+
+    response_text(reply)
+  end
+
+  @doc "`update_component` to `type` for the component named `module`."
+  def retype!(context, module, type) do
+    id = Fixtures.get_component_by_module_name(context.scope, module).id
+    {:reply, reply, _} = UpdateComponent.execute(%{id: id, type: type}, frame(context))
+    ok!(reply, "update_component #{module} -> #{type}")
   end
 
   @doc "`list_components`' text."

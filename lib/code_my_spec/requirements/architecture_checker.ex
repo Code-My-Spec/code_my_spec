@@ -31,28 +31,33 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
   @proposal_path Paths.proposal_path()
 
+  # An architecture exists once it has been written down, either as the
+  # proposal or as authored components (3aeb66cf, step 5). Components are
+  # records now, and a project frozen or designed through the tools has no
+  # reason to keep a proposal file.
+  @no_architecture "No architecture yet — no `#{Paths.proposal_path()}` and no authored " <>
+                     "components. Run an architecture session: write the proposal, or " <>
+                     "create the components with `create_component`."
+
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   @clean_status "Architecture clean — every component is covered and every story is linked."
 
   def complete?(%Scope{active_project_id: project_id} = scope, _entity)
       when not is_nil(project_id) do
+    components = Components.list_components_for_coverage(scope)
+
     cond do
-      not proposal_present?(scope) ->
-        {false,
-         %{
-           reason:
-             "`#{@proposal_path}` is missing — run an architecture session and write the proposal."
-         }}
+      not (proposal_present?(scope) or authored_any?(components)) ->
+        {false, %{reason: @no_architecture}}
 
       (unlinked = unlinked_stories(scope)) != [] ->
         {false, %{reason: format_unlinked_stories(unlinked)}}
 
-      (orphan_components = orphans(scope)) != [] ->
+      (orphan_components = orphans_from(components, Files.component_ids_present(scope))) != [] ->
         {false, %{reason: format_orphans(orphan_components)}}
 
       true ->
-        {true,
-         %{status: @clean_status}}
+        {true, %{status: @clean_status}}
     end
   end
 
@@ -78,12 +83,8 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
   def complete?(_scope, _entity, %{files: files, stories: stories, components: components}) do
     cond do
-      not Map.has_key?(files.by_path, @proposal_path) ->
-        {false,
-         %{
-           reason:
-             "`#{@proposal_path}` is missing — run an architecture session and write the proposal."
-         }}
+      not (Map.has_key?(files.by_path, @proposal_path) or authored_any?(components)) ->
+        {false, %{reason: @no_architecture}}
 
       (unlinked = unlinked_from(stories)) != [] ->
         {false, %{reason: format_unlinked_stories(unlinked)}}
@@ -105,6 +106,8 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     |> Enum.filter(&(Map.get(&1, :ready_for_dev) == true and Map.get(&1, :component_id) == nil))
     |> Enum.sort_by(& &1.id)
   end
+
+  defp authored_any?(components), do: Enum.any?(components, &(&1.provenance == :authored))
 
   defp present_from(files) do
     files.all |> Enum.map(& &1.component_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
@@ -180,11 +183,18 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     #
     # An unscoped read (the web UI, which names no harness) is unchanged: it
     # sees every checkout's files, which is what it should.
+    #
+    # Provenance changes who is asked (3aeb66cf, step 5). An authored context is
+    # intended architecture, so it is an orphan whether or not code exists yet —
+    # designing ahead of the code is the point. A discovered one never is: it
+    # is not intended architecture, and code nobody specified is a separate
+    # report. An unmarked one keeps the presence rule above.
     components
     |> Enum.filter(&context_shaped?/1)
     |> Enum.reject(fn c ->
-      c.type == "infrastructure" or MapSet.member?(covered, c.id) or
-        not MapSet.member?(present, c.id)
+      c.type == "infrastructure" or c.provenance == :discovered or
+        MapSet.member?(covered, c.id) or
+        (c.provenance != :authored and not MapSet.member?(present, c.id))
     end)
     |> Enum.sort_by(& &1.module_name)
   end
@@ -320,10 +330,10 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     #{bullets}
 
     Resolve each orphan via one of:
-    - Link a story (`set_story_component`)
-    - Add a dependency edge from a story-linked context: edit that context's spec under `.code_my_spec/spec/` and add the orphan module as a bullet under `## Dependencies` (ComponentSync re-derives the graph on save)
-    - Classify as infrastructure (edit the spec's `## Type` section to `infrastructure`; ComponentSync re-types on next sync)
-    - Delete the context's spec, impl, and test files; ComponentSync will remove the component on the next sync
+    - Link a story to it (`set_story_component`)
+    - Make a story-linked context depend on it (`add_dependency`)
+    - Classify it as infrastructure (`update_component` with type `infrastructure`)
+    - Remove it (`delete_component`)
     """
   end
 end

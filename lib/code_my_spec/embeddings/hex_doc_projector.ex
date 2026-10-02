@@ -218,13 +218,26 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   defp extract_source_docs(env, path) do
     case Environments.read_file(env, path) do
       {:ok, content} ->
-        content
-        |> extract_modules()
-        |> Enum.flat_map(&module_entry/1)
+        docs_from_source(content)
 
       {:error, _} ->
         []
     end
+  end
+
+  @doc """
+  One `.ex` file's source, parsed into `{module_name, markdown}` pairs.
+
+  The pure half of this module, with no `Environments` dependency — public
+  for the hex-doc reconciler (577de9bb step 3), which has a fetched tarball's
+  bytes rather than a checked-out `deps/` tree to read `Environments.read_file/2`
+  from.
+  """
+  @spec docs_from_source(String.t()) :: [{String.t(), String.t()}]
+  def docs_from_source(content) when is_binary(content) do
+    content
+    |> extract_modules()
+    |> Enum.flat_map(&module_entry/1)
   end
 
   # A module is only worth projecting if it actually documents something.

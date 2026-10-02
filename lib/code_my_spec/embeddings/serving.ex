@@ -16,10 +16,22 @@ defmodule CodeMySpec.Embeddings.Serving do
   @callback start_link(keyword()) :: GenServer.on_start()
   @callback embed(String.t(), :search | :bulk) :: {:ok, [float()]} | {:error, term()}
   @callback embed_batch([String.t()], :search | :bulk) :: {:ok, [[float()]]} | {:error, term()}
+  @callback model_name() :: String.t()
 
   def child_spec(opts) do
     impl().child_spec(opts)
   end
+
+  @doc """
+  The model name every row this serving produces should be stamped with.
+
+  `doc_embeddings.model`/`doc_packages.model` exist so a serving swap
+  becomes a re-embed rather than silently mixing vector spaces — this is
+  where that string comes from, so it is asked once rather than hardcoded
+  at every call site.
+  """
+  @spec model_name() :: String.t()
+  def model_name, do: impl().model_name()
 
   def start_link(opts) do
     impl().start_link(opts)

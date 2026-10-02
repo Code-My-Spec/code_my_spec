@@ -35,6 +35,15 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
         {:ok, _result} =
           Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
 
+        # A real existing architecture has its context covered by a story. An
+        # uncovered authored context is an orphan whether or not it has code
+        # (3aeb66cf, step 5), and this scenario is about patching, not orphans.
+        StoryHelpers.create_and_link(context.scope, "MyApp.Existing",
+          title: "Existing story",
+          description: "Already built",
+          acceptance_criteria: ["It exists"]
+        )
+
         {:ok, context}
       end
 

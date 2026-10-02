@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
   import Phoenix.LiveViewTest
   import CodeMySpec.IssuesFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Issues
 
@@ -94,6 +95,81 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
       assert html =~ accepted.title
       refute html =~ incoming.title
+    end
+  end
+
+  defp created_ago(issue, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -seconds, :second)
+
+    CodeMySpec.Repo.update_all(
+      from(i in Issues.Issue, where: i.id == ^issue.id),
+      set: [inserted_at: at]
+    )
+  end
+
+  defp listed_ids(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("#issues [id^='issue-']")
+    |> Enum.flat_map(&Floki.attribute(&1, "id"))
+  end
+
+  describe "Index order and closed issues" do
+    setup %{scope: scope} do
+      old_incoming = issue_fixture(scope, %{title: "Old incoming"})
+      new_incoming = issue_fixture(scope, %{title: "New incoming"})
+      accepted = issue_fixture(scope, %{title: "Accepted one", status: :accepted})
+      dismissed = issue_fixture(scope, %{title: "Dismissed one", status: :dismissed})
+      resolved = issue_fixture(scope, %{title: "Resolved one", status: :resolved})
+
+      created_ago(old_incoming, 7200)
+      created_ago(new_incoming, 60)
+      created_ago(accepted, 10)
+
+      %{
+        old_incoming: old_incoming,
+        new_incoming: new_incoming,
+        accepted: accepted,
+        dismissed: dismissed,
+        resolved: resolved
+      }
+    end
+
+    test "incoming first, then accepted, newest first; closed hidden", ctx do
+      {:ok, view, html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
+
+      assert listed_ids(html) ==
+               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+
+      assert has_element?(view, "[data-test='issue-group'][data-status='incoming']")
+      assert has_element?(view, "[data-test='issue-group'][data-status='accepted']")
+      refute html =~ ctx.dismissed.title
+      refute html =~ ctx.resolved.title
+    end
+
+    test "the status filter shows resolved and dismissed", ctx do
+      {:ok, view, _html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
+
+      html =
+        view
+        |> form("form[phx-change='filter']", %{status: "all"})
+        |> render_change()
+
+      assert html =~ ctx.dismissed.title
+      assert html =~ ctx.resolved.title
+      assert_patch(view, ~p"/app/projects/#{ctx.project.id}/issues?status=all")
+
+      ids = listed_ids(html)
+
+      assert Enum.take(ids, 3) ==
+               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+
+      html =
+        view
+        |> form("form[phx-change='filter']", %{status: "resolved"})
+        |> render_change()
+
+      assert listed_ids(html) == ["issue-#{ctx.resolved.id}"]
     end
   end
 

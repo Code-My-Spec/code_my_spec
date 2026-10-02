@@ -21,9 +21,10 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
 
   # `put_chunk/4` writes an ordinary (project-owned or unscoped) chunk
   # through the real store path. `put_shared_chunk/6` goes one step further
-  # and stamps the identity columns afterward — the real write path for them
-  # doesn't exist until the reconciler (step 3) does, so this stands in for
-  # it here.
+  # and stamps the identity columns afterward with a raw update — the
+  # reconciler (step 3) sets them in the same INSERT instead; this is
+  # `search/3`'s own test, which only needs the identity columns present,
+  # not the exact write path that put them there.
   defp put_chunk(project_id, source, path, content) do
     :ok =
       PgVectorBackend.store_embedded_chunk(
@@ -32,7 +33,6 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
         path,
         0,
         content,
-        "hash-#{System.unique_integer([:positive])}",
         "file-hash",
         @vector
       )

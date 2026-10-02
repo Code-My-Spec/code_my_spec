@@ -34,14 +34,18 @@ defmodule CodeMySpec.Embeddings.OrtexServing do
 
   alias Tokenizers.Encoding
 
-  @model_path "priv/models/all-MiniLM-L6-v2.onnx"
-  @tokenizer_path "priv/models/all-MiniLM-L6-v2.tokenizer.json"
+  @model_name "all-MiniLM-L6-v2"
+  @model_path "priv/models/#{@model_name}.onnx"
+  @tokenizer_path "priv/models/#{@model_name}.tokenizer.json"
   @max_length 256
 
   @impl CodeMySpec.Embeddings.Serving
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
+
+  @impl CodeMySpec.Embeddings.Serving
+  def model_name, do: @model_name
 
   @impl CodeMySpec.Embeddings.Serving
   def embed(text, priority) when is_binary(text) and priority in [:search, :bulk] do
