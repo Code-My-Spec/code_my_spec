@@ -33,6 +33,9 @@ defmodule CodeMySpec.Embeddings do
   alias CodeMySpec.Embeddings.HexDocReconciler
   alias CodeMySpec.Users.Scope
 
+  @pg_vector CodeMySpec.Embeddings.PgVectorBackend
+  @project_knowledge "project_knowledge"
+
   @doc "Retry failed hex doc packages; see `HexDocReconciler.reset_failed/1`."
   defdelegate reset_failed_doc_packages(opts \\ []), to: HexDocReconciler, as: :reset_failed
 
@@ -52,10 +55,14 @@ defmodule CodeMySpec.Embeddings do
   is added or modified, the sync pipeline calls this to upsert the
   file's chunks. Content-hash deduplication keeps the call cheap when
   nothing actually changed.
+
+  A no-op for `"project_knowledge"` on `PgVectorBackend`: there
+  `ProjectKnowledgeReconciler` owns those rows, from the main copy only.
   """
   def embed_file(%Scope{active_project_id: project_id}, source, path, content) do
     case backend() do
       nil -> {:error, :embeddings_unavailable}
+      @pg_vector when source == @project_knowledge -> {:ok, %{embedded: 0, skipped: :reconciled}}
       mod -> mod.embed_file(project_id, source, path, content)
     end
   end
@@ -65,13 +72,23 @@ defmodule CodeMySpec.Embeddings do
 
   Used by the file sync pipeline when a tracked doc file is removed
   from disk so semantic search can't surface stale references.
+
+  A no-op for `"project_knowledge"` on `PgVectorBackend`, as `embed_file/4`.
   """
   def delete_path(%Scope{active_project_id: project_id}, source, path) do
     case backend() do
       nil -> {:error, :embeddings_unavailable}
+      @pg_vector when source == @project_knowledge -> {:ok, 0}
       mod -> mod.delete_path(project_id, source, path)
     end
   end
+
+  @doc """
+  True when the server reconciles corpora itself (`PgVectorBackend`), so
+  per-project embed paths stand down and the reconcilers run.
+  """
+  @spec server_reconciled?() :: boolean()
+  def server_reconciled?, do: backend() == @pg_vector
 
   @doc """
   Sync the bundled framework knowledge corpus directly from

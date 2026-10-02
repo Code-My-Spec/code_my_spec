@@ -80,6 +80,27 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
       assert result.path == "a.md"
     end
 
+    test "project knowledge is surfaced only at the current model", %{scope: scope} do
+      project_id = scope.active_project_id
+      put_chunk(project_id, "project_knowledge", "current.md", "current")
+      put_chunk(project_id, "project_knowledge", "stale.md", "stale")
+
+      {1, _} =
+        from(e in DocEmbedding, where: e.path == "stale.md")
+        |> Repo.update_all(set: [model: "other-model"])
+
+      assert {:ok, [%{path: "current.md"}]} = PgVectorBackend.search(project_id, "x", [])
+    end
+
+    test "other project sources are surfaced whatever their model", %{scope: scope} do
+      project_id = scope.active_project_id
+      put_chunk(project_id, "rules", "rule.md", "a rule")
+
+      {1, _} = Repo.update_all(DocEmbedding, set: [model: nil])
+
+      assert {:ok, [%{path: "rule.md"}]} = PgVectorBackend.search(project_id, "x", [])
+    end
+
     test "one project never sees another project's rows", %{scope: scope} do
       other = project_fixture(scope)
       put_chunk(other.id, "knowledge", "a.md", "the quick brown fox")
@@ -155,11 +176,27 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
         "Phoenix channels",
         "phoenix",
         "1.8.1",
-        "minilm-l6-v2"
+        "fake-test-model"
       )
 
       assert {:ok, [result]} = PgVectorBackend.search(project_id, "channels", [])
       assert result.path == "Phoenix.md"
+    end
+
+    test "a hex package's docs at another model are not surfaced", %{scope: scope} do
+      project_id = scope.active_project_id
+      lock_dependency(project_id, "phoenix", "1.8.1")
+
+      put_shared_chunk(
+        "hexdocs:phoenix",
+        "Phoenix.md",
+        "Phoenix channels",
+        "phoenix",
+        "1.8.1",
+        "other-model"
+      )
+
+      assert {:ok, []} = PgVectorBackend.search(project_id, "channels", [])
     end
 
     test "a different version of the same package is not surfaced — exact versions only",
@@ -173,7 +210,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
         "Phoenix channels",
         "phoenix",
         "1.7.0",
-        "minilm-l6-v2"
+        "fake-test-model"
       )
 
       assert {:ok, []} = PgVectorBackend.search(project_id, "channels", [])
@@ -186,7 +223,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
         "Ecto changesets",
         "ecto",
         "3.11.0",
-        "minilm-l6-v2"
+        "fake-test-model"
       )
 
       assert {:ok, []} = PgVectorBackend.search(scope.active_project_id, "changesets", [])

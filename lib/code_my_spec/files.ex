@@ -130,6 +130,15 @@ defmodule CodeMySpec.Files do
     |> Repo.all()
   end
 
+  @doc "This checkout's files in one role."
+  @spec list_files_with_role(Scope.t(), atom()) :: [File.t()]
+  def list_files_with_role(%Scope{active_project_id: project_id} = scope, role) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == ^role)
+    |> scope_to_harness(scope)
+    |> Repo.all()
+  end
+
   @doc """
   The same, across every checkout of the project rather than the caller's.
 

@@ -19,8 +19,9 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
 
   Embeddings fill in on their own — there is no sync tool and nothing to
   run. Hex docs appear once the server's reconciler has embedded the
-  package versions this project's `mix.lock` actually pins; project and
-  framework knowledge follow in a later step. A query that finds nothing
+  package versions this project's `mix.lock` actually pins; framework
+  knowledge on server boot; project knowledge once the main copy's harness
+  has reported a change to `.code_my_spec/knowledge`. A query that finds nothing
   for a package or topic that should exist usually means that embedding
   hasn't landed yet, not that something needs triggering.
   """

@@ -116,6 +116,12 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
      WHERE p.package = ? AND p.model = ? AND p.status = 'embedded'))\
   """
 
+  # Project knowledge only at the current model (`ProjectKnowledgeReconciler`
+  # re-embeds the rest); other project sources are unstamped legacy rows.
+  @project_knowledge "project_knowledge"
+
+  @project_clause "(e.project_id = ?::text::uuid AND (e.source <> ? OR e.model = ?))"
+
   defp scope_clause(project_id) do
     model = Serving.model_name()
 
@@ -123,11 +129,14 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
       project_id
       |> locked_dependencies()
       |> Enum.flat_map(fn %{name: name, version: version} ->
-        [{"(e.project_id IS NULL AND e.package = ? AND e.version = ?)", [name, version]}]
+        [
+          {"(e.project_id IS NULL AND e.package = ? AND e.version = ? AND e.model = ?)",
+           [name, version, model]}
+        ]
       end)
 
     clauses_and_params = [
-      {"e.project_id = ?::text::uuid", [project_id]},
+      {@project_clause, [project_id, @project_knowledge, model]},
       {@framework_clause, [@framework_package, model, @framework_package, model]}
       | dep_clauses_and_params
     ]

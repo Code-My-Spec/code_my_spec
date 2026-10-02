@@ -18,6 +18,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
+  alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
@@ -347,15 +348,17 @@ defmodule CodeMySpec.Files.FileSync do
               upserted: summary.upserted,
               removed: summary.removed,
               changed: length(summary.changed_entries),
-              components: project_components(scope, summary)
+              components: project_components(scope, summary),
+              knowledge_moved?: knowledge_moved?(summary.changed_entries, summary.removed_records)
             }
           end,
           timeout: @reconcile_timeout_ms
         )
 
       log_duration(scope, observations, System.monotonic_time(:millisecond) - started, result)
+      maybe_reconcile_project_knowledge(scope, result.knowledge_moved?)
 
-      result
+      Map.delete(result, :knowledge_moved?)
     rescue
       error ->
         log_failure(scope, observations, System.monotonic_time(:millisecond) - started, error)
@@ -644,6 +647,74 @@ defmodule CodeMySpec.Files.FileSync do
       {:error, reason} ->
         Logger.info(
           "[FileSync] #{working_copy(scope)}: lockfile reconcile deferred (#{inspect(reason)})"
+        )
+
+        :ok
+    end
+  end
+
+  # -- Project knowledge reconcile (577de9bb step 5) --
+
+  defp knowledge_moved?(changed_entries, removed_records) do
+    Enum.any?(changed_entries ++ removed_records, &(Map.get(&1, :role) == :project_knowledge))
+  end
+
+  # After the transaction commits, and off the caller: the manifest's caller
+  # may be the channel itself (inline mode), and a read from there self-calls.
+  defp maybe_reconcile_project_knowledge(_scope, false), do: :ok
+
+  defp maybe_reconcile_project_knowledge(scope, true) do
+    if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
+      reconcile_project_knowledge(scope)
+    else
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          reconcile_project_knowledge(scope)
+        end)
+
+      :ok
+    end
+  end
+
+  @doc """
+  Bring the project's `project_knowledge` embeddings in line with its main
+  copy's `project_knowledge` file rows, reading changed content over the
+  copy's harness.
+
+  Called by a manifest that moved a knowledge row and by `LockfileSweep`.
+  A no-op off the main copy and off `PgVectorBackend`. An unreachable
+  harness leaves changed files pending for the next pass; it never deletes
+  their rows.
+  """
+  @spec reconcile_project_knowledge(Scope.t()) :: :ok
+  def reconcile_project_knowledge(%Scope{active_project: %Project{} = project} = scope) do
+    if Embeddings.server_reconciled?() and main_copy?(scope) do
+      do_reconcile_project_knowledge(scope, project)
+    else
+      :ok
+    end
+  end
+
+  def reconcile_project_knowledge(%Scope{}), do: :ok
+
+  defp do_reconcile_project_knowledge(%Scope{environment: env} = scope, project) do
+    desired =
+      scope
+      |> Files.list_files_with_role(:project_knowledge)
+      |> Map.new(&{&1.path, &1.fingerprint})
+
+    case ProjectKnowledgeReconciler.reconcile(
+           project.id,
+           desired,
+           &Environments.read_file(env, &1)
+         ) do
+      {:ok, _summary} ->
+        :ok
+
+      {:error, {:deferred, reason}, summary} ->
+        Logger.info(
+          "[FileSync] #{working_copy(scope)}: project knowledge reconcile deferred after " <>
+            "#{summary.embedded} file(s) (#{inspect(reason, limit: 5)})"
         )
 
         :ok
