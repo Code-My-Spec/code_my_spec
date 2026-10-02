@@ -27,7 +27,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Architect re-runs architecture and the prompt surfaces orphan diagnostics", criterion: 35 do
+  spex "Architecture task prompt names each orphan context and lists the resolution tools",
+    criterion: 35 do
     scenario "Architecture task prompt names each orphan and lists the resolution menu" do
       given_ :fully_satisfied_project
 
@@ -118,14 +119,16 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
         assert prompt =~ ~r/set_story_component|link.*story/i,
                "expected prompt to mention linking a story (set_story_component / link a story), got: #{prompt}"
 
-        assert prompt =~ ~r/create_dependency|dependency edge/i,
-               "expected prompt to mention adding a dependency edge (create_dependency), got: #{prompt}"
+        assert prompt =~ ~r/add_dependency/,
+               "expected prompt to name add_dependency for a dependency edge, got: #{prompt}"
 
-        assert prompt =~ ~r/## Type.*infrastructure|infrastructure.*spec/is,
-               "expected prompt to mention classifying as infrastructure (edit spec's ## Type), got: #{prompt}"
+        # Components are records (3aeb66cf): the type is set on the record, not
+        # in a spec's `## Type`.
+        assert prompt =~ ~r/update_component.*infrastructure/s,
+               "expected prompt to name update_component for classifying as infrastructure, got: #{prompt}"
 
-        assert prompt =~ ~r/(delete|remove)\s+the\s+(component|spec)/i,
-               "expected prompt to mention deleting the component (via spec/impl/test file deletion), got: #{prompt}"
+        assert prompt =~ ~r/delete_component/,
+               "expected prompt to name delete_component for removing the component, got: #{prompt}"
 
         {:ok, context}
       end
