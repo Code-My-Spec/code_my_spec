@@ -17,12 +17,12 @@ defmodule CodeMySpecWeb.HealthControllerTest do
     assert is_boolean(body["harness_connected"])
   end
 
-  test "a harness connected at the server's checkout is reported" do
+  # Only the positive: other async tests register harnesses in the same
+  # registry, so "none connected" is not something this test can own.
+  test "a connected harness is reported" do
     root = "/tmp/app-health-#{System.unique_integer([:positive])}"
-    refute AppHealth.check(root).harness_connected
-
     :ok = HarnessRegistry.register_executor(Ecto.UUID.generate(), "i", root)
 
-    assert %{healthy: true, harness_connected: true} = AppHealth.check(root)
+    assert %{healthy: true, harness_connected: true} = AppHealth.check()
   end
 end

@@ -28,7 +28,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import Phoenix.ChannelTest
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 

@@ -4,9 +4,10 @@ defmodule CodeMySpec.AppHealth do
   pending. What a promote's reload checks before it calls the reload good —
   a reload that compiled but left a migration unrun is not one.
 
-  Also reports whether a harness is connected for the checkout this server
-  runs from. Reported only: a harness restarts after every promote, so a
-  check that failed on it would fail every reload.
+  Also reports whether any harness is connected to this server. Reported
+  only: a harness restarts after every promote, so a check that failed on it
+  would fail every reload. Not "the harness for this checkout": the server's
+  own directory is not a project's.
   """
 
   use Boundary,
@@ -24,8 +25,8 @@ defmodule CodeMySpec.AppHealth do
           harness_connected: boolean()
         }
 
-  @spec check(String.t()) :: t()
-  def check(root \\ File.cwd!()) do
+  @spec check() :: t()
+  def check do
     database = database()
     pending = if database == :ok, do: pending_migrations(), else: :unknown
 
@@ -33,7 +34,7 @@ defmodule CodeMySpec.AppHealth do
       healthy: database == :ok and pending == [],
       database: database,
       pending_migrations: pending,
-      harness_connected: HarnessRegistry.connected_at?(root)
+      harness_connected: HarnessRegistry.any_connected?()
     }
   end
 

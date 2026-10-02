@@ -102,13 +102,9 @@ defmodule CodeMySpec.Analysis.HarnessRegistry do
   def supports?(working_copy_id, verb),
     do: Registry.lookup(__MODULE__, {:verb, verb, to_string(working_copy_id)}) != []
 
-  @doc "Whether any connected harness serves the checkout at `root`."
-  @spec connected_at?(String.t()) :: boolean()
-  def connected_at?(root) do
-    __MODULE__
-    |> Registry.select([{{:_, :_, {:_, :"$1"}}, [{:==, :"$1", root}], [true]}])
-    |> Enum.any?()
-  end
+  @doc "Whether any harness is registered with this server at all."
+  @spec any_connected?() :: boolean()
+  def any_connected?, do: Registry.count(__MODULE__) > 0
 
   @doc """
   Who is holding this working copy's executor slot, if anyone.
