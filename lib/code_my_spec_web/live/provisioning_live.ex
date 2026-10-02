@@ -72,6 +72,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
 
@@ -750,27 +751,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         <h2 class="text-lg font-semibold">What you now own</h2>
         <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
         <ul class="mt-2 flex flex-col gap-1">
-          <li
-            :for={%{resource: resource} = owned <- @resources}
-            data-test="provisioned-resource"
-            data-kind={resource.kind}
-            data-location={resource.location}
-            data-environment={resource_environment(resource, @environments)}
-            data-name={resource_name(resource)}
-            data-owner={resource_owner(resource)}
-            data-verified={to_string(owned.verified?)}
-            class={not owned.verified? && "opacity-70"}
-          >
-            {resource.kind} — {resource.location}
-            <span
-              :if={not owned.verified?}
-              data-test="unverified-resource"
-              data-step={owned.step}
-              class="badge badge-sm badge-warning ml-2"
-            >
-              {unverified_note(owned)}
-            </span>
-          </li>
+          <ResourceCard.resource_card :for={owned <- @resources} owned={owned} />
         </ul>
       </section>
     </Layouts.app>
@@ -2425,7 +2406,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
-    |> assign(:resources, owned_resources(plan))
+    |> assign(:resources, owned_resources(plan, environments))
     # Held, not re-proved. `Credentials.list/1` and `missing/1` prove each
     # credential with a real provider call, and `load/2` runs on every event
     # *and* on every PubSub announce a step makes — so a run that marked four
@@ -2840,14 +2821,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # regardless, so a server deleted at the provider was still listed under a
   # heading that says Sam owns it, on the same page load that discovered it was
   # gone.
-  defp owned_resources(plan) do
+  defp owned_resources(plan, environments) do
     for step <- plan, resource <- step.resources do
-      %{
+      owned = %{
         resource: resource,
         step: step.key,
+        environment: resource_environment(resource, environments),
+        name: resource_name(resource),
+        owner: resource_owner(resource),
         verified?: step.state == :done,
         verified_at: step.verified_at
       }
+
+      Map.put(owned, :unverified_note, unverified_note(owned))
     end
   end
 
