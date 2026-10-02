@@ -67,20 +67,16 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     test "creating files satisfies requirements computed from File records" do
       {scope, tmp_dir} = setup_component_scenario()
 
-      # Write only the spec file (not the impl file)
-      write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
+      # The component is a record, authored before any code exists.
+      {:ok, accounts} =
+        Components.create_component(scope, %{
+          name: "Accounts",
+          module_name: "MyApp.Accounts",
+          type: "context",
+          provenance: :authored
+        })
 
-      # Sync files + components
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-      {:ok, _} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
-
-      accounts =
-        Components.list_components(scope)
-        |> Enum.find(&(&1.module_name == "MyApp.Accounts"))
-
-      assert accounts
-
-      # The spec defines topology; only implementation is required.
+      # Only implementation is required.
       reqs = RequirementCalculator.compute_component(scope, accounts)
       spec_req = Enum.find(reqs, &(&1.name == "spec_file"))
       impl_req = Enum.find(reqs, &(&1.name == "implementation_file"))

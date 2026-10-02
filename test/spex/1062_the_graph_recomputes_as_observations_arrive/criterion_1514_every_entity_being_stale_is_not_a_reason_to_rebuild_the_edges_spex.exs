@@ -73,7 +73,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
   # measuring a rebuild that was owed.
   @modules ~w(Users Users.Account Stories Stories.Story)
 
-  spex "A pass rebuilds the edges when the shape moved, not when everything is stale", criterion: 1514 do
+  spex "A pass rebuilds the edges when the shape moved, not when everything is stale",
+    criterion: 1514 do
     scenario "every component loses a file and the shape does not move" do
       given_ :cross_context_dependency
 

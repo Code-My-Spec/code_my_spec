@@ -41,11 +41,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # attribute: an attribute naming every task module is a compile-time reference
   # to each of them, which put this module — and the router beyond it — in the
   # app's compile cycle.
-  # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component
   def session_type_map do
     %{
-      "component_spec" => AgentTasks.ComponentSpec,
-      "context_spec" => AgentTasks.ContextSpec,
       "context_design_review" => AgentTasks.ContextDesignReview,
       "develop_context" => AgentTasks.DevelopContext,
       "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
@@ -60,8 +57,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "story_interview" => AgentTasks.StoryInterview,
       "story_review" => AgentTasks.StoryInterview,
       "design_ui" => AgentTasks.DesignUi,
-      "liveview_spec" => AgentTasks.LiveViewSpec,
-      "live_context_spec" => AgentTasks.LiveContextSpec,
       "technical_strategy" => AgentTasks.TechnicalStrategy,
       "research_topic" => AgentTasks.ResearchTopic,
       "qa_app" => AgentTasks.QaApp,
@@ -76,7 +71,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "fix_issues" => AgentTasks.FixIssues,
       "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
       "persona_research" => AgentTasks.PersonaResearch,
-      "controller_spec" => AgentTasks.ControllerSpec,
       "release" => AgentTasks.Release,
       "init" => AgentTasks.Init
     }
@@ -122,7 +116,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # story directly.
   @topic_tasks ["research_topic", "qa_story", "three_amigos"]
 
-  def valid_types, do: ["spec" | Map.keys(session_type_map())]
+  def valid_types, do: Map.keys(session_type_map())
   def componentless_tasks, do: @componentless_tasks
   def bootstrap_tasks, do: @bootstrap_tasks
   def project_tasks, do: @project_tasks
@@ -334,24 +328,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   defp resolve_session_type(nil, _component) do
     {:error, "Session type is required. Valid types: #{Enum.join(valid_types(), ", ")}"}
-  end
-
-  # Auto-detect context vs component vs liveview spec based on component type
-  defp resolve_session_type("spec", %{type: "live_context"}) do
-    {:ok, AgentTasks.LiveContextSpec}
-  end
-
-  defp resolve_session_type("spec", %{type: type})
-       when type in ["liveview", "liveview_component"] do
-    {:ok, AgentTasks.LiveViewSpec}
-  end
-
-  defp resolve_session_type("spec", component) do
-    if Components.context?(component) do
-      {:ok, AgentTasks.ContextSpec}
-    else
-      {:ok, AgentTasks.ComponentSpec}
-    end
   end
 
   defp resolve_session_type(name, _component) do

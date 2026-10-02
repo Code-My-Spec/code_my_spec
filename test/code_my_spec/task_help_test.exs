@@ -27,7 +27,10 @@ defmodule CodeMySpec.TaskHelpTest do
 
   describe "fetch/2 — framework default (priv)" do
     test "returns the shipped explainer + sidecar video", %{scope: scope, dir: dir} do
-      File.write!(Path.join(dir, "architecture_design.md"), "# Architecture\n\nMapping stories to modules.")
+      File.write!(
+        Path.join(dir, "architecture_design.md"),
+        "# Architecture\n\nMapping stories to modules."
+      )
 
       File.write!(
         Path.join(dir, "architecture_design.yaml"),
@@ -65,14 +68,18 @@ defmodule CodeMySpec.TaskHelpTest do
           ~s(video_url: "https://videos.example.com/override.mp4"\n)
         )
 
-      assert {:ok, %Help{body: "PROJECT OVERRIDE", video_url: "https://videos.example.com/override.mp4"}} =
+      assert {:ok,
+              %Help{
+                body: "PROJECT OVERRIDE",
+                video_url: "https://videos.example.com/override.mp4"
+              }} =
                TaskHelp.fetch(scope, @arch)
     end
   end
 
   describe "fetch/2 — generic fallback" do
     test "returns :generic when neither override nor default exists", %{scope: scope} do
-      assert :generic = TaskHelp.fetch(scope, CodeMySpec.AgentTasks.ContextSpec)
+      assert :generic = TaskHelp.fetch(scope, CodeMySpec.AgentTasks.NoHelpWritten)
     end
   end
 end

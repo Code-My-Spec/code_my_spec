@@ -16,13 +16,13 @@ defmodule CodeMySpec.SessionsTest do
     test "with valid data creates a session", %{scope: scope} do
       valid_attrs = %{
         status: :active,
-        type: AgentTasks.ContextSpec,
+        type: AgentTasks.ComponentCode,
         state: %{}
       }
 
       assert {:ok, %Session{} = session} = Sessions.create_session(scope, valid_attrs)
       assert session.status == :active
-      assert session.type == AgentTasks.ContextSpec
+      assert session.type == AgentTasks.ComponentCode
       assert session.state == %{}
       assert session.project_id == scope.active_project_id
     end
@@ -50,7 +50,7 @@ defmodule CodeMySpec.SessionsTest do
   describe "list_sessions/1" do
     test "returns all sessions", %{scope: scope} do
       session1 = session_fixture(scope)
-      session2 = session_fixture(scope, %{type: AgentTasks.ComponentSpec})
+      session2 = session_fixture(scope, %{type: AgentTasks.ComponentTest})
 
       sessions = Sessions.list_sessions(scope)
       assert length(sessions) == 2

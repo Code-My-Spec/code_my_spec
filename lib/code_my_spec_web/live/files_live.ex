@@ -9,14 +9,12 @@ defmodule CodeMySpecWeb.FilesLive do
   """
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.WorkingCopies
   import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
-  alias CodeMySpec.Requirements
 
   require Logger
 
@@ -100,35 +98,6 @@ defmodule CodeMySpecWeb.FilesLive do
   @impl true
   def handle_event("sync", _params, socket), do: do_sync(socket, embed: false)
   def handle_event("embed", _params, socket), do: do_embed(socket)
-
-  def handle_event("purge", _params, socket) do
-    scope = socket.assigns.scope
-
-    {file_count, _} = Files.delete_removed(scope, [])
-    Requirements.clear_all_project_requirements(scope)
-
-    components = Components.list_components(scope)
-    Enum.each(components, &Components.delete_component(scope, &1))
-
-    Logger.info(
-      "[FilesLive] Purged #{file_count} files, #{length(components)} components for #{scope.active_project.name}"
-    )
-
-    result =
-      list_page(scope,
-        page: 1,
-        per_page: @per_page,
-        filter: socket.assigns.filter
-      )
-
-    {:noreply,
-     assign(socket,
-       result: result,
-       page: 1,
-       sync_status: :done,
-       sync_result: [{"Purged", "#{file_count} files + #{length(components)} components deleted"}]
-     )}
-  end
 
   defp do_sync(socket, opts) do
     scope = socket.assigns.scope
@@ -238,22 +207,6 @@ defmodule CodeMySpecWeb.FilesLive do
             <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
             Embed
           </button>
-          <button
-            type="button"
-            phx-click={show_confirm("confirm-purge-files")}
-            data-test="purge-button"
-            disabled={@sync_status == :running}
-            class="btn btn-error btn-outline"
-          >
-            Purge All
-          </button>
-          <.confirm_dialog
-            id="confirm-purge-files"
-            title="Purge all components and requirements?"
-            message="This will delete ALL components and requirements for this project."
-            confirm_label="Purge"
-            on_confirm={JS.push("purge")}
-          />
         </div>
       </div>
 

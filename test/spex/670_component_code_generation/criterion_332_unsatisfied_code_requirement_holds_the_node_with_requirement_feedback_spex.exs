@@ -4,8 +4,8 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
   Criterion 5587 — Unsatisfied code requirement holds the node with
   requirement feedback.
 
-  Surface: sync a context Component from a spec only — no
-  implementation file on disk — then drive the stop hook on a clean
+  Surface: design a context Component — no implementation file on
+  disk — then drive the stop hook on a clean
   pipeline run. With the `implementation_file` artifact requirement
   unsatisfied, the evaluator framework blocks the stop and emits
   feedback framed as "Requirement not met:" naming the missing
@@ -15,13 +15,12 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 4]
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
 
   @module_name "ExampleNoImpl"
-  @spec_path ".code_my_spec/spec/example_no_impl.spec.md"
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
 
   setup :register_log_in_setup_account
@@ -29,22 +28,11 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
 
   spex "Component Code Generation", criterion: 332 do
     scenario "Unsatisfied code requirement holds the node with requirement feedback" do
-      given_ "a context Component is synced from a spec with no implementation file on disk",
-             context do
-        env = context.environment
-
-        :ok = Environments.write_file(env, @spec_path, spec_file_content())
-
-        {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        sync_live
-        |> element("button[phx-click='sync']")
-        |> render_click()
-
-        %_{} =
-          component =
-          Fixtures.get_component_by_module_name(context.scope, @module_name)
+      given_ "a context Component is designed with no implementation file on disk", context do
+        component =
+          design!(context, @module_name, [],
+            description: "A context whose implementation file has not been written yet."
+          )
 
         {:ok, Map.put(context, :component, component)}
       end
@@ -111,34 +99,6 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp spec_file_content do
-    """
-    # ExampleNoImpl
-
-    ## Type
-
-    context
-
-    A context whose implementation file has not been written yet.
-
-    ## Functions
-
-    ### noop/0
-
-    Returns `:ok`.
-
-    ```elixir
-    @spec noop() :: :ok
-    ```
-
-    ## Dependencies
-
-    - None
-
-    ## Components
-    """
   end
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))

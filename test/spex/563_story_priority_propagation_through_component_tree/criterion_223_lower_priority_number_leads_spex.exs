@@ -13,13 +13,11 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -32,20 +30,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
 
   spex "Lower priority number leads", criterion: 223 do
     scenario "the priority-1 story's context appears, the priority-5 story's does not lead" do
-      given_ "two unrelated contexts synced, each linked to a story with distinct priority",
+      given_ "two unrelated contexts designed, each linked to a story with distinct priority",
              context do
-        env = context.environment
-
-        Enum.each(
-          [{"UrgentContext", []}, {"LaterContext", []}],
-          fn {module, deps} ->
-            spec = Content.context_spec(module, type: "context", dependencies: deps)
-            :ok = Environments.write_file(env, Content.spec_path(module), spec)
-          end
-        )
-
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        sync_live |> element("button[phx-click='sync']") |> render_click()
+        design!(context, "UrgentContext")
+        design!(context, "LaterContext")
 
         urgent = Fixtures.get_component_by_module_name(context.scope, "UrgentContext")
         later = Fixtures.get_component_by_module_name(context.scope, "LaterContext")

@@ -20,13 +20,11 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2, design!: 3]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -41,23 +39,9 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
     scenario "Users (dep of Stories) sorts ahead of low-priority Reports" do
       given_ "Stories depends on Users (story priority 1), and unrelated Reports has priority 9",
              context do
-        env = context.environment
-
-        for {module, deps} <- [
-              {"Users", []},
-              {"Stories", ["Users"]},
-              {"Reports", []}
-            ] do
-          :ok =
-            Environments.write_file(
-              env,
-              Content.spec_path(module),
-              Content.context_spec(module, type: "context", dependencies: deps)
-            )
-        end
-
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        sync_live |> element("button[phx-click='sync']") |> render_click()
+        design!(context, "Users")
+        design!(context, "Stories", ["Users"])
+        design!(context, "Reports")
 
         users = Fixtures.get_component_by_module_name(context.scope, "Users")
         stories = Fixtures.get_component_by_module_name(context.scope, "Stories")

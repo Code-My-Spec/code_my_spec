@@ -20,6 +20,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
   setup :devops_on
   setup :fake_providers
 
+  defp operation_started?(html), do: html =~ ~r/data-state="(running|done|errored|paused)"/
+  defp operation_done?(html), do: not (html =~ ~s(data-state="running"))
+
   spex "Coming back without doing the thing keeps setup paused", criterion: 572 do
     scenario "resuming with the domain still unregistered stays paused on the same step" do
       given_ "setup is paused waiting for Sam to register the domain", context do
@@ -37,7 +40,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view |> element("[data-test='start-setup']") |> render_click()
-        await_provisioning(view)
+        await_operation(view, &operation_started?/1, &operation_done?/1)
 
         assert render(view) =~ ~r/data-step="domain"[^>]*data-state="paused"/,
                "expected setup to be paused on the domain step before resuming"
@@ -47,7 +50,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
 
       when_ "Sam returns without having registered it", context do
         context.view |> element("[data-test='resume-setup']") |> render_click()
-        html = await_provisioning(context.view)
+        html = await_operation(context.view, &operation_started?/1, &operation_done?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

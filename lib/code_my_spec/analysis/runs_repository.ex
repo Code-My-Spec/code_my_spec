@@ -211,6 +211,22 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   @doc """
+  Sources whose every `:running` run on this working copy is still waiting for
+  a machine slot — none has begun (bf627680).
+  """
+  @spec queued_sources(Scope.t()) :: MapSet.t(String.t())
+  def queued_sources(%Scope{active_project_id: project_id} = scope) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.status == :running)
+    |> scope_to_harness(scope)
+    |> group_by([r], r.source)
+    |> having([r], count(r.began_at) == 0)
+    |> select([r], r.source)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
   Whether `agent_id` has a run it requested still `:running` (queued runs
   included) on `working_copy_id`, or one its harness's departure killed that
   the rejoin has not settled yet. Keyed on `requested_by->>'agent_id'`, the

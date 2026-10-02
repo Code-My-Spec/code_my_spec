@@ -3127,6 +3127,70 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Wait for any async operation to start, then to finish, against whatever the
+  caller's own `started?`/`done?` say about the rendered page.
+
+  `await_step/3,4` and `await_provisioning/2` are each this same two-phase
+  poll — wait for a start condition so a read taken before anything has
+  happened is not mistaken for already done, then wait for a finish condition
+  — with their own conditions about a step or a whole run baked in. An
+  operation whose result lands somewhere neither of those know to look (a
+  probe, a domain check, eventually each resource's own Check button) needs
+  the identical wait with its own conditions, not a third copy of the loop.
+
+  `resume_setup` uses this rather than `await_provisioning/2` even though the
+  two conditions are the same today, because `resume_setup` is not "the whole
+  run" and the next operations converted this way will not be either.
+  """
+  @spec await_operation(
+          term(),
+          (String.t() -> boolean()),
+          (String.t() -> boolean()),
+          keyword()
+        ) :: String.t()
+  def await_operation(view, started?, done?, opts \\ [])
+      when is_function(started?, 1) and is_function(done?, 1) do
+    start_timeout = Keyword.get(opts, :start_timeout, 5_000)
+    timeout = Keyword.get(opts, :timeout, 30_000)
+    now = System.monotonic_time(:millisecond)
+
+    await_operation_started(view, started?, now + start_timeout)
+    await_operation_done(view, done?, now + timeout)
+  end
+
+  defp await_operation_started(view, started?, deadline) do
+    html = LiveViewTest.render(view)
+
+    cond do
+      started?.(html) ->
+        :started
+
+      System.monotonic_time(:millisecond) > deadline ->
+        ExUnit.Assertions.flunk("operation never started before the wait expired")
+
+      true ->
+        Process.sleep(50)
+        await_operation_started(view, started?, deadline)
+    end
+  end
+
+  defp await_operation_done(view, done?, deadline) do
+    html = LiveViewTest.render(view)
+
+    cond do
+      done?.(html) ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        ExUnit.Assertions.flunk("operation did not finish before the wait expired")
+
+      true ->
+        Process.sleep(100)
+        await_operation_done(view, done?, deadline)
+    end
+  end
+
+  @doc """
   Wait until an environment shows a server on the page.
 
   `await_provisioning/2` waits for "nothing is running", which cannot tell a

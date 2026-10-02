@@ -47,10 +47,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
       assert {:ok, prompt} = DevelopLiveView.command(scope, task)
       assert prompt =~ "Develop LiveView: DashboardLive"
-      assert prompt =~ "LiveView Spec"
-      assert prompt =~ "Component Specs"
-      assert prompt =~ "Implementation"
-      assert prompt =~ "children first, parent last"
+      assert prompt =~ "show_architecture"
+      assert prompt =~ "LiveView last"
+      refute prompt =~ "spec-writer"
     end
   end
 
@@ -60,13 +59,11 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       {liveview, children} = create_liveview_with_children(scope)
 
       for component <- [liveview | children] do
-        for name <- ["spec_file", "spec_valid", "implementation_file", "test_file", "tests_passing"] do
-          requirement_fixture(scope, component, %{
-            name: name,
-            artifact_type: :specification,
-            satisfied: true
-          })
-        end
+        requirement_fixture(scope, component, %{
+          name: "implementation_file",
+          artifact_type: :code,
+          satisfied: true
+        })
       end
 
       liveview = Components.get_component(scope, liveview.id)
@@ -81,8 +78,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
       for component <- [liveview | children] do
         requirement_fixture(scope, component, %{
-          name: "spec_file",
-          artifact_type: :specification,
+          name: "implementation_file",
+          artifact_type: :code,
           satisfied: false
         })
       end
