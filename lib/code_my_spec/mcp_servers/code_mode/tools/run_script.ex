@@ -58,23 +58,50 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   def execute(%{script: script} = params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        # Which tools, from the agent's role as it stands now
-        # (`Agents.tools_of/2`), not a list the caller supplies. The caller
-        # names *which* agent it is; the server decides what that agent may do,
-        # so naming a different one cannot invent permissions — it can only
-        # borrow another agent's, and both are ours.
-        {allowed, kind} = agent_scope(scope, Map.get(params, :agent_id))
+        case grant_agent_id(frame, params) do
+          {:ok, agent_id} ->
+            # Which tools, from the agent's role as it stands now
+            # (`Agents.tools_of/2`), not a list the caller supplies. An agent
+            # we run is identified by its connection (`frame.assigns`), and
+            # `grant_agent_id/2` has already refused a differing `agent_id`
+            # param, so what remains here cannot borrow another agent's grant.
+            {allowed, kind} = agent_scope(scope, agent_id)
 
-        result =
-          CodeMode.eval(Layer.catalog(scope, allowed, caller(params, frame)), script,
-            out_of_scope: Layer.out_of_scope(allowed),
-            agent_kind: kind
-          )
+            result =
+              CodeMode.eval(Layer.catalog(scope, allowed, caller(params, frame)), script,
+                out_of_scope: Layer.out_of_scope(allowed),
+                agent_kind: kind
+              )
 
-        {:reply, render(result, scope, params), frame}
+            {:reply, render(result, scope, params), frame}
+
+          {:error, :agent_id_mismatch} ->
+            {:reply,
+             Response.tool()
+             |> Response.error(
+               "agent_id does not match this connection's own agent. Omit it to use your " <>
+                 "own tools — a connected agent cannot borrow another agent's grant."
+             ), frame}
+        end
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+    end
+  end
+
+  # The connection's own agent_id is authoritative when there is one: naming a
+  # different agent used to only "borrow" its grant, which was harmless while
+  # every agent could reach everything. Main-only tools (story 983) ended
+  # that, so a differing id is now refused rather than honored.
+  defp grant_agent_id(frame, params) do
+    case frame.assigns[:agent_id] do
+      nil -> {:ok, Map.get(params, :agent_id)}
+      connection_id ->
+        case Map.get(params, :agent_id) do
+          nil -> {:ok, connection_id}
+          ^connection_id -> {:ok, connection_id}
+          _other -> {:error, :agent_id_mismatch}
+        end
     end
   end
 

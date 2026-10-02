@@ -1827,6 +1827,9 @@ defmodule CodeMySpec.Agents do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
         MainAgent.ensure_cadence(scope)
+        # A person switching an agent on is telling it to work, as a denied
+        # tap-out is: what it last declined does not hold the turn back.
+        {:ok, agent} = Work.clear_decline(scope, agent)
         {:ok, agent, enabled_disposition(scope, agent)}
       else
         {:ok, agent, :paused}

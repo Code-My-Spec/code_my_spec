@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.Offers do
   """
 
   import Ecto.Query
+  require Logger
 
   require Logger
 

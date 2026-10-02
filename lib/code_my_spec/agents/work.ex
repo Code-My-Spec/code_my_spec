@@ -240,7 +240,7 @@ defmodule CodeMySpec.Agents.Work do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
-         false <- already_declined?(current, offer),
+         false <- already_declined?(current, offer, questions_only?(subject)),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = prompt(reserved)
 
@@ -327,7 +327,7 @@ defmodule CodeMySpec.Agents.Work do
     nodes = graph_work(scope, agent)
 
     nodes != [] and
-      not already_declined?(agent, fingerprint(question_work?(scope, agent), nodes))
+      not already_declined?(agent, fingerprint(held_questions(scope, agent), nodes), false)
   end
 
   # An off or retired agent answers as the gate always has; any other hold is
@@ -561,10 +561,10 @@ defmodule CodeMySpec.Agents.Work do
   # last refused. `eligible_work?/2` answered only "is there any", which cannot
   # tell a new offer from a repeat of the one just declined.
   defp offer(scope, agent) do
-    questions = question_work?(scope, agent)
+    questions = held_questions(scope, agent)
     nodes = graph_work(scope, agent)
 
-    if questions or nodes != [] do
+    if questions != [] or nodes != [] do
       {:work, fingerprint(questions, nodes), offer_subject(nodes)}
     else
       :none
@@ -575,6 +575,9 @@ defmodule CodeMySpec.Agents.Work do
   # questions when there is no graph work.
   defp offer_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
   defp offer_subject([]), do: {"questions", nil}
+
+  defp questions_only?({"questions", nil}), do: true
+  defp questions_only?(_subject), do: false
 
   # Hashed rather than stored whole: the comparison is equality and nothing
   # reads the parts, so the column stays a fixed width no matter how much work
@@ -615,21 +618,31 @@ defmodule CodeMySpec.Agents.Work do
   # bypasses this entirely and always did.
   @decline_ttl_seconds 600
 
-  defp already_declined?(%{declined_offer: nil}, _offer), do: false
+  # An offer of questions alone is held after one decline, and for as long as
+  # the set is unchanged (b7a705ee). Neither reason above applies to it: a
+  # question does not become answerable by waiting, and every change that
+  # matters — one raised, answered, escalated — changes the set, so the
+  # fingerprint moves and the offer is made again. Main's cadence check-in
+  # still lists them. Measured 2026-10-02: main was re-offered one question it
+  # believed it had escalated four times in six minutes, and every turn read
+  # "no change".
+  defp already_declined?(%{declined_offer: declined} = agent, offer, questions_only?)
+       when not is_nil(declined) and declined == offer do
+    repeats_spent?(agent.declined_offer_count, questions_only?) and
+      within_window?(agent.declined_offer_at, questions_only?)
+  end
 
-  defp already_declined?(%{declined_offer: declined}, offer) when declined != offer, do: false
+  defp already_declined?(_agent, _offer, _questions_only?), do: false
+
+  defp repeats_spent?(n, true), do: is_integer(n) and n >= 1
+  defp repeats_spent?(n, false), do: is_integer(n) and n >= @max_repeats
 
   # Recorded by a build that did not stamp the time. Treated as expired rather
   # than open — the same reasoning as `reservation_open?/1` in reverse: here the
   # conservative reading is the one that keeps the agent reachable.
-  defp already_declined?(%{declined_offer_at: nil}, _offer), do: false
-
-  defp already_declined?(%{declined_offer_count: n}, _offer)
-       when not is_integer(n) or n < @max_repeats,
-       do: false
-
-  defp already_declined?(%{declined_offer_at: at}, _offer),
-    do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
+  defp within_window?(nil, _questions_only?), do: false
+  defp within_window?(_at, true), do: true
+  defp within_window?(at, false), do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
 
   @doc """
   The damper holding this agent's current offer, or nil.
@@ -642,7 +655,7 @@ defmodule CodeMySpec.Agents.Work do
   def damped(scope, %Agent{} = agent, claimable) do
     offer = offer_fingerprint(scope, agent, claimable)
 
-    if already_declined?(agent, offer) do
+    if already_declined?(agent, offer, false) do
       %{
         count: agent.declined_offer_count,
         requirement: claimable |> List.first() |> then(&(&1 && &1.name)),
@@ -654,7 +667,7 @@ defmodule CodeMySpec.Agents.Work do
   @doc false
   def offer_fingerprint(scope, agent, claimable) do
     fingerprint(
-      question_work?(scope, agent),
+      held_questions(scope, agent),
       Enum.map(claimable, &{&1.entity_type, &1.entity_id, &1.name})
     )
   end
@@ -662,11 +675,19 @@ defmodule CodeMySpec.Agents.Work do
   # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
   # `:teammate_question` — the main agent (story 1052), and product for the
   # criteria questions routed to it (8c91d5bc). Each wakes for its own holder.
-  defp question_work?(scope, %{role: role}) do
+  # Their ids, not whether there are any, so a new question is a new offer.
+  defp held_questions(scope, %{role: role}) do
     holder = MainAgent.holder_of(role)
 
-    RoleProfile.wakes_on?(role, :teammate_question) and not is_nil(holder) and
-      Enum.any?(MainAgent.list_open_questions(scope), &(&1.holder == holder))
+    if RoleProfile.wakes_on?(role, :teammate_question) and not is_nil(holder) do
+      scope
+      |> MainAgent.list_open_questions()
+      |> Enum.filter(&(&1.holder == holder))
+      |> Enum.map(& &1.id)
+      |> Enum.sort()
+    else
+      []
+    end
   end
 
   # `list_notifications` is code mode, like most of the catalogue — a main agent
@@ -678,7 +699,10 @@ defmodule CodeMySpec.Agents.Work do
         @prompt <>
           " Questions are also waiting for you: read them with " <>
           "`run_script` calling list_notifications, and answer each with " <>
-          "`answer_notification` so the answer is recorded and reaches the asker.",
+          "`answer_notification` so the answer is recorded and reaches the asker. " <>
+          "One that is the user's to decide goes up with `escalate_question`, " <>
+          "never re-asked with `ask_user_question`: that opens a second question " <>
+          "and leaves this one yours.",
       else: @prompt
   end
 
