@@ -258,6 +258,7 @@ defmodule CodeMySpec.SpexGivensTest do
     Application.put_env
     app_instance_rig push_app_event push_app_event_as_main
     set_idle_timeout install_app_instance_runner
+    refuse_verify_calls
   )
 
   # The failure message has always offered a second remedy — "if the
