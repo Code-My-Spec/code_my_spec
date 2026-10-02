@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1061.Criterion1683Spex do
         Fixtures.write_framework_knowledge_file(dir, "retired.md", "# Retired\n\nOld advice.")
         :ok = Fixtures.server_starts()
         assert knowledge_paths(context.scope) == ["liveview.md", "retired.md"]
-        File.rm!(Path.join(dir, "retired.md"))
+        drop_knowledge_file(dir, "retired.md")
         {:ok, context}
       end
 

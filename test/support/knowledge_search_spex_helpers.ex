@@ -55,6 +55,10 @@ defmodule CodeMySpecSpex.KnowledgeSearchHelpers do
     dir
   end
 
+  @doc "A release that no longer ships `filename`."
+  @spec drop_knowledge_file(String.t(), String.t()) :: :ok
+  def drop_knowledge_file(dir, filename), do: File.rm!(Path.join(dir, filename))
+
   @doc "The embedding batches reported since the last drain, as their texts."
   @spec embedded_texts() :: [String.t()]
   def embedded_texts, do: drain([])
