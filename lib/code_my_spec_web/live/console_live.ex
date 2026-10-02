@@ -299,6 +299,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
         secret_error={@secret_error}
         sops_recipients={@sops_recipients}
         secret_sources={@secret_sources}
+        show_close?={false}
       />
     </section>
     """
@@ -311,6 +312,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
         return_to={~p"/app/projects/#{@current_scope.active_project_id}/console"}
         missing_credentials={@missing_credentials}
         credentials={@credentials}
+        show_close?={false}
       />
     </section>
     """
@@ -339,6 +341,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       <EnvironmentsForm.environments_form
         return_to={~p"/app/projects/#{@current_scope.active_project_id}/console"}
         environment_rows={@environment_rows}
+        show_close?={false}
       />
     </section>
     """
