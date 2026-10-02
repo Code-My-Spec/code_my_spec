@@ -91,7 +91,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
       |> assign(:plan, plan)
       |> assign(:environments, environments)
       |> assign(:environment, environment)
-      |> assign(:resources, owned_resources(plan, environments))
       |> assign(:resource_key, string_to_key(params["key"]))
       |> assign(:tab, params["tab"] || "config")
       |> assign_new(:credentials, fn -> Credentials.list(scope) end)
