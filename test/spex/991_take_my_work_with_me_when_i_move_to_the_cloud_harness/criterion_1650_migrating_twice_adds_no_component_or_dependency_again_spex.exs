@@ -69,15 +69,24 @@ defmodule CodeMySpecSpex.Story991.Criterion1650Spex do
 
       when_ "Sam migrates it twice", context do
         migrate!(context, context.cloud)
-        first = {listed(context.cloud), architecture(context.cloud)}
+        first = snapshot(context.cloud)
         migrate!(context, context.cloud)
         {:ok, Map.put(context, :first, first)}
       end
 
       then_ "the second run changed nothing", context do
-        assert {listed(context.cloud), architecture(context.cloud)} == context.first
+        assert snapshot(context.cloud) == context.first
         {:ok, context}
       end
     end
+  end
+
+  # Order-free: neither tool promises an order.
+  defp snapshot(cloud) do
+    {listed(cloud)
+     |> Jason.decode!()
+     |> Map.fetch!("components")
+     |> Enum.sort_by(& &1["module_name"]),
+     cloud |> architecture() |> String.split("\n") |> Enum.sort()}
   end
 end
