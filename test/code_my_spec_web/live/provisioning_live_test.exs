@@ -301,49 +301,40 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
   end
 
   describe "a step's state is rendered from what actually happened" do
-    # The page re-checks a done step against its provider on mount rather than
-    # reading the row back, so the verifier has to say the resource is there —
-    # a seeded row alone is exactly what this page deliberately no longer
-    # trusts.
-    test "a done step shows done", %{conn: conn, project: project, scope: scope} do
+    # Checks are manual only (John, 2026-10-02): mount reads the stored row
+    # and nothing else. It used to re-check every done step against its
+    # provider on every single page load, which is exactly the flood this
+    # removed — so the verifier stub here must never be called, proven by
+    # raising from it, not just by the html it would have produced.
+    test "a done step shows done, straight from the stored row", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
       StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
-      stub_verifier(fn _scope, _key -> {:ok, :satisfied, []} end)
+      stub_verifier(fn _scope, _key -> flunk("mount must not call the provider verifier") end)
 
       {:ok, _view, html} = live(conn, path(project))
 
       assert html =~ ~r/data-step="repository"[^>]*data-state="done"/
     end
 
-    # The other half of the same behaviour: a resource that has gone from the
-    # provider drops back so the next run rebuilds it (criterion 7964).
-    test "a done step whose resource is gone drops back to not_started", %{
+    # The other half of the same behaviour (criterion 7964's old mount path,
+    # now a manual one): a resource gone from the provider is not discovered
+    # by opening the page any more. It still reads done until something
+    # actually checks it — a run, or the manual check steps 5/6 add.
+    test "a done step whose resource is gone still shows done until something checks", %{
       conn: conn,
       project: project,
       scope: scope
     } do
       StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
-      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
-
-      {:ok, _view, html} = live(conn, path(project))
-
-      assert html =~ ~r/data-step="repository"[^>]*data-state="not_started"/,
-             "a step whose resource is gone kept claiming done"
-    end
-
-    # A provider that cannot be reached is not evidence the resource is gone,
-    # and treating it as such would un-mark finished work over a timeout.
-    test "an unreachable provider leaves the step alone", %{
-      conn: conn,
-      project: project,
-      scope: scope
-    } do
-      StepRepository.upsert(scope, :repository, nil, %{state: :done, position: 0})
-      stub_verifier(fn _scope, _key -> {:error, :timeout} end)
+      stub_verifier(fn _scope, _key -> flunk("mount must not call the provider verifier") end)
 
       {:ok, _view, html} = live(conn, path(project))
 
       assert html =~ ~r/data-step="repository"[^>]*data-state="done"/,
-             "a timeout un-marked a step that was finished"
+             "mount must not silently demote a step — only a check does that"
     end
 
     # Paused and errored render differently on purpose: one tells Sam what to
@@ -801,10 +792,12 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     # The panel is headed "What you now own", which is a claim about the
     # present. `reverify/3` keeps a step's recorded resources when the provider
     # says the thing is gone — deliberately, because teardown removes only what
-    # a step recorded and clearing the list would leak whatever is still there.
-    # So the record outlives the resource, and the panel listed a deleted server
-    # under "you own this" on the same page load that discovered it was gone.
-    test "a resource whose step no longer verifies is marked, not claimed", %{
+    # a step recorded and clearing the list would leak whatever is still there
+    # — but checks are manual only (John, 2026-10-02): mount no longer calls
+    # `reverify/3` at all, so a server deleted behind setup's back still reads
+    # "you own this" until something actually checks. The verifier stub below
+    # fails loudly if mount calls it, which is the regression this guards.
+    test "a resource stays claimed at mount, with no provider check to say otherwise", %{
       conn: conn,
       project: project,
       scope: scope
@@ -815,27 +808,19 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
       })
 
-      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+      stub_verifier(fn _scope, _key -> flunk("mount must not call the provider verifier") end)
 
       {:ok, view, html} = live(conn, path(project))
 
-      # Still listed — teardown works from this list, so dropping it would
-      # strand the resource rather than fix anything.
       assert html =~ "hetzner/ash/cms-prod"
 
-      assert has_element?(view, "[data-test='unverified-resource'][data-step='server']"),
-             "a resource whose step just failed to verify must say so"
-
-      refute html =~
-               ~s(data-kind="server" data-location="hetzner/ash/cms-prod" data-verified="true"),
-             "an unverified resource must not be marked verified"
+      refute has_element?(view, "[data-test='unverified-resource'][data-step='server']"),
+             "mount must not mark a resource unverified — nothing checked it"
     end
 
-    # The same claim one level down. The step's own resource list had the
-    # milder version of the problem — a resource under a `not_started` heading
-    # is ambiguous rather than a flat assertion of ownership — but it is the
-    # same record outliving the same resource, so it gets the same marking.
-    test "the step's own resource list marks what no longer verifies", %{
+    # The same claim one level down: the step's own resource list reads the
+    # same stored state, with no mount-time check to contradict it either.
+    test "the step's own resource list stays claimed at mount too", %{
       conn: conn,
       project: project,
       scope: scope
@@ -846,15 +831,15 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
         resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
       })
 
-      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+      stub_verifier(fn _scope, _key -> flunk("mount must not call the provider verifier") end)
 
       {:ok, view, _html} = live(conn, path(project))
 
-      assert has_element?(
+      refute has_element?(
                view,
                "[data-test='setup-step'][data-step='server'] [data-test='unverified-resource']"
              ),
-             "the step still listed its resource without saying the check had just failed"
+             "mount must not mark the step's own resource unverified — nothing checked it"
     end
 
     test "a resource whose step verifies is not marked unverified", %{

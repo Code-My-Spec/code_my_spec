@@ -835,6 +835,14 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
             <div class="flex items-center gap-2">
               <span class="badge">{@step.state}</span>
+              <span
+                :if={@step.state == :done}
+                data-test="checked-note"
+                data-step={@step.key}
+                class="text-xs opacity-60"
+              >
+                {checked_note(@step)}
+              </span>
               <.button
                 :if={@step.key != :deploy}
                 data-test="run-step"
@@ -970,7 +978,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               on_confirm={JS.push("confirm_inbound_mx_repoint")}
             />
           </div>
-
+          
     <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
                  rather than repeat the mistake `59f366cc` fixed, but nothing gave
                  Sam a way to supply the one it's asking for — the plain "Run"
@@ -1473,13 +1481,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         # not the one he configured.
         options = Provisioning.setup_options(scope)
 
-        # Ask the providers rather than reading the rows back. A row saying
-        # done is what was observed once, not evidence the resource is still
-        # there — and a server deleted in the console leaves the row saying
-        # done forever (criteria 7970 and 7964).
+        # Checks are manual only (John, 2026-10-02): mount no longer asks
+        # every provider whether a done step's resource still exists. That
+        # reverify call blocked the join on a slow provider, and `mark/5`
+        # announcing every reconfirmation flooded every open tab's `load/2`
+        # once per done step, on every single page load. A step's own
+        # "checked … ago"/"unchecked" state says when it was last confirmed
+        # instead of mount silently reconfirming it.
         if connected?(socket) do
           Provisioning.subscribe(scope)
-          Provisioning.reverify(scope, options, step_opts())
         end
 
         {:ok, load(socket, options)}
@@ -2667,6 +2677,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # setup waited rather than declaring victory first.
   defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_verified_at(_), do: nil
+
+  # Checks are manual only: a done step's `verified_at` is the last time a
+  # provider actually confirmed it, not when the step last ran. Nothing sets
+  # it but a check, so a step that has never been checked says so plainly
+  # rather than reading as confirmed on the strength of having finished.
+  defp checked_note(%{verified_at: %DateTime{} = at}), do: "checked #{ago(at)}"
+  defp checked_note(_step), do: "unchecked"
+
+  defp ago(%DateTime{} = at) do
+    case DateTime.diff(DateTime.utc_now(), at, :second) do
+      s when s < 90 -> "#{s}s ago"
+      s when s < 5400 -> "#{div(s, 60)}m ago"
+      s when s < 86_400 -> "#{div(s, 3600)}h ago"
+      s -> "#{div(s, 86_400)}d ago"
+    end
+  end
 
   defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_started_at(_), do: nil
