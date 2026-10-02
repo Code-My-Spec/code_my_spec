@@ -5744,7 +5744,11 @@ defmodule CodeMySpecSpex.Case do
       # a recording failure waiting for whoever first exercised that path.
       CodeMySpec.Content.PullClient,
       CodeMySpec.Provisioning.Deploy.UptimeRobot,
-      CodeMySpec.AgentHarness.ConversationRecorder
+      CodeMySpec.AgentHarness.ConversationRecorder,
+      # Step 3's reconciler (577de9bb): fetches a package's tarball from
+      # hex.pm. Caught by this same check the moment it was added — added here
+      # straight away rather than waiting for a spex to find it first.
+      CodeMySpec.Embeddings.HexPackageFetch
     ]
   end
 
