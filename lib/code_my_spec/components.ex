@@ -271,10 +271,10 @@ defmodule CodeMySpec.Components do
   ## Examples
 
       iex> get_requirement_definitions(scope, %Component{type: "schema"}, [])
-      [%RequirementDefinition{name: "spec_file", ...}, ...]
+      [%RequirementDefinition{name: "implementation_file", ...}]
 
-      iex> get_requirement_definitions(scope, component, include: ["spec_file", "spec_valid"])
-      [%RequirementDefinition{name: "spec_file", ...}, %RequirementDefinition{name: "spec_valid", ...}]
+      iex> get_requirement_definitions(scope, component, include: ["implementation_file"])
+      [%RequirementDefinition{name: "implementation_file", ...}]
 
       iex> get_requirement_definitions(scope, component, artifact_types: [:tests])
       [%RequirementDefinition{artifact_type: :tests, ...}, ...]

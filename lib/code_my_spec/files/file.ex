@@ -43,7 +43,6 @@ defmodule CodeMySpec.Files.File do
     :agents_md,
     :knowledge,
     :project_knowledge,
-    :hex_doc,
     :deploy_artifact,
     :encrypted_env,
     :lockfile
@@ -72,7 +71,6 @@ defmodule CodeMySpec.Files.File do
           | :agents_md
           | :knowledge
           | :project_knowledge
-          | :hex_doc
           | :deploy_artifact
           | :encrypted_env
           | :lockfile

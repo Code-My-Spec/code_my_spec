@@ -204,10 +204,8 @@ defmodule CodeMySpecWeb.DevGraphLive do
   # stops moving and says nothing, which is the exact failure `GraphWatcher`
   # exists to end arriving through a different door.
   #
-  # This asked `ProjectSync.FileWatcherServer` — the server's own filesystem
-  # watcher — and nothing starts that server any more, so every root read
-  # "NOT watched" on a dev box whose every checkout was announcing fine.
-  # `HarnessRegistry` is the same answer `Analysis.write_file/3` acts on.
+  # The harness is the only watcher. `HarnessRegistry` is the same answer
+  # `Analysis.write_file/3` acts on.
   #
   # Server-side this can only answer "is a harness joined for the copy".
   # Whether the OS is still delivering events to it is known to the harness

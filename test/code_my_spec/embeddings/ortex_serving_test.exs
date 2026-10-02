@@ -14,14 +14,6 @@ defmodule CodeMySpec.Embeddings.OrtexServingTest do
 
   alias CodeMySpec.Embeddings.OrtexServing
 
-  setup do
-    on_exit(fn -> stop_server(Process.whereis(OrtexServing)) end)
-    :ok
-  end
-
-  defp stop_server(nil), do: :ok
-  defp stop_server(pid), do: GenServer.stop(pid)
-
   # A run_fn the test controls completely. Every run reports, in order, to
   # the test process — that reported order is what's under test, not
   # wall-clock timing, so assertions don't race against how fast an
@@ -53,7 +45,7 @@ defmodule CodeMySpec.Embeddings.OrtexServingTest do
 
   test "a search submitted after queued bulk jobs is served before them" do
     test_pid = self()
-    {:ok, _pid} = OrtexServing.start_link(run_fn: reporting_run_fn(test_pid))
+    _pid = start_supervised!({OrtexServing, run_fn: reporting_run_fn(test_pid)})
 
     # Dispatched straight to the worker (nothing queued yet) and held there
     # — this is the one in-flight batch a search can't avoid waiting
@@ -101,13 +93,13 @@ defmodule CodeMySpec.Embeddings.OrtexServingTest do
   end
 
   test "bulk jobs with nothing queued ahead still complete" do
-    {:ok, _pid} = OrtexServing.start_link(run_fn: reporting_run_fn(self()))
+    _pid = start_supervised!({OrtexServing, run_fn: reporting_run_fn(self())})
 
     assert {:ok, [["x"]]} = OrtexServing.embed_batch(["x"], :bulk)
   end
 
   test "search with nothing queued ahead still completes" do
-    {:ok, _pid} = OrtexServing.start_link(run_fn: reporting_run_fn(self()))
+    _pid = start_supervised!({OrtexServing, run_fn: reporting_run_fn(self())})
 
     assert {:ok, "q"} = OrtexServing.embed("q", :search)
   end

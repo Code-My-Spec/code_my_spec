@@ -298,10 +298,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp expected_path(_scope, _entity, _role), do: nil
 
-  defp role_to_file_key(:spec), do: :spec_file
   defp role_to_file_key(:implementation), do: :code_file
   defp role_to_file_key(:test), do: :test_file
-  defp role_to_file_key(:review), do: :review_file
   defp role_to_file_key(_), do: nil
 
   # -- Path checks (project-level) --

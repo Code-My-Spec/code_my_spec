@@ -4,7 +4,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Embeddings.TestBackend
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
@@ -25,8 +24,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert {:test, _} = swap(FileSync.classify("test/my_app/accounts_test.exs"))
     end
 
-    test "classifies spec files" do
-      assert {:spec, _} = swap(FileSync.classify(".code_my_spec/spec/my_app/accounts.spec.md"))
+    test "does not track component spec files" do
+      assert nil == FileSync.classify(".code_my_spec/spec/my_app/accounts.spec.md")
     end
 
     test "classifies bdd spec files" do
@@ -141,12 +140,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       # Seed some files
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        "# MyApp.Accounts\n\n## Type\n\nschema"
-      )
-
+      write_file(tmp_dir, ".code_my_spec/rules/context.md", "# Context rules")
       write_file(tmp_dir, "CLAUDE.md", "# Project")
 
       {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
@@ -158,7 +152,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       paths = Enum.map(files, & &1.path)
 
       assert "lib/my_app/accounts.ex" in paths
-      assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths
+      assert ".code_my_spec/rules/context.md" in paths
       assert "CLAUDE.md" in paths
     end
 
@@ -285,181 +279,23 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        "# MyApp.Accounts\n\n## Type\n\nschema"
-      )
-
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
       assert impl_file.component_id == component.id
       assert impl_file.role == :implementation
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
-      assert spec_file.component_id == component.id
-      assert spec_file.role == :spec
     end
 
-    test "validates spec files during sync" do
+    test "a spec file is not tracked at all" do
       {scope, tmp_dir} = setup_project()
 
-      # Valid liveview spec with required sections
-      spec_content = """
-      # MyApp.UserLive.Index
-
-      A page listing users.
-
-      ## Type
-
-      liveview
-
-      ## Route
-
-      `/users`
-
-      ## User Interactions
-
-      - **phx-click=delete**: Deletes a user
-
-      ## Dependencies
-
-      - MyApp.Users
-
-      ## Design
-
-      Layout: Table of users.
-      """
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/index.spec.md", spec_content)
-      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      # Components are records (3aeb66cf); a spec describes nothing and is not
+      # a project file anything reads.
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n")
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/user_live/index.spec.md")
-      assert spec_file.valid == true
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
-
-      impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
-      assert impl_file.valid == true
-    end
-
-    test "accepts partial architecture specs" do
-      {scope, tmp_dir} = setup_project()
-
-      # Spec missing required sections
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/broken.spec.md",
-        "# MyApp.Broken\n\n## Type\n\nschema\n"
-      )
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert spec_file.valid == true
-      assert spec_file.validation_errors != nil
-    end
-
-    # Regression: a spec authored/edited on Windows carries CRLF line endings.
-    # The `## Type` extraction (and the H1 validator) are `$`-anchored, so a
-    # `## Type\r` line failed to match, the document type silently resolved to
-    # the default "spec" definition, and the WRONG section set was enforced —
-    # a context spec was rejected for "Disallowed sections found: components"
-    # and a schema spec for "Missing required sections". Both must validate.
-    test "validates a CRLF context spec (type resolves to context_spec, Components allowed)" do
-      {scope, tmp_dir} = setup_project()
-
-      content =
-        Enum.join(
-          [
-            "# MyApp.Tasks",
-            "",
-            "## Type",
-            "",
-            "context",
-            "",
-            "## Functions",
-            "",
-            "### create_task/1",
-            "",
-            "Creates a task.",
-            "",
-            "## Dependencies",
-            "",
-            "- MyApp.Repo",
-            "",
-            "## Components",
-            "",
-            "### MyApp.Tasks.Task",
-            "",
-            "The task schema.",
-            ""
-          ],
-          "\r\n"
-        )
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/tasks.spec.md", content)
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/tasks.spec.md")
-
-      assert spec_file.valid == true,
-             "CRLF context spec invalid: #{inspect(spec_file.validation_errors)}"
-
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
-    end
-
-    test "validates a CRLF schema spec (type resolves to schema, not default spec)" do
-      {scope, tmp_dir} = setup_project()
-
-      content =
-        Enum.join(
-          [
-            "# MyApp.Tasks.Task",
-            "",
-            "## Type",
-            "",
-            "schema",
-            "",
-            "## Fields",
-            "",
-            "| Field | Type | Required | Description | Constraints |",
-            "|-------|------|----------|-------------|-------------|",
-            "| title | string | Yes | Task title | Max: 255 |",
-            "",
-            "## Dependencies",
-            "",
-            "- MyApp.Repo",
-            ""
-          ],
-          "\r\n"
-        )
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/task.spec.md", content)
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/task.spec.md")
-
-      assert spec_file.valid == true,
-             "CRLF schema spec invalid: #{inspect(spec_file.validation_errors)}"
-
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
+      refute Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
     end
 
     test "validates test files against spec test assertions" do
@@ -806,129 +642,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
 
       assert result.changed_path == nil
-    end
-
-    test "validates spec files" do
-      {scope, tmp_dir} = setup_project()
-
-      # Invalid spec — missing required sections
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/broken.spec.md",
-        "# MyApp.Broken\n\n## Type\n\nschema\n"
-      )
-
-      abs_path = Path.join(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md")
-
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert file.valid == true
-      assert file.validation_errors != nil
-    end
-
-    # The watcher's per-file dispatch route. `FileSync.sync_path/3`
-    # mirrors `sync/2`'s embedding hook so file changes detected by
-    # `:fs` events drive embedding in real time, not only on the
-    # next stop hook batch.
-    test "embeds a newly-created spec file" do
-      TestBackend.reset()
-      {scope, tmp_dir} = setup_project()
-
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
-      write_file(tmp_dir, path, "# Widget\n\nThe widget context exposes create_widget.")
-      abs_path = Path.join(tmp_dir, path)
-
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
-
-      assert Enum.any?(results, &(&1.path == path)),
-             "Expected sync_path to embed the new spec file. Got: #{inspect(results)}"
-    end
-
-    test "re-embeds when a file's content changes (fingerprint diff)" do
-      TestBackend.reset()
-      {scope, tmp_dir} = setup_project()
-
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
-      abs_path = Path.join(tmp_dir, path)
-
-      write_file(tmp_dir, path, "# Widget\n\nThe widget exposes create_widget/2.")
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      write_file(tmp_dir, path, "# Widget\n\nThe widget exposes create_widget/3 with attrs.")
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "create_widget attrs arity 3",
-          source: "spec",
-          limit: 5
-        )
-
-      hit = Enum.find(results, &(&1.path == path))
-      assert hit, "Expected re-embedded chunk for #{path}, got: #{inspect(results)}"
-      assert hit.content =~ "create_widget/3"
-      refute hit.content =~ "create_widget/2"
-    end
-
-    test "drops embeddings when a tracked file is deleted from disk" do
-      TestBackend.reset()
-      {scope, tmp_dir} = setup_project()
-
-      path = ".code_my_spec/rules/legacy.md"
-      abs_path = write_file(tmp_dir, path, "# Legacy\n\nUse legacy_factory/1 to bootstrap.")
-
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "legacy_factory bootstrap",
-          source: "rules",
-          limit: 5
-        )
-
-      assert Enum.any?(results, &(&1.path == path)),
-             "Pre-condition: expected the file to be embedded after first sync"
-
-      File.rm!(abs_path)
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      {:ok, results_after} =
-        CodeMySpec.Embeddings.search(scope, "legacy_factory bootstrap",
-          source: "rules",
-          limit: 10
-        )
-
-      refute Enum.any?(results_after, &(&1.path == path)),
-             "Expected embeddings for the deleted file to be dropped, got: #{inspect(results_after)}"
-    end
-
-    test "skips re-embedding when content fingerprint is unchanged" do
-      TestBackend.reset()
-      {scope, tmp_dir} = setup_project()
-
-      path = ".code_my_spec/spec/my_app/widget.spec.md"
-      abs_path = Path.join(tmp_dir, path)
-
-      content = "# Widget\n\nThe widget exposes create_widget/2."
-      write_file(tmp_dir, path, content)
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      # Bump mtime by re-writing the same content. sync_path will
-      # re-fingerprint, see no change, and skip the embedding hook.
-      File.touch!(abs_path)
-      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-
-      # Search still finds the embedded chunk — the second sync_path
-      # didn't double-insert (TestBackend would now have one chunk per
-      # file regardless because embed_file deletes-then-inserts, but
-      # the contract this asserts is that no error is raised and the
-      # search result is stable).
-      {:ok, results} =
-        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
-
-      assert Enum.count(results, &(&1.path == path)) == 1
     end
   end
 

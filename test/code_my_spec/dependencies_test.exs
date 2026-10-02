@@ -1,13 +1,4 @@
 defmodule CodeMySpec.DependenciesTest do
-  @moduledoc """
-  The claim: hexdoc projection is driven by recorded state, not by winning a
-  race against `mix deps.get`.
-
-  What that buys is an observable end state — `pending/1` returning `[]` — where
-  before there was only a ten-second timer and the hope that unpacking had
-  finished. These test the properties that end state depends on.
-  """
-
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
@@ -83,54 +74,6 @@ defmodule CodeMySpec.DependenciesTest do
 
       assert length(Dependencies.list_dependencies(scope)) == 1,
              "a lock that could not be read must not be able to say a project has no dependencies"
-    end
-  end
-
-  describe "convergence" do
-    test "a newly recorded package is pending", %{scope: scope} do
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-
-      assert ["bandit"] = scope |> Dependencies.pending() |> Enum.map(& &1.name)
-    end
-
-    test "projecting a package settles it", %{scope: scope} do
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-      :ok = Dependencies.mark_projected(scope, "bandit", "1.10.4")
-
-      assert Dependencies.pending(scope) == [],
-             "an empty pending set is the end state the settle timer never had"
-    end
-
-    # The property that makes this safe to call on every lock event: re-recording
-    # an unchanged lock must not undo projection work.
-    test "re-recording an unchanged lock leaves nothing pending", %{scope: scope} do
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-      :ok = Dependencies.mark_projected(scope, "bandit", "1.10.4")
-
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-
-      assert Dependencies.pending(scope) == []
-    end
-
-    test "a bumped package becomes pending again", %{scope: scope} do
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-      :ok = Dependencies.mark_projected(scope, "bandit", "1.10.4")
-
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.11.0"}]))
-
-      assert ["bandit"] = scope |> Dependencies.pending() |> Enum.map(& &1.name)
-    end
-
-    # The race this design replaces, in miniature: a package re-pinned while its
-    # docs were being projected must not be marked current for a version nobody
-    # projected.
-    test "marking a version that is no longer pinned settles nothing", %{scope: scope} do
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.10.4"}]))
-      {:ok, _} = Dependencies.record_lockfile(scope, lock([{"bandit", "1.11.0"}]))
-
-      :ok = Dependencies.mark_projected(scope, "bandit", "1.10.4")
-
-      assert ["bandit"] = scope |> Dependencies.pending() |> Enum.map(& &1.name)
     end
   end
 

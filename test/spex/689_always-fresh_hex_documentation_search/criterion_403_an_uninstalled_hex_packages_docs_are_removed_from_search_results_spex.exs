@@ -1,103 +1,68 @@
 defmodule CodeMySpecSpex.Story689.Criterion5979Spex do
   @moduledoc """
   Story 689 — Always-fresh hex documentation search
-  Criterion 5979 — An uninstalled hex package's docs are removed
-  from search results.
+  Criterion 403 — An uninstalled hex package's docs are removed from
+  search results.
 
-  Same rule as 5977/5978 (hex doc embeddings reflect installed
-  deps), exercised on the uninstall path: when a package's
-  projected markdown is removed (because the package was
-  uninstalled), the file sync pipeline drops its embeddings.
-
-  See `criterion_5977_*_spex.exs` for the test-infrastructure
-  assumptions.
+  The docs stay stored (another project may lock the same version), but a
+  project that no longer locks the package no longer finds them.
   """
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
-  alias CodeMySpecSpex.TaskResponseHelpers
+  import CodeMySpecSpex.HarnessedKnowledgeHelpers
 
-  @hex_doc_path ".code_my_spec/hex_docs/phoenix/phoenix.md"
-  @hex_doc_content """
-  # Phoenix
-
-  The Phoenix.Endpoint module defines an HTTP server entry point.
-  Use `Phoenix.Endpoint.broadcast/3` to publish.
-  """
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    {:ok, dir} = Briefly.create(directory: true)
+    :ok = Fixtures.embed_on_pgvector(dir)
+    # hex.pm is fetched inside the embed pool, not this process.
+    Req.Test.set_req_test_to_shared()
+    :ok
+  end
+
+  defp lock(version, checksum),
+    do:
+      ~s(%{\n  "swept_pkg": {:hex, :swept_pkg, "#{version}", "chk", [:mix], [], "hexpm", "#{checksum}"}\n}\n)
+
+  defp source(doc), do: %{"lib/swept.ex" => "defmodule Swept do\n  @moduledoc \"#{doc}\"\nend\n"}
+
+  # hex.pm, serving each version's tarball at its own URL.
+  defp serve(tarballs) do
+    Req.Test.stub(CodeMySpec.Embeddings.HexPackageFetch, fn conn ->
+      [_, version] = Regex.run(~r/swept_pkg-(.+)\.tar$/, conn.request_path)
+      Plug.Conn.send_resp(conn, 200, Map.fetch!(tarballs, version))
+    end)
+  end
+
   spex "Agent does not see uninstalled hex packages in search results", criterion: 403 do
-    scenario "removing phoenix's projected markdown drops it from search after re-sync" do
-      given_ "phoenix's projected markdown is on disk and the engineer has synced", context do
-        :ok = Environments.write_file(context.environment, @hex_doc_path, @hex_doc_content)
+    scenario "the main copy drops swept_pkg from mix.lock" do
+      given_ "swept_pkg's docs are searchable, and mix.lock no longer locks it", context do
+        main = checkout(context, main?: true)
+        harness_up(main)
+        {tarball, checksum} = Fixtures.hex_tarball(source("Swept sweeps the floor."))
+        serve(%{"1.0.0" => tarball})
+        write_lock(main, lock("1.0.0", checksum))
+        manifest(main)
+        :ok = Fixtures.hex_doc_sweep_runs()
+        assert search(main, "hexdocs") =~ "Swept sweeps the floor."
+        write_lock(main, "%{}\n")
+        {:ok, Map.put(context, :main, main)}
+      end
 
-        {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+      when_ "the harness sends its manifest", context do
+        manifest(context.main)
         {:ok, context}
       end
 
-      when_ "phoenix is uninstalled (its projected markdown is deleted) and the engineer re-syncs",
-            context do
-        :ok = Environments.delete_file(context.environment, @hex_doc_path)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
-        {:ok, context}
-      end
-
-      then_ "semantic_search with source `hexdocs:phoenix` returns no chunks citing phoenix.md",
-            context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          SemanticSearch.execute(
-            %{query: "Phoenix Endpoint HTTP entry point", source: "hexdocs:phoenix", limit: 10},
-            frame
-          )
-
-        body = TaskResponseHelpers.response_text(response)
-
-        # Anchor: a search header rendered, so absence is a real
-        # "no longer there," not a swallowed error.
-        assert body =~ "Search:"
-
-        refute body =~ "phoenix.md",
-               "Expected phoenix.md to be absent from hexdocs:phoenix search after uninstall, got:\n#{body}"
-
-        {:ok, context}
-      end
-
-      then_ "the all-packages hexdocs search no longer returns phoenix content either", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          SemanticSearch.execute(
-            %{query: "Phoenix Endpoint HTTP entry point", source: "hexdocs", limit: 10},
-            frame
-          )
-
-        body = TaskResponseHelpers.response_text(response)
-
-        assert body =~ "Search:"
-
-        refute body =~ "phoenix.md",
-               "Expected phoenix.md to be absent from hexdocs (all packages) search after uninstall, got:\n#{body}"
-
+      then_ "search no longer finds swept_pkg's documentation", context do
+        refute search(context.main, "hexdocs") =~ "Swept sweeps the floor."
         {:ok, context}
       end
     end

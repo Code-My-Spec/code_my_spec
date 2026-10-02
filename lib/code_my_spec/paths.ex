@@ -22,9 +22,6 @@ defmodule CodeMySpec.Paths do
   # Top-level directories
   # ============================================================================
 
-  @doc "Spec files directory (`.code_my_spec/spec`)."
-  def spec_dir, do: Path.join(@base_dir, "spec")
-
   @doc "Persona research directory (`.code_my_spec/personas`)."
   def personas_dir, do: Path.join(@base_dir, "personas")
 
@@ -36,9 +33,6 @@ defmodule CodeMySpec.Paths do
 
   @doc "Knowledge directory for project-specific research (`.code_my_spec/knowledge`)."
   def knowledge_dir, do: Path.join(@base_dir, "knowledge")
-
-  @doc "Hex doc projection directory (`.code_my_spec/hex_docs`). Populated by the projector that reads EEP-48 docs from compiled BEAMs in `_build/<env>/lib/<package>/ebin`."
-  def hex_docs_dir, do: Path.join(@base_dir, "hex_docs")
 
   @doc "Rules directory (`.code_my_spec/rules`)."
   def rules_dir, do: Path.join(@base_dir, "rules")
@@ -108,14 +102,8 @@ defmodule CodeMySpec.Paths do
   # Derived paths (take a module path or topic name)
   # ============================================================================
 
-  @doc "Spec file path for a module path (e.g., `my_app/accounts` → `.code_my_spec/spec/my_app/accounts.spec.md`)."
-  def spec_file(module_path), do: Path.join(spec_dir(), "#{module_path}.spec.md")
-
   @doc "Design file path for a module path."
   def design_file(module_path), do: Path.join(design_dir(), "#{module_path}.md")
-
-  @doc "Design review file path for a context module path."
-  def review_file(module_path), do: Path.join(spec_dir(), "#{module_path}/design_review.md")
 
   # ============================================================================
   # Glob patterns
@@ -123,15 +111,4 @@ defmodule CodeMySpec.Paths do
 
   @doc "Glob pattern for knowledge files under a topic."
   def knowledge_topic_glob(topic), do: Path.join(knowledge_dir(), "#{topic}/**")
-
-  # ============================================================================
-  # Prefix helpers (for stripping/adding spec dir prefix)
-  # ============================================================================
-
-  @doc """
-  The spec directory prefix with trailing slash, for use in `String.replace_prefix/2`.
-
-  Returns `".code_my_spec/spec/"`.
-  """
-  def spec_prefix, do: spec_dir() <> "/"
 end

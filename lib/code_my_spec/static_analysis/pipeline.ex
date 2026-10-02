@@ -15,7 +15,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   require Logger
 
   alias CodeMySpec.Compile
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
@@ -51,7 +50,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     implementation: [:credo, :exunit_stale, :spex_stale],
     test: [:credo, :exunit_stale],
     test_support: [:credo, :exunit_stale],
-    spec: [:validate_spec],
     # `:credo` for the same reason `:test` and `:test_support` carry it, and
     # against the same failure the comment above this map describes.
     #
@@ -71,7 +69,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     #
     # A source whose findings can block has to be re-runnable by the edits that
     # would fix them. That is the rule the `:test` row already encodes.
-    bdd_spec: [:credo, :validate_bdd, :spex_stale],
+    bdd_spec: [:credo, :spex_stale],
     qa_brief: [:validate_qa],
     qa_result: [:validate_qa],
     architecture: [],
@@ -149,8 +147,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     credo: :credo,
     exunit_stale: :exunit,
     spex_stale: :spex,
-    validate_spec: :spec_validation,
-    validate_bdd: :spec_validation,
     validate_qa: :qa_validation
   }
 
@@ -373,7 +369,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # spawning `mix credo`. Mirrors `compile_output_file` /
   # `exunit_output_file` / `spex_output_file` already on the runner
   # analyzers. Lets criterion 5100 etc. exercise the credo block path
-  # without losing the race against FileWatcherServer.
+  # deterministically.
   defp with_test_output(runner_opts, :credo, validation_opts) do
     case Keyword.get(validation_opts, :credo_output_file) do
       nil -> runner_opts
@@ -430,7 +426,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
       file_count =
         case validator do
-          :validate_spec -> Enum.count(files, &(&1.role in [:spec, :review]))
           :validate_qa -> Enum.count(files, &(&1.role in [:qa_brief, :qa_result]))
           _ -> length(files)
         end
@@ -443,14 +438,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end)
   end
 
-  defp run_validator(scope, :validate_spec, files) do
-    fun = &spec_document_type/2
-
-    files
-    |> Enum.filter(&(&1.role in [:spec, :review]))
-    |> Enum.flat_map(&validate_document(scope, &1, "spec_validation", fun))
-  end
-
   defp run_validator(scope, :validate_qa, files) do
     fun = &qa_document_type/2
 
@@ -458,10 +445,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     |> Enum.filter(&(&1.role in [:qa_brief, :qa_result]))
     |> Enum.flat_map(&validate_document(scope, &1, "qa_validation", fun))
   end
-
-  # BDD specs are .exs files — the compile step catches syntax errors and
-  # RequirementCalculator handles runtime (spex passing) validation.
-  defp run_validator(_scope, :validate_bdd, _files), do: []
 
   defp run_validator(_scope, validator, _files) do
     Logger.warning("[Pipeline] Unknown validator: #{validator}")
@@ -484,9 +467,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   defp run_document_validation(scope, file, source, document_type, content) do
-    strict? = strict_for_source?(scope, source)
-
-    case Documents.create_dynamic_document(content, document_type, strict: strict?) do
+    case Documents.create_dynamic_document(content, document_type, strict: true) do
       {:ok, _document} ->
         Files.mark_validated(file, true)
         []
@@ -508,13 +489,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
         ]
     end
   end
-
-  # Architecture specs may be partial; QA documents still require their sections.
-  defp strict_for_source?(_scope, "spec_validation"), do: false
-  defp strict_for_source?(_scope, _source), do: true
-
-  defp spec_document_type(%{role: :review}, _content), do: "design_review"
-  defp spec_document_type(_file, content), do: document_type_from_content(content)
 
   defp qa_document_type(%{role: :qa_brief}, _content), do: "qa_story_brief"
 
@@ -540,32 +514,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end
   end
 
-  # Mirrors FileSync.document_type_from_content/1 (kept private there).
-  # CRLF → LF first so a Windows-written `## Type\r` still matches; otherwise
-  # the type resolves to the default "spec" definition and the wrong section
-  # set is enforced.
-  defp document_type_from_content(content) do
-    type_section =
-      content
-      |> String.replace("\r\n", "\n")
-      |> String.split("\n")
-      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
-      |> Enum.drop(1)
-      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-      |> List.first()
-
-    case type_section do
-      nil ->
-        "spec"
-
-      component_type ->
-        type_def = ComponentRegistry.get_type(component_type)
-        Map.get(type_def, :document_type, "spec")
-    end
-  end
-
   defp split_analyzers(analyzers) do
     Enum.split_with(analyzers, fn atom ->
       atom in [:credo, :sobelow]
@@ -575,8 +523,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   @analyzer_source_map %{
     credo: "credo",
     sobelow: "sobelow",
-    validate_spec: "spec_validation",
-    validate_bdd: "spec_validation",
     validate_qa: "qa_validation"
   }
 

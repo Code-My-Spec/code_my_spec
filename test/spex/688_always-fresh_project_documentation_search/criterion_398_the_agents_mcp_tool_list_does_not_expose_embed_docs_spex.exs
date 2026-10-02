@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story688.Criterion5973Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Agent cannot invoke a manual embed_docs action against the local MCP server", criterion: 398 do
+  spex "Agent cannot invoke a manual embed_docs action against the local MCP server",
+    criterion: 398 do
     scenario "embed_docs is absent from the registered tool list" do
       given_ "an agent connected to the local MCP server", context do
         # given: already true — there is nothing to connect to. The local MCP

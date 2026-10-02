@@ -71,8 +71,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
       opts[:output_file] ->
         # Spex-only escape hatch — read pre-recorded JSON instead of
         # running `mix credo`. Used by cassette-backed tests that
-        # exercise the credo block path without losing the race against
-        # FileWatcherServer (see issue 7d956b03). The file is expected
+        # exercise the credo block path deterministically (see issue
+        # 7d956b03). The file is expected
         # to be in the same JSON shape `mix credo --format json` would
         # produce.
         read_from_output_file(opts[:output_file], scope)

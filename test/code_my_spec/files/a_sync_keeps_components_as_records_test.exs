@@ -3,7 +3,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
   Components as records (3aeb66cf). A sync parses no spec, leaves existing
   components as they are, creates new modules as discovered, and prunes only
   discovered components whose code is gone. Step 4 did this for frozen
-  projects; step 7c made it the only sync, so a freeze changes nothing here.
+  projects; step 7c made it the only sync.
   """
   use CodeMySpecTest.DataCase, async: true
 

@@ -34,7 +34,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
-  alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Sessions
 
   # Maps session type names to AgentTask modules. A function, not a module
@@ -43,7 +42,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # app's compile cycle.
   def session_type_map do
     %{
-      "context_design_review" => AgentTasks.ContextDesignReview,
       "develop_context" => AgentTasks.DevelopContext,
       "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
       "fix_bdd_specs" => AgentTasks.FixBddSpecs,
@@ -398,25 +396,18 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     Sessions.find_or_create_session(scope, external_id, attrs)
   end
 
-  # Sync — incremental only. File watcher handles continuous sync;
-  # this catches anything it missed (e.g., files changed while Claude wasn't running).
+  # Sync — incremental only.
 
   defp sync_project(scope) do
     base_dir = scope.environment && scope.environment.cwd
-    FileWatcherServer.ensure_watching(scope)
 
     if base_dir do
-      # `embed: false` — `start_task` is on the request hot path. The
-      # framework-knowledge re-embed + hex doc re-projection belong to
-      # boot / mix.lock-poll / explicit `sync_project`, not every task
-      # start.
-      #
       # `changed_paths` threaded through to `ComponentSync` — this function's
       # own doc says "incremental only", but without this it forced a full,
       # non-incremental resync of every component in the project on every
       # `start_task` call regardless of what actually changed. Same bug as
       # `GetNextRequirement`, the other end of this loop.
-      with {:ok, file_result} <- FileSync.sync(scope, base_dir: base_dir, embed: false),
+      with {:ok, file_result} <- FileSync.sync(scope, base_dir: base_dir),
            {:ok, comp_result} <-
              FileComponentSync.sync_from_files(scope,
                base_dir: base_dir,

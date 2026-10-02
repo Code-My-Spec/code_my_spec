@@ -23,7 +23,8 @@ defmodule CodeMySpecSpex.Story687.Criterion5952Spex do
 
   @drift_path "lib/post_drift_module.ex"
 
-  spex "Founder triggers a re-sync from the files page and rows refresh in place", criterion: 393 do
+  spex "Founder triggers a re-sync from the files page and rows refresh in place",
+    criterion: 393 do
     scenario "a file written after the initial sync appears after clicking the page's sync action" do
       given_ :synced_context_component
 
@@ -61,10 +62,10 @@ defmodule CodeMySpecSpex.Story687.Criterion5952Spex do
       then_ "the new file appears in the same LiveView render", context do
         html_after = render(context.files_live)
 
-        # Anchor: the synced spec must still be on the page — without it,
+        # Anchor: the synced implementation must still be on the page — without it,
         # an empty render would pass every assertion below by accident.
-        assert html_after =~ "example_context.spec.md",
-               "expected the synced spec to remain visible after re-sync"
+        assert html_after =~ "lib/example_context.ex",
+               "expected the synced implementation to remain visible after re-sync"
 
         assert html_after =~ "post_drift_module.ex",
                "expected the newly-synced file to appear in place after the sync action"

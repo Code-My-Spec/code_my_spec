@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
     :ok = Environments.write_file(env, @script, "#!/bin/sh\n")
     :ok = Environments.write_file(env, @spec_path, spec_body)
 
-    {:ok, _} = FileSync.sync(scope, embed: false)
+    {:ok, _} = FileSync.sync(scope)
   end
 
   defp spec_with(status) do

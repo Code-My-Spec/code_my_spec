@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story991.Criterion1650Spex do
   Components as records, step 6 (3aeb66cf): components and their dependencies
   are authored records, so they travel. The source graph is built through the
   tools, the migration goes through the endpoint, and the cloud project is read
-  back through `get_component`, `show_architecture` and `freeze_components`.
+  back through `get_component` and `show_architecture`.
   """
 
   use CodeMySpecSpex.Case
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story991.Criterion1650Spex do
   spex "Migrating a project twice adds no component or dependency a second time",
     criterion: 1650 do
     scenario "Sam moves a project whose architecture is authored" do
-      given_ "Sam's local project: Accounts with User under it, and Web depending on Accounts, frozen",
+      given_ "Sam's local project: Accounts with User under it, and Web depending on Accounts",
              context do
         app = app(context)
 
@@ -63,7 +63,6 @@ defmodule CodeMySpecSpex.Story991.Criterion1650Spex do
           )
 
         depend!(context, web, accounts)
-        freeze(context, write: true)
         {:ok, Map.put(context, :cloud, cloud(context))}
       end
 

@@ -22,7 +22,12 @@ defmodule CodeMySpecSpex.Story127.Criterion1652Spex do
     scenario "a spec and some code arrive together" do
       given_ "a spec for Billing and code for Invoices, neither designed", context do
         app = app(context)
-        spec!(context, "#{app}.Billing", [], type: "context", description: "Billing, as specified")
+
+        spec!(context, "#{app}.Billing", [],
+          type: "context",
+          description: "Billing, as specified"
+        )
+
         implementation!(context, "#{app}.Invoices")
         {:ok, context}
       end

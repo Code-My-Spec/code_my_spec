@@ -16,18 +16,19 @@ defmodule CodeMySpecSpex.Story127.Criterion5920Spex do
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
-  @spec_path ".code_my_spec/spec/example_context.spec.md"
+  @rule_path ".code_my_spec/rules/example.md"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Engineer sees every tracked file appear in the projection after a full sync", criterion: 77 do
+  spex "Engineer sees every tracked file appear in the projection after a full sync",
+    criterion: 77 do
     scenario "files in lib/, test/, and .code_my_spec/ all materialize in the Files table" do
       given_ "the agent has written files spanning all three tracked roots",
              context do
         :ok = Environments.write_file(context.environment, @impl_path, impl_content())
         :ok = Environments.write_file(context.environment, @test_path, test_content())
-        :ok = Environments.write_file(context.environment, @spec_path, spec_content())
+        :ok = Environments.write_file(context.environment, @rule_path, "# Example rules\n")
         {:ok, context}
       end
 
@@ -56,15 +57,15 @@ defmodule CodeMySpecSpex.Story127.Criterion5920Spex do
 
         assert has_element?(
                  context.files_live,
-                 "[data-file-path=\"#{@spec_path}\"]"
+                 "[data-file-path=\"#{@rule_path}\"]"
                )
 
-        # Classification ran across all three roots — spec is the
+        # Classification ran across all three roots — rule is the
         # distinguishing role, proving sync didn't just dump generic rows.
         assert has_element?(
                  context.files_live,
-                 "[data-file-path=\"#{@spec_path}\"] [data-test='file-role']",
-                 "spec"
+                 "[data-file-path=\"#{@rule_path}\"] [data-test='file-role']",
+                 "rule"
                )
 
         {:ok, context}
@@ -85,38 +86,6 @@ defmodule CodeMySpecSpex.Story127.Criterion5920Spex do
     defmodule ExampleContextTest do
       use ExUnit.Case, async: true
     end
-    """
-  end
-
-  defp spec_content do
-    """
-    # ExampleContext
-
-    ## Type
-
-    context
-
-    A context demonstrating full-sync coverage across tracked roots.
-
-    ## Functions
-
-    ### noop/0
-
-    Returns `:ok`.
-
-    ```elixir
-    @spec noop() :: :ok
-    ```
-
-    ## Dependencies
-
-    - None
-
-    ## Components
-
-    ### ExampleContext.Inner
-
-    Placeholder child module.
     """
   end
 end

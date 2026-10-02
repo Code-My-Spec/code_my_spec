@@ -82,8 +82,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3265Spex do
         {:reply, tasks, _} = ListTasks.execute(%{}, context.main_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
+        # The wake is dispatched off the asking process: wait for main's turn to
+        # reach the provider before asking whether it is busy.
         HeldProvider.await_request()
+        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
         [request] = HeldProvider.seen()
         prompt = Jason.decode!(request)["messages"] |> Jason.encode!()
         assert prompt =~ "start_task"

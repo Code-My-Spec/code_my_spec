@@ -106,22 +106,39 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
     end
   end
 
-  # "code_my_spec" with any version: framework knowledge is re-embedded on
-  # every release rather than pinned to one version the way a hex package is
-  # — see the embeddings rework design doc, "Framework knowledge".
+  # Framework knowledge: only the version the complete `doc_packages` marker
+  # names at the current model (see `FrameworkKnowledgeReconciler`).
   @framework_package "code_my_spec"
 
+  @framework_clause """
+  (e.project_id IS NULL AND e.package = ? AND e.model = ? AND e.version IN
+    (SELECT p.version FROM doc_packages p
+     WHERE p.package = ? AND p.model = ? AND p.status = 'embedded'))\
+  """
+
+  # Project knowledge only at the current model (`ProjectKnowledgeReconciler`
+  # re-embeds the rest); other project sources are unstamped legacy rows.
+  @project_knowledge "project_knowledge"
+
+  @project_clause "(e.project_id = ?::text::uuid AND (e.source <> ? OR e.model = ?))"
+
   defp scope_clause(project_id) do
+    model = Serving.model_name()
+
     dep_clauses_and_params =
       project_id
       |> locked_dependencies()
       |> Enum.flat_map(fn %{name: name, version: version} ->
-        [{"(e.project_id IS NULL AND e.package = ? AND e.version = ?)", [name, version]}]
+        [
+          {"(e.project_id IS NULL AND e.package = ? AND e.version = ? AND e.model = ?)",
+           [name, version, model]}
+        ]
       end)
 
     clauses_and_params = [
-      {"e.project_id = ?::text::uuid", [project_id]},
-      {"(e.project_id IS NULL AND e.package = ?)", [@framework_package]} | dep_clauses_and_params
+      {@project_clause, [project_id, @project_knowledge, model]},
+      {@framework_clause, [@framework_package, model, @framework_package, model]}
+      | dep_clauses_and_params
     ]
 
     {clauses, params} = Enum.unzip(clauses_and_params)
@@ -211,26 +228,25 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
       ) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     hash = EmbeddingService.content_hash(chunk)
-    package = Keyword.get(opts, :package)
-    version = Keyword.get(opts, :version)
-    model = Keyword.get(opts, :model)
 
-    # The conflict target must match whichever partial unique index applies.
-    # A hex-doc chunk (package/version/model set) identifies its row by that
-    # triple plus path/chunk_index — the step 3 index added precisely so two
-    # versions of one package can coexist, which `(source, path, chunk_index)`
-    # alone cannot tell apart. Every other shared row (framework knowledge)
-    # keeps the original target.
+    # Never nil for a shared row: two different versions of one hex
+    # package collided on `(source, path, chunk_index)` within minutes of
+    # the first real sweep, because that index has no version column —
+    # `doc_embeddings_shared_path_chunk_index` is gone (577de9bb step 3
+    # follow-up) and this identity index is the only target left. Postgres
+    # never matches a NULL against another NULL for uniqueness, so a
+    # shared caller that left version/model unset would silently stop
+    # being deduplicated at all; defaulting them keeps that true
+    # regardless of which shared source calls this.
+    package = Keyword.get(opts, :package, source)
+    version = Keyword.get(opts, :version, "")
+    model = Keyword.get(opts, :model) || Serving.model_name()
+
     conflict =
-      cond do
-        is_nil(project_id) and not is_nil(package) ->
-          "(package, version, model, path, chunk_index) WHERE project_id IS NULL"
-
-        is_nil(project_id) ->
-          "(source, path, chunk_index) WHERE project_id IS NULL"
-
-        true ->
-          "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
+      if is_nil(project_id) do
+        "(package, version, model, path, chunk_index) WHERE project_id IS NULL"
+      else
+        "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
       end
 
     sql = """

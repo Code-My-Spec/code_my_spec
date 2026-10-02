@@ -130,6 +130,15 @@ defmodule CodeMySpec.Files do
     |> Repo.all()
   end
 
+  @doc "This checkout's files in one role."
+  @spec list_files_with_role(Scope.t(), atom()) :: [File.t()]
+  def list_files_with_role(%Scope{active_project_id: project_id} = scope, role) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == ^role)
+    |> scope_to_harness(scope)
+    |> Repo.all()
+  end
+
   @doc """
   The same, across every checkout of the project rather than the caller's.
 
@@ -695,7 +704,7 @@ defmodule CodeMySpec.Files do
   @doc """
   Upsert a single file record without updating mtime.
 
-  Used by the FileWatcher to keep role, ownership, and validation fresh
+  Used by single-path sync to keep role, ownership, and validation fresh
   in real-time while leaving mtime stale so `sync_changed` still picks
   up the file as changed during the stop hook validation pass.
   """
@@ -795,7 +804,7 @@ defmodule CodeMySpec.Files do
   @doc """
   Delete specific files by their paths.
 
-  Used for targeted removal when the file watcher detects file deletions.
+  Used for targeted removal when single-path sync finds a file deleted.
   """
   @spec delete_by_paths(Scope.t(), [String.t()]) :: {integer(), nil}
   def delete_by_paths(%Scope{active_project_id: project_id}, paths)

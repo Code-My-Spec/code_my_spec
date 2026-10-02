@@ -15,7 +15,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ComponentCode,
       AgentTasks.ComponentTest,
       AgentTasks.ContextComponentSpecs,
-      AgentTasks.ContextDesignReview,
       AgentTasks.DesignUi,
       AgentTasks.Deploy,
       AgentTasks.DevelopContext,
@@ -56,7 +55,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ComponentCode",
       "ComponentTest",
       "ContextComponentSpecs",
-      "ContextDesignReview",
       "DesignUi",
       "Deploy",
       "DevelopContext",
@@ -114,7 +112,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.ComponentCode} = SessionType.cast("ComponentCode")
       assert {:ok, AgentTasks.ComponentTest} = SessionType.cast("ComponentTest")
       assert {:ok, AgentTasks.ContextComponentSpecs} = SessionType.cast("ContextComponentSpecs")
-      assert {:ok, AgentTasks.ContextDesignReview} = SessionType.cast("ContextDesignReview")
       assert {:ok, AgentTasks.ArchitectureDesign} = SessionType.cast("ArchitectureDesign")
       assert {:ok, AgentTasks.ProjectSetup} = SessionType.cast("ProjectSetup")
       assert {:ok, AgentTasks.WriteBddSpecs} = SessionType.cast("WriteBddSpecs")

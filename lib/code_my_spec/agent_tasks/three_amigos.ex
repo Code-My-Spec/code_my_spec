@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   @moduledoc """
   Run an Example Mapping session on a single story.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/three_amigos.spec.md`.
   """
 
   alias CodeMySpec.Requirements.{BddRulesChecker, CheckerResult}

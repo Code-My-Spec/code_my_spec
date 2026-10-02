@@ -2,8 +2,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @moduledoc """
   Generate BDD specification files for a story whose three-amigos session
   is complete but whose specs haven't been written yet.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/write_bdd_specs.spec.md`.
   """
 
   alias CodeMySpec.BddSpecs

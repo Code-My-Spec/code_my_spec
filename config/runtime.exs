@@ -233,8 +233,7 @@ if config_env() == :dev_sprite do
   # Both are runtime facts the launcher knows and the shared project row
   # cannot: that row is one row for every checkout, so it can neither identify
   # which project *this* container serves nor describe this container's disk.
-  # Scopes file watching (ProjectSync.FileWatcherServer.watchable_projects/0)
-  # and scope resolution (Projects.resolve_local_project/1).
+  # Scopes scope resolution (Projects.resolve_local_project/1).
   if project_id = System.get_env("CMS_PROJECT_ID") do
     config :code_my_spec, project_id: project_id
   end

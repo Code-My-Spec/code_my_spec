@@ -3,10 +3,9 @@ defmodule CodeMySpec.Files.LiveCopies do
   Which of a project's checkouts still speak for it.
 
   Old worktrees keep files the project has since deleted — metric_flow's dead
-  ReviewMetrics component stayed alive on a stale checkout's spec — so the
-  freeze and a frozen project's sync count files only from live checkouts: the
-  path is not missing, and the checkout is the main one or was seen within
-  7 days. One definition, so the two cannot disagree (3aeb66cf).
+  ReviewMetrics component stayed alive on a stale checkout's spec — so a sync
+  counts files only from live checkouts: the path is not missing, and the
+  checkout is the main one or was seen within 7 days (3aeb66cf).
   """
 
   import Ecto.Query

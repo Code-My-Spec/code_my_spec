@@ -19,14 +19,13 @@ defmodule CodeMySpecSpex.Story70.Criterion1643Spex do
 
   spex "A discovered context is never an orphan", criterion: 1643 do
     scenario "code nobody specified turns out to be a context" do
-      given_ "a frozen project whose architecture is authored", context do
+      given_ "a project whose architecture is authored", context do
         ComponentHelpers.create(context.scope,
           name: "Accounts",
           module_name: "#{app(context)}.Accounts",
           type: "module"
         )
 
-        freeze(context, write: true)
         {:ok, context}
       end
 

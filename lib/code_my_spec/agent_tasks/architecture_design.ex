@@ -1,8 +1,6 @@
 defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @moduledoc """
   Map user stories to application components via proposal + MCP-tool mutations.
-
-  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/architecture_design.spec.md`.
   """
 
   alias CodeMySpec.Architecture.Proposal
@@ -397,9 +395,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         - **Dependency Graph:** #{Path.join(output_dir, "dependency_graph.mmd")}
         - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
 
-        Browse existing specs directly:
-        - Run `tree .code_my_spec/spec/` or `ls -R .code_my_spec/spec/` to see all component specs
-        - Read any spec file directly to review its contents
+        Read the existing components:
+        - `show_architecture_overview`
         - Use `validate_dependency_graph` tool to check for circular dependencies
         """
       else
@@ -455,8 +452,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     No proposal exists yet. Design the architecture end-to-end, write
     `#{@proposal_path}`, and stop. The evaluator validates the proposal
     against the `architecture_proposal` document spec AND executes it as one
-    transaction — creating spec files under `.code_my_spec/spec/` and
-    linking stories to components.
+    transaction — creating the components and their dependencies as records
+    and linking stories to them.
 
     Procedure:
     1. Call `analyze_stories` for groupings and suggested context names.
@@ -500,18 +497,17 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       component. The simplest action when the architecture already has the
       right component.
     - **`create_component`** — add a new context / child / surface when no
-      existing component fits. Scaffolds the spec file automatically; no
-      proposal edit needed.
-    - **`update_component`** — edit existing component metadata; the spec
-      file is re-projected.
+      existing component fits; no proposal edit needed.
+    - **`update_component`** — edit existing component metadata.
+    - **`add_dependency`** / **`remove_dependency`** — the edges between
+      components.
     - **`validate_dependency_graph`** — run after every structural change.
 
-    ### Dependencies are spec-derived, not a tool call
+    ### Dependencies are records
 
-    To add an edge from a story-linked context to an orphan context, edit
-    the story-linked context's spec file under `.code_my_spec/spec/` and
-    append the orphan's module name as a bullet under `## Dependencies`.
-    ComponentSync re-derives the graph on save.
+    To add an edge from a story-linked context to an orphan context, call
+    `add_dependency` from the story-linked context to the orphan. No file
+    describes a component; editing a spec changes nothing.
 
     ### Naming conventions for new components
 

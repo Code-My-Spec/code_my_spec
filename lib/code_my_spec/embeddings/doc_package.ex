@@ -26,13 +26,23 @@ defmodule CodeMySpec.Embeddings.DocPackage do
     field :chunk_count, :integer
     field :error, :string
     field :embedded_at, :utc_datetime
+    field :attempts, :integer
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(doc_package, attrs) do
     doc_package
-    |> cast(attrs, [:package, :version, :model, :status, :chunk_count, :error, :embedded_at])
+    |> cast(attrs, [
+      :package,
+      :version,
+      :model,
+      :status,
+      :chunk_count,
+      :error,
+      :embedded_at,
+      :attempts
+    ])
     |> validate_required([:package, :version, :model, :status])
     |> validate_inclusion(:status, @statuses)
     |> unique_constraint([:package, :version, :model])

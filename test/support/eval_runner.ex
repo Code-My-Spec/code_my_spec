@@ -336,8 +336,8 @@ defmodule CodeMySpec.Support.EvalRunner do
 
     # Publish what the fixture wrote and compute the graph over it. Both
     # explicit, because nothing else is going to do them: there is no
-    # `FileWatcherServer` here and reads serve rows rather than computing.
-    {:ok, _} = FileSync.sync(scope, base_dir: root, embed: false)
+    # harness here and reads serve rows rather than computing.
+    {:ok, _} = FileSync.sync(scope, base_dir: root)
     {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: root)
     Requirements.recompute(scope)
 

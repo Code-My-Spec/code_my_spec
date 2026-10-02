@@ -17,10 +17,11 @@ file edits where they apply.
   First step of initial mode. Returns clusters of related stories so
   you can identify shared contexts.
 - **`create_component`** — add a new context, child, or surface
-  component to the project DB. Spec file gets scaffolded
-  automatically. Use this in revision mode for incremental additions.
+  component. Use this in revision mode for incremental additions.
 - **`update_component`** — edit an existing component's metadata
-  (type, parent, description). Spec file gets re-projected.
+  (type, parent, description).
+- **`add_dependency`** / **`remove_dependency`** — the edges between
+  components.
 - **`set_story_component`** (Stories tool) — link a story to a
   component. The simplest revision-mode action when the architecture
   already has the right component but the story isn't wired up.
@@ -30,11 +31,9 @@ file edits where they apply.
   on `proposal.md` regardless of mode. Use only when a patch-mode
   edit warrants a fresh design pass.
 
-**Dependency edges are spec-derived, not a tool call.** To add an
-edge from one context to another, edit the source context's spec
-file under `.code_my_spec/spec/` and add the target module as a
-bullet under `## Dependencies`. ComponentSync re-derives the graph
-on save.
+**Components and their dependencies are records.** To add an edge
+from one context to another, call `add_dependency`. No file describes
+a component; editing a spec changes nothing.
 
 ## Initial mode — no proposal exists yet
 
@@ -75,8 +74,8 @@ embeds via DocumentSpecProjector).
 ### Step 4 — stop
 
 Stop the session. The evaluator reads the proposal, validates it
-against the document spec, and executes it — creating spec files
-under `.code_my_spec/spec/` and linking stories to components. If
+against the document spec, and executes it — creating the components
+and their dependencies as records and linking stories to them. If
 validation fails, you get feedback for the next run.
 
 ## Revision mode — proposal already exists
@@ -105,15 +104,13 @@ infrastructure. For each:
 
 1. **Link a story directly** — `set_story_component` if a story
    should drive this context.
-2. **Add a dependency edge** — edit a story-linked context's spec
-   under `.code_my_spec/spec/`, add the orphan as a bullet under
-   `## Dependencies`. ComponentSync re-derives the graph.
-3. **Classify as infrastructure** — edit the spec's `## Type`
-   section to `infrastructure`. ComponentSync re-types the component
-   on the next sync; the orphan rule skips infrastructure-typed
+2. **Add a dependency edge** — `add_dependency` from a story-linked
+   context to the orphan.
+3. **Classify as infrastructure** — `update_component` to type
+   `infrastructure`; the orphan rule skips infrastructure-typed
    components.
-4. **Delete** — remove the spec / implementation / test files.
-   ComponentSync removes the component on the next sync.
+4. **Delete** — `delete_component`. Code that still names the module
+   is discovered again on the next sync.
 
 ### Fallback — full rewrite
 
@@ -146,12 +143,10 @@ the execute step (the agent already mutated via tools).
 - **Rewriting the proposal in revision mode without calling
   `execute_proposal`.** The evaluator won't apply it; you'll just
   have stale text on disk.
-- **Editing the spec files directly to "create" a component.** Use
-  `create_component`. The MCP tool keeps the DB and the spec file
-  in sync; manual file creation only updates the spec.
+- **Writing a spec file to "create" a component.** Nothing reads it.
+  Use `create_component`.
 - **Calling `validate_dependency_graph` once at the end.** Run it
   after every structural change so you catch cycles before they
   compound.
-- **Wiring dependencies through `create_component`.** Dependencies
-  live in the source spec's `## Dependencies` section, not on the
-  component record. Edit the spec file.
+- **Listing dependencies in a spec file.** Nothing reads it. Use
+  `add_dependency`.

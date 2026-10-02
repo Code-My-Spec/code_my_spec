@@ -32,7 +32,6 @@ defmodule CodeMySpec.UtilsTest do
       # Should NOT have extra "code_my_spec/" prefix
       assert files.code_file == "lib/code_my_spec_cli/hooks/validate_edits.ex"
       assert files.test_file == "test/code_my_spec_cli/hooks/validate_edits_test.exs"
-      assert files.spec_file == ".code_my_spec/spec/code_my_spec_cli/hooks/validate_edits.spec.md"
     end
 
     test "handles project-prefixed modules correctly", %{project: project} do
@@ -48,21 +47,6 @@ defmodule CodeMySpec.UtilsTest do
 
       assert files.code_file == "lib/code_my_spec/documents.ex"
       assert files.test_file == "test/code_my_spec/documents_test.exs"
-      assert files.spec_file == ".code_my_spec/spec/code_my_spec/documents.spec.md"
-    end
-
-    test "includes review_file for context types", %{project: project} do
-      component = %Component{
-        id: Ecto.UUID.generate(),
-        project_id: project.id,
-        name: "Documents",
-        module_name: "CodeMySpec.Documents",
-        type: "context"
-      }
-
-      files = Utils.component_files(component, project)
-
-      assert files.review_file == ".code_my_spec/spec/code_my_spec/documents/design_review.md"
     end
 
     test "injects live/ directory for liveview types", %{project: project} do
@@ -79,7 +63,6 @@ defmodule CodeMySpec.UtilsTest do
       assert files.code_file == "lib/fuellytics_web/live/card_management_live.ex"
       assert files.test_file == "test/fuellytics_web/live/card_management_live_test.exs"
       # spec and design files use module path without live/ injection
-      assert files.spec_file == ".code_my_spec/spec/fuellytics_web/card_management_live.spec.md"
       assert files.design_file == ".code_my_spec/design/fuellytics_web/card_management_live.md"
     end
 
@@ -113,20 +96,6 @@ defmodule CodeMySpec.UtilsTest do
 
       assert files.code_file == "lib/fuellytics_web/live/dashboard_live.ex"
       refute files.code_file =~ "live/live"
-    end
-
-    test "includes review_file for coordination_context types", %{project: project} do
-      component = %Component{
-        id: Ecto.UUID.generate(),
-        project_id: project.id,
-        name: "Sessions",
-        module_name: "CodeMySpec.Sessions",
-        type: "coordination_context"
-      }
-
-      files = Utils.component_files(component, project)
-
-      assert files.review_file == ".code_my_spec/spec/code_my_spec/sessions/design_review.md"
     end
   end
 

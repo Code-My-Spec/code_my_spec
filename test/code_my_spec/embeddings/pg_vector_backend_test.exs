@@ -7,6 +7,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
 
   alias CodeMySpec.Dependencies.Dependency
   alias CodeMySpec.Embeddings.DocEmbedding
+  alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.PgVectorBackend
   alias CodeMySpec.Repo
 
@@ -42,13 +43,31 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
     put_chunk(nil, source, path, content)
 
     {1, _} =
-      from(e in DocEmbedding, where: is_nil(e.project_id) and e.source == ^source and e.path == ^path)
+      from(e in DocEmbedding,
+        where: is_nil(e.project_id) and e.source == ^source and e.path == ^path
+      )
       |> Repo.update_all(set: [package: package, version: version, model: model])
+  end
+
+  defp mark_framework(version, model) do
+    %DocPackage{}
+    |> DocPackage.changeset(%{
+      package: "code_my_spec",
+      version: version,
+      model: model,
+      status: "embedded"
+    })
+    |> Repo.insert!()
   end
 
   defp lock_dependency(project_id, name, version) do
     %Dependency{}
-    |> Dependency.changeset(%{project_id: project_id, name: name, version: version, source: "hex"})
+    |> Dependency.changeset(%{
+      project_id: project_id,
+      name: name,
+      version: version,
+      source: "hex"
+    })
     |> Repo.insert!()
   end
 
@@ -61,6 +80,27 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
       assert result.path == "a.md"
     end
 
+    test "project knowledge is surfaced only at the current model", %{scope: scope} do
+      project_id = scope.active_project_id
+      put_chunk(project_id, "project_knowledge", "current.md", "current")
+      put_chunk(project_id, "project_knowledge", "stale.md", "stale")
+
+      {1, _} =
+        from(e in DocEmbedding, where: e.path == "stale.md")
+        |> Repo.update_all(set: [model: "other-model"])
+
+      assert {:ok, [%{path: "current.md"}]} = PgVectorBackend.search(project_id, "x", [])
+    end
+
+    test "other project sources are surfaced whatever their model", %{scope: scope} do
+      project_id = scope.active_project_id
+      put_chunk(project_id, "rules", "rule.md", "a rule")
+
+      {1, _} = Repo.update_all(DocEmbedding, set: [model: nil])
+
+      assert {:ok, [%{path: "rule.md"}]} = PgVectorBackend.search(project_id, "x", [])
+    end
+
     test "one project never sees another project's rows", %{scope: scope} do
       other = project_fixture(scope)
       put_chunk(other.id, "knowledge", "a.md", "the quick brown fox")
@@ -71,10 +111,58 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
 
   describe "shared rows" do
     test "framework knowledge (package code_my_spec) is visible to every project", %{scope: scope} do
-      put_shared_chunk("knowledge", "liveview.md", "LiveView streams", "code_my_spec", "any", "minilm-l6-v2")
+      put_shared_chunk(
+        "knowledge",
+        "liveview.md",
+        "LiveView streams",
+        "code_my_spec",
+        "v1",
+        "fake-test-model"
+      )
 
-      assert {:ok, [result]} = PgVectorBackend.search(scope.active_project_id, "LiveView", [])
-      assert result.path == "liveview.md"
+      mark_framework("v1", "fake-test-model")
+      other = project_fixture(scope)
+
+      assert {:ok, [%{path: "liveview.md"}]} =
+               PgVectorBackend.search(scope.active_project_id, "LiveView", [])
+
+      assert {:ok, [%{path: "liveview.md"}]} = PgVectorBackend.search(other.id, "LiveView", [])
+    end
+
+    test "framework knowledge without a complete marker is not surfaced", %{scope: scope} do
+      put_shared_chunk(
+        "knowledge",
+        "liveview.md",
+        "LiveView streams",
+        "code_my_spec",
+        "v1",
+        "fake-test-model"
+      )
+
+      assert {:ok, []} = PgVectorBackend.search(scope.active_project_id, "LiveView", [])
+    end
+
+    test "only the marked framework version is surfaced", %{scope: scope} do
+      put_shared_chunk("knowledge", "old.md", "old", "code_my_spec", "v1", "fake-test-model")
+      put_shared_chunk("knowledge", "new.md", "new", "code_my_spec", "v2", "fake-test-model")
+      mark_framework("v2", "fake-test-model")
+
+      assert {:ok, [%{path: "new.md"}]} = PgVectorBackend.search(scope.active_project_id, "x", [])
+    end
+
+    test "framework knowledge at another model is not surfaced", %{scope: scope} do
+      put_shared_chunk(
+        "knowledge",
+        "liveview.md",
+        "LiveView streams",
+        "code_my_spec",
+        "v1",
+        "other-model"
+      )
+
+      mark_framework("v1", "other-model")
+
+      assert {:ok, []} = PgVectorBackend.search(scope.active_project_id, "LiveView", [])
     end
 
     test "a hex package's docs are visible when the project's lock pins that exact version",
@@ -82,10 +170,33 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
       project_id = scope.active_project_id
       lock_dependency(project_id, "phoenix", "1.8.1")
 
-      put_shared_chunk("hexdocs:phoenix", "Phoenix.md", "Phoenix channels", "phoenix", "1.8.1", "minilm-l6-v2")
+      put_shared_chunk(
+        "hexdocs:phoenix",
+        "Phoenix.md",
+        "Phoenix channels",
+        "phoenix",
+        "1.8.1",
+        "fake-test-model"
+      )
 
       assert {:ok, [result]} = PgVectorBackend.search(project_id, "channels", [])
       assert result.path == "Phoenix.md"
+    end
+
+    test "a hex package's docs at another model are not surfaced", %{scope: scope} do
+      project_id = scope.active_project_id
+      lock_dependency(project_id, "phoenix", "1.8.1")
+
+      put_shared_chunk(
+        "hexdocs:phoenix",
+        "Phoenix.md",
+        "Phoenix channels",
+        "phoenix",
+        "1.8.1",
+        "other-model"
+      )
+
+      assert {:ok, []} = PgVectorBackend.search(project_id, "channels", [])
     end
 
     test "a different version of the same package is not surfaced — exact versions only",
@@ -93,13 +204,27 @@ defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
       project_id = scope.active_project_id
       lock_dependency(project_id, "phoenix", "1.8.1")
 
-      put_shared_chunk("hexdocs:phoenix", "Phoenix.md", "Phoenix channels", "phoenix", "1.7.0", "minilm-l6-v2")
+      put_shared_chunk(
+        "hexdocs:phoenix",
+        "Phoenix.md",
+        "Phoenix channels",
+        "phoenix",
+        "1.7.0",
+        "fake-test-model"
+      )
 
       assert {:ok, []} = PgVectorBackend.search(project_id, "channels", [])
     end
 
     test "a package the project doesn't depend on is not surfaced", %{scope: scope} do
-      put_shared_chunk("hexdocs:ecto", "Ecto.md", "Ecto changesets", "ecto", "3.11.0", "minilm-l6-v2")
+      put_shared_chunk(
+        "hexdocs:ecto",
+        "Ecto.md",
+        "Ecto changesets",
+        "ecto",
+        "3.11.0",
+        "fake-test-model"
+      )
 
       assert {:ok, []} = PgVectorBackend.search(scope.active_project_id, "changesets", [])
     end

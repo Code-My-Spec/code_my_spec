@@ -4,7 +4,7 @@ defmodule CodeMySpec.Files.Scanner do
   sync.
 
   Everything here needs the working copy: walking it, hashing it, reading file
-  contents to decide whether a spec is valid. None of it needs the database,
+  contents to decide whether a document is valid. None of it needs the database,
   and nothing it returns contains file content — validation happens here and
   only its verdict travels.
 
@@ -14,13 +14,12 @@ defmodule CodeMySpec.Files.Scanner do
   Scanning cannot: it has to be where the files are.
 
   The one thing scanning needs from the domain is a `ReadModel` — component
-  module names, the project's story ids, and whether spec validation is strict.
+  module names, the project's story ids, and whether document validation is strict.
   It is small, it changes slowly, and it is passed in rather than queried so
   this module holds no repo of its own.
   """
 
   alias CodeMySpec.BddSpecs.ContentCheck
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.ComponentExtract
@@ -251,29 +250,14 @@ defmodule CodeMySpec.Files.Scanner do
   @doc """
   Validate a file entry based on its role.
 
-  Specs and reviews are validated via `Documents.create_dynamic_document`.
-  Test files are tracked without matching them against markdown assertions.
-  Other tracked roles are valid by existence.
+  Component specs and design reviews are not parsed: components are records
+  (3aeb66cf), so those files describe nothing and are valid by existence, like
+  test files and the other tracked roles.
   """
   def validate_entry(entry, env, component_by_id, strict? \\ true)
 
-  def validate_entry(%{role: :spec} = entry, env, _component_by_id, strict?) do
-    case Environments.read_file(env, entry.path) do
-      {:ok, content} ->
-        document_type = document_type_from_content(content)
-        validate_spec_content(entry, content, document_type, strict?)
-
-      {:error, reason} ->
-        Map.merge(entry, %{
-          valid: false,
-          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
-        })
-    end
-  end
-
-  # Spex files are checked here, on the machine that has them, for the same
-  # reason `:spec` and `:review` are: the server may hold no working copy, and
-  # something that can only validate by reading a disk answers "not found" for
+  # Spex files are checked here, on the machine that has them: the server may
+  # hold no working copy, and something that can only validate by reading a disk answers "not found" for
   # every file when there is no disk to read. That is exactly what happened —
   # six specs reported missing in a stop no edit could clear, while the
   # requirement graph read this same report and correctly found them present.
@@ -306,19 +290,6 @@ defmodule CodeMySpec.Files.Scanner do
         Map.merge(entry, %{
           valid: false,
           validation_errors: %{"reason" => "Read failed: #{inspect(reason)}"}
-        })
-    end
-  end
-
-  def validate_entry(%{role: :review} = entry, env, _component_by_id, strict?) do
-    case Environments.read_file(env, entry.path) do
-      {:ok, content} ->
-        validate_spec_content(entry, content, "design_review", strict?)
-
-      {:error, reason} ->
-        Map.merge(entry, %{
-          valid: false,
-          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
         })
     end
   end
@@ -437,13 +408,11 @@ defmodule CodeMySpec.Files.Scanner do
     :qa_result,
     :qa_script,
     :json,
-    :review,
     :architecture,
     :credo_check,
     :integration,
     :agents_md,
     :project_knowledge,
-    :hex_doc,
     :deploy_artifact
   ]
 
@@ -581,18 +550,6 @@ defmodule CodeMySpec.Files.Scanner do
   defp locates_something?(entry) do
     Regex.match?(~r{https?://\S+}, entry) or
       Regex.match?(~r{[\w.~-]+(?:/[\w.~-]+)+\.\w+}, entry)
-  end
-
-  defp component_data(content) do
-    %{
-      "errors" => %{},
-      "data" => %{
-        "module_name" => ComponentExtract.extract_h1_module(content),
-        "type" => ComponentExtract.extract_type_section(content),
-        "description" => ComponentExtract.extract_intro_text(content),
-        "dependencies" => ComponentExtract.extract_dependencies(content)
-      }
-    }
   end
 
   # The two facts a requirement asks of an integration spec: where its verify
@@ -850,51 +807,6 @@ defmodule CodeMySpec.Files.Scanner do
     %{errors: %{has_defmodule: error}, data: %{module_name: module_name}}
   end
 
-  defp validate_spec_content(entry, content, document_type, strict?) do
-    case Documents.create_dynamic_document(content, document_type, strict: strict?) do
-      {:ok, _document} ->
-        # Carries the component identity, so `ComponentSync` does not have to
-        # re-read the file to find it. Stored even for an otherwise clean spec
-        # because "valid" and "names a component" are different questions.
-        Map.merge(entry, %{valid: true, validation_errors: component_data(content)})
-
-      {:error, error} ->
-        Map.merge(entry, %{valid: false, validation_errors: %{"error" => to_string(error)}})
-    end
-  rescue
-    e ->
-      Map.merge(entry, %{valid: false, validation_errors: %{"error" => Exception.message(e)}})
-  end
-
-  # Extract document type from spec content's ## Type section.
-  # Maps component types to document types via the registry.
-  #
-  # CRLF → LF first: a Windows-written spec has `## Type\r`, and `^## Type$`
-  # won't match (the `\r` is before the line end), so the type silently
-  # resolves to the default "spec" definition and the wrong section set is
-  # enforced. Same class as the ComponentSync CRLF fix.
-  defp document_type_from_content(content) do
-    type_section =
-      content
-      |> String.replace("\r\n", "\n")
-      |> String.split("\n")
-      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
-      |> Enum.drop(1)
-      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-      |> List.first()
-
-    case type_section do
-      nil ->
-        "spec"
-
-      component_type ->
-        type_def = ComponentRegistry.get_type(component_type)
-        Map.get(type_def, :document_type, "spec")
-    end
-  end
-
   @doc """
   Classify a relative path into a file role.
 
@@ -905,7 +817,6 @@ defmodule CodeMySpec.Files.Scanner do
     Enum.find_value(
       [
         &classify_setup_artifact/1,
-        &classify_spec_or_review/1,
         &classify_code/1,
         &classify_credo_check/1,
         &classify_docs/1,
@@ -977,21 +888,6 @@ defmodule CodeMySpec.Files.Scanner do
          base == "data_case.ex")
   end
 
-  defp classify_spec_or_review(path) do
-    spec_prefix = Paths.spec_dir() <> "/"
-
-    cond do
-      String.starts_with?(path, spec_prefix) and String.ends_with?(path, ".spec.md") ->
-        {path, :spec}
-
-      String.starts_with?(path, spec_prefix) and String.ends_with?(path, "/design_review.md") ->
-        {path, :review}
-
-      true ->
-        nil
-    end
-  end
-
   defp classify_code(path) do
     cond do
       String.starts_with?(path, "test/spex/") and String.ends_with?(path, "_spex.exs") ->
@@ -1012,17 +908,15 @@ defmodule CodeMySpec.Files.Scanner do
   # in `.md` classifies as that role. Order doesn't matter; the dirs
   # don't overlap.
   #
-  # Framework knowledge (the `"knowledge"` source) is intentionally
-  # absent — it lives in `priv/knowledge/` and is embedded directly
-  # by `Embeddings.sync_framework_knowledge/1`. Nothing under the
-  # project tree resolves to that role.
+  # Framework knowledge is intentionally absent — it lives in
+  # `priv/knowledge/` and `FrameworkKnowledgeReconciler` embeds it on boot.
+  # Nothing under the project tree resolves to that role.
   defp doc_dir_roles do
     [
       {&Paths.rules_dir/0, :rule},
       {&Paths.architecture_dir/0, :architecture},
       {&Paths.integrations_dir/0, :integration},
-      {&Paths.knowledge_dir/0, :project_knowledge},
-      {&Paths.hex_docs_dir/0, :hex_doc}
+      {&Paths.knowledge_dir/0, :project_knowledge}
     ]
   end
 
@@ -1234,7 +1128,7 @@ defmodule CodeMySpec.Files.Scanner do
   # `Components.ConventionalPaths`.
   defp owner_for(entry, %ReadModel{} = read_model)
        when is_map_key(entry, :role) and
-              entry.role in [:implementation, :test, :spec] do
+              entry.role in [:implementation, :test] do
     by_module = read_model.component_by_module
 
     component_id =
@@ -1262,25 +1156,6 @@ defmodule CodeMySpec.Files.Scanner do
        when role in [:qa_brief, :qa_result] do
     story_number = extract_story_number_from_qa_path(path)
     {nil, Map.get(read_model.story_ids_by_number, story_number)}
-  end
-
-  defp owner_for(%{path: path, role: :review}, %ReadModel{} = read_model) do
-    # `.code_my_spec/spec/metric_flow/integrations/design_review.md` →
-    # `MetricFlow.Integrations`. The path index answers this exactly — design
-    # reviews are one of the paths `ConventionalPaths.for_component/1` projects
-    # — and the derivation below carries the same capitalization loss as every
-    # other path → module guess, so it is the fallback rather than the rule.
-    module_name =
-      path
-      |> String.replace_prefix(Paths.spec_dir() <> "/", "")
-      |> Path.dirname()
-      |> path_segments_to_module()
-
-    component_id =
-      Map.get(read_model.component_by_path, path) ||
-        Map.get(read_model.component_by_module, module_name)
-
-    {component_id, nil}
   end
 
   defp owner_for(_entry, %ReadModel{}), do: {nil, nil}
@@ -1353,13 +1228,6 @@ defmodule CodeMySpec.Files.Scanner do
     path
     |> String.replace_prefix("test/", "")
     |> String.replace_suffix("_test.exs", "")
-    |> path_segments_to_module()
-  end
-
-  defp path_to_module_name(path, :spec) do
-    path
-    |> String.replace_prefix(Paths.spec_dir() <> "/", "")
-    |> String.replace_suffix(".spec.md", "")
     |> path_segments_to_module()
   end
 

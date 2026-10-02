@@ -230,16 +230,15 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
      }}
   end
 
-  # `embed: false` and `changed_paths` threaded through to `ComponentSync` —
-  # this is the documented shortcut for `get_next_requirement` → `start_task`,
-  # so it inherits both hot-path fixes: skip the framework-knowledge
-  # re-embed/hex-doc re-projection, and scope the component backfill to what
-  # this call's own scan actually found changed rather than forcing a full,
-  # non-incremental resync of every component on every call.
+  # `changed_paths` threaded through to `ComponentSync` — this is the
+  # documented shortcut for `get_next_requirement` → `start_task`, so it scopes
+  # the component backfill to what this call's own scan actually found changed
+  # rather than forcing a full, non-incremental resync of every component on
+  # every call.
   defp sync_working_tree(%{cwd: nil}), do: :ok
 
   defp sync_working_tree(scope) do
-    case FileSync.sync(scope, base_dir: scope.cwd, embed: false) do
+    case FileSync.sync(scope, base_dir: scope.cwd) do
       {:ok, file_result} ->
         FileComponentSync.sync_from_files(scope,
           base_dir: scope.cwd,

@@ -122,7 +122,7 @@ path that would produce the same problem. See
 - **Paths in the memfs are relative to `env.cwd`.** Don't prefix
   `/memfs/...` when calling `write_file` — pass the same path shape
   sync is going to look for (`"lib/foo.ex"`,
-  `"<project>/spec/foo.spec.md"`, etc.).
+  `".code_my_spec/qa/plan.md"`, etc.).
 - **FileSync wipes problems for missing files.** If you seed a
   `Problem` against `lib/example_context.ex`, make sure that file
   exists in the memfs (the `:synced_context_component` given writes

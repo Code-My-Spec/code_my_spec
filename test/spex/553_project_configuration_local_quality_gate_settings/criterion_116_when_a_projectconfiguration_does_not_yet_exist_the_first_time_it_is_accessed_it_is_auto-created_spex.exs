@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
   - credo: block_changed
   - exunit: block_all
   - spex: off
-  - spec_validation: block_changed
   - qa_validation: block_changed
   """
 
@@ -55,9 +54,8 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
                  ~r/name="configuration\[spex\]"[^>]*>.*?<option[^>]*value="off"[^>]*selected/s,
                "spex must default to off"
 
-        assert html =~
-                 ~r/name="configuration\[spec_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
-               "spec_validation must default to block_changed"
+        refute html =~ ~s(name="configuration[spec_validation]"),
+               "specs are not validated any more (3aeb66cf), so there is nothing to configure"
 
         assert html =~
                  ~r/name="configuration\[qa_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,

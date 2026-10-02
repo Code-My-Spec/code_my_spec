@@ -38,13 +38,10 @@ defmodule CodeMySpec.Components.ConventionalPaths do
   forever.
   """
 
-  alias CodeMySpec.Paths
-
   @doc """
   Every path this component conventionally owns.
 
-  Spec and design review under `.code_my_spec/spec/`, implementation under
-  `lib/`, test under `test/`. A component need not have all of them; these are
+  Implementation under `lib/`, test under `test/`. A component need not have all of them; these are
   the paths that *would* be its, which is what makes them usable as an index.
   """
   @spec for_component(%{module_name: String.t(), type: term()}) :: [String.t()]
@@ -54,8 +51,6 @@ defmodule CodeMySpec.Components.ConventionalPaths do
     source_path = source_path(module_path, Map.get(component, :type))
 
     [
-      Paths.spec_dir() <> "/#{module_path}.spec.md",
-      Paths.spec_dir() <> "/#{module_path}/design_review.md",
       "lib/#{source_path}.ex",
       "test/#{source_path}_test.exs"
     ]

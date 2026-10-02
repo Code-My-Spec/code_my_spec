@@ -97,12 +97,6 @@ defmodule CodeMySpecWeb.ConfigurationLive do
               modes={@analyzer_modes}
             />
             <.select_field
-              name="spec_validation"
-              label="Spec Validation"
-              value={@configuration.spec_validation}
-              modes={@analyzer_modes}
-            />
-            <.select_field
               name="qa_validation"
               label="QA Validation"
               value={@configuration.qa_validation}

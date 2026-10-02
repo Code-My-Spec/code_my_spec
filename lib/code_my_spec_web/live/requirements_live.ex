@@ -207,7 +207,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   # --- Live updates ---
 
-  # File watcher fired for this project. Debounce on the trailing edge so a
+  # A single-path sync fired for this project. Debounce on the trailing edge so a
   # burst of saves coalesces into a single recompute once edits settle.
   @impl true
   def handle_info({:watcher_synced, _info}, %{assigns: %{live_action: :graph}} = socket) do

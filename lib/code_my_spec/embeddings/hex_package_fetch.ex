@@ -12,6 +12,7 @@ defmodule CodeMySpec.Embeddings.HexPackageFetch do
   require Logger
 
   @default_timeout to_timeout(second: 30)
+  @connect_timeout to_timeout(second: 10)
 
   @doc """
   `{:ok, tarball_bytes}` once fetched and checksum-verified, or
@@ -33,8 +34,18 @@ defmodule CodeMySpec.Embeddings.HexPackageFetch do
   defp get_tarball(package, version) do
     url = "https://repo.hex.pm/tarballs/#{package}-#{version}.tar"
 
+    # Explicit bounds on both halves of the request, not just
+    # `receive_timeout`: a connection that never completes its handshake
+    # is a different hang than one that completes and then goes quiet,
+    # and `Req`'s own connect default was long enough to leave a sweep
+    # looking frozen rather than failed.
     req =
-      [url: url, receive_timeout: @default_timeout, retry: false]
+      [
+        url: url,
+        connect_options: [timeout: @connect_timeout],
+        receive_timeout: @default_timeout,
+        retry: false
+      ]
       |> Req.new()
       |> attach_plug()
 
