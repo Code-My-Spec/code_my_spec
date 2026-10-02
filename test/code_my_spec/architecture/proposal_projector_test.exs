@@ -148,30 +148,4 @@ defmodule CodeMySpec.Architecture.ProposalProjectorTest do
       assert result =~ "MyAppWeb.UserLive.Index (liveview)"
     end
   end
-
-  describe "change_summary/1" do
-    test "reports unsatisfied stories", %{scope: scope} do
-      _story = story_fixture(scope, %{title: "Unmapped story"})
-
-      summary = ProposalProjector.change_summary(scope)
-
-      assert summary =~ "stories without surface components"
-      assert summary =~ "Unmapped story"
-    end
-
-    test "reports all stories mapped when none are unsatisfied", %{scope: scope} do
-      liveview =
-        component_fixture(scope, %{
-          type: "liveview",
-          name: "DashboardLive",
-          module_name: "MyAppWeb.DashboardLive"
-        })
-
-      _story = story_fixture(scope, %{component_id: liveview.id, title: "Mapped story"})
-
-      summary = ProposalProjector.change_summary(scope)
-
-      assert summary =~ "All stories are mapped"
-    end
-  end
 end

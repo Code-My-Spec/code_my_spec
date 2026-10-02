@@ -20,13 +20,13 @@ the agent works on the first un-skipped phase.
 
 - `.code_my_spec/qa/plan.md` (if present) — app overview, tools registry,
   auth strategy, seed strategy. Produced upstream by `qa_setup`.
-- `.code_my_spec/architecture/overview.md` (if present) — system
-  components and dependencies. Helps scope which surfaces to journey.
+- `show_architecture_overview` — system components and dependencies.
+  Helps scope which surfaces to journey.
 - Stories summary (written by `command/2` to
   `.code_my_spec/qa/stories_summary.md`) — full descriptions and
   acceptance criteria. The prompt shows only titles; details live here.
 
-If neither plan nor architecture exists, read the app's `router.ex` and
+If there is no QA plan, read the app's `router.ex` and
 `config/*.exs` directly to understand routes, auth, and features.
 
 ## Phase 1: Journey Planning

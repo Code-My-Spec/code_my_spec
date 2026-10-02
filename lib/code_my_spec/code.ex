@@ -8,8 +8,7 @@ defmodule CodeMySpec.Code do
 
   Called by `StaticAnalysis` — never call `ElixirAst` directly. That is the same
   arrangement `StaticAnalysis` itself states about `Pipeline`, and it is what
-  every other namespace in this tree does. `SpecAlignment` reaches past this
-  module today and should stop when it next changes.
+  every other namespace in this tree does.
 
   Both shapes of every extractor are exposed. A path is what an analyzer has
   when it is walking a project; a string is what it has when the content came

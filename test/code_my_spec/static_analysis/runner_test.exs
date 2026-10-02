@@ -103,10 +103,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "supports all registered analyzer types", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_all_types", ignore: [[:opts, :cd]] do
-        # Create spec directory for SpecAlignment
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
         # Test each analyzer that's available
         analyzers_to_test = [
           :credo,
@@ -127,16 +123,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   describe "run/3 - error handling" do
     test "returns error when analyzer name is invalid", %{scope: scope} do
       assert {:error, message} = Runner.run(scope, :nonexistent_analyzer)
-      assert is_binary(message)
-    end
-
-    test "returns error when analyzer is not available", %{scope: scope} do
-      # SpecAlignment requires a spec directory - if it doesn't exist, it's not available
-      # Make sure spec directory doesn't exist
-      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-      File.rm_rf!(spec_dir)
-
-      assert {:error, message} = Runner.run(scope, :spec_alignment)
       assert is_binary(message)
     end
 
@@ -176,10 +162,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "executes all available analyzers in parallel", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_run_all", ignore: [[:opts, :cd]] do
-        # Create spec directory to make SpecAlignment available
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
         assert {:ok, problems} = Runner.run_all(scope)
         assert is_list(problems)
       end
@@ -188,29 +170,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "aggregates Problems from available analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_aggregate", ignore: [[:opts, :cd]] do
-        # Create spec directory and a spec with missing implementation
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
-        spec_content = """
-        # TestModule
-
-        **Type**: module
-
-        ## Functions
-
-        ### test_function/0
-
-        Test function.
-
-        ```elixir
-        @spec test_function() :: :ok
-        ```
-        """
-
-        spec_file = Path.join(spec_dir, "test_module.spec.md")
-        File.write!(spec_file, spec_content)
-
         impl_file = Path.join(scope.cwd, "lib/test_module.ex")
         File.mkdir_p!(Path.dirname(impl_file))
         File.write!(impl_file, "defmodule TestModule do\nend")
@@ -218,15 +177,12 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         {:ok, problems} = Runner.run_all(scope)
 
         assert is_list(problems)
-        refute Enum.any?(problems, &(&1.source == "spec_alignment"))
       end
     end
 
     @tag timeout: 120_000
     test "filters out analyzers that aren't available", %{project_dir: project_dir} do
       use_cmd_cassette "static_analysis_runner_filter", ignore: [[:opts, :cd]] do
-        # Create a scope with cwd pointing to a directory without .code_my_spec/spec
-        # so SpecAlignment won't be available, but Credo should still run
         user = user_fixture()
         account = account_with_owner_fixture(user)
         scope = user_scope_fixture(user, account)
@@ -239,11 +195,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
         assert {:ok, problems} = Runner.run_all(scope)
         assert is_list(problems)
-
-        # Problems shouldn't be from SpecAlignment since no spec directory
-        # (Enum.any? on [] is false, so this assertion holds trivially when
-        # problems is empty.)
-        refute Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
       end
     end
 
@@ -276,10 +227,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "handles concurrent execution without race conditions", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_concurrent", ignore: [[:opts, :cd]] do
-        # Create spec directory
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
         # Run multiple times concurrently
         tasks =
           for _ <- 1..3 do
@@ -305,10 +252,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "continues execution when one analyzer fails (error isolation)", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_error_isolation", ignore: [[:opts, :cd]] do
-        # Create spec directory to enable SpecAlignment
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
         # Even if one analyzer might have issues, run_all should continue
         capture_log(fn ->
           assert {:ok, problems} = Runner.run_all(scope)
@@ -332,10 +275,6 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "respects timeout option for slow analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_timeout", ignore: [[:opts, :cd]] do
-        # Create spec directory
-        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
-        File.mkdir_p!(spec_dir)
-
         # Run with a very short timeout - some analyzers may timeout
         # run_all always returns {:ok, problems} - failed analyzers are logged but don't cause error
         capture_log(fn ->

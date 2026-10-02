@@ -187,7 +187,7 @@ defmodule CodeMySpecWeb.LlmsTxtController do
       "- Plans the work as a graph — models the project as stories, components, and requirements, and always tells the agent the single next thing to build.",
       "- Writes a specification before any code — every component gets a spec the agent must read; tests are generated from the spec; the implementation is written to pass the tests.",
       "- Understands 16 Phoenix/Elixir component types — contexts, schemas, repositories, LiveViews, GenServers, controllers, and more, each with its own design rules and requirement chain.",
-      "- Enforces architecture — validates the dependency graph for circular references and boundary violations, and generates architecture views the agent reads as context.",
+      "- Enforces architecture — validates the dependency graph for circular references and boundary violations, and renders architecture views the agent reads through its tools.",
       "- Turns stories into tests — a Three Amigos process converts acceptance criteria into rules, Gherkin scenarios, and executable ExUnit tests.",
       "- Verifies every step automatically — on each stop it compiles the code, runs Credo, and runs the tests and Spex specs, and can block the agent from continuing on failure.",
       "- QAs the running application — a QA agent drives the live app in a real browser, per story or across the whole app, to catch bugs that pass unit tests.",

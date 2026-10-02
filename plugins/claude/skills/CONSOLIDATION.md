@@ -166,7 +166,7 @@ Setup, authentication, and project sync.
 |---|---|---|
 | *(no args)* | init | Run prereq checklist |
 | `auth` | *(authenticate flow)* | OAuth login |
-| `sync` | sync | Regenerate architecture views |
+| `sync` | sync | Sync files and components |
 
 **When you'd use it:** Starting a new project, reconnecting, or refreshing state.
 

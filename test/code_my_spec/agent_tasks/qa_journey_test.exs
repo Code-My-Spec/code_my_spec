@@ -98,19 +98,14 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
 
-    test "notes missing context when no QA plan or architecture", %{scope: scope, task: task} do
+    test "points at the router and config when there is no QA plan", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaJourney.command(scope, task)
-      assert prompt =~ "No QA plan or architecture"
+      assert prompt =~ "No QA plan yet"
     end
 
-    test "references architecture path when it exists", %{scope: scope, task: task} do
-      write_file!(scope.environment, ".code_my_spec/architecture/overview.md", """
-      # Architecture Overview
-      Component graph here.
-      """)
-
+    test "names the architecture tool for the component graph", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaJourney.command(scope, task)
-      assert prompt =~ ".code_my_spec/architecture/overview.md"
+      assert prompt =~ "show_architecture_overview"
     end
 
     test "notes existing journey tests when present", %{scope: scope, task: task} do
