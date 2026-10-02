@@ -442,6 +442,22 @@ defmodule CodeMySpec.Conversations do
 
   def record_sent_to_agent(_agent, _what), do: :ok
 
+  @doc """
+  The message a turn opened at `started_at` was answering: the last one sent to
+  the agent — by a person or by the system — at or before that moment. Nil when
+  nothing was recorded.
+  """
+  @spec turn_starter(Ecto.UUID.t(), DateTime.t()) :: Message.t() | nil
+  def turn_starter(agent_id, %DateTime{} = started_at) when is_binary(agent_id) do
+    Message
+    |> join(:inner, [m], c in Conversation, on: c.id == m.conversation_id)
+    |> where([m, c], c.agent_id == ^agent_id and m.role in [:user, :operator])
+    |> where([m], m.inserted_at <= ^started_at)
+    |> order_by([m], desc: m.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
   @doc "The tool calls on this agent's conversation since `since`, oldest first."
   @spec tool_calls_since(Ecto.UUID.t(), DateTime.t()) :: [
           %{name: String.t(), arguments: map(), at: DateTime.t()}

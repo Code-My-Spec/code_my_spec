@@ -22,6 +22,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   #     can move the whole team onto it.
   #   * `:copy` — the story the copy's team holds, read here. For callers below
   #     `Agents` that cannot resolve a team.
+  #   * `{:bound, story_id, epic_id}` — an agent bound to its active story
+  #     (4292518a): as `{:team, …}`, but offered that story's work and nothing
+  #     else, and not clamped by project-level prerequisites — see `seeds/1`.
   #   * `:project` — no story at all. The main agent's: story work happens on
   #     feature copies, never on main.
   def read(
@@ -42,15 +45,19 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
       case selected(scope, copy, requested_number, assignment) do
         {:ok, story} ->
+          ctx = Map.put(ctx, :seeds, seeds(assignment))
           scoped = from_graph(story, nodes, edges, ctx, role)
           next = next_story(scoped, assignment, requested_number, nodes, edges, ctx)
 
           scoped
-          |> story_or_project(nodes, edges, ctx, role, requested_number)
+          |> story_or_project(assignment, {nodes, edges, ctx}, role, requested_number)
           |> Map.put(:next_story, next)
 
         {:refused, reason} ->
           result(:unavailable, nil, reason)
+
+        {:unavailable, story} ->
+          unavailable_bound(story, assignment)
 
         :none ->
           from_copy(nodes, edges, ctx, role)
@@ -119,12 +126,76 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # story is blocked on this" rather than "go triage issues". The issue needing
   # triage is that story's own. An agent asking what *it* should do is the case
   # that was broken, and it always names a role.
-  defp story_or_project(story_scoped, _nodes, _edges, _ctx, nil, nil), do: story_scoped
+  #
+  # Never for an agent bound to its story (John, 4292518a): it is offered its
+  # story's work and nothing else, project-level prerequisites included. A
+  # coding agent on story 1083 fell through here to the project-level
+  # `issues_resolved` — every open issue in the project — and sat on it while
+  # 1083 never started. A finished story stays `:complete`, so `Agents.Work`
+  # moves the team on.
+  defp story_or_project(story_scoped, {:bound, _id, _epic}, _graph, _role, _requested),
+    do: story_scoped
 
-  defp story_or_project(%{actionable: []} = story_scoped, nodes, edges, ctx, role, nil),
-    do: project_level(nodes, edges, ctx, role, story_scoped)
+  defp story_or_project(story_scoped, _assignment, _graph, nil, nil), do: story_scoped
 
-  defp story_or_project(story_scoped, _nodes, _edges, _ctx, _role, _requested), do: story_scoped
+  defp story_or_project(%{actionable: []} = story_scoped, _assignment, graph, role, nil),
+    do: project_level(graph, role, story_scoped)
+
+  defp story_or_project(story_scoped, _assignment, _graph, _role, _requested),
+    do: story_scoped
+
+  # Which unsatisfied nodes hold the caller's work back (4292518a: strict and
+  # unclamped). A bound agent is never offered project-level work, so
+  # project-level prerequisites do not clamp its story either: `qa_setup →
+  # component_linked` held every story's chain behind work nobody bound could
+  # take. Nor does another story's work: once the story's members are known the
+  # seeds narrow to its own nodes and its member components' (`story_seeds/3`),
+  # which still order it. Everyone else is clamped as before.
+  #
+  # The same view decides completion: a project-level node upstream of a bound
+  # story is not one of its blockers, or a story finished locally would never
+  # read `:complete` and the team would never move on.
+  defp seeds({:bound, _id, _epic}), do: :local
+  defp seeds(_assignment), do: :all
+
+  defp seeds_of(context), do: Map.get(context, :seeds, :all)
+
+  # Narrowed to the story once its members are known: a bound story is held by
+  # its own unsatisfied nodes and its subtree's, and by no other story's.
+  defp story_seeds(story, ids, :local), do: {:story, story.id, ids}
+  defp story_seeds(_story, _ids, seeds), do: seeds
+
+  defp seed?(node, context), do: RequirementGraph.seed?(node, seeds_of(context))
+
+  @doc """
+  Whether `node` is `story`'s work: one of its own requirements or one of its
+  member components' (`RequirementGraph.story_component_ids/2`). What an agent
+  bound to `story` may claim (4292518a, d1a69b4e).
+  """
+  @spec story_work?(map(), map(), map()) :: boolean()
+  def story_work?(story, node, ctx),
+    do: member?(node, story.id, RequirementGraph.story_component_ids(story, ctx))
+
+  # A bound agent's story that cannot be read here: not ready for development,
+  # or reserved for another checkout. Nothing is offered instead (4292518a).
+  defp unavailable_bound(nil, {:bound, id, _epic}),
+    do:
+      result(
+        :blocked,
+        nil,
+        "Your team's active story (id #{id}) does not exist. Nothing outside it is " <>
+          "offered until the team is given another with `set_active_story`."
+      )
+
+  defp unavailable_bound(story, _assignment),
+    do:
+      result(
+        :blocked,
+        story,
+        "Your team's active story #{story.number} is not available on this working copy: " <>
+          "it is not ready for development, or it is reserved elsewhere. Nothing outside " <>
+          "it is offered until it is."
+      )
 
   # Project-scope work, and nothing else, for a copy whose story holds none.
   #
@@ -137,7 +208,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # With nothing at project level either, the story's own answer stands. It
   # already says complete, or blocked and why, and replacing that with a
   # project-shaped "nothing to do" would lose which story the copy is on.
-  defp project_level(nodes, edges, ctx, role, story_scoped) do
+  defp project_level({nodes, edges, ctx}, role, story_scoped) do
     nodes
     |> actionable_nodes(edges, ctx, role)
     |> Enum.filter(&(&1.entity_type == "project"))
@@ -183,13 +254,19 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # The team's story must still be reserved for its checkout: the reservation
   # (`stories.working_copy_id`) is where the code lives, and the team's
   # `story_id` is which of the copy's stories it works.
+  #
+  # A bound agent's ineligible story is `{:unavailable, story}`, not `:none`:
+  # `:none` answers for the whole project, which a bound agent is not offered
+  # (4292518a).
   defp selected(scope, copy, nil, assignment) do
-    with id when not is_nil(id) <- assigned_id(copy, assignment),
-         %{ready_for_dev: true} = story <- Stories.get_story(scope, id),
-         true <- story.working_copy_id == copy.id do
-      {:ok, story}
-    else
-      _ -> :none
+    id = assigned_id(copy, assignment)
+    story = id && Stories.get_story(scope, id)
+
+    cond do
+      is_nil(id) -> :none
+      eligible?(story, copy) -> {:ok, story}
+      match?({:bound, _, _}, assignment) -> {:unavailable, story}
+      true -> :none
     end
   end
 
@@ -210,7 +287,11 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   defp assigned_id(copy, :copy), do: WorkingCopies.team_story_id(copy.id)
   defp assigned_id(_copy, {:team, story_id, _epic_id}), do: story_id
+  defp assigned_id(_copy, {:bound, story_id, _epic_id}), do: story_id
   defp assigned_id(_copy, :project), do: nil
+
+  defp eligible?(%{ready_for_dev: true, working_copy_id: id}, %{id: id}), do: true
+  defp eligible?(_story, _copy), do: false
 
   # The story a team whose story is complete takes next (a31f1cd6). John:
   # "fine for the team to take a new story from the working copy when the team
@@ -223,12 +304,13 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # eligible: the team stays "complete".
   defp next_story(
          %{status: :complete, story: current},
-         {:team, _id, epic_id},
+         {team, _id, epic_id},
          nil,
          nodes,
          edges,
          ctx
-       ) do
+       )
+       when team in [:team, :bound] do
     ctx.stories
     |> Enum.filter(&(&1.id != current.id and is_nil(&1.retired_at) and in_epic?(&1, epic_id)))
     |> Enum.sort_by(&{&1.priority || 999, age(&1.inserted_at)})
@@ -351,7 +433,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     do: RequirementGraph.actionable_from(nodes, edges, context)
 
   defp graph_actionable(nodes, edges, context, role),
-    do: RequirementGraph.actionable_for_role_from(nodes, edges, context, role)
+    do: RequirementGraph.actionable_for_role_from(nodes, edges, context, role, seeds_of(context))
 
   @doc false
   def from_graph(story, nodes, edges, ctx, role) do
@@ -362,7 +444,13 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     story_nodes = Enum.filter(local, &(&1.entity_type == "story"))
     present = MapSet.new(story_nodes, & &1.name)
     missing = Enum.reject(@completion_names, &MapSet.member?(present, &1))
-    context = Map.merge(ctx, %{stories: [story], execution_component_ids: ids})
+
+    context =
+      Map.merge(ctx, %{
+        stories: [story],
+        execution_component_ids: ids,
+        seeds: story_seeds(story, ids, seeds_of(ctx))
+      })
 
     cond do
       blocks_on_questions?(questions, role) ->
@@ -387,7 +475,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
           |> Enum.filter(&member?(&1, story.id, ids))
 
         open = Enum.reject(local, & &1.satisfied)
-        blockers = blocking_nodes(nodes, edges, local)
+        blockers = nodes |> blocking_nodes(edges, local) |> Enum.filter(&seed?(&1, context))
 
         cond do
           open == [] and blockers == [] ->
