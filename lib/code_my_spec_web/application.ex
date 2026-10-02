@@ -52,8 +52,18 @@ defmodule CodeMySpecWeb.Application do
         # FLAME.LocalBackend, where a "runner" is just a local spawned
         # process rather than real infrastructure being provisioned, so
         # being wrong here costs nothing to revisit.
+        #
+        # Step 7 (577de9bb): prod runs real bursts on `FLAME.FlyBackend`,
+        # since this app is already a Fly machine — `FLY_APP_NAME` and
+        # `FLY_IMAGE_REF` are Fly's own runtime env, so the only new
+        # requirement is the `FLY_API_TOKEN` secret (not auto-injected by
+        # Fly for security reasons). A Hetzner backend was the original
+        # plan, but the app isn't Hetzner-deployed at all — nothing
+        # portable exists there yet for a runner to boot from, while Fly
+        # already has exactly that. dev/test keep `LocalBackend`, where a
+        # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
-          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend},
+          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
@@ -223,6 +233,9 @@ defmodule CodeMySpecWeb.Application do
     Application.get_env(:code_my_spec, :embeddings_backend) ==
       CodeMySpec.Embeddings.PgVectorBackend
   end
+
+  defp embed_pool_backend(:prod), do: FLAME.FlyBackend
+  defp embed_pool_backend(_env), do: FLAME.LocalBackend
 
   defp maybe_install_file_logger do
     if Application.get_env(:code_my_spec, :install_file_logger, false) do
