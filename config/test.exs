@@ -552,6 +552,13 @@ config :code_my_spec, CodeMySpec.Research,
   plug: {Req.Test, CodeMySpec.Research},
   tavily_api_key: "test-key"
 
+# Step 3's hex.pm client (577de9bb). Pinned so a reconciler test's own stub
+# is the only way its fetch resolves — an unpinned client here would make a
+# real request to repo.hex.pm the moment a test exercised it without
+# remembering to stub first.
+config :code_my_spec, CodeMySpec.Embeddings.HexPackageFetch,
+  plug: {Req.Test, CodeMySpec.Embeddings.HexPackageFetch}
+
 # Pasting a key asks the provider whether it works, and a suite that really
 # asked would connect to Anthropic and Z.ai from every run of this story.
 config :code_my_spec, CodeMySpec.Integrations.Providers.ApiKey,
