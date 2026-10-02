@@ -1,4 +1,5 @@
 import Config
+import_config "dev_tooling.exs"
 
 config :code_my_spec, env: :demo
 
@@ -38,17 +39,6 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
 
 # Enable dev routes for dashboard and mailbox
 config :code_my_spec, dev_routes: true
-
-config :logger, :default_formatter, format: "[$level] $message\n"
-
-config :phoenix, :stacktrace_depth, 20
-config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix_live_view,
-  debug_heex_annotations: true,
-  enable_expensive_runtime_checks: true
-
-config :swoosh, :api_client, false
 
 # No Cloudflare tunnel: the web app only starts one for env == :dev
 # (CodeMySpecWeb.Application.children/2). :demo hits the catch-all — private.

@@ -1,4 +1,5 @@
 import Config
+import_config "dev_tooling.exs"
 
 config :code_my_spec, env: :dev
 
@@ -149,29 +150,10 @@ config :phoenix_live_reload, :dirs, [
 # Enable dev routes for dashboard and mailbox
 config :code_my_spec, dev_routes: true
 
-# Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
-
-# ...but keep a full logfmt copy in ~/.codemyspec/web.log, because the terminal
-# above belongs to whoever started the server and an agent cannot read it.
+# The terminal belongs to whoever started the server (dev_tooling.exs drops
+# metadata there) and an agent cannot read it, so keep a full logfmt copy in
+# ~/.codemyspec/web.log.
 config :code_my_spec, install_file_logger: true
-
-# Set a higher stacktrace during development. Avoid configuring such
-# in production as building large stacktraces may be expensive.
-config :phoenix, :stacktrace_depth, 20
-
-# Initialize plugs at runtime for faster development compilation
-config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix_live_view,
-  # Include HEEx debug annotations as HTML comments in rendered markup.
-  # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: true,
-  # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: true
-
-# Disable swoosh api client as it is only required for production adapters.
-config :swoosh, :api_client, false
 
 # Cloudflare Tunnel — named tunnel to dev.codemyspec.com
 config :code_my_spec, :cloudflare_tunnel,

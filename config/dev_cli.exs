@@ -1,4 +1,6 @@
 import Config
+import_config "harness.exs"
+import_config "dev_tooling.exs"
 
 config :code_my_spec, env: :dev_cli
 
@@ -18,22 +20,6 @@ config :code_my_spec, harness_default_server_url: "https://dev.codemyspec.com"
 # Issues.RemoteClient.create_issue/3 over the CLI's OAuth session.
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
 
-# PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
-# Disable on the local CLI deployment; versions are still recorded but
-# `first_version_id` / `current_version_id` columns stay nil.
-config :paper_trail, strict_mode: false
-
-config :code_my_spec, stories_implementation: CodeMySpec.Stories.StoriesRepository
-config :code_my_spec, personas_implementation: CodeMySpec.Personas.PersonasRepository
-config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.BddRulesRepository
-config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRepository
-
-config :code_my_spec,
-  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
-
-# SQLite adapter for CLI mode
-config :code_my_spec, adapter: Ecto.Adapters.SQLite3
-
 # `AnalysisSlots.limit/0` defaults to a fourth of the cores -- 2 on this
 # box's 10 schedulers. Its own moduledoc already names the risk: each `mix
 # test`/`mix spex` sets `max_cases` to twice the scheduler count on its
@@ -52,9 +38,6 @@ config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 # box needs does not apply there.
 config :code_my_spec, analysis_slots: 1
 
-# Embedding pipeline lives in CLI builds (Ortex + sqlite_vec).
-config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
-
 # `database` is set in runtime.exs so `~` expands on the user's machine.
 #
 # pool_size 5 (was 1): background analysis reconciles run concurrently with
@@ -69,9 +52,6 @@ config :code_my_spec, CodeMySpec.Repo,
   default_transaction_mode: :immediate,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
-
-# Disable the main web endpoint
-config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 # The harness's own endpoint (`just harness`, port 4004 by default — see
 # CodeMySpecLocalWeb.Application.start_harness/0, which is what this build
@@ -107,18 +87,6 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
       ~r"lib/code_my_spec_local_web/(controllers|live|components)/.*(ex|heex)$"
     ]
   ]
-
-# Dev logging
-config :logger, :default_formatter, format: "[$level] $message\n"
-
-config :phoenix, :stacktrace_depth, 20
-config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix_live_view,
-  debug_heex_annotations: true,
-  enable_expensive_runtime_checks: true
-
-config :swoosh, :api_client, false
 
 # Cloudflare Tunnel — quick mode. Boots a *.trycloudflare.com URL
 # pointing at the local server on :4004 (no account or DNS required).

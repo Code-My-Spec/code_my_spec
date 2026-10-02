@@ -1,4 +1,5 @@
 import Config
+import_config "harness.exs"
 
 config :code_my_spec, env: :prod_cli
 
@@ -21,28 +22,9 @@ config :code_my_spec, harness_default_server_url: "https://codemyspec.com"
 # OAuth session.
 config :code_my_spec, code_my_spec_project_id: "a3158f01-3008-4394-b9d1-669236a358c8"
 
-# PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
-# Disable on the local CLI deployment; versions are still recorded but
-# `first_version_id` / `current_version_id` columns stay nil.
-config :paper_trail, strict_mode: false
-
-config :code_my_spec, stories_implementation: CodeMySpec.Stories.StoriesRepository
-config :code_my_spec, personas_implementation: CodeMySpec.Personas.PersonasRepository
-config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.BddRulesRepository
-config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRepository
-
-config :code_my_spec,
-  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
-
 # Use the Req-backed Swoosh client (Req is already a dep). Without this, Swoosh
 # defaults to Swoosh.ApiClient.Hackney — hackney isn't a dep, so boot crashes.
 config :swoosh, api_client: Swoosh.ApiClient.Req
-
-# SQLite adapter for CLI mode
-config :code_my_spec, adapter: Ecto.Adapters.SQLite3
-
-# Embedding pipeline lives in CLI builds (Ortex + sqlite_vec).
-config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
 
 # `database` is set in runtime.exs so `~` expands on the user's machine,
 # not the CI builder's ($HOME = /Users/runner in GitHub Actions).
@@ -55,9 +37,6 @@ config :code_my_spec, CodeMySpec.Repo,
   busy_timeout: 10_000,
   default_transaction_mode: :immediate,
   log: false
-
-# Disable the main web endpoint
-config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 # CodeMySpecLocalWeb.Endpoint's own config (port 4003) is dead weight now —
 # nothing in application.ex starts it in this build any more — but it stays
