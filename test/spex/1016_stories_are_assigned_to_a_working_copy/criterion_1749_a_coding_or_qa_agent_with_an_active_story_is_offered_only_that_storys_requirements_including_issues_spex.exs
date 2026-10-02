@@ -50,4 +50,26 @@ defmodule CodeMySpecSpex.Story1016.Criterion1749Spex do
       end
     end
   end
+
+  spex "A coder whose story holds nothing for it is not handed project work", criterion: 1749 do
+    scenario "coding's part of the story is done; only a project issue is open" do
+      given_ "a team on its story, coding's part done, and an accepted project issue", context do
+        {:ok, context |> team_on_a_story() |> issue_accepted()}
+      end
+
+      when_ "the coding agent asks what to do next", context do
+        {:ok, Map.put(context, :text, next_for(context, context.coding))}
+      end
+
+      then_ "it is not offered the project-wide issues_resolved", context do
+        assert context.text =~ "# Story #{context.story.number}:"
+
+        refute offers?(context.text, "issues_resolved"),
+               "the coder's story had nothing for it, and it was handed the project's issues " <>
+                 "instead (4292518a):\n" <> context.text
+
+        {:ok, context}
+      end
+    end
+  end
 end
