@@ -6,11 +6,13 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
   is left to rebuild."
 
   This is most of the local database by volume. A project holds ~4,500 file
-  records, plus problems, sessions and components — roughly five sixths of its
-  rows, none of it authored. Files come from scanning a working copy, problems
-  from analysers, components are projections of spec files. Copying them would
-  make the payload five times larger to deliver a snapshot that goes stale the
-  moment Sam's next sync runs.
+  records, plus problems and sessions — none of it authored. Files come from
+  scanning a working copy, problems from analysers. Copying them would make the
+  payload far larger to deliver a snapshot that goes stale the moment Sam's
+  next sync runs.
+
+  Components used to be in this list, as projections of spec files. Since they
+  became records (3aeb66cf, step 6) they are authored and travel.
 
   The migration says what it left behind rather than staying quiet about it, so
   a short summary is not mistaken for a partial one.
@@ -45,10 +47,10 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
         {:ok, Map.put(context, :body, Jason.decode!(response.resp_body))}
       end
 
-      then_ "no file, problem, session or component records come with it", context do
+      then_ "no file, problem or session records come with it", context do
         skipped = context.body["migrated"]["skipped"]
 
-        for kind <- ~w(files problems sessions components requirements) do
+        for kind <- ~w(files problems sessions requirements) do
           assert kind in skipped,
                  "expected #{kind} to be named as left behind, not silently omitted"
         end
@@ -58,7 +60,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
 
       and_ "the harness agrees about which kinds it recomputes", context do
         assert "files" in Fixtures.derived_kinds()
-        assert "components" in Fixtures.derived_kinds()
+        refute "components" in Fixtures.derived_kinds(), "components are authored records now"
 
         refute "stories" in Fixtures.derived_kinds(),
                "a story is authored — if this ever reads as derived, Sam's work is being dropped"

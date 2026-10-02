@@ -3,11 +3,15 @@ defmodule CodeMySpec.Migration do
   Copies a project's authored records from a local harness onto the cloud.
 
   Story 991. What travels is what Sam wrote: stories, rules, scenarios,
-  personas, epics, issues, questions and the project's configuration. What does
-  not travel is everything the harness can recompute — files, problems,
-  sessions, components, requirements. Those are ~5,000 of the ~6,500 rows a
-  local project holds, and the cloud rebuilds them from the working copy on
-  first sync.
+  personas, epics, issues, questions, components and their dependencies, and
+  the project's configuration. What does not travel is everything the harness
+  can recompute — files, problems, sessions, requirements. Those are most of
+  the rows a local project holds, and the cloud rebuilds them from the working
+  copy on first sync.
+
+  Components travel since they became records (3aeb66cf, step 6): an
+  architecture authored through the tools exists nowhere else, and a frozen
+  project's sync no longer re-derives it from files.
 
   One call, one transaction. A migration that half-lands is worse than one that
   fails: Sam would have to work out what arrived before he could retry, and the
@@ -32,6 +36,7 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Epics,
       CodeMySpec.Issues,
       CodeMySpec.Personas,
+      CodeMySpec.Projects,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
@@ -54,12 +59,14 @@ defmodule CodeMySpec.Migration do
     Stories
   }
 
+  alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Users.Scope
 
-  @derived ~w(files problems sessions components requirements analysis_runs file_edits)
+  @derived ~w(files problems sessions requirements analysis_runs file_edits)
 
   @doc "Kinds the harness recomputes, which this deliberately does not carry."
   @spec derived_kinds() :: [String.t()]
@@ -96,9 +103,49 @@ defmodule CodeMySpec.Migration do
       # issue history, no open questions and no QA record at all.
       "issues" => export_issues(scope),
       "questions" => Enum.flat_map(stories, &export_questions(scope, &1)),
-      "qa_attempts" => Enum.flat_map(stories, &export_qa_attempts(scope, &1))
+      "qa_attempts" => Enum.flat_map(stories, &export_qa_attempts(scope, &1)),
+      "components" => export_components(scope),
+      "dependencies" => export_dependencies(scope),
+      "components_authored_at" => components_authored_at(scope)
     }
   end
+
+  # By module name throughout: ids are derived from the project id, so the far
+  # side's differ, and the module name is the key both sides agree on (see
+  # `component_id/2`).
+  defp export_components(scope) do
+    components = Components.list_components(scope)
+    names = Map.new(components, &{&1.id, &1.module_name})
+
+    Enum.map(
+      components,
+      &%{
+        "module_name" => &1.module_name,
+        "name" => &1.name,
+        "type" => &1.type,
+        "description" => &1.description,
+        "provenance" => &1.provenance && to_string(&1.provenance),
+        "parent_module_name" => names[&1.parent_component_id]
+      }
+    )
+  end
+
+  defp export_dependencies(scope) do
+    scope
+    |> Components.list_dependencies()
+    |> Enum.map(
+      &%{
+        "source_module_name" => &1.source_component.module_name,
+        "target_module_name" => &1.target_component.module_name,
+        "provenance" => &1.provenance && to_string(&1.provenance)
+      }
+    )
+  end
+
+  defp components_authored_at(%Scope{active_project_id: id}) when is_binary(id),
+    do: Repo.one(from(p in Project, where: p.id == ^id, select: p.components_authored_at))
+
+  defp components_authored_at(_scope), do: nil
 
   # One walk per export, keyed by the criterion id embedded in each filename.
   # Memoised in the process dictionary: 921 criteria each globbing the tree is
@@ -367,14 +414,26 @@ defmodule CodeMySpec.Migration do
   # voice. Rules need stories, criteria need rules AND a persona-linked story,
   # and stories need their epic.
   defp put_graph(scope, payload) do
-    with {:ok, epics} <- put_epics(scope, payload["epics"] || []),
+    with {:ok, components} <- put_components(scope, payload["components"] || []),
+         {:ok, dependencies} <-
+           put_dependencies(scope, payload["dependencies"] || [], components),
+         :ok <- stamp_frozen(scope, payload["components_authored_at"]),
+         {:ok, epics} <- put_epics(scope, payload["epics"] || []),
          {:ok, stories} <- put_stories(scope, payload["stories"] || [], epics),
          {:ok, personas} <- put_personas(scope, payload["personas"] || []),
          :ok <- link_personas(scope, payload["persona_stories"] || [], stories, personas),
          {:ok, rules} <- put_rules(scope, payload["rules"] || [], stories),
          {:ok, criteria} <- put_criteria(scope, payload["criteria"] || [], stories, rules) do
       {:ok,
-       %{epics: epics, stories: stories, personas: personas, rules: rules, criteria: criteria}}
+       %{
+         components: components,
+         dependencies: dependencies,
+         epics: epics,
+         stories: stories,
+         personas: personas,
+         rules: rules,
+         criteria: criteria
+       }}
     end
   end
 
@@ -395,6 +454,101 @@ defmodule CodeMySpec.Migration do
     |> Map.merge(records)
     |> Map.new(fn {kind, created} -> {kind, map_size(created)} end)
     |> Map.put(:skipped, @derived)
+  end
+
+  # Components first, so a story's link (`component_id/2`) names a row that is
+  # already here. Upserted on module name, the natural key, so a second run
+  # finds its own; parents in a second pass, once every component exists.
+  defp put_components(scope, components) do
+    with {:ok, by_name} <- upsert_components(scope, components),
+         :ok <- set_parents(scope, components, by_name) do
+      {:ok, by_name}
+    end
+  end
+
+  defp upsert_components(scope, components) do
+    Enum.reduce_while(components, {:ok, %{}}, fn c, {:ok, acc} ->
+      attrs =
+        c
+        |> Map.take(~w(module_name name type description provenance))
+        |> Map.new(fn {k, v} -> {String.to_existing_atom(k), v} end)
+
+      case Components.upsert_component(scope, attrs) do
+        %Component{} = component -> {:cont, {:ok, Map.put(acc, component.module_name, component)}}
+        {:error, reason} -> {:halt, {:error, {:component, c["module_name"], reason}}}
+      end
+    end)
+  end
+
+  defp set_parents(scope, components, by_name) do
+    Enum.reduce_while(components, :ok, fn c, :ok ->
+      with %Component{} = child <- by_name[c["module_name"]],
+           %Component{id: parent_id} <- by_name[c["parent_module_name"]],
+           false <- child.parent_component_id == parent_id,
+           {:error, reason} <-
+             Components.update_component(scope, child, %{parent_component_id: parent_id}) do
+        {:halt, {:error, {:component_parent, c["module_name"], reason}}}
+      else
+        _ -> {:cont, :ok}
+      end
+    end)
+  end
+
+  # An edge whose ends are not both here is dropped: a dependency on a
+  # component that did not travel would point at nothing.
+  defp put_dependencies(scope, dependencies, by_name) do
+    existing =
+      scope
+      |> Components.list_dependencies()
+      |> MapSet.new(&{&1.source_component_id, &1.target_component_id})
+
+    Enum.reduce_while(dependencies, {:ok, %{}}, fn d, {:ok, acc} ->
+      with %Component{id: source} <- by_name[d["source_module_name"]],
+           %Component{id: target} <- by_name[d["target_module_name"]] do
+        put_dependency(scope, existing, source, target, d["provenance"], acc)
+      else
+        _ -> {:cont, {:ok, acc}}
+      end
+    end)
+  end
+
+  defp put_dependency(scope, existing, source, target, provenance, acc) do
+    if MapSet.member?(existing, {source, target}) do
+      {:cont, {:ok, Map.put(acc, {source, target}, :kept)}}
+    else
+      case Components.create_dependency(scope, %{
+             source_component_id: source,
+             target_component_id: target,
+             provenance: provenance
+           }) do
+        {:ok, dependency} -> {:cont, {:ok, Map.put(acc, {source, target}, dependency)}}
+        {:error, reason} -> {:halt, {:error, {:dependency, source, target, reason}}}
+      end
+    end
+  end
+
+  # A project frozen at the source is frozen here, or the destination's first
+  # sync would treat its spec files as the description of its components again.
+  # A project already stamped here keeps its own stamp.
+  defp stamp_frozen(_scope, nil), do: :ok
+
+  defp stamp_frozen(%Scope{active_project_id: id}, stamp) do
+    with {:ok, at} <- instant(stamp) do
+      from(p in Project, where: p.id == ^id and is_nil(p.components_authored_at))
+      |> Repo.update_all(set: [components_authored_at: at])
+
+      :ok
+    end
+  end
+
+  # A DateTime when called directly, its ISO8601 string once through the wire.
+  defp instant(%DateTime{} = at), do: {:ok, at}
+
+  defp instant(iso) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, at, _offset} -> {:ok, at}
+      _ -> {:error, {:components_authored_at, iso}}
+    end
   end
 
   # Each of these returns a map of local_id => the record the cloud created, and

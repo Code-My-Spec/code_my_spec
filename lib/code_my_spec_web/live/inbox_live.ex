@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.InboxLive do
 
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Conversations.Reads
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.Presence
 
@@ -39,6 +40,7 @@ defmodule CodeMySpecWeb.InboxLive do
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
     # Opening a conversation marks it read for the whole account.
     {:ok, conversation} = Conversations.mark_read(socket.assigns.current_scope, id)
+    mark_seen(socket, conversation.id)
 
     {:noreply,
      socket
@@ -56,6 +58,11 @@ defmodule CodeMySpecWeb.InboxLive do
   def handle_event("open_conversation", %{"id" => id}, socket) do
     {:noreply,
      push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{id}")}
+  end
+
+  def handle_event("set_read", %{"id" => id, "read" => read}, socket) do
+    Reads.set_read(socket.assigns.current_scope, id, read == "true")
+    {:noreply, load_list(socket)}
   end
 
   def handle_event(
@@ -125,6 +132,8 @@ defmodule CodeMySpecWeb.InboxLive do
 
   @impl true
   def handle_info({:inbox_updated, conversation_id}, socket) do
+    viewing? = match?(%{id: ^conversation_id}, socket.assigns.conversation)
+    if viewing?, do: mark_seen(socket, conversation_id)
     socket = load_list(socket)
 
     socket =
@@ -150,10 +159,20 @@ defmodule CodeMySpecWeb.InboxLive do
       |> Map.keys()
       |> MapSet.new()
 
+    conversations = Conversations.list_conversations(scope)
+    reads = Reads.states(scope, Enum.map(conversations, & &1.id))
+
     socket
-    |> assign(:conversations, Conversations.list_conversations(scope))
+    |> assign(:conversations, conversations)
+    |> assign(:reads, reads)
     |> assign(:online, online)
-    |> assign(:unread_count, Conversations.unread_count(scope))
+    |> assign(:unread_count, Enum.count(conversations, &Reads.unread?(reads, &1.id)))
+  end
+
+  # Only once connected: the disconnected render is not the person reading.
+  defp mark_seen(socket, conversation_id) do
+    if connected?(socket),
+      do: Reads.set_read(socket.assigns.current_scope, conversation_id, true)
   end
 
   # Email the customer only when they're not currently connected via the widget.
@@ -232,27 +251,31 @@ defmodule CodeMySpecWeb.InboxLive do
                 <th>Status</th>
                 <th class="hidden sm:table-cell">Last message</th>
                 <th class="hidden sm:table-cell">Last active</th>
+                <th><span class="sr-only">Read</span></th>
               </tr>
             </thead>
             <tbody>
               <tr :if={@conversations == []} data-test="conversations-empty">
-                <td colspan="4" class="text-center opacity-60">No conversations yet</td>
+                <td colspan="5" class="text-center opacity-60">No conversations yet</td>
               </tr>
               <tr
                 :for={conversation <- @conversations}
                 data-test="conversation"
                 data-kind={conversation.type}
-                data-unread={to_string(!conversation.read)}
+                data-unread={to_string(Reads.unread?(@reads, conversation.id))}
                 phx-click="open_conversation"
                 phx-value-id={conversation.id}
                 class={["cursor-pointer hover", conversation.status == :closed && "opacity-50"]}
               >
                 <td
                   data-test="conversation-user"
-                  class={["break-all", if(conversation.read, do: "font-medium", else: "font-bold")]}
+                  class={[
+                    "break-all",
+                    if(Reads.unread?(@reads, conversation.id), do: "font-bold", else: "font-medium")
+                  ]}
                 >
                   <span
-                    :if={!conversation.read}
+                    :if={Reads.unread?(@reads, conversation.id)}
                     data-test="unread-dot"
                     class="mr-1.5 inline-block size-2 rounded-full bg-primary align-middle"
                   >
@@ -281,6 +304,9 @@ defmodule CodeMySpecWeb.InboxLive do
                 </td>
                 <td class="hidden text-sm opacity-60 sm:table-cell">
                   {Calendar.strftime(conversation.updated_at, "%Y-%m-%d %H:%M")}
+                </td>
+                <td class="w-px">
+                  <.read_toggle id={conversation.id} unread?={Reads.unread?(@reads, conversation.id)} />
                 </td>
               </tr>
             </tbody>
@@ -432,6 +458,26 @@ defmodule CodeMySpecWeb.InboxLive do
   end
 
   # -- Helpers ----------------------------------------------------------------
+
+  attr :id, :string, required: true
+  attr :unread?, :boolean, required: true
+
+  defp read_toggle(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="set_read"
+      phx-value-id={@id}
+      phx-value-read={to_string(@unread?)}
+      data-test="toggle-read"
+      aria-label={if @unread?, do: "Mark read", else: "Mark unread"}
+      title={if @unread?, do: "Mark read", else: "Mark unread"}
+      class="btn btn-ghost btn-xs btn-square"
+    >
+      <.icon name={if @unread?, do: "hero-envelope-open", else: "hero-envelope"} class="size-4" />
+    </button>
+    """
+  end
 
   defp preview(conversation) do
     case List.last(conversation.messages) do

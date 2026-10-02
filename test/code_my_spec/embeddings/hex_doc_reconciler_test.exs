@@ -20,8 +20,11 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
   alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.HexDocReconciler
   alias CodeMySpec.Embeddings.HexPackageFetch
+  alias CodeMySpec.Embeddings.PgVectorBackend
   alias CodeMySpec.Repo
   alias CodeMySpecTest.HexTarballFixtures
+
+  @vector List.duplicate(0.1, 384)
 
   setup do
     # `reconcile_all/0` runs each package through `FLAME.call/2`, a
@@ -122,6 +125,88 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
                  select: %{source: e.source, path: e.path, version: e.version}
                )
                |> Repo.all()
+    end
+
+    # Live on :4000 within minutes of the first real sweep (577de9bb step 3):
+    # bandit documents Bandit.Clock from two source files, so
+    # docs_from_source/1 yielded the same {module_name, markdown} pair twice,
+    # chunk_entries/1 produced two identical {path, 0, ...} entries, and the
+    # second insert tripped doc_embeddings_shared_path_chunk_index — a crash
+    # ON CONFLICT never sees, because it names a different index.
+    test "a module documented from two source files is stored once, not crashed on", %{
+      scope: scope
+    } do
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/clock.ex" => """
+          defmodule Clock do
+            @moduledoc "The real implementation."
+
+            @doc "Now."
+            def now, do: :ok
+          end
+          """,
+          "lib/clock_fallback.ex" => """
+          defmodule Clock do
+            @moduledoc "A platform fallback, re-opening the same module."
+
+            @doc "Also now."
+            def now, do: :fallback
+          end
+          """
+        })
+
+      seed_dependency(scope, "duplicate_module_pkg", "1.0.0", tarball)
+      stub_tarball("duplicate_module_pkg", "1.0.0", tarball)
+
+      :ok = HexDocReconciler.reconcile_all()
+
+      assert %DocPackage{status: "embedded", chunk_count: 1} =
+               Repo.get_by(DocPackage, package: "duplicate_module_pkg", version: "1.0.0")
+
+      assert [%{path: "Clock.md"}] =
+               from(e in DocEmbedding,
+                 where: e.package == "duplicate_module_pkg",
+                 select: %{path: e.path}
+               )
+               |> Repo.all()
+    end
+
+    # The shape this would take live: two sweep attempts of the same
+    # package overlapping across a restart, both reaching the chunk
+    # insert. Simulated here by pre-seeding the exact row a losing
+    # concurrent attempt would collide with — same (source, path,
+    # chunk_index), a different identity, so it conflicts on
+    # doc_embeddings_shared_path_chunk_index even though the
+    # (package, version, model, path, chunk_index) index this reconciler
+    # targets would not. The point: that conflict must come back as a
+    # recorded `failed` marker, never a raised exception that leaves the
+    # package stuck retrying forever.
+    test "a store conflict with an existing row is marked failed, not raised", %{scope: scope} do
+      tarball = HexTarballFixtures.build(%{"lib/race.ex" => "defmodule Race do\n  @moduledoc \"hi\"\nend\n"})
+      seed_dependency(scope, "race_pkg", "1.0.0", tarball)
+      stub_tarball("race_pkg", "1.0.0", tarball)
+
+      :ok =
+        PgVectorBackend.store_embedded_chunk(
+          nil,
+          "hexdocs:race_pkg",
+          "Race.md",
+          0,
+          "stale",
+          "stale-file-hash",
+          @vector,
+          package: "race_pkg",
+          version: "0.9.0",
+          model: "a-stale-model"
+        )
+
+      :ok = HexDocReconciler.reconcile_all()
+
+      assert %DocPackage{status: "failed", error: error} =
+               Repo.get_by(DocPackage, package: "race_pkg", version: "1.0.0")
+
+      assert error =~ "unique_violation" or error =~ "doc_embeddings_shared_path_chunk_index"
     end
 
     test "a package with no documented modules is marked no_docs, not retried forever", %{

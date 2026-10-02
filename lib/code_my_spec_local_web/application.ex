@@ -51,9 +51,7 @@ defmodule CodeMySpecLocalWeb.Application do
   # default, from the one place — the command that starts it — that both a
   # human and a launchd plist already have to name.
   defp start_harness do
-    ensure_server_path()
-    ensure_directories()
-    harness_log = install_harness_file_logger()
+    harness_log = prepare_host()
 
     warn_if_no_credential()
 
@@ -91,6 +89,17 @@ defmodule CodeMySpecLocalWeb.Application do
       other ->
         other
     end
+  end
+
+  @doc """
+  What a harness needs from the machine before it starts, under a service
+  supervisor too: the user's toolchain PATH, `~/.codemyspec`, and harness.log.
+  Returns the log's path. Also called by `CodeMySpecDesktop.Application`.
+  """
+  def prepare_host do
+    ensure_server_path()
+    ensure_directories()
+    install_harness_file_logger()
   end
 
   # One machine, many working copies, and credentials are per-project now:

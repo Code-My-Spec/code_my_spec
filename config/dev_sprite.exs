@@ -1,4 +1,5 @@
 import Config
+import_config "harness.exs"
 
 # dev_sprite — the harness, on centralized data.
 #
@@ -36,14 +37,6 @@ config :code_my_spec,
 config :code_my_spec, harness_default_server_url: "https://dev.codemyspec.com"
 
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
-
-config :code_my_spec, stories_implementation: CodeMySpec.Stories.StoriesRepository
-config :code_my_spec, personas_implementation: CodeMySpec.Personas.PersonasRepository
-config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.BddRulesRepository
-config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRepository
-
-config :code_my_spec,
-  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
 
 # Postgres, not SQLite. This line is the entire architectural difference.
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
@@ -88,11 +81,6 @@ config :code_my_spec, CodeMySpec.Repo,
   queue_interval: 2_000,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
-
-# No public web surface. The sprite is reached only by the agent on loopback
-# and by whatever launched it, over an outbound connection. The user-facing
-# UI is served by the server against the same rows.
-config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4003],
