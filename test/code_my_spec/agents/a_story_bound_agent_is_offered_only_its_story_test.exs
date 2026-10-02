@@ -138,31 +138,51 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     end
   end
 
-  # The story's critical path is the story's work: with every QA agent bound,
-  # nobody else would ever take a `qa_setup` the story waits on.
+  # Strict and unclamped (John): project-level work, prerequisites included,
+  # goes to agents without a story, and does not hold a bound agent's story.
   describe "a project-level requirement the story waits on" do
     setup ctx do
       :ok = CodeMySpec.Environments.delete_file(ctx.environment, ".code_my_spec/qa/plan.md")
       CodeMySpecSpex.GraphGivens.sync(ctx)
-      :ok
+      %{qa: reload(ctx.qa)}
     end
 
-    test "is offered to the bound agent whose role holds it", ctx do
-      qa = reload(ctx.qa)
-
-      assert qa.story_id == ctx.story.id
-      assert names(ctx, qa) == ["qa_setup"]
-      assert Slice.next(ctx, %{agent_id: qa.id}) =~ "qa_setup"
+    test "is not offered to the bound agent whose role holds it", ctx do
+      assert ctx.qa.story_id == ctx.story.id
+      refute "qa_setup" in names(ctx, ctx.qa)
+      refute Slice.next(ctx, %{agent_id: ctx.qa.id}) =~ "qa_setup"
     end
 
-    test "and can be started by it", ctx do
-      {error?, text} = start_project(ctx, reload(ctx.qa), "qa_setup")
+    test "and cannot be started by it", ctx do
+      {error?, text} = start_project(ctx, ctx.qa, "qa_setup")
 
-      refute error?, text
+      assert error?, text
+      assert text =~ "active story #{ctx.story.number}"
     end
 
-    test "while project-level work the story does not wait on is not", ctx do
-      refute "issues_resolved" in names(ctx, ctx.coding)
+    test "does not hold the bound agent's story work back", ctx do
+      assert "qa_complete" in names(ctx, ctx.qa)
+
+      menu = ctx.scope |> Menu.live(:qa, ctx.qa) |> Keyword.get(:requirements, 0)
+      assert menu == length(Work.claimable_work(ctx.scope, ctx.qa))
+      assert Slice.next(ctx, %{agent_id: ctx.qa.id}) =~ "qa_complete"
+    end
+
+    test "still holds the story back for an agent without one", ctx do
+      Repo.update_all(Agent, set: [story_id: nil])
+      names = names(ctx, reload(ctx.qa))
+
+      assert "qa_setup" in names
+      refute "qa_complete" in names
+    end
+
+    test "a story-internal unsatisfied node still blocks its descendants", ctx do
+      accept(ctx, %{story_id: ctx.story.id})
+
+      refute "qa_complete" in names(ctx, ctx.qa),
+             "story_issues_resolved is unsatisfied and qa_complete waits on it"
+
+      assert "story_issues_resolved" in names(ctx, ctx.coding)
     end
   end
 

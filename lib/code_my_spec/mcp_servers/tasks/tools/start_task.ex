@@ -306,8 +306,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   # An agent with an active story claims only that story's work, as it is only
   # offered that (4292518a). Another story's story-level work is
-  # `team_may_claim/3`'s refusal; this one covers everything else — project-level
-  # work the story does not wait on, and other stories' components.
+  # `team_may_claim/3`'s refusal; this one covers everything else — every
+  # project-level requirement, and other stories' components.
   defp story_may_claim(scope, %Agent{} = agent, requirement) do
     case Work.bound_story_id(agent) do
       nil ->

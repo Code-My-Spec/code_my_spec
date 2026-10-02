@@ -707,8 +707,9 @@ defmodule CodeMySpec.Agents.Work do
   Withholding happens before the story's wave is cut.
 
   An agent with an active story (`bound_story_id/1`) is offered that story's
-  work and nothing else (4292518a): no project-level work beyond what the
-  story waits on, and no other story's. Without one it is answered as before.
+  work and nothing else (4292518a): no project-level work and no other story's,
+  and its story is not held back by unsatisfied project-level prerequisites.
+  Without one it is answered as before.
 
   Options: `:story_number` narrows to that story or refuses, as
   `get_next_requirement` takes it; `:owners` is the project's agents, so a

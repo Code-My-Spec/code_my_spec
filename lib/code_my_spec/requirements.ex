@@ -135,8 +135,7 @@ defmodule CodeMySpec.Requirements do
   def story_work?(%Scope{} = scope, story_id, node) do
     with %{} = story <- Stories.get_story(scope, story_id),
          {:ok, ctx} <- Preloader.load(scope) do
-      {{nodes, edges}, _computed_at} = RequirementGraph.cached_graph(scope)
-      StoryExecution.story_work?(story, node, {nodes, edges, ctx})
+      StoryExecution.story_work?(story, node, ctx)
     else
       _ -> false
     end
