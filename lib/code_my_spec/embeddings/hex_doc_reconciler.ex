@@ -134,6 +134,51 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   end
 
   @doc """
+  Puts `failed` markers at the current model back to `pending` with no
+  attempts and no error, so the next sweep tries them again. For failures
+  whose cause has since been fixed — a terminal marker is otherwise final.
+
+  Options narrow which: `:packages` (only these names), `:except` (not
+  these names), `:error_like` (only markers whose error contains this
+  text, e.g. `"unique_violation"`). Returns how many were reset.
+  """
+  @spec reset_failed(keyword()) :: non_neg_integer()
+  def reset_failed(opts \\ []) do
+    model = Serving.model_name()
+
+    {count, _} =
+      from(p in DocPackage, where: p.status == "failed" and p.model == ^model)
+      |> only_packages(Keyword.get(opts, :packages))
+      |> except_packages(Keyword.get(opts, :except))
+      |> error_like(Keyword.get(opts, :error_like))
+      |> Repo.update_all(
+        set: [
+          status: "pending",
+          attempts: 0,
+          error: nil,
+          updated_at: DateTime.truncate(DateTime.utc_now(), :second)
+        ]
+      )
+
+    count
+  end
+
+  defp only_packages(query, names) when is_list(names) and names != [],
+    do: where(query, [p], p.package in ^names)
+
+  defp only_packages(query, _names), do: query
+
+  defp except_packages(query, names) when is_list(names) and names != [],
+    do: where(query, [p], p.package not in ^names)
+
+  defp except_packages(query, _names), do: query
+
+  defp error_like(query, text) when is_binary(text) and text != "",
+    do: where(query, [p], like(p.error, ^"%#{text}%"))
+
+  defp error_like(query, _text), do: query
+
+  @doc """
   Reconcile every pending package@version, up to `@max_concurrency` at
   once. Best-effort: one failure doesn't stop the rest. Logs one summary
   line — pending count, outcome tally, duration — so a sweep that stalls
@@ -225,7 +270,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     mark_failed(name, version, "http_status_#{status}")
   end
 
-  defp handle_fetch_failure(name, version, reason) when reason in [:checksum_mismatch, :no_checksum] do
+  defp handle_fetch_failure(name, version, reason)
+       when reason in [:checksum_mismatch, :no_checksum] do
     mark_failed(name, version, to_string(reason))
   end
 
@@ -245,7 +291,10 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   # past that, a failure that keeps recurring identically stops being
   # "probably transient" and gets recorded as `failed` instead.
   defp defer(name, version, reason) do
-    Logger.warning("[HexDocReconciler] #{name}@#{version} deferred (retryable): #{inspect(reason)}")
+    Logger.warning(
+      "[HexDocReconciler] #{name}@#{version} deferred (retryable): #{inspect(reason)}"
+    )
+
     model = Serving.model_name()
     attempts = current_attempts(name, version, model) + 1
 

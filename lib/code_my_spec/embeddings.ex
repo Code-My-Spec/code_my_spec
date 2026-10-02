@@ -29,7 +29,11 @@ defmodule CodeMySpec.Embeddings do
     ],
     exports: :all
 
+  alias CodeMySpec.Embeddings.HexDocReconciler
   alias CodeMySpec.Users.Scope
+
+  @doc "Retry failed hex doc packages; see `HexDocReconciler.reset_failed/1`."
+  defdelegate reset_failed_doc_packages(opts \\ []), to: HexDocReconciler, as: :reset_failed
 
   @doc """
   Returns `:ok` if a backend is configured, `{:error, :embeddings_unavailable}`

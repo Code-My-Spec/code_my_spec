@@ -173,6 +173,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOffers)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)
   # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
   # any of these.
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
