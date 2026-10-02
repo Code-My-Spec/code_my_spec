@@ -72,6 +72,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.RepositoryConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
@@ -913,27 +914,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               on_confirm={JS.push("confirm_apex_repoint")}
             />
           </div>
-          
-    <!-- A name collision Sam did not cause: the repository exists but
-                 is not this project's. Neither choice is taken for him
-                 (criterion 8185) — adopting a stranger's repo or inventing a
-                 suffixed name are both decisions, not defaults. -->
-          <div
-            :if={@step.key == :repository and @step.state == :paused}
-            data-test="repository-collision"
-            class="mt-3 flex gap-2"
-          >
-            <.button
-              data-test="adopt-existing-repository"
-              phx-click="adopt_repository"
-              class="btn btn-warning"
-            >
-              Adopt the existing repository
-            </.button>
-            <.button data-test="choose-another-name" phx-click="rename_repository">
-              Use a different name
-            </.button>
-          </div>
+
+          <RepositoryConfig.repository_config :if={@step.key == :repository} step={@step} />
           
     <!-- 22b0e27c: `check_competing_mx/3` refuses to replace an MX the
                  domain already has, for the same reason `apex_repoint/4`
@@ -1329,21 +1311,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           >
             {@step.provider_error}
           </p>
-          
-    <!-- The commit that actually landed. The step is proven by a
-                 push rather than by the repository existing (8183), and an
-                 empty repository is exactly what "it exists" looks like when
-                 the push failed. -->
-          <div
-            :for={commit <- Enum.filter(@step.resources, &(&1.kind == "commit"))}
-            data-test="push-proof"
-            data-commit={commit.location}
-            class="mt-2 text-xs font-mono opacity-70"
-          >
-            pushed {String.slice(commit.location, 0, 12)}
-          </div>
-          
-    <!-- The firewall's inbound rules, from the deterministic rule set:
+          <!-- The firewall's inbound rules, from the deterministic rule set:
                  only the web ports and key-only SSH face the internet, and the
                  database port never does (criterion 8004). Rendered when the
                  server step has recorded its firewall. -->
