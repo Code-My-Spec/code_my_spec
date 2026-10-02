@@ -79,6 +79,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.ServerConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
+  alias CodeMySpecWeb.ProvisioningLive.Components.TlsConfig
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -1289,18 +1290,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             {@step.provider_error}
           </p>
           <ServerConfig.server_config :if={@step.key == :server} step={@step} />
-
-          <span
-            :for={v <- Enum.filter(@step.resources, &(&1.kind == "environment_verification"))}
-            data-test="environment-verification"
-            data-scheme="https"
-            data-status="200"
-            data-host={v.location}
-            data-cert-valid="true"
-            class="mt-1 block text-xs font-mono opacity-70"
-          >
-            verified https://{v.location} (200, valid cert)
-          </span>
+          <TlsConfig.tls_config :if={@step.key == :tls} step={@step} />
 
           <span
             :for={m <- Enum.filter(@step.resources, &(&1.kind == "monitor"))}
