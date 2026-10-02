@@ -1989,12 +1989,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   This does not make anything actionable that was unsatisfied on its own merits:
   `actionable_from/3`'s other conditions are unchanged, so a node still has to be
   unsatisfied, have a task that can satisfy it, and be tethered.
+
+  `seeds` is which unsatisfied nodes clamp. `:all` is every one. `:local` is
+  story and component nodes only, never a project-level one: the view of an
+  agent bound to its active story (4292518a), which is never offered project
+  work and so is not held behind it. A story's own unsatisfied node still
+  clamps its descendants there. One traversal either way.
   """
-  @spec actionable_for_role_from([Requirement.t()], [edge()], map(), atom()) :: [Requirement.t()]
-  def actionable_for_role_from(nodes, edges, ctx, role) do
+  @spec actionable_for_role_from([Requirement.t()], [edge()], map(), atom(), :all | :local) ::
+          [Requirement.t()]
+  def actionable_for_role_from(nodes, edges, ctx, role, seeds \\ :all) do
     role_names = MapSet.new(RequirementsRegistry.requirement_names_for_role(role))
 
-    blocked = blocked_for_role(nodes, edges, role_names)
+    blocked = blocked_for_role(nodes, edges, role_names, seeds)
     component_priority = build_component_priority_map(ctx)
 
     nodes
@@ -2013,7 +2020,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # decision to clamp is made per reachable node rather than once per seed. A
   # seed blocks a descendant when they share an entity, or when the seed is this
   # role's own work.
-  defp blocked_for_role(nodes, edges, role_names) do
+  defp blocked_for_role(nodes, edges, role_names, seeds) do
     outgoing =
       Enum.reduce(edges, %{}, fn edge, acc ->
         Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
@@ -2022,9 +2029,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     entity_of = Map.new(nodes, fn n -> {node_key(n), {n.entity_type, n.entity_id}} end)
 
     nodes
-    |> Enum.reject(& &1.satisfied)
+    |> Enum.filter(&seed?(&1, seeds))
     |> Enum.reduce(MapSet.new(), &block_from_seed(&1, &2, outgoing, entity_of, role_names))
   end
+
+  defp seed?(%{satisfied: true}, _seeds), do: false
+  defp seed?(%{entity_type: "project"}, :local), do: false
+  defp seed?(_node, _seeds), do: true
 
   defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
     seed_entity = {seed.entity_type, seed.entity_id}

@@ -463,6 +463,23 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  The agents among `agents` a restart caught mid-turn, each with the id of the
+  message that turn was answering (nil when none was recorded).
+
+  Read before `account_for_interrupted_turns/2`, which clears the turn and
+  writes the notice this would otherwise find.
+  """
+  @spec interrupted_turns([Agent.t()]) :: %{Ecto.UUID.t() => Ecto.UUID.t() | nil}
+  def interrupted_turns(agents) when is_list(agents) do
+    for %Agent{turn_started_at: %DateTime{} = at} = agent <- agents, into: %{} do
+      {agent.id, starter_id(Conversations.turn_starter(agent.id, at))}
+    end
+  end
+
+  defp starter_id(%{id: id}), do: id
+  defp starter_id(nil), do: nil
+
+  @doc """
   Tell every agent a restart touched what happened to it.
 
   Called when a harness asks what it should be running, which is the only

@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -56,6 +57,110 @@ defmodule CodeMySpec.Agents.Work do
                    "and nothing has been decided about it; pick it back up from where " <>
                    "the thread leaves off, and dispose of it as usual when the work is " <>
                    "done. If you cannot tell how far it got, re-check rather than assume."
+
+  @doc """
+  Give back the turns a harness restart discarded (5a977f41).
+
+  `Agents.account_for_interrupted_turns/2` tells an agent its turn was
+  discarded, but only as history — and every agent then sat idle: a continuous
+  coder resuming a task and a main agent acting on an instruction were both
+  still idle twelve minutes after v2.0.296's restart. Holding a task, waiting
+  on a tap-out or damped on its last offer, none of them is reached by
+  `consider_copy/4` or `resume_held_tasks/2`.
+
+  So the message the discarded turn was answering is delivered again, as a
+  turn. `:own_reply` — the restart is the agent's own work coming back, not
+  new work — which reaches a waiting or non-continuous agent and never an off
+  one. `interrupted` is `Agents.interrupted_turns/1`'s answer from the restore
+  this reconnect follows.
+  """
+  @spec redeliver_interrupted_turns(Scope.t(), %{Ecto.UUID.t() => Ecto.UUID.t() | nil}) :: :ok
+  def redeliver_interrupted_turns(scope, interrupted) when is_map(interrupted) do
+    Enum.each(interrupted, fn {agent_id, starter_id} ->
+      case AgentsRepository.fetch_agent(scope, agent_id) do
+        {:ok, agent} -> redeliver(scope, agent, starter_id)
+        _gone -> :ok
+      end
+    end)
+  end
+
+  # With nothing recorded there is no message to give back, so only an agent in
+  # the loop is told to carry on: a non-continuous one is woken by a person or
+  # its own reply, and neither is on the thread.
+  defp redeliver(_scope, %Agent{continuous: continuous}, nil) when continuous != true, do: :ok
+
+  defp redeliver(scope, agent, starter_id) do
+    with :ok <- Wake.allow?(scope, agent, :own_reply),
+         {:ok, {reserved, ref}} <- reserve_interrupted(scope, agent.id) do
+      turn_prompt = redeliver_prompt(starter_id) <> held_task_line(reserved)
+
+      offered =
+        reserved
+        |> Conversations.record_sent_to_agent(turn_prompt)
+        |> Offers.record(reserved, :resume, {"restart", nil})
+
+      case Transport.request_work_turn(
+             reserved.working_copy_id,
+             reserved,
+             ref,
+             turn_prompt,
+             5_000
+           ) do
+        {:ok, :started} ->
+          {:ok, ref}
+
+        _error ->
+          Offers.undelivered(offered)
+          release(scope, reserved.id, ref)
+      end
+    end
+  end
+
+  @redelivered "The harness restarted part-way through your last turn, and that turn " <>
+                 "was discarded — the notice above says what that means. "
+
+  defp redeliver_prompt(starter_id) do
+    case starter_id && Repo.get(Message, starter_id) do
+      %Message{} = starter ->
+        @redelivered <>
+          "This is the message it was answering, delivered again. Pick it up from what " <>
+          "the thread shows was already done:\n\n" <> Message.text(starter)
+
+      _none ->
+        @redelivered <> "Carry on from what the thread shows was already done."
+    end
+  end
+
+  # The task the turn was working, when it holds one — what `resume_held_tasks/2`
+  # would have named, since this turn is taken in its place.
+  defp held_task_line(agent) do
+    case Agent.active_task(agent) do
+      nil -> ""
+      task -> "\n\n" <> task_line(task)
+    end
+  end
+
+  # Holding a task does not fence this out, as it fences `reserve/2`: the
+  # discarded turn may have been working one.
+  defp reserve_interrupted(scope, id) do
+    Repo.transaction(fn ->
+      agent =
+        Repo.one(
+          from a in Agent,
+            where:
+              a.id == ^id and a.project_id == ^scope.active_project_id and
+                a.account_id == ^scope.active_account_id,
+            lock: "FOR UPDATE"
+        )
+
+      if agent && takes_redelivery?(agent), do: reserve(agent), else: :not_runnable
+    end)
+  end
+
+  defp takes_redelivery?(agent) do
+    agent.status == :running and is_nil(agent.turn_started_at) and
+      not reservation_open?(agent) and not is_nil(agent.working_copy_id)
+  end
 
   @doc """
   Offer a turn to agents left holding a task with no turn open.
@@ -127,8 +232,11 @@ defmodule CodeMySpec.Agents.Work do
   defp resume_prompt(agent) do
     task = Agent.active_task(agent)
 
-    @resume_prompt <>
-      "\n\nThe task: `#{task.requirement_name}`, id #{task.id}. `evaluate_task` with " <>
+    @resume_prompt <> "\n\n" <> task_line(task)
+  end
+
+  defp task_line(task) do
+    "The task: `#{task.requirement_name}`, id #{task.id}. `evaluate_task` with " <>
       "that id when it is done."
   end
 
@@ -728,9 +836,12 @@ defmodule CodeMySpec.Agents.Work do
       `withheld?/3` holds back from it. Anything else (a `Session`, `nil`) is
       answered at the scope's checkout with nothing withheld.
 
-  Withholding happens before the story's wave is cut and before the fallback to
-  project-level work, so an agent whose story work is all held still gets the
-  project's.
+  Withholding happens before the story's wave is cut.
+
+  An agent with an active story (`bound_story_id/1`) is offered that story's
+  work and nothing else (4292518a): no project-level work and no other story's,
+  and its story is not held back by unsatisfied project-level prerequisites.
+  Without one it is answered as before.
 
   Options: `:story_number` narrows to that story or refuses, as
   `get_next_requirement` takes it; `:owners` is the project's agents, so a
@@ -767,7 +878,7 @@ defmodule CodeMySpec.Agents.Work do
          read
        ) do
     case Assignment.advance(scope, scope.active_working_copy_id, from, to) do
-      {:ok, :moved} -> read.(team(scope.active_working_copy_id))
+      {:ok, :moved} -> read.(bind(team(scope.active_working_copy_id)))
       {:error, _reason} -> execution
     end
   end
@@ -781,10 +892,12 @@ defmodule CodeMySpec.Agents.Work do
   # story work happens on feature copies, never on main. Everyone else reads
   # the team's: a team member (coding, QA) the story it holds, product and a
   # session the story their copy's team holds.
+  #
+  # A team member holding a story is bound to it (`bound_story_id/1`).
   defp assignment(scope, %Agent{role: role} = agent) do
     case RoleProfile.scope(role) do
       :project -> :project
-      :story -> {:team, agent.story_id, agent.epic_id}
+      :story -> bind({:team, bound_story_id(agent), agent.epic_id})
       _epic -> team(scope.active_working_copy_id)
     end
   end
@@ -793,6 +906,27 @@ defmodule CodeMySpec.Agents.Work do
 
   defp team(copy_id),
     do: {:team, WorkingCopies.team_story_id(copy_id), Assignment.team_epic_id(copy_id)}
+
+  defp bind({:team, nil, _epic} = unbound), do: unbound
+  defp bind({:team, story_id, epic_id}), do: {:bound, story_id, epic_id}
+
+  @doc """
+  The story `agent` is bound to, or nil (4292518a).
+
+  John: an agent on a working copy with an active story is bound by that story,
+  and while it is active is not even offered work outside it. The active story
+  is the agent's own `story_id`, which only a team member — coding or QA — ever
+  holds (`Agent.changeset/2`, `Assignment`). The main agent reads the project
+  and product reads every story from the main copy; neither holds one, so
+  neither is bound, and an agent without a story is answered as before.
+
+  What counts as the story's work is `StoryExecution.story_work?/3`.
+  """
+  @spec bound_story_id(term()) :: integer() | nil
+  def bound_story_id(%Agent{role: role, story_id: id}),
+    do: if(Assignment.team_member?(role), do: id)
+
+  def bound_story_id(_owner), do: nil
 
   @doc "`work_for/4`'s ordered actionable list."
   @spec actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]
