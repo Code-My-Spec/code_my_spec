@@ -1,17 +1,20 @@
 defmodule CodeMySpec.Files.ComponentSync do
   @moduledoc """
-  Syncs components from File records.
+  Keeps a project's components in step with its code.
 
-  After FileSync populates the files table, this module:
-  1. Reads spec/impl Files to derive components
-  2. Parses changed spec files for metadata (type, description, dependencies)
-  3. Upserts components
-  4. Derives parent relationships from module name hierarchy
-  5. Syncs declared dependencies
-  6. Backfills component_id on File records
+  Components are records (3aeb66cf): their type, description, parent and
+  dependencies are authored through the tools, and no file describes them. A
+  sync only reconciles what *exists* against live code:
 
-  This replaces the old `Components.Sync.sync_changed` which globbed the
-  filesystem directly. The File model is now the source of truth.
+  1. A module a live checkout's code declares, with no component, is created
+     as `:discovered` under its nearest ancestor.
+  2. A component that predates provenance and is named by live code becomes
+     `:discovered`; one nothing names is left for a person to decide.
+  3. A `:discovered` component no live checkout's code names any more is
+     pruned, unless an authored dependency or a story points at it.
+  4. Files are linked to the component they belong to.
+
+  Spec files play no part. Live checkouts are `Files.LiveCopies`.
   """
 
   require Logger
@@ -24,7 +27,6 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.{ComponentExtract, File, LiveCopies}
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
@@ -38,73 +40,35 @@ defmodule CodeMySpec.Files.ComponentSync do
   @doc """
   Sync components from File records.
 
-  Reads spec and impl files from the DB, parses changed ones for metadata,
-  upserts components, resolves parent relationships and dependencies,
-  then backfills component_id on File records.
-
   ## Options
   - `:base_dir` — accepted for backwards compatibility, ignored. File content
     is read via `scope.environment` so the dispatcher can route to in-memory
     implementations for tests.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
-  - `:removed_module_names` — module names named by spec/impl files that were
-    just removed (see `removed_module_names/1`). An incremental sync has no
-    other way to learn one of its components might now be orphaned — it never
-    reads the files that *didn't* change, so it can't rebuild the full
-    "every module any file still names" set `cleanup_removed/3` needs. Each
-    name here is checked against the live `files` table instead, and pruned
-    only if nothing claims it any more.
+  - `:removed_module_names` — module names named by implementation files that
+    were just removed (see `removed_module_names/1`). An incremental sync never
+    reads the files that *didn't* change, so it cannot rebuild the full set
+    `cleanup_removed/2` diffs against; each name here is checked against live
+    code instead.
   """
   @spec sync_from_files(Scope.t(), keyword()) :: {:ok, sync_result()}
   def sync_from_files(%Scope{} = scope, opts \\ []) do
     _ = Keyword.get(opts, :base_dir)
     changed_paths = Keyword.get(opts, :changed_paths)
     removed_module_names = Keyword.get(opts, :removed_module_names, [])
-    incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
-    env = scope.environment
-    authored? = authored_project?(scope)
 
-    {spec_files, impl_files} = query_files(scope, changed_paths)
-
-    # A frozen project's components are records (3aeb66cf, step 4): specs no
-    # longer say what they are or what they depend on, and only a live
-    # checkout's code says what exists — a stale worktree's module is neither
-    # created nor kept on its word.
-    {spec_files, impl_files} =
-      if authored?,
-        do: {[], live_only(impl_files, scope.active_project_id)},
-        else: {spec_files, impl_files}
-
-    parsed_specs = Enum.map(spec_files, &parse_spec_file(&1, env))
-    unreadable = Enum.count(parsed_specs, &(&1 == :unreadable))
-
-    spec_data = Enum.reject(parsed_specs, &(is_nil(&1) or &1 == :unreadable))
-
-    impl_data =
-      impl_files
-      |> Enum.map(&parse_impl_file(&1, env))
+    # Only a live checkout's code says what exists — a stale worktree's module
+    # is neither created nor kept on its word.
+    code =
+      scope
+      |> query_files(changed_paths)
+      |> live_only(scope.active_project_id)
+      |> Enum.map(&parse_impl_file(&1, scope.environment))
       |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(& &1.module_name)
 
-    merged = merge_by_module_name(spec_data, impl_data)
-
-    # A frozen project still has cleanup to do when its last module goes, so it
-    # cannot stop at "nothing to sync".
-    if merged == [] and removed_module_names == [] and not authored? do
-      ms = System.monotonic_time(:millisecond) - start
-      Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
-      {:ok, %{all_components: [], changed_component_ids: []}}
-    else
-      do_sync(
-        scope,
-        merged,
-        incremental? or unreadable > 0,
-        start,
-        unreadable,
-        removed_module_names,
-        authored?
-      )
-    end
+    do_sync(scope, code, is_list(changed_paths), start, removed_module_names)
   end
 
   @doc """
@@ -121,7 +85,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   @spec removed_module_names([File.t()]) :: [String.t()]
   def removed_module_names(removed_records) do
     removed_records
-    |> Enum.filter(&(&1.role in [:spec, :implementation]))
+    |> Enum.filter(&(&1.role == :implementation))
     |> Enum.flat_map(&removed_module_name/1)
     |> Enum.uniq()
   end
@@ -135,72 +99,27 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp query_files(%Scope{active_project_id: project_id}, changed_paths)
        when is_list(changed_paths) do
-    {
-      File
-      |> where([f], f.project_id == ^project_id and f.role == :spec and f.path in ^changed_paths)
-      |> Repo.all(),
-      File
-      |> where(
-        [f],
-        f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths
-      )
-      |> Repo.all()
-    }
+    File
+    |> where(
+      [f],
+      f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths
+    )
+    |> Repo.all()
   end
 
-  # Project-wide, deliberately — every checkout's files, not this one's.
-  #
-  # `Files.list_files/1` and the requirement preloader are both harness-scoped,
-  # so this reads like one that was missed. It is not, and scoping it would be a
-  # data-loss bug: `cleanup_removed/3` deletes a component whose module name is
-  # absent from what this query returned, so a per-harness read would have every
-  # sync delete every component whose spec lives only in another checkout.
-  # Three working copies syncing in turn would take turns deleting each other's
-  # architecture.
-  #
-  # The two questions are different and both are answered correctly today.
-  # *Identity* — does this project have a component called `X` — is project-wide,
-  # because a component id is stable and 112 stories and 4048 requirements link
-  # to one. *Presence* — does this checkout have a spec for it — is per harness,
-  # and `ArchitectureChecker.orphans/1` asks `Files.component_ids_present/1` for
-  # exactly that.
-  #
-  # So a component survives while any checkout still carries its spec, and is
-  # only somebody's orphan in the checkout that has the file to resolve it with.
+  # Project-wide, deliberately — every live checkout's code, not this one's: a
+  # module on a live feature copy exists even if this checkout lacks it.
   defp query_files(%Scope{active_project_id: project_id}, _changed_paths) do
-    {
-      File |> where([f], f.project_id == ^project_id and f.role == :spec) |> Repo.all(),
-      File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
-    }
+    File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
   end
 
-  # `incremental?` also covers "a spec could not be read", because both mean the
-  # same thing to `cleanup_removed/3`: this run does not know the full set, so it
-  # must not delete anything for being missing from it.
-  #
-  # On the light harness the server holds no working copy, so a spec without
-  # scanner-stored data reads as `{:error, :no_environment}` and the component it
-  # names is simply absent from `merged`. A full sync then deleted it —
-  # destroying architecture state because a file could not be opened. Measured:
-  # 904 of 904 components resynced with `:no_environment` warnings throughout,
-  # and the only reason nothing was lost is that 1494 of 1519 specs carry parsed
-  # data from the scanner and never reach the disk path at all.
-  #
-  # Refusing to prune on an incomplete picture is the same rule the harness
-  # already applies to an empty scan, and for the same reason: sending it "would
-  # have deleted every file this project has on the server".
-  defp do_sync(scope, merged, incremental?, start, unreadable, removed_module_names, authored?) do
+  defp do_sync(scope, code, incremental?, start, removed_module_names) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
     existing_map = Map.new(existing_components, &{&1.module_name, &1})
 
-    synced_components =
-      Enum.map(merged, fn data ->
-        if authored?,
-          do: adopt_component(scope, data, now, existing_map),
-          else: upsert_component(scope, data, now, existing_map)
-      end)
+    synced_components = Enum.map(code, &adopt_component(scope, &1, now, existing_map))
 
     component_map =
       Map.merge(existing_map, Map.new(synced_components, &{&1.module_name, &1}))
@@ -208,32 +127,18 @@ defmodule CodeMySpec.Files.ComponentSync do
     changed_component_ids = compute_changed_ids(synced_components, existing_map)
     announced_component_ids = compute_announced_ids(synced_components, existing_map)
 
-    if authored? do
-      # Only what this sync created gets a derived parent; an existing record's
-      # parent was authored, or set when it was discovered.
-      synced_components
-      |> Enum.reject(&Map.has_key?(existing_map, &1.module_name))
-      |> then(&update_parent_relationships(scope, &1, component_map))
-    else
-      update_parent_relationships(scope, synced_components, component_map)
-      sync_dependencies(scope, merged, component_map)
-    end
-
-    if unreadable > 0 do
-      Logger.warning(
-        "[Files.ComponentSync] #{unreadable} spec file(s) could not be read; skipping cleanup. " <>
-          "A component missing from an incomplete sync is unknown, not deleted — see the " <>
-          "per-file warnings above for which."
-      )
-    end
+    # Only what this sync created gets a derived parent; an existing record's
+    # parent was authored, or set when it was discovered.
+    synced_components
+    |> Enum.reject(&Map.has_key?(existing_map, &1.module_name))
+    |> then(&update_parent_relationships(scope, &1, component_map))
 
     cond do
       not incremental? ->
-        all_module_names = MapSet.new(merged, & &1.module_name)
-        cleanup_removed(scope, existing_components, all_module_names, authored?)
+        cleanup_removed(scope, existing_components)
 
       removed_module_names != [] ->
-        cleanup_orphaned(scope, removed_module_names, existing_map, authored?)
+        cleanup_orphaned(scope, removed_module_names, existing_map)
 
       true ->
         :ok
@@ -258,9 +163,8 @@ defmodule CodeMySpec.Files.ComponentSync do
      }}
   end
 
-  # Components are the entities that carry `spec_file`, `implementation_file`,
-  # `test_file` and the rest of the coding chain, so creating or changing one
-  # moves the graph — and this said nothing.
+  # Components are the entities that carry `implementation_file`, so creating
+  # or changing one moves the graph — and this said nothing.
   #
   # `FileSync` announcing was not cover for it, and the order is why:
   # `FilesLive.do_sync/2` runs `FileSync.sync/2` and *then*
@@ -317,13 +221,10 @@ defmodule CodeMySpec.Files.ComponentSync do
   end
 
   # What the graph hears: the components whose *type* changed, or that are
-  # new. `changed_component_ids` goes on meaning "rows written" — a spec's
-  # prose re-synced into `description` is a write — but the graph reads a
-  # component's type, parent and name and nothing else, and announcing every
-  # write sent the projector through a family recompute at every vantage for
-  # a description: 9.8s / 923 queries per prose edit, measured 2026-09-21.
-  # The parent is resolved after this and announced by
-  # `Components.update_component/4` on its own terms; dependencies likewise.
+  # new. `changed_component_ids` means "rows written"; the graph reads a
+  # component's type, parent and name and nothing else. The parent is resolved
+  # after this and announced by `Components.update_component/4` on its own
+  # terms.
   defp compute_announced_ids(synced_components, existing_map) do
     synced_components
     |> Enum.filter(fn component ->
@@ -335,94 +236,20 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> Enum.map(& &1.id)
   end
 
-  # -- Spec parsing --
-
-  # Spec files: the H1 line (e.g. `# CodeMySpec.Git.Behaviour`) is the
-  # authoritative module identifier. Path is purely storage — the file
-  # can live anywhere; the H1 inside is what names it.
-  # Prefers what the scan already worked out. `Files.Scanner` extracts the
-  # component's identity while it has the bytes, so this needs no disk — which
-  # is the point, because on the light harness there is none, and a spec that
-  # cannot be read is indistinguishable here from a component that no longer
-  # exists. `cleanup_removed/3` then prunes it.
-  #
-  # Falls back to reading for File rows written before the scanner stored this.
-  defp parse_spec_file(%File{validation_errors: errors} = file, env) do
-    case stored_component_data(errors) do
-      %{"module_name" => name} = data when is_binary(name) ->
-        %{
-          module_name: name,
-          type: data["type"],
-          description: data["description"],
-          dependencies: data["dependencies"] || []
-        }
-
-      _ ->
-        parse_spec_file_from_disk(file, env)
-    end
-  end
+  # -- Code parsing --
 
   defp stored_component_data(%{"data" => data}) when is_map(data), do: data
   defp stored_component_data(_), do: nil
 
-  defp parse_spec_file_from_disk(%File{path: path} = _file, env) do
-    case Environments.read_file(env, path) do
-      {:ok, raw_content} ->
-        # Normalize CRLF → LF before regex extraction. Spec files written
-        # or edited on Windows carry `\r\n`; the `$`-anchored extractors
-        # (extract_h1_module, extract_type_section, …) otherwise fail to
-        # match because the `\r` sits between the value and the line end,
-        # so the component silently never materializes from its spec.
-        content = String.replace(raw_content, "\r\n", "\n")
-
-        case extract_h1_module(content) do
-          nil ->
-            # A spec file is present on disk but yields no module name. The
-            # component it should describe will be ABSENT from `merged`, and a
-            # full sync's `cleanup_removed/3` will then DELETE that component —
-            # silently destroying architecture state (this is exactly how a CRLF
-            # H1 regression manifested: the `$`-anchored extractor matched
-            # nothing). Never let this pass unlogged.
-            Logger.warning(
-              "[Files.ComponentSync] spec file #{path} has no extractable H1 module heading; " <>
-                "its component will not be synced and may be pruned. Check the `# Module.Name` line."
-            )
-
-            nil
-
-          name ->
-            %{
-              module_name: name,
-              type: extract_type_section(content),
-              description: extract_intro_text(content),
-              dependencies: extract_dependencies(content)
-            }
-        end
-
-      {:error, reason} ->
-        Logger.warning(
-          "[Files.ComponentSync] could not read spec file #{path} (#{inspect(reason)}); " <>
-            "its component is unknown to this sync, which will therefore not prune."
-        )
-
-        # `:unreadable`, not `nil`. Both keep the component out of `merged`, but
-        # only this one says the sync's picture is incomplete — and that is what
-        # stops `cleanup_removed/3` deleting a component for being absent from a
-        # list that could not be built.
-        :unreadable
-    end
-  end
-
   # Impl files: the `defmodule X do` declaration is the authoritative
   # module identifier. Path is purely storage. Files without a
-  # `defmodule` line (scripts, .exs, etc.) are skipped. Type is never
-  # inferred from impl content — it lives in the spec (and may move to
-  # a module attribute later). Type defaults are owned by
-  # `Components.upsert_component`.
+  # `defmodule` line (scripts, .exs, etc.) are skipped. A new component's
+  # type defaults in `Components.upsert_component`, except a schema, which
+  # code can say.
   defp parse_impl_file(%File{validation_errors: errors} = file, env) do
     case stored_component_data(errors) do
       %{"module_name" => name} = data when is_binary(name) ->
-        %{module_name: name, type: impl_type(data), description: nil, dependencies: []}
+        %{module_name: name, type: impl_type(data)}
 
       # An impl file with no defmodule (a script, an .exs) has no component
       # identity, and the scan recorded that as an explicit nil. Distinguish it
@@ -436,14 +263,9 @@ defmodule CodeMySpec.Files.ComponentSync do
     end
   end
 
-  # The one type an implementation is allowed to claim. Everything else still
-  # comes from the spec's `## Type`, and the merge below prefers the spec — so
-  # an explicit declaration always wins and nothing already correct moves.
-  #
-  # A row scanned before `ecto_schema` was recorded has no such key, which reads
-  # as `nil` and yields no type. That is the same answer it gave before, so the
-  # backfill is whatever the next scan of that file produces rather than a
-  # migration.
+  # The one type code can claim, and only for a component it creates. A row
+  # scanned before `ecto_schema` was recorded has no such key and yields no
+  # type.
   defp impl_type(%{"ecto_schema" => true}), do: "schema"
   defp impl_type(_data), do: nil
 
@@ -454,9 +276,7 @@ defmodule CodeMySpec.Files.ComponentSync do
           [_, name] ->
             %{
               module_name: name,
-              type: impl_type(%{"ecto_schema" => ComponentExtract.ecto_schema?(content)}),
-              description: nil,
-              dependencies: []
+              type: impl_type(%{"ecto_schema" => ComponentExtract.ecto_schema?(content)})
             }
 
           _ ->
@@ -468,46 +288,12 @@ defmodule CodeMySpec.Files.ComponentSync do
     end
   end
 
-  defp extract_h1_module(content) do
-    case Regex.run(~r/^# ([A-Z][a-zA-Z0-9_.]+)$/m, content) do
-      [_, name] -> name
-      _ -> nil
-    end
-  end
-
-  # -- Merge --
-
-  defp merge_by_module_name(spec_data, impl_data) do
-    spec_map = Map.new(spec_data, &{&1.module_name, &1})
-    impl_map = Map.new(impl_data, &{&1.module_name, &1})
-
-    all_names =
-      MapSet.union(MapSet.new(Map.keys(spec_map)), MapSet.new(Map.keys(impl_map)))
-
-    Enum.map(all_names, fn name ->
-      spec = Map.get(spec_map, name)
-      impl = Map.get(impl_map, name)
-
-      # `dependencies: nil` is the "no spec file present" signal that
-      # `sync_component_dependencies/4` uses to leave the component's deps
-      # untouched. With a spec file present, the spec's list (possibly `[]`)
-      # is authoritative.
-      %{
-        module_name: name,
-        type: (spec && spec.type) || (impl && impl.type),
-        description: (spec && spec.description) || (impl && impl.description),
-        dependencies: spec && spec.dependencies
-      }
-    end)
-  end
-
   # -- Upsert --
 
-  # Authored mode (3aeb66cf, step 4). An existing component is the record and
-  # is not touched: its description, type and parent are authored or were set
-  # when it was discovered. A module code names that has no component is new,
-  # and is created as discovered. One that predates provenance — created after
-  # the freeze by the old path — is code's too, so it becomes discovered.
+  # An existing component is the record and is not touched: its description,
+  # type and parent are authored or were set when it was discovered. A module
+  # code names that has no component is new, and is created as discovered. One
+  # that predates provenance is code's too, so it becomes discovered.
   defp adopt_component(scope, data, synced_at, existing_map) do
     case Map.get(existing_map, data.module_name) do
       nil ->
@@ -534,95 +320,6 @@ defmodule CodeMySpec.Files.ComponentSync do
     live_ids = MapSet.new(LiveCopies.ids(project_id))
     Enum.filter(files, &MapSet.member?(live_ids, &1.working_copy_id))
   end
-
-  defp authored_project?(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    Repo.exists?(
-      from(p in Project, where: p.id == ^project_id and not is_nil(p.components_authored_at))
-    )
-  end
-
-  defp authored_project?(_scope), do: false
-
-  # Splits into create-or-update so a sync that lacks new type info (impl
-  # file without a matching spec, which is the dominant case during early
-  # generation) doesn't clobber an existing component's type with the
-  # `Component.changeset` default of `"module"`. The previous
-  # `upsert_component` path always went through `Repo.insert(..., on_conflict:
-  # {:replace_all_except, [...]})`, and the insertion's changeset carried
-  # the default type — which then overwrote the existing row's user-set type
-  # (e.g. "schema" → "module"), reshaping the component's requirement graph.
-  defp upsert_component(%Scope{} = scope, data, synced_at, existing_map) do
-    attrs =
-      %{
-        module_name: data.module_name,
-        name: data.module_name |> String.split(".") |> List.last(),
-        description: data.description,
-        synced_at: synced_at
-      }
-      |> maybe_put(:type, data.type)
-
-    case Map.get(existing_map, data.module_name) do
-      nil ->
-        Components.upsert_component(scope, attrs)
-
-      existing ->
-        write_if_changed(scope, existing, attrs)
-    end
-  end
-
-  # A component whose content is identical is left alone, and the reason is
-  # three layers away from here.
-  #
-  # `synced_at` is set to `DateTime.utc_now()` for every component on every
-  # run, so the changeset always carried a change, so Ecto always wrote, so
-  # `updated_at` moved on every row. `Requirements.Freshness.component/2`
-  # hashes `row_key(component)`, which is `{id, updated_at}` — so one full sync
-  # moved every component's fingerprint at once, and the next read in every
-  # working copy found the whole graph stale and recomputed all of it.
-  #
-  # Measured on this project: `1102 components synced in 30627ms (1102
-  # changed)` at 07:35, then `everything_stale mismatched=1124` — every
-  # component of 1124 — on each vantage's next read. The "1102 changed" was
-  # itself the artefact: `component_changed?/2` compares `updated_at` before
-  # and after, so it was reporting whether the write had bumped the clock, not
-  # whether anything about the component differed. It always had.
-  #
-  # `synced_at` is safe to leave behind, checked: nothing reads it.
-  # `cleanup_removed/3` and `cleanup_orphaned/3` both decide by module-name set
-  # difference, and no other module in the app consults the column. So it now
-  # records when a component's content last changed rather than when a sync
-  # last ran, which is the more useful of the two readings and the only one
-  # that does not cost a graph rebuild.
-  defp write_if_changed(scope, existing, attrs) do
-    if content_matches?(existing, attrs) do
-      existing
-    else
-      {:ok, updated} = Components.update_component(scope, existing, attrs)
-      updated
-    end
-  end
-
-  # Only the keys this sync actually derived, and never `synced_at` — it
-  # differs by construction on every run, which is the whole defect. `type` is
-  # absent when no spec named one (`maybe_put/3` above), and an absent key must
-  # read as "nothing to say about it" rather than as a difference.
-  defp content_matches?(existing, attrs) do
-    attrs
-    |> Map.delete(:synced_at)
-    |> Enum.all?(fn {key, value} -> same_value?(Map.get(existing, key), value) end)
-  end
-
-  # The stored value has been through the changeset and the parsed one has not,
-  # so `type` arrives here as the string `"context"` against a stored
-  # `:context` — `Ecto.Enum` casts on write. Compared raw, nothing ever matched
-  # and this whole check was an expensive no-op that still wrote every row.
-  #
-  # Found only because the regression test was run against the unfixed code and
-  # then against the fixed one: it was red both times, which is the shape of a
-  # fix that does not fix anything.
-  defp same_value?(nil, value), do: is_nil(value)
-  defp same_value?(stored, value) when is_atom(stored), do: to_string(stored) == to_string(value)
-  defp same_value?(stored, value), do: stored == value
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
@@ -671,71 +368,14 @@ defmodule CodeMySpec.Files.ComponentSync do
     if length(parts) > 1, do: parts |> Enum.drop(-1) |> Enum.join("."), else: nil
   end
 
-  # -- Dependencies --
-
-  defp sync_dependencies(scope, merged_data, component_map) do
-    Enum.each(merged_data, fn data ->
-      case Map.get(component_map, data.module_name) do
-        nil -> :ok
-        source -> sync_component_dependencies(scope, source, data, component_map)
-      end
-    end)
-  end
-
-  # `data.dependencies == nil` means we have no spec file for this
-  # component — leave deps alone rather than wiping the user/agent-set
-  # graph. A spec file with no `## Dependencies` section parses to `[]`
-  # and IS authoritative (sync to empty).
-  defp sync_component_dependencies(_scope, _source, %{dependencies: nil}, _component_map), do: :ok
-
-  defp sync_component_dependencies(scope, source, data, component_map) do
-    current_deps = Components.list_component_dependencies(scope, source.id)
-    current_target_ids = MapSet.new(current_deps, & &1.target_component_id)
-
-    declared_deps =
-      data.dependencies
-      |> Enum.map(&Map.get(component_map, &1))
-      |> Enum.reject(&(is_nil(&1) || &1.id == source.id))
-
-    declared_target_ids = MapSet.new(declared_deps, & &1.id)
-
-    # Add new
-    MapSet.difference(declared_target_ids, current_target_ids)
-    |> Enum.each(fn target_id ->
-      Components.create_dependency(scope, %{
-        source_component_id: source.id,
-        target_component_id: target_id
-      })
-    end)
-
-    # Remove old — but never an edge an agent authored with `add_dependency`.
-    # A spec's `## Dependencies` was the only way to write an edge, so it was
-    # the whole truth; an authored edge is not in it, and deleting it here
-    # undid the tool on every full sync (3aeb66cf).
-    removed = MapSet.difference(current_target_ids, declared_target_ids)
-
-    Enum.each(current_deps, fn dep ->
-      if dep.target_component_id in removed and dep.provenance != :authored do
-        Components.delete_dependency(scope, dep)
-      end
-    end)
-  end
-
   # -- Cleanup --
 
-  # Never an authored component: it is the intended architecture whether or not
-  # a file names it yet (3aeb66cf). Only `delete_component` removes one.
-  defp cleanup_removed(%Scope{} = scope, existing, current_names, false) do
-    existing
-    |> Enum.reject(&(&1.provenance == :authored or &1.module_name in current_names))
-    |> Enum.each(&Components.delete_component(scope, &1))
-  end
-
-  # A frozen project (3aeb66cf, step 4): only a discovered component goes — it
-  # existed because code named it — and only once no live checkout's code names
-  # it. A module deleted on main but still on a live feature copy stays. An
-  # unmarked component is left for a person to decide.
-  defp cleanup_removed(%Scope{active_project_id: project_id} = scope, existing, _names, true) do
+  # Only a discovered component goes — it existed because code named it — and
+  # only once no live checkout's code names it. A module deleted on main but
+  # still on a live feature copy stays. An authored component is the intended
+  # architecture whether or not code exists yet, and an unmarked one is left
+  # for a person to decide; only `delete_component` removes either.
+  defp cleanup_removed(%Scope{active_project_id: project_id} = scope, existing) do
     claimed = live_claimed_names(project_id)
 
     existing
@@ -745,35 +385,9 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> prune_unreferenced(scope)
   end
 
-  # `cleanup_removed/4`'s incremental counterpart. It decides by set
-  # difference against every module the full scan just re-derived; this batch
-  # only re-derived the modules that changed, so it has no such set to diff
-  # against. Each removed file's module name is checked individually instead —
-  # does any spec or impl file in this project still claim it — and only the
-  # ones nothing claims any more get deleted. A module named by both a spec and
-  # an impl file loses one and keeps the other's claim, same as it always did;
-  # this only prunes when *both* are gone.
-  defp cleanup_orphaned(
-         %Scope{active_project_id: project_id} = scope,
-         module_names,
-         existing_map,
-         false
-       ) do
-    module_names
-    |> Enum.map(&Map.get(existing_map, &1))
-    |> Enum.reject(
-      &(is_nil(&1) or &1.provenance == :authored or
-          component_still_claimed?(project_id, &1.module_name))
-    )
-    |> Enum.each(&Components.delete_component(scope, &1))
-  end
-
-  defp cleanup_orphaned(
-         %Scope{active_project_id: project_id} = scope,
-         module_names,
-         existing_map,
-         true
-       ) do
+  # `cleanup_removed/2`'s incremental counterpart: only the removed files'
+  # module names are candidates.
+  defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
     claimed = live_claimed_names(project_id)
 
     module_names
@@ -784,18 +398,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> prune_unreferenced(scope)
   end
 
-  defp component_still_claimed?(project_id, module_name) do
-    File
-    |> where(
-      [f],
-      f.project_id == ^project_id and f.role in [:spec, :implementation] and
-        fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
-    )
-    |> Repo.exists?()
-  end
-
-  # In a frozen project only code claims a component, and only a live
-  # checkout's code (`LiveCopies`).
+  # Only code claims a component, and only a live checkout's code.
   defp live_claimed_names(project_id) do
     live_ids = LiveCopies.ids(project_id)
 
@@ -873,53 +476,5 @@ defmodule CodeMySpec.Files.ComponentSync do
       )
       |> Repo.update_all(set: [component_id: component.id])
     end)
-  end
-
-  # -- Spec content extraction (reused from Components.Sync) --
-
-  defp extract_type_section(content) do
-    section_type =
-      content
-      |> String.split("\n")
-      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
-      |> Enum.drop(1)
-      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-      |> List.first()
-
-    section_type ||
-      case Regex.run(~r/^\*\*Type\*\*:\s*(.+)$/m, content) do
-        [_, type] -> String.trim(type) |> String.downcase()
-        nil -> nil
-      end
-  end
-
-  defp extract_intro_text(content) do
-    content
-    |> String.split("\n")
-    |> Enum.drop_while(&(!String.match?(&1, ~r/^# [A-Z]/)))
-    |> Enum.drop(1)
-    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-    |> Enum.join("\n")
-    |> String.trim()
-    |> case do
-      "" -> nil
-      text -> text
-    end
-  end
-
-  defp extract_dependencies(content) do
-    content
-    |> String.split("\n")
-    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Dependencies/)))
-    |> Enum.drop(1)
-    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-    |> Enum.map(&String.trim/1)
-    |> Enum.filter(&String.starts_with?(&1, "- "))
-    |> Enum.map(fn line ->
-      line |> String.replace_prefix("- ", "") |> String.trim()
-    end)
-    |> Enum.reject(&(&1 == "" || &1 == "None"))
   end
 end

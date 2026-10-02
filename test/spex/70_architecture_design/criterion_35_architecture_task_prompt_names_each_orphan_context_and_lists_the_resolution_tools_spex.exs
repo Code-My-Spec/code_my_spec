@@ -18,10 +18,11 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 4, implementation!: 2, sync!: 1]
+
   import CodeMySpecSpex.GraphGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   setup :register_log_in_setup_account
@@ -32,44 +33,17 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
     scenario "Architecture task prompt names each orphan and lists the resolution menu" do
       given_ :fully_satisfied_project
 
-      and_ "an orphan context is synced into the project DB",
+      and_ "an orphan context is designed, with its code",
            context do
-        :ok =
-          Environments.write_file(
-            context.environment,
-            ".code_my_spec/spec/my_orphan_context.spec.md",
-            """
-            # MyOrphanContext
+        # Orphan must be context-shaped — `ArchitectureChecker.orphans/1`
+        # only flags contexts (the architectural unit), not loose
+        # modules/liveviews/etc.
+        design!(context, "MyOrphanContext", [],
+          description: "An orphan context with no story link and no dependency edge."
+        )
 
-            ## Type
-
-            context
-
-            An orphan context — no story link, no dependency edge, not in infrastructure_paths.
-
-            ## Dependencies
-
-            - None
-            """
-          )
-
-        :ok =
-          Environments.write_file(
-            context.environment,
-            "lib/my_orphan_context.ex",
-            """
-            defmodule MyOrphanContext do
-              @moduledoc false
-            end
-            """
-          )
-
-        {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        sync_live
-        |> element("button[phx-click='sync']")
-        |> render_click()
+        implementation!(context, "MyOrphanContext")
+        sync!(context)
 
         {:ok, context}
       end

@@ -17,11 +17,12 @@ defmodule CodeMySpecSpex.Story127.Criterion1623Spex do
   spex "A dependency an agent added survives a full sync even when the component's spec does not list it",
     criterion: 1623 do
     scenario "the spec declares no dependencies" do
-      given_ "two contexts with specs that declare none, synced", context do
+      given_ "two designed contexts, with specs that declare no dependencies", context do
         app = app(context)
+        design!(context, "#{app}.Web")
+        design!(context, "#{app}.Accounts")
         spec!(context, "#{app}.Web")
         spec!(context, "#{app}.Accounts")
-        sync!(context)
         {:ok, context}
       end
 

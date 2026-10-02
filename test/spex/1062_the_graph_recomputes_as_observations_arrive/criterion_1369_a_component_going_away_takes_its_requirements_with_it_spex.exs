@@ -42,13 +42,15 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
   import CodeMySpecSpex.GraphGivens
   import CodeMySpecSpex.GraphReadHelpers
 
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "A retired component stops being asked for", criterion: 1369 do
-    scenario "a component's files are removed and the project is synced" do
+    scenario "a component is deleted and its code removed" do
       given_ :two_independent_sibling_schemas
 
       given_ "a graph that carries both siblings' requirements", context do
@@ -57,16 +59,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
         {:ok, Map.put(context, :before, read_settled_graph(context))}
       end
 
-      when_ "one sibling's spec and implementation are deleted and the project syncs",
-            context do
-        :ok = Fixtures.delete_env_file(context.environment, "lib/catalog/product.ex")
+      when_ "one sibling is deleted, its code removed, and the project syncs", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        :ok =
-          Fixtures.delete_env_file(
-            context.environment,
-            ".code_my_spec/spec/catalog/product.spec.md"
+        {:reply, reply, _} =
+          DeleteComponent.execute(
+            %{id: context.sibling_a.id},
+            frame
           )
 
+        refute reply.isError
+        :ok = Fixtures.delete_env_file(context.environment, "lib/catalog/product.ex")
         sync(context)
 
         {:ok, Map.put(context, :after, read_settled_graph(context))}

@@ -1,11 +1,12 @@
 defmodule CodeMySpecSpex.Story127.Criterion1636Spex do
   @moduledoc """
   Story 127 — Filesystem-to-DB Projection
-  Criterion 1636 — In a frozen project, a module that code names and no component carries is created as discovered, under its nearest existing parent by module name.
+  Criterion 1636 — A module that code in a live checkout names and no component carries is created as discovered, under its nearest existing parent.
 
-  Components as records, step 4 (3aeb66cf): once a project is frozen, a sync
-  stops treating its files as the description of its components. Surface:
-  files written into the working copy, `sync_project`, `freeze_components`;
+  Components as records (3aeb66cf): a sync reads no spec and writes nothing
+  about an existing component; it only discovers what live code names and
+  prunes what it discovered once the code is gone. Surface: files written into
+  the working copy, `create_component`, `add_dependency`, `sync_project`;
   observed through `get_component`, `list_components` and `show_architecture`.
   """
 
@@ -16,15 +17,13 @@ defmodule CodeMySpecSpex.Story127.Criterion1636Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "In a frozen project, a module that code names and no component carries is created as discovered, under its nearest existing parent by module name",
+  spex "A module that code in a live checkout names and no component carries is created as discovered, under its nearest existing parent",
     criterion: 1636 do
     scenario "code for a module inside Accounts appears" do
-      given_ "a frozen project whose Accounts and Web have specs", context do
+      given_ "Accounts and Web, designed", context do
         app = app(context)
-        spec!(context, "#{app}.Accounts", [], description: "Accounts, as specified")
-        spec!(context, "#{app}.Web")
-        sync!(context)
-        freeze(context, write: true)
+        design!(context, "#{app}.Accounts", [], description: "Accounts, as designed")
+        design!(context, "#{app}.Web")
         {:ok, context}
       end
 

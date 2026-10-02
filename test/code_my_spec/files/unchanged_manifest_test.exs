@@ -229,14 +229,14 @@ defmodule CodeMySpec.Files.UnchangedManifestTest do
   # be pruned by name instead, which is exactly the case this guards: the
   # component's only file is gone, and nothing else in the project claims its
   # module.
-  test "a removed spec's component is pruned once nothing claims its module any more", %{
+  test "removed code's component is pruned once nothing claims its module any more", %{
     scope: scope
   } do
-    spec_path = ".code_my_spec/spec/demo/widget.spec.md"
+    impl_path = "lib/demo/widget.ex"
 
-    spec_obs =
-      observation(spec_path, %{
-        role: :spec,
+    impl_obs =
+      observation(impl_path, %{
+        role: :implementation,
         validation_errors: %{
           "data" => %{
             "module_name" => "Demo.Widget",
@@ -247,10 +247,10 @@ defmodule CodeMySpec.Files.UnchangedManifestTest do
         }
       })
 
-    FileSync.reconcile_and_project(scope, [spec_obs])
+    FileSync.reconcile_and_project(scope, [impl_obs])
 
     component = CodeMySpec.Components.get_component_by_module_name(scope, "Demo.Widget")
-    assert component, "precondition: the spec's component was synced"
+    assert component, "precondition: the code's component was discovered"
 
     result = FileSync.reconcile_and_project(scope, [])
 

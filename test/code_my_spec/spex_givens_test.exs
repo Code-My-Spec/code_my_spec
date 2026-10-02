@@ -227,7 +227,7 @@ defmodule CodeMySpec.SpexGivensTest do
   # assert their own success (3aeb66cf). Listed by the same precedent as
   # `StoryHelpers.`: a helper whose body is the drive.
   @establishes ~w(
-    ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( freeze(
+    ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( freeze( design!( design_coded!(
     Slice.
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette

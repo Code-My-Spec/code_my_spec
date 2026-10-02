@@ -1,9 +1,9 @@
-defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
+defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
   @moduledoc """
-  Components as records, step 4 (3aeb66cf). Once a project is frozen its
-  components are records: a sync stops parsing specs, leaves existing
+  Components as records (3aeb66cf). A sync parses no spec, leaves existing
   components as they are, creates new modules as discovered, and prunes only
-  discovered components whose code is gone. Unfrozen projects sync as before.
+  discovered components whose code is gone. Step 4 did this for frozen
+  projects; step 7c made it the only sync, so a freeze changes nothing here.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -12,7 +12,6 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Files.ComponentSync
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
 
   defp file!(scope, role, path, data) do
@@ -42,12 +41,6 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
       file!(scope, :implementation, "lib/#{Macro.underscore(module)}.ex", %{
         "module_name" => module
       })
-
-  defp freeze!(scope),
-    do:
-      Repo.update_all(from(p in Project, where: p.id == ^scope.active_project_id),
-        set: [components_authored_at: DateTime.utc_now()]
-      )
 
   defp another_copy!(scope, seen_at) do
     {:ok, copy} =
@@ -101,12 +94,7 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
     %{scope: scope, accounts: accounts}
   end
 
-  describe "a frozen project" do
-    setup ctx do
-      freeze!(ctx.scope)
-      :ok
-    end
-
+  describe "every project" do
     test "leaves an existing component as it is, whatever its spec says", ctx do
       {:ok, _} = ComponentSync.sync_from_files(ctx.scope)
 
@@ -202,8 +190,8 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
       assert "MyApp.Storied" in names
     end
 
-    # Criterion 1651: a row from before provenance existed, which only legacy
-    # data produces — LiveCopies was one, created between the freeze and step 4.
+    # A row from before provenance existed, which only legacy data produces —
+    # an unfrozen project's whole graph, or LiveCopies, created after the freeze.
     test "marks an unmarked component live code names as discovered, and leaves the rest", ctx do
       component_fixture(ctx.scope, %{name: "Coded", module_name: "MyApp.Coded"})
       component_fixture(ctx.scope, %{name: "Designed", module_name: "MyApp.Designed"})
@@ -223,10 +211,12 @@ defmodule CodeMySpec.Files.AFrozenProjectSyncsInAuthoredModeTest do
     end
   end
 
-  test "an unfrozen project still takes its spec's word", ctx do
+  test "a spec-only component survives a sync, still unmarked", ctx do
+    component_fixture(ctx.scope, %{name: "Planned", module_name: "MyApp.Planned"})
+    spec!(ctx.scope, "MyApp.Planned", %{"type" => "context"})
+
     {:ok, _} = ComponentSync.sync_from_files(ctx.scope)
 
-    assert by_name(ctx.scope)["MyApp.Accounts"].description == "Rewritten in the spec"
-    assert edges(ctx.scope) == [{"MyApp.Accounts", "MyApp.Web"}]
+    assert %{provenance: nil} = by_name(ctx.scope)["MyApp.Planned"]
   end
 end

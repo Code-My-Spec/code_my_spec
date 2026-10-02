@@ -45,7 +45,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert first.name == "personas_complete"
     end
 
-    test "returns component spec requirements when the project chain is fully satisfied" do
+    test "returns component requirements when the project chain is fully satisfied" do
       {scope, tmp_dir} = setup_project()
 
       # Advance the project-level serial chain (project_setup → personas_complete →
@@ -81,21 +81,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       # The story-to-component edge requires the story chain (three_amigos
       # → bdd_specs_exist → bdd_specs_passing → qa_complete) to clear before
-      # the component's spec_file becomes actionable.
+      # the component's implementation_file becomes actionable.
       seed_story_chain_complete(scope, tmp_dir, story, persona_id)
-
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/widget.spec.md",
-        "# MyApp.Widget\n\n## Type\n\nschema"
-      )
 
       sync!(scope, tmp_dir)
 
       actionable = actionable(scope)
       names = Enum.map(actionable, & &1.name)
 
-      # Component needs a spec (spec_file is first requirement for schema)
       assert "implementation_file" in names
     end
 
@@ -421,22 +414,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
-      # Create spec files so ComponentSync creates and retains the components
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/todos.spec.md",
-        "# MyApp.Todos\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Todos.Todo"
-      )
+      context_and_child!(scope, "MyApp.Todos", "MyApp.Todos.Todo")
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/todos/todo.spec.md",
-        "# MyApp.Todos.Todo\n\n## Type\n\nschema\n\n## Fields\n\n- title: string"
-      )
-
-      sync!(scope, tmp_dir)
-
-      # Find the components created by sync
       all_components = Components.list_components(scope)
       context = Enum.find(all_components, &(&1.module_name == "MyApp.Todos"))
       schema = Enum.find(all_components, &(&1.module_name == "MyApp.Todos.Todo"))
@@ -539,19 +518,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       seed_setup(tmp_dir)
 
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts.spec.md",
-        "# MyApp.Accounts\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Accounts.User"
-      )
-
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/accounts/user.spec.md",
-        "# MyApp.Accounts.User\n\n## Type\n\nschema\n\n## Fields\n\n- email: string"
-      )
-
-      sync!(scope, tmp_dir)
+      context_and_child!(scope, "MyApp.Accounts", "MyApp.Accounts.User")
 
       nodes = RequirementGraph.compute_all(scope)
 
@@ -583,6 +550,26 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     # Graph-shape tests need the full spec -> review -> test -> implementation
     # chain; a fresh project defaults to spex and code only.
     {ConfigurationsFixtures.ensure_configuration!(scope), tmp_dir}
+  end
+
+  # A context and a schema under it, authored as records.
+  defp context_and_child!(scope, context_module, schema_module) do
+    {:ok, context} =
+      Components.create_component(scope, %{
+        name: context_module |> String.split(".") |> List.last(),
+        module_name: context_module,
+        type: "context",
+        provenance: :authored
+      })
+
+    {:ok, _} =
+      Components.create_component(scope, %{
+        name: schema_module |> String.split(".") |> List.last(),
+        module_name: schema_module,
+        type: "schema",
+        parent_component_id: context.id,
+        provenance: :authored
+      })
   end
 
   defp sync!(scope, tmp_dir) do

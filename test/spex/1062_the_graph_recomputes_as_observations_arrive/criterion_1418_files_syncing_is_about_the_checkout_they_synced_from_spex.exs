@@ -137,8 +137,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3506Spex do
   defp verdicts(graph) do
     (graph["nodes"] || [])
     |> Enum.map(
-      &{&1["entity_type"], to_string(&1["entity_id"]), &1["name"], &1["satisfied"],
-       &1["details"]}
+      &{&1["entity_type"], to_string(&1["entity_id"]), &1["name"], &1["satisfied"], &1["details"]}
     )
     |> Enum.sort()
   end

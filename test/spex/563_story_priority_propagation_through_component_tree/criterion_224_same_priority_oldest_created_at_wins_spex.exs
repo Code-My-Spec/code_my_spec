@@ -12,13 +12,11 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -31,24 +29,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
 
   spex "Same priority, oldest created_at wins", criterion: 224 do
     scenario "older story's context leads when both stories share priority 1" do
-      given_ "two contexts synced and linked to two priority-1 stories created in sequence",
+      given_ "two contexts designed and linked to two priority-1 stories created in sequence",
              context do
-        env = context.environment
-
-        Enum.each(
-          [{"FirstContext", []}, {"SecondContext", []}],
-          fn {module, deps} ->
-            :ok =
-              Environments.write_file(
-                env,
-                Content.spec_path(module),
-                Content.context_spec(module, type: "context", dependencies: deps)
-              )
-          end
-        )
-
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        sync_live |> element("button[phx-click='sync']") |> render_click()
+        design!(context, "FirstContext")
+        design!(context, "SecondContext")
 
         first = Fixtures.get_component_by_module_name(context.scope, "FirstContext")
         second = Fixtures.get_component_by_module_name(context.scope, "SecondContext")

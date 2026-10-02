@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2]
+
   import CodeMySpecSpex.GraphReadHelpers
 
   alias CodeMySpecSpex.ProjectBuilder
@@ -27,21 +29,17 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
   setup :setup_active_project
 
   spex "An implementation file written into the checkout moves the graph", criterion: 1311 do
-    scenario "a component's implementation appears beside its spec" do
-      given_ "a component whose spec exists, and a graph that has been served", context do
-        ProjectBuilder.new(context.environment, app: "my_app")
-        |> ProjectBuilder.spec_only("Accounts")
-        |> ProjectBuilder.write!()
-
-        sync(context)
+    scenario "a designed component's implementation appears" do
+      given_ "a designed component with no code, and a graph that has been served", context do
+        design!(context, "MyApp.Accounts")
 
         before = read_settled_graph(context)
 
         assert satisfaction_on(before, "implementation_file", "MyApp.Accounts") == false,
                """
-               The premise did not hold: `MyApp.Accounts` is supposed to have a
-               spec and no implementation yet, so one appearing has nowhere to
-               show up.
+               The premise did not hold: `MyApp.Accounts` is supposed to be
+               designed with no implementation yet, so one appearing has nowhere
+               to show up.
 
                implementation_file nodes: #{inspect(all_named(before, "implementation_file"))}
                """
