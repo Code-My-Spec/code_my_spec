@@ -291,30 +291,6 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
     end
   end
 
-  test "a permission decision delivered to an agent records an answer offer", ctx do
-    agent = agent(ctx.scope)
-
-    {:ok, request} =
-      Notifications.create_permission_request(ctx.scope.user.id, %{
-        "agent_id" => agent.id,
-        "tool_name" => "Bash",
-        "tool_input" => %{"command" => "ls"}
-      })
-
-    {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
-
-    id = agent.id
-    assert_receive {:agent_dispatch, ^id, _ref, message}, 2_000
-    assert message =~ "was declined"
-
-    assert [offer] = Offers.list_for_agent(agent.id)
-
-    assert {offer.kind, offer.subject_type, offer.subject_key} ==
-             {:answer, "permission", request.id}
-
-    assert linked_texts(offer) == [message]
-  end
-
   describe "a failed turn" do
     @failure "Claude Code returned tool_use without any tool calls"
 

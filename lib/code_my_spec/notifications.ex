@@ -855,11 +855,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
-    _ =
-      CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request), :own_reply,
-        offer: {:answer, {"permission", request.id}}
-      )
-
+    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request), :own_reply)
     :ok
   end
 
