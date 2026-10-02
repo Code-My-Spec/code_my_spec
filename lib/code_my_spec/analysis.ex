@@ -375,7 +375,7 @@ defmodule CodeMySpec.Analysis do
 
   @doc """
   Record the commit a harness's analyzer started on, and whether the tree was
-  clean then. The row was opened at dispatch; the analyzer may have sat in the
+  clean then, and when it began. The row was opened at dispatch; the analyzer may have sat in the
   harness's queue since, so its start is when it actually ran.
   """
   @spec record_remote_start(Scope.t(), map()) :: {:ok, Run.t()} | {:error, :unknown_run}
@@ -389,7 +389,9 @@ defmodule CodeMySpec.Analysis do
         {:ok,
          RunsRepository.record_tree(
            run,
-           Map.take(payload, ["start_commit", "start_tree_dirty"])
+           payload
+           |> Map.take(["start_commit", "start_tree_dirty"])
+           |> Map.put("began_at", DateTime.utc_now())
          )}
     end
   end
@@ -574,6 +576,23 @@ defmodule CodeMySpec.Analysis do
       {:running, sources} -> sources
       _ -> []
     end
+  end
+
+  @doc """
+  `in_flight/1`, each source marked when it is still waiting for a machine slot
+  rather than executing (bf627680). Only the ledger knows; a locally executed
+  project's sources are named plainly.
+  """
+  @spec in_flight_described(Scope.t()) :: [String.t()]
+  def in_flight_described(%Scope{} = scope) do
+    queued =
+      case remote_executor(scope) do
+        {:ok, _pid} -> RunsRepository.queued_sources(scope)
+        :none -> MapSet.new()
+      end
+
+    for source <- in_flight(scope),
+        do: if(MapSet.member?(queued, source), do: "#{source} (queued for a slot)", else: source)
   end
 
   @doc """
