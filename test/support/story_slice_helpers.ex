@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   def topology(context, triples) do
-    context |> GraphGivens.write_component_specs(triples) |> GraphGivens.sync()
+    context |> GraphGivens.design_components(triples) |> GraphGivens.sync()
   end
 
   def component(context, name), do: Fixtures.get_component_by_module_name(context.scope, name)

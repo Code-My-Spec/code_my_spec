@@ -85,7 +85,7 @@ defmodule CodeMySpecWeb.SessionsLiveTest do
 
       {:ok, session} =
         Sessions.prepare_task(scope, session, %{
-          session_type: CodeMySpec.AgentTasks.ContextSpec,
+          session_type: CodeMySpec.AgentTasks.ComponentCode,
           requirement_name: "test_spec",
           project_id: scope.active_project_id
         })

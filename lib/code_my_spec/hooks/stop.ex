@@ -249,7 +249,7 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   defp pending_response(scope, session, req_id) do
-    sources = scope |> Analysis.in_flight() |> Enum.join(", ")
+    sources = scope |> Analysis.in_flight_described() |> Enum.join(", ")
 
     if continuous_mode?(session) do
       Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — directing await")

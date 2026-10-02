@@ -49,6 +49,7 @@ defmodule CodeMySpec.Analysis.Run do
           output: String.t() | nil,
           exit_status: integer() | nil,
           started_at: DateTime.t(),
+          began_at: DateTime.t() | nil,
           finished_at: DateTime.t() | nil,
           start_commit: String.t() | nil,
           start_tree_dirty: boolean() | nil,
@@ -84,6 +85,11 @@ defmodule CodeMySpec.Analysis.Run do
     field :output, :string
     field :exit_status, :integer
     field :started_at, :utc_datetime_usec
+
+    # When the harness got a machine slot and the analyzer began; `started_at`
+    # is when it was requested. A `:running` run with none is queued, waiting
+    # for a slot (bf627680).
+    field :began_at, :utc_datetime_usec
     field :finished_at, :utc_datetime_usec
 
     # The working copy's commit when the analyzer started, whether its tree had
@@ -104,6 +110,11 @@ defmodule CodeMySpec.Analysis.Run do
 
     timestamps(type: :utc_datetime)
   end
+
+  @doc "Requested but not yet begun: waiting for a machine slot."
+  @spec queued?(t()) :: boolean()
+  def queued?(%__MODULE__{status: :running, began_at: nil}), do: true
+  def queued?(_run), do: false
 
   @doc """
   Whether this run answers for `commit`: completed, started on a clean tree at
@@ -130,13 +141,13 @@ defmodule CodeMySpec.Analysis.Run do
   def sources, do: @sources
 
   @doc """
-  The git state a harness reported for this run: `start_commit` and
+  What a harness reported for this run: `began_at`, `start_commit` and
   `start_tree_dirty` when it started, `completed_commit` when it finished.
   """
   @spec tree_changeset(t(), map()) :: Ecto.Changeset.t()
   def tree_changeset(run, attrs) do
     run
-    |> cast(attrs, [:start_commit, :start_tree_dirty, :completed_commit])
+    |> cast(attrs, [:began_at, :start_commit, :start_tree_dirty, :completed_commit])
     |> validate_format(:start_commit, @sha)
     |> validate_format(:completed_commit, @sha)
   end

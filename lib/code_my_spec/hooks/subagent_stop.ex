@@ -47,7 +47,12 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     # Omitted, `opts` defaulted to `[]` and every sub-agent stop answered "attribution
     # unavailable" and blocked on every finding in the project — never once demoting,
     # for any sub-agent. `Stop` forwards them (stop.ex:233); this did not.
-    requested_by = %{kind: "hook", hook: "subagent_stop", session_id: session_id, agent_id: agent_id}
+    requested_by = %{
+      kind: "hook",
+      hook: "subagent_stop",
+      session_id: session_id,
+      agent_id: agent_id
+    }
 
     case Validation.validate_stop(scope, task,
            session_id: session_id,
@@ -72,11 +77,13 @@ defmodule CodeMySpec.Hooks.SubagentStop do
   # blocks on any problems that land.
   defp decide_after_validation(scope, session, task, req_id) do
     if scope.active_project_id && Analysis.runs_in_flight?(scope) do
-      sources = scope |> Analysis.in_flight() |> Enum.join(", ")
+      sources = scope |> Analysis.in_flight_described() |> Enum.join(", ")
+
       Logger.info("[SubagentStopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop",
         cms_decision: "allow",
         cms_why: "analysis pending"
       )
+
       %{"systemMessage" => "analysis running: #{sources} — results apply next stop"}
     else
       case maybe_evaluate(scope, session, task) do
@@ -93,6 +100,7 @@ defmodule CodeMySpec.Hooks.SubagentStop do
             cms_decision: "allow",
             cms_why: "task evaluated clean"
           )
+
           %{}
       end
     end

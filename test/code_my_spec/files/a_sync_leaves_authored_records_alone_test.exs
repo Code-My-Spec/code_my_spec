@@ -4,8 +4,8 @@ defmodule CodeMySpec.Files.ASyncLeavesAuthoredRecordsAloneTest do
   truth: it pruned every component no file named, and deleted every edge a
   spec's `## Dependencies` did not list. So an edge an agent added with
   `add_dependency`, or a component it created before writing any code, was
-  undone by the next full sync. Authored records are now left alone; records
-  derived from files behave as before.
+  undone by the next full sync. Step 7c: a sync reads no spec, so it touches
+  no edge, and prunes only what it discovered.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files.ASyncLeavesAuthoredRecordsAloneTest do
       assert edges(ctx.scope) == [{@web, @accounts}]
     end
 
-    test "one with no provenance is still the spec's to remove", ctx do
+    test "one with no provenance survives too: a spec says nothing any more", ctx do
       {:ok, _} =
         Components.create_dependency(ctx.scope, %{
           source_component_id: ctx.web.id,
@@ -78,7 +78,7 @@ defmodule CodeMySpec.Files.ASyncLeavesAuthoredRecordsAloneTest do
 
       full_sync(ctx.scope)
 
-      assert edges(ctx.scope) == []
+      assert edges(ctx.scope) == [{@web, @accounts}]
     end
   end
 
@@ -95,12 +95,15 @@ defmodule CodeMySpec.Files.ASyncLeavesAuthoredRecordsAloneTest do
       assert "MyApp.Billing" in names(ctx.scope)
     end
 
-    test "one with no provenance is still pruned", ctx do
+    test "one with no provenance is kept, and stays unmarked", ctx do
       component_fixture(ctx.scope, %{name: "Billing", module_name: "MyApp.Billing"})
 
       full_sync(ctx.scope)
 
-      refute "MyApp.Billing" in names(ctx.scope)
+      assert %{provenance: nil} =
+               ctx.scope
+               |> Components.list_components()
+               |> Enum.find(&(&1.module_name == "MyApp.Billing"))
     end
   end
 

@@ -136,6 +136,7 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
+
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, label: "test copy", device: device_fixture(scope))
 

@@ -82,7 +82,8 @@ defmodule CodeMySpec.Files.UpsertReturnsWhatChangedTest do
     test "a manifest that adds one file returns only that file", %{scope: scope} do
       {2, _} = Files.upsert_files(scope, [entry("lib/a.ex"), entry("lib/b.ex")])
 
-      result = Files.upsert_files(scope, [entry("lib/a.ex"), entry("lib/b.ex"), entry("lib/c.ex")])
+      result =
+        Files.upsert_files(scope, [entry("lib/a.ex"), entry("lib/b.ex"), entry("lib/c.ex")])
 
       assert paths_returned(result) == ["lib/c.ex"]
     end
@@ -103,7 +104,10 @@ defmodule CodeMySpec.Files.UpsertReturnsWhatChangedTest do
           {:validation_errors, %{"reason" => "missing sections"}, "the reason changed"}
         ] do
       test "#{field} moving is a change — #{why}", %{scope: scope} do
-        result = Files.upsert_files(scope, [entry("lib/a.ex", %{unquote(field) => unquote(Macro.escape(value))})])
+        result =
+          Files.upsert_files(scope, [
+            entry("lib/a.ex", %{unquote(field) => unquote(Macro.escape(value))})
+          ])
 
         assert paths_returned(result) == ["lib/a.ex"],
                """
@@ -120,7 +124,8 @@ defmodule CodeMySpec.Files.UpsertReturnsWhatChangedTest do
     end
 
     test "mtime alone is enough, though nothing about the content moved", %{scope: scope} do
-      result = Files.upsert_files(scope, [entry("lib/a.ex", %{mtime: ~U[2026-09-16 12:00:00.000000Z]})])
+      result =
+        Files.upsert_files(scope, [entry("lib/a.ex", %{mtime: ~U[2026-09-16 12:00:00.000000Z]})])
 
       assert paths_returned(result) == ["lib/a.ex"],
              """

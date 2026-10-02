@@ -40,6 +40,6 @@ defmodule CodeMySpec.SessionsConcurrencyTest do
   end
 
   defp session_attrs do
-    %{state: %{}, status: :active, type: CodeMySpec.AgentTasks.ContextSpec}
+    %{state: %{}, status: :active, type: CodeMySpec.AgentTasks.ComponentCode}
   end
 end

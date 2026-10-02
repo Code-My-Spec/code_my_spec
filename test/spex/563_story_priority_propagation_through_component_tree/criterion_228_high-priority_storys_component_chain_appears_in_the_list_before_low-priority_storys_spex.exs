@@ -12,13 +12,11 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -31,24 +29,9 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
 
   spex "Priority ordering surfaces the higher-priority story's context first", criterion: 228 do
     scenario "high-priority context appears before low-priority context in the response" do
-      given_ "two top-level contexts synced via the real /sync pipeline", context do
-        env = context.environment
-
-        Enum.each(
-          [
-            {"HighContext", :context, []},
-            {"LowContext", :context, []}
-          ],
-          fn {module, type, deps} ->
-            spec_content =
-              Content.context_spec(module, type: Atom.to_string(type), dependencies: deps)
-
-            :ok = Environments.write_file(env, Content.spec_path(module), spec_content)
-          end
-        )
-
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        sync_live |> element("button[phx-click='sync']") |> render_click()
+      given_ "two top-level contexts designed", context do
+        design!(context, "HighContext")
+        design!(context, "LowContext")
 
         high = Fixtures.get_component_by_module_name(context.scope, "HighContext")
         low = Fixtures.get_component_by_module_name(context.scope, "LowContext")

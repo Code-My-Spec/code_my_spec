@@ -120,7 +120,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
-  alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
   alias CodeMySpec.Content.CloudflareClient
@@ -2375,11 +2374,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
   defdelegate list_components(scope), to: CodeMySpec.Components
 
-  @doc "Attempt to write a component's stub spec through the scope's environment."
-  defdelegate write_component_stub(scope, attrs),
-    to: SpecStub,
-    as: :write_for_scope
-
   @doc """
   Whether a named requirement is satisfied for an entity, read off the computed
   graph — the same graph `get_next_requirement` serves an agent from.
@@ -3978,6 +3972,26 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
     {:ok, _} = Conversations.add_tool_result(conversation, call_id, name, text, opts)
+    :ok
+  end
+
+  @doc """
+  Put this agent's outstanding turn request in the past.
+
+  A turn offered to an agent reserves it for five minutes; an agent that never
+  takes the turn is offered again once that lapses. Time passing has no
+  surface, so this backdates the reservation the way `age_agent_messages/3`
+  backdates a transcript.
+  """
+  @spec age_work_reservation(Scope.t(), String.t(), number()) :: :ok
+  def age_work_reservation(%Scope{} = _scope, agent_id, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+
+    from(a in CodeMySpec.Agents.Agent,
+      where: a.id == type(^agent_id, :binary_id) and not is_nil(a.work_request_id)
+    )
+    |> Repo.update_all(set: [work_requested_at: at])
+
     :ok
   end
 

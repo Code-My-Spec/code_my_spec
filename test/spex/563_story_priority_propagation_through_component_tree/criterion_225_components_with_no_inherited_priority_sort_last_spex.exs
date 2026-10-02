@@ -13,14 +13,12 @@ defmodule CodeMySpecSpex.Story563.Criterion5902Spex do
 
   use CodeMySpecSpex.Case
 
-  import Phoenix.LiveViewTest
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -34,17 +32,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5902Spex do
   spex "Components with no inherited priority sort last", criterion: 225 do
     scenario "the linked priority-1 context leads, the orphan does not appear in the wave" do
       given_ "a priority-1 linked context and an orphan with no priority", context do
-        env = context.environment
-
-        :ok =
-          Environments.write_file(
-            env,
-            Content.spec_path("LinkedContext"),
-            Content.context_spec("LinkedContext", type: "context", dependencies: [])
-          )
-
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        sync_live |> element("button[phx-click='sync']") |> render_click()
+        design!(context, "LinkedContext")
 
         linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")
 

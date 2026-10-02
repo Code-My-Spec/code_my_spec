@@ -42,6 +42,8 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2, design!: 4]
+
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
@@ -63,15 +65,18 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
 
-      given_ "HighContext (priority 1) and LowContext (priority 9), each with a schema child and review files",
+      given_ "HighContext (priority 1) and LowContext (priority 9), each with a schema child, the contexts coded",
              context do
         env = context.environment
 
-        write_context_with_review(env, "HighContext", "HighContext.Item")
-        write_schema_spec_only(env, "HighContext.Item")
-
-        write_context_with_review(env, "LowContext", "LowContext.Other")
-        write_schema_spec_only(env, "LowContext.Other")
+        for {parent, child} <- [
+              {"HighContext", "HighContext.Item"},
+              {"LowContext", "LowContext.Other"}
+            ] do
+          design!(context, parent)
+          design!(context, child, [], type: "schema", parent: parent)
+          :ok = Environments.write_file(env, Content.impl_path(parent), Content.impl_file(parent))
+        end
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
@@ -152,71 +157,5 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp write_context_with_review(env, module, child_module) do
-    module_path = module |> String.split(".") |> Enum.map_join("/", &Macro.underscore/1)
-
-    :ok =
-      Environments.write_file(
-        env,
-        Content.spec_path(module),
-        Content.context_spec(module,
-          type: "context",
-          dependencies: [],
-          children: [%{module: child_module, type: "schema"}]
-        )
-      )
-
-    :ok = Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
-
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/spec/#{module_path}/design_review.md",
-        design_review_content(module)
-      )
-  end
-
-  # Schema child gets a spec file (so sync registers it as a component
-  # with parent_component_id pointing at its parent context) but
-  # intentionally NO implementation file. That leaves its child-phase
-  # `implementation_file` requirement unsatisfied — the only way for the
-  # child's entity_id to surface in the wave. With both spec AND impl
-  # written, every requirement on the schema is satisfied and the wave
-  # falls through to the parent's later phases instead.
-  defp write_schema_spec_only(env, module) do
-    :ok =
-      Environments.write_file(
-        env,
-        Content.spec_path(module),
-        Content.child_spec(module, type: "schema")
-      )
-  end
-
-  defp design_review_content(module) do
-    """
-    # #{module} Design Review
-
-    ## Overview
-
-    Reviewed the #{module} context with one schema child. Sound
-    architecture for a placeholder bounded context.
-
-    ## Architecture
-
-    - Separation of concerns is appropriate for the single-child
-      context shape.
-    - The schema child holds the persistence shape; the context
-      exposes the public surface.
-
-    ## Integration
-
-    - The context has no integration points with other contexts.
-
-    ## Conclusion
-
-    Ready for implementation. No outstanding action items.
-    """
   end
 end

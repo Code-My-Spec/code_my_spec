@@ -29,7 +29,7 @@ defmodule CodeMySpec.SessionsFixtures do
       Enum.into(attrs, %{
         state: %{},
         status: :active,
-        type: CodeMySpec.AgentTasks.ContextSpec
+        type: CodeMySpec.AgentTasks.ComponentCode
       })
 
     {:ok, session} = Sessions.create_session(scope, attrs)

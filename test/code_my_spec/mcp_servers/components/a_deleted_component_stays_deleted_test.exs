@@ -1,75 +1,49 @@
 defmodule CodeMySpec.McpServers.Components.ADeletedComponentStaysDeletedTest do
   @moduledoc """
-  `delete_component` removes what the component is projected from, so the next
-  sync does not bring it back.
+  `delete_component` deletes the record, and the next sync does not bring it
+  back unless code still names the module.
 
-  Issue 856b3632. Components are projections of files: deleting only the row
-  left `.code_my_spec/spec/…/<name>.spec.md` in place, and the next
-  `ComponentSync` recreated the component from it. The delete looked like it
-  worked and undid itself.
+  Issue 856b3632: when components were projections of spec files, deleting the
+  row was undone by the next sync. Components are records now (3aeb66cf), so a
+  spec brings nothing back; only live code is discovered, and the reply says
+  which files are left.
   """
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Files.{ComponentExtract, ComponentSync}
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
 
-  @spec_path ".code_my_spec/spec/my_app/widgets.spec.md"
-  @impl_path "lib/my_app/widgets.ex"
-
-  @spec_body """
-  # MyApp.Widgets
-
-  Stores widgets for later.
-
-  ## Type
-  context
-  """
-
-  @impl_body """
-  defmodule MyApp.Widgets do
-  end
-  """
-
   setup do
-    scope = full_scope_fixture()
-    :ok = Environments.write_file(scope.environment, @spec_path, @spec_body)
-    file_row!(scope, @spec_path, :spec, @spec_body)
+    scope = %{full_scope_fixture() | environment: nil, cwd: nil}
 
-    {:ok, _} = ComponentSync.sync_from_files(scope)
+    component =
+      component_fixture(scope, %{
+        name: "Widgets",
+        module_name: "MyApp.Widgets",
+        type: "context",
+        provenance: :authored
+      })
 
-    %{scope: scope, component: widgets(scope)}
+    %{scope: scope, component: component}
   end
 
-  # A scanned file row, carrying the identity the scanner stores, so the sync
-  # reads it the way it reads a real working copy's.
-  defp file_row!(scope, path, role, content) do
+  defp file_row!(scope, path, role) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
       working_copy_id: scope.active_working_copy_id,
       path: path,
       role: role,
       valid: true,
-      validation_errors: %{
-        "errors" => %{},
-        "data" => %{
-          "module_name" => module_name(role, content),
-          "type" => ComponentExtract.extract_type_section(content),
-          "description" => ComponentExtract.extract_intro_text(content),
-          "dependencies" => []
-        }
-      }
+      validation_errors: %{"errors" => %{}, "data" => %{"module_name" => "MyApp.Widgets"}}
     })
   end
-
-  defp module_name(:spec, content), do: ComponentExtract.extract_h1_module(content)
-  defp module_name(:implementation, _content), do: "MyApp.Widgets"
 
   defp widgets(scope),
     do: Enum.find(Components.list_components(scope), &(&1.module_name == "MyApp.Widgets"))
@@ -77,50 +51,30 @@ defmodule CodeMySpec.McpServers.Components.ADeletedComponentStaysDeletedTest do
   defp delete(scope, component) do
     frame = %Frame{assigns: %{current_scope: scope}}
     {:reply, response, ^frame} = DeleteComponent.execute(%{id: component.id}, frame)
-    response
-  end
-
-  defp text(response), do: Enum.map_join(response.content, "\n", & &1["text"])
-
-  test "the premise: the spec projects the component", %{component: component} do
-    assert component, "the sync did not create the component from its spec"
-  end
-
-  test "the next sync does not recreate a deleted component", %{
-    scope: scope,
-    component: component
-  } do
-    response = delete(scope, component)
     refute response.isError
+    Enum.map_join(response.content, "\n", & &1["text"])
+  end
 
+  test "a spec naming it does not bring it back", %{scope: scope, component: component} do
+    file_row!(scope, ".code_my_spec/spec/my_app/widgets.spec.md", :spec)
+
+    delete(scope, component)
     {:ok, _} = ComponentSync.sync_from_files(scope)
 
-    refute widgets(scope),
-           "the component came back on the next sync. Its spec file still named the " <>
-             "module, so deleting the row was undone by the projection it came from."
+    refute widgets(scope)
   end
 
-  test "its spec file is removed and the reply says so", %{scope: scope, component: component} do
-    said = scope |> delete(component) |> text()
-
-    refute Environments.file_exists?(scope.environment, @spec_path)
-    assert said =~ @spec_path
-  end
-
-  test "implementation files are left alone, and the reply says so", %{
+  test "code naming it is discovered again, and the reply says so", %{
     scope: scope,
     component: component
   } do
-    :ok = Environments.write_file(scope.environment, @impl_path, @impl_body)
-    file_row!(scope, @impl_path, :implementation, @impl_body)
+    file_row!(scope, "lib/my_app/widgets.ex", :implementation)
     {:ok, _} = ComponentSync.sync_from_files(scope)
 
-    said = scope |> delete(component) |> text()
+    said = delete(scope, component)
+    {:ok, _} = ComponentSync.sync_from_files(scope)
 
-    assert Environments.file_exists?(scope.environment, @impl_path),
-           "delete_component removed an implementation file. Only the spec is the " <>
-             "component's own; code is somebody's work."
-
-    assert said =~ @impl_path
+    assert said =~ "lib/my_app/widgets.ex"
+    assert %{provenance: :discovered} = widgets(scope)
   end
 end

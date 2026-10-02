@@ -5,17 +5,15 @@ defmodule CodeMySpecSpex.Story1065.Criterion3394Spex do
 
   The rule:
 
-  > The code process is written down — how a component goes from spec to test
-  > to implementation.
+  > Agents can read how a component goes from designed to built, and where its
+  > tests live.
 
   ## What an agent cannot work out for itself
 
-  There are modules for `component_spec`, `component_test`, `component_code`,
-  `context_spec`, `develop_context` and `develop_live_view`, and nothing that
-  says which comes first or what finishes each one. The order is not guessable
-  from the module list: `component_test` before `component_code` is a choice
-  this project made, and an agent that assumes the other order writes an
-  implementation with nothing holding it to the spec.
+  There are task modules for designing, coding and developing a context or a
+  LiveView, and nothing in the module list says which comes first or what
+  finishes each one — nor that a component's tests live on its story, as spex,
+  rather than on the component.
 
   So the two things asserted here are the two an agent is actually missing —
   what order the steps go in, and how it knows a step is done.
