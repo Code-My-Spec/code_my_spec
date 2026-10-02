@@ -344,8 +344,84 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
     end
   end
 
+  describe "build_in_progress?/3" do
+    test "true when docker ps finds a container under the build-marker label" do
+      run = fn [cmd] ->
+        assert cmd =~ "docker ps -q --filter label=cms-build-in-progress"
+        {"800ac1dcb78a\n", 0}
+      end
+
+      assert BurstBox.build_in_progress?(platform_scope(), server(), run: run)
+    end
+
+    test "false when docker ps finds nothing under the label" do
+      run = fn [_cmd] -> {"", 0} end
+
+      refute BurstBox.build_in_progress?(platform_scope(), server(), run: run)
+    end
+
+    test "a check that cannot be made reads as busy, not idle" do
+      run = fn [_cmd] -> {"connection refused", 255} end
+
+      log =
+        capture_log(fn ->
+          assert BurstBox.build_in_progress?(platform_scope(), server(), run: run)
+        end)
+
+      assert log =~ "could not check"
+      assert log =~ "treating it as busy"
+    end
+  end
+
+  describe "busy?/3" do
+    test "true when a build is in progress, with no embed check configured" do
+      run = fn [_cmd] -> {"800ac1dcb78a\n", 0} end
+
+      assert BurstBox.busy?(platform_scope(), server(), run: run)
+    end
+
+    test "false when nothing is building and no embed check is configured" do
+      run = fn [_cmd] -> {"", 0} end
+
+      refute BurstBox.busy?(platform_scope(), server(), run: run)
+    end
+
+    test "true when the embed check alone says so, even with no build running" do
+      run = fn [_cmd] -> {"", 0} end
+
+      assert BurstBox.busy?(platform_scope(), server(),
+               run: run,
+               embed_runner_busy?: fn -> true end
+             )
+    end
+
+    test "true when both halves say so" do
+      run = fn [_cmd] -> {"800ac1dcb78a\n", 0} end
+
+      assert BurstBox.busy?(platform_scope(), server(),
+               run: run,
+               embed_runner_busy?: fn -> true end
+             )
+    end
+
+    test "the embed check is never consulted when the docker half already says busy" do
+      run = fn [_cmd] -> {"800ac1dcb78a\n", 0} end
+      embed_runner_busy? = fn -> flunk("docker ps already found a build — no need to ask") end
+
+      assert BurstBox.busy?(platform_scope(), server(), run: run, embed_runner_busy?: embed_runner_busy?)
+    end
+  end
+
   describe "install_release/3" do
+    # The build marker's own start/stop commands (`Remote.build/4`'s own
+    # concern — see its moduledoc) answer the same way in every one of these
+    # tests, so they are baked in here rather than repeated in every
+    # `responses` list below.
     defp recorder(responses) do
+      responses =
+        responses ++
+          [{"docker run -d --label cms-build-in-progress", {"marker123\n", 0}}, {"docker rm -f", {"", 0}}]
+
       fn [command] ->
         Enum.find_value(responses, fn {pattern, response} ->
           String.contains?(command, pattern) && response

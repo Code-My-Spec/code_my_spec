@@ -10,6 +10,8 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
   """
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias CodeMySpec.Provisioning.Builder.Remote
 
   # Answers every command successfully and records what it was asked, so a test
@@ -216,6 +218,78 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
+  # The box this build runs on is shared (story 877) — a plain `docker build`
+  # is not `docker ps`-observable for its whole duration on its own (see
+  # `build_marker_label/0`'s own comment), so this trivial container is what
+  # makes "a CodeMySpec build is happening on this box right now" answerable
+  # at all, for `BurstBox.build_in_progress?/3`.
+  describe "the in-progress build marker" do
+    test "starts labelled with the ref right before the build, and is the very last thing removed on success" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} = Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      assert_received {:ran, "true"}
+      assert_received {:ran, marker_start}
+      assert marker_start =~ "docker run -d --label cms-build-in-progress=abc123"
+      assert marker_start =~ "alpine:3 sleep infinity"
+
+      assert_received {:ran, build}
+      assert build =~ "docker build"
+
+      name = marker_container_name(marker_start)
+      rest = drain_ran()
+      assert List.last(rest) == "docker rm -f #{name}"
+    end
+
+    test "is removed even when the build itself fails" do
+      run =
+        recorder(self(), %{"docker build" => {"no space left on device", 1}, "inspect" => arm()})
+
+      assert {:error, {:build_failed, 1, _output}} =
+               Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      assert_received {:ran, "true"}
+      assert_received {:ran, marker_start}
+      name = marker_container_name(marker_start)
+
+      assert_received {:ran, build}
+      assert build =~ "docker build"
+
+      assert_received {:ran, stop}
+      assert stop == "docker rm -f #{name}"
+    end
+
+    test "a marker that fails to start does not block the build" do
+      run =
+        recorder(self(), %{
+          "docker run -d --label cms-build-in-progress" => {"permission denied", 1},
+          "inspect" => arm()
+        })
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} =
+                   Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+        end)
+
+      assert log =~ "could not start the in-progress build marker"
+      refute_received {:ran, "docker rm -f" <> _}
+    end
+
+    test "a marker that fails to be removed is logged, not raised, and the build result stands" do
+      run = recorder(self(), %{"docker rm -f" => {"no such container", 1}, "inspect" => arm()})
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} =
+                   Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+        end)
+
+      assert log =~ "could not remove the build marker"
+    end
+  end
+
   # A registry reachable on a public hostname must refuse anonymous writes, so
   # a push with no credential is a push that cannot succeed against a registry
   # worth having. This pushed with none at all.
@@ -231,7 +305,8 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "hunter2"})
                )
 
-      [_reachable, _build, _trust, login, push, _inspect] = ran_commands(6)
+      [_reachable, _marker_start, _build, _trust, login, push, _inspect, _marker_stop] =
+        ran_commands(8)
 
       assert push =~ "docker push", "the login must come before the push, not after it"
 
@@ -256,7 +331,8 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "pw"})
                )
 
-      [_reachable, _build, _trust, login, _push, _inspect] = ran_commands(6)
+      [_reachable, _marker_start, _build, _trust, login, _push, _inspect, _marker_stop] =
+        ran_commands(8)
 
       assert login =~ "docker login 'registry.example.com'"
       refute login =~ "some/deep/path"
@@ -496,11 +572,12 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
-  # The sequence `build/4` runs is fixed — reachability, build, trust, login,
-  # push, inspect — so the count is known rather than searched for. Taking a known
-  # number and matching positionally says where the login belongs, which "scan
-  # forward until something matches" cannot: it would pass just as well if the
-  # login came after the push.
+  # The sequence `build/4` runs is fixed — reachability, the in-progress build
+  # marker starting, build, trust, login, push, inspect, the marker stopping —
+  # so the count is known rather than searched for. Taking a known number and
+  # matching positionally says where the login belongs, which "scan forward
+  # until something matches" cannot: it would pass just as well if the login
+  # came after the push.
   #
   # Source delivery is not in the list: it stopped being a shell command on the
   # builder when the builder stopped cloning.
@@ -508,6 +585,19 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     for _ <- 1..count do
       assert_receive {:ran, command}, 0
       command
+    end
+  end
+
+  defp marker_container_name(marker_start_command) do
+    [_, rest] = String.split(marker_start_command, "--name ")
+    rest |> String.split(" ") |> hd()
+  end
+
+  defp drain_ran(acc \\ []) do
+    receive do
+      {:ran, command} -> drain_ran(acc ++ [command])
+    after
+      0 -> acc
     end
   end
 

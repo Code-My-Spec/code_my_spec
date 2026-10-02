@@ -297,6 +297,75 @@ defmodule CodeMySpec.Provisioning.BurstBox do
   defp pid_path(dest, runner_name), do: "#{run_dir(dest)}/#{runner_name}.pid"
   defp log_path(dest, runner_name), do: "#{run_dir(dest)}/#{runner_name}.log"
 
+  ## busy?
+
+  @doc """
+  The real `:busy?` for `BurstBox.Lifecycle.check/3` (story 877, item 1).
+
+  True when either half says so:
+
+    * a CodeMySpec build container is running on `server` right now — see
+      `build_in_progress?/3`, checked over the same SSH every other function
+      here already uses;
+    * `opts[:embed_runner_busy?]` says so — the box's own embedding runners,
+      answered by a caller-supplied `(-> boolean())` rather than this module
+      reaching into `CodeMySpec.Embeddings` directly: both are `top_level?:
+      true` boundaries with no dependency between them (see
+      `HetznerFlameBackend`'s own moduledoc for why — the same forbidden-edge
+      reasoning applies in this direction too), so the fact can only arrive
+      as data, never as a call written in this module's own source.
+
+  Defaults to `fn -> false end`, which is the right default for any box that
+  never hosts embedding runners at all — every customer's box, and ours
+  whenever nothing wires a real one in. Our own platform box's eager/sweep
+  checks are the only callers that should ever pass a real one, built from
+  `CodeMySpec.Embeddings.InFlightCalls.any_in_flight?/1` where both
+  boundaries are already in scope (`application.ex`).
+  """
+  @spec busy?(Scope.t(), map(), keyword()) :: boolean()
+  def busy?(%Scope{} = scope, server, opts \\ []) do
+    embed_runner_busy? = Keyword.get(opts, :embed_runner_busy?, fn -> false end)
+    build_in_progress?(scope, server, opts) or embed_runner_busy?.()
+  end
+
+  @doc """
+  Whether a CodeMySpec build is currently running on `server` — the half of
+  `busy?/3` any box, ours or a customer's, can answer on its own.
+
+  Greps `docker ps` for the marker label `Remote.build/4` stamps on its own
+  throwaway container for exactly the span a build is in flight (see that
+  function's own comment for why a marker exists at all: a plain `docker
+  build` is not `docker ps`-observable for its whole duration on its own).
+
+  A failed check — the box unreachable, `docker` itself not answering —
+  reads as busy rather than idle: the honest answer is "unknown," and
+  `Lifecycle.check/3` only ever acts on `false`, so the safe default is the
+  one that costs an extra billed hour rather than the one that risks
+  deleting a box something is still building on.
+  """
+  @spec build_in_progress?(Scope.t(), map(), keyword()) :: boolean()
+  def build_in_progress?(%Scope{} = _scope, server, opts \\ []) do
+    run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
+    label = Remote.build_marker_label()
+
+    case run.(["docker ps -q --filter label=#{label}"]) do
+      {output, 0} ->
+        String.trim(output) != ""
+
+      {output, status} ->
+        Logger.warning(
+          "[BurstBox] could not check #{server_label(server)} for an in-progress build: " <>
+            "exit #{status}: #{String.trim(to_string(output))} — treating it as busy"
+        )
+
+        true
+    end
+  end
+
+  defp server_label(%{"name" => name}), do: name
+  defp server_label(%{"server" => server}), do: server_label(server)
+  defp server_label(server), do: inspect(server)
+
   defp maybe_put_runner_ip(env, opts) do
     case Keyword.get(opts, :fly_peer_address) || configured_fly_peer_address(opts) do
       nil -> env

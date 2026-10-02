@@ -10,6 +10,9 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpec.Agents.GraphWake
   alias CodeMySpec.Analytics.GoogleAnalytics
+  alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Provisioning.BurstBox
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def start(_type, args) do
@@ -76,6 +79,15 @@ defmodule CodeMySpecWeb.Application do
         # Framework knowledge (step 4): one reconcile per boot, no watcher. A
         # `:temporary`, non-raising Task, so it never blocks or fails boot.
         embeddings_configured?() && CodeMySpec.Embeddings.FrameworkKnowledgeReconciler,
+        # How many `FLAME.call`s are in flight on `CodeMySpec.EmbedPool` right
+        # now, per pool — the fact `BurstBox.busy?/3`'s embedding half needs
+        # (story 877, item 1 correction) with no FLAME-internals
+        # introspection. Same shape as `Faults`/`DrainCost` below: a process
+        # that owns one ETS table, unconditional for the same reason they
+        # are — it costs nothing idle, and gating it on
+        # `embeddings_configured?()` would just be one more thing a test
+        # starting its own pool has to remember to start first.
+        CodeMySpec.Embeddings.InFlightCalls,
         # Per-caller failure injection, so QA can break one project's digest or
         # one visitor's intake without breaking the shared box. Owns an ETS
         # table and nothing else; only `/dev/faults` ever writes to it, and that
@@ -234,8 +246,63 @@ defmodule CodeMySpecWeb.Application do
       CodeMySpec.Embeddings.PgVectorBackend
   end
 
-  defp embed_pool_backend(:prod), do: FLAME.FlyBackend
+  # Hetzner is the capability (story 877) — never activated by this alone.
+  # `hetzner_burst_box_configured?/0` is the gate: present and valid, same as
+  # `FLY_API_TOKEN` was meant to be for `FlyBackend` above, this wins; absent,
+  # :prod falls back to `FlyBackend` exactly as before this existed. Dev and
+  # test are untouched either way — `embed_pool_backend/1` is never called
+  # for them at all (see `embeddings_configured?/0` above).
+  defp embed_pool_backend(:prod) do
+    if hetzner_burst_box_configured?() do
+      configure_hetzner_flame_backend!()
+      HetznerFlameBackend
+    else
+      FLAME.FlyBackend
+    end
+  end
+
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
+
+  # `:box_name` is not generated or derived from anything else — `BurstBox`'s
+  # own moduledoc: there is exactly one shared box per environment, so every
+  # runner this backend ever boots asks for the same literal name, matching
+  # `HetznerFlameBackend`'s and `BurstBox`'s own test fixtures.
+  @hetzner_burst_box_name "burst-platform"
+
+  defp hetzner_burst_box_configured? do
+    case System.get_env("HETZNER_API_TOKEN") do
+      token when is_binary(token) and token != "" -> true
+      _ -> false
+    end
+  end
+
+  # The three closures `HetznerFlameBackend`'s own moduledoc already
+  # sketches, built here rather than inside either boundary: `Embeddings` and
+  # `Provisioning` are both `top_level?: true` with no dependency between
+  # them (see that module's own moduledoc for the forbidden-reference this
+  # avoids), so the wiring can only happen where both are already in scope —
+  # this module already depends on `CodeMySpec.Provisioning` (`RunLock`
+  # above) and on `CodeMySpec.Embeddings` (`OrtexServing`, `HexDocSweep`
+  # above).
+  #
+  # `%Scope{}` — no account, no project — is the platform acting for itself,
+  # the same reading `BurstBox.ensure_box/3`'s own `platform_scope?/1` and
+  # `Hetzner.token/1`'s application-config fallback both already give that
+  # shape of scope.
+  defp configure_hetzner_flame_backend! do
+    platform_scope = %Scope{}
+
+    Application.put_env(:flame, HetznerFlameBackend,
+      box_name: @hetzner_burst_box_name,
+      ensure_box: fn name -> BurstBox.ensure_box(platform_scope, name) end,
+      start_runner: fn server, runner_name, env ->
+        BurstBox.start_runner(platform_scope, server, runner_name, env)
+      end,
+      stop_runner: fn server, runner_name ->
+        BurstBox.stop_runner(platform_scope, server, runner_name)
+      end
+    )
+  end
 
   defp maybe_install_file_logger do
     if Application.get_env(:code_my_spec, :install_file_logger, false) do

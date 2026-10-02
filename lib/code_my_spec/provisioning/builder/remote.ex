@@ -33,6 +33,26 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   @ssh_attempts 90
   @ssh_interval_ms 2_000
 
+  # The label `build/4` stamps on its own throwaway in-flight marker
+  # container — see `CodeMySpec.Provisioning.BurstBox.build_in_progress?/3`,
+  # the other side of this same marker (story 877, item 1).
+  #
+  # A plain `docker build` is not reliably `docker ps`-observable for its
+  # whole duration: under BuildKit (the default on any Docker new enough to
+  # matter — see `docker_build/5`'s own comment), a build's steps never
+  # materialize as inspectable containers at all, confirmed live against this
+  # box's own Docker — `docker ps -a` during a deliberately slow `RUN` step
+  # showed nothing for the build in progress. So "is a CodeMySpec build
+  # happening on this box right now" has no answer without something that
+  # *is* `docker ps`-visible for exactly as long as the build runs — a
+  # trivial long-running container, started right before and removed right
+  # after (success or failure alike), is that something.
+  @build_marker_label "cms-build-in-progress"
+
+  @doc "Label `build/4`'s own in-flight marker carries, shared so `BurstBox.build_in_progress?/3` can filter on the same string without either file hardcoding the other's constant."
+  @spec build_marker_label() :: String.t()
+  def build_marker_label, do: @build_marker_label
+
   @doc """
   Build `ref` on `server` and push it to `reference`.
 
@@ -54,14 +74,78 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     # build and a hung one were indistinguishable from the outside.
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          _ = Logger.info("[Builder] ssh reachable, delivering #{ref}"),
-         :ok <- deliver_source(deliver, ref, dir, opts),
-         _ = Logger.info("[Builder] source delivered, running docker build"),
-         :ok <- docker_build(run, reference, ref, dir, opts),
-         _ = Logger.info("[Builder] docker build finished, pushing #{reference}"),
-         :ok <- maybe_push(run, reference, opts),
-         _ = Logger.info("[Builder] pushed #{reference}, reading back its architecture"),
-         {:ok, architecture} <- built_architecture(run, reference) do
-      {:ok, %{reference: reference, architecture: architecture}}
+         :ok <- deliver_source(deliver, ref, dir, opts) do
+      Logger.info("[Builder] source delivered, running docker build")
+      build_marked(run, ref, reference, dir, opts)
+    end
+  end
+
+  # The box this runs on is now shared (story 877) — a customer's build is
+  # never the only thing that might be running there, so the marker has to
+  # bracket every phase the box is doing *this build's* work, not just the
+  # `docker build` invocation itself. Removed either way, the same "every
+  # path destroys" discipline `Builder.build/3` already follows for the box
+  # as a whole.
+  defp build_marked(run, ref, reference, dir, opts) do
+    marker = start_build_marker(run, ref)
+
+    result =
+      with :ok <- docker_build(run, reference, ref, dir, opts),
+           _ = Logger.info("[Builder] docker build finished, pushing #{reference}"),
+           :ok <- maybe_push(run, reference, opts),
+           _ = Logger.info("[Builder] pushed #{reference}, reading back its architecture"),
+           {:ok, architecture} <- built_architecture(run, reference) do
+        {:ok, %{reference: reference, architecture: architecture}}
+      end
+
+    stop_build_marker(run, marker)
+    result
+  end
+
+  # `alpine` rather than anything bespoke: already the smallest image anyone
+  # would reach for, pulled once per box and cached by Docker after that.
+  # `sleep infinity` so the only thing that ends this container is the `rm
+  # -f` below — nothing about it is meant to do real work, only to exist and
+  # be findable by label for as long as the build it marks is running.
+  #
+  # `nil` on failure to start it, not an error — the marker is an
+  # observability aid for `busy?`, never load-bearing for the build itself;
+  # a box that for some reason can't run a trivial container is about to
+  # find that out for real from `docker_build/5` a moment later anyway.
+  defp start_build_marker(run, ref) do
+    name = "cms-build-marker-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+
+    command =
+      "docker run -d --label #{@build_marker_label}=#{ref} --name #{name} alpine:3 sleep infinity"
+
+    case run.([command]) do
+      {_, 0} ->
+        name
+
+      {output, status} ->
+        Logger.warning(
+          "[Builder] could not start the in-progress build marker: exit #{status}: " <>
+            "#{trim(output)} — a busy-check against this box will not see this build"
+        )
+
+        nil
+    end
+  end
+
+  defp stop_build_marker(_run, nil), do: :ok
+
+  defp stop_build_marker(run, name) do
+    case run.(["docker rm -f #{name}"]) do
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        Logger.warning(
+          "[Builder] could not remove the build marker #{name}: exit #{status}: " <>
+            "#{trim(output)} — it may linger and read as a build still in flight"
+        )
+
+        :ok
     end
   end
 

@@ -78,6 +78,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   alias CodeMySpec.Embeddings.HexDocParser
   alias CodeMySpec.Embeddings.HexPackageFetch
   alias CodeMySpec.Embeddings.HexTarball
+  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpec.Embeddings.PgVectorBackend
   alias CodeMySpec.Embeddings.Serving
   alias CodeMySpec.Repo
@@ -226,7 +227,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   end
 
   defp reconcile_one(%{name: name, version: version, checksum: checksum}) do
-    FLAME.call(
+    InFlightCalls.call(
       CodeMySpec.EmbedPool,
       fn -> do_reconcile(name, version, checksum) end,
       timeout: @flame_timeout
