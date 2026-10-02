@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story127.Criterion1631Spex do
 
   spex "A frozen project is stamped and skipped by later freezes, so freezing twice changes nothing",
     criterion: 1631 do
-    scenario "the freeze runs again after new code appears" do
+    scenario "the freeze runs a second time" do
       given_ "Web and Accounts have specs, Web depending on Accounts, and Helper only code",
              context do
         app = app(context)
@@ -28,10 +28,8 @@ defmodule CodeMySpecSpex.Story127.Criterion1631Spex do
         {:ok, context}
       end
 
-      given_ "the project is frozen, then gains a module with only code", context do
+      given_ "the project is frozen", context do
         freeze(context, write: true)
-        implementation!(context, "#{app(context)}.Later")
-        sync!(context)
         {:ok, context}
       end
 
@@ -39,14 +37,13 @@ defmodule CodeMySpecSpex.Story127.Criterion1631Spex do
         {:ok, Map.put(context, :report, freeze(context, write: true))}
       end
 
-      then_ "it is skipped, and the new module is not marked", context do
+      # Since step 4 a frozen project's sync marks new code discovered itself,
+      # so "changes nothing" is asked of what the first freeze wrote.
+      then_ "it is skipped, and what the first freeze wrote is unchanged", context do
+        app = app(context)
         assert context.report =~ "already frozen"
-
-        refute component(context, "#{app(context)}.Later")["provenance"] in [
-                 "authored",
-                 "discovered"
-               ]
-
+        assert component(context, "#{app}.Web")["provenance"] == "authored"
+        assert component(context, "#{app}.Helper")["provenance"] == "discovered"
         {:ok, context}
       end
     end

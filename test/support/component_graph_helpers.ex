@@ -53,8 +53,9 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   @doc """
   A spec file for `module`, declaring `dependencies` (module names). What an
   agent writing specs by hand produces; a sync turns it into a component.
+  `opts` may set the spec's `:type` and `:description`.
   """
-  def spec!(context, module, dependencies \\ []) do
+  def spec!(context, module, dependencies \\ [], opts \\ []) do
     deps =
       case dependencies do
         [] -> "- None"
@@ -65,11 +66,11 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
       Environments.write_file(context.environment, spec_path(module), """
       # #{module}
 
+      #{Keyword.get(opts, :description, "#{module}, written as a spec.")}
+
       ## Type
 
-      context
-
-      #{module}, written as a spec.
+      #{Keyword.get(opts, :type, "context")}
 
       ## Functions
 
@@ -79,7 +80,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
       """)
   end
 
-  @doc "Removes the spec file `spec!/3` wrote for `module`."
+  @doc "Removes the spec file `spec!/4` wrote for `module`."
   def remove_spec!(context, module),
     do: :ok = Environments.delete_file(context.environment, spec_path(module))
 
@@ -92,6 +93,10 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
         "defmodule #{module} do\n  @moduledoc false\nend\n"
       )
   end
+
+  @doc "Removes the implementation file `implementation!/2` wrote for `module`."
+  def remove_implementation!(context, module),
+    do: :ok = Environments.delete_file(context.environment, "lib/#{Macro.underscore(module)}.ex")
 
   @doc "A full sync, through `sync_project`."
   def sync!(context) do

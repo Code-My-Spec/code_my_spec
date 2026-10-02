@@ -21,10 +21,13 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.ConventionalPaths
+  alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files.{ComponentExtract, File}
+  alias CodeMySpec.Files.{ComponentExtract, File, LiveCopies}
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @type sync_result :: %{
@@ -60,8 +63,18 @@ defmodule CodeMySpec.Files.ComponentSync do
     incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
     env = scope.environment
+    authored? = authored_project?(scope)
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
+
+    # A frozen project's components are records (3aeb66cf, step 4): specs no
+    # longer say what they are or what they depend on, and only a live
+    # checkout's code says what exists — a stale worktree's module is neither
+    # created nor kept on its word.
+    {spec_files, impl_files} =
+      if authored?,
+        do: {[], live_only(impl_files, scope.active_project_id)},
+        else: {spec_files, impl_files}
 
     parsed_specs = Enum.map(spec_files, &parse_spec_file(&1, env))
     unreadable = Enum.count(parsed_specs, &(&1 == :unreadable))
@@ -75,7 +88,9 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     merged = merge_by_module_name(spec_data, impl_data)
 
-    if merged == [] and removed_module_names == [] do
+    # A frozen project still has cleanup to do when its last module goes, so it
+    # cannot stop at "nothing to sync".
+    if merged == [] and removed_module_names == [] and not authored? do
       ms = System.monotonic_time(:millisecond) - start
       Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
       {:ok, %{all_components: [], changed_component_ids: []}}
@@ -86,7 +101,8 @@ defmodule CodeMySpec.Files.ComponentSync do
         incremental? or unreadable > 0,
         start,
         unreadable,
-        removed_module_names
+        removed_module_names,
+        authored?
       )
     end
   end
@@ -173,13 +189,18 @@ defmodule CodeMySpec.Files.ComponentSync do
   # Refusing to prune on an incomplete picture is the same rule the harness
   # already applies to an empty scan, and for the same reason: sending it "would
   # have deleted every file this project has on the server".
-  defp do_sync(scope, merged, incremental?, start, unreadable, removed_module_names) do
+  defp do_sync(scope, merged, incremental?, start, unreadable, removed_module_names, authored?) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
     existing_map = Map.new(existing_components, &{&1.module_name, &1})
 
-    synced_components = Enum.map(merged, &upsert_component(scope, &1, now, existing_map))
+    synced_components =
+      Enum.map(merged, fn data ->
+        if authored?,
+          do: adopt_component(scope, data, now, existing_map),
+          else: upsert_component(scope, data, now, existing_map)
+      end)
 
     component_map =
       Map.merge(existing_map, Map.new(synced_components, &{&1.module_name, &1}))
@@ -187,8 +208,16 @@ defmodule CodeMySpec.Files.ComponentSync do
     changed_component_ids = compute_changed_ids(synced_components, existing_map)
     announced_component_ids = compute_announced_ids(synced_components, existing_map)
 
-    update_parent_relationships(scope, synced_components, component_map)
-    sync_dependencies(scope, merged, component_map)
+    if authored? do
+      # Only what this sync created gets a derived parent; an existing record's
+      # parent was authored, or set when it was discovered.
+      synced_components
+      |> Enum.reject(&Map.has_key?(existing_map, &1.module_name))
+      |> then(&update_parent_relationships(scope, &1, component_map))
+    else
+      update_parent_relationships(scope, synced_components, component_map)
+      sync_dependencies(scope, merged, component_map)
+    end
 
     if unreadable > 0 do
       Logger.warning(
@@ -201,10 +230,10 @@ defmodule CodeMySpec.Files.ComponentSync do
     cond do
       not incremental? ->
         all_module_names = MapSet.new(merged, & &1.module_name)
-        cleanup_removed(scope, existing_components, all_module_names)
+        cleanup_removed(scope, existing_components, all_module_names, authored?)
 
       removed_module_names != [] ->
-        cleanup_orphaned(scope, removed_module_names, existing_map)
+        cleanup_orphaned(scope, removed_module_names, existing_map, authored?)
 
       true ->
         :ok
@@ -474,6 +503,42 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Upsert --
 
+  # Authored mode (3aeb66cf, step 4). An existing component is the record and
+  # is not touched: its description, type and parent are authored or were set
+  # when it was discovered. A module code names that has no component is new,
+  # and is created as discovered.
+  defp adopt_component(scope, data, synced_at, existing_map) do
+    case Map.get(existing_map, data.module_name) do
+      nil ->
+        Components.upsert_component(
+          scope,
+          %{
+            module_name: data.module_name,
+            name: data.module_name |> String.split(".") |> List.last(),
+            synced_at: synced_at,
+            provenance: :discovered
+          }
+          |> maybe_put(:type, data.type)
+        )
+
+      existing ->
+        existing
+    end
+  end
+
+  defp live_only(files, project_id) do
+    live_ids = MapSet.new(LiveCopies.ids(project_id))
+    Enum.filter(files, &MapSet.member?(live_ids, &1.working_copy_id))
+  end
+
+  defp authored_project?(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.exists?(
+      from(p in Project, where: p.id == ^project_id and not is_nil(p.components_authored_at))
+    )
+  end
+
+  defp authored_project?(_scope), do: false
+
   # Splits into create-or-update so a sync that lacks new type info (impl
   # file without a matching spec, which is the dominant case during early
   # generation) doesn't clobber an existing component's type with the
@@ -656,13 +721,27 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # Never an authored component: it is the intended architecture whether or not
   # a file names it yet (3aeb66cf). Only `delete_component` removes one.
-  defp cleanup_removed(%Scope{} = scope, existing, current_names) do
+  defp cleanup_removed(%Scope{} = scope, existing, current_names, false) do
     existing
     |> Enum.reject(&(&1.provenance == :authored or &1.module_name in current_names))
     |> Enum.each(&Components.delete_component(scope, &1))
   end
 
-  # `cleanup_removed/3`'s incremental counterpart. It decides by set
+  # A frozen project (3aeb66cf, step 4): only a discovered component goes — it
+  # existed because code named it — and only once no live checkout's code names
+  # it. A module deleted on main but still on a live feature copy stays. An
+  # unmarked component is left for a person to decide.
+  defp cleanup_removed(%Scope{active_project_id: project_id} = scope, existing, _names, true) do
+    claimed = live_claimed_names(project_id)
+
+    existing
+    |> Enum.filter(
+      &(&1.provenance == :discovered and not MapSet.member?(claimed, &1.module_name))
+    )
+    |> prune_unreferenced(scope)
+  end
+
+  # `cleanup_removed/4`'s incremental counterpart. It decides by set
   # difference against every module the full scan just re-derived; this batch
   # only re-derived the modules that changed, so it has no such set to diff
   # against. Each removed file's module name is checked individually instead —
@@ -670,7 +749,12 @@ defmodule CodeMySpec.Files.ComponentSync do
   # ones nothing claims any more get deleted. A module named by both a spec and
   # an impl file loses one and keeps the other's claim, same as it always did;
   # this only prunes when *both* are gone.
-  defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
+  defp cleanup_orphaned(
+         %Scope{active_project_id: project_id} = scope,
+         module_names,
+         existing_map,
+         false
+       ) do
     module_names
     |> Enum.map(&Map.get(existing_map, &1))
     |> Enum.reject(
@@ -678,6 +762,22 @@ defmodule CodeMySpec.Files.ComponentSync do
           component_still_claimed?(project_id, &1.module_name))
     )
     |> Enum.each(&Components.delete_component(scope, &1))
+  end
+
+  defp cleanup_orphaned(
+         %Scope{active_project_id: project_id} = scope,
+         module_names,
+         existing_map,
+         true
+       ) do
+    claimed = live_claimed_names(project_id)
+
+    module_names
+    |> Enum.map(&Map.get(existing_map, &1))
+    |> Enum.filter(
+      &((&1 && &1.provenance == :discovered) and not MapSet.member?(claimed, &1.module_name))
+    )
+    |> prune_unreferenced(scope)
   end
 
   defp component_still_claimed?(project_id, module_name) do
@@ -688,6 +788,47 @@ defmodule CodeMySpec.Files.ComponentSync do
         fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
     )
     |> Repo.exists?()
+  end
+
+  # In a frozen project only code claims a component, and only a live
+  # checkout's code (`LiveCopies`).
+  defp live_claimed_names(project_id) do
+    live_ids = LiveCopies.ids(project_id)
+
+    from(f in File,
+      where:
+        f.project_id == ^project_id and f.role == :implementation and
+          f.working_copy_id in ^live_ids,
+      select: fragment("?->'data'->>'module_name'", f.validation_errors)
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  # A discovered component an authored dependency or a story still points at
+  # is kept and said, rather than deleted out from under them.
+  defp prune_unreferenced(components, scope) do
+    {kept, pruned} = Enum.split_with(components, &referenced?/1)
+
+    if kept != [] do
+      Logger.warning(
+        "[Files.ComponentSync] kept #{length(kept)} discovered component(s) whose code is " <>
+          "gone because something authored still points at them: " <>
+          Enum.map_join(kept, ", ", & &1.module_name)
+      )
+    end
+
+    Enum.each(pruned, &Components.delete_component(scope, &1))
+  end
+
+  defp referenced?(%Component{id: id}) do
+    Repo.exists?(
+      from(d in Dependency,
+        where:
+          d.provenance == :authored and
+            (d.source_component_id == ^id or d.target_component_id == ^id)
+      )
+    ) or Repo.exists?(from(s in Story, where: s.component_id == ^id))
   end
 
   # -- Backfill file ownership --
