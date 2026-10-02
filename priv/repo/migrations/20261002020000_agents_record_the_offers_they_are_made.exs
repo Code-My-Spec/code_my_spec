@@ -14,6 +14,7 @@ defmodule CodeMySpec.Repo.Migrations.AgentsRecordTheOffersTheyAreMade do
       add :subject_type, :string, null: false
       add :subject_key, :string
       add :attempt, :integer, null: false
+      # open | claimed | declined | ignored | superseded | expired | n_a | undelivered
       add :status, :string, null: false
       add :outcome_at, :utc_datetime_usec
       add :reason, :text

@@ -4,7 +4,9 @@ defmodule CodeMySpec.Agents.Offer do
 
   `subject_type`/`subject_key` name what was offered: a requirement node, a
   task, a question, a blocker, a problem set. `status` is `:open` until the
-  turn-end observer settles it from the kind's expectation.
+  turn-end observer settles it from the kind's expectation, or `:undelivered`
+  when its delivery failed or was held — never `:ignored`, which means the
+  agent saw it (criterion 1676).
   """
 
   use Ecto.Schema
@@ -13,11 +15,18 @@ defmodule CodeMySpec.Agents.Offer do
   alias CodeMySpec.Agents.OfferMessage
 
   @kinds [:work, :menu, :problems, :resume, :retry, :answer, :unblocked, :check_in]
-  @statuses [:open, :claimed, :declined, :ignored, :superseded, :expired, :n_a]
+  @statuses [:open, :claimed, :declined, :ignored, :superseded, :expired, :n_a, :undelivered]
 
   @type kind :: :work | :menu | :problems | :resume | :retry | :answer | :unblocked | :check_in
   @type status ::
-          :open | :claimed | :declined | :ignored | :superseded | :expired | :n_a
+          :open
+          | :claimed
+          | :declined
+          | :ignored
+          | :superseded
+          | :expired
+          | :n_a
+          | :undelivered
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -67,12 +76,5 @@ defmodule CodeMySpec.Agents.Offer do
     |> validate_required(@required)
     |> foreign_key_constraint(:agent_id)
     |> foreign_key_constraint(:project_id)
-  end
-
-  @doc "Settle an open offer."
-  def outcome_changeset(%__MODULE__{} = offer, attrs) do
-    offer
-    |> cast(attrs, [:status, :outcome_at, :reason, :note])
-    |> validate_required([:status, :outcome_at])
   end
 end

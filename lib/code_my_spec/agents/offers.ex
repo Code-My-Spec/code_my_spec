@@ -52,9 +52,10 @@ defmodule CodeMySpec.Agents.Offers do
   as. `recorded` is what `Conversations.record_sent_to_agent/2` answered; with
   no message there, the offer stands unlinked.
 
-  An open offer of the same kind and subject is superseded. Always `:ok`.
+  An open offer of the same kind and subject is superseded. Answers the offer,
+  or nil when none was written, for `undelivered/1`.
   """
-  @spec record(term(), Agent.t(), Offer.kind(), subject()) :: :ok
+  @spec record(term(), Agent.t(), Offer.kind(), subject()) :: Offer.t() | nil
   def record(recorded, %Agent{id: agent_id} = agent, kind, {type, key})
       when is_binary(agent_id) do
     key = subject_key(key)
@@ -68,14 +69,34 @@ defmodule CodeMySpec.Agents.Offers do
       set: [status: :superseded, outcome_at: now, updated_at: now]
     )
 
-    with {:ok, offer} <- insert_offer(agent, kind, type, key, attempt) do
-      link(offer, recorded)
+    case insert_offer(agent, kind, type, key, attempt) do
+      {:ok, offer} ->
+        link(offer, recorded)
+        offer
+
+      {:error, _changeset} ->
+        nil
     end
+  end
+
+  def record(_recorded, _agent, _kind, _subject), do: nil
+
+  @doc """
+  Mark an offer whose delivery failed or was held (criterion 1676). Only an
+  open offer moves; `ignored` must mean the agent saw it. Always `:ok`.
+  """
+  @spec undelivered(Offer.t() | nil) :: :ok
+  def undelivered(%Offer{id: id}) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where([o], o.id == ^id and o.status == :open)
+    |> Repo.update_all(set: [status: :undelivered, outcome_at: now, updated_at: now])
 
     :ok
   end
 
-  def record(_recorded, _agent, _kind, _subject), do: :ok
+  def undelivered(_offer), do: :ok
 
   @doc "This agent's offers, oldest first, with their message links."
   @spec list_for_agent(Ecto.UUID.t()) :: [Offer.t()]
@@ -114,9 +135,13 @@ defmodule CodeMySpec.Agents.Offers do
     Enum.each(open, fn offer ->
       after_offer = Enum.filter(calls, &(DateTime.compare(&1.at, offer.inserted_at) != :lt))
 
-      offer
-      |> Offer.outcome_changeset(Map.put(outcome(offer, agent, after_offer), :outcome_at, now))
-      |> Repo.update()
+      settled =
+        offer |> outcome(agent, after_offer) |> Map.merge(%{outcome_at: now, updated_at: now})
+
+      # Still open when written: a delivery failure marked since the read stands.
+      Offer
+      |> where([o], o.id == ^offer.id and o.status == :open)
+      |> Repo.update_all(set: Map.to_list(settled))
     end)
   end
 
@@ -222,6 +247,7 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   # How many times in a row this subject has been offered without a claim.
+  # An undelivered offer was never made, so it does not count.
   defp attempt(same) do
     last_claimed =
       Repo.one(from o in same, where: o.status == :claimed, select: max(o.inserted_at))
@@ -229,7 +255,7 @@ defmodule CodeMySpec.Agents.Offers do
     since =
       if last_claimed, do: where(same, [o], o.inserted_at > ^last_claimed), else: same
 
-    Repo.aggregate(since, :count) + 1
+    since |> where([o], o.status != :undelivered) |> Repo.aggregate(:count) |> Kernel.+(1)
   end
 
   defp insert_offer(agent, kind, type, key, attempt) do

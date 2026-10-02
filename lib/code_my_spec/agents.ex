@@ -1373,25 +1373,37 @@ defmodule CodeMySpec.Agents do
         {:error, :no_such_agent}
 
       agent ->
-        agent
-        |> Conversations.record_sent_to_agent(text)
-        |> record_offer(agent, opts[:offer])
+        offered =
+          agent
+          |> Conversations.record_sent_to_agent(text)
+          |> record_offer(agent, opts[:offer])
 
         case Wake.allow?(agent_scope(agent), agent, event) do
           :ok ->
-            Transport.dispatch_message(
-              agent.working_copy_id,
+            agent.working_copy_id
+            |> Transport.dispatch_message(
               agent,
               "answer-" <> Ecto.UUID.generate(),
               text,
               timeout
             )
+            |> undelivered_on_failure(offered)
 
           hold ->
+            Offers.undelivered(offered)
             Wake.to_error(hold)
         end
     end
   end
+
+  # A timeout is the machine holding it, not a failure (`delivered_or_working/1`).
+  defp undelivered_on_failure({:error, reason} = result, offered)
+       when reason != :message_timed_out do
+    Offers.undelivered(offered)
+    result
+  end
+
+  defp undelivered_on_failure(result, _offered), do: result
 
   defp agent_scope(%Agent{} = agent) do
     %Scope{
@@ -1401,7 +1413,7 @@ defmodule CodeMySpec.Agents do
     }
   end
 
-  defp record_offer(_recorded, _agent, nil), do: :ok
+  defp record_offer(_recorded, _agent, nil), do: nil
 
   defp record_offer(recorded, agent, {kind, subject}),
     do: Offers.record(recorded, agent, kind, subject)

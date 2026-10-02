@@ -273,11 +273,12 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Unless it is off or retired: then there is no decision for it (39af5611).
     case Transport.deliverable(agent) do
       :ok ->
-        agent
-        |> Conversations.record_sent_to_agent(message)
-        |> Offers.record(agent, kind, subject)
+        offered =
+          agent
+          |> Conversations.record_sent_to_agent(message)
+          |> Offers.record(agent, kind, subject)
 
-        deliver_message(scope, agent, message)
+        deliver_message(scope, agent, message, offered)
 
       {:error, _stood_down} ->
         :ok
@@ -288,7 +289,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # nudge records its own line with its own `kind` and sends through here, so
   # there is one definition of how a message reaches an agent and no second one
   # to forget to call.
-  defp deliver_message(scope, agent, message) do
+  defp deliver_message(scope, agent, message, offered) do
     ref = "stop-decision-" <> Ecto.UUID.generate()
 
     # Off this process, and that is not an optimisation.
@@ -309,7 +310,7 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Nothing is waiting on the answer. The record is already written above, and
     # the only outcomes below are `:ok` and a line in the log.
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      dispatch(scope, agent, ref, message)
+      dispatch(scope, agent, ref, message, offered)
     end)
 
     :ok
@@ -334,7 +335,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # `agent.working_copy_id` is the only thing here that knows where the agent
   # is, and it is right on every path — including the original one, where it
   # equals what the scope carried.
-  defp dispatch(_scope, agent, ref, message) do
+  defp dispatch(_scope, agent, ref, message, offered) do
     case Transport.dispatch_message(
            agent.working_copy_id,
            agent,
@@ -350,6 +351,8 @@ defmodule CodeMySpec.Agents.StopDecision do
       # delivery. Logged at info so the absence is visible without reading as
       # something to fix.
       {:error, reason} ->
+        Offers.undelivered(offered)
+
         Logger.info(
           "[StopDecision] agent #{agent.id} was not told (#{inspect(reason)}) — " <>
             "nothing is wrong if it has stopped"

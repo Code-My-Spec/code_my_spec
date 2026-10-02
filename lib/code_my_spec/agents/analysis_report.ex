@@ -270,17 +270,20 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # Not written to the conversation, so a findings offer stands unlinked.
   defp tell(scope, %Agent{} = agent, event, message, offer \\ nil) do
     if Wake.allow?(scope, agent, event) == :ok do
-      record_offer(agent, offer)
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> dispatch(agent, message) end)
+      offered = record_offer(agent, offer)
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        dispatch(agent, message, offered)
+      end)
     end
 
     :ok
   end
 
-  defp record_offer(_agent, nil), do: :ok
+  defp record_offer(_agent, nil), do: nil
   defp record_offer(agent, {kind, subject}), do: Offers.record(nil, agent, kind, subject)
 
-  defp dispatch(%Agent{} = agent, message) do
+  defp dispatch(%Agent{} = agent, message, offered) do
     ref = "analysis-" <> Ecto.UUID.generate()
 
     case Transport.dispatch_message(agent.working_copy_id, agent, ref, message, 10_000) do
@@ -290,9 +293,11 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       # Not a warning. Nobody to tell is an ordinary state — the agent was
       # stopped — and logging it as a failure is what criterion 3049 forbids.
       {:error, :not_running} ->
-        :ok
+        Offers.undelivered(offered)
 
       {:error, reason} ->
+        Offers.undelivered(offered)
+
         Logger.info(
           "[Analysis] could not tell agent #{agent.id} about the run: #{inspect(reason)}"
         )

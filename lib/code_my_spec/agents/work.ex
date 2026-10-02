@@ -101,9 +101,10 @@ defmodule CodeMySpec.Agents.Work do
          {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
       turn_prompt = resume_prompt(reserved)
 
-      reserved
-      |> Conversations.record_sent_to_agent(turn_prompt)
-      |> Offers.record(reserved, :resume, {"task", Agent.active_task(reserved).id})
+      offered =
+        reserved
+        |> Conversations.record_sent_to_agent(turn_prompt)
+        |> Offers.record(reserved, :resume, {"task", Agent.active_task(reserved).id})
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -112,8 +113,12 @@ defmodule CodeMySpec.Agents.Work do
              turn_prompt,
              5_000
            ) do
-        {:ok, :started} -> {:ok, ref}
-        _error -> release(scope, reserved.id, ref)
+        {:ok, :started} ->
+          {:ok, ref}
+
+        _error ->
+          Offers.undelivered(offered)
+          release(scope, reserved.id, ref)
       end
     end
   end
@@ -176,9 +181,10 @@ defmodule CodeMySpec.Agents.Work do
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = preface <> "\n\n" <> prompt(reserved)
 
-      reserved
-      |> Conversations.record_sent_to_agent(turn_prompt)
-      |> Offers.record(reserved, notice_kind(event), subject)
+      offered =
+        reserved
+        |> Conversations.record_sent_to_agent(turn_prompt)
+        |> Offers.record(reserved, notice_kind(event), subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -191,6 +197,7 @@ defmodule CodeMySpec.Agents.Work do
           {:ok, ref}
 
         error ->
+          Offers.undelivered(offered)
           release(scope, reserved.id, ref)
           error
       end
@@ -248,9 +255,10 @@ defmodule CodeMySpec.Agents.Work do
       # and the retirement took the recording with it — story 1050 measures
       # routing off these rows, and every correctly routed turn read as
       # silence.
-      reserved
-      |> Conversations.record_sent_to_agent(turn_prompt)
-      |> Offers.record(reserved, :work, subject)
+      offered =
+        reserved
+        |> Conversations.record_sent_to_agent(turn_prompt)
+        |> Offers.record(reserved, :work, subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -263,6 +271,7 @@ defmodule CodeMySpec.Agents.Work do
           {:ok, ref}
 
         error ->
+          Offers.undelivered(offered)
           release(scope, reserved.id, ref)
           suppress_offer(scope, reserved, offer)
           error
@@ -288,9 +297,10 @@ defmodule CodeMySpec.Agents.Work do
          {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
       turn_prompt = render.(work_offered?(scope, reserved))
 
-      reserved
-      |> Conversations.record_sent_to_agent(turn_prompt)
-      |> Offers.record(reserved, :check_in, {"cadence", nil})
+      offered =
+        reserved
+        |> Conversations.record_sent_to_agent(turn_prompt)
+        |> Offers.record(reserved, :check_in, {"cadence", nil})
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -303,6 +313,7 @@ defmodule CodeMySpec.Agents.Work do
           {:ok, ref}
 
         error ->
+          Offers.undelivered(offered)
           release(scope, reserved.id, ref)
           error
       end

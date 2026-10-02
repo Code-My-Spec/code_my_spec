@@ -55,8 +55,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
   end
 
   defp offer(ctx, kind, subject) do
-    :ok = Offers.record(nil, ctx.agent, kind, subject)
-    ctx.agent.id |> Offers.list_for_agent() |> List.last()
+    %Offer{} = Offers.record(nil, ctx.agent, kind, subject)
   end
 
   defp holding(ctx, attrs) do
