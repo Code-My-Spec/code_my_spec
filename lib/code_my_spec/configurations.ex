@@ -51,6 +51,10 @@ defmodule CodeMySpec.Configurations do
 
   @doc """
   Update the active project's configuration.
+
+  Raw write. A change that can move `fix_issues_min_severity` goes through
+  `CodeMySpec.TaskOwner.update_configuration/2`, which also frees tasks
+  waiting on issues the new threshold leaves below it.
   """
   @spec update(Scope.t(), map()) ::
           {:ok, ProjectConfiguration.t()} | {:error, Ecto.Changeset.t()}

@@ -29,6 +29,7 @@ defmodule CodeMySpec.Qa.AFailedAttemptWaitsOnTheBugItFiledTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Qa
   alias CodeMySpec.TaskOwner
 
@@ -126,6 +127,94 @@ defmodule CodeMySpec.Qa.AFailedAttemptWaitsOnTheBugItFiledTest do
            A pass is the end of QA's involvement, not a reason to wait — and a
            task blocked here would hold the story's own completion hostage.
            """
+  end
+
+  defp issue(ctx, severity) do
+    {:ok, issue} =
+      CodeMySpec.Issues.create_issue(ctx.scope, %{
+        title: "A #{severity} finding #{System.unique_integer([:positive])}",
+        description: "found while testing",
+        severity: severity,
+        scope: :app
+      })
+
+    issue
+  end
+
+  # metric_flow, QA e62dbe27: stories 36 and 42 parked on two low issues.
+  # `story_issues_resolved` counts only issues at `fix_issues_min_severity`, so
+  # nothing ever offered their fix and the block never released.
+  describe "an issue below the project's fix threshold" do
+    test "is not waited on, and the task stays active", ctx do
+      low = issue(ctx, :low)
+
+      {:ok, attempt} = submit(ctx, :fail, [low.id])
+
+      refute waiting_on(ctx.scope, ctx.agent.id),
+             "QA was parked on a low issue no requirement will ever offer to fix"
+
+      assert {:not_blocking, :medium, [%{id: id}]} = attempt.wait
+      assert id == low.id
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      assert TaskOwner.active_task(fresh).id == ctx.task.id
+    end
+
+    test "the tool tells QA it was not blocked and to finish its attempt", ctx do
+      low = issue(ctx, :low)
+      frame = %Anubis.Server.Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:reply, response, _} =
+        SubmitQaResult.execute(
+          %{
+            task_id: ctx.task.id,
+            status: "fail",
+            scenarios: [%{name: "s", status: "fail", observation: "saw it"}],
+            issue_ids: [low.id]
+          },
+          frame
+        )
+
+      refute response.isError
+      text = Enum.map_join(response.content, "", & &1["text"])
+      assert text =~ "Not blocked"
+      assert text =~ "(medium)"
+      assert text =~ "#{low.id} (low"
+      assert text =~ "finish the attempt"
+    end
+
+    test "an at-threshold issue named beside it is the one waited on", ctx do
+      low = issue(ctx, :low)
+      high = issue(ctx, :high)
+
+      {:ok, attempt} = submit(ctx, :fail, [low.id, high.id])
+
+      assert waiting_on(ctx.scope, ctx.agent.id).blocker_id == high.id
+      assert attempt.wait == {:issue, high.id}
+    end
+
+    test "a raised threshold refuses what the default would block", ctx do
+      {:ok, _} =
+        CodeMySpec.Configurations.update(ctx.scope, %{fix_issues_min_severity: :high})
+
+      medium = issue(ctx, :medium)
+
+      {:ok, attempt} = submit(ctx, :fail, [medium.id])
+
+      refute waiting_on(ctx.scope, ctx.agent.id)
+      assert {:not_blocking, :high, _} = attempt.wait
+    end
+
+    test "a closed issue is not waited on", ctx do
+      high = issue(ctx, :high)
+      {:ok, high} = CodeMySpec.Issues.accept_issue(ctx.scope, high)
+      {:ok, high} = CodeMySpec.Issues.resolve_issue(ctx.scope, high, "fixed")
+
+      {:ok, _attempt} = submit(ctx, :fail, [high.id])
+
+      refute waiting_on(ctx.scope, ctx.agent.id),
+             "waited on an issue already resolved — nothing will ever close it again"
+    end
   end
 
   # The case the block would have to guard against cannot arise: a fail without

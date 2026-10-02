@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.TaskOwner
 
   @analyzer_modes [:off, :block_all, :block_changed, :dont_block]
   @compile_modes [:block, :dont_block]
@@ -36,7 +37,7 @@ defmodule CodeMySpecWeb.ConfigurationLive do
 
   @impl true
   def handle_event("save", %{"configuration" => attrs}, socket) do
-    case Configurations.update(socket.assigns.scope, attrs) do
+    case TaskOwner.update_configuration(socket.assigns.scope, attrs) do
       {:ok, configuration} ->
         {:noreply,
          socket

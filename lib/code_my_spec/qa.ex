@@ -33,6 +33,7 @@ defmodule CodeMySpec.Qa do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Configurations,
       CodeMySpec.Environments,
       CodeMySpec.Issues,
       CodeMySpec.Paths,

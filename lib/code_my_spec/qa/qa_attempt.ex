@@ -27,6 +27,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
           tools_used: [String.t()] | nil,
           parent_attempt_id: Ecto.UUID.t() | nil,
           submitted_at: DateTime.t() | nil,
+          wait: {:issue, Ecto.UUID.t()} | {:not_blocking, atom(), [struct()]} | nil,
           invalidations: [Invalidation.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -44,6 +45,10 @@ defmodule CodeMySpec.Qa.QaAttempt do
     # distinguishable.
     field :tools_used, {:array, :string}
     field :submitted_at, :utc_datetime_usec
+    # What the submitting task now waits on, set by `QaAttempts.submit/2` and
+    # never stored: `{:issue, id}`, or `{:not_blocking, threshold, issues}` when
+    # no named issue is open at the project's fix threshold.
+    field :wait, :any, virtual: true
 
     embeds_many :scenarios, Scenario, on_replace: :delete
 

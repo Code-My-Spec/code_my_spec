@@ -3,6 +3,8 @@ defmodule CodeMySpec.TaskOwner do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Configurations,
+      CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
       CodeMySpec.Users.Scope
@@ -49,6 +51,9 @@ defmodule CodeMySpec.TaskOwner do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Configurations
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
@@ -59,10 +64,11 @@ defmodule CodeMySpec.TaskOwner do
 
   @type t :: Session.t() | Agent.t()
   @type blocker_type :: :issue | :question | :tap_out
-  @type outcome :: :resolved | :dismissed | :answered | :denied | :approved | :withdrawn
+  @type outcome ::
+          :resolved | :dismissed | :answered | :denied | :approved | :withdrawn | :below_threshold
 
   @resolvable [:issue, :question, :tap_out]
-  @outcomes [:resolved, :dismissed, :answered, :denied, :approved, :withdrawn]
+  @outcomes [:resolved, :dismissed, :answered, :denied, :approved, :withdrawn, :below_threshold]
 
   @doc "Every task this owner holds."
   @spec tasks(t()) :: [Task.t()]
@@ -198,6 +204,71 @@ defmodule CodeMySpec.TaskOwner do
       when status in [:resolved, :dismissed],
       do: blocker_resolved(:issue, id, status)
 
+  @doc """
+  Release what waited on an issue now below the project's fix threshold.
+
+  Nothing offers a fix below it, so the wait could never end. Finishing on its
+  own findings is the holder's call; this only frees it to.
+  """
+  @spec issue_below_threshold(String.t(), atom()) :: {:ok, non_neg_integer()}
+  def issue_below_threshold(id, threshold) when is_binary(id) do
+    blocker_resolved(:issue, id, :below_threshold,
+      detail:
+        "No fix will be offered below #{threshold}; the issue stays recorded. " <>
+          "Finish the attempt on your own findings."
+    )
+  end
+
+  @doc """
+  Update the project's configuration, freeing what waited on an issue the new
+  fix threshold leaves below it.
+
+  Here rather than in `Configurations.update/2`: Configurations is a leaf that
+  `Agents` reaches through `Requirements` and `MainAgent`, so it cannot call
+  back into this module without a cycle. Any write that can change
+  `fix_issues_min_severity` goes through this.
+  """
+  @spec update_configuration(Scope.t(), map()) :: {:ok, struct()} | {:error, Ecto.Changeset.t()}
+  def update_configuration(%Scope{} = scope, attrs) do
+    before = Configurations.fix_issues_min_severity(scope)
+
+    with {:ok, config} <- Configurations.update(scope, attrs) do
+      if config.fix_issues_min_severity != before,
+        do: release_below_threshold(scope, config.fix_issues_min_severity)
+
+      {:ok, config}
+    end
+  end
+
+  # Open issues only: a closed one already released its waiters, and calling
+  # it "below threshold" would be wrong.
+  defp release_below_threshold(scope, threshold) do
+    scope
+    |> waited_issue_ids()
+    |> Enum.map(&Issues.get_issue(scope, &1))
+    |> Enum.filter(fn issue ->
+      (issue && issue.status in [:incoming, :accepted]) and not Issue.blocking?(issue, threshold)
+    end)
+    |> Enum.each(&issue_below_threshold(&1.id, threshold))
+  end
+
+  defp waited_issue_ids(%Scope{active_project_id: project_id}) do
+    [Agent, Session]
+    |> Enum.flat_map(fn module ->
+      Repo.all(
+        from row in module,
+          where: row.project_id == ^project_id,
+          select:
+            fragment(
+              "(select array_agg(t->>'blocker_id') from unnest(?) t where t->>'blocker_type' = 'issue' and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
+              row.tasks
+            )
+      )
+    end)
+    |> Enum.flat_map(&(&1 || []))
+    |> Enum.uniq()
+  end
+
   defp waiting_on(module, type, blocker_id) do
     from row in module,
       where:
@@ -279,10 +350,15 @@ defmodule CodeMySpec.TaskOwner do
 
   defp blocker_resolved_notice(released, {type, id, outcome}, detail) do
     tasks = Enum.map_join(released, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
-    notice = "Your blocker #{type} #{id} was #{outcome}; resume #{tasks} with `start_task`."
+
+    notice =
+      "Your blocker #{type} #{id} #{outcome_phrase(outcome)}; resume #{tasks} with `start_task`."
 
     if is_binary(detail) and detail != "", do: notice <> "\n\n" <> detail, else: notice
   end
+
+  defp outcome_phrase(:below_threshold), do: "is below the project's fix threshold"
+  defp outcome_phrase(outcome), do: "was #{outcome}"
 
   @doc "Resolve only a matching blocker; never reactivate its task. Replays are no-ops."
   @spec release_block(Scope.t(), t(), String.t()) :: {:ok, t()} | {:error, term()}

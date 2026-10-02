@@ -32,6 +32,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
+  alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.TaskOwner
@@ -171,6 +172,35 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
       assert_woken(ctx.agent.id, "Your blocker issue #{ctx.issue.id} was dismissed; resume")
     end
 
+    # Blocked at threshold, then re-triaged below it: nothing offers a fix
+    # below `fix_issues_min_severity`, so the wait would never end.
+    test "downgrading it below the fix threshold releases and wakes the waiter", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
+
+      {:reply, response, _} =
+        UpdateIssue.execute(%{issue_id: ctx.issue.id, severity: "low"}, ctx.frame)
+
+      refute response.isError
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      refute waiting?(fresh, ctx.issue.id), "a downgraded issue left its task wedged"
+
+      assert_woken(
+        ctx.agent.id,
+        "Your blocker issue #{ctx.issue.id} is below the project's fix threshold; resume"
+      )
+    end
+
+    test "a severity change that stays at the threshold keeps it waiting", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
+
+      {:reply, _response, _} =
+        UpdateIssue.execute(%{issue_id: ctx.issue.id, severity: "high"}, ctx.frame)
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      assert waiting?(fresh, ctx.issue.id), "an upgrade released a block still owed a fix"
+    end
+
     test "a session's task waiting on it is released too", ctx do
       session = session_fixture(ctx.scope)
 
@@ -211,5 +241,39 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
     assert :issue in Task.blocker_types(),
            "an issue is not an accepted blocker, so nothing can wait on one"
+  end
+
+  # Raising the threshold drops issues below it without touching them, so the
+  # waiter is wedged exactly as if the issue had been downgraded.
+  describe "raising the project's fix threshold" do
+    setup ctx do
+      {:ok, medium} = Issues.accept_issue(ctx.scope, issue_fixture(ctx.scope))
+      {:ok, high} = Issues.accept_issue(ctx.scope, issue_fixture(ctx.scope, %{severity: :high}))
+      Map.merge(ctx, %{medium: medium, high: high})
+    end
+
+    test "releases what waits on an issue now below it, and wakes the waiter", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.medium.id)
+
+      {:ok, config} = TaskOwner.update_configuration(ctx.scope, %{fix_issues_min_severity: :high})
+      assert config.fix_issues_min_severity == :high
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      refute waiting?(fresh, ctx.medium.id), "a raised threshold left its waiter wedged"
+
+      assert_woken(
+        ctx.agent.id,
+        "Your blocker issue #{ctx.medium.id} is below the project's fix threshold; resume"
+      )
+    end
+
+    test "keeps waiting on an issue still at it", ctx do
+      blocked_on_issue(ctx.scope, ctx.agent, ctx.high.id)
+
+      {:ok, _} = TaskOwner.update_configuration(ctx.scope, %{fix_issues_min_severity: :high})
+
+      {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+      assert waiting?(fresh, ctx.high.id), "a high issue is still owed a fix at :high"
+    end
   end
 end
