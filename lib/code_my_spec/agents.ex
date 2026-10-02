@@ -499,12 +499,9 @@ defmodule CodeMySpec.Agents do
 
   defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent) do
     with {:ok, conversation} <- open_conversation(scope, agent) do
-      Conversations.add_message(
-        conversation,
-        :operator,
-        idle_restart_notice(scope, agent),
-        "operator"
-      )
+      conversation
+      |> Conversations.add_message(:operator, idle_restart_notice(scope, agent), "operator")
+      |> Offers.record(agent, :resume, {"restart", nil})
     end
 
     drop_dead_reservation(scope, agent)
@@ -512,7 +509,9 @@ defmodule CodeMySpec.Agents do
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
     with {:ok, conversation} <- open_conversation(scope, agent) do
-      Conversations.add_message(conversation, :operator, interrupted_notice(), "operator")
+      conversation
+      |> Conversations.add_message(:operator, interrupted_notice(), "operator")
+      |> Offers.record(agent, :resume, {"restart", nil})
     end
 
     AgentsRepository.update_agent(scope, agent, %{
