@@ -127,8 +127,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Faults
   alias CodeMySpec.Embeddings.HexDocSweep
+  alias CodeMySpec.Faults
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.LockfileSweep
