@@ -88,11 +88,45 @@ defmodule CodeMySpec.BddRulesTest do
           spec_path: "test/spex/1_a_story/criterion_1_spex.exs"
         })
 
+      tracked!(scope, specced.spec_path)
+
       assert {:error, {:criteria_verified_or_specced, descriptions}} =
                BddRules.delete_rule(scope, rule)
 
       assert descriptions == [specced.description]
       assert Repo.get(Criterion, specced.id)
+    end
+
+    # 0b23ac19: a retired criterion protects no work, and a spec_path whose file
+    # is gone protects no file — both refused a legitimate cleanup.
+    test "a retired scenario does not hold the rule" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{criteria: []})
+      rule = insert_rule(scope, story)
+
+      retired =
+        criterion_fixture(scope, story, %{
+          rule_id: rule.id,
+          spec_path: "test/spex/1_a_story/criterion_2_spex.exs"
+        })
+
+      tracked!(scope, retired.spec_path)
+      retired |> Ecto.Changeset.change(retired_at: DateTime.utc_now()) |> Repo.update!()
+
+      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+    end
+
+    test "a spec_path whose file is gone does not hold the rule" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{criteria: []})
+      rule = insert_rule(scope, story)
+
+      criterion_fixture(scope, story, %{
+        rule_id: rule.id,
+        spec_path: "test/spex/1_a_story/criterion_3_spex.exs"
+      })
+
+      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
     end
 
     test "still deletes a rule whose scenarios are neither verified nor specced" do
@@ -104,6 +138,15 @@ defmodule CodeMySpec.BddRulesTest do
       assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
       assert Repo.get(Criterion, scenario.id).retired_at
     end
+  end
+
+  defp tracked!(scope, path) do
+    Repo.insert!(%CodeMySpec.Files.File{
+      project_id: scope.active_project_id,
+      working_copy_id: scope.active_working_copy_id,
+      path: path,
+      role: :bdd_spec
+    })
   end
 
   defp insert_rule(scope, story) do
