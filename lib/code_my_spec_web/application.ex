@@ -258,7 +258,15 @@ defmodule CodeMySpecWeb.Application do
 
   # Desktop (bb8bc042 step 4): the harness in the same tree, after the
   # Endpoint it talks to. Same child the test suite starts in test_helper.exs.
-  def children(children, :desktop), do: children ++ [CmsHarness.Supervisor]
+  # Step 6: FirstBoot after the Repo and PubSub (account creation broadcasts)
+  # — migrations, the desktop user, the harness token — before any child
+  # reads the database.
+  def children(children, :desktop) do
+    Enum.flat_map(children, fn
+      {Phoenix.PubSub, _} = pubsub -> [pubsub, CodeMySpec.Desktop.FirstBoot]
+      child -> [child]
+    end) ++ [CmsHarness.Supervisor]
+  end
 
   def children(children, _), do: children
 
