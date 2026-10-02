@@ -9,7 +9,17 @@ defmodule CodeMySpecSpex.Story964.Criterion7986Spex do
   cannot be read again after creation — a warning that arrives too late
   is a lost credential and a new key pair.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc and criterion 577's, for the setup-options
+  precondition. `ConsoleLive` has not ported the old page's
+  `setup-options-form`/`toggle_options` event over yet, so "the object
+  storage option is on" is established the same way the old toggle event did
+  it underneath: a direct call to `Provisioning.put_setup_options/2`.
+  Credentials live on their own plain page now (`/console/credentials`) with
+  the form always visible, so there is no `manage-credentials` dialog to
+  open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -27,20 +37,14 @@ defmodule CodeMySpecSpex.Story964.Criterion7986Spex do
         # *this option* is what makes intake ask for the console-only key
         # pair, and taking the option from the defaults would leave the spex
         # passing even if the two came apart.
-        view = mount_provisioning(context)
-        choose_setup_options(view, [:storage])
+        {:ok, _project} = CodeMySpec.Provisioning.put_setup_options(context.scope, [:storage])
 
         {:ok, context}
       end
 
       when_ "setup asks Sam for the object storage key pair", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        html =
-          view
-          |> element("[data-test='manage-credentials']")
-          |> render_click()
+        {:ok, view, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

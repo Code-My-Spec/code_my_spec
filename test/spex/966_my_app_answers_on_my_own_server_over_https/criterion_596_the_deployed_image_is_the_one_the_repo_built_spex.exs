@@ -8,7 +8,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
   locally from whatever happens to be in the working tree — so "what is
   running in production" has an answer Sam can check.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): deploy
+  is its own page now (`/console/deploys`), not a resource group — see
+  criterion 785's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -26,7 +30,9 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
     scenario "the running version is traceable to the commit CI built" do
       given_ "Sam's project is pushed to its remote", context do
         context = stage_deploy(context, :ok)
-        view = mount_provisioning(context)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -34,10 +40,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
       when_ "the deploy runs", context do
         html =
           context.view
-          |> form(
-            "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
-            %{"environment" => "uat"}
-          )
+          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
           |> render_submit()
 
         {:ok, Map.put(context, :html, html)}

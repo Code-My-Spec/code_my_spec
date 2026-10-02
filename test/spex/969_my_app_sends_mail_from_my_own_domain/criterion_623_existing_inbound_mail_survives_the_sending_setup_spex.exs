@@ -12,7 +12,13 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
   knowledge base warns against deleting apex MX blindly during a provider
   migration, and this is the spec that holds that line.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 619's moduledoc for the move onto `/console/resources/mail`.
+  `mount_provisioning/1` and `await_step/2` are coupled to the old page, so
+  the email step runs through `run_console_step/2` instead, which is
+  already synchronous in test.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
 
   ## Against fakes, not cassettes
@@ -65,13 +71,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
       end
 
       when_ "the email step publishes its sending records", context do
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
-        view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(view, :email)
+        run_console_step(view, :email)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:after, zone_records(context))}
       end

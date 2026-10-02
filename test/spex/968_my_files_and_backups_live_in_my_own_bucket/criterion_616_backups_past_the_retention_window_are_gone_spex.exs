@@ -8,7 +8,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
   forever is a cost that compounds quietly for exactly as long as nobody
   looks.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc for the move — deploy file generation onto
+  `/console/deploys`, credentials onto their own always-visible page, and
+  the server/storage/backups steps onto their resource groups' Config
+  tabs (storage and backups for `uat`).
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Hetzner`.
   """
 
@@ -32,22 +38,37 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
         # criterion is that old dumps are *gone*, which is indistinguishable
         # from "the bucket was always empty" unless the schedule genuinely
         # ran — mounting the page proved neither.
-        view = mount_provisioning(context)
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # The backups step refuses on a project that is not deploy-ready, and it
         # is right to: a dump schedule on a project that cannot be deployed is a
         # schedule for nothing. Generating those files is what makes the premise
         # true (story 970).
-        view |> element("[data-test='generate-project']") |> render_click()
-        paste_storage_credentials(view)
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
+
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_storage_credentials(credentials_view)
 
         # The boxes first: `bin/backup` runs on the environment's own server,
         # and the server step is what mints the key that gets there. "uat" for
         # storage and backups — the stale dump seeded below is in uat's
         # bucket, so that is the environment whose retention this proves.
-        CodeMySpecSpex.Case.run_and_await_step(view, :server)
-        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "uat")
-        CodeMySpecSpex.Case.run_step_interaction(view, :backups, "uat")
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups?env=uat"
+          )
+
+        run_console_step(view, :storage)
+        run_console_step(view, :backups)
 
         # A dump from before the window, which is what "backups have been
         # running longer than the retention window" states. Without one the

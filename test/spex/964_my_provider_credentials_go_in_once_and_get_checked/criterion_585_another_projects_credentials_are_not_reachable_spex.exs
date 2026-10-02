@@ -19,7 +19,12 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
   (`bcd2b2b4`). The old shape passed only because the write was going somewhere
   nothing read.
 
-  Surface: the provisioning page on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -36,11 +41,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
     scenario "a second project's intake is empty while the first is populated" do
       given_ "the first project has a credential stored", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         view
         |> form("[data-test='credentials-form']",
@@ -73,13 +74,8 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
         |> element("a[phx-value-account-id='#{second_account_id(context)}']")
         |> render_click()
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.second_project.id}/provisioning")
-
-        html =
-          view
-          |> element("[data-test='manage-credentials']")
-          |> render_click()
+        {:ok, view, html} =
+          live(context.conn, "/app/projects/#{context.second_project.id}/console/credentials")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

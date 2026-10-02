@@ -9,7 +9,15 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
   DNS failure — the record exists in the dashboard and the site is still
   down.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 588 made — see that spex's moduledoc. `paste_provider_credentials/1`
+  needs the credentials-form or its trigger on the mounted view, which only
+  the dedicated `/console/credentials` page carries now, so it is pasted
+  through a separately-mounted credentials view rather than the resource
+  page's. `step_detail/2` is coupled to the old page's `setup-step` markup;
+  the local `resource_step_detail/2` below is its `resource-step` equivalent.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
@@ -26,6 +34,18 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
   setup :devops_on
   setup :fake_providers
 
+  defp resource_step_detail(html, key) do
+    step =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='resource-step'][data-step='#{key}']")
+
+    state = step |> Floki.attribute("data-state") |> List.first()
+    detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)
+
+    "#{key} step state=#{inspect(state)} detail=#{inspect(detail)}"
+  end
+
   spex "Each environment resolves to its own server", criterion: 591 do
     scenario "each environment's hostname points at the server serving it" do
       # Both halves made true. "Each environment resolves to its own
@@ -33,11 +53,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
       # step in the `when_` has nothing to point anywhere without a domain —
       # it fails on the missing domain, which reads as a DNS bug.
       given_ "Sam has a domain and a provisioned server per environment", context do
-        # Before the mount, not after. The LiveView loads the project into its
-        # assigns when it mounts and every step it runs reads that copy, so a
-        # domain written to the row afterwards is invisible to it — the DNS step
-        # refuses with "no domain set on the project" while the row plainly has
-        # one, and the criterion reads that as a DNS failure.
+        # Before the mount, not after. Mounted before the domain is set, same
+        # order criterion 588 uses — see its moduledoc.
         #
         # Its own subdomain. Two spex sharing one name share a DNS namespace:
         # whichever runs second finds the first's records already there,
@@ -50,7 +67,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # does not depend on whose account is recording.
         zone_exists(context, "astralbi.com")
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend outside every cassette.
@@ -59,7 +77,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # Only DNS is created here now, so only DNS needs returning.
         tear_down_after(context.scope, [:dns])
 
-        paste_provider_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_provider_credentials(credentials_view)
 
         # A distinct address per environment, without a box behind either.
         # `environment_ip/3` uses the environment's own `ip` when it has one and
@@ -86,18 +107,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
       end
 
       when_ "the DNS step runs", context do
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
-          |> render_click()
+        run_console_step(context.view, :dns)
 
-        # The page after the run, not what the click handed back. The step
-        # announces itself with `{:provisioning, :step, …}` and the records
-        # section is assigned when that arrives — after the event
-        # `render_click/1` returns from.
-        render(context.view)
-
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "each environment's hostname resolves to its own server", context do
@@ -109,7 +121,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # Anchor: records were created at all.
         assert records != [],
                "expected the DNS step to record what it created. " <>
-                 step_detail(context.html, "dns")
+                 resource_step_detail(context.html, "dns")
 
         by_env =
           Map.new(records, fn el ->

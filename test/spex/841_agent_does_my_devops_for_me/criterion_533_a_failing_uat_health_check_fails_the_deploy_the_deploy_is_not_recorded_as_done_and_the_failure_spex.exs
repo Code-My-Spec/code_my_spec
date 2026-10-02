@@ -6,9 +6,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
   The criterion: the deploy is not recorded as done, and the failure surfaces
   as a problem for the loop and the user — a sick UAT never reads as shipped.
 
-  Surface: `ProvisioningLive`, running the deploy step against a host whose
-  health check does not pass. The page is where a deploy is recorded and where
-  a person would see it, so both halves of the claim are observable there.
+  Retargeted onto the console (provisioning-console-step6, unmerged): deploy
+  is its own page now (`/console/deploys`), not a resource group — see
+  criterion 785's moduledoc. Its per-step card is `[data-test='deploy-row']`
+  rather than `[data-test='setup-step']`, and it is not built on
+  `ResourceDetail`, so it carries none of that component's generic
+  `escalation` markup. The failure still surfaces, through `DeployConfig`'s
+  own `boot-failure` paragraph (gated on `state == :errored and
+  provider_error`, which a failed health check sets same as any other errored
+  step) — so the second `then_` now reads that instead of `escalation`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`, running the deploy step against a host
+  whose health check does not pass. The page is where a deploy is recorded and
+  where a person would see it, so both halves of the claim are observable
+  there.
 
   ## Related to 1963's disagreement
 
@@ -31,17 +42,14 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
     scenario "UAT comes up sick" do
       given_ "Sam is on the setup page with a deploy ready to run", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the deploy runs and UAT does not answer its health check", context do
         context.view
-        |> form(
-          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
-          %{"environment" => "uat"}
-        )
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
         |> render_submit()
 
         html = render(context.view)
@@ -50,13 +58,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
       end
 
       then_ "the deploy is not recorded as done", context do
-        # Scoped to uat: deploy is now one card per environment, and prod's
-        # sits first in the DOM — an unscoped `List.first()` reads prod's
-        # (untouched, still not_started) instead of uat's.
         state =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step'][data-step='deploy'][data-environment='uat']")
+          |> Floki.find("[data-test='deploy-row'][data-step='deploy'][data-environment='uat']")
           |> Floki.attribute("data-state")
           |> List.first()
 
@@ -70,13 +75,15 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
       end
 
       then_ "the failure is on the page for the user to see", context do
-        escalation =
+        failure =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='escalation'][data-step='deploy']")
+          |> Floki.find(
+            "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] [data-test='boot-failure']"
+          )
           |> Floki.text()
 
-        assert escalation != "",
+        assert failure != "",
                "expected the health-check failure to surface rather than being swallowed"
 
         {:ok, context}

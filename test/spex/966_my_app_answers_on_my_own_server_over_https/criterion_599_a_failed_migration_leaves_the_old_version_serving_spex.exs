@@ -8,7 +8,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
   over. A failed migration that still swaps gives Sam an outage on top of
   a bad migration.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): deploy
+  is its own page now (`/console/deploys`), not a resource group — see
+  criterion 785's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -30,16 +34,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         # real kamal run — the criterion is about what happens to *this* live
         # version when the next deploy fails, not about kamal.
         context = stage_deploy(context, :ok)
-        view = mount_provisioning(context)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         view
-        |> form(
-          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
-          %{"environment" => "uat"}
-        )
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
         |> render_submit()
 
-        {:ok, context |> Map.put(:view, view)}
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "a deploy's migration fails partway", context do
@@ -52,15 +55,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         # the step failing to stop.
         migration_fails(context)
 
-        context.view
-        |> form(
-          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
-          %{"environment" => "uat"}
-        )
-        |> render_submit()
-
-        await_step(context.view, :deploy)
-        html = render(context.view)
+        html =
+          context.view
+          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

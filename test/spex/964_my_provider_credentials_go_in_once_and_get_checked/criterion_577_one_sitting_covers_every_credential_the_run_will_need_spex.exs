@@ -8,7 +8,18 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
   walks away; the run does not interrupt him halfway through to collect
   something it could have asked for up front.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first. `ConsoleLive` has not ported
+  the old page's `setup-options-form`/`toggle_options` event over yet, so
+  "Sam has chosen his setup options" — every option explicitly on — is
+  established the same way the old toggle event did it underneath: a direct
+  call to `Provisioning.put_setup_options/2`, the backend operation the
+  toggle UI already called. That changes only how the precondition is
+  reached, not what this criterion proves about credential intake.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -27,20 +38,15 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
         # only a real question when every option is genuinely on, and if the
         # defaults ever narrow, this criterion would quietly start asserting
         # something much weaker while still passing.
-        view = mount_provisioning(context)
-        options = all_setup_options(view)
+        options = CodeMySpec.Provisioning.available_options()
+        {:ok, _project} = CodeMySpec.Provisioning.put_setup_options(context.scope, options)
 
         {:ok, Map.put(context, :options, options)}
       end
 
       when_ "he opens credential entry", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        html =
-          view
-          |> element("[data-test='manage-credentials']")
-          |> render_click()
+        {:ok, view, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

@@ -7,7 +7,17 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
   No application code changes. Rotation that requires a code change is
   rotation that does not happen.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 605's moduledoc for the same move — secrets on
+  `/console/secrets`, deploy on its own `/console/deploys` page. The
+  deploys view is mounted in the `given_`, before the cassette, for the
+  same reason criterion 588's moduledoc gives: a mount can make its own
+  uncovered provider call. `run_step_with_environment` always dispatches
+  through `Provisioning.run_step_async/3` — see criterion 606's
+  moduledoc — so the redeploy is awaited with `await_operation/3` rather
+  than read straight off `render_submit/1`'s return value.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -16,6 +26,13 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
   alias CodeMySpec.Environments
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp deploy_settled?(html) do
+    Regex.match?(
+      ~r/data-test="deploy-row"[^>]*data-environment="uat"[^>]*data-state="(done|errored)"/,
+      html
+    )
+  end
 
   @cassette "kamal_deploy_after_secret_rotation"
 
@@ -37,7 +54,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
     scenario "the new value takes effect with no code change" do
       given_ "a provider key is stored and in use", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 
@@ -47,9 +64,16 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         )
         |> render_submit()
 
+        {:ok, deploy_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
+
         {:ok, before} = Environments.list_directory(context.environment, "lib")
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:lib_before, before)}
+        {:ok,
+         context
+         |> Map.put(:view, view)
+         |> Map.put(:deploy_view, deploy_view)
+         |> Map.put(:lib_before, before)}
       end
 
       when_ "Sam sets the new value and redeploys", context do
@@ -61,12 +85,14 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
 
         html =
           with_provider_cassette(@cassette, fn ->
-            context.view
+            context.deploy_view
             |> form(
-              "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+              "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
               %{"environment" => "uat"}
             )
             |> render_submit()
+
+            await_operation(context.deploy_view, &deploy_settled?/1, &deploy_settled?/1)
           end)
 
         {:ok, Map.put(context, :html, html)}

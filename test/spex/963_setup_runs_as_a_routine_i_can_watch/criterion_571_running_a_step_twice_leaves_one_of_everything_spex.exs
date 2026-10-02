@@ -32,6 +32,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
   create it again, see one server and a step that says done. The Hetzner fake
   refuses a duplicate name with a 409 exactly as Hetzner does, so this tests
   our adoption rather than our optimism.
+
+  Retargeted onto the console (provisioning-console-step6, unmerged): both
+  runs go through `run_console_step/2` on the `servers` resource group
+  instead of `run_and_await_step`, which is coupled to the old page's
+  `setup-step` markup.
   """
 
   use CodeMySpecSpex.Case
@@ -50,14 +55,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
       given_ "the server step already provisioned a server and a firewall", context do
         own_repository(context.project)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
         # Secrets first: the server step reads the environment file secrets
         # writes, and `sops` cannot operate on a file that is not there. The
         # sequence is repository → secrets → server.
-        for step <- [:secrets, :server] do
-          CodeMySpecSpex.Case.run_and_await_step(view, step)
-        end
+        for step <- [:secrets, :server], do: run_console_step(view, step)
 
         assert render(view) =~ ~r/data-step="server"[^>]*data-state="done"/,
                "expected the first run to make a server before the second is asked to " <>
@@ -67,11 +71,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
       end
 
       when_ "the server step runs a second time", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(context.view, :server)
+        run_console_step(context.view, :server)
 
         {:ok,
          context

@@ -70,6 +70,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
   alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.DeployConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
 
@@ -143,6 +144,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
       # same as every other assign_new above it.
       |> assign_new(:mail, fn -> mail_state(scope, "prod", list_domains(scope)) end)
       |> assign_new(:mail_domains, fn -> mail_domains(scope, list_domains(scope)) end)
+      |> assign_new(:backups, fn -> [] end)
+      |> assign_new(:backup_health, fn -> nil end)
 
     {:noreply, socket}
   end
@@ -242,6 +245,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
               :for={step <- @plan}
               data-test="setup-checklist-item"
               data-step={step.key}
+              data-environment={step.environment}
               data-state={step.state}
               class="flex items-center justify-between text-sm"
             >
@@ -652,6 +656,51 @@ defmodule CodeMySpecWeb.ConsoleLive do
         </section>
       </:mail_panel>
 
+      <:backups_panel :if={@resource_key == :storage_backups}>
+        <section data-test="backups-panel">
+          <h2 class="text-lg font-semibold">Backups</h2>
+
+          <.button data-test="backups-refresh" phx-click="refresh_backups" class="btn btn-primary mt-2">
+            Check the bucket
+          </.button>
+
+          <p :if={@backups == []} data-test="no-backups">
+            no dumps in any bucket yet
+          </p>
+
+          <%!-- A backup that stopped running looks exactly like one that is
+              working, right up until somebody needs it. "never" and "stalled"
+              are reported apart because "it never ran" and "it stopped last
+              Tuesday" send Sam to different places. --%>
+          <div
+            :if={@backup_health}
+            data-test="backup-health"
+            data-state={@backup_health.state}
+            data-last-successful-at={@backup_health.last_seen}
+            data-stale-after-hours={@backup_health.stale_after_hours}
+          >
+            {case @backup_health.state do
+              "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
+              "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
+              "never" -> "no dump has ever landed"
+            end}
+          </div>
+
+          <div
+            :for={dump <- @backups}
+            data-test="backup-dump"
+            data-key={dump.key}
+            data-environment={dump.environment}
+            data-bucket={dump.bucket}
+            data-taken-at={dump.taken_at}
+            data-age-days={dump.age_days}
+            data-size={dump.size}
+          >
+            {dump.environment}: {dump.key} ({dump.taken_at})
+          </div>
+        </section>
+      </:backups_panel>
+
       <:domain_search :if={@resource_key == :dns_domain}>
         <section data-test="domain" data-state={domain_search_state(assigns)} class="my-6">
           <h2 class="text-lg font-semibold">Domain</h2>
@@ -794,20 +843,23 @@ defmodule CodeMySpecWeb.ConsoleLive do
       <div
         :for={step <- deploy_steps(@plan, @environment)}
         data-test="deploy-row"
+        data-step={step.key}
         data-environment={step.environment}
+        data-state={step.state}
+        data-completed-at={step_completed_at(step)}
+        data-started-at={step_started_at(step)}
+        data-verified-at={step_verified_at(step)}
         class="card bg-base-100"
       >
         <div class="card-body">
           <h3 class="card-title text-base">
             Deploy {step.environment} <span class="badge">{step.state}</span>
           </h3>
-          <.form for={%{}} as={:deploy} phx-submit="run_step_with_environment" class="flex gap-2">
-            <input type="hidden" name="key" value={step.key} />
-            <input type="hidden" name="environment" value={step.environment} />
-            <.button type="submit" data-test="deploy-submit" class="btn btn-primary">
-              {if step.state == :errored, do: "Retry", else: "Deploy"}
-            </.button>
-          </.form>
+          <DeployConfig.deploy_config
+            step={step}
+            age_key_environments={age_key_environments(@current_scope, @environments)}
+            runs_in_flight?={Provisioning.runs_in_flight?(@current_scope)}
+          />
         </div>
       </div>
     </section>
@@ -876,6 +928,19 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp deploy_steps(plan, environment) do
     Enum.filter(plan, &(&1.key == :deploy and &1.environment == environment))
   end
+
+  # Same as ResourceDetail's own copies — see that module's comment for why
+  # these are duplicated rather than shared.
+  defp step_completed_at(%{state: :done, completed_at: %DateTime{} = at}),
+    do: DateTime.to_iso8601(at)
+
+  defp step_completed_at(_step), do: nil
+
+  defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_started_at(_step), do: nil
+
+  defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_verified_at(_step), do: nil
 
   defp resource_groups(plan, environment) do
     for group <- ResourceGroups.all() do
@@ -1136,6 +1201,20 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # panel's own state, not a one-shot diagnostic with a "checked … ago".
   def handle_event("refresh_mail_dns", _params, socket) do
     {:noreply, refresh_mail(socket)}
+  end
+
+  # Ported from ProvisioningLive.handle_event("refresh_backups", ...) — a
+  # Config action, same reasoning as refresh_mail_dns above: it re-reads
+  # whether the bucket's schedule is still landing dumps, not a one-shot
+  # diagnostic with its own "checked … ago".
+  def handle_event("refresh_backups", _params, socket) do
+    scope = socket.assigns.current_scope
+    dumps = list_backups(scope, socket.assigns.options)
+
+    {:noreply,
+     socket
+     |> assign(:backups, dumps)
+     |> assign(:backup_health, Backups.health(dumps, step_opts()))}
   end
 
   # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...).

@@ -14,7 +14,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
   spec asserts against whatever the provider actually returned rather than
   a hardcoded list.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 619's moduledoc for the move onto `/console/resources/mail`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
   """
 
@@ -65,17 +68,13 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
         # negative TTL, and the record would then be invisible for half an hour
         # after it was written.
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view = view
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the email step registers the domain and publishes what it asks for", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :email)
 
         # The page *after* the run, not what the click handed back. A step
         # announces itself with `{:provisioning, :step, …}`, and the

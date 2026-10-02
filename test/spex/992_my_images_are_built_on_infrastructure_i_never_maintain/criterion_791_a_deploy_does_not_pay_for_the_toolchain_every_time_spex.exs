@@ -17,7 +17,15 @@ defmodule CodeMySpecSpex.Story992.Criterion8239Spex do
   Asserted on what the builder booted from, because that is the decision — the
   time saved is a consequence of it, and timing a build would measure Hetzner.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive`.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  deploy step's own markup (`DeployConfig`) is unchanged — it was reused
+  as-is — only the page it's rendered under moved. The old page's single
+  "start setup" button ran the whole step sequence to reach deploy; the
+  console's deploy form runs `:deploy` alone, which is sufficient here since
+  `built_deploy_run/2` scripts every other step and nothing in this criterion
+  reads them.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`.
   """
 
   use CodeMySpecSpex.Case
@@ -40,10 +48,18 @@ defmodule CodeMySpecSpex.Story992.Criterion8239Spex do
       end
 
       when_ "he deploys", context do
-        view = mount_provisioning(context)
-        view |> element("[data-test='start-setup']") |> render_click()
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
-        {:ok, Map.put(context, :html, await_provisioning(view))}
+        view
+        |> form(
+          "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] " <>
+            "[data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
+
+        {:ok, Map.put(context, :html, render(view))}
       end
 
       then_ "the builder booted from a pre-warmed image, not a bare OS", context do

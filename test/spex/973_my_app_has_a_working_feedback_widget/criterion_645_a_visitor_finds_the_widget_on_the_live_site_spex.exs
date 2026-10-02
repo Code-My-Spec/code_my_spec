@@ -7,7 +7,13 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
   the widget present and openable. Installed-but-invisible is the common
   failure — the script tag lands and nothing renders.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move. The widget
+  step is environment-scoped and this criterion needs the "prod" row
+  specifically (the fleet's real site), so the mount carries `?env=prod`
+  rather than relying on the default environment a bare resource URL picks.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Widget`.
   """
 
@@ -35,7 +41,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
         # supply one string a widget criterion has no other use for.
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/widget?env=prod"
+          )
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend outside every cassette.
@@ -45,11 +54,8 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
       end
 
       when_ "the widget step has run", context do
-        # `with_full_cassette` rather than the HTTP one alone: this step is
-        # half subprocess and half HTTP — the generator runs through
-        # `System.cmd`, the presence check through Req — and recording only
-        # the HTTP half leaves the generator running for real on every replay.
-        html = CodeMySpecSpex.Case.run_step_interaction(context.view, :widget, "prod")
+        run_console_step(context.view, :widget)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -94,7 +100,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
     step =
       html
       |> Floki.parse_document!()
-      |> Floki.find("[data-test='setup-step'][data-step='widget']")
+      |> Floki.find("[data-test='resource-step'][data-step='widget']")
 
     state = step |> Floki.attribute("data-state") |> List.first()
     detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)

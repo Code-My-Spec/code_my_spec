@@ -17,6 +17,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
   such surface exists, this story's real verification is a QA pass against
   `cms.new` output rather than a spex. Flagged rather than fudged.
 
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  "Generate deploy files" button moved onto its own `/console/deploys`
+  page — see criterion 785's moduledoc.
+
   Surface: filesystem — the generated project tree.
   """
 
@@ -38,7 +42,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
     scenario "the tree carries encrypted scaffolding and no plaintext env file" do
       given_ "Sam generates a project", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         view |> element("[data-test='generate-project']") |> render_click()
 

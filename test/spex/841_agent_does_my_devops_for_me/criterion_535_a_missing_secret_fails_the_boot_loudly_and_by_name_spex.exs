@@ -8,8 +8,15 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
   *which* secret, because "boot failed" sends someone reading logs for the one
   variable nobody set.
 
-  Surface: `ProvisioningLive`, running the deploy against an environment whose
-  encrypted env file is short a required key.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  secrets step lives on the `servers` resource group now, and deploy is its
+  own page — see criterion 785's moduledoc. `run_steps/3` is coupled to the
+  old page's `setup-step` markup, so the one step this needs (`:secrets`) is
+  run by hand through `run_console_step/2`, still wrapped in the same
+  `with_full_cassette` the macro used internally.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`, running the deploy against an
+  environment whose encrypted env file is short a required key.
   """
 
   use CodeMySpecSpex.Case
@@ -54,8 +61,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
         # asserting about a run that never reached the secrets at all.
         deploy_ready_checkout(context)
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, servers_view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/servers?env=uat"
+          )
 
         # UAT has its age key and the boot secret the step now mints, and
         # nothing else. Without the key the deploy
@@ -67,7 +77,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
         # The secrets step is what mints the key, so running it is the premise:
         # a project that has been through setup and simply never had this
         # secret set.
-        run_steps(view, [:secrets], @cassette <> "_setup")
+        with_full_cassette @cassette <> "_setup" do
+          run_console_step(servers_view, :secrets)
+        end
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end

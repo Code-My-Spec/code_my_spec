@@ -8,7 +8,10 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
   retiring Varlock buys: one mechanism instead of a local one and a
   deployed one that drift apart.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 603's moduledoc for the move onto `/console/secrets`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -27,7 +30,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
     scenario "local runs and deploys read the same encrypted files" do
       given_ "the project has encrypted secrets for its environments", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 

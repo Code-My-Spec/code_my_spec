@@ -7,7 +7,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
   hand in their dashboard — the whole point is that he pastes a key once
   and the posture assembles itself.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  email step and the outbound mail panel it populates both moved onto
+  `/console/resources/mail`'s Config tab — see criterion 651's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
   """
 
@@ -38,15 +42,13 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
         tear_down_after(context.scope, [:email])
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the email step runs", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :email)
 
         # The page *after* the run, not what the click handed back. The
         # mail section is assigned when the step announces itself
