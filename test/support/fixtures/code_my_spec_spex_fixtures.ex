@@ -2723,7 +2723,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
-  defdelegate simulate_framework_knowledge_boot_embed(scope), to: EmbeddingsFixtures
 
   # -- Continuous mode (Story 538) --
   @doc """

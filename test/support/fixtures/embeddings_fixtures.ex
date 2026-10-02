@@ -14,9 +14,6 @@ defmodule CodeMySpec.EmbeddingsFixtures do
   directly, they call this fixture.
   """
 
-  alias CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
-  alias CodeMySpec.Users.Scope
-
   @doc """
   Write `content` to `filename` inside the stubbed framework
   knowledge directory. Returns `:ok`.
@@ -25,18 +22,5 @@ defmodule CodeMySpec.EmbeddingsFixtures do
   def write_framework_knowledge_file(framework_knowledge_dir, filename, content)
       when is_binary(framework_knowledge_dir) and is_binary(filename) and is_binary(content) do
     File.write!(Path.join(framework_knowledge_dir, filename), content)
-  end
-
-  @doc """
-  Run the server's boot reconcile of framework knowledge.
-
-  Kept for the old story 688 criterion 400 spex, which still calls it; the
-  `scope` it takes is unused, as the corpus is shared rows. New spex use
-  `server_starts/0`.
-  """
-  @spec simulate_framework_knowledge_boot_embed(Scope.t()) :: :ok
-  def simulate_framework_knowledge_boot_embed(%Scope{}) do
-    _ = FrameworkKnowledgeReconciler.reconcile()
-    :ok
   end
 end
