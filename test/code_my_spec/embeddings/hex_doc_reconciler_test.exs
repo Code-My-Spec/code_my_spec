@@ -31,7 +31,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     Req.Test.set_req_test_to_shared()
     Application.put_env(:code_my_spec, :embedding_serving, CodeMySpecTest.FakeEmbeddingServing)
     Application.put_env(:code_my_spec, HexPackageFetch, plug: {Req.Test, HexPackageFetch})
-    start_supervised!({FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: FLAME.LocalBackend})
+    start_supervised!({FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend})
 
     on_exit(fn ->
       Application.delete_env(:code_my_spec, :embedding_serving)
@@ -41,8 +41,12 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     %{scope: full_scope_fixture()}
   end
 
+  defp lockfile_entry(name, version, checksum) do
+    ~s("#{name}": {:hex, :#{name}, "#{version}", "chk", [:mix], [], "hexpm", "#{checksum}"})
+  end
+
   defp lockfile_text(name, version, checksum) do
-    ~s(%{\n  "#{name}": {:hex, :#{name}, "#{version}", "chk", [:mix], [], "hexpm", "#{checksum}"}\n}\n)
+    "%{\n  " <> lockfile_entry(name, version, checksum) <> "\n}\n"
   end
 
   defp seed_dependency(scope, name, version, tarball) do
@@ -50,6 +54,31 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     {:ok, _} = Dependencies.record_lockfile(scope, lockfile_text(name, version, checksum))
     checksum
   end
+
+  # `record_lockfile/2` treats its argument as the project's *whole* lock —
+  # recording one package at a time would have each call drop the ones
+  # before it. Seed several in one call, the way a real multi-dependency
+  # mix.lock actually would.
+  defp seed_dependencies(scope, entries) do
+    body =
+      Enum.map_join(entries, ",\n  ", fn {name, version, tarball} ->
+        lockfile_entry(name, version, HexTarballFixtures.checksum(tarball))
+      end)
+
+    {:ok, _} = Dependencies.record_lockfile(scope, "%{\n  " <> body <> "\n}\n")
+    :ok
+  end
+
+  defp record_high_water_mark(in_flight, max_seen) do
+    current = :counters.get(in_flight, 1)
+    previous_max = :counters.get(max_seen, 1)
+    put_if_higher(max_seen, current, previous_max)
+  end
+
+  defp put_if_higher(counter, current, previous_max) when current > previous_max,
+    do: :counters.put(counter, 1, current)
+
+  defp put_if_higher(_counter, _current, _previous_max), do: :ok
 
   defp stub_tarball(name, version, tarball) do
     Req.Test.stub(HexPackageFetch, fn conn ->
@@ -176,6 +205,32 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
 
       assert :counters.get(fetch_count, 1) == 1
       assert %DocPackage{status: "embedded"} = Repo.get_by(DocPackage, package: "shared_pkg")
+    end
+
+    test "no more than @max_concurrency packages are fetched at once", %{scope: scope} do
+      tarball = HexTarballFixtures.build(%{"lib/concurrent.ex" => "defmodule Concurrent do\n  @moduledoc \"hi\"\nend\n"})
+
+      entries = for n <- 1..8, do: {"concurrent_pkg_#{n}", "1.0.0", tarball}
+      :ok = seed_dependencies(scope, entries)
+
+      in_flight = :counters.new(1, [])
+      max_seen = :counters.new(1, [])
+
+      Req.Test.stub(HexPackageFetch, fn conn ->
+        :counters.add(in_flight, 1, 1)
+        record_high_water_mark(in_flight, max_seen)
+
+        # Long enough that 8 packages dispatched at concurrency 4 genuinely
+        # overlap rather than finishing one at a time before the next starts.
+        Process.sleep(30)
+        :counters.sub(in_flight, 1, 1)
+        Plug.Conn.send_resp(conn, 200, tarball)
+      end)
+
+      :ok = HexDocReconciler.reconcile_all()
+
+      assert :counters.get(max_seen, 1) <= 4
+      assert :counters.get(max_seen, 1) > 1
     end
 
     test "a package already embedded at this model is not reconciled again", %{scope: scope} do

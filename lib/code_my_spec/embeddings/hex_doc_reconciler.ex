@@ -43,6 +43,13 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
 
   @bulk_batch_size 20
 
+  # Matches `CodeMySpec.EmbedPool`'s own `max: 4` (application.ex). Fetching
+  # and parsing a tarball is genuinely parallel work; the actual embedding
+  # still serializes through `OrtexServing`'s one worker regardless of how
+  # many packages are in flight here, which is what keeps a concurrent
+  # search's wait bounded by `@bulk_batch_size`, not by this number.
+  @max_concurrency 4
+
   @doc """
   Every `{name, version, checksum}` a project depends on from hex that has
   no `doc_packages` row at the currently-configured model — deduplicated
@@ -64,11 +71,22 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     |> Repo.all()
   end
 
-  @doc "Reconcile every pending package@version. Best-effort: one failure doesn't stop the rest."
+  @doc """
+  Reconcile every pending package@version, up to `@max_concurrency` at
+  once. Best-effort: one failure doesn't stop the rest, and one timeout
+  doesn't stop the sweep either — `on_timeout: :kill_task` with a per-task
+  cap means a single wedged fetch is a late retry next sweep, not a run
+  that never finishes.
+  """
   @spec reconcile_all() :: :ok
   def reconcile_all do
     pending()
-    |> Enum.each(&reconcile_one/1)
+    |> Task.async_stream(&reconcile_one/1,
+      max_concurrency: @max_concurrency,
+      timeout: :timer.minutes(5),
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
   end
 
   defp reconcile_one(%{name: name, version: version, checksum: checksum}) do
