@@ -83,6 +83,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpecWeb.ProvisioningLive.Components.ServerConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.StatusBadge
   alias CodeMySpecWeb.ProvisioningLive.Components.TlsConfig
+  alias CodeMySpecWeb.ProvisioningLive.Components.WidgetConfig
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -941,34 +942,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           </div>
           <CallbackCredentialConfig.callback_credential_config step={@step} />
           <ContentConfig.content_config :if={@step.key == :content} step={@step} />
-          
-    <!-- Present and openable are asked separately because
-                 present-but-not-openable is exactly what a broken bundle looks
-                 like from the outside (8040). -->
-          <span
-            :for={r <- Enum.filter(@step.resources, &(&1.kind == "widget_render"))}
-            data-test="widget-render-check"
-            data-status={proof_field(r.identifier, "status")}
-            data-widget-present={proof_field(r.identifier, "present")}
-            data-widget-openable={proof_field(r.identifier, "openable")}
-            class="mt-1 block text-xs font-mono opacity-70"
-          >
-            widget check: {r.identifier}
-          </span>
-          
-    <!-- A script tag proves nothing. This is a message that travelled
-                 from the deployed site into CodeMySpec, and `origin` is what
-                 separates it from one posted by hand (8044). -->
-          <span
-            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "widget_proof"))}
-            data-test="widget-message-proof"
-            data-state={proof_field(pr.identifier, "state")}
-            data-origin={proof_field(pr.identifier, "origin")}
-            data-completed-at={proof_field(pr.identifier, "proven_at")}
-            class="mt-1 block text-xs font-mono opacity-70"
-          >
-            message from {pr.location}: {pr.identifier}
-          </span>
+          <WidgetConfig.widget_config :if={@step.key == :widget} step={@step} />
           
     <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
