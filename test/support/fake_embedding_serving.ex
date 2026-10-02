@@ -19,4 +19,7 @@ defmodule CodeMySpecTest.FakeEmbeddingServing do
 
   @impl true
   def embed_batch(texts, _priority), do: {:ok, Enum.map(texts, fn _ -> @vector end)}
+
+  @impl true
+  def model_name, do: "fake-test-model"
 end

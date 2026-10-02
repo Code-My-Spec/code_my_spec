@@ -60,6 +60,10 @@ defmodule CodeMySpecWeb.Application do
         # because `project_dependencies` is dependency bookkeeping on its
         # own, independent of whether anything embeds hex docs from it here.
         CodeMySpec.Files.LockfileSweep,
+        # The hex-doc reconciler's own driver (step 3) — gated like
+        # `OrtexServing`/`EmbedPool` above, since embedding is exactly what
+        # it does and it has nothing to drive without them.
+        embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep,
         # Per-caller failure injection, so QA can break one project's digest or
         # one visitor's intake without breaking the shared box. Owns an ETS
         # table and nothing else; only `/dev/faults` ever writes to it, and that
