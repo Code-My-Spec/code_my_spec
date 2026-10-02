@@ -35,6 +35,12 @@ defmodule CodeMySpecWeb.Plugs.AgentScope do
   not have, is a call without an agent — and the tools that need one say so in
   their own words. Refusing here would take down every call on the connection,
   including the ninety-odd that never wanted an agent.
+
+  ## And where it runs
+
+  An agent's working copy is part of who is calling: a call naming an agent and
+  no harness acts in that agent's copy, with its environment, as `X-Harness-Id`
+  would have set it (`Agents.scope_for/2`, ed28189c).
   """
 
   import Plug.Conn
@@ -47,7 +53,9 @@ defmodule CodeMySpecWeb.Plugs.AgentScope do
     with agent_id when is_binary(agent_id) <- header(conn, "x-agent-id"),
          %{} = scope <- conn.assigns[:current_scope],
          {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
-      assign(conn, :agent_id, agent.id)
+      conn
+      |> assign(:agent_id, agent.id)
+      |> assign(:current_scope, Agents.scope_for(scope, agent))
     else
       _ -> conn
     end
