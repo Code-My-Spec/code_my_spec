@@ -30,9 +30,14 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       assert html =~ ~s(data-test="setup-checklist")
     end
 
-    test "resources", %{conn: conn, project: project} do
+    test "resources, grouped per the plan's resource types", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, resources_path(project))
       assert html =~ ~s(data-test="console-resources")
+
+      for test_id <-
+            ~w(repository servers dns_domain mail storage_backups publishing widget) do
+        assert html =~ ~s(data-resource="#{test_id}")
+      end
     end
 
     test "a resource's detail", %{conn: conn, project: project} do
@@ -41,11 +46,23 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       assert html =~ ~s(data-step="repository")
     end
 
-    test "a resource key with no row for the current environment", %{
+    test "a resource group with no steps for the current environment", %{
       conn: conn,
       project: project
     } do
-      {:ok, _view, html} = live(conn, resource_path(project, :deploy) <> "?env=nonexistent")
+      # storage and backups are both environment-scoped — unlike server,
+      # domain and dns, which are project-wide and would show regardless.
+      {:ok, _view, html} =
+        live(conn, resource_path(project, :storage_backups) <> "?env=nonexistent")
+
+      assert html =~ ~s(data-test="resource-no-steps")
+    end
+
+    test "a made-up resource key reads as not found, not a crash", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, _view, html} = live(conn, resource_path(project, "not_a_real_group"))
       assert html =~ ~s(data-test="resource-not-found")
     end
 

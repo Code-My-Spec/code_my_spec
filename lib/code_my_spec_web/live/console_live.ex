@@ -22,11 +22,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   ## What's real here and what's a first pass
 
-  Resources lists one row per step key and reuses the exact per-step Config
-  components step 5 extracted (DnsConfig, DeployConfig, and so on) for each
-  resource's Config tab — the plan's "servers / DNS-domain / mail in and
-  out / storage-backups / publishing / feedback widget" grouping would
-  combine several step keys per resource, which this does not do yet.
+  Resources groups the plan's steps per `ResourceGroups` (servers, DNS and
+  domain, mail in and out, storage and backups, publishing, feedback
+  widget — plus repository, which the plan's own list doesn't name but
+  dropping it would make it unreachable). Each group's ResourceDetail
+  Config tab reuses the exact per-step components step 5 extracted
+  (DnsConfig, DeployConfig, and so on), once per step key the group holds.
   Checks and Activity tabs are placeholders: the five probes
   (storage_probe, check_domain, content_publish, probe_restore,
   mail_inbound_probe) still run exactly as they did on the old page, not yet
@@ -50,6 +51,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
   alias CodeMySpecWeb.ConsoleLive.Components.ResourceDetail
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
+  alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
@@ -103,8 +105,17 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
+  # A made-up :key in the URL must read as "no such resource", not crash the
+  # mount — to_existing_atom/1 raises on anything that was never a group key
+  # anywhere in this running VM, which an arbitrary path segment from the
+  # outside world absolutely can be.
   defp string_to_key(nil), do: nil
-  defp string_to_key(key), do: String.to_existing_atom(key)
+
+  defp string_to_key(key) do
+    String.to_existing_atom(key)
+  rescue
+    ArgumentError -> nil
+  end
 
   defp secret_sources(environments) do
     for consumer <- ["local", "deploy"], environment <- environments do
@@ -183,17 +194,17 @@ defmodule CodeMySpecWeb.ConsoleLive do
         class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
       >
         <.link
-          :for={step <- environment_scoped(@plan, @environment)}
+          :for={{group, _steps, status} <- resource_groups(@plan, @environment)}
           navigate={
-            ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"
+            ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{group.key}?env=#{@environment}"
           }
           data-test="resource-card"
-          data-step={step.key}
+          data-resource={group.key}
           class="card bg-base-100 hover:shadow-md transition-shadow"
         >
           <div class="card-body p-4">
-            <h3 class="card-title text-base">{step.label}</h3>
-            <span class="badge badge-sm w-fit">{step.state}</span>
+            <h3 class="card-title text-base">{group.label}</h3>
+            <span class="badge badge-sm w-fit">{status}</span>
           </div>
         </.link>
       </div>
@@ -223,20 +234,20 @@ defmodule CodeMySpecWeb.ConsoleLive do
     ~H"""
     <section data-test="console-resources" class="flex flex-col gap-2">
       <.link
-        :for={step <- environment_scoped(@plan, @environment)}
+        :for={{group, steps, status} <- resource_groups(@plan, @environment)}
         navigate={
-          ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{step.key}?env=#{@environment}"
+          ~p"/app/projects/#{@current_scope.active_project_id}/console/resources/#{group.key}?env=#{@environment}"
         }
         data-test="resource-row"
-        data-step={step.key}
+        data-resource={group.key}
         class="card bg-base-100 hover:shadow-md transition-shadow"
       >
         <div class="card-body p-4 flex-row items-center justify-between">
           <div>
-            <h3 class="font-semibold">{step.label}</h3>
-            <p class="text-sm opacity-70">{step.why}</p>
+            <h3 class="font-semibold">{group.label}</h3>
+            <p class="text-sm opacity-70">{Enum.map_join(steps, ", ", & &1.label)}</p>
           </div>
-          <span class="badge">{step.state}</span>
+          <span class="badge">{status}</span>
         </div>
       </.link>
     </section>
@@ -246,7 +257,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp render_section(%{live_action: :resource_detail} = assigns) do
     ~H"""
     <ResourceDetail.resource_detail
-      step={resource_step(@plan, @resource_key, @environment)}
+      group={ResourceGroups.get(@resource_key)}
+      steps={resource_group_steps(@plan, @resource_key, @environment)}
       environments={@environments}
       age_key_environments={age_key_environments(@current_scope, @environments)}
       runs_in_flight?={Provisioning.runs_in_flight?(@current_scope)}
@@ -349,22 +361,24 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp setup_done_count(plan), do: Enum.count(plan, &(&1.state == :done))
 
-  # Project-wide steps show regardless of the selected environment; a
-  # per-environment step shows only its own environment's row, so switching
-  # environments shows a different deploy/dns/server row rather than every
-  # environment's at once.
-  defp environment_scoped(plan, environment) do
-    Enum.filter(plan, &(is_nil(&1.environment) or &1.environment == environment))
-  end
-
   defp deploy_steps(plan, environment) do
     Enum.filter(plan, &(&1.key == :deploy and &1.environment == environment))
   end
 
-  defp resource_step(plan, key, environment) do
-    plan
-    |> environment_scoped(environment)
-    |> Enum.find(&(&1.key == key))
+  defp resource_groups(plan, environment) do
+    for group <- ResourceGroups.all() do
+      steps = ResourceGroups.steps(plan, group, environment)
+      {group, steps, ResourceGroups.status(steps)}
+    end
+  end
+
+  defp resource_group_steps(_plan, nil, _environment), do: []
+
+  defp resource_group_steps(plan, key, environment) do
+    case ResourceGroups.get(key) do
+      nil -> []
+      group -> ResourceGroups.steps(plan, group, environment)
+    end
   end
 
   defp age_key_environments(scope, environments) do

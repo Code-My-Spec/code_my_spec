@@ -1,17 +1,19 @@
 defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   @moduledoc """
-  One resource's Config, Checks and Activity tabs — the plan's replacement
-  for `step_card`'s inline everything.
+  One resource group's Config, Checks and Activity tabs — the plan's
+  replacement for `step_card`'s inline everything, now one tab set for
+  every step key `ResourceGroups` folds under this resource (DNS and
+  domain is :domain, :dns and :tls together, for instance).
 
   Config reuses the exact per-step components step 5 extracted
   (RepositoryConfig, ServerConfig, DnsConfig, and so on), the run/retry
   button, paused-instructions and escalation — the same markup `step_card`
-  showed, just under a tab instead of always-on. Checks is a placeholder:
-  the five probes (storage, domain, content, restore, inbound) still run
-  from the old `/provisioning` page, not yet moved here or converted to
-  async — see the moduledoc on `ConsoleLive`. Activity reads the step's own
-  timestamps, the same stand-in `ConsoleLive`'s Overview uses, not a
-  persisted event log.
+  showed, once per step in the group, under a tab instead of always-on.
+  Checks is a placeholder: the five probes (storage, domain, content,
+  restore, inbound) still run from the old `/provisioning` page, not yet
+  moved here or converted to async — see the moduledoc on `ConsoleLive`.
+  Activity combines every step's own timestamps, the same stand-in
+  `ConsoleLive`'s Overview uses, not a persisted event log.
   """
 
   use CodeMySpecWeb, :html
@@ -28,7 +30,8 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   alias CodeMySpecWeb.ProvisioningLive.Components.TlsConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.WidgetConfig
 
-  attr :step, :map, default: nil
+  attr :group, :map, default: nil
+  attr :steps, :list, required: true
   attr :environments, :list, required: true
   attr :age_key_environments, :list, required: true
   attr :runs_in_flight?, :boolean, required: true
@@ -36,32 +39,22 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   attr :project_id, :any, required: true
   attr :environment, :string, required: true
 
-  def resource_detail(%{step: nil} = assigns) do
+  def resource_detail(%{group: nil} = assigns) do
     ~H"""
     <p data-test="resource-not-found" class="opacity-70">
-      No such resource for this environment.
+      No such resource.
     </p>
     """
   end
 
   def resource_detail(assigns) do
     ~H"""
-    <section data-test="resource-detail" data-step={@step.key} class="flex flex-col gap-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-semibold">{@step.label}</h2>
-          <p class="text-sm opacity-70">{@step.why}</p>
-        </div>
-        <StatusBadge.status_badge
-          state={@step.state}
-          step_key={@step.key}
-          verified_at={@step.verified_at}
-        />
-      </div>
+    <section data-test="resource-detail" data-resource={@group.key} class="flex flex-col gap-4">
+      <h2 class="text-xl font-semibold">{@group.label}</h2>
 
       <div role="tablist" class="tabs tabs-boxed w-fit">
         <.link
-          patch={tab_path(@project_id, @step.key, @environment, "config")}
+          patch={tab_path(@project_id, @group.key, @environment, "config")}
           data-test="resource-tab-config"
           role="tab"
           class={["tab", @tab == "config" && "tab-active"]}
@@ -69,7 +62,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
           Config
         </.link>
         <.link
-          patch={tab_path(@project_id, @step.key, @environment, "checks")}
+          patch={tab_path(@project_id, @group.key, @environment, "checks")}
           data-test="resource-tab-checks"
           role="tab"
           class={["tab", @tab == "checks" && "tab-active"]}
@@ -77,7 +70,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
           Checks
         </.link>
         <.link
-          patch={tab_path(@project_id, @step.key, @environment, "activity")}
+          patch={tab_path(@project_id, @group.key, @environment, "activity")}
           data-test="resource-tab-activity"
           role="tab"
           class={["tab", @tab == "activity" && "tab-active"]}
@@ -86,59 +79,87 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
         </.link>
       </div>
 
-      <div :if={@tab == "config"} data-test="resource-tab-panel" data-panel="config">
-        <.button
-          :if={@step.key != :deploy}
-          data-test={if @step.state == :errored, do: "retry-step", else: "run-step"}
-          phx-click="run_step"
-          phx-value-key={@step.key}
-          phx-value-environment={@step.environment}
-          disabled={@runs_in_flight?}
-        >
-          {if @step.state == :errored, do: "Retry", else: "Run"}
-        </.button>
-
-        <p
-          :if={@step.state == :paused && @step.paused_instructions}
-          data-test="paused-instructions"
-          data-step={@step.key}
-          class="alert alert-warning mt-3"
-        >
-          {@step.paused_instructions}
+      <div
+        :if={@tab == "config"}
+        data-test="resource-tab-panel"
+        data-panel="config"
+        class="flex flex-col gap-4"
+      >
+        <p :if={@steps == []} class="opacity-70 text-sm" data-test="resource-no-steps">
+          Nothing in this environment yet.
         </p>
 
         <div
-          :if={@step.state == :errored}
-          data-test="escalation"
-          data-step={@step.key}
-          class="alert alert-error mt-3 flex-col items-start"
+          :for={step <- @steps}
+          data-test="resource-step"
+          data-step={step.key}
+          class="card bg-base-100"
         >
-          <p>{@step.attempted}</p>
-          <p class="font-mono text-xs">{@step.provider_error}</p>
-        </div>
+          <div class="card-body p-4 gap-2">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">{step.label}</h3>
+              <div class="flex items-center gap-2">
+                <StatusBadge.status_badge
+                  state={step.state}
+                  step_key={step.key}
+                  verified_at={step.verified_at}
+                />
+                <.button
+                  :if={step.key != :deploy}
+                  data-test={if step.state == :errored, do: "retry-step", else: "run-step"}
+                  phx-click="run_step"
+                  phx-value-key={step.key}
+                  phx-value-environment={step.environment}
+                  disabled={@runs_in_flight?}
+                >
+                  {if step.state == :errored, do: "Retry", else: "Run"}
+                </.button>
+              </div>
+            </div>
 
-        <RepositoryConfig.repository_config :if={@step.key == :repository} step={@step} />
-        <ServerConfig.server_config :if={@step.key == :server} step={@step} />
-        <DnsConfig.dns_config :if={@step.key == :dns} step={@step} environments={@environments} />
-        <TlsConfig.tls_config :if={@step.key == :tls} step={@step} />
-        <DeployConfig.deploy_config
-          :if={@step.key == :deploy}
-          step={@step}
-          age_key_environments={@age_key_environments}
-          runs_in_flight?={@runs_in_flight?}
-        />
-        <InboundConfig.inbound_config
-          :if={@step.key == :inbound}
-          step={@step}
-          mx_conflict?={inbound_mx_conflict?(@step)}
-        />
-        <CallbackCredentialConfig.callback_credential_config
-          :if={@step.key == :callback_credential}
-          step={@step}
-        />
-        <ContentConfig.content_config :if={@step.key == :content} step={@step} />
-        <WidgetConfig.widget_config :if={@step.key == :widget} step={@step} />
-        <BackupsConfig.backups_config :if={@step.key == :backups} step={@step} />
+            <p
+              :if={step.state == :paused && step.paused_instructions}
+              data-test="paused-instructions"
+              data-step={step.key}
+              class="alert alert-warning"
+            >
+              {step.paused_instructions}
+            </p>
+
+            <div
+              :if={step.state == :errored}
+              data-test="escalation"
+              data-step={step.key}
+              class="alert alert-error flex-col items-start"
+            >
+              <p>{step.attempted}</p>
+              <p class="font-mono text-xs">{step.provider_error}</p>
+            </div>
+
+            <RepositoryConfig.repository_config :if={step.key == :repository} step={step} />
+            <ServerConfig.server_config :if={step.key == :server} step={step} />
+            <DnsConfig.dns_config :if={step.key == :dns} step={step} environments={@environments} />
+            <TlsConfig.tls_config :if={step.key == :tls} step={step} />
+            <DeployConfig.deploy_config
+              :if={step.key == :deploy}
+              step={step}
+              age_key_environments={@age_key_environments}
+              runs_in_flight?={@runs_in_flight?}
+            />
+            <InboundConfig.inbound_config
+              :if={step.key == :inbound}
+              step={step}
+              mx_conflict?={inbound_mx_conflict?(step)}
+            />
+            <CallbackCredentialConfig.callback_credential_config
+              :if={step.key == :callback_credential}
+              step={step}
+            />
+            <ContentConfig.content_config :if={step.key == :content} step={step} />
+            <WidgetConfig.widget_config :if={step.key == :widget} step={step} />
+            <BackupsConfig.backups_config :if={step.key == :backups} step={step} />
+          </div>
+        </div>
       </div>
 
       <div :if={@tab == "checks"} data-test="resource-tab-panel" data-panel="checks">
@@ -148,18 +169,19 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
         </p>
       </div>
 
-      <div :if={@tab == "activity"} data-test="resource-tab-panel" data-panel="activity">
+      <div
+        :if={@tab == "activity"}
+        data-test="resource-tab-panel"
+        data-panel="activity"
+        class="flex flex-col gap-1"
+      >
+        <p :if={activity_entries(@steps) == []} class="opacity-70 text-sm">Nothing yet.</p>
         <p
-          :if={is_nil(@step.completed_at) and is_nil(@step.verified_at)}
-          class="opacity-70 text-sm"
+          :for={{step_key, kind, at} <- activity_entries(@steps)}
+          data-test="resource-activity-entry"
+          data-step={step_key}
         >
-          Nothing yet.
-        </p>
-        <p :if={@step.completed_at} data-test="activity-completed">
-          completed {@step.completed_at}
-        </p>
-        <p :if={@step.verified_at} data-test="activity-verified">
-          checked {@step.verified_at}
+          {step_key} {kind} {at}
         </p>
       </div>
     </section>
@@ -176,4 +198,17 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
     do: instructions =~ "Confirm to publish anyway"
 
   defp inbound_mx_conflict?(_step), do: false
+
+  defp activity_entries(steps) do
+    for step <- steps,
+        {kind, at} <- [
+          {"started", step.started_at},
+          {"completed", step.completed_at},
+          {"verified", step.verified_at}
+        ],
+        not is_nil(at) do
+      {step.key, kind, at}
+    end
+    |> Enum.sort_by(fn {_key, _kind, at} -> at end, {:desc, DateTime})
+  end
 end
