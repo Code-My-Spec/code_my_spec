@@ -71,9 +71,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   }
 
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecWeb.ProvisioningLive.Components.CallbackCredentialConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.DnsConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.InboundConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.RepositoryConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.ResourceCard
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
@@ -903,59 +905,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                  carry more than one record. Same shape as that block:
                  a paused step naming a decision only Sam can make, behind a
                  dialog rather than a bare click. -->
-          <div
-            :if={@step.key == :inbound and @step.state == :paused and inbound_mx_conflict?(@step)}
-            data-test="inbound-mx-repoint"
-            class="mt-3 flex gap-2"
-          >
-            <.button
-              data-test="confirm-inbound-mx-repoint"
-              class="btn btn-warning"
-              phx-click={show_confirm("confirm-inbound-mx-repoint")}
-            >
-              Repoint it anyway
-            </.button>
-
-            <.confirm_dialog
-              id="confirm-inbound-mx-repoint"
-              title="Replace the existing MX record?"
-              message={@step.paused_instructions}
-              confirm_label="Repoint it"
-              on_confirm={JS.push("confirm_inbound_mx_repoint")}
-            />
-          </div>
-          
-    <!-- 4ed72738: `default_inbound_probe/3` refuses to guess an address
-                 rather than repeat the mistake `59f366cc` fixed, but nothing gave
-                 Sam a way to supply the one it's asking for — the plain "Run"
-                 button above re-runs with the same missing opt and loops back to
-                 this same pause forever. Same shape as the two blocks above:
-                 a paused step naming a decision only Sam can make.
-
-                 Excludes the MX-conflict pause above: that one is answered by
-                 the repoint dialog, not by supplying a probe address. -->
-          <form
-            :if={
-              @step.key == :inbound and @step.state == :paused and
-                not inbound_mx_conflict?(@step)
-            }
-            data-test="inbound-probe-address"
-            phx-submit="run_step_with_probe_address"
-            class="mt-3 flex gap-2"
-          >
-            <input type="hidden" name="key" value={@step.key} />
-            <input
-              type="email"
-              name="probe_to"
-              data-test="inbound-probe-address-input"
-              placeholder="an address you already receive at this domain"
-              required
-              class="input input-bordered input-sm flex-1"
-            />
-            <.button type="submit" data-test="inbound-probe-address-submit" class="btn btn-primary">
-              Use this address
-            </.button>
-          </form>
+          <InboundConfig.inbound_config
+            :if={@step.key == :inbound}
+            step={@step}
+            mx_conflict?={inbound_mx_conflict?(@step)}
+          />
 
           <div
             :if={@step.state == :errored}
@@ -984,36 +938,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           >
             key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
           </div>
-          
-    <!-- Where the callback credential was placed. The observable
-                 form of "Sam never sees the credential he is using" (8022):
-                 written into the encrypted env, copied by nobody. -->
-          <div
-            :for={cred <- Enum.filter(@step.resources, &(&1.kind == "callback_credential"))}
-            data-test="callback-credential"
-            data-placed-in="encrypted_env"
-            data-manual-copy="false"
-            data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
-            class="mt-2 text-xs opacity-70"
-          >
-            credential placed in {cred.location}
-          </div>
-          
-    <!-- Configuration is not an inbox. The step sends a message to the
-                 domain it just configured and waits for Resend to report it
-                 received; that delivery is the claim, so it is on the page
-                 rather than folded into "done" (8033). -->
-          <span
-            :for={pr <- Enum.filter(@step.resources, &(&1.kind == "inbound_proof"))}
-            data-test="inbound-delivery-proof"
-            data-target={pr.location}
-            data-state={proof_field(pr.identifier, "state")}
-            data-message-id={proof_field(pr.identifier, "message_id")}
-            data-completed-at={proof_field(pr.identifier, "proven_at")}
-            class="mt-1 block text-xs font-mono opacity-70"
-          >
-            delivered to {pr.location}: {pr.identifier}
-          </span>
+          <CallbackCredentialConfig.callback_credential_config step={@step} />
           
     <!-- Uploading is not publishing. The step fetches the post back
                  from the deployed site and checks the body carried its title,
