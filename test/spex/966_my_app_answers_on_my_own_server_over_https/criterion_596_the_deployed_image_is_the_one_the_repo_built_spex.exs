@@ -10,7 +10,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
 
   Retargeted onto the console (provisioning-console-step6, unmerged): deploy
   is its own page now (`/console/deploys`), not a resource group — see
-  criterion 785's moduledoc.
+  criterion 785's moduledoc. Unlike the old page's `run_step_with_environment`
+  handler, the console's does not reassign `@plan` before returning — it
+  relies on a PubSub broadcast the LiveView processes on its next message, so
+  `render_submit/1`'s own return value is stale and a separate `render/1`
+  call is needed afterward to see the settled step (the step itself already
+  ran synchronously by then; only the socket's assigns lagged).
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
@@ -38,12 +43,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
       end
 
       when_ "the deploy runs", context do
-        html =
-          context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "it deployed the image built from that commit", context do

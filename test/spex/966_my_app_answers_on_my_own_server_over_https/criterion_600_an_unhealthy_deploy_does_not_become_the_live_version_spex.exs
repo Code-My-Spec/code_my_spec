@@ -15,7 +15,9 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
 
   Retargeted onto the console (provisioning-console-step6, unmerged): deploy
   is its own page now (`/console/deploys`), not a resource group — see
-  criterion 785's moduledoc.
+  criterion 785's moduledoc. See criterion 596's moduledoc for why a
+  `render/1` call is needed after each deploy-form submit rather than using
+  `render_submit/1`'s own return value.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
@@ -54,12 +56,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
         # The next deploy is set to fail; nothing else changes.
         stage_deploy(context, :health_fails)
 
-        html =
-          context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the swap does not happen", context do

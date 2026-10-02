@@ -14,7 +14,9 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
 
   Retargeted onto the console (provisioning-console-step6, unmerged): deploy
   is its own page now (`/console/deploys`), not a resource group — see
-  criterion 785's moduledoc.
+  criterion 785's moduledoc. See criterion 596's moduledoc for why the
+  deploy form's `render_submit/1` return value is stale and a separate
+  `render/1` call is needed afterward.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
@@ -42,12 +44,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
       end
 
       when_ "the deploy runs", context do
-        html =
-          context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the migration completed before the traffic swap", context do

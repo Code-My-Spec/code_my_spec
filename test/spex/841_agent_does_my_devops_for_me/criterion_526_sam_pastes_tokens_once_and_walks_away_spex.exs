@@ -31,7 +31,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1957Spex do
         {:ok, view, html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        assert html =~ "Still needed:",
+        # The old page's own top-level banner read "Still needed: ..."
+        # (capital S) separately from the dialog's; the console renders only
+        # `CredentialsForm`'s own banner, whose text is "...still needed: ...".
+        assert html =~ "still needed:",
                "expected setup to refuse to start while credentials are missing"
 
         {:ok, Map.put(context, :view, view)}
