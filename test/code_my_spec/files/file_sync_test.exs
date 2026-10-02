@@ -302,164 +302,23 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert spec_file.role == :spec
     end
 
-    test "validates spec files during sync" do
+    test "a spec file is tracked and valid by existence, and parsed for nothing" do
       {scope, tmp_dir} = setup_project()
 
-      # Valid liveview spec with required sections
-      spec_content = """
-      # MyApp.UserLive.Index
-
-      A page listing users.
-
-      ## Type
-
-      liveview
-
-      ## Route
-
-      `/users`
-
-      ## User Interactions
-
-      - **phx-click=delete**: Deletes a user
-
-      ## Dependencies
-
-      - MyApp.Users
-
-      ## Design
-
-      Layout: Table of users.
-      """
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/index.spec.md", spec_content)
+      # Components are records (3aeb66cf, step 7d): a spec describes nothing,
+      # so even one missing every section is simply a file that exists.
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\r\n")
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/user_live/index.spec.md")
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
+      assert spec_file.role == :spec
       assert spec_file.valid == true
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
+      assert spec_file.validation_errors == nil
 
       impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
       assert impl_file.valid == true
-    end
-
-    test "accepts partial architecture specs" do
-      {scope, tmp_dir} = setup_project()
-
-      # Spec missing required sections
-      write_file(
-        tmp_dir,
-        ".code_my_spec/spec/my_app/broken.spec.md",
-        "# MyApp.Broken\n\n## Type\n\nschema\n"
-      )
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
-      assert spec_file.valid == true
-      assert spec_file.validation_errors != nil
-    end
-
-    # Regression: a spec authored/edited on Windows carries CRLF line endings.
-    # The `## Type` extraction (and the H1 validator) are `$`-anchored, so a
-    # `## Type\r` line failed to match, the document type silently resolved to
-    # the default "spec" definition, and the WRONG section set was enforced —
-    # a context spec was rejected for "Disallowed sections found: components"
-    # and a schema spec for "Missing required sections". Both must validate.
-    test "validates a CRLF context spec (type resolves to context_spec, Components allowed)" do
-      {scope, tmp_dir} = setup_project()
-
-      content =
-        Enum.join(
-          [
-            "# MyApp.Tasks",
-            "",
-            "## Type",
-            "",
-            "context",
-            "",
-            "## Functions",
-            "",
-            "### create_task/1",
-            "",
-            "Creates a task.",
-            "",
-            "## Dependencies",
-            "",
-            "- MyApp.Repo",
-            "",
-            "## Components",
-            "",
-            "### MyApp.Tasks.Task",
-            "",
-            "The task schema.",
-            ""
-          ],
-          "\r\n"
-        )
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/tasks.spec.md", content)
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/tasks.spec.md")
-
-      assert spec_file.valid == true,
-             "CRLF context spec invalid: #{inspect(spec_file.validation_errors)}"
-
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
-    end
-
-    test "validates a CRLF schema spec (type resolves to schema, not default spec)" do
-      {scope, tmp_dir} = setup_project()
-
-      content =
-        Enum.join(
-          [
-            "# MyApp.Tasks.Task",
-            "",
-            "## Type",
-            "",
-            "schema",
-            "",
-            "## Fields",
-            "",
-            "| Field | Type | Required | Description | Constraints |",
-            "|-------|------|----------|-------------|-------------|",
-            "| title | string | Yes | Task title | Max: 255 |",
-            "",
-            "## Dependencies",
-            "",
-            "- MyApp.Repo",
-            ""
-          ],
-          "\r\n"
-        )
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/task.spec.md", content)
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-
-      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/task.spec.md")
-
-      assert spec_file.valid == true,
-             "CRLF schema spec invalid: #{inspect(spec_file.validation_errors)}"
-
-      # A clean spec now carries the component identity the scan extracted —
-      # `ComponentSync` reads it instead of reopening the file. "No errors" is
-      # the claim being made here, which is what nil used to stand for.
-      assert spec_file.validation_errors["errors"] == %{}
-      assert spec_file.validation_errors["data"]["module_name"] != nil
     end
 
     test "validates test files against spec test assertions" do
@@ -808,10 +667,9 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert result.changed_path == nil
     end
 
-    test "validates spec files" do
+    test "tracks a spec file without parsing it" do
       {scope, tmp_dir} = setup_project()
 
-      # Invalid spec — missing required sections
       write_file(
         tmp_dir,
         ".code_my_spec/spec/my_app/broken.spec.md",
@@ -824,7 +682,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
       assert file.valid == true
-      assert file.validation_errors != nil
+      assert file.validation_errors == nil
     end
 
     # The watcher's per-file dispatch route. `FileSync.sync_path/3`

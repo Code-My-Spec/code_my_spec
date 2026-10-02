@@ -43,7 +43,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # app's compile cycle.
   def session_type_map do
     %{
-      "context_design_review" => AgentTasks.ContextDesignReview,
       "develop_context" => AgentTasks.DevelopContext,
       "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
       "fix_bdd_specs" => AgentTasks.FixBddSpecs,

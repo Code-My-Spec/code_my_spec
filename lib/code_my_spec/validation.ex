@@ -84,7 +84,6 @@ defmodule CodeMySpec.Validation do
     "credo" => {:credo, :by_file_path},
     "exunit" => {:exunit, :by_component_id},
     "spex" => {:spex, :by_file_path},
-    "spec_validation" => {:spec_validation, :by_file_path},
     "qa_validation" => {:qa_validation, :by_file_path}
   }
 
@@ -1004,9 +1003,8 @@ defmodule CodeMySpec.Validation do
     # commit, and a label saying so changed what an agent did without changing
     # what was true.
     #
-    # Restricted to `Run.sources/0`: `spec_validation` and `qa_validation` are
-    # in-process document validators re-run in this request, with no ledger row
-    # to describe.
+    # Restricted to `Run.sources/0`: `qa_validation` is an in-process document
+    # validator re-run in this request, with no ledger row to describe.
     sources_with_problems = Map.keys(problems_by_source)
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
     in_flight = Analysis.in_flight(scope)

@@ -20,7 +20,6 @@ defmodule CodeMySpec.Files.Scanner do
   """
 
   alias CodeMySpec.BddSpecs.ContentCheck
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.ComponentExtract
@@ -251,29 +250,14 @@ defmodule CodeMySpec.Files.Scanner do
   @doc """
   Validate a file entry based on its role.
 
-  Specs and reviews are validated via `Documents.create_dynamic_document`.
-  Test files are tracked without matching them against markdown assertions.
-  Other tracked roles are valid by existence.
+  Component specs and design reviews are not parsed: components are records
+  (3aeb66cf), so those files describe nothing and are valid by existence, like
+  test files and the other tracked roles.
   """
   def validate_entry(entry, env, component_by_id, strict? \\ true)
 
-  def validate_entry(%{role: :spec} = entry, env, _component_by_id, strict?) do
-    case Environments.read_file(env, entry.path) do
-      {:ok, content} ->
-        document_type = document_type_from_content(content)
-        validate_spec_content(entry, content, document_type, strict?)
-
-      {:error, reason} ->
-        Map.merge(entry, %{
-          valid: false,
-          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
-        })
-    end
-  end
-
-  # Spex files are checked here, on the machine that has them, for the same
-  # reason `:spec` and `:review` are: the server may hold no working copy, and
-  # something that can only validate by reading a disk answers "not found" for
+  # Spex files are checked here, on the machine that has them: the server may
+  # hold no working copy, and something that can only validate by reading a disk answers "not found" for
   # every file when there is no disk to read. That is exactly what happened —
   # six specs reported missing in a stop no edit could clear, while the
   # requirement graph read this same report and correctly found them present.
@@ -306,19 +290,6 @@ defmodule CodeMySpec.Files.Scanner do
         Map.merge(entry, %{
           valid: false,
           validation_errors: %{"reason" => "Read failed: #{inspect(reason)}"}
-        })
-    end
-  end
-
-  def validate_entry(%{role: :review} = entry, env, _component_by_id, strict?) do
-    case Environments.read_file(env, entry.path) do
-      {:ok, content} ->
-        validate_spec_content(entry, content, "design_review", strict?)
-
-      {:error, reason} ->
-        Map.merge(entry, %{
-          valid: false,
-          validation_errors: %{"error" => "Read failed: #{inspect(reason)}"}
         })
     end
   end
@@ -428,6 +399,8 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   @valid_by_existence_roles [
+    :spec,
+    :review,
     :test,
     :rule,
     :config,
@@ -581,18 +554,6 @@ defmodule CodeMySpec.Files.Scanner do
   defp locates_something?(entry) do
     Regex.match?(~r{https?://\S+}, entry) or
       Regex.match?(~r{[\w.~-]+(?:/[\w.~-]+)+\.\w+}, entry)
-  end
-
-  defp component_data(content) do
-    %{
-      "errors" => %{},
-      "data" => %{
-        "module_name" => ComponentExtract.extract_h1_module(content),
-        "type" => ComponentExtract.extract_type_section(content),
-        "description" => ComponentExtract.extract_intro_text(content),
-        "dependencies" => ComponentExtract.extract_dependencies(content)
-      }
-    }
   end
 
   # The two facts a requirement asks of an integration spec: where its verify
@@ -848,51 +809,6 @@ defmodule CodeMySpec.Files.Scanner do
     error = if module_name, do: nil, else: "`#{path}` has no defmodule"
 
     %{errors: %{has_defmodule: error}, data: %{module_name: module_name}}
-  end
-
-  defp validate_spec_content(entry, content, document_type, strict?) do
-    case Documents.create_dynamic_document(content, document_type, strict: strict?) do
-      {:ok, _document} ->
-        # Carries the component identity, so `ComponentSync` does not have to
-        # re-read the file to find it. Stored even for an otherwise clean spec
-        # because "valid" and "names a component" are different questions.
-        Map.merge(entry, %{valid: true, validation_errors: component_data(content)})
-
-      {:error, error} ->
-        Map.merge(entry, %{valid: false, validation_errors: %{"error" => to_string(error)}})
-    end
-  rescue
-    e ->
-      Map.merge(entry, %{valid: false, validation_errors: %{"error" => Exception.message(e)}})
-  end
-
-  # Extract document type from spec content's ## Type section.
-  # Maps component types to document types via the registry.
-  #
-  # CRLF → LF first: a Windows-written spec has `## Type\r`, and `^## Type$`
-  # won't match (the `\r` is before the line end), so the type silently
-  # resolves to the default "spec" definition and the wrong section set is
-  # enforced. Same class as the ComponentSync CRLF fix.
-  defp document_type_from_content(content) do
-    type_section =
-      content
-      |> String.replace("\r\n", "\n")
-      |> String.split("\n")
-      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
-      |> Enum.drop(1)
-      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-      |> List.first()
-
-    case type_section do
-      nil ->
-        "spec"
-
-      component_type ->
-        type_def = ComponentRegistry.get_type(component_type)
-        Map.get(type_def, :document_type, "spec")
-    end
   end
 
   @doc """

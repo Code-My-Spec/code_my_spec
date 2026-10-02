@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Components.Tools.AddDependency
-  alias CodeMySpec.McpServers.Components.Tools.FreezeComponents
   alias CodeMySpec.McpServers.Components.Tools.GetComponent
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
@@ -246,16 +245,6 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   defp qualify(app, "FeatureLive"), do: "#{app}Web.FeatureLive"
   defp qualify(app, name), do: "#{app}.#{name}"
-
-  @doc """
-  `freeze_components` for this project: a dry run unless `write: true`. Returns
-  the report text.
-  """
-  def freeze(context, opts \\ []) do
-    params = %{project_id: context.project.id, dry_run: not Keyword.get(opts, :write, false)}
-    {:reply, reply, _} = FreezeComponents.execute(params, frame(context))
-    reply |> ok!("freeze_components") |> response_text()
-  end
 
   # -- Reading ----------------------------------------------------------------
 

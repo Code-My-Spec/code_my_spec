@@ -5,7 +5,8 @@ defmodule CodeMySpecSpex.Story670.Criterion5582Spex do
 
   Surface: `start_task` MCP tool against the `implementation_file`
   requirement on a context Component. The prompt the agent receives
-  must be self-sufficient — naming the spec, test, and code paths
+  must be self-sufficient — naming the test and code paths and where
+  the component's design is read
   plus project and component anchors in a single block so the coding
   agent never has to ask where things live.
   """
@@ -59,8 +60,11 @@ defmodule CodeMySpecSpex.Story670.Criterion5582Spex do
         component = context.component
         project = context.project
 
-        assert prompt =~ ".code_my_spec/spec/example_context.spec.md",
-               "expected the spec file path in the prompt, got: #{prompt}"
+        assert prompt =~ "get_component",
+               "expected the prompt to say where the design is read, got: #{prompt}"
+
+        refute prompt =~ ".spec.md",
+               "components are records; a spec file describes nothing: #{prompt}"
 
         assert prompt =~ "lib/example_context.ex",
                "expected the target code file path in the prompt"

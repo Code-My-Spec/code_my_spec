@@ -31,7 +31,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           credo: analyzer_mode(),
           exunit: analyzer_mode(),
           spex: analyzer_mode(),
-          spec_validation: analyzer_mode(),
           qa_validation: analyzer_mode(),
           fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
@@ -58,7 +57,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # specs-ready stories while the mode is `:off`, and they are already
     # protected the moment the mode changes.
     field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
-    field :spec_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
 
     # Story 608 — minimum severity for the FixIssues loop. Accepted
@@ -107,7 +105,6 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :credo,
       :exunit,
       :spex,
-      :spec_validation,
       :qa_validation,
       :fix_issues_min_severity,
       :subagent_ttl_minutes,
