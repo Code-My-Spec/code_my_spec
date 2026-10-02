@@ -4,8 +4,8 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   reads it back off the surfaces they read.
 
   Components as records (3aeb66cf) means a graph arrives three ways: authored
-  through the tools (`create_component`, `add_dependency`), authored through a
-  proposal (`execute_proposal`), or derived from files by a sync. Each builder
+  through the tools (`design!/4`), authored through a proposal
+  (`execute_proposal`), or discovered from code by a sync. Each builder
   here drives the real surface and asserts its own success, so a refused setup
   fails where it was refused rather than somewhere downstream.
 
@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   alias CodeMySpec.McpServers.Components.Tools.UpdateComponent
   alias CodeMySpec.McpServers.Requirements.Tools.ShowRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
 
   @doc "The project's application module name, as the agent would write it."
@@ -53,8 +54,78 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   end
 
   @doc """
+  Authors `module` through `create_component`, then `add_dependency` to each of
+  `dependencies` (module names, already designed). How an architecture is
+  written now; returns the component. `opts` may set `:type` (default
+  `"context"`), `:description` and `:parent` (a module name).
+  """
+  def design!(context, module, dependencies \\ [], opts \\ []) do
+    component =
+      ComponentHelpers.create(
+        context.scope,
+        %{
+          name: module |> String.split(".") |> List.last(),
+          module_name: module,
+          type: Keyword.get(opts, :type, "context"),
+          description: Keyword.get(opts, :description, "#{module}, as designed.")
+        }
+        |> put_parent(context, Keyword.get(opts, :parent))
+      )
+
+    for dependency <- dependencies,
+        do: depend!(context, component, by_name!(context, dependency))
+
+    component
+  end
+
+  @doc """
+  Designs each `{module, type, dependencies}` not yet designed, under its
+  nearest existing ancestor by module name, writes its code, then adds every
+  listed dependency. A built project, as far as the graph can tell. A module
+  already designed keeps its record and gains the dependencies.
+  """
+  def design_coded!(context, components) do
+    for {module, type, _dependencies} <- components do
+      unless Fixtures.get_component_by_module_name(context.scope, module),
+        do:
+          design!(context, module, [],
+            type: to_string(type),
+            parent: nearest_ancestor(context, module)
+          )
+
+      implementation!(context, module)
+    end
+
+    for {module, _type, dependencies} <- components,
+        dependency <- dependencies,
+        do: depend!(context, by_name!(context, module), by_name!(context, dependency))
+
+    :ok
+  end
+
+  defp nearest_ancestor(context, module) do
+    parts = String.split(module, ".")
+
+    (length(parts) - 1)..1//-1
+    |> Enum.map(&Enum.join(Enum.take(parts, &1), "."))
+    |> Enum.find(&Fixtures.get_component_by_module_name(context.scope, &1))
+  end
+
+  defp put_parent(attrs, _context, nil), do: attrs
+
+  defp put_parent(attrs, context, parent),
+    do: Map.put(attrs, :parent_component_id, by_name!(context, parent).id)
+
+  defp by_name!(context, module) do
+    component = Fixtures.get_component_by_module_name(context.scope, module)
+    assert component, "#{module} has not been designed yet"
+    component
+  end
+
+  @doc """
   A spec file for `module`, declaring `dependencies` (module names). What an
-  agent writing specs by hand produces; a sync turns it into a component.
+  agent writing specs by hand produces. Specs describe nothing to a sync any
+  more (3aeb66cf, step 7c); this is for showing that they don't.
   `opts` may set the spec's `:type` and `:description`.
   """
   def spec!(context, module, dependencies \\ [], opts \\ []) do

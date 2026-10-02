@@ -45,7 +45,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3489Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A pass settles what it computed, including what it computed to nothing", criterion: 1407 do
+  spex "A pass settles what it computed, including what it computed to nothing",
+    criterion: 1407 do
     scenario "a component whose type has no requirements at all" do
       given_ :context_with_infrastructure_sibling
 

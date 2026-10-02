@@ -99,7 +99,10 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     # the only reason the instrument was checked rather than trusted.
     Repo.update_all(
       from(c in CodeMySpec.Components.Component, where: c.id == ^first.id),
-      set: [updated_at: ~U[2020-01-01 00:00:00.000000Z], synced_at: ~U[2020-01-01 00:00:00.000000Z]]
+      set: [
+        updated_at: ~U[2020-01-01 00:00:00.000000Z],
+        synced_at: ~U[2020-01-01 00:00:00.000000Z]
+      ]
     )
 
     {:ok, result} = ComponentSync.sync_from_files(scope)
@@ -122,45 +125,5 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
     and the defect are the same fact, which is why "1102 changed" looked
     plausible for so long.
     """
-  end
-
-  test "a real content change is still written", %{scope: scope} do
-    first = settled_component(scope)
-
-    # Backdated rather than slept through. `updated_at` is second-resolution,
-    # so two syncs in the same second leave it identical whether the second one
-    # wrote or not — which made this assertion fail against a write that had
-    # plainly happened, the description beside it having changed.
-    Repo.update_all(
-      from(c in CodeMySpec.Components.Component, where: c.id == ^first.id),
-      set: [updated_at: ~U[2020-01-01 00:00:00.000000Z], synced_at: ~U[2020-01-01 00:00:00.000000Z]]
-    )
-
-    Repo.update_all(
-      CodeMySpec.Files.File,
-      set: [
-        validation_errors: %{
-          "data" => %{
-            "module_name" => @module_name,
-            "type" => "context",
-            "description" => "Widgets, reconsidered",
-            "dependencies" => []
-          }
-        }
-      ]
-    )
-
-    {:ok, result} = ComponentSync.sync_from_files(scope)
-
-    again =
-      Components.list_components(scope) |> Enum.find(&(&1.module_name == @module_name))
-
-    assert again.description == "Widgets, reconsidered",
-           "skipping the write when content matches must not skip it when content differs"
-
-    assert DateTime.compare(again.updated_at, ~U[2020-01-01 00:00:00.000000Z]) == :gt,
-           "the backdated stamp must have moved forward, i.e. the row was written"
-
-    assert again.id in result.changed_component_ids
   end
 end

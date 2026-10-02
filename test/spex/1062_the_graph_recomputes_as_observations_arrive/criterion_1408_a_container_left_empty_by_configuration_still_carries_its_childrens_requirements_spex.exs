@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3490Spex do
 
       when_ "a second LiveView is written beneath it and the project is synced", context do
         context
-        |> write_component_specs([{"MyAppWeb.BookingLive.Show", :liveview, []}])
+        |> design_components([{"MyAppWeb.BookingLive.Show", :liveview, []}])
         |> sync()
 
         arrival =

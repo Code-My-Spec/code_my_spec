@@ -23,6 +23,7 @@ defmodule CodeMySpec.Notifications do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
@@ -589,7 +590,7 @@ defmodule CodeMySpec.Notifications do
         # thing the agent is answering. It records the prompt itself, so the
         # notice still appears in the transcript exactly once.
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          deliver_denial(scope, agent, copy_id, notice)
+          deliver_denial(scope, agent, copy_id, notice, {"blocker", request.id})
         end)
 
         :ok
@@ -606,13 +607,16 @@ defmodule CodeMySpec.Notifications do
   # An agent mid-turn, reserved, or holding a task is not admissible, and it
   # still has to be told — so that case falls back to the old shape rather than
   # dropping the notice.
-  defp deliver_denial(scope, agent, copy_id, notice) do
-    case Work.offer_turn_with(scope, agent, notice, :blocker_resolved) do
+  defp deliver_denial(scope, agent, copy_id, notice, subject) do
+    case Work.offer_turn_with(scope, agent, notice, :blocker_resolved, subject) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
       _not_admissible ->
-        Conversations.record_sent_to_agent(agent, notice)
+        agent
+        |> Conversations.record_sent_to_agent(notice)
+        |> Offers.record(agent, :unblocked, subject)
+
         Work.consider_copy(scope, copy_id, :tap_out_denied)
     end
   end
@@ -1181,7 +1185,11 @@ defmodule CodeMySpec.Notifications do
   defp deliver_answer_content(request, released?) do
     case Repo.get(Agent, request.agent_id) do
       %Agent{turn_started_at: %DateTime{}} = agent ->
-        _ = CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request), :question_answered)
+        _ =
+          CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request), :question_answered,
+            offer: {:answer, {"question", request.id}}
+          )
+
         :ok
 
       %Agent{} = agent when not released? ->
@@ -1190,7 +1198,8 @@ defmodule CodeMySpec.Notifications do
             owner_scope(agent),
             agent,
             answer_message(request),
-            :question_answered
+            :question_answered,
+            {"question", request.id}
           )
         end)
 

@@ -26,9 +26,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5871Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 4, implementation!: 2, sync!: 1]
+
   import CodeMySpecSpex.GraphGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.GraphAssertions
 
   @satisfied "#ff3838"
@@ -36,51 +37,22 @@ defmodule CodeMySpecSpex.Story70.Criterion5871Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Orphan in DB unsatisfies architecture_designed regardless of proposal.md", criterion: 34 do
+  spex "Orphan in DB unsatisfies architecture_designed regardless of proposal.md",
+    criterion: 34 do
     scenario "Orphan appears post-execution and architecture_designed becomes the next gate" do
       given_ :fully_satisfied_project
 
-      and_ "an orphan context is synced into the project DB",
+      and_ "an orphan context is designed, with its code",
            context do
         # Orphan must be context-shaped — `ArchitectureChecker.orphans/1`
         # only flags contexts (the architectural unit), not loose
         # modules/liveviews/etc.
-        :ok =
-          Environments.write_file(
-            context.environment,
-            ".code_my_spec/spec/my_orphan_context.spec.md",
-            """
-            # MyOrphanContext
+        design!(context, "MyOrphanContext", [],
+          description: "An orphan context with no story link and no dependency edge."
+        )
 
-            ## Type
-
-            context
-
-            An orphan context with no story link, no dependency edge, and not in infrastructure_paths.
-
-            ## Dependencies
-
-            - None
-            """
-          )
-
-        :ok =
-          Environments.write_file(
-            context.environment,
-            "lib/my_orphan_context.ex",
-            """
-            defmodule MyOrphanContext do
-              @moduledoc false
-            end
-            """
-          )
-
-        {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        sync_live
-        |> element("button[phx-click='sync']")
-        |> render_click()
+        implementation!(context, "MyOrphanContext")
+        sync!(context)
 
         {:ok, context}
       end

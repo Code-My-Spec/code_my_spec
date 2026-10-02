@@ -3,12 +3,10 @@ defmodule CodeMySpecSpex.GraphGivens do
   Shared given steps for the requirements graph stories
   (561, 562, 671).
 
-  Each given assembles a topology by writing well-formed spec files
-  into the in-memory environment and triggering the real sync
-  pipeline via the `/sync` LiveView. Sync derives parent/child
-  relationships from module nesting and dependencies from each
-  spec's `## Dependencies` section, so topology emerges from the
-  fixture content — no `CreateDependency` MCP calls needed.
+  Each given designs a topology through `create_component` and
+  `add_dependency` (components are records, 3aeb66cf), writes each
+  component's code, and syncs through the `/files` LiveView so the
+  code is linked to its component.
 
   Import alongside `CodeMySpecSpex.SharedGivens`:
 
@@ -108,10 +106,10 @@ defmodule CodeMySpecSpex.GraphGivens do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -119,7 +117,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: one context, three children --
 
   register_given :context_with_three_children, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Reservations", :context, []},
       {"Reservations.Booking", :schema, []},
       {"Reservations.BookingRepo", :repository, []},
@@ -149,7 +147,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # computed anything at all.
 
   register_given :context_with_infrastructure_sibling, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Reservations", :context, []},
       {"Plumbing", :infrastructure, []}
     ])
@@ -173,7 +171,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # these on this project.
 
   register_given :live_context_with_implementation_children, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Reservations", :context, []},
       {"MyAppWeb.BookingLive", :live_context, []},
       {"MyAppWeb.BookingLive.Index", :liveview, []}
@@ -197,9 +195,8 @@ defmodule CodeMySpecSpex.GraphGivens do
   # amount of reading the type table tells you which types are exempt. A sweep
   # is the only way to ask.
   #
-  # Flat top-level module names on purpose: sync derives parent/child from
-  # nesting, and a shared prefix would quietly make fifteen of these children of
-  # a sixteenth.
+  # Flat top-level module names on purpose: design parents by nesting, and a
+  # shared prefix would quietly make fifteen of these children of a sixteenth.
 
   @swept_types [
     :genserver,
@@ -223,7 +220,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   ]
 
   register_given :one_component_of_every_type, context do
-    write_specs(context.environment, Enum.map(@swept_types, &{swept_module(&1), &1, []}))
+    design_specs(context, Enum.map(@swept_types, &{swept_module(&1), &1, []}))
 
     sync_project(context)
 
@@ -239,9 +236,9 @@ defmodule CodeMySpecSpex.GraphGivens do
 
   defp swept_module(type), do: "Sweep#{Macro.camelize(Atom.to_string(type))}"
 
-  # Everything the sweep claims rests on sync honouring the `## Type` section.
-  # If it re-typed all eighteen to `module` the sweep would still be green and
-  # would be asserting one template eighteen times.
+  # Everything the sweep claims rests on each designed type sticking. If all
+  # eighteen stored as `module` the sweep would still be green and would be
+  # asserting one template eighteen times.
   defp assert_types_stuck(components) do
     mistyped =
       Enum.reject(components, fn {declared, component} ->
@@ -263,7 +260,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   register_given :context_with_three_children_in_satisfied_project, context do
     context = FullSatisfactionFixtures.apply(context)
 
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Reservations", :context, []},
       {"Reservations.Booking", :schema, []},
       {"Reservations.BookingRepo", :repository, []},
@@ -296,7 +293,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # still receive their parent-context-driven `:child`-scoped
   # requirement nodes in the projected graph.
   register_given :context_with_module_typed_children, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Skills", :context, []},
       {"Skills.MarketingStrategy", :module, []},
       {"Skills.Overview", :module, []}
@@ -319,7 +316,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: two independent siblings --
 
   register_given :two_independent_sibling_schemas, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Catalog", :context, []},
       {"Catalog.Product", :schema, []},
       {"Catalog.Category", :schema, []}
@@ -342,7 +339,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: three siblings, one depends on another --
 
   register_given :two_siblings_one_depends_on_other, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Catalog", :context, []},
       {"Catalog.Product", :schema, []},
       {"Catalog.Category", :schema, []},
@@ -367,7 +364,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: cross-context dependency --
 
   register_given :cross_context_dependency, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Users", :context, []},
       {"Users.Account", :schema, []},
       {"Stories", :context, ["Users"]},
@@ -407,7 +404,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: story → LiveView surface → context dep --
 
   register_given :story_with_liveview_surface, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"Marketing", :context, []},
       {"MarketingWeb.HomeLive", :liveview, ["Marketing"]}
     ])
@@ -441,7 +438,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Topology: four stories, four LiveView surfaces --
 
   register_given :project_with_four_stories, context do
-    write_specs(context.environment, [
+    design_specs(context, [
       {"AppOne", :context, []},
       {"AppOne.OneLive", :liveview, ["AppOne"]},
       {"AppTwo", :context, []},
@@ -474,14 +471,14 @@ defmodule CodeMySpecSpex.GraphGivens do
   # -- Helpers --
 
   @doc """
-  Write `{module_name, type, deps}` triples into this context's environment.
+  Design `{module_name, type, deps}` triples, with their code.
 
   Public because a `when_` sometimes needs a component to arrive *after* the
   topology is established — criterion 3490 turns on exactly that, since the
   question it asks can only be asked of a component the rows have never held.
   """
-  def write_component_specs(context, specs) do
-    write_specs(context.environment, specs)
+  def design_components(context, specs) do
+    design_specs(context, specs)
     context
   end
 
@@ -491,39 +488,7 @@ defmodule CodeMySpecSpex.GraphGivens do
     context
   end
 
-  # Write a list of {module_name, type, deps} tuples as spec + impl
-  # files into the environment. Each spec lives at the canonical path
-  # derived from the module name.
-  defp write_specs(env, specs) do
-    Enum.each(specs, fn {module_name, type, deps} ->
-      spec_content =
-        case type do
-          :context ->
-            Content.context_spec(module_name, type: "context", dependencies: deps)
-
-          :live_context ->
-            Content.context_spec(module_name, type: "live_context", dependencies: deps)
-
-          :liveview ->
-            Content.liveview_spec(module_name, dependencies: deps)
-
-          :liveview_component ->
-            Content.liveview_spec(module_name, type: "liveview_component", dependencies: deps)
-
-          atom when is_atom(atom) ->
-            Content.child_spec(module_name, type: Atom.to_string(atom), dependencies: deps)
-        end
-
-      :ok = Environments.write_file(env, Content.spec_path(module_name), spec_content)
-
-      :ok =
-        Environments.write_file(
-          env,
-          Content.impl_path(module_name),
-          Content.impl_file(module_name)
-        )
-    end)
-  end
+  defp design_specs(context, specs), do: ComponentGraphHelpers.design_coded!(context, specs)
 
   # Trigger sync via the real /sync LiveView surface.
   defp sync_project(context) do

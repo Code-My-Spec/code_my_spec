@@ -50,6 +50,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
+  alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -210,35 +211,18 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     context
   end
 
-  # 6. Component spec/impl topology
-  # Single context component, no children → simplest viable subgraph.
-  # Writes spec, impl, AND review files so review_file/review_valid
-  # parent reqs are satisfied. With no children, child-scoped reqs
-  # don't exist and parent's tests/test_file/etc. become vacuously
-  # ready (no incoming child edges) — but those still need files
-  # at the canonical paths.
+  # 6. Component topology
+  # Single context component, designed, with its code → simplest viable
+  # subgraph. With no children, child-scoped reqs don't exist.
   defp apply_component_subgraph(context) do
     env = context.environment
     module_name = "Reservations"
     module_path = module_name |> String.split(".") |> Enum.map_join("/", &Macro.underscore/1)
 
-    :ok =
-      Environments.write_file(
-        env,
-        Content.spec_path(module_name),
-        Content.context_spec(module_name, type: "context", dependencies: [])
-      )
+    ComponentGraphHelpers.design!(context, module_name)
 
     :ok =
       Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
-
-    # Review file — design_review document type, valid sections.
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/spec/#{module_path}/design_review.md",
-        design_review_content(module_name)
-      )
 
     # Test file at canonical path for the parent context — file_exists check.
     :ok =
@@ -304,32 +288,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   end
 
   # -- Inline content helpers --
-
-  defp design_review_content(module_name) do
-    """
-    # #{module_name} Design Review
-
-    ## Overview
-
-    Reviewed the #{module_name} context with no children. Sound
-    architecture for a placeholder bounded context.
-
-    ## Architecture
-
-    - Separation of concerns is appropriate for a single-component
-      context.
-    - No child components present yet; the context exposes a public
-      no-op function as a placeholder.
-
-    ## Integration
-
-    - The context has no integration points with other contexts.
-
-    ## Conclusion
-
-    Ready for implementation. No outstanding action items.
-    """
-  end
 
   defp test_file_content(module_name) do
     """

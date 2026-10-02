@@ -165,6 +165,9 @@ defmodule CodeMySpec.Agents.RoleBrief do
     ask it with `ask_user_question` and `about: "criteria"`. When a question of
     yours goes moot, take it back with `withdraw_question` and the reason; that
     releases the task it blocked.
+
+    If work you are offered or holding should not be done, `tap_out` of it with
+    the reason rather than refusing in prose.
     """,
     qa: """
     You are the QA agent on this project.

@@ -9,12 +9,12 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.ComponentGraphHelpers, only: [design_coded!: 2]
+
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphAssertions
-  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
   spex "Story kickoff resolves to the deepest dep in a chain", criterion: 219 do
     scenario "bdd_specs_exist's only outgoing edge is to the chain's root context" do
       given_ "a 3-level chain: surface S depends on A, A depends on B", context do
-        write_chain(context.environment, [
+        design_coded!(context, [
           {"BaseContext", :context, []},
           {"BaseContext.Item", :schema, []},
           {"MiddleContext", :context, ["BaseContext"]},
@@ -114,21 +114,6 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
     end
   end
 
-  defp write_chain(env, specs) do
-    Enum.each(specs, fn {module_name, type, deps} ->
-      content = spec_content_for(type, module_name, deps)
-
-      :ok = Environments.write_file(env, Content.spec_path(module_name), content)
-
-      :ok =
-        Environments.write_file(
-          env,
-          Content.impl_path(module_name),
-          Content.impl_file(module_name)
-        )
-    end)
-  end
-
   defp sync_project(context) do
     {:ok, sync_live, _html} =
       live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -136,16 +121,4 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok
   end
-
-  defp spec_content_for(:context, module_name, deps),
-    do: Content.context_spec(module_name, type: "context", dependencies: deps)
-
-  defp spec_content_for(:live_context, module_name, deps),
-    do: Content.context_spec(module_name, type: "live_context", dependencies: deps)
-
-  defp spec_content_for(:liveview, module_name, deps),
-    do: Content.liveview_spec(module_name, dependencies: deps)
-
-  defp spec_content_for(:schema, module_name, deps),
-    do: Content.child_spec(module_name, type: "schema", dependencies: deps)
 end
