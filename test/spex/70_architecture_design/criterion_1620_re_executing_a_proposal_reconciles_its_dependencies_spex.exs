@@ -16,19 +16,17 @@ defmodule CodeMySpecSpex.Story70.Criterion1620Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp story(context) do
-    StoryHelpers.create_story(context.scope,
-      title: "A feature",
-      description: "Needs a feature",
-      acceptance_criteria: ["It works"]
-    )
-  end
-
   spex "Re-executing a proposal with a changed dependency list adds the new dependencies and removes the dropped ones",
     criterion: 1620 do
     scenario "one dependency is swapped for another" do
       given_ "an executed proposal where Feature depends on Billing", context do
-        story = story(context)
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "A feature",
+            description: "Needs a feature",
+            acceptance_criteria: ["It works"]
+          )
+
         contexts = [{"Feature", []}, {"Billing", []}, {"Accounts", []}]
 
         base = [

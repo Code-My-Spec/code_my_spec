@@ -16,12 +16,9 @@ defmodule CodeMySpecSpex.Story682.Criterion1622Spex do
 
   spex "Creating a component writes no spec file", criterion: 1622 do
     scenario "the architect adds one component" do
-      given_ "no spec for it", context do
+      when_ "the architect creates a component that has no spec", context do
         refute spec_written?(context, "#{app(context)}.Notifications")
-        {:ok, context}
-      end
 
-      when_ "the architect creates it", context do
         CodeMySpecSpex.ComponentHelpers.create(context.scope,
           name: "Notifications",
           module_name: "#{app(context)}.Notifications",

@@ -16,19 +16,20 @@ defmodule CodeMySpecSpex.Story70.Criterion1621Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp story(context) do
-    StoryHelpers.create_story(context.scope,
-      title: "A feature",
-      description: "Needs a feature",
-      acceptance_criteria: ["It works"]
-    )
-  end
-
   spex "A component nested under a context in the proposal gets that context as its parent",
     criterion: 1621 do
     scenario "a schema under a context" do
       given_ "a story for the surface component to carry", context do
-        {:ok, Map.put(context, :story, story(context))}
+        {:ok,
+         Map.put(
+           context,
+           :story,
+           StoryHelpers.create_story(context.scope,
+             title: "A feature",
+             description: "Needs a feature",
+             acceptance_criteria: ["It works"]
+           )
+         )}
       end
 
       when_ "the architect executes a proposal nesting a schema under Feature", context do

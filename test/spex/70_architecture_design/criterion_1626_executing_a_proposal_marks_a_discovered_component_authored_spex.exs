@@ -16,14 +16,6 @@ defmodule CodeMySpecSpex.Story70.Criterion1626Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp story(context) do
-    StoryHelpers.create_story(context.scope,
-      title: "A feature",
-      description: "Needs a feature",
-      acceptance_criteria: ["It works"]
-    )
-  end
-
   spex "Executing a proposal marks a matching discovered component as authored",
     criterion: 1626 do
     scenario "code was written before the architecture named it" do
@@ -32,7 +24,17 @@ defmodule CodeMySpecSpex.Story70.Criterion1626Spex do
         sync!(context)
 
         refute component(context, "#{app(context)}.Feature")["provenance"] == "authored"
-        {:ok, Map.put(context, :story, story(context))}
+
+        {:ok,
+         Map.put(
+           context,
+           :story,
+           StoryHelpers.create_story(context.scope,
+             title: "A feature",
+             description: "Needs a feature",
+             acceptance_criteria: ["It works"]
+           )
+         )}
       end
 
       when_ "the architect executes a proposal naming it", context do

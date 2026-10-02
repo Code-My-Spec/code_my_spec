@@ -16,19 +16,20 @@ defmodule CodeMySpecSpex.Story70.Criterion1619Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  defp story(context) do
-    StoryHelpers.create_story(context.scope,
-      title: "A feature",
-      description: "Needs a feature",
-      acceptance_criteria: ["It works"]
-    )
-  end
-
   spex "Executing a proposal creates its components and their dependencies as records, with no spec file written",
     criterion: 1619 do
     scenario "a proposal with a surface component and two contexts" do
       given_ "a story for the surface component to carry", context do
-        {:ok, Map.put(context, :story, story(context))}
+        {:ok,
+         Map.put(
+           context,
+           :story,
+           StoryHelpers.create_story(context.scope,
+             title: "A feature",
+             description: "Needs a feature",
+             acceptance_criteria: ["It works"]
+           )
+         )}
       end
 
       when_ "the architect executes a proposal declaring them and their dependencies", context do

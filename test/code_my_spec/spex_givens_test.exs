@@ -220,7 +220,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # `StoryHelpers` and assigns it through the epic tools. A story-slice criterion
   # whose premise is "a story whose component has no implementation yet" has no
   # other way to say it.
+  # `ComponentHelpers.` and the `ComponentGraphHelpers` builders (`spec!`,
+  # `implementation!`, `sync!`, `execute_proposal!`, `depend!`) each drive a
+  # real surface — `create_component`, a file written through the
+  # environment, `sync_project`, `execute_proposal`, `add_dependency` — and
+  # assert their own success (3aeb66cf). Listed by the same precedent as
+  # `StoryHelpers.`: a helper whose body is the drive.
   @establishes ~w(
+    ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!(
     Slice.
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
