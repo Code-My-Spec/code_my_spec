@@ -25,7 +25,7 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     out
   end
 
-  defp a_promotable_project do
+  defp a_promotable_project(files \\ %{}) do
     running_root = CodeMySpec.TempFile.dir("reload-running")
     File.mkdir_p!(running_root)
     git!(running_root, ["init", "-q", "-b", "main"])
@@ -34,6 +34,9 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     File.mkdir_p!(Path.join(running_root, "config"))
     File.write!(Path.join(running_root, "app.ex"), "defmodule App do\nend\n")
     File.write!(Path.join(running_root, "config/config.exs"), "import Config\n")
+
+    Enum.each(files, fn {path, content} -> File.write!(Path.join(running_root, path), content) end)
+
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
 
@@ -79,7 +82,7 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
 
   defp promote_a_change(path, opts) do
     scope = full_scope_fixture()
-    {running_root, agent_root} = a_promotable_project()
+    {running_root, agent_root} = a_promotable_project(Keyword.get(opts, :files, %{}))
 
     {:ok, running} =
       WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
@@ -97,7 +100,14 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
 
-    Promotion.promote(scope, nil, Keyword.get(opts, :promote, []))
+    result = Promotion.promote(scope, nil, Keyword.get(opts, :promote, []))
+    send(self(), {:running_root, running_root})
+    result
+  end
+
+  defp bump_commit_files do
+    assert_received {:running_root, root}
+    {root, root |> git!(["show", "--name-only", "--format=", "HEAD"]) |> String.split()}
   end
 
   @serving {:ok, %{status: "serving", url: "http://127.0.0.1:4000", commit: "launch0"}}
@@ -119,6 +129,24 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
 
     assert_receive {:app_verb, :reload_app}, 2_000
     refute_receive {:app_verb, :restart_app}, 200
+  end
+
+  describe "the version bump every promote commits" do
+    test "in mix.exs is not itself a reason to restart" do
+      result =
+        promote_a_change("app.ex",
+          files: %{
+            "mix.exs" =>
+              ~s(defmodule App.MixProject do\n  def project, do: [version: "0.1.0"]\nend\n)
+          },
+          replies: %{reload_app: @reloaded, restart_app: @serving}
+        )
+
+      assert {:ok, %{version: "0.1.1", deployment: %{action: :reload}}} = result
+      {_root, files} = bump_commit_files()
+      assert files == ["mix.exs"]
+      assert_receive {:app_verb, :reload_app}, 2_000
+    end
   end
 
   test "a change to config restarts, and says which path made it" do
