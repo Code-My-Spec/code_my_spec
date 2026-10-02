@@ -15,6 +15,7 @@ defmodule CodeMySpec.Components.Dependency do
           target_component_id: Ecto.UUID.t(),
           source_component: Component.t() | Ecto.Association.NotLoaded.t(),
           target_component: Component.t() | Ecto.Association.NotLoaded.t(),
+          in_code: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -27,6 +28,12 @@ defmodule CodeMySpec.Components.Dependency do
     # `## Dependencies` never removes an authored edge (3aeb66cf).
     field :provenance, Ecto.Enum, values: [:authored, :discovered]
 
+    # Whether live code currently names this edge (an `alias` crossing
+    # contexts). Independent of `provenance`: the unique constraint on the
+    # pair means one row per edge, so a planned-and-coded edge is
+    # `provenance: :authored, in_code: true` rather than two rows.
+    field :in_code, :boolean, default: false
+
     timestamps(type: :utc_datetime)
   end
 
@@ -35,7 +42,7 @@ defmodule CodeMySpec.Components.Dependency do
   """
   def changeset(dependency, attrs) do
     dependency
-    |> cast(attrs, [:source_component_id, :target_component_id, :provenance])
+    |> cast(attrs, [:source_component_id, :target_component_id, :provenance, :in_code])
     |> validate_required([:source_component_id, :target_component_id])
     |> validate_no_self_dependency()
     |> unique_constraint([:source_component_id, :target_component_id])

@@ -7,6 +7,7 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
   """
 
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Components.Dependency
 
   @doc """
   Generates a comprehensive markdown overview of all components organized by their parent contexts.
@@ -203,12 +204,32 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
   defp has_dependencies?(%Component{dependencies: [_ | _]}), do: true
   defp has_dependencies?(_), do: false
 
-  defp format_dependencies(%Component{dependencies: dependencies}) do
+  defp format_dependencies(%Component{dependencies: dependencies} = component) do
     dependency_list =
-      Enum.map_join(dependencies, "\n", fn dep -> "- #{dep.module_name}" end)
+      Enum.map_join(dependencies, "\n", fn dep ->
+        "- #{dep.module_name}#{dependency_marker(component, dep.id)}"
+      end)
 
     "\nDependencies:\n#{dependency_list}\n"
   end
+
+  # The edge's own row carries whether it is planned, found in code, or both
+  # — `dependencies` (through `outgoing_dependencies`) is just the target
+  # components, with that travelling alongside on `outgoing_dependencies`
+  # itself. A plain `%Component{}` built by hand (every fixture in
+  # `OverviewProjectorTest`) never loads that association, so it falls to the
+  # second clause and renders exactly as it did before this marker existed.
+  defp dependency_marker(%Component{outgoing_dependencies: outgoing}, target_id)
+       when is_list(outgoing) do
+    case Enum.find(outgoing, &(&1.target_component_id == target_id)) do
+      %Dependency{provenance: :authored, in_code: true} -> " (planned, in code)"
+      %Dependency{provenance: :authored} -> " (planned)"
+      %Dependency{in_code: true} -> " (in code)"
+      _ -> ""
+    end
+  end
+
+  defp dependency_marker(_component, _target_id), do: ""
 
   defp sort_components(components) do
     Enum.sort_by(components, & &1.name)
