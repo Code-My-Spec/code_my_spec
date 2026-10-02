@@ -168,9 +168,9 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   file with no embeddings at all.
   """
   @impl true
-  def store_chunk(project_id, source, path, index, chunk, hash, file_hash) do
+  def store_chunk(project_id, source, path, index, chunk, _hash, file_hash) do
     with {:ok, embedding} <- Serving.embed(chunk, :bulk) do
-      store_embedded_chunk(project_id, source, path, index, chunk, hash, file_hash, embedding)
+      store_embedded_chunk(project_id, source, path, index, chunk, file_hash, embedding)
     end
   end
 
@@ -184,7 +184,10 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
 
   Identical to `store_chunk/7` past the embedding step, deliberately: one INSERT
   and one conflict target for both paths, so a row written by a harness and a
-  row written locally cannot differ in shape.
+  row written locally cannot differ in shape. No separate `hash` parameter —
+  it is a pure function of `chunk`, and threading it through as its own
+  argument was one parameter past credo's arity limit for nothing a caller
+  could not already recompute.
   """
   @spec store_embedded_chunk(
           String.t() | nil,
@@ -193,26 +196,49 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
           integer(),
           String.t(),
           String.t(),
-          String.t(),
-          [float()]
+          [float()],
+          keyword()
         ) :: :ok | {:error, term()}
-  def store_embedded_chunk(project_id, source, path, index, chunk, hash, file_hash, embedding) do
+  def store_embedded_chunk(
+        project_id,
+        source,
+        path,
+        index,
+        chunk,
+        file_hash,
+        embedding,
+        opts \\ []
+      ) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    hash = EmbeddingService.content_hash(chunk)
+    package = Keyword.get(opts, :package)
+    version = Keyword.get(opts, :version)
+    model = Keyword.get(opts, :model)
 
-    # The conflict target must match whichever partial unique index applies,
-    # so shared rows (project_id IS NULL) name their own.
+    # The conflict target must match whichever partial unique index applies.
+    # A hex-doc chunk (package/version/model set) identifies its row by that
+    # triple plus path/chunk_index — the step 3 index added precisely so two
+    # versions of one package can coexist, which `(source, path, chunk_index)`
+    # alone cannot tell apart. Every other shared row (framework knowledge)
+    # keeps the original target.
     conflict =
-      if is_nil(project_id) do
-        "(source, path, chunk_index) WHERE project_id IS NULL"
-      else
-        "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
+      cond do
+        is_nil(project_id) and not is_nil(package) ->
+          "(package, version, model, path, chunk_index) WHERE project_id IS NULL"
+
+        is_nil(project_id) ->
+          "(source, path, chunk_index) WHERE project_id IS NULL"
+
+        true ->
+          "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
       end
 
     sql = """
     INSERT INTO doc_embeddings
       (id, project_id, source, path, chunk_index, content, content_hash, file_hash,
-       embedding, inserted_at, updated_at)
-    VALUES ($1::text::uuid, $2::text::uuid, $3, $4, $5, $6, $7, $8, $9::text::vector, $10, $11)
+       embedding, package, version, model, inserted_at, updated_at)
+    VALUES ($1::text::uuid, $2::text::uuid, $3, $4, $5, $6, $7, $8, $9::text::vector,
+            $10, $11, $12, $13, $14)
     ON CONFLICT #{conflict} DO UPDATE SET
       content = excluded.content,
       content_hash = excluded.content_hash,
@@ -231,6 +257,9 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
       hash,
       file_hash,
       encode_vector(embedding),
+      package,
+      version,
+      model,
       now,
       now
     ]

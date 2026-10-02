@@ -207,7 +207,13 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   # -- Chunking --
 
-  defp chunk_text(text) do
+  @doc """
+  Split text into overlapping chunks, same sizing every embedded source
+  uses. Public so the hex-doc reconciler (step 3) chunks hex-package
+  markdown identically rather than inventing its own sizing.
+  """
+  @spec chunk_text(String.t()) :: [String.t()]
+  def chunk_text(text) do
     text
     |> String.split("\n")
     |> chunk_lines([], [], 0)
@@ -269,7 +275,9 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   # -- Deduplication --
 
-  defp content_hash(text) do
+  @doc "sha256 hex digest, the content-hash every embedded chunk is keyed on."
+  @spec content_hash(String.t()) :: String.t()
+  def content_hash(text) do
     :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
   end
 
