@@ -264,16 +264,10 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
-  # Components in the shape the coverage rule reads them.
-  #
-  # `architecture_designed` used to issue this itself, on every drain that
-  # touched files or stories — every component plus two preloads, which is the
-  # query that made a bulk story update look like a whole-project recompute.
-  # A checker that queries for itself is the thing profiles exist to replace;
-  # this one was left behind because it is a rollup and the table said it read
-  # nothing.
+  # Whether the architecture was authored through the tools — half of
+  # `architecture_designed`'s "a plan exists".
   def load(%Scope{} = scope, :architecture) do
-    %{components: Components.list_components_for_coverage(scope)}
+    %{authored?: Components.any_authored?(scope)}
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same

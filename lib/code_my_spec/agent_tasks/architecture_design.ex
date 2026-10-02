@@ -10,7 +10,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Requirements.ArchitectureChecker
 
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
@@ -20,9 +19,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       "via the architecture MCP tools (analyze_stories, create_component, " <>
       "validate_dependency_graph, set_story_component, execute_proposal). " <>
       "Runs in initial or revision mode depending on whether proposal.md " <>
-      "exists. Use when stories have linked criteria but no components, or " <>
-      "when the proposal exists but unsatisfied stories / orphan contexts " <>
-      "remain."
+      "exists. Use when the project has no architecture yet, or when a story " <>
+      "needs a component."
   end
 
   @doc """
@@ -41,7 +39,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     working_dir = scope.environment && scope.environment.cwd
 
     stories = Stories.list_unsatisfied_stories(scope)
-    orphans = ArchitectureChecker.orphans(scope)
     component_count = Components.count_components(scope)
 
     # The caller's environment or none. Inventing one at this server's
@@ -61,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       end
 
     prompt =
-      build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?)
+      build_prompt(project, stories, component_count, output_dir, proposal_exists?)
 
     {:ok, prompt}
   end
@@ -169,7 +166,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # branch that rewrites the proposal end-to-end. Refuse before the guess.
   def evaluate(%{environment: nil}, _task), do: {:error, :no_environment}
 
-  def evaluate(scope, _task) do
+  def evaluate(scope, task) do
     env = scope.environment
 
     # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
@@ -179,27 +176,24 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     # any DB-side fix. The marker survives until the next `start_task`,
     # which re-records based on proposal existence.
     if patch_mode?(env) do
-      evaluate_patch_mode(scope)
+      evaluate_patch_mode(scope, task)
     else
       evaluate_initial_mode(scope, env)
     end
   end
 
-  # Patch mode: proposal pre-existed at session start. The architect used the
-  # incremental tools (`create_component`, `set_story_component`) — or chose
-  # not to do anything — without rewriting the proposal end-to-end. Skip
-  # auto-execution of the (now potentially stale) proposal and verify the
-  # gate directly: every project story has a linked component.
-  # The same two conditions the `architecture_designed` requirement checks. This
-  # used to check only unlinked stories, so a task passed while an orphan kept
-  # the requirement unmet and every role was offered it again.
-  defp evaluate_patch_mode(scope) do
-    case {unlinked_story_numbers(scope), ArchitectureChecker.orphans(scope)} do
-      {[], []} -> {:ok, :valid}
-      {[], orphans} -> {:ok, :invalid, format_orphans_section(orphans)}
-      {ids, _orphans} -> {:ok, :invalid, unlinked_stories_feedback(ids)}
+  # Patch mode: an architecture already exists and the architect used the
+  # incremental tools without rewriting the proposal. A task for one story's
+  # `component_linked` is done when that story has a component; other stories
+  # are their own tasks, and orphans are not a gate (John, 2026-10-02).
+  defp evaluate_patch_mode(scope, %{story_id: story_id}) when not is_nil(story_id) do
+    case Stories.get_story(scope, story_id) do
+      %{component_id: nil} = story -> {:ok, :invalid, unlinked_story_feedback(story)}
+      _linked_or_gone -> {:ok, :valid}
     end
   end
+
+  defp evaluate_patch_mode(_scope, _task), do: {:ok, :valid}
 
   @doc """
   Forces a full read-validate-execute cycle on the proposal regardless of
@@ -255,25 +249,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     end
   end
 
-  defp unlinked_story_numbers(scope) do
-    case Stories.list_project_stories(scope) do
-      {:ok, stories} ->
-        stories
-        |> Enum.reject(&(&1.component_id != nil))
-        |> Enum.map(& &1.number)
-
-      {:error, _} ->
-        []
-    end
-  end
-
-  defp unlinked_stories_feedback(numbers) do
+  defp unlinked_story_feedback(story) do
     """
-    Some stories are not linked to a component:
+    Story #{story.number} is not linked to a component.
 
-    #{Enum.map_join(numbers, "\n", &"- Story #{&1}")}
-
-    Use `set_story_component` to link each story, or rewrite #{@proposal_path} and call `execute_proposal` to apply a fresh design.
+    Use `set_story_component` to link it, or `create_component` and then link that.
     """
   end
 
@@ -379,9 +359,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   # Private functions
 
-  defp build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?) do
-    stories_section = format_stories(stories, orphans)
-    orphans_section = format_orphans_section(orphans)
+  defp build_prompt(project, stories, component_count, output_dir, proposal_exists?) do
+    stories_section = format_stories(stories)
     app_name = get_app_name(project)
 
     architecture_section =
@@ -418,9 +397,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     Mutate the architecture via the architecture MCP tools wherever
     possible: `analyze_stories`, `create_component`, `update_component`,
-    `validate_dependency_graph`, `set_story_component`, `execute_proposal`.
-    Direct file edits are reserved for the spec `## Dependencies` section,
-    which ComponentSync re-derives.
+    `validate_dependency_graph`, `set_story_component`, `add_dependency`,
+    `remove_dependency`, `execute_proposal`.
 
     ## Project
 
@@ -428,7 +406,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     **App Module:** #{app_name}
     **Description:** #{project.description || "No description provided"}
 
-    #{architecture_section}#{orphans_section}## User Stories
+    #{architecture_section}## User Stories
 
     #{stories_section}
 
@@ -438,8 +416,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     Read `architecture_design/workflow.md` via the `read_knowledge` MCP
     tool — full procedure for both modes, complete MCP tool reference,
-    dependency-edge conventions, orphan resolution options, and
-    anti-patterns to avoid.
+    dependency-edge conventions and anti-patterns to avoid.
     """
   end
 
@@ -482,8 +459,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     ## Mode — revision
 
     `#{@proposal_path}` already exists. Apply targeted edits via the
-    architecture MCP tools to satisfy unsatisfied stories and resolve the
-    architectural issues listed above. **Do not rewrite the proposal
+    architecture MCP tools to give unlinked stories a component. **Do not
+    rewrite the proposal
     end-to-end** unless the changes are too sweeping for incremental tools.
 
     Every unlinked story above gets a component this session: link it with
@@ -505,8 +482,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     ### Dependencies are records
 
-    To add an edge from a story-linked context to an orphan context, call
-    `add_dependency` from the story-linked context to the orphan. No file
+    To make one component depend on another, call `add_dependency`. No file
     describes a component; editing a spec changes nothing.
 
     ### Naming conventions for new components
@@ -520,24 +496,20 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     Only if the design needs a fresh pass: rewrite `#{@proposal_path}` to
     the `architecture_proposal` format and call `execute_proposal` to apply
     it. **The evaluator does NOT auto-execute in revision mode** — it only
-    verifies every story is linked.
+    verifies the story is linked.
 
     ### Stop
 
-    Stop when your edits are complete. The evaluator checks that every
-    story has a linked component AND no orphan contexts remain.
+    Stop when your edits are complete. The evaluator checks that the story
+    this task is for has a linked component.
     """
   end
 
-  defp format_stories([], []) do
+  defp format_stories([]) do
     "All user stories are currently satisfied by the architecture."
   end
 
-  defp format_stories([], _orphans) do
-    "Every user story is linked to a component, but the architecture is not done — see **Architectural Issues** above."
-  end
-
-  defp format_stories(stories, _orphans) do
+  defp format_stories(stories) do
     stories
     |> Enum.map_join("\n\n", fn story ->
       acceptance_criteria =
@@ -558,30 +530,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       """
       |> String.trim()
     end)
-  end
-
-  defp format_orphans_section([]), do: ""
-
-  defp format_orphans_section(orphans) do
-    bullets =
-      Enum.map_join(orphans, "\n", fn c ->
-        "- `#{c.module_name}` (type: `#{c.type || "module"}`)"
-      end)
-
-    """
-    ## Architectural Issues
-
-    The project DB has #{length(orphans)} orphan context(s) — contexts that are not linked to a story, not transitively depended on by a story-linked context, and not classified as infrastructure. The architecture is not done until each one is resolved:
-
-    #{bullets}
-
-    For each orphan context, choose one resolution:
-    - Link a story directly to the context using `set_story_component`
-    - Add a dependency edge to it from a story-linked context using `add_dependency`
-    - Classify it as framework boilerplate using `update_component` with type `infrastructure`; the orphan rule skips infrastructure
-    - Remove the component using `delete_component`
-
-    """
   end
 
   defp criteria_descriptions(story) do

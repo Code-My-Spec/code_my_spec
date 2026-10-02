@@ -202,11 +202,8 @@ defmodule CodeMySpec.Requirements.Handlers do
   #
   # Usually the two are the same list, which is the bare-list shape. They come
   # apart for the rollups in `@delegate_requirements`, written
-  # `{moved_by, reads}`: `architecture_designed` is moved by files *and* by
-  # stories — it expands a dependency graph and reports released stories with no
-  # component — while its clause calls `ArchitectureChecker`, which queries for
-  # itself and reads no profile at all. Collapsing the two would put the 120ms
-  # file read on every story update to hand a checker data it ignores.
+  # `{moved_by, reads}`, for a rollup moved by more than it reads — see
+  # `personas_complete`.
   @requirement_profiles %{
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
@@ -241,17 +238,16 @@ defmodule CodeMySpec.Requirements.Handlers do
     # settled nothing here, and the story-560 criteria read "personas_complete
     # is still the blocking requirement" after every artifact existed.
     "personas_complete" => {[:files, :personas], [:personas]},
-    # Reads all three now. It used to read nothing and query for itself —
-    # four fresh reads per drain, one of them every component with two
-    # preloads.
-    "architecture_designed" => [:files, :stories, :architecture],
+    # Files for proposal.md, components for whether any is authored. Stories
+    # no longer move it: linking is per story (`component_linked`).
+    "architecture_designed" => [:files, :architecture],
     "stories_exist" => [:stories],
     "work_dispatched" => [:stories]
   }
 
   # Requirements whose verdict is a rollup no event determines.
   #
-  # `architecture_designed` expands a dependency graph to find orphan contexts;
+  # `architecture_designed` asks whether a plan exists;
   # `personas_complete` checks two artifacts per persona; `spex_boundary_ready`
   # asks five questions about four directories; `qa_integration_plan` validates
   # an index against the specs it names. None of those is a value an event
@@ -844,8 +840,7 @@ defmodule CodeMySpec.Requirements.Handlers do
       {ArchitectureChecker, :complete?} ->
         ArchitectureChecker.complete?(scope, scope.active_project, %{
           files: profiles.files,
-          stories: profiles.stories.stories,
-          components: profiles.architecture.components
+          authored?: profiles.architecture.authored?
         })
 
       {module, function} ->
