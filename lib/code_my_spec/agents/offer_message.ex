@@ -10,7 +10,7 @@ defmodule CodeMySpec.Agents.OfferMessage do
   @foreign_key_type :binary_id
   schema "offer_messages" do
     belongs_to :offer, CodeMySpec.Agents.Offer
-    field :message_id, Ecto.UUID
+    belongs_to :message, CodeMySpec.Conversations.Message
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end

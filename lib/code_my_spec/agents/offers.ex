@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.Offers do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
+  alias CodeMySpec.Users.Scope
 
   # Bump a kind's version when its prompt text changes, so claim rates can be
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
@@ -97,6 +98,60 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   def undelivered(_offer), do: :ok
+
+  @default_limit 50
+
+  @doc """
+  This project's offers, newest first, with their agent and linked messages.
+
+  Filters, all optional: `:agent_id`, `:kind`, `:status`, `:since` (a
+  `DateTime`, on `inserted_at`), and `:limit` (default #{@default_limit}).
+  """
+  @spec list(Scope.t(), keyword()) :: [Offer.t()]
+  def list(%Scope{} = scope, filters \\ []) do
+    scope
+    |> filtered(filters)
+    |> order_by([o], desc: o.inserted_at, desc: o.id)
+    |> limit(^Keyword.get(filters, :limit, @default_limit))
+    |> preload([:agent, messages: :message])
+    |> Repo.all()
+  end
+
+  @doc "How many offers match `filters` (ignoring `:limit`), by `{kind, status}`."
+  @spec count_by_kind_and_status(Scope.t(), keyword()) :: %{
+          {Offer.kind(), Offer.status()} => pos_integer()
+        }
+  def count_by_kind_and_status(%Scope{} = scope, filters \\ []) do
+    scope
+    |> filtered(filters)
+    |> group_by([o], [o.kind, o.status])
+    |> select([o], {{o.kind, o.status}, count(o.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp filtered(scope, filters) do
+    Enum.reduce(
+      filters,
+      where(
+        Offer,
+        [o],
+        o.account_id == ^scope.active_account_id and o.project_id == ^scope.active_project_id
+      ),
+      &filter/2
+    )
+  end
+
+  defp filter({:agent_id, id}, query) when is_binary(id), do: where(query, [o], o.agent_id == ^id)
+
+  defp filter({:kind, kind}, query) when is_atom(kind) and not is_nil(kind),
+    do: where(query, [o], o.kind == ^kind)
+
+  defp filter({:status, status}, query) when is_atom(status) and not is_nil(status),
+    do: where(query, [o], o.status == ^status)
+
+  defp filter({:since, %DateTime{} = at}, query), do: where(query, [o], o.inserted_at >= ^at)
+  defp filter(_other, query), do: query
 
   @doc "This agent's offers, oldest first, with their message links."
   @spec list_for_agent(Ecto.UUID.t()) :: [Offer.t()]

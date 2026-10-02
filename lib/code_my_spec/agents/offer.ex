@@ -34,7 +34,7 @@ defmodule CodeMySpec.Agents.Offer do
   schema "offers" do
     field :account_id, Ecto.UUID
     field :project_id, Ecto.UUID
-    field :agent_id, Ecto.UUID
+    belongs_to :agent, CodeMySpec.Agents.Agent
     field :working_copy_id, Ecto.UUID
     field :kind, Ecto.Enum, values: @kinds
     field :subject_type, :string
