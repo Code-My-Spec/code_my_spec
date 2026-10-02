@@ -234,6 +234,50 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            """
   end
 
+  # Claimed and then cancelled inside the turn: `complete_task(:cancelled)`
+  # stamps `completed_at` like a real close, which is what made it read as work.
+  defp ended_turn_having_cancelled_a_claim(scope, agent) do
+    started = DateTime.add(DateTime.utc_now(), -30, :second)
+
+    task = %CodeMySpec.Sessions.Task{
+      id: Ecto.UUID.generate(),
+      status: :cancelled,
+      requirement_name: "bdd_specs_passing",
+      started_at: started,
+      completed_at: DateTime.utc_now()
+    }
+
+    {:ok, agent} =
+      AgentsRepository.update_agent(scope, agent, %{
+        turn_started_at: nil,
+        work_request_id: nil,
+        work_requested_at: nil
+      })
+
+    {:ok, agent} =
+      Work.record_decline(scope, %{agent | tasks: [task | agent.tasks || []]}, started)
+
+    agent
+  end
+
+  test "claiming and cancelling the offer is declining it", ctx do
+    cancelled =
+      Enum.reduce(1..5, ctx.agent, fn _, acc ->
+        ended_turn_having_cancelled_a_claim(ctx.scope, reload(ctx.scope, acc))
+      end)
+
+    refute admitted?(ctx.scope, reload(ctx.scope, cancelled)),
+           """
+           An agent that claimed and cancelled the same work five times was
+           offered it again.
+
+           A cancelled task carries `completed_at`, so the turn read as having
+           closed a task and every cancel cleared the damper: metric_flow QA
+           claimed and cancelled `qa_journey_wallaby` and was handed it straight
+           back (7169d3cf).
+           """
+  end
+
   test "work that changed since the refusal wakes it immediately", ctx do
     declined = refused_repeatedly(ctx.scope, ctx.agent, 5)
 

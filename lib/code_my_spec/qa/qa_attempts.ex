@@ -13,7 +13,9 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -55,7 +57,6 @@ defmodule CodeMySpec.Qa.QaAttempts do
           # attributed; see `Issues.attribute_to_story/3`.
           Issues.attribute_to_story(scope, attempt.issue_ids || [], story_id)
           wait_on_filed_issues(scope, attempt, agent_id)
-          attempt
         else
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -87,20 +88,42 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # The obvious alternative does not exist: `qa_complete` (id 4) cannot take
   # `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
   # on 4 and the graph would cycle.
-  defp wait_on_filed_issues(_scope, %{status: :pass}, _agent_id), do: :ok
+  #
+  # Only on an open issue at or above the project's `fix_issues_min_severity`.
+  # Nothing offers a fix below it (`story_issues_resolved` counts only what is
+  # at it), so a block there never releases: QA e62dbe27 parked stories 36 and
+  # 42 on two lows and the copy stopped. Such an issue stays recorded; the task
+  # stays active and the attempt's `wait` says why, for the tool to tell QA.
+  defp wait_on_filed_issues(_scope, %{status: :pass} = attempt, _agent_id), do: attempt
 
-  defp wait_on_filed_issues(scope, %{issue_ids: [issue_id | _], task_id: task_id}, agent_id)
-       when is_binary(issue_id) and is_binary(task_id) and is_binary(agent_id) do
-    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
-      TaskOwner.block_task(scope, agent, task_id, :issue, issue_id,
-        reason: "waiting on issue #{issue_id}"
-      )
+  defp wait_on_filed_issues(
+         scope,
+         %{issue_ids: [_ | _] = ids, task_id: task_id} = attempt,
+         agent_id
+       )
+       when is_binary(task_id) and is_binary(agent_id) do
+    threshold = Configurations.fix_issues_min_severity(scope)
+    issues = ids |> Enum.map(&Issues.get_issue(scope, &1)) |> Enum.reject(&is_nil/1)
+
+    case Enum.find(issues, &Issue.blocking?(&1, threshold)) do
+      nil -> %{attempt | wait: {:not_blocking, threshold, issues}}
+      issue -> %{attempt | wait: block_on(scope, attempt, agent_id, issue)}
     end
-
-    :ok
   end
 
-  defp wait_on_filed_issues(_scope, _attempt, _agent_id), do: :ok
+  defp wait_on_filed_issues(_scope, attempt, _agent_id), do: attempt
+
+  defp block_on(scope, attempt, agent_id, issue) do
+    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+         {:ok, _} <-
+           TaskOwner.block_task(scope, agent, attempt.task_id, :issue, issue.id,
+             reason: "waiting on issue #{issue.id}"
+           ) do
+      {:issue, issue.id}
+    else
+      _ -> nil
+    end
+  end
 
   # A submitted attempt is what `qa_complete` is computed from, so the graph
   # moved — and a pass is the case that matters most, because it unblocks

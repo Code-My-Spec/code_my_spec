@@ -180,10 +180,29 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       #{issue_line}
       #{tools_used_line(attempt.tools_used)}
 
-      #{satisfaction_note(attempt.status)}#{evidence_note(story_number, evidence)}
+      #{satisfaction_note(attempt.status)}#{wait_note(attempt.wait)}#{evidence_note(story_number, evidence)}
       """
     )
   end
+
+  defp wait_note({:issue, id}),
+    do: "\n\nYour task is blocked on issue #{id}; resolving it hands the story back to you."
+
+  # Refused, not silent: a block below the fix threshold never releases.
+  defp wait_note({:not_blocking, threshold, issues}) do
+    named =
+      case issues do
+        [] -> "none of the ids name an issue in this project"
+        _ -> Enum.map_join(issues, ", ", &"#{&1.id} (#{&1.severity}, #{&1.status})")
+      end
+
+    "\n\nNot blocked: no named issue is open at or above the project's fix threshold " <>
+      "(#{threshold}), so none will be fixed before QA. Recorded: #{named}. " <>
+      "Your task stays active — finish the attempt: resubmit `pass` if nothing at " <>
+      "#{threshold}+ is wrong, or file that finding and resubmit `fail` with it."
+  end
+
+  defp wait_note(_), do: ""
 
   defp tools_used_line(nil), do: "tools_used: (not reported)"
   defp tools_used_line([]), do: "tools_used: (none — reported explicitly)"

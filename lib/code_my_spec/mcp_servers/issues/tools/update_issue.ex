@@ -39,10 +39,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.McpServers.Issues.IssuesMapper
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.TaskOwner
 
   schema do
     field :issue_id, :string, required: true, doc: "Issue ID to update"
@@ -80,6 +83,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          attrs = maybe_append(attrs, issue, params[:append]),
          {:ok, updated} <- Issues.update_issue(scope, issue, attrs) do
+      release_if_downgraded(scope, issue, updated)
       {:reply, IssuesMapper.issue_updated_response(updated, "updated"), frame}
     else
       :empty ->
@@ -98,6 +102,15 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
       {:error, reason} ->
         {:reply, IssuesMapper.error(reason), frame}
     end
+  end
+
+  # A task blocked on this issue waits for a fix; below the fix threshold none
+  # is ever offered, so a downgrade past it would wedge the waiter.
+  defp release_if_downgraded(scope, before, updated) do
+    threshold = Configurations.fix_issues_min_severity(scope)
+
+    if Issue.blocking?(before, threshold) and not Issue.blocking?(updated, threshold),
+      do: TaskOwner.issue_below_threshold(updated.id, threshold)
   end
 
   # Refusing an unrecognised value rather than dropping it.

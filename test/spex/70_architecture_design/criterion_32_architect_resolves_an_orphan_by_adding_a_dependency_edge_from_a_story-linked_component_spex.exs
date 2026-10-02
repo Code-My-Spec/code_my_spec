@@ -13,7 +13,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
   """
 
   use CodeMySpecSpex.Case
+
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -135,12 +137,19 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
         {:ok, context}
       end
 
-      then_ "execution creates a spec stub for the transitively-linked dependency", context do
+      then_ "execution records the transitively-linked dependency", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.SharedKit"))
 
-        assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
-               "expected spec stub at #{spec_path} for transitively-linked SharedKit"
+        {:reply, listed, _frame} =
+          ListComponents.execute(
+            %{},
+            %Frame{assigns: %{current_scope: context.scope}}
+          )
+
+        for module_name <- ["#{app}.SharedKit"] do
+          assert response_text(listed) =~ module_name,
+                 "expected transitively-linked #{module_name} to be recorded by execution"
+        end
 
         {:ok, context}
       end

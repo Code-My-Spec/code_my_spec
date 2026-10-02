@@ -3,6 +3,9 @@ defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Formatters
 
+  # `provenance` says whether the component was authored as intended
+  # architecture or discovered from code (3aeb66cf); `parent_component_id` is
+  # the component it sits under, which authoring can now set.
   def component_response(component) do
     Response.tool()
     |> Response.json(%{
@@ -10,7 +13,9 @@ defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
       name: component.name,
       type: component.type,
       module_name: component.module_name,
-      description: component.description
+      description: component.description,
+      parent_component_id: component.parent_component_id,
+      provenance: component.provenance
     })
   end
 

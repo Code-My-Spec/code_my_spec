@@ -146,6 +146,15 @@ defmodule CodeMySpec.Issues.Issue do
     Enum.filter(@severities, &(severity_index(&1) <= min_index))
   end
 
+  @doc """
+  Whether a task may wait on this issue: open, and at or above `threshold`
+  (the project's `fix_issues_min_severity`). Below it nothing offers a fix, so
+  a wait would never end.
+  """
+  @spec blocking?(t(), atom()) :: boolean()
+  def blocking?(%__MODULE__{status: status, severity: severity}, threshold),
+    do: status in [:incoming, :accepted] and severity in severities_at_or_above(threshold)
+
   defp validate_transition(changeset, from, to) do
     allowed = Map.get(@valid_transitions, from, [])
 

@@ -454,75 +454,99 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert length(result.components) == 3
     end
 
-    test "skips writing spec file if it already exists", %{tmp_dir: tmp_dir, scope: scope} do
-      existing_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards.spec.md")
-      File.mkdir_p!(Path.dirname(existing_spec_path))
-      existing_content = "# Existing Spec\n\nThis content should be preserved."
-      File.write!(existing_spec_path, existing_content)
-
+    # Components as records, step 2 (3aeb66cf): execution writes records, not
+    # spec stubs. These two tests used to pin the stubs.
+    test "writes no files", %{tmp_dir: tmp_dir, scope: scope} do
       proposal =
         Proposal.new(%{
           app_name: "TestApp",
-          contexts: [
-            %{
-              name: "TestApp.Dashboards",
-              description: "Dashboard management",
-              children: []
-            }
-          ],
+          contexts: [%{name: "TestApp.Dashboards", description: "Dashboards", children: []}],
           surface_components: [
             %{name: "TestAppWeb.DashboardLive", type: "liveview", description: "Dashboard view"}
           ]
         })
 
       assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
-
-      # Pre-existing spec should NOT be overwritten
-      assert File.read!(existing_spec_path) == existing_content
-
-      # New spec files should still be created
-      surface_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/dashboard_live.spec.md")
-      assert File.exists?(surface_spec)
+      assert File.ls!(tmp_dir) == []
     end
 
-    test "creates spec files at correct paths", %{tmp_dir: tmp_dir, scope: scope} do
-      proposal =
+    test "writes parents and dependencies as authored records", %{scope: scope} do
+      alias CodeMySpec.Components
+
+      proposal = fn dependencies ->
         Proposal.new(%{
           app_name: "TestApp",
           contexts: [
             %{
               name: "TestApp.Dashboards",
-              description: "Dashboard management",
+              description: "Dashboards",
               children: [
-                %{
-                  name: "TestApp.Dashboards.Dashboard",
-                  type: "schema",
-                  description: "Dashboard entity"
-                }
+                %{name: "TestApp.Dashboards.Dashboard", type: "schema", description: "Entity"}
               ]
-            }
+            },
+            %{name: "TestApp.Accounts", description: "Accounts", children: []},
+            %{name: "TestApp.Billing", description: "Billing", children: []}
           ],
-          surface_components: [
-            %{name: "TestAppWeb.DashboardLive", type: "liveview", description: "Dashboard view"}
-          ]
+          dependencies: dependencies
+        })
+      end
+
+      by_name = fn ->
+        Map.new(Components.list_components(scope), &{&1.module_name, &1})
+      end
+
+      edges = fn ->
+        scope
+        |> Components.list_dependencies()
+        |> Enum.map(
+          &{&1.source_component.module_name, &1.target_component.module_name, &1.provenance}
+        )
+        |> Enum.sort()
+      end
+
+      assert {:ok, _} =
+               Proposal.execute(
+                 proposal.([%{from: "TestApp.Dashboards", to: "TestApp.Accounts"}]),
+                 scope
+               )
+
+      components = by_name.()
+
+      assert components["TestApp.Dashboards.Dashboard"].parent_component_id ==
+               components["TestApp.Dashboards"].id
+
+      assert Enum.all?(Map.values(components), &(&1.provenance == :authored))
+      assert edges.() == [{"TestApp.Dashboards", "TestApp.Accounts", :authored}]
+
+      # Re-executing with a changed list adds the new edge and drops the old.
+      assert {:ok, _} =
+               Proposal.execute(
+                 proposal.([%{from: "TestApp.Dashboards", to: "TestApp.Billing"}]),
+                 scope
+               )
+
+      assert edges.() == [{"TestApp.Dashboards", "TestApp.Billing", :authored}]
+    end
+
+    test "a component discovered from code becomes authored when proposed", %{scope: scope} do
+      alias CodeMySpec.Components
+
+      %{} =
+        Components.upsert_component(scope, %{
+          name: "Accounts",
+          module_name: "TestApp.Accounts",
+          provenance: :discovered
         })
 
-      assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
+      proposal =
+        Proposal.new(%{
+          app_name: "TestApp",
+          contexts: [%{name: "TestApp.Accounts", description: "Accounts", children: []}]
+        })
 
-      # Check spec files were created at expected paths
-      context_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards.spec.md")
-      child_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards/dashboard.spec.md")
-      surface_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/dashboard_live.spec.md")
+      assert {:ok, _} = Proposal.execute(proposal, scope)
 
-      assert File.exists?(context_spec), "Expected #{context_spec} to exist"
-      assert File.exists?(child_spec), "Expected #{child_spec} to exist"
-      assert File.exists?(surface_spec), "Expected #{surface_spec} to exist"
-
-      # Verify content includes module name and type
-      context_content = File.read!(context_spec)
-      assert context_content =~ "# TestApp.Dashboards"
-      assert context_content =~ "## Type"
-      assert context_content =~ "context"
+      assert [%{provenance: :authored}] = Components.list_components(scope)
     end
 
     test "syncs components to database", %{tmp_dir: tmp_dir, scope: scope} do
