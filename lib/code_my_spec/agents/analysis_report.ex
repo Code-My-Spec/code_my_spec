@@ -71,6 +71,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Repo
@@ -202,10 +203,13 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # The asker is answered whatever the run found; everyone else keeps the
   # silence a clean tree earns them, and hears findings only if `Wake` says
   # its role does (`RoleProfile.wake` naming `:findings`).
+  # Findings are a problems offer; a clean answer to the asker is not.
   defp tell_one(scope, %{id: id} = agent, findings, source, askers) do
+    offer = findings && {:problems, {"analysis", to_string(source)}}
+
     cond do
-      id in askers -> tell(scope, agent, :own_reply, findings || clean(source))
-      findings -> tell(scope, agent, :findings, findings)
+      id in askers -> tell(scope, agent, :own_reply, findings || clean(source), offer)
+      findings -> tell(scope, agent, :findings, findings, offer)
       true -> :ok
     end
   end
@@ -262,13 +266,19 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # from inside the harness channel, and dispatch is a call back into it,
   # refused as :would_deadlock (same class as 104bcb23). Whether it reaches the
   # agent at all is `Wake`'s: a stopped agent is not owed one (criterion 3049).
-  defp tell(scope, %Agent{} = agent, event, message) do
+  #
+  # Not written to the conversation, so a findings offer stands unlinked.
+  defp tell(scope, %Agent{} = agent, event, message, offer \\ nil) do
     if Wake.allow?(scope, agent, event) == :ok do
+      record_offer(agent, offer)
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> dispatch(agent, message) end)
     end
 
     :ok
   end
+
+  defp record_offer(_agent, nil), do: :ok
+  defp record_offer(agent, {kind, subject}), do: Offers.record(nil, agent, kind, subject)
 
   defp dispatch(%Agent{} = agent, message) do
     ref = "analysis-" <> Ecto.UUID.generate()

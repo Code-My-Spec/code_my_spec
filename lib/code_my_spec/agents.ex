@@ -70,6 +70,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.ModelSetting
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.ProviderRefusal
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RefusalWake
@@ -1357,17 +1358,24 @@ defmodule CodeMySpec.Agents do
   something it asked of us, `:question_answered` for its question's answer. A
   held message is still recorded, as a delivery that failed always was: what
   was said is true whether or not anything was there to hear it.
+
+  Options: `:timeout`, and `:offer` — `{kind, subject}` to record the message
+  as an offer (`Offers`).
   """
-  @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), timeout()) ::
+  @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), keyword()) ::
           {:ok, :started | :queued} | {:error, term()}
-  def send_to_agent(agent_id, text, event, timeout \\ @message_timeout_ms)
+  def send_to_agent(agent_id, text, event, opts \\ [])
       when is_binary(agent_id) and is_binary(text) do
+    timeout = Keyword.get(opts, :timeout, @message_timeout_ms)
+
     case Repo.get(Agent, agent_id) do
       nil ->
         {:error, :no_such_agent}
 
       agent ->
-        Conversations.record_sent_to_agent(agent, text)
+        agent
+        |> Conversations.record_sent_to_agent(text)
+        |> record_offer(agent, opts[:offer])
 
         case Wake.allow?(agent_scope(agent), agent, event) do
           :ok ->
@@ -1392,6 +1400,11 @@ defmodule CodeMySpec.Agents do
       active_working_copy_id: agent.working_copy_id
     }
   end
+
+  defp record_offer(_recorded, _agent, nil), do: :ok
+
+  defp record_offer(recorded, agent, {kind, subject}),
+    do: Offers.record(recorded, agent, kind, subject)
 
   # Running out of our own patience is not the message failing. The machine took
   # it — it answers `harness_not_connected` immediately when it did not — so the
@@ -2217,6 +2230,9 @@ defmodule CodeMySpec.Agents do
         # damp.
         {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
 
+        # Settled before the stop menu, which may make new offers of its own.
+        :ok = Offers.settle_turn(agent)
+
         StopDecision.deliver(scope, agent, opts)
 
       _ ->
@@ -2420,7 +2436,11 @@ defmodule CodeMySpec.Agents do
         "operator"
       )
     else
-      send_off_channel(agent, failed_turn_notice(failure, request))
+      send_off_channel(
+        agent,
+        failed_turn_notice(failure, request),
+        {:retry, {"failed_turn", nil}}
+      )
     end
 
     :ok
@@ -2444,10 +2464,10 @@ defmodule CodeMySpec.Agents do
   # This runs in the harness channel, and sending to an agent is a call into
   # that same channel, which the transport refuses rather than deadlock — the
   # message was recorded and never delivered (once, 2026-10-01 12:14Z).
-  defp send_off_channel(agent, text) do
+  defp send_off_channel(agent, text, offer \\ nil) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        send_to_agent(agent.id, text, :own_reply)
+        send_to_agent(agent.id, text, :own_reply, offer: offer)
       end)
 
     :ok

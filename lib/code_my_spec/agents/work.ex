@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
@@ -99,7 +100,10 @@ defmodule CodeMySpec.Agents.Work do
     with :ok <- Wake.allow?(scope, agent, :resume),
          {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
       turn_prompt = resume_prompt(reserved)
-      Conversations.record_sent_to_agent(reserved, turn_prompt)
+
+      reserved
+      |> Conversations.record_sent_to_agent(turn_prompt)
+      |> Offers.record(reserved, :resume, {"task", Agent.active_task(reserved).id})
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -162,14 +166,19 @@ defmodule CodeMySpec.Agents.Work do
   could answer past.
 
   `event` is what `Wake` is asked about: `:question_answered` for an answer,
-  `:blocker_resolved` for a released block or a denied tap-out.
+  `:blocker_resolved` for a released block or a denied tap-out. `subject` is
+  what the offer is recorded against (`Offers`).
   """
-  def offer_turn_with(scope, %Agent{} = agent, preface, event) when is_binary(preface) do
+  def offer_turn_with(scope, %Agent{} = agent, preface, event, subject \\ {"notice", nil})
+      when is_binary(preface) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = preface <> "\n\n" <> prompt(reserved)
-      Conversations.record_sent_to_agent(reserved, turn_prompt)
+
+      reserved
+      |> Conversations.record_sent_to_agent(turn_prompt)
+      |> Offers.record(reserved, notice_kind(event), subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -195,17 +204,25 @@ defmodule CodeMySpec.Agents.Work do
   when it cannot — then offer its copy a turn, so a busy agent still reads the
   notice on its next one.
   """
-  def wake_with_notice(scope, %Agent{} = agent, notice, event) when is_binary(notice) do
-    case offer_turn_with(scope, agent, notice, event) do
+  def wake_with_notice(scope, %Agent{} = agent, notice, event, subject \\ {"notice", nil})
+      when is_binary(notice) do
+    case offer_turn_with(scope, agent, notice, event, subject) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
       _not_admissible ->
-        Conversations.record_sent_to_agent(agent, notice)
+        agent
+        |> Conversations.record_sent_to_agent(notice)
+        |> Offers.record(agent, notice_kind(event), subject)
+
         if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, event)
         :ok
     end
   end
+
+  @doc "The offer kind a notice carried under `event` is recorded as."
+  def notice_kind(:question_answered), do: :answer
+  def notice_kind(_event), do: :unblocked
 
   @doc """
   Offer `agent` a work turn if it is idle and `Wake` allows `event` — a
@@ -215,7 +232,7 @@ defmodule CodeMySpec.Agents.Work do
   def request_turn_if_runnable(scope, %Agent{} = agent, _reason, event \\ :work_offer) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
-         {:work, offer} <- offer(scope, current),
+         {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
       turn_prompt = prompt(reserved)
@@ -231,7 +248,9 @@ defmodule CodeMySpec.Agents.Work do
       # and the retirement took the recording with it — story 1050 measures
       # routing off these rows, and every correctly routed turn read as
       # silence.
-      Conversations.record_sent_to_agent(reserved, turn_prompt)
+      reserved
+      |> Conversations.record_sent_to_agent(turn_prompt)
+      |> Offers.record(reserved, :work, subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -268,7 +287,10 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, :cadence),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
       turn_prompt = render.(work_offered?(scope, reserved))
-      Conversations.record_sent_to_agent(reserved, turn_prompt)
+
+      reserved
+      |> Conversations.record_sent_to_agent(turn_prompt)
+      |> Offers.record(reserved, :check_in, {"cadence", nil})
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -373,7 +395,7 @@ defmodule CodeMySpec.Agents.Work do
   defp decline_attrs(scope, agent, turn_started_at) do
     if declined?(scope, agent, turn_started_at) do
       case offer(scope, agent) do
-        {:work, fingerprint} -> streak(agent, fingerprint)
+        {:work, fingerprint, _subject} -> streak(agent, fingerprint)
         :none -> cleared()
       end
     else
@@ -532,11 +554,16 @@ defmodule CodeMySpec.Agents.Work do
     nodes = graph_work(scope, agent)
 
     if questions or nodes != [] do
-      {:work, fingerprint(questions, nodes)}
+      {:work, fingerprint(questions, nodes), offer_subject(nodes)}
     else
       :none
     end
   end
+
+  # What the prompt sends it to claim: `get_next_requirement`'s head, or main's
+  # questions when there is no graph work.
+  defp offer_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
+  defp offer_subject([]), do: {"questions", nil}
 
   # Hashed rather than stored whole: the comparison is equality and nothing
   # reads the parts, so the column stays a fixed width no matter how much work
@@ -778,10 +805,15 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   defp holds_node?(task, mine?, node) do
-    task.requirement_name == node.name and
-      entity_id(task, node.entity_type) == to_string(node.entity_id) and
+    task_on_node?(task, node) and
       ((task.status == :active and not mine?) or
          (task.status == :blocked and (not mine? or is_nil(task.blocker_resolved_at))))
+  end
+
+  @doc "Whether `task` is the work `node` names."
+  def task_on_node?(task, node) do
+    task.requirement_name == node.name and
+      entity_id(task, node.entity_type) == to_string(node.entity_id)
   end
 
   defp entity_id(task, "story"), do: to_string(task.story_id)

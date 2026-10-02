@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
@@ -98,7 +99,9 @@ defmodule CodeMySpec.Agents.StopDecision do
         continuing(scope, agent, message, Agent.active_task(agent))
 
       {message, key} ->
-        if stuck?(agent, key), do: :ok, else: send_to(scope, agent, message)
+        if stuck?(agent, key),
+          do: :ok,
+          else: send_to(scope, agent, message, {:problems, {"problem_set", problem_key(key)}})
     end
   end
 
@@ -199,9 +202,20 @@ defmodule CodeMySpec.Agents.StopDecision do
   # repeat-silencing as any other class.
   defp continuing(scope, agent, _message, nil), do: request_turn(scope, agent)
 
-  defp continuing(scope, agent, message, _task) do
-    if stuck?(agent, message, :continuing), do: :ok, else: send_to(scope, agent, message)
+  # The menu is one offer per held task: it only goes out while a task is
+  # held, and every item on it is "carry on". Recording each item would claim
+  # the agent was offered choices the menu does not ask it to make.
+  defp continuing(scope, agent, message, task) do
+    if stuck?(agent, message, :continuing),
+      do: :ok,
+      else: send_to(scope, agent, message, {:menu, {"menu", task.id}})
   end
+
+  # `Validation.blocking_key/1` is a hash already; anything else is made one.
+  defp problem_key(key) when is_binary(key), do: key
+
+  defp problem_key(key),
+    do: :crypto.hash(:sha256, :erlang.term_to_binary(key)) |> Base.encode16(case: :lower)
 
   # Off this process for the reason `dispatch` is (ad8c1213): `deliver/3` runs
   # inside the harness channel at turn end, and the turn request is a call back
@@ -244,7 +258,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   # agent mid-turn is queued rather than interrupted — the engine decides
   # started-or-queued without running anything, and a decision that barged into
   # a turn in flight would lose whatever that turn was part-way through.
-  defp send_to(scope, agent, message) do
+  defp send_to(scope, agent, message, {kind, subject}) do
     # Recorded as well as sent, and recorded first.
     #
     # `Conversations.record_sent_to_agent/2` because this dispatches through the
@@ -259,7 +273,10 @@ defmodule CodeMySpec.Agents.StopDecision do
     # Unless it is off or retired: then there is no decision for it (39af5611).
     case Transport.deliverable(agent) do
       :ok ->
-        Conversations.record_sent_to_agent(agent, message)
+        agent
+        |> Conversations.record_sent_to_agent(message)
+        |> Offers.record(agent, kind, subject)
+
         deliver_message(scope, agent, message)
 
       {:error, _stood_down} ->
