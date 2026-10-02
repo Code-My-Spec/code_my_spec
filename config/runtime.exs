@@ -262,11 +262,16 @@ end
 
 # Web app mode
 if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
+  # Required everywhere but desktop, where OAuth and the deploy key are off.
+  required = fn name ->
+    if config_env() == :desktop, do: env!(name, :string, ""), else: env!(name)
+  end
+
   config :code_my_spec,
-    github_client_id: env!("GITHUB_CLIENT_ID"),
-    github_client_secret: env!("GITHUB_CLIENT_SECRET"),
-    google_client_id: env!("GOOGLE_CLIENT_ID"),
-    google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
+    github_client_id: required.("GITHUB_CLIENT_ID"),
+    github_client_secret: required.("GITHUB_CLIENT_SECRET"),
+    google_client_id: required.("GOOGLE_CLIENT_ID"),
+    google_client_secret: required.("GOOGLE_CLIENT_SECRET"),
     cloudflare_client_id: env!("CLOUDFLARE_CLIENT_ID", :string, ""),
     cloudflare_client_secret: env!("CLOUDFLARE_CLIENT_SECRET", :string, ""),
     resend_client_id: env!("RESEND_CLIENT_ID", :string, ""),
@@ -284,8 +289,16 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
     # with an empty client id, so the user completed the flow, was told it
     # worked, and only the exchange failed. An env var offering to configure
     # something that cannot be configured is the whole trap.
-    base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
-    deploy_key: env!("DEPLOY_KEY"),
+    base_url:
+      env!(
+        "BASE_URL",
+        :string,
+        if(config_env() == :desktop,
+          do: "http://localhost:4000",
+          else: "https://dev.codemyspec.com"
+        )
+      ),
+    deploy_key: required.("DEPLOY_KEY"),
     indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)
 
   # S3 uploads (issue screenshots)
@@ -328,6 +341,28 @@ if config_env() in [:dev, :prod] do
   config :code_my_spec,
     embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
     embedding_serving: CodeMySpec.Embeddings.OrtexServing
+end
+
+# Desktop: needs pgvector, which a local Postgres may lack, so off unless asked.
+# TODO(bb8bc042 step 6): probe pg_extension at first boot instead of a flag.
+if config_env() == :desktop and System.get_env("CMS_EMBEDDINGS") in ~w(true 1) do
+  config :code_my_spec,
+    embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
+    embedding_serving: CodeMySpec.Embeddings.OrtexServing
+end
+
+if config_env() == :desktop do
+  config :code_my_spec, CodeMySpec.Repo,
+    url:
+      System.get_env("DATABASE_URL") ||
+        "ecto://postgres:postgres@localhost/code_my_spec_desktop",
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+
+  # Loopback only, no login. TODO(bb8bc042 step 6): generate one per install.
+  config :code_my_spec, CodeMySpecWeb.Endpoint,
+    secret_key_base:
+      System.get_env("SECRET_KEY_BASE") ||
+        String.duplicate("cms_desktop_local_only", 4)
 end
 
 if config_env() == :prod do
