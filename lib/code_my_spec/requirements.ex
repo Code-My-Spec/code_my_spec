@@ -57,6 +57,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.VantageReport
@@ -444,6 +445,37 @@ defmodule CodeMySpec.Requirements do
 
     %{nodes: nodes, edges: edges, actionable: actionable}
   end
+
+  @doc """
+  Whether a story requirement is satisfied *now*, computed from the story as
+  it stands rather than read from the graph (67e6b5cb). The graph can lag a
+  write that did not announce, and then goes on offering work already done;
+  `start_task` asks this before taking it. Story requirements only, where the
+  stale offers were: anything else answers false, because a satisfied
+  component or project requirement is sometimes started on purpose.
+  """
+  @spec satisfied_now?(Scope.t(), Requirement.t() | map()) :: boolean()
+  def satisfied_now?(%Scope{} = scope, %{entity_type: "story", entity_id: id, name: name}) do
+    story_id = if is_binary(id), do: String.to_integer(id), else: id
+
+    with {:ok, %{stories: [story]} = ctx} <- Preloader.load_story(scope, story_id),
+         %{} = definition <- Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == name)) do
+      files = Map.get(ctx.files_by_story, story.id, [])
+      RequirementCalculator.compute_one(scope, story, definition, files, ctx).satisfied == true
+    else
+      _ -> false
+    end
+  end
+
+  def satisfied_now?(_scope, _node), do: false
+
+  @doc """
+  Tell the graph an entity moved: a requirement found satisfied on a fresh
+  check, so the stale offer clears on the next pass.
+  """
+  @spec refresh_entity(Scope.t(), {String.t(), term()}) :: :ok
+  def refresh_entity(%Scope{} = scope, {"story", id}),
+    do: GraphInputs.announce(scope, "Requirements", [{"story", id}], :project_wide)
 
   # --- Legacy shims (TODO: move evaluation criteria onto agent tasks) ---
 
