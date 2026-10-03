@@ -60,4 +60,41 @@ defmodule CmsHarness.StaleDepsHealTest do
     assert reason =~ "`mix deps.get` in this working copy failed"
     assert reason =~ "hex is offline"
   end
+
+  describe "the fetch lock" do
+    test "takes the lock and answers what the fetch answered" do
+      assert :ok =
+               Analysis.serialize_deps_get("/tmp/heal-#{System.unique_integer()}", fn -> :ok end)
+    end
+
+    test "two fetches for one checkout never overlap" do
+      cwd = "/tmp/heal-#{System.unique_integer()}"
+      test = self()
+
+      fetch = fn tag ->
+        fn ->
+          send(test, {:in, tag})
+
+          receive do
+            {:release, ^tag} -> :ok
+          end
+
+          send(test, {:out, tag})
+          :ok
+        end
+      end
+
+      first = Task.async(fn -> Analysis.serialize_deps_get(cwd, fetch.(:a)) end)
+      assert_receive {:in, :a}
+      second = Task.async(fn -> Analysis.serialize_deps_get(cwd, fetch.(:b)) end)
+      refute_receive {:in, :b}, 200
+
+      send(first.pid, {:release, :a})
+      assert_receive {:out, :a}
+      assert_receive {:in, :b}
+      send(second.pid, {:release, :b})
+      assert :ok = Task.await(first)
+      assert :ok = Task.await(second)
+    end
+  end
 end
