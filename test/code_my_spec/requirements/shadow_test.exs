@@ -306,7 +306,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
              """
     end
 
-    test "an analyzer result is about the checkout it ran on", ctx do
+    test "a sync is about the checkout it ran on", ctx do
       scope = ctx.scope
 
       # Or the assertion below is `[nil] == [nil]` and says nothing. The whole
@@ -315,16 +315,9 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       refute is_nil(scope.active_working_copy_id),
              "this test needs a scope with a checkout on it, or it passes vacuously"
 
-      GraphInputs.event(
-        scope,
-        "Analysis",
-        "analysis_completed",
-        %{},
-        [:project],
-        :this_checkout
-      )
+      GraphInputs.event(scope, "Sync", "files_synced", %{}, [:project], :this_checkout)
 
-      assert copies_named(scope, "Analysis") == [scope.active_working_copy_id]
+      assert copies_named(scope, "Sync") == [scope.active_working_copy_id]
     end
 
     test "a writer that cannot say is read as the whole project", ctx do
@@ -337,7 +330,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       GraphInputs.event(
         %{scope | active_working_copy_id: nil},
         "Nowhere",
-        "analysis_completed",
+        "files_synced",
         %{},
         [:project],
         :this_checkout

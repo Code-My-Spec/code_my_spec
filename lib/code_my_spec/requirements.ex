@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements do
   @moduledoc """
   Public API for the requirements graph.
 
-  Requirements are computed on the fly from Files + Problems — not persisted.
+  Requirements are computed from Files and the project's records.
   Three entity levels: component, story, project. The graph treats all nodes
   uniformly; cross-entity gates affect actionability but aren't edges.
   """
@@ -12,7 +12,6 @@ defmodule CodeMySpec.Requirements do
     deps: [
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Agents.RoleProfile,
-      CodeMySpec.Analysis,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
       CodeMySpec.Configurations,
@@ -23,7 +22,6 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Personas,
-      CodeMySpec.Problems,
       CodeMySpec.Projects,
       # `story_promoted` is Promotion's verdict, and a graph that decided
       # it for itself would be a second answer to the question promotion exists
