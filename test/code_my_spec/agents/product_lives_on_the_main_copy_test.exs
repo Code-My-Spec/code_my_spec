@@ -2,8 +2,8 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
   @moduledoc """
   a31f1cd6 step 4c. John: "main and product on the main copy; coding and QA on
   each feature copy." Product designs an epic on the main copy, owns triage,
-  three amigos and story design, blocks on all of its own open questions, and
-  carries no staffing tools.
+  three amigos and story design, and carries no staffing tools. Its own open
+  question blocks only the task it was asked about (story 1080).
   """
 
   use CodeMySpecTest.DataCase, async: false
@@ -66,9 +66,9 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
              )
     end
 
-    test "product's own open question holds it whole; main's only its nudge" do
+    test "product's own open question holds none of it; main's only its nudge" do
       for path <- [:turn_end, :offer, :resume],
-          do: assert(RoleProfile.waits_on?(:product, :question_pending, path))
+          do: refute(RoleProfile.waits_on?(:product, :question_pending, path))
 
       assert RoleProfile.waits_on?(:main, :question_pending, :turn_end)
       refute RoleProfile.waits_on?(:main, :question_pending, :offer)
@@ -131,17 +131,15 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
       %{scope: scope, product: product, main: main}
     end
 
-    test "holds its nudge, work offers and resume", %{scope: scope, product: product} do
-      assert Waiting.reason(scope, product, :offer) == nil
-
+    test "holds none of its nudge, work offers or resume", %{scope: scope, product: product} do
       ask(scope, product, "main_agent")
 
       for path <- [:turn_end, :offer, :resume] do
-        assert Waiting.reason(scope, product, path) == :question_pending, inspect(path)
+        assert Waiting.reason(scope, product, path) == nil, inspect(path)
       end
 
-      assert {:hold, :question_pending} = Wake.allow?(scope, product, :work_offer)
-      assert {:hold, :question_pending} = Wake.allow?(scope, product, :nudge)
+      assert :ok = Wake.allow?(scope, product, :work_offer)
+      assert :ok = Wake.allow?(scope, product, :nudge)
     end
 
     test "still lets its answer and a teammate's question through", ctx do
@@ -158,7 +156,7 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
       assert :ok = Wake.allow?(scope, main, :work_offer)
     end
 
-    test "a product waiting on its question is not reported stalled", ctx do
+    test "a product idle beside work while its question is open is reported stalled", ctx do
       entry = %AgentWork{
         agent_id: ctx.product.id,
         role: :product,
@@ -167,8 +165,8 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
         blocked_reasons: ["Which way?"]
       }
 
-      assert Digest.stalled(%Digest{work: [entry]}) == []
-      assert AgentWork.unclaimed_work(entry) =~ "waiting on the answer"
+      assert Digest.stalled(%Digest{work: [entry]}) == [entry]
+      assert AgentWork.unclaimed_work(entry) =~ "STALLED"
     end
   end
 

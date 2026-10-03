@@ -308,8 +308,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
         :teammate_died
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
-      # A coding or QA agent's question blocks only the task it was asked
-      # about (0b324cab). Its event wakes and check-in still reach it.
+      # Another role's question blocks only the task it was asked about
+      # (0b324cab, story 1080). Its event wakes and check-in still reach it.
       waiting_on: [question_pending: [:turn_end]],
       questions_block?: true,
       # Nobody is above it: its question is a decision it could not make.
@@ -336,10 +336,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # Teammates' questions about criteria and spec are routed to it
       # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
       wake: [:work_offer, :nudge, :resume, :teammate_question],
-      # Its own open question holds it whole — nudge, work offers, resume —
-      # because it holds one chain of thought through the design (John, step
-      # 4c). Its answer and a teammate's question still reach it.
-      waiting_on: [question_pending: [:turn_end, :offer, :resume]],
+      # Its own question blocks only the task it was asked about, as coding's
+      # and QA's do (story 1080).
+      waiting_on: [],
       # A story's red cards are not its own questions: it is the actor that
       # clears them (`questions_answered`), so blocking it on them left the
       # block naming no actor (56cf5697).

@@ -269,6 +269,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
          {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
       return_prompt(TaskOwner.find_task(updated, task.id), scope, frame)
     else
+      {:error, :active_task_exists} ->
+        {:reply,
+         TasksMapper.error(
+           "Cannot resume task #{task.id} beside your active task. Finish that one first; " <>
+             "this one is offered back to you once it is done."
+         ), frame}
+
       {:error, reason} ->
         {:reply, TasksMapper.error("Cannot resume task #{task.id}: #{inspect(reason)}"), frame}
     end

@@ -25,6 +25,9 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    # The tap-out frees the agent, so the graph offers it work (1759); recorded
+    # rather than run, so no background turn races the agent's own choice.
+    :ok = Fixtures.install_recording_agent_transport()
     :ok
   end
 

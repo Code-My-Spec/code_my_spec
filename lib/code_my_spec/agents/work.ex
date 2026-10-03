@@ -335,6 +335,17 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  @doc """
+  Tell an agent holding an active task that a blocked one was released, without
+  offering it: resuming would make it a second active task (story 1080).
+  `offer/2` offers it back once the agent holds none.
+  """
+  @spec note_released(Agent.t(), String.t()) :: :ok
+  def note_released(%Agent{} = agent, notice) when is_binary(notice) do
+    Conversations.record_sent_to_agent(agent, notice)
+    :ok
+  end
+
   @doc "The offer kind a notice carried under `event` is recorded as."
   def notice_kind(:question_answered), do: :answer
   def notice_kind(_event), do: :unblocked
@@ -350,7 +361,7 @@ defmodule CodeMySpec.Agents.Work do
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
-      turn_prompt = prompt(reserved)
+      turn_prompt = offer_prompt(reserved, subject)
 
       # Recorded as well as sent, and recorded first — the same reasoning as
       # `StopDecision.send_to/3`, which records because it dispatches through
@@ -366,7 +377,7 @@ defmodule CodeMySpec.Agents.Work do
       offered =
         reserved
         |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, :work, subject)
+        |> Offers.record(reserved, offer_kind(subject), subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -673,16 +684,50 @@ defmodule CodeMySpec.Agents.Work do
     nodes = graph_work(scope, agent)
 
     if questions != [] or nodes != [] do
-      {:work, fingerprint(questions, nodes), offer_subject(nodes)}
+      {:work, fingerprint(questions, nodes), offer_subject(agent, nodes)}
     else
       :none
     end
   end
 
-  # What the prompt sends it to claim: `get_next_requirement`'s head, or main's
+  # What the prompt sends it to claim: a task of its own whose blocker was
+  # released, first — resumed only once it holds no active task, so it is never
+  # a second one (story 1080) — then `get_next_requirement`'s head, or main's
   # questions when there is no graph work.
-  defp offer_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
-  defp offer_subject([]), do: {"questions", nil}
+  defp offer_subject(agent, nodes) do
+    case released_tasks(agent, nodes) do
+      [task | _] -> {"blocker", task.blocker_id}
+      [] -> graph_subject(nodes)
+    end
+  end
+
+  defp graph_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
+  defp graph_subject([]), do: {"questions", nil}
+
+  # Released and still claimable: one the graph no longer offers would be
+  # refused by `start_task`, and offering it first would hide the rest.
+  defp released_tasks(%Agent{tasks: tasks}, nodes) do
+    Enum.filter(tasks || [], fn task ->
+      task.status == :blocked and not is_nil(task.blocker_resolved_at) and
+        Enum.any?(nodes, fn {type, id, name} ->
+          task_on_node?(task, %{entity_type: type, entity_id: id, name: name})
+        end)
+    end)
+  end
+
+  defp offer_kind({"blocker", _id}), do: :unblocked
+  defp offer_kind(_subject), do: :work
+
+  defp offer_prompt(agent, {"blocker", id}) do
+    tasks =
+      agent.tasks
+      |> Enum.filter(&(&1.status == :blocked and &1.blocker_id == id))
+      |> Enum.map_join("; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
+
+    "Your blocker #{id} was released; resume #{tasks} with `start_task`."
+  end
+
+  defp offer_prompt(agent, _subject), do: prompt(agent)
 
   defp questions_only?({"questions", nil}), do: true
   defp questions_only?(_subject), do: false

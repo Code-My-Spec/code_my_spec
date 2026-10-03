@@ -1,11 +1,9 @@
 defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
   @moduledoc """
-  An agent that tapped out has asked to leave the loop until a person answers.
-
-  metric_flow's coding agent, 2026-09-27: its only task blocked on a tap-out,
-  and the work loop offered it a turn 42 times over 5.5 hours. A tap-out with
-  no task blocks no task, and its agent was nudged 40+ times (fad1a314) and
-  handed the same stop decision every turn (070d1bab).
+  An agent that tapped out with no task has asked to leave the loop until a
+  person answers: it was nudged 40+ times (fad1a314) and handed the same stop
+  decision every turn (070d1bab). A tap-out naming a task holds only that task;
+  the agent is offered other work while it waits (story 1080).
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -15,6 +13,7 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Environments
   alias CodeMySpec.Notifications
@@ -85,14 +84,20 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
     |> Repo.update_all(set: [status: "denied", decision: "deny"])
   end
 
-  test "is not offered a turn while a task's tap-out waits", %{scope: scope, agent: agent} do
+  test "is offered other work while a task's tap-out waits", %{scope: scope, agent: agent} do
     {agent, _request} = tap_out_task(scope, agent)
 
-    assert {:ok, :not_runnable} = Work.request_turn_if_runnable(scope, agent, :test)
+    refute Waiting.awaiting_tap_out?(agent)
+    assert Waiting.reason(scope, agent, :offer) == nil
+    assert {:ok, ref} = Work.request_turn_if_runnable(scope, agent, :test)
+    assert is_binary(ref)
   end
 
   test "is not offered a turn while a whole-agent tap-out waits", %{scope: scope, agent: agent} do
     tap_out_whole_agent(scope, agent)
+
+    assert Waiting.awaiting_tap_out?(agent)
+    assert Waiting.reason(scope, agent, :offer) == :tap_out
 
     assert {:ok, :not_runnable} = Work.request_turn_if_runnable(scope, agent, :test)
   end

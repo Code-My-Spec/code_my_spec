@@ -36,7 +36,7 @@ defmodule CodeMySpec.Agents.Offers do
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
   # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
   # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
-  # `:answer` and `:unblocked` in `Notifications` and `TaskOwner`; `:stalled` in
+  # `:answer` and `:unblocked` in `Notifications`, `TaskOwner` and `Work`; `:stalled` in
   # `MainAgent.Cadence.announce_stalls/2`.
   @template_versions %{
     work: "work/1",

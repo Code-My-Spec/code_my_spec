@@ -512,9 +512,16 @@ defmodule CodeMySpec.Validation.Menu do
     |> Enum.filter(&(&1.status == :blocked))
     |> Enum.map_join("", fn task ->
       "\n\nBlocked task #{task.id}: #{task.blocker_type} #{task.blocker_id}. " <>
-        "This does not block unrelated work; resume explicitly when its blocker is resolved."
+        blocked_task_next(task)
     end)
   end
+
+  # Never resumed beside an active task (story 1080).
+  defp blocked_task_next(%{blocker_resolved_at: nil}),
+    do: "This does not block unrelated work; resume explicitly when its blocker is resolved."
+
+  defp blocked_task_next(_released),
+    do: "Its blocker is resolved; resume it with `start_task` once you hold no active task."
 
   # The count is a fact about now; the offer without it is boilerplate that
   # reads identically whether nothing is waiting or three things are. Story 896.
