@@ -14,7 +14,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
   ## Layout
 
   A sidebar (Overview, Resources, Deploys, Secrets, Credentials, Activity,
-  Settings) plus a header `EnvironmentSwitcher` on the pages it applies to.
+  Settings), on the right opposite the content (`drawer-end`) rather than
+  the left, plus a header `EnvironmentSwitcher` on the pages it applies to.
   Credentials, Secrets and Settings are project-wide; Overview and Resources
   are scoped to the selected environment via `?env=`, patched rather than
   navigated so switching environments does not remount the page — the same
@@ -203,7 +204,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div class="drawer lg:drawer-open" data-test="console">
+      <div class="drawer lg:drawer-open drawer-end" data-test="console">
         <input id="console-drawer" type="checkbox" class="drawer-toggle" />
 
         <div class="drawer-content p-4 lg:p-8 flex flex-col gap-4">
