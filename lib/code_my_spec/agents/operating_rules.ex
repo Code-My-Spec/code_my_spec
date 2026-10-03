@@ -125,7 +125,7 @@ defmodule CodeMySpec.Agents.OperatingRules do
 
   **The environments are the project's, not the framework's.** A generated app
   has the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own
-  `dev_cli` means nothing inside a project. A `mix` command asking for a config
+  `harness` environment means nothing inside a project. A `mix` command asking for a config
   file that does not exist means the wrong environment, not a missing file.
 
   **A question in your reply reaches nobody.** `ask_user_question` reaches a

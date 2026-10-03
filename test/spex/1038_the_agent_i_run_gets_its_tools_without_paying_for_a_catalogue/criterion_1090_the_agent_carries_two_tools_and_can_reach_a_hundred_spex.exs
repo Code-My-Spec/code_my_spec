@@ -97,11 +97,12 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # out and cancel, and until it was carried the last of those named a
         # tool no internal agent held.
         # The agent lifecycle left this list on 2026-09-29: it is scriptable
-        # and granted to main alone.
+        # and granted to main alone. `reject_offer` joined on 2026-10-03 beside
+        # `tap_out` (story 1080): declining an offer is the agent's own call.
         unscriptable = ~w(
           assign_subagent
           get_next_requirement sync_project start_task evaluate_task cancel_task
-          ask_user_question tap_out show_in_panel start_analysis
+          ask_user_question tap_out reject_offer show_in_panel start_analysis
           promote check_answer list_user_questions
         )
 

@@ -3,7 +3,7 @@ defmodule CmsHarness.Agents.Shell do
   Runs an agent's bash command without the harness's own environment.
 
   Alloy's default bash tool inherits this BEAM's environment, so an agent
-  running `mix test` in a project got the harness's `MIX_ENV=dev_cli`, a
+  running `mix test` in a project got the harness's `MIX_ENV=harness`, a
   config that project does not have, and every `CMS_*` variable naming this
   harness (the same leak that sent spex harnesses to the real server).
   """

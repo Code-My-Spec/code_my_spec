@@ -13,9 +13,9 @@ defmodule CmsHarness.Web.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :code_my_spec
 
-  # Dev only (`code_reloader: true` in config/dev_cli.exs) — recompiles
-  # changed modules on the next request, the same mechanism
-  # CodeMySpecLocalWeb.Endpoint uses. No LiveReloader socket here: this
+  # Only when the endpoint is configured `code_reloader: true` (no env does
+  # today) — recompiles changed modules on the next request, the same
+  # mechanism CodeMySpecLocalWeb.Endpoint uses. No LiveReloader socket here: this
   # endpoint serves no browser assets, only JSON.
   #
   # Recompiling a module is not the same as picking up a new *route* —

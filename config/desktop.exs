@@ -5,7 +5,7 @@ import Config
 # on a laptop. Runtime defaults (DATABASE_URL, secrets, OAuth) are in
 # runtime.exs's desktop branch.
 import_config "prod.exs"
-import_config "harness.exs"
+import_config "harness_base.exs"
 
 config :code_my_spec, env: :desktop
 
@@ -15,7 +15,7 @@ config :code_my_spec,
   base_url: "http://localhost:4000",
   harness_default_server_url: "http://localhost:4000"
 
-# harness.exs turns the main endpoint off; here it is the product.
+# harness_base.exs turns the main endpoint off; here it is the product.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: true,
   url: [host: "localhost", port: 4000, scheme: "http"],
@@ -27,7 +27,7 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
   http: [ip: {127, 0, 0, 1}, port: 4004]
 
-# Postgres, not harness.exs's SQLite — same reversal as dev_sprite.
+# Postgres, not harness_base.exs's SQLite.
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
 config :paper_trail, strict_mode: true
 

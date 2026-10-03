@@ -38,6 +38,8 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # when the operator gave none — the adapters' "explicit opt, else here"
     # shape, on a machine where here is the project.
     "lib/mix/tasks/cms.harness.onboard.ex" => "mix task: cwd is the project by definition",
+    "lib/mix/tasks/cms.package_plugin.ex" =>
+      "mix task: packages this repo's own plugins/ from the repo root",
     # Reads the partition recorded for the checkout it is standing in, to name
     # that checkout's three test databases. There is no caller to thread through
     # — the task's whole subject is "this working copy", and taking the
@@ -48,7 +50,7 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     "lib/code_my_spec/agent_tasks/init/cli_config.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init/phoenix_project.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init.ex" => "cms init, on the user's machine",
-    "lib/code_my_spec_local_web/application.ex" =>
+    "lib/cms_harness/migrate.ex" =>
       "cms migrate: a CLI entrypoint, not request-reachable — cwd is the project being migrated",
 
     # Enumerating its own copies, not resolving a caller's. `all/0` is "every

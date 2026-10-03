@@ -36,7 +36,9 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecTest.RecordingAgentTransport
@@ -162,25 +164,6 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            """
   end
 
-  test "the same offer refused over and over goes quiet", ctx do
-    agent = reload(ctx.scope, ctx.agent)
-
-    refused = refused_repeatedly(ctx.scope, agent, 5)
-
-    refute admitted?(ctx.scope, refused),
-           """
-           The same offer was still being handed back after five refusals.
-
-           Ending a turn without claiming clears every mark admission tests, so
-           without a record of the refusals the next observation re-offers it —
-           and a turn ending is itself an observation. Measured: 197 turns in
-           3m29s, 60 a minute, until it was killed by hand.
-
-           Five matches `StopDecision.stuck?/3`, which already goes quiet after
-           five repeats on the sibling path.
-           """
-  end
-
   test "a turn that could not be delivered is not retried twice a second", ctx do
     # No transport registered for this copy, so the dispatch fails the way an
     # unreachable machine fails.
@@ -236,85 +219,80 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
 
   # Claimed and then cancelled inside the turn: `complete_task(:cancelled)`
   # stamps `completed_at` like a real close, which is what made it read as work.
-  defp ended_turn_having_cancelled_a_claim(scope, agent) do
-    started = DateTime.add(DateTime.utc_now(), -30, :second)
-
-    task = %CodeMySpec.Sessions.Task{
-      id: Ecto.UUID.generate(),
-      status: :cancelled,
-      requirement_name: "bdd_specs_passing",
-      started_at: started,
-      completed_at: DateTime.utc_now()
-    }
+  # A whole turn through the real events, so the turn end settles the offer
+  # admission recorded (story 1080's ladder) rather than a hand-set mark.
+  defp turn_ended(scope, agent, extra_tasks \\ []) do
+    agent =
+      Enum.reduce(extra_tasks, Repo.get!(CodeMySpec.Agents.Agent, agent.id), fn attrs, acc ->
+        {:ok, acc} = acc |> CodeMySpec.Agents.Agent.add_task(attrs) |> Repo.update()
+        acc
+      end)
 
     {:ok, agent} =
       AgentsRepository.update_agent(scope, agent, %{
-        turn_started_at: nil,
+        turn_started_at: DateTime.add(DateTime.utc_now(), -30, :second),
         work_request_id: nil,
         work_requested_at: nil
       })
 
-    {:ok, agent} =
-      Work.record_decline(scope, %{agent | tasks: [task | agent.tasks || []]}, started)
-
-    agent
+    :ok = CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"})
   end
 
-  test "claiming and cancelling the offer is declining it", ctx do
+  defp on_entity("story", id), do: %{story_id: String.to_integer(id)}
+  defp on_entity("component", id), do: %{component_id: id}
+  defp on_entity("project", id), do: %{project_id: id}
+
+  defp latest_offer(agent), do: agent.id |> Offers.list_for_agent() |> List.last()
+
+  # A turn end re-offers by itself, off this process. The recording transport's
+  # turn request is the sync point: each ended turn settles one offer, and the
+  # next offer is the turn the transport records.
+  test "the same work ignored three times is held back from this agent (1741)", ctx do
+    id = ctx.agent.id
+    assert admitted?(ctx.scope, reload(ctx.scope, ctx.agent))
+    held = latest_offer(ctx.agent).subject_key
+
+    for _ <- 1..3 do
+      assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
+      turn_ended(ctx.scope, ctx.agent)
+    end
+
+    assert %{ignored: 3, held?: true} = Offers.standing(id)[held]
+
+    refute_receive {:work_turn_requested, ^id, _ref, _prompt},
+                   1_000,
+                   """
+                   Work this agent ignored three times was offered to it a fourth time.
+
+                   Ending a turn without claiming clears every mark admission tests, so
+                   without the ladder the next observation re-offers it — and a turn
+                   ending is itself an observation. Measured: 197 turns in 3m29s, 60 a
+                   minute, until it was killed by hand.
+                   """
+  end
+
+  test "claiming and cancelling the offered work is declining it", ctx do
+    assert admitted?(ctx.scope, reload(ctx.scope, ctx.agent))
+    %{subject_key: key} = latest_offer(ctx.agent)
+    [type, id, name] = String.split(key, ":", parts: 3)
+
     cancelled =
-      Enum.reduce(1..5, ctx.agent, fn _, acc ->
-        ended_turn_having_cancelled_a_claim(ctx.scope, reload(ctx.scope, acc))
-      end)
-
-    refute admitted?(ctx.scope, reload(ctx.scope, cancelled)),
-           """
-           An agent that claimed and cancelled the same work five times was
-           offered it again.
-
-           A cancelled task carries `completed_at`, so the turn read as having
-           closed a task and every cancel cleared the damper: metric_flow QA
-           claimed and cancelled `qa_journey_wallaby` and was handed it straight
-           back (7169d3cf).
-           """
-  end
-
-  test "work that changed since the refusal wakes it immediately", ctx do
-    declined = refused_repeatedly(ctx.scope, ctx.agent, 5)
-
-    refute admitted?(ctx.scope, declined)
-
-    # The offer moved on: what it refused is no longer what is on the table.
-    {:ok, moved_on} =
-      AgentsRepository.update_agent(ctx.scope, declined, %{declined_offer: "something-else"})
-
-    assert admitted?(ctx.scope, moved_on),
-           """
-           An agent was kept asleep through a change in its own work.
-
-           The guard has to discriminate, not just suppress: a fingerprint that
-           refuses a repeat must still admit a genuinely different offer, or
-           this trades a spin for a stall.
-           """
-  end
-
-  test "an unchanged offer is put back on the table after the window", ctx do
-    declined = refused_repeatedly(ctx.scope, ctx.agent, 5)
-
-    refute admitted?(ctx.scope, declined)
-
-    {:ok, stale} =
-      AgentsRepository.update_agent(ctx.scope, declined, %{
-        declined_offer_at: DateTime.add(DateTime.utc_now(), -2 * 60 * 60, :second)
+      Map.merge(on_entity(type, id), %{
+        status: :cancelled,
+        requirement_name: name,
+        started_at: DateTime.utc_now(),
+        completed_at: DateTime.utc_now()
       })
 
-    assert admitted?(ctx.scope, stale),
-           """
-           A two-hour-old refusal still blocked the agent.
+    turn_ended(ctx.scope, ctx.agent, [cancelled])
 
-           Claimability changes without the actionable set changing — a blocker
-           cleared, a dependency finished on another copy, a tool granted — and
-           none of those move the fingerprint. Without the window the agent has
-           no edge left to wake it, which is the held-task wedge in a new place.
+    assert %{status: :declined, reason: "claimed and cancelled"} = latest_offer(ctx.agent)
+
+    assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
+           """
+           An agent that claimed and cancelled the offered work was free to be
+           offered it again: metric_flow QA claimed and cancelled
+           `qa_journey_wallaby` and was handed it straight back (7169d3cf).
            """
   end
 end

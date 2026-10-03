@@ -3,8 +3,7 @@ defmodule CodeMySpec.Auth.OAuthClient do
   OAuth2 client for authentication.
 
   Provides core OAuth functionality: token management, client registration,
-  PKCE helpers, and user info fetching. CLI-specific flows (interactive browser
-  auth) are in `CodeMySpecCli.Auth.OAuthClient`.
+  PKCE helpers, and user info fetching.
   """
 
   require Logger

@@ -444,8 +444,8 @@ install -d -o agent -g agent /home/agent/.codemyspec
 # --- harness -----------------------------------------------------------------
 # No migrations: the schema belongs to the server, which owns those rows. The
 # sprite role has DML only, so an accidental migration fails loudly rather than
-# altering a table the web app is serving from. (Migrator.run/0 no-ops on
-# :dev_sprite for the same reason.)
+# altering a table the web app is serving from. (The harness runs no
+# migrations at all; only `cms migrate` does, against a local SQLite file.)
 log "Starting the harness for project ${CMS_PROJECT_ID}"
 cd "${APP_DIR}"
 

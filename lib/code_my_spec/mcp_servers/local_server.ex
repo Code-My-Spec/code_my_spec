@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   Adding or removing a `component(...)` registration below requires **all** of:
 
-  1. `MIX_ENV=dev_cli mix compile` — the `:4004` build is not refreshed by a
+  1. `MIX_ENV=harness mix compile` — the `:4004` build is not refreshed by a
      plain restart, only `_build/dev` is. `just refresh` does this now
      (`a2ff68fa`); before it did, the server ran two-day-old modules while
      every mtime looked current.
@@ -71,6 +71,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
+  component(CodeMySpec.McpServers.Tasks.Tools.RejectOffer)
   component(CodeMySpec.McpServers.Health.Tools.Health)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
 

@@ -27,6 +27,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup do: CodeMySpecSpex.Fixtures.install_recording_agent_transport()
 
   # Staffed after the graph settles, so the only thing that can admit a turn is
   # the decision under test. `GraphWatcher.settle/1` fires its own
@@ -65,10 +66,17 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     |> Enum.any?(&(inspect(&1.content) =~ "was declined"))
   end
 
-  defp admitted?(conversation) do
-    conversation
-    |> Conversations.list_messages()
-    |> Enum.any?(&(inspect(&1.content) =~ "Eligible work is available"))
+  # The turn itself, off the recording transport: a resume or denial notice is
+  # the whole turn prompt now (criterion 1864), so the transcript no longer
+  # tells a turn from a note on the thread.
+  defp admitted?(_conversation), do: not is_nil(turn_prompt())
+
+  defp turn_prompt do
+    receive do
+      {:work_turn_requested, _agent_id, _ref, prompt} -> prompt
+    after
+      2_000 -> nil
+    end
   end
 
   test "denying it offers the agent a turn", ctx do
@@ -78,9 +86,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
 
     {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
 
-    # Two messages land: the notice, written before the wake, and the work
-    # prompt the wake produces. Waiting for one would race whichever is second.
-    assert_receive {:new_message, _}, 5_000
+    # One message lands: the notice is the turn prompt (criterion 1864).
     assert_receive {:new_message, _}, 5_000
 
     assert told?(conversation),
@@ -116,7 +122,6 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
 
     assert_receive {:new_message, _}, 5_000
-    assert_receive {:new_message, _}, 5_000
 
     assert admitted?(conversation),
            """
@@ -142,7 +147,6 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
         "The preview is back up and returning 200."
       )
 
-    assert_receive {:new_message, _}, 5_000
     assert_receive {:new_message, _}, 5_000
 
     told =
@@ -186,7 +190,6 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     {:ok, _} = Notifications.resolve_permission_request(request.id, "deny")
 
     assert_receive {:new_message, _}, 5_000
-    assert_receive {:new_message, _}, 5_000
 
     named =
       conversation
@@ -220,13 +223,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
     # beside the work prompt it is history, and history loses to the agent's own
     # last conclusion — measured twice, with a resolved issue named by id nine
     # seconds before the agent called that id unresolved.
-    turn_carries_it =
-      conversation
-      |> Conversations.list_messages()
-      |> Enum.any?(fn message ->
-        text = inspect(message.content)
-        text =~ "was declined" and text =~ "Eligible work is available"
-      end)
+    turn_carries_it = (turn_prompt() || "") =~ "was declined"
 
     assert turn_carries_it,
            """

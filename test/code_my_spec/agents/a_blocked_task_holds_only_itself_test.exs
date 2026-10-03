@@ -137,7 +137,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       assert prompt =~ "resume task #{ctx.blocked.id}"
 
       assert [offer] = Offers.list(ctx.scope, agent_id: product_id, kind: :unblocked)
-      assert offer.subject_key == ctx.question.id
+      assert {offer.subject_type, offer.subject_key} == {"task", ctx.blocked.id}
 
       {:reply, resumed, _} = start_triage!(ctx)
       refute resumed.isError, response_text(resumed)

@@ -9,13 +9,18 @@ defmodule CodeMySpec.Agents.Offers do
 
   ## Expectations, by kind
 
-    * `:work` — `start_task` on the subject this turn; a task-scoped `tap_out`
-      on it is `:declined` with its reason. A questions-only offer (main) wants
-      `answer_notification`.
+    * `:work` — `start_task` on the subject this turn, resuming a held task
+      included (criterion 1865); a task-scoped `tap_out` on it is `:declined`
+      with its reason. A questions-only offer (main) wants a waiting question
+      answered, escalated or put to the user (criterion 1866).
     * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
       after delivery. An answer's text is in the delivered message, so it wants
       no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
-    * `:unblocked` — resuming a task the blocker held.
+    * `:unblocked` — `start_task` on the released task, on `task:<id>`
+      (criterion 1862). Read from the call, not from where the task is at
+      turn end: a task resumed and finished in one turn was resumed.
+    * `:denial` — a declined tap-out: any `start_task` or
+      `answer_notification` after it (criterion 1672).
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
   """
@@ -36,7 +41,7 @@ defmodule CodeMySpec.Agents.Offers do
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
   # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
   # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
-  # `:answer` and `:unblocked` in `Notifications`, `TaskOwner` and `Work`; `:stalled` in
+  # `:answer`, `:unblocked` and `:denial` in `Notifications`, `TaskOwner` and `Work`; `:stalled` in
   # `MainAgent.Cadence.announce_stalls/2`.
   @template_versions %{
     work: "work/1",
@@ -45,10 +50,17 @@ defmodule CodeMySpec.Agents.Offers do
     resume: "resume/1",
     retry: "retry/1",
     answer: "answer/1",
-    unblocked: "unblocked/1",
+    unblocked: "unblocked/2",
+    denial: "denial/1",
     check_in: "check_in/1",
     stalled: "stalled/1"
   }
+
+  # What main can do with a waiting question it was offered.
+  @question_moves ~w(answer_notification escalate_question ask_user_question)
+
+  # Three ignored offers of the same work and it is held back from that agent.
+  @held_after 3
 
   @type subject :: {String.t(), term()}
 
@@ -65,17 +77,13 @@ defmodule CodeMySpec.Agents.Offers do
   def record(recorded, %Agent{id: agent_id} = agent, kind, {type, key})
       when is_binary(agent_id) do
     key = subject_key(key)
-    now = DateTime.utc_now()
-    same = same_subject(agent_id, kind, type, key)
-    attempt = attempt(same)
 
-    # No transaction of its own: some callers may be inside one, and a
-    # rollback here would take theirs with it.
-    Repo.update_all(where(same, [o], o.status == :open),
-      set: [status: :superseded, outcome_at: now, updated_at: now]
-    )
-
-    case insert_offer(agent, kind, type, key, attempt) do
+    # One agent's offers are recorded one at a time. A released task is offered
+    # by the release and by the graph change it causes, from two processes, and
+    # unserialized both read "no open offer" and stayed open side by side.
+    # A session lock rather than a transaction: some callers may be inside one,
+    # and a rollback here would take theirs with it.
+    case serialized(agent_id, fn -> supersede_and_insert(agent, kind, type, key) end) do
       {:ok, offer} ->
         link(offer, recorded)
         offer
@@ -91,6 +99,61 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   def record(_recorded, _agent, _kind, _subject), do: nil
+
+  @doc """
+  The same offer said again: link `recorded` to the open offer of this kind and
+  subject if there is one, and record a new offer only if there is not.
+
+  For a notice that repeats an offer already standing — a release told on the
+  thread while the turn the release caused is in flight. Superseding would
+  restamp the offer after the agent had already acted on it.
+  """
+  @spec record_or_link(term(), Agent.t(), Offer.kind(), subject()) :: Offer.t() | nil
+  def record_or_link(recorded, %Agent{id: agent_id} = agent, kind, {type, key} = subject)
+      when is_binary(agent_id) do
+    standing =
+      agent_id
+      |> same_subject(kind, type, subject_key(key))
+      |> where([o], o.status == :open)
+      |> order_by([o], desc: o.inserted_at)
+      |> limit(1)
+      |> Repo.one()
+
+    case standing do
+      nil ->
+        record(recorded, agent, kind, subject)
+
+      offer ->
+        link(offer, recorded)
+        offer
+    end
+  end
+
+  def record_or_link(recorded, agent, kind, subject), do: record(recorded, agent, kind, subject)
+
+  defp supersede_and_insert(agent, kind, type, key) do
+    now = DateTime.utc_now()
+    same = same_subject(agent.id, kind, type, key)
+    attempt = attempt(same)
+
+    Repo.update_all(where(same, [o], o.status == :open),
+      set: [status: :superseded, outcome_at: now, updated_at: now]
+    )
+
+    insert_offer(agent, kind, type, key, attempt)
+  end
+
+  defp serialized(agent_id, fun) do
+    Repo.checkout(fn ->
+      Repo.query!("SELECT pg_advisory_lock(hashtext($1))", ["offers:" <> agent_id])
+
+      try do
+        fun.()
+      after
+        Repo.query!("SELECT pg_advisory_unlock(hashtext($1))", ["offers:" <> agent_id])
+      end
+    end)
+  end
 
   @doc """
   Mark an offer whose delivery failed or was held (criterion 1676). Only an
@@ -191,6 +254,92 @@ defmodule CodeMySpec.Agents.Offers do
 
   def settle_turn(_agent), do: :ok
 
+  @doc """
+  Where each piece of work stands with this agent, for the escalation ladder
+  (criteria 1739–1741): `%{subject_key => %{ignored: n, held?: boolean}}`,
+  for requirement work offers only. `ignored` counts ignored offers since the
+  last claim; `held?` is three of them, or a decline since.
+  """
+  @spec standing(Ecto.UUID.t()) :: %{
+          String.t() => %{ignored: non_neg_integer(), held?: boolean()}
+        }
+  def standing(agent_id) when is_binary(agent_id) do
+    Offer
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.kind == :work and o.subject_type == "requirement" and
+        o.status in [:claimed, :declined, :ignored]
+    )
+    |> order_by([o], desc: o.inserted_at)
+    |> select([o], {o.subject_key, o.status})
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {key, statuses} -> {key, streak(statuses)} end)
+  end
+
+  def standing(_agent_id), do: %{}
+
+  # Newest first, up to the last claim.
+  defp streak(statuses) do
+    recent = Enum.take_while(statuses, &(&1 != :claimed))
+    ignored = Enum.count(recent, &(&1 == :ignored))
+    %{ignored: ignored, held?: ignored >= @held_after or :declined in recent}
+  end
+
+  @doc "How many ignored offers hold work back from an agent (criterion 1741)."
+  def held_after, do: @held_after
+
+  @doc """
+  Decline an open offer with a reason (criterion 1738): `offer_id`, or the
+  agent's newest open offer when nil. Answers the declined offer.
+  """
+  @spec reject(Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
+          {:ok, Offer.t()} | {:error, :not_found}
+  def reject(agent_id, offer_id, reason) when is_binary(agent_id) and is_binary(reason) do
+    case open_offer(agent_id, offer_id) do
+      nil ->
+        {:error, :not_found}
+
+      offer ->
+        now = DateTime.utc_now()
+
+        offer
+        |> Ecto.Changeset.change(
+          status: :declined,
+          reason: reason,
+          next_step: "told_main",
+          outcome_at: now
+        )
+        |> Repo.update()
+    end
+  end
+
+  defp open_offer(agent_id, nil) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.status == :open)
+    |> order_by([o], desc: o.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp open_offer(agent_id, offer_id) do
+    case Ecto.UUID.cast(offer_id) do
+      {:ok, id} ->
+        Repo.one(where(Offer, [o], o.id == ^id and o.agent_id == ^agent_id and o.status == :open))
+
+      :error ->
+        nil
+    end
+  end
+
+  @doc "This agent's offers settled at or after `at`."
+  @spec settled_since(Ecto.UUID.t(), DateTime.t()) :: [Offer.t()]
+  def settled_since(agent_id, %DateTime{} = at) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.outcome_at >= ^at)
+    |> Repo.all()
+  end
+
   defp settle([], _agent), do: :ok
 
   defp settle([first | _] = open, agent) do
@@ -201,7 +350,10 @@ defmodule CodeMySpec.Agents.Offers do
       after_offer = Enum.filter(calls, &(DateTime.compare(&1.at, offer.inserted_at) != :lt))
 
       settled =
-        offer |> outcome(agent, after_offer) |> Map.merge(%{outcome_at: now, updated_at: now})
+        offer
+        |> outcome(agent, after_offer)
+        |> Map.merge(%{outcome_at: now, updated_at: now})
+        |> next_step(offer)
 
       # Still open when written: a delivery failure marked since the read stands.
       Offer
@@ -209,6 +361,24 @@ defmodule CodeMySpec.Agents.Offers do
       |> Repo.update_all(set: Map.to_list(settled))
     end)
   end
+
+  # The ladder's next rung, written on the offer it follows (criteria
+  # 1739–1741). Work offers only; nothing else escalates (criterion 1742).
+  defp next_step(
+         %{status: :ignored} = settled,
+         %Offer{kind: :work, subject_type: "requirement"} = offer
+       ) do
+    step =
+      case standing(offer.agent_id)[offer.subject_key] do
+        %{ignored: n} when n + 1 >= @held_after -> "held_back"
+        %{ignored: 1} -> "alternatives"
+        _ -> "detail"
+      end
+
+    Map.put(settled, :next_step, step)
+  end
+
+  defp next_step(settled, _offer), do: settled
 
   defp outcome(%Offer{kind: :resume}, _agent, _calls), do: %{status: :n_a}
 
@@ -220,22 +390,78 @@ defmodule CodeMySpec.Agents.Offers do
        do: claimed_if(calls != [])
 
   defp outcome(%Offer{kind: :work, subject_type: "questions"}, _agent, calls),
-    do: claimed_if(called?(calls, "answer_notification"))
+    do: claimed_if(Enum.any?(@question_moves, &called?(calls, &1)))
 
-  defp outcome(%Offer{kind: :work} = offer, agent, _calls) do
+  defp outcome(%Offer{kind: :work} = offer, agent, calls) do
     tasks = tasks_on(agent, offer.subject_key)
 
-    case Enum.find(tasks, &tapped_out_since?(&1, offer.inserted_at)) do
-      nil -> claimed_if(Enum.any?(tasks, &started_since?(&1, offer.inserted_at)))
-      tapped -> %{status: :declined, reason: tapped.blocked_reason}
+    cond do
+      tapped = Enum.find(tasks, &tapped_out_since?(&1, offer.inserted_at)) ->
+        %{status: :declined, reason: tapped.blocked_reason}
+
+      # Claimed and cancelled is declined, or the claim would reset the ladder
+      # and the agent could take and drop the same work forever (7169d3cf).
+      Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
+        %{status: :declined, reason: "claimed and cancelled"}
+
+      true ->
+        claimed_if(
+          Enum.any?(tasks, &(started_since?(&1, offer.inserted_at) or start_called?(calls, &1)))
+        )
     end
   end
 
+  # The call, or the task's own state: active now, or finished since the offer.
+  # Either says it was resumed; neither depends on where it stands otherwise.
+  defp outcome(%Offer{kind: :unblocked, subject_type: "task"} = offer, agent, calls) do
+    case Enum.find(agent.tasks || [], &(&1.id == offer.subject_key)) do
+      nil -> claimed_if(false)
+      task -> claimed_if(start_called?(calls, task) or resumed_since?(task, offer.inserted_at))
+    end
+  end
+
+  # Offers recorded on the blocker before criterion 1862.
   defp outcome(%Offer{kind: :unblocked} = offer, agent, _calls),
     do: claimed_if(resumed?(agent, offer.subject_key))
 
+  defp outcome(%Offer{kind: :denial}, _agent, calls),
+    do: claimed_if(called?(calls, "start_task") or called?(calls, "answer_notification"))
+
   defp claimed_if(true), do: %{status: :claimed}
   defp claimed_if(false), do: %{status: :ignored}
+
+  # A `start_task` naming this task's requirement on the same kind of entity,
+  # directly or through `run_script`. Resuming keeps `started_at`, so the call
+  # is the evidence (criteria 1862, 1865). Not the entity's id: an agent names
+  # a story by number, the task holds its id, and one agent does not hold two
+  # tasks on the same requirement.
+  defp start_called?(calls, task) do
+    Enum.any?(calls, fn %{name: name, arguments: arguments} ->
+      cond do
+        String.ends_with?(name, "start_task") ->
+          arguments["requirement_name"] == task.requirement_name and
+            entity_type_matches?(arguments["entity_type"], task)
+
+        String.ends_with?(name, "run_script") ->
+          script = inspect(arguments)
+
+          String.contains?(script, "start_task") and
+            String.contains?(script, task.requirement_name)
+
+        true ->
+          false
+      end
+    end)
+  end
+
+  defp entity_type_matches?(nil, _task), do: true
+  defp entity_type_matches?("story", task), do: not is_nil(task.story_id)
+  defp entity_type_matches?("component", task), do: not is_nil(task.component_id)
+
+  defp entity_type_matches?("project", task),
+    do: is_nil(task.story_id) and is_nil(task.component_id)
+
+  defp entity_type_matches?(_type, _task), do: false
 
   # Tools reached through `run_script` are named in its arguments.
   defp called?(calls, tool) do
@@ -286,6 +512,18 @@ defmodule CodeMySpec.Agents.Offers do
     do: DateTime.compare(at, since) != :lt
 
   defp tapped_out_since?(_task, _since), do: false
+
+  defp resumed_since?(%{status: :active}, _since), do: true
+
+  defp resumed_since?(%{status: :completed, completed_at: %DateTime{} = at}, since),
+    do: DateTime.compare(at, since) != :lt
+
+  defp resumed_since?(_task, _since), do: false
+
+  defp cancelled_since?(%{status: :cancelled, completed_at: %DateTime{} = at}, since),
+    do: DateTime.compare(at, since) != :lt
+
+  defp cancelled_since?(_task, _since), do: false
 
   defp same_subject(agent_id, kind, type, nil) do
     where(

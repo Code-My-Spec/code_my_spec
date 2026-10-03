@@ -2,14 +2,18 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
   @shortdoc "Refuse to run the Postgres migration set against a SQLite CLI database"
 
   @moduledoc """
-  Answer `mix ecto.migrate` under a CLI environment with what actually migrates it.
+  Answer `mix ecto.migrate` under the harness environment with what actually
+  migrates its database.
 
-      MIX_ENV=dev_cli mix ecto.migrate
+      MIX_ENV=harness mix ecto.migrate
 
   `mix ecto.migrate` runs `priv/repo/migrations` whatever `MIX_ENV` says, because
-  that is Ecto's default and nothing points it elsewhere for the CLI
-  environments. That directory is the **Postgres** set, and its first statement
-  is `CREATE EXTENSION IF NOT EXISTS citext`, so SQLite answers:
+  that is Ecto's default and nothing points it elsewhere for the harness env,
+  whose Repo is SQLite (for `cms migrate`) and whose runtime config aims it at
+  the user's real `~/.codemyspec/cli.db`.
+
+  `priv/repo/migrations` is the **Postgres** set, and its first statement is
+  `CREATE EXTENSION IF NOT EXISTS citext`, so SQLite answers:
 
       ** (Exqlite.Error) near "EXTENSION": syntax error
 
@@ -22,11 +26,9 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
 
   ## What migrates the CLI database
 
-  Nothing you run. `CodeMySpecLocalWeb.Migrator` sits in the supervision tree
-  between `Repo` and the children that query at init, and runs
-  `priv/repo/cli_migrations` on boot. So the answer to "how do I migrate the CLI
-  dev database" is "boot it", which is genuinely non-obvious — which is why the
-  wrong command gets reached for.
+  `cms migrate`. `CmsHarness.Migrate.Migrator` sits in its supervision tree
+  right after `Repo` and runs `priv/repo/cli_migrations` before the import
+  reads anything. Nothing else opens that database.
 
   ## Why refuse rather than redirect
 
@@ -36,12 +38,10 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
 
   ## Keyed on the adapter, not on `MIX_ENV`
 
-  Three environments use SQLite (`dev_cli`, `prod_cli`, `cli_demo`) and a fourth
-  with a CLI-shaped name does not: `dev_sprite` sets
-  `adapter: Ecto.Adapters.Postgres` back, and its own config calls that line "the
-  entire architectural difference". An environment allowlist would refuse it
-  wrongly and would miss the next SQLite environment added. The adapter is the
-  thing the migration set has to match.
+  `harness` uses SQLite; `desktop` imports the same harness fragment and sets
+  `adapter: Ecto.Adapters.Postgres` back. An environment allowlist would get one
+  of them wrong and would miss the next SQLite environment added. The adapter is
+  the thing the migration set has to match.
 
   ## Damage this prevents
 
@@ -72,7 +72,7 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
   The default reads `Application.get_env/3` with the same fallback
   `CodeMySpec.Repo` compiles in, rather than calling `Repo.__adapter__/0`: this
   runs before `app.start`, deliberately, so a refusal costs no boot — and in a
-  CLI environment booting is the very thing that runs the migrations this task
+  harness build `cms migrate` is the thing that runs the migrations this task
   is refusing to run by hand.
   """
   @spec refuse_on_sqlite!(module()) :: :ok
@@ -95,9 +95,9 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
     `priv/repo/migrations` is the Postgres set. This environment's repo uses
     #{inspect(Ecto.Adapters.SQLite3)}, whose migrations are `priv/repo/cli_migrations`.
 
-    Nothing here needs running by hand: CodeMySpecLocalWeb.Migrator runs
-    `cli_migrations` on boot, before the children that query at init. Start the
-    app and it migrates itself.
+    Nothing here needs running by hand: CmsHarness.Migrate.Migrator runs
+    `cli_migrations` when `cms migrate` boots, before the import reads the
+    database.
 
     Refusing rather than proceeding: the first statement is
     `CREATE EXTENSION IF NOT EXISTS citext`, and SQLite answers

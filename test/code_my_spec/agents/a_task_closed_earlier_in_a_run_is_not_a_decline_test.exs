@@ -100,12 +100,4 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
              "damped the coder for ten minutes (declined_offer_count=" <>
              "#{inspect(agent.declined_offer_count)})"
   end
-
-  test "a run that closed nothing is still a decline", ctx do
-    run_under_way(ctx.scope, ctx.agent)
-    turn_started(ctx.scope, ctx.agent)
-    :ok = Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_ended"})
-
-    refute is_nil(reload(ctx.scope, ctx.agent).declined_offer)
-  end
 end

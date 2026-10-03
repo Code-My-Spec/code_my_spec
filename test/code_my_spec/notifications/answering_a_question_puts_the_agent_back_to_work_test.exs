@@ -31,6 +31,7 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup do: CodeMySpecSpex.Fixtures.install_recording_agent_transport()
 
   # Staffed after the graph settles, so the only thing that can admit a turn is
   # the answer under test — `GraphWatcher.settle/1` fires its own
@@ -77,10 +78,17 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
     {agent, conversation, request}
   end
 
-  defp admitted?(conversation) do
-    conversation
-    |> Conversations.list_messages()
-    |> Enum.any?(&(inspect(&1.content) =~ "Eligible work is available"))
+  # The turn itself, off the recording transport: a resume or denial notice is
+  # the whole turn prompt now (criterion 1864), so the transcript no longer
+  # tells a turn from a note on the thread.
+  defp admitted?(_conversation), do: not is_nil(turn_prompt())
+
+  defp turn_prompt do
+    receive do
+      {:work_turn_requested, _agent_id, _ref, prompt} -> prompt
+    after
+      2_000 -> nil
+    end
   end
 
   test "answering it offers the agent a turn", ctx do
