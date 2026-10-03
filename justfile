@@ -1018,9 +1018,9 @@ reset-db:
 check:
     mix compile --warnings-as-errors
 
-# Build the harness release (the `code_my_spec_cli` tarball brew and the MSI install)
-build-cli:
-    MIX_ENV=harness mix release code_my_spec_cli
+# Build the harness release (the `cms_harness` tarball brew and the MSI install)
+build-harness:
+    MIX_ENV=harness mix release cms_harness
 
 # Build the devbox image — the container a cloud working copy runs in
 devbox-image:
@@ -1207,8 +1207,8 @@ publish_claude_extension VERSION:
     # someone else's unrelated, already-merged file has nothing to do with
     # what this recipe is releasing and should not be able to block it.
     MIX_ENV=harness mix compile
-    MIX_ENV=harness mix release code_my_spec_cli
-    cp _build/harness/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
+    MIX_ENV=harness mix release cms_harness
+    cp _build/harness/cms_harness-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
 
     echo "→ packaging the extension"
     MIX_ENV=harness mix cms.package_plugin release/codemyspec-extension
