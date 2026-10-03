@@ -222,15 +222,8 @@ end
 # Not :test — config/test.exs already points at TestBackend (ETS, no
 # model), and loading the real 90MB ONNX file on every test boot for a
 # backend nothing in that env calls would just be a slow no-op.
-if config_env() in [:dev, :prod] do
-  config :code_my_spec,
-    embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
-    embedding_serving: CodeMySpec.Embeddings.OrtexServing
-end
-
-# Desktop: needs pgvector, which a local Postgres may lack, so off unless asked.
-# TODO(bb8bc042 step 6): probe pg_extension at first boot instead of a flag.
-if config_env() == :desktop and System.get_env("CMS_EMBEDDINGS") in ~w(true 1) do
+# Desktop's FirstBoot refuses a Postgres without pgvector, so it is always here.
+if config_env() in [:dev, :prod, :desktop] do
   config :code_my_spec,
     embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
     embedding_serving: CodeMySpec.Embeddings.OrtexServing
@@ -247,6 +240,26 @@ if config_env() == :desktop do
   config :code_my_spec, CodeMySpecWeb.Endpoint,
     secret_key_base:
       System.get_env("SECRET_KEY_BASE") || CodeMySpecDesktop.Secret.read_or_create!()
+
+  # For a machine where 4000 or 4004 is taken. The harness follows the app's
+  # port, since base_url is the server it talks to.
+  if port = System.get_env("PORT") do
+    url = "http://localhost:#{port}"
+
+    config :code_my_spec,
+      base_url: url,
+      api_base_url: url,
+      oauth_base_url: url,
+      harness_default_server_url: url
+
+    config :code_my_spec, CodeMySpecWeb.Endpoint,
+      url: [port: String.to_integer(port)],
+      http: [port: String.to_integer(port)]
+  end
+
+  if port = System.get_env("CMS_HARNESS_PORT") do
+    config :code_my_spec, CmsHarness.Web.Endpoint, http: [port: String.to_integer(port)]
+  end
 end
 
 if config_env() == :prod do
