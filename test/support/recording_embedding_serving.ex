@@ -16,13 +16,24 @@ defmodule CodeMySpecTest.RecordingEmbeddingServing do
   @doc "Fail every batch while `fail?` is true."
   def fail(fail?), do: :persistent_term.put({__MODULE__, :fail}, fail?)
 
+  @doc """
+  Block every batch after reporting it, until released, while `pause?` is
+  true — long enough for a test to kill the real process this runs in
+  (reported as `{:runner_pid, self()}`) mid-batch, proving a lost runner
+  is a different failure mode from `fail/1`'s serving-level error. Only
+  ever set back to `false` by the test itself; nothing in this module
+  releases on its own.
+  """
+  def pause_until_released(pause?), do: :persistent_term.put({__MODULE__, :pause}, pause?)
+
   @doc "Answer `model_name/0` with `name`, as a different model would."
   def model(name), do: :persistent_term.put({__MODULE__, :model}, name)
 
-  @doc "Stop reporting, stop failing, back to the default model."
+  @doc "Stop reporting, stop failing, stop pausing, back to the default model."
   def reset do
     :persistent_term.erase({__MODULE__, :pid})
     :persistent_term.erase({__MODULE__, :fail})
+    :persistent_term.erase({__MODULE__, :pause})
     :persistent_term.erase({__MODULE__, :model})
   end
 
@@ -35,7 +46,15 @@ defmodule CodeMySpecTest.RecordingEmbeddingServing do
   @impl true
   def embed_batch(texts, priority) do
     report({:embedded, texts, priority})
+    maybe_pause()
     respond(texts, :persistent_term.get({__MODULE__, :fail}, false))
+  end
+
+  defp maybe_pause do
+    if :persistent_term.get({__MODULE__, :pause}, false) do
+      report({:runner_pid, self()})
+      receive do: (:release -> :ok)
+    end
   end
 
   @impl true

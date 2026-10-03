@@ -10,8 +10,11 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.HarnessedKnowledgeHelpers
+  import ExUnit.CaptureLog
 
+  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecTest.RecordingEmbeddingServing
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -33,6 +36,19 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
       "defmodule PkgB do\n  @moduledoc \"PkgB was still unembedded when the box died.\"\nend\n"
   }
 
+  # Hex-doc embeddings carry no `project_id` — they're global knowledge, not
+  # scoped to whichever project's sweep happened to embed them first. Pkg_a
+  # and pkg_b are already embedded (by the scenario above) for the rest of
+  # this test, so the real-kill scenario needs its own, never-touched
+  # packages or its own sweep would find nothing pending at all.
+  @pkg_c %{
+    "lib/pkg_c.ex" => "defmodule PkgC do\n  @moduledoc \"PkgC finished before the runner was killed.\"\nend\n"
+  }
+  @pkg_d %{
+    "lib/pkg_d.ex" =>
+      "defmodule PkgD do\n  @moduledoc \"PkgD was still unembedded when the runner was killed.\"\nend\n"
+  }
+
   defp lock(entries) do
     body =
       Enum.map_join(entries, ",\n  ", fn {name, version, checksum} ->
@@ -49,7 +65,17 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
     end)
   end
 
-  spex "A lost burst box resumes embedding where it stopped", criterion: 1772 do
+  # A duplicate row reads as the same result block appearing twice in a
+  # search — checking that off the surface rather than `doc_embeddings`
+  # directly, same reasoning as every other assertion in this file.
+  defp count_occurrences(text, marker), do: text |> String.split(marker) |> length() |> Kernel.-(1)
+
+  # The real-kill scenario below deliberately crashes a Task — a genuine
+  # `[error]` log is the expected shape of that failure mode, not a sign
+  # something went wrong unobserved.
+  spex "A lost burst box resumes embedding where it stopped",
+    criterion: 1772,
+    fail_on_error_logs: false do
     scenario "half a docs set was embedded when the burst box died" do
       given_ "pkg_a finished embedding before the box died, and pkg_b had not started",
               context do
@@ -96,6 +122,95 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
 
         assert search(context.main, "hexdocs") =~ "PkgA finished before the box died."
         assert search(context.main, "hexdocs") =~ "PkgB was still unembedded"
+        {:ok, context}
+      end
+    end
+
+    # The scenario above fakes the failure at the serving boundary — a real
+    # dispatch through `FLAME.Pool`, but an injected `{:error, :serving_down}`
+    # return rather than anything actually dying. This scenario kills the
+    # real process `RecordingEmbeddingServing.embed_batch/2` runs in while a
+    # batch is in flight — the same shape of loss a live Hetzner burst box
+    # dying mid-build would hand back to `InFlightCalls.call/3` (confirmed
+    # directly against a real box tonight; `in_flight_calls_test.exs` proves
+    # the counter side of this at the unit level). Both are real failure
+    # modes this story has to survive, so both stay.
+    scenario "the burst box's own runner process is killed mid-batch" do
+      given_ "pkg_c finished embedding, and the next batch will block until released",
+              context do
+        # Independent of the scenario above and its own `fail_embedding`
+        # toggle — never assume the order scenarios run in left this clean.
+        :ok = Fixtures.fail_embedding(false)
+
+        main = checkout(context, main?: true)
+        harness_up(main)
+        {tarball_c, checksum_c} = Fixtures.hex_tarball(@pkg_c)
+        {tarball_d, checksum_d} = Fixtures.hex_tarball(@pkg_d)
+        serve(%{"pkg_c" => tarball_c, "pkg_d" => tarball_d})
+
+        write_lock(main, lock([{"pkg_c", "1.0.0", checksum_c}]))
+        manifest(main)
+        :ok = Fixtures.hex_doc_sweep_runs()
+        assert search(main, "hexdocs") =~ "PkgC finished before the runner was killed."
+        _ = embedded()
+
+        write_lock(
+          main,
+          lock([{"pkg_c", "1.0.0", checksum_c}, {"pkg_d", "1.0.0", checksum_d}])
+        )
+
+        manifest(main)
+        RecordingEmbeddingServing.pause_until_released(true)
+        {:ok, Map.put(context, :main, main)}
+      end
+
+      when_ "the sweep runs and pkg_d's real runner is killed while its batch is in flight",
+            context do
+        # `spawn_monitor/1`, not `Task.async/1` — the sweep is *not* linked to
+        # this test process. `reconcile_one/1` calls `FLAME.call` with no
+        # `:link` override, so FLAME's own default links the runner to its
+        # caller; killing the runner is meant to crash something inside the
+        # reconcile pipeline for real, and this test should observe that
+        # outcome rather than be dragged down by it if the crash turns out
+        # to reach further than `reconcile_all/0`'s own per-package
+        # isolation is supposed to contain.
+        capture_log(fn ->
+          {sweep_pid, sweep_ref} = spawn_monitor(fn -> Fixtures.hex_doc_sweep_runs() end)
+
+          assert_receive {:runner_pid, runner_pid}, 5_000
+          Process.exit(runner_pid, :lost_connection)
+          RecordingEmbeddingServing.pause_until_released(false)
+
+          assert_receive {:DOWN, ^sweep_ref, :process, ^sweep_pid, _reason}, :timer.seconds(30)
+        end)
+
+        {:ok, context}
+      end
+
+      then_ "nothing is left stuck in flight on the pool", context do
+        refute InFlightCalls.any_in_flight?(CodeMySpec.EmbedPool),
+               "the in-flight count never came back down after the runner was killed"
+
+        {:ok, context}
+      end
+
+      when_ "the sweep runs again", context do
+        :ok = Fixtures.hex_doc_sweep_runs()
+        {:ok, context}
+      end
+
+      then_ "pkg_d is embedded on resume and neither package is duplicated", context do
+        text = search(context.main, "hexdocs")
+
+        assert text =~ "PkgC finished before the runner was killed."
+        assert text =~ "PkgD was still unembedded"
+
+        assert count_occurrences(text, "**hexdocs:pkg_c/PkgC.md**") == 1,
+               "pkg_c's own chunk does not appear exactly once: #{text}"
+
+        assert count_occurrences(text, "**hexdocs:pkg_d/PkgD.md**") == 1,
+               "pkg_d's chunk does not appear exactly once — duplicated on resume: #{text}"
+
         {:ok, context}
       end
     end

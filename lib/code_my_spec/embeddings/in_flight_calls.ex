@@ -42,16 +42,29 @@ defmodule CodeMySpec.Embeddings.InFlightCalls do
   incremented first and decremented after — whether `fun` returns, raises,
   or the call itself exits (a runner crash, a FLAME timeout).
 
+  `:link` is always forced to `false`, regardless of what `opts` says.
+  FLAME's own default (`true`) links the runner to *this* process — found
+  live (story 1087, criterion 1772's own real-kill scenario): a runner
+  killed out from under a linked, non-trapping caller delivers an
+  unconditional exit signal that kills the caller before its own `after`
+  ever runs, which is exactly the counter-never-comes-back-down bug this
+  module exists to prevent. `link: false` makes a dead runner arrive as a
+  catchable exit inside this process's own control flow instead of a
+  signal that ends it — `after` runs either way, which is the whole
+  contract. A caller that still wants the opposite (its own death also
+  killing the runner) is asking FLAME for something other than what this
+  module promises; use `FLAME.call/3` directly for that.
+
   Every existing `FLAME.call(CodeMySpec.EmbedPool, ...)` call site should
   call this instead, unchanged otherwise: same pool, same function, same
-  opts, same return.
+  opts (`:link` aside), same return.
   """
   @spec call(FLAME.Pool.name(), (-> result), keyword()) :: result when result: term()
   def call(pool, fun, opts \\ []) when is_function(fun, 0) do
     increment(pool)
 
     try do
-      FLAME.call(pool, fun, opts)
+      FLAME.call(pool, fun, Keyword.put(opts, :link, false))
     after
       decrement(pool)
     end

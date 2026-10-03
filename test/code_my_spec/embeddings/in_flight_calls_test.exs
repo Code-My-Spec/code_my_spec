@@ -89,13 +89,29 @@ defmodule CodeMySpec.Embeddings.InFlightCallsTest do
     test "decrements even when the called function raises" do
       pool = start_pool!(unique_pool())
 
-      # `link: false` so this surfaces as an `exit` on the caller's own
-      # stack (FLAME's own documented behavior) rather than a process-link
-      # crash that would take the whole test process down with it — FLAME's
-      # default `link: true` links the caller to the remote process
-      # specifically so a crash there kills the caller too.
+      # No `:link` passed here on purpose — `call/3` forces `link: false`
+      # itself now, so this surfaces as a catchable `exit` on the caller's
+      # own stack rather than a process-link crash that would take the
+      # whole test process down with it, with no opt-in required from this
+      # call site. See `call/3`'s own moduledoc for why: FLAME's default
+      # (`link: true`) is exactly what let a real runner crash leave this
+      # counter stuck (story 1087, criterion 1772's own real-kill scenario).
+      {error, _stacktrace} = catch_exit(InFlightCalls.call(pool, fn -> raise "boom" end))
+
+      assert %RuntimeError{message: "boom"} = error
+      refute InFlightCalls.any_in_flight?(pool)
+    end
+
+    test "forces link: false even when the caller asks for link: true" do
+      pool = start_pool!(unique_pool())
+
+      # The exact shape of the bug this guards: a caller (every real one
+      # today) that never thinks about `:link` at all is the common case,
+      # but a caller that actively asks for the opposite must not get it
+      # either — this module's whole job is to not depend on every call
+      # site getting this right.
       {error, _stacktrace} =
-        catch_exit(InFlightCalls.call(pool, fn -> raise "boom" end, link: false))
+        catch_exit(InFlightCalls.call(pool, fn -> raise "boom" end, link: true))
 
       assert %RuntimeError{message: "boom"} = error
       refute InFlightCalls.any_in_flight?(pool)
@@ -108,7 +124,8 @@ defmodule CodeMySpec.Embeddings.InFlightCallsTest do
     # at all, not a propagated `RuntimeError`. `after` makes no distinction
     # between the two, but John's own "returns to zero on success, error
     # and crash" asked for this proven as its own case rather than assumed
-    # covered by the raise test above.
+    # covered by the raise test above. No `:link` opt here either — see
+    # the "raises" test above for why.
     test "decrements even when the runner process is killed out from under the call" do
       pool = start_pool!(unique_pool())
       test_pid = self()
@@ -116,14 +133,10 @@ defmodule CodeMySpec.Embeddings.InFlightCallsTest do
       spawn(fn ->
         result =
           catch_exit(
-            InFlightCalls.call(
-              pool,
-              fn ->
-                send(test_pid, {:runner, self()})
-                receive do: (:never -> :unreachable)
-              end,
-              link: false
-            )
+            InFlightCalls.call(pool, fn ->
+              send(test_pid, {:runner, self()})
+              receive do: (:never -> :unreachable)
+            end)
           )
 
         send(test_pid, {:result, result})
