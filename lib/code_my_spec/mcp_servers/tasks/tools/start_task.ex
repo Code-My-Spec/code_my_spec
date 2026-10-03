@@ -18,6 +18,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Components
@@ -226,9 +227,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp handle_existing(nil, scope, owner, requirement, agent_id, frame) do
+    # Whose work it is first: a claim outside the caller's role, story or team
+    # is refused for that, whatever state the work is in.
     with :ok <- role_may_claim(owner, requirement),
          :ok <- story_may_claim(scope, owner, requirement),
-         :ok <- team_may_claim(scope, owner, requirement) do
+         :ok <- team_may_claim(scope, owner, requirement),
+         :ok <- not_already_done(scope, owner, requirement) do
       create_and_activate(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
@@ -340,6 +344,41 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       "story #{number || story_id}. While a story is active you take only its work; " <>
       "`get_next_requirement` lists it."
   end
+
+  # Work the graph still offers but that is already done (67e6b5cb): the 1118
+  # `story_promoted` repeats, and the eval's silently certified `ready_for_qa`.
+  # Refused rather than started, and the graph is told so the offer clears.
+  defp not_already_done(scope, owner, requirement) do
+    if Requirements.satisfied_now?(scope, requirement) do
+      :ok = Requirements.refresh_entity(scope, {requirement.entity_type, requirement.entity_id})
+      close_stale_offer(owner, requirement)
+
+      {:error,
+       "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
+         "is already satisfied — there is nothing to do, and the offer of it is closed. " <>
+         "`get_next_requirement` shows what is left."}
+    else
+      :ok
+    end
+  end
+
+  defp close_stale_offer(%Agent{id: id}, requirement),
+    do:
+      Offers.close_stale(
+        id,
+        "#{requirement.entity_type}:#{requirement.entity_id}:#{requirement.name}"
+      )
+
+  defp close_stale_offer(_owner, _requirement), do: :ok
+
+  defp entity_label(scope, %{entity_type: "story", entity_id: id}) do
+    case Stories.get_story(scope, id) do
+      %{number: number} -> number
+      _ -> id
+    end
+  end
+
+  defp entity_label(_scope, %{entity_id: id}), do: id
 
   defp eligible_to_resume(scope, owner, requirement) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil

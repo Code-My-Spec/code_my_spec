@@ -29,6 +29,8 @@ defmodule CodeMySpec.Promotion.Steps do
 
   alias CodeMySpec.Environments
 
+  @submodule ".code_my_spec"
+
   @type result :: {:ok, term()} | {:error, map()}
 
   @doc """
@@ -67,6 +69,10 @@ defmodule CodeMySpec.Promotion.Steps do
   refused first: analysing a branch that is behind certifies a commit that
   cannot merge (28d72f8a). The result carries `head`, the commit a promotion
   certifies and then merges.
+
+  With `main`, a copy whose HEAD moves the `.code_my_spec` gitlink is also
+  refused unless the new pointer is on the submodule's `origin` and descends
+  from main's (7e7539ec).
   """
   @spec precheck(Environments.Environment.t(), String.t(), String.t() | nil) :: result()
   def precheck(env, root, main \\ nil) do
@@ -78,14 +84,32 @@ defmodule CodeMySpec.Promotion.Steps do
              "--ignore-submodules=all"
            ]) do
         {"", 0} ->
-          branch(env, root)
+          with :ok <- submodule_pointer(env, root, main), do: branch(env, root)
 
         {dirty, 0} ->
           uncommitted(dirty)
 
         {out, _} ->
-          {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
+          unreadable(out)
       end
+    end
+  end
+
+  # Not under git at all (67e6b5cb). "could not read this checkout's state"
+  # led an agent to `git init && git commit` to get a clean tree — which would
+  # certify a history nobody else has. Said plainly, with what to do instead.
+  defp unreadable(out) do
+    if out =~ "not a git repository" do
+      {:error,
+       %{
+         reason:
+           "this checkout is not a git repository, so there is no commit to certify. " <>
+             "Do not create one — a new repository here is a history nobody else has. " <>
+             "Report it (`create_issue`) and stop.",
+         not_a_repository: true
+       }}
+    else
+      {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
     end
   end
 
@@ -113,6 +137,179 @@ defmodule CodeMySpec.Promotion.Steps do
         {:error, %{reason: "could not tell whether this copy contains main: #{String.trim(out)}"}}
     end
   end
+
+  # 7e7539ec: one promote moved main's gitlink back to an older docs commit (a
+  # stale submodule checkout committed with the work); another pinned a commit
+  # never pushed, so fresh clones failed with "not our ref". Checked here, not
+  # in `Promotion.gate/3`: the gate runs on the server with no checkout, and
+  # this runs where the promoting copy's submodule is on disk. Only when the
+  # pointer moved, so an unchanged one costs no fetch.
+  defp submodule_pointer(_env, _root, nil), do: :ok
+
+  defp submodule_pointer(env, root, main) do
+    case {gitlink(env, root, main), gitlink(env, root, "HEAD")} do
+      {_, nil} -> :ok
+      {same, same} -> :ok
+      {target, pointer} -> pointer_published(env, Path.join(root, @submodule), target, pointer)
+    end
+  end
+
+  defp pointer_published(env, sub, target, pointer) do
+    with :ok <- initialised(env, sub, target, pointer),
+         {:ok, url} <- fetch_origin(env, sub, target, pointer),
+         :ok <- on_remote(env, sub, url, target, pointer) do
+      descends(env, sub, url, target, pointer)
+    end
+  end
+
+  # In an uninitialised submodule directory `git -C` finds the superproject.
+  defp initialised(env, sub, target, pointer) do
+    case git(env, sub, ["rev-parse", "--show-superproject-working-tree"]) do
+      {out, 0} when out != "" ->
+        :ok
+
+      {out, _} ->
+        pointer_refused(
+          target,
+          pointer,
+          "this copy moves #{@submodule} from #{moved(target, pointer)}, but #{sub} is not " <>
+            "an initialised submodule checkout#{detail(out)}, so the new pointer cannot be " <>
+            "checked against the docs remote. Nothing was merged. Run " <>
+            "`git submodule update --init #{@submodule}`, then promote again."
+        )
+    end
+  end
+
+  # An explicit refspec and `--prune`, so the remote-tracking refs are exactly
+  # the remote's branches whatever the clone's config. A failed fetch refuses:
+  # a pointer that cannot be shown to be pushed is not assumed to be.
+  @fetch ["fetch", "--quiet", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*"]
+
+  defp fetch_origin(env, sub, target, pointer) do
+    with {:url, {url, 0}} <- {:url, git(env, sub, ["remote", "get-url", "origin"])},
+         url = String.trim(url),
+         {:fetch, {_, 0}} <-
+           {:fetch, git(env, sub, @fetch, env: [{"GIT_TERMINAL_PROMPT", "0"}])} do
+      {:ok, url}
+    else
+      {:url, {out, _}} ->
+        pointer_refused(
+          target,
+          pointer,
+          "this copy moves #{@submodule} from #{moved(target, pointer)}, but #{sub} has no " <>
+            "`origin` remote to check #{pointer} against#{detail(out)}. Nothing was merged. " <>
+            "Add the docs remote as `origin` in #{@submodule}, then promote again."
+        )
+
+      {:fetch, {out, _}} ->
+        pointer_refused(
+          target,
+          pointer,
+          "this copy moves #{@submodule} from #{moved(target, pointer)}, and checking that " <>
+            "#{pointer} is on the docs remote failed: could not fetch #{@submodule}'s " <>
+            "origin#{detail(out)}. Nothing was merged: an unverified pointer is refused, " <>
+            "not assumed pushed. Make the remote reachable, then promote again."
+        )
+    end
+  end
+
+  defp on_remote(env, sub, url, target, pointer) do
+    case git(env, sub, [
+           "for-each-ref",
+           "--contains",
+           pointer,
+           "--format=%(refname)",
+           "refs/remotes/origin/"
+         ]) do
+      {refs, 0} when refs != "" ->
+        :ok
+
+      _ ->
+        pointer_refused(
+          target,
+          pointer,
+          "your branch moves #{@submodule} from #{moved(target, pointer)}, but #{pointer} is " <>
+            "not on any branch of the docs remote (#{url}), so no other checkout can fetch " <>
+            "it (\"not our ref\"). Nothing was merged. Push #{pointer} to the docs remote " <>
+            "first (in #{@submodule}: `git push origin #{pointer}:main`, or onto any branch), " <>
+            "then promote again."
+        )
+    end
+  end
+
+  # A branch that adds the gitlink has no pointer of main's to descend from.
+  defp descends(_env, _sub, _url, nil, _pointer), do: :ok
+
+  defp descends(env, sub, url, target, pointer) do
+    case git(env, sub, ["cat-file", "-e", "#{target}^{commit}"]) do
+      {_, 0} ->
+        env
+        |> git(sub, ["merge-base", "--is-ancestor", target, pointer])
+        |> ancestry(env, sub, target, pointer)
+
+      _ ->
+        pointer_refused(
+          target,
+          pointer,
+          "your branch moves #{@submodule} from #{target} to #{pointer}, but main's pointer " <>
+            "#{target} is not on the docs remote (#{url}) or in #{sub}, so whether yours " <>
+            "descends from it cannot be checked. Nothing was merged. Push #{target} to the " <>
+            "docs remote from the checkout that has it, then promote again."
+        )
+    end
+  end
+
+  defp ancestry({_, 0}, _env, _sub, _target, _pointer), do: :ok
+
+  defp ancestry({_, 1}, env, sub, target, pointer) do
+    case git(env, sub, ["merge-base", "--is-ancestor", pointer, target]) do
+      {_, 0} ->
+        pointer_refused(
+          target,
+          pointer,
+          "your branch moves #{@submodule} from #{target} back to #{pointer}, an older docs " <>
+            "commit, most likely a stale submodule checkout committed with your work. " <>
+            "Nothing was merged. Set it to #{target} or a descendant with " <>
+            "`git update-index --cacheinfo 160000,#{target},#{@submodule}` and commit, then " <>
+            "promote again."
+        )
+
+      _ ->
+        pointer_refused(
+          target,
+          pointer,
+          "your branch moves #{@submodule} from #{target} to #{pointer}, which does not " <>
+            "descend from it: the docs histories have diverged, and merging would drop " <>
+            "main's docs commits. Nothing was merged. In #{@submodule}, merge #{target} into " <>
+            "your docs work and push it, point at the result with " <>
+            "`git update-index --cacheinfo 160000,<sha>,#{@submodule}` and commit, then " <>
+            "promote again."
+        )
+    end
+  end
+
+  defp ancestry({out, _}, _env, sub, target, pointer) do
+    pointer_refused(
+      target,
+      pointer,
+      "your branch moves #{@submodule} from #{target} to #{pointer}, but whether it " <>
+        "descends from main's pointer could not be checked in #{sub}#{detail(out)}. " <>
+        "Nothing was merged."
+    )
+  end
+
+  defp moved(nil, pointer), do: "nothing to #{pointer}"
+  defp moved(target, pointer), do: "#{target} to #{pointer}"
+
+  defp detail(out) do
+    case String.trim(out) do
+      "" -> ""
+      text -> " (#{text})"
+    end
+  end
+
+  defp pointer_refused(target, pointer, reason),
+    do: {:error, %{reason: reason, submodule: %{main: target, branch: pointer}}}
 
   # Porcelain v1: two status columns and a space, then the path.
   defp uncommitted(dirty) do
@@ -546,8 +743,6 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  @submodule ".code_my_spec"
-
   @doc """
   Check out, in `root`'s own `.code_my_spec`, the commit the merge just pinned.
 
@@ -711,9 +906,9 @@ defmodule CodeMySpec.Promotion.Steps do
 
   # An explicit `:cd` beats the environment's own cwd, which is what lets one
   # environment drive both checkouts.
-  defp git(env, root, args) do
+  defp git(env, root, args, opts \\ []) do
     env
-    |> Environments.cmd("git", args, cd: root, stderr_to_stdout: true)
+    |> Environments.cmd("git", args, [cd: root, stderr_to_stdout: true] ++ opts)
     |> normalize()
   end
 

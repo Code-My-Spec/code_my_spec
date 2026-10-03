@@ -1363,6 +1363,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     end
   end
 
+  defp offers, do: Module.concat([CodeMySpec, Agents, Offers])
   defp tap_out, do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, TapOut])
 
   # Story 1080's questions probe: main's copy is the main copy, and a coder
@@ -1450,10 +1451,25 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   # Closed or rejected, never tapped out or left open — judged on the whole
   # turn (criterion 1870 as reworded 2026-10-03).
-  defp closed_or_rejected?(%{trace: trace} = record) do
-    Enum.any?(trace, &(&1[:event] == :turn_ended)) and
-      (reached?(record, "evaluate_task") or reached?(record, "reject_offer")) and
-      not reached?(record, "tap_out")
+  # Or closed for it: `start_task` refusing the work as already done closes the
+  # stale offer itself (67e6b5cb), and an agent that then moves on has done
+  # right.
+  defp closed_or_rejected?(%{trace: trace, world: world} = record) do
+    Enum.any?(trace, &(&1[:event] == :turn_ended)) and not reached?(record, "tap_out") and
+      (reached?(record, "evaluate_task") or reached?(record, "reject_offer") or
+         stale_offer_closed?(world))
+  end
+
+  # Remembered once seen: the final verdict is taken after `retire/2` deletes
+  # the agent row, and its offers go with it.
+  defp stale_offer_closed?(world) do
+    key = {__MODULE__, :stale_closed, world.root}
+
+    :persistent_term.get(key, false) or
+      (world.scope
+       |> offers().list(kind: :work, status: :declined)
+       |> Enum.any?(&(&1.reason == "already satisfied"))
+       |> tap(&if(&1, do: :persistent_term.put(key, true))))
   end
 
   # `start_task` on the released task itself — its requirement and entity —
