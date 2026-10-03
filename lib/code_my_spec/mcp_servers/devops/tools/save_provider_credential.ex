@@ -15,7 +15,6 @@ defmodule CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Activity
-  alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Provisioning.Credentials
 
