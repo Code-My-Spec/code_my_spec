@@ -267,6 +267,7 @@ defmodule CodeMySpec.SpexGivensTest do
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
+    given_a_live_harness HarnessHooks.
     machine_out_of_reach
     main_answers user_answers
     Req.Test.stub

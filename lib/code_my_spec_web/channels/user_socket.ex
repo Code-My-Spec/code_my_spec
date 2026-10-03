@@ -38,6 +38,8 @@ defmodule CodeMySpecWeb.UserSocket do
   # performing token verification on connect.
   @impl true
   def connect(%{"token" => token}, socket, connect_info) do
+    allow_sandbox(connect_info)
+
     case AccessTokens.get_by_token(token, otp_app: :code_my_spec) do
       %{resource_owner_id: user_id} = access_token ->
         if AccessTokens.is_accessible?(access_token) do
@@ -70,6 +72,20 @@ defmodule CodeMySpecWeb.UserSocket do
     )
 
     :error
+  end
+
+  # The test's own database connection, for a socket a test opened.
+  #
+  # The endpoint's `Phoenix.Ecto.SQL.Sandbox` plug does this for HTTP; a
+  # websocket's connect and every channel under it run in processes no test
+  # started, so the test sends its sandbox metadata in the `user-agent` and this
+  # allows the transport process. Channels and their tasks inherit through
+  # `$callers`. Compiled out unless `:sql_sandbox` is set, which only test does.
+  if Application.compile_env(:code_my_spec, :sql_sandbox) do
+    defp allow_sandbox(connect_info),
+      do: Phoenix.Ecto.SQL.Sandbox.allow(connect_info[:user_agent], Ecto.Adapters.SQL.Sandbox)
+  else
+    defp allow_sandbox(_connect_info), do: :ok
   end
 
   # Socket IDs are topics that allow you to identify all sockets for a given user:

@@ -5,7 +5,7 @@ defmodule CodeMySpec.Workspaces.HarnessSource do
   run straight from source.
 
   Docker never had this problem: `docker/devbox/Dockerfile` builds
-  `code_my_spec_cli` fresh from `.` on every image build, so a promoted fix
+  `cms_harness` fresh from `.` on every image build, so a promoted fix
   reaches the next boot automatically. Bare metal's `cms start` resolves
   through PATH to whatever release happens to be installed — which is
   exactly right for a customer's laptop (`Installed`, the published tap, on

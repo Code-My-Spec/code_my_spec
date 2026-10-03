@@ -17,7 +17,7 @@
 # finds nothing and the build fails somewhere much later than the mistake.
 #
 # No cms_harness/cms_scan contexts: the release this image ships builds from
-# `.` — this repo — as `code_my_spec_cli` under MIX_ENV=harness (see Stage 1
+# `.` — this repo — as `cms_harness` under MIX_ENV=harness (see Stage 1
 # below). It used to build from sibling checkouts of that name; those were abandoned
 # early extraction prototypes (21 and 8 commits, no remote, frozen since
 # 2026-08-02) that stopped being the source of truth once the harness moved
@@ -113,7 +113,7 @@ RUN cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay .
 
 RUN mix deps.get \
   && mix compile \
-  && mix release code_my_spec_cli --path /opt/cms
+  && mix release cms_harness --path /opt/cms
 
 # =============================================================================
 # Stage 2 — the devbox itself
@@ -280,7 +280,7 @@ COPY --from=cms-builder /opt/cms /opt/cms
 # A wrapper rather than a symlink, matching the brew formula: the release
 # launcher resolves RELEASE_ROOT relative to its own path, and a symlink in
 # /usr/local/bin would make it resolve there instead of /opt/cms.
-RUN printf '#!/bin/bash\nexec /opt/cms/bin/code_my_spec_cli "$@"\n' > /usr/local/bin/cms \
+RUN printf '#!/bin/bash\nexec /opt/cms/bin/cms_harness "$@"\n' > /usr/local/bin/cms \
   && chmod 0755 /usr/local/bin/cms
 
 # The Claude Code plugin's MCP config spawns `cms-mcp-relay` by bare name, so it

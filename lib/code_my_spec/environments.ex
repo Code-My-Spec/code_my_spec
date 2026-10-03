@@ -66,12 +66,11 @@ defmodule CodeMySpec.Environments do
   def unobservable?(_), do: false
 
   # OTP/release env vars that, if inherited by a child process, point its
-  # `erl` at the parent release's ERTS. The cms CLI ships as a Burrito binary
-  # (a self-extracting OTP release) whose `erl` exports these into the OS
-  # environment; a child `mix`/`erl` launched against a user's project then
-  # resolves its boot files to OUR extracted ERTS
-  # (`…/.burrito/code_my_spec_cli_erts-<v>/bin/start.boot`) instead of the
-  # user's installed OTP and dies with "cannot get bootfile".
+  # `erl` at the parent release's ERTS. The harness ships as an OTP release
+  # whose `erl` exports these into the OS environment; a child `mix`/`erl`
+  # launched against a user's project then resolves its boot files to OUR
+  # ERTS instead of the user's installed OTP and dies with "cannot get
+  # bootfile".
   @otp_release_vars ~w(
     ROOTDIR BINDIR EMU PROGNAME ERL_LIBS
     RELEASE_ROOT RELEASE_SYS_CONFIG RELEASE_TMP RELEASE_NODE RELEASE_VSN

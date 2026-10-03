@@ -914,11 +914,13 @@ harness port="4004" server="http://localhost:4000": _submodules
     # the remedy for that, not an exported variable.
     #
     # One env serves this and the installed release; what makes this one the
-    # dev harness is the environment below. CMS_ANALYSIS_SLOTS=1 because this
-    # box runs one harness for every worktree of this repo, and two full suites
-    # at once each ran longer than serialising them (measured 2026-09-15).
+    # dev harness is the environment below. CMS_ANALYSIS_SLOTS=2 since
+    # 2026-10-03 (John): this box runs one harness for every worktree of this
+    # repo, and one slot made every copy's gate wait for every other's. It was
+    # 1 because two full suites at once each ran longer than serialising them
+    # (measured 2026-09-15); that is being re-measured, not assumed away.
     CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
-      CMS_ANALYSIS_SLOTS=1 MIX_ENV=harness elixir -S mix run --no-halt
+      CMS_ANALYSIS_SLOTS=2 MIX_ENV=harness elixir -S mix run --no-halt
 
 # Start Claude Code against this checkout's own plugin — pair with `just harness`
 claude-dev *args: _submodules
@@ -1018,9 +1020,9 @@ reset-db:
 check:
     mix compile --warnings-as-errors
 
-# Build the harness release (the `code_my_spec_cli` tarball brew and the MSI install)
-build-cli:
-    MIX_ENV=harness mix release code_my_spec_cli
+# Build the harness release (the `cms_harness` tarball brew and the MSI install)
+build-harness:
+    MIX_ENV=harness mix release cms_harness
 
 # Build the devbox image — the container a cloud working copy runs in
 devbox-image:
@@ -1207,8 +1209,8 @@ publish_claude_extension VERSION:
     # someone else's unrelated, already-merged file has nothing to do with
     # what this recipe is releasing and should not be able to block it.
     MIX_ENV=harness mix compile
-    MIX_ENV=harness mix release code_my_spec_cli
-    cp _build/harness/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
+    MIX_ENV=harness mix release cms_harness
+    cp _build/harness/cms_harness-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
 
     echo "→ packaging the extension"
     MIX_ENV=harness mix cms.package_plugin release/codemyspec-extension
