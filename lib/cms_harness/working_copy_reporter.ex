@@ -98,7 +98,8 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   @impl GenServer
   def init(opts) do
-    # `:never` leaves every report to the caller, for a rig that drives them.
+    # `:never` leaves every report to the caller, for a rig that drives them;
+    # `:heartbeat` `:never` stops the ticking too (`config/test.exs`, e258f257).
     case Keyword.get(opts, :first_report, @first_report) do
       :never -> :ok
       delay -> schedule(delay)
@@ -117,7 +118,13 @@ defmodule CmsHarness.WorkingCopyReporter do
     # flight — without it, a project that takes longer to generate than the
     # 2-minute heartbeat would get a second `Generator.run/1` launched onto the
     # same directory before the first finished.
-    {:ok, %{known: Keyword.get(opts, :known, %{}), last: nil, generating: MapSet.new()}}
+    {:ok,
+     %{
+       known: Keyword.get(opts, :known, %{}),
+       last: nil,
+       generating: MapSet.new(),
+       heartbeat: Keyword.get(opts, :heartbeat, @heartbeat)
+     }}
   end
 
   @impl GenServer
@@ -129,7 +136,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   @impl GenServer
   def handle_info(:report, state) do
     {_observations, state} = run(state)
-    schedule(@heartbeat)
+    schedule(state.heartbeat)
     {:noreply, state}
   end
 
@@ -345,5 +352,7 @@ defmodule CmsHarness.WorkingCopyReporter do
     end
   end
 
+  # `:never` for a reporter whose reports are all driven (`report/1`).
+  defp schedule(:never), do: :ok
   defp schedule(delay), do: Process.send_after(self(), :report, delay)
 end

@@ -317,6 +317,14 @@ config :code_my_spec, :harness_server_url, "http://127.0.0.1:1"
 # to remember.
 config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 
+# The run-wide harness tree's reporter does not tick by itself (e258f257). Its
+# announce drives the endpoint in its own process, and a tick landing while a
+# test held a credential queried the sandbox with no owner, crash-looped on its
+# immediate restart report, and took `CmsHarness.Supervisor` — linked to the
+# test runner — and the whole suite down with no summary. Tests that want a
+# report drive it (`WorkingCopyReporter.report/1`) or start their own.
+config :code_my_spec, :working_copy_reporter, first_report: :never, heartbeat: :never
+
 # `CmsHarness.Projects.Generator`'s own subprocess calls, pinned for the same
 # reason: the default shells out through several `mix` tasks that take real
 # minutes and need a correctly-versioned `mix cms.new` archive installed on

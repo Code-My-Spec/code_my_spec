@@ -90,8 +90,26 @@ defmodule CodeMySpec.Promotion.Steps do
           uncommitted(dirty)
 
         {out, _} ->
-          {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
+          unreadable(out)
       end
+    end
+  end
+
+  # Not under git at all (67e6b5cb). "could not read this checkout's state"
+  # led an agent to `git init && git commit` to get a clean tree — which would
+  # certify a history nobody else has. Said plainly, with what to do instead.
+  defp unreadable(out) do
+    if out =~ "not a git repository" do
+      {:error,
+       %{
+         reason:
+           "this checkout is not a git repository, so there is no commit to certify. " <>
+             "Do not create one — a new repository here is a history nobody else has. " <>
+             "Report it (`create_issue`) and stop.",
+         not_a_repository: true
+       }}
+    else
+      {:error, %{reason: "could not read this checkout's state: #{String.trim(out)}"}}
     end
   end
 
