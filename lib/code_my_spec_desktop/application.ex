@@ -32,6 +32,8 @@ defmodule CodeMySpecDesktop.Application do
   end
 
   # The native window; `CMS_BROWSER` falls back to opening the default browser.
+  # Closing hides it (John): the server and harness keep serving hooks, and the
+  # menu-bar icon reopens or quits.
   def view(url) do
     if System.get_env("CMS_BROWSER") in [nil, ""] do
       {Desktop.Window,
@@ -40,6 +42,9 @@ defmodule CodeMySpecDesktop.Application do
        title: "CodeMySpec",
        size: {1280, 860},
        min_size: {900, 600},
+       icon: "static/images/logo-300.png",
+       icon_menu: CodeMySpecDesktop.Menu,
+       on_close: :hide,
        url: fn -> url end}
     else
       {Browser, url}

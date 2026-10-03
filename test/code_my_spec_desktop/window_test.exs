@@ -18,6 +18,12 @@ defmodule CodeMySpecDesktop.WindowTest do
     assert opts[:url].() == "http://localhost:4000/app"
   end
 
+  test "closing the window hides it; the menu-bar icon reopens or quits" do
+    assert {Desktop.Window, opts} = DesktopApp.view("http://localhost:4000/app")
+    assert opts[:on_close] == :hide
+    assert opts[:icon_menu] == CodeMySpecDesktop.Menu
+  end
+
   test "CMS_BROWSER falls back to the default browser" do
     System.put_env("CMS_BROWSER", "1")
 

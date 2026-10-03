@@ -75,6 +75,8 @@ defmodule CodeMySpec.MixProject do
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
+  # Modules that `use` the desktop-only `desktop` dependency.
+  defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
