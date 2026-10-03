@@ -100,5 +100,42 @@ defmodule CodeMySpec.Embeddings.InFlightCallsTest do
       assert %RuntimeError{message: "boom"} = error
       refute InFlightCalls.any_in_flight?(pool)
     end
+
+    # Distinct from "raises" above: that is the *called function* failing
+    # inside its own process. This is the runner process itself dying out
+    # from under a call still in flight — a killed FLAME runner, a lost
+    # node — which reaches the caller as an `exit` with no exception value
+    # at all, not a propagated `RuntimeError`. `after` makes no distinction
+    # between the two, but John's own "returns to zero on success, error
+    # and crash" asked for this proven as its own case rather than assumed
+    # covered by the raise test above.
+    test "decrements even when the runner process is killed out from under the call" do
+      pool = start_pool!(unique_pool())
+      test_pid = self()
+
+      spawn(fn ->
+        result =
+          catch_exit(
+            InFlightCalls.call(
+              pool,
+              fn ->
+                send(test_pid, {:runner, self()})
+                receive do: (:never -> :unreachable)
+              end,
+              link: false
+            )
+          )
+
+        send(test_pid, {:result, result})
+      end)
+
+      assert_receive {:runner, runner_pid}, 2_000
+      assert InFlightCalls.any_in_flight?(pool)
+
+      Process.exit(runner_pid, :kill)
+
+      assert_receive {:result, _exit_reason}, 2_000
+      refute InFlightCalls.any_in_flight?(pool)
+    end
   end
 end
