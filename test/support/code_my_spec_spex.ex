@@ -22,6 +22,11 @@ defmodule CodeMySpecSpex do
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Conversations,
+      # Story 1087, criteria 1769/1770 call `ProjectKnowledgeReconciler.reconcile/3`
+      # directly — the module under test (does a bulk embed call reach the
+      # pool's own configured backend, burst or local), same reasoning as
+      # `CodeMySpec.AgentTasks` above.
+      CodeMySpec.Embeddings,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Environments,
       CodeMySpec.Faults,

@@ -25,6 +25,7 @@ defmodule CodeMySpec.Embeddings.ProjectKnowledgeReconciler do
 
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.EmbeddingService
+  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpec.Embeddings.PgVectorBackend
   alias CodeMySpec.Embeddings.Serving
   alias CodeMySpec.Repo
@@ -138,7 +139,7 @@ defmodule CodeMySpec.Embeddings.ProjectKnowledgeReconciler do
   end
 
   defp embed_batch(texts) do
-    FLAME.call(CodeMySpec.EmbedPool, fn -> Serving.embed_batch(texts, :bulk) end,
+    InFlightCalls.call(CodeMySpec.EmbedPool, fn -> Serving.embed_batch(texts, :bulk) end,
       timeout: @flame_timeout
     )
   catch

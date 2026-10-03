@@ -148,6 +148,15 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   `:location` / `:image` / `:firewall_ids` / `:ssh_key_ids` to override
   individually, and `:labels` to tag the server.
 
+  `:user_data` is Hetzner's own cloud-init field: a script or cloud-config
+  document handed to the box at creation and run once on first boot, before
+  anything we do over SSH afterwards. Nothing in this codebase used it before
+  the Hetzner-burst-box groundwork (577de9bb) — every existing caller either
+  ships a pre-baked image (`Builder.ensure_burst_box_image/3`) or configures
+  the box over SSH after it answers (`Builder.Remote`), so there was nothing
+  to boot-time-configure until a FLAME runner needed to come up and dial
+  home on its own, unattended, with no SSH step in between.
+
   Attaching an SSH key at creation is not optional in practice. A server made
   without one has a root password Hetzner emails to the account owner and
   nothing else — so the deploy step, which has to reach the box to configure
@@ -291,8 +300,20 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       # not have yet.
       |> maybe_put(:networks, Keyword.get(opts, :network_ids))
       |> maybe_put(:labels, Keyword.get(opts, :labels))
+      # Cloud-init, run once on first boot. A caller's script can carry
+      # anything — a FLAME runner's cloud-init is about to put a Docker
+      # registry credential and app secrets in it — so the line below logs
+      # its size, never its content, unlike every other field in this
+      # payload.
+      |> maybe_put(:user_data, Keyword.get(opts, :user_data))
 
-    Logger.warning("[Hetzner] create_server payload=#{inspect(payload)}")
+    log_payload =
+      case Map.fetch(payload, :user_data) do
+        {:ok, script} -> Map.put(payload, :user_data, "<redacted, #{byte_size(script)} bytes>")
+        :error -> payload
+      end
+
+    Logger.warning("[Hetzner] create_server payload=#{inspect(log_payload)}")
 
     request(scope, :post, "/servers", json: payload)
   end

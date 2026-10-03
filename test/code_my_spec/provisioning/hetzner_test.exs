@@ -210,6 +210,40 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # exactly this. `create_in/4` re-applies the override to the retry, so
     # falling back would resend the identical request and report the second
     # refusal as a second shortage.
+    # Groundwork for a Hetzner-hosted FLAME burst box (577de9bb): the only
+    # thing that can configure a box before it answers SSH, or with no SSH
+    # step at all. Nothing before this used Hetzner's cloud-init field, so
+    # there was nothing pinning the payload key it has to arrive under.
+    test "a user_data script rides along in the create payload", ctx do
+      stub(fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+
+        assert payload["user_data"] == "#!/bin/bash\necho hello\n"
+
+        json(conn, 201, %{"server" => %{"id" => 1, "name" => payload["name"]}})
+      end)
+
+      assert {:ok, _} =
+               Hetzner.create_server(ctx.scope, "box",
+                 ssh_key_ids: [1],
+                 user_data: "#!/bin/bash\necho hello\n"
+               )
+    end
+
+    test "no user_data given means no user_data key at all", ctx do
+      stub(fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+
+        refute Map.has_key?(payload, "user_data")
+
+        json(conn, 201, %{"server" => %{"id" => 1, "name" => payload["name"]}})
+      end)
+
+      assert {:ok, _} = Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
+    end
+
     test "a pinned server type is not retried as the other architecture", ctx do
       {:ok, calls} = Agent.start_link(fn -> [] end)
 
