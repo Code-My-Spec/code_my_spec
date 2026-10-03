@@ -109,7 +109,8 @@ defmodule CmsHarness.Supervisor do
       # about it is to keep looking. Here rather than in the local web app
       # because a light harness never starts that, and a light harness is the
       # sprite — the machine whose checkouts actually get thrown away.
-      CmsHarness.WorkingCopyReporter
+      {CmsHarness.WorkingCopyReporter,
+       Application.get_env(:code_my_spec, :working_copy_reporter, [])}
 
       # Last, because it needs both the registry and the dynamic supervisor.
       # `:temporary`, which is what `{Task, fun}` means, so a failure here does
