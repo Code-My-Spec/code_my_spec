@@ -18,9 +18,16 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   raised as though that person asked to be interrupted, because on their
   project it is their decision to make.
 
-  Deliberately narrow. This plug is mounted on the question routes only, not
-  across the API. A deploy key should be able to interrupt its owner; it should
-  not inherit the rest of what that owner can do.
+  Deliberately narrow. This plug is not mounted across the API — only on the
+  routes a machine holding one project's key has to reach: trading the key for
+  a token, finding and registering its working copies and their previews,
+  announcing its device, and reading that project's requirement graph. A deploy
+  key should be able to interrupt its owner; it should not inherit the rest of
+  what that owner can do.
+
+  The graph read keeps it narrow because it is read-only and bounded by the key
+  rather than the owner: `RequirementsGraphController` serves the project the
+  key was issued for and refuses any other, whatever else the owner can see.
   """
 
   import Plug.Conn

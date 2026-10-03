@@ -177,7 +177,9 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     end)
   end
 
-  defp parse(output) do
+  @doc "Credo's issues out of everything it printed, or why they could not be read."
+  @spec parse(String.t()) :: {:ok, list(), String.t()} | {:error, String.t()}
+  def parse(output) do
     case extract_json(output) do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
         {:ok, issues, output}
@@ -189,22 +191,38 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
         {:error, "unexpected JSON structure from credo"}
 
       :error ->
-        # Over a wire, `{:ok, []}` is recorded as a clean sweep, so this says it
-        # could not read the output instead — the excerpt is carried because the
-        # reason is usually in it (`** (Mix) The task "credo" could not be
-        # found`, a compile error, a mix refusal on a lock mismatch).
-        #
-        # The server analyzer answered `{:ok, []}` here when this was written.
-        # It no longer does, nor does sobelow; see the moduledoc.
-        Logger.warning(
-          "[CredoRun] no JSON document in credo's output: " <>
-            (output |> String.trim() |> String.slice(0, 200))
-        )
-
-        {:error,
-         "credo produced output that is not JSON: " <>
-           (output |> String.trim() |> String.slice(0, 300))}
+        unreadable(output)
     end
+  end
+
+  # A stale `deps/` is not credo failing to print JSON, and saying so sent a gate
+  # chasing a parse bug (fc08e5e2). It is the one refusal with a known remedy.
+  defp unreadable(output) do
+    if CodeMySpec.Compile.unsatisfied_deps?(output) do
+      {:error,
+       "deps out of date with mix.lock; run `mix deps.get` in this working copy. " <>
+         (output |> String.trim() |> String.slice(0, 300))}
+    else
+      unreadable_json(output)
+    end
+  end
+
+  # Over a wire, `{:ok, []}` is recorded as a clean sweep, so this says it could
+  # not read the output instead — the excerpt is carried because the reason is
+  # usually in it (`** (Mix) The task "credo" could not be found`, a compile
+  # error).
+  #
+  # The server analyzer answered `{:ok, []}` here when this was written. It no
+  # longer does, nor does sobelow; see the moduledoc.
+  defp unreadable_json(output) do
+    Logger.warning(
+      "[CredoRun] no JSON document in credo's output: " <>
+        (output |> String.trim() |> String.slice(0, 200))
+    )
+
+    {:error,
+     "credo produced output that is not JSON: " <>
+       (output |> String.trim() |> String.slice(0, 300))}
   end
 
   @doc """

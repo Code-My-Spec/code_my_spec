@@ -39,7 +39,7 @@ if tunnel_config[:mode] == :named do
          Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
 end
 
-# The harness — `just harness` in dev and the installed `code_my_spec_cli`
+# The harness — `just harness` in dev and the installed `cms_harness`
 # release. Everything that differs between those two is read here, from the
 # environment, so one build serves both.
 if config_env() == :harness do

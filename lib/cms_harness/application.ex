@@ -1,7 +1,7 @@
 defmodule CmsHarness.Application do
   @moduledoc """
   The harness's OTP application — what `MIX_ENV=harness` boots, under
-  `just harness` in dev and as the installed `code_my_spec_cli` release.
+  `just harness` in dev and as the installed `cms_harness` release.
 
   Boots the light harness: no Repo, no local MCP server, no local web UI. It
   watches whichever working copies it is handed, runs analyzers against them,

@@ -277,8 +277,15 @@ defmodule CodeMySpec.Compile do
     "Can't continue due to errors on dependencies"
   ]
 
-  defp unsatisfied_deps?(output),
+  @doc """
+  Whether `mix` refused because this checkout's `deps/` cannot satisfy its own
+  `mix.lock` — the refusal every analyzer hits after a pull moves the lock.
+  """
+  @spec unsatisfied_deps?(String.t()) :: boolean()
+  def unsatisfied_deps?(output) when is_binary(output),
     do: Enum.any?(@unsatisfied_deps_markers, &String.contains?(output, &1))
+
+  def unsatisfied_deps?(_output), do: false
 
   defp unsatisfied_deps_problem(output) do
     %{

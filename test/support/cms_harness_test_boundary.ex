@@ -22,6 +22,8 @@ defmodule CmsHarnessTest do
     deps: [CmsHarness, CodeMySpec.TempFile],
     exports: [
       Machine,
+      LiveHarness,
+      ConnectHeaders,
       HeldProvider,
       AnalysisResults,
       Projects,

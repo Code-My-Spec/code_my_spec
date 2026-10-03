@@ -168,12 +168,12 @@ defmodule CmsHarness.ServedRootsTest do
     retry_or_flunk(key, deadline, entries, System.monotonic_time(:millisecond) < deadline)
   end
 
-  defp retry_or_flunk(key, deadline, _entries, _within_deadline? = true) do
+  defp retry_or_flunk(key, deadline, _entries, true = _within_deadline?) do
     :erlang.yield()
     await_unregistered(key, deadline)
   end
 
-  defp retry_or_flunk(key, _deadline, entries, _within_deadline? = false) do
+  defp retry_or_flunk(key, _deadline, entries, false = _within_deadline?) do
     flunk("Registry.lookup(CmsHarness.Registry, #{inspect(key)}) still #{inspect(entries)}")
   end
 
