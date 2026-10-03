@@ -1548,22 +1548,39 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # What `File` and `Environments.Local` fail with, and nothing else.
+  #
+  # Callers match on `:enoent` and friends, so these come back as the atoms they
+  # left as. Without them a missing file arrived as `"enoent"` and every such
+  # match fell through on a harness: `ArchitectureDesign` read a missing proposal
+  # as unreadable and never chose initial mode (8e3669fc).
+  #
+  # A literal map, so the atoms are this module's and nothing off the wire is
+  # ever turned into one. Anything unlisted keeps its string.
+  @fs_reasons Map.new(
+                ~w(enoent eacces eperm eisdir enotdir eexist enotempty enospc edquot
+                   erofs ebusy etxtbsy enametoolong eloop exdev emfile enfile efbig eio
+                   einval ebadf enomem espipe emlink badarg not_regular
+                   no_working_directory)a,
+                &{Atom.to_string(&1), &1}
+              )
+
   # The harness reports outcomes the way the behaviour states them, so this only
-  # has to put the shape back together. An `error` is kept as an atom because
-  # callers match on `:enoent` and friends.
-  defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
-    do: {:error, decode_reason(reason)}
+  # has to put the shape back together.
+  @doc false
+  def decode_fs_result(%{"error" => reason}) when is_binary(reason),
+    do: {:error, Map.get_lazy(@fs_reasons, reason, fn -> decode_reason(reason) end)}
 
   # A refusal that arrived with structure keeps it. `Promotion.Steps` answers
   # with a sentence and its evidence — the uncommitted files, the conflicted
   # paths — and the agent needs both. Passed through as a map for
   # `Promotion.Runner` to key, rather than flattened into a reason atom that
   # would have to be parsed back apart.
-  defp decode_fs_result(%{"error" => %{} = reason}), do: {:error, reason}
+  def decode_fs_result(%{"error" => %{} = reason}), do: {:error, reason}
 
-  defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
-  defp decode_fs_result(%{"ok" => true}), do: :ok
-  defp decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
+  def decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
+  def decode_fs_result(%{"ok" => true}), do: :ok
+  def decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
 
   defp wait_summary(scope) do
     counts =
