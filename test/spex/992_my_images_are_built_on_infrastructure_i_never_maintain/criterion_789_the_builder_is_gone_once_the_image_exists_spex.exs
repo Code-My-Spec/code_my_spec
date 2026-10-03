@@ -8,18 +8,24 @@ defmodule CodeMySpecSpex.Story992.Criterion8236Spex do
   its failure mode is silence: the image still arrives, the deploy still
   succeeds, and the only symptom is an invoice.
 
-  So the disposition is recorded rather than assumed. The builder is destroyed
-  on every path out of the build — including a raise — but a criterion that
-  asserted that from a constant would keep reading true after it stopped being
-  true, which is the failure it exists to catch.
+  Story 877 changed what "gone" means: the box is now the one shared burst
+  box an environment has, found rather than created per build, so it cannot
+  be destroyed unconditionally without destroying something another build or
+  embedding runner might still be using. What stayed the same is the
+  discipline this criterion is actually about — the box is asked whether it
+  should go on every single path out of the build, not just when someone
+  remembers to check, and the answer is recorded rather than assumed. This
+  scenario forces the one case `builder_destroyed` can actually be `true`:
+  the box is due for its end-of-billing-hour check and nothing else is using
+  it.
 
-  Retargeted onto the console (provisioning-console-step6, unmerged): the
-  deploy step's own markup (`DeployConfig`) is unchanged — it was reused
-  as-is — only the page it's rendered under moved. The old page's single
-  "start setup" button ran the whole step sequence to reach deploy; the
-  console's deploy form runs `:deploy` alone, which is sufficient here since
-  `built_deploy_run/2` scripts every other step and nothing in this criterion
-  reads them.
+  Retargeted onto the console (provisioning-console-step6): the deploy
+  step's own markup (`DeployConfig`) is unchanged — it was reused as-is —
+  only the page it's rendered under moved. The old page's single "start
+  setup" button ran the whole step sequence to reach deploy; the console's
+  deploy form runs `:deploy` alone, which is sufficient here since
+  `built_deploy_run/2` scripts every other step and nothing in this
+  criterion reads them.
 
   Surface: `CodeMySpecWeb.ConsoleLive`.
   """
@@ -38,9 +44,10 @@ defmodule CodeMySpecSpex.Story992.Criterion8236Spex do
   setup :real_working_directory
 
   spex "The builder is gone once the image exists", criterion: 789 do
-    scenario "a successful build leaves no builder behind" do
-      given_ "Sam has a project ready to deploy", context do
-        {:ok, built_deploy_run(context)}
+    scenario "a successful build leaves an idle, due shared box released" do
+      given_ "Sam's build will land on a shared box that is due for its end-of-hour check and idle",
+             context do
+        {:ok, built_deploy_run(context, box_release: :idle)}
       end
 
       when_ "he deploys and the image is built", context do
@@ -67,13 +74,14 @@ defmodule CodeMySpecSpex.Story992.Criterion8236Spex do
         {:ok, Map.put(context, :document, document)}
       end
 
-      then_ "and the builder that made it is gone", context do
+      then_ "and the box is released, because nothing else was using it", context do
         builder = Floki.find(context.document, "[data-test='builder']")
 
-        assert builder != [], "the deploy did not record which builder made the image"
+        assert builder != [], "the deploy did not record which box it built on"
 
         assert Floki.attribute(builder, "data-destroyed") == ["true"],
-               "the builder outlived the build — a box Sam pays for and nobody watches"
+               "the box was due for a check and idle, and outlived it anyway — a box Sam " <>
+                 "pays for and nobody watches"
 
         {:ok, context}
       end

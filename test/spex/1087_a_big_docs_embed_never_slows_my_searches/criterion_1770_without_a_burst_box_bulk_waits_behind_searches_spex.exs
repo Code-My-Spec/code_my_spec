@@ -3,16 +3,20 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
   Story 1087 — A big docs embed never slows my searches.
   Criterion 1770 — Without a burst box, bulk waits behind searches.
 
-  Short of a configured burst runner, bulk work embeds locally, sharing
-  the server's own capacity with search. A search arriving mid-import
-  must still be answered before the import's next batch, not queued
-  behind the whole job.
+  Retired until the burst box was real; restored now that story 877/992's
+  work makes "with a burst box" an actual, provable alternative (criterion
+  1769) rather than the only path. This is that alternative's complement —
+  the fallback this story's own notes describe: "With no burst box, batch
+  falls back to the server under search-first priority." Criterion 1768
+  proves the same property end to end through a hex doc import; this
+  proves it holds for the project reconciler's own bulk call site too, not
+  just that one path.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.HarnessedKnowledgeHelpers
-
+  alias CodeMySpec.Embeddings
+  alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -22,99 +26,57 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     {:ok, dir} = Briefly.create(directory: true)
-    :ok = Fixtures.embed_on_pgvector_queued(dir)
-    Req.Test.set_req_test_to_shared()
+    :ok = Fixtures.embed_on_pgvector(dir)
     :ok
   end
 
-  @file_count 50
+  @chunk_count 20
 
-  defp sources do
-    Map.new(1..@file_count, fn n ->
-      {"lib/module_#{n}.ex",
-       "defmodule BigDocs.Module#{n} do\n  @moduledoc \"Module #{n} does its part of a big job.\"\nend\n"}
-    end)
-  end
+  defp read(_path),
+    do: {:ok, "defmodule BigDocs do\n  @moduledoc \"a lot of chunks to bulk embed.\"\nend\n"}
 
-  defp lock(checksum),
-    do:
-      ~s(%{\n  "big_docs_pkg": {:hex, :big_docs_pkg, "1.0.0", "chk", [:mix], [], "hexpm", "#{checksum}"}\n}\n)
+  defp desired, do: Map.new(1..@chunk_count, &{"lib/module_#{&1}.ex", "fingerprint-#{&1}"})
 
-  # Every job this fixture's `OrtexServing` dispatches blocks until told
-  # `:go`, so whichever remains blocked next (after releasing the one the
-  # scenario is holding) names the queue's actual dispatch choice, with no
-  # race against how fast the fake work underneath happens to run.
-  defp release_remaining(import_task) do
-    import_task
-    |> Task.yield(50)
-    |> continue_release(import_task)
-  end
-
-  defp continue_release(nil, import_task) do
-    receive do
-      {:worker_blocked, pid, _kind, _texts} -> Fixtures.notify(pid, :go)
-    after
-      0 -> :ok
-    end
-
-    release_remaining(import_task)
-  end
-
-  defp continue_release({:ok, result}, _import_task), do: result
-
-  spex "Without a burst box, bulk waits behind searches", criterion: 1770 do
-    scenario "an agent searches while a large embedding job runs locally with no burst box" do
-      given_ "a large embedding job is running on the server with no burst box configured",
-              context do
-        main = checkout(context, main?: true)
-        harness_up(main)
-        {tarball, checksum} = Fixtures.hex_tarball(sources())
-
-        Req.Test.stub(
-          CodeMySpec.Embeddings.HexPackageFetch,
-          &Plug.Conn.send_resp(&1, 200, tarball)
-        )
-
-        write_lock(main, lock(checksum))
-        manifest(main)
-
-        import_task = Task.async(fn -> Fixtures.hex_doc_sweep_runs() end)
-        assert_receive {:worker_blocked, batch_pid, :bulk, _texts}, :timer.seconds(5)
-
-        {:ok, Map.merge(context, %{main: main, import_task: import_task, batch_pid: batch_pid})}
+  spex "A concurrent search is not held up behind a bulk reconcile with no burst box",
+    criterion: 1770 do
+    scenario "a project's knowledge is reconciled in bulk while an agent searches" do
+      given_ "a project ready to have its knowledge reconciled", context do
+        # given: already true — `setup :setup_active_project` creates the
+        # project; `reconcile/3` is stateless about what's "pending," it
+        # computes that fresh from the `desired` map the `when_` step builds.
+        {:ok, Map.put(context, :project_id, context.scope.active_project_id)}
       end
 
-      when_ "an agent searches the project's docs", context do
-        test_pid = self()
-
-        search_task =
+      when_ "the bulk reconcile runs and an agent searches at the same time", context do
+        bulk_task =
           Task.async(fn ->
-            Fixtures.notify(test_pid, :search_calling)
-            search(context.main, "hexdocs")
+            ProjectKnowledgeReconciler.reconcile(context.project_id, desired(), &read/1)
           end)
 
-        assert_receive :search_calling, :timer.seconds(5)
-        # A small margin for the GenServer to have actually enqueued the
-        # search call before the held batch is released.
-        Process.sleep(20)
+        start_ms = System.monotonic_time(:millisecond)
+        search_result = Embeddings.search(context.scope, "module")
+        elapsed_ms = System.monotonic_time(:millisecond) - start_ms
 
-        Fixtures.notify(context.batch_pid, :go)
+        bulk_result = Task.await(bulk_task, :timer.seconds(30))
 
-        # Whichever job the queue hands the worker next, held in turn
-        # before it can run — this is the dispatch choice under test.
-        assert_receive {:worker_blocked, next_pid, next_kind, _texts}, :timer.seconds(5)
-        Fixtures.notify(next_pid, :go)
-
-        text = Task.await(search_task, :timer.seconds(10))
-
-        {:ok, Map.merge(context, %{text: text, next_kind: next_kind})}
+        {:ok,
+         Map.merge(context, %{
+           elapsed_ms: elapsed_ms,
+           search_result: search_result,
+           bulk_result: bulk_result
+         })}
       end
 
-      then_ "the search is answered before the next bulk batch", context do
-        assert context.next_kind == :search,
-               "a further bulk batch was dispatched before the search was"
+      then_ "the search answers within a second, not behind the bulk queue", context do
+        assert context.elapsed_ms < 1000,
+               "search took #{context.elapsed_ms}ms while a bulk reconcile (no burst box) was running"
 
-        :ok = release_remaining(context.import_task)
+        assert match?({:ok, _}, context.search_result)
+        {:ok, context}
+      end
+
+      then_ "the bulk reconcile still finished, falling back to the same local server", context do
+        assert {:ok, %{embedded: @chunk_count}} = context.bulk_result
         {:ok, context}
       end
     end

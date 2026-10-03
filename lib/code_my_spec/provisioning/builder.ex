@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Provisioning.Builder do
   @moduledoc """
-  Build a project's image on a box that exists only for that build.
+  Build a project's image on the environment's one shared burst box.
 
   Nothing is built when a project is created. Building happens when Sam
   deploys, which is the only moment anyone knows what to build — coupling it to
@@ -8,23 +8,32 @@ defmodule CodeMySpec.Provisioning.Builder do
   and coupled "my history reached the remote" to "CI finished", which are two
   different claims (story 992).
 
-  The box is created from a pre-warmed image so the layers every project shares
-  — the base OS, the language toolchain — are already there, and destroyed when
-  the build ends. Per-build isolation is the other half of that: one customer's
-  source never sits on a box that held another's.
+  The box used to be created fresh per build and destroyed when the build
+  ended. Story 877 replaced that: `build/3` now asks
+  `CodeMySpec.Provisioning.BurstBox.ensure_box/3` for the one persistent box
+  this account already has (or gets, the first time), and asks
+  `BurstBox.Lifecycle.check/3` whether to free it the moment this build is
+  done — the happy-path call `Lifecycle`'s own moduledoc describes, rather
+  than waiting on `BurstBox.Sweep`'s next tick. Per-build isolation is now
+  Docker's job, not a Hetzner server boundary: builds from different projects
+  on the same account's box run as separate containers in parallel, and
+  `CodeMySpec.Provisioning.RunLock` (held by whoever calls `run_step/3`,
+  above this module) still serializes same-project builds — the ordering
+  that actually matters, never cross-project ordering on a box Docker already
+  isolates.
 
-  Publishing is `Registry`'s. This owns the box and the build.
+  Publishing is `Registry`'s. This owns the build.
   """
 
   require Logger
 
   alias CodeMySpec.Integrations
   alias CodeMySpec.Provisioning.Builder.Remote
+  alias CodeMySpec.Provisioning.BurstBox
+  alias CodeMySpec.Provisioning.BurstBox.Lifecycle
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Hetzner
-  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Wait
-  alias CodeMySpec.PublicUrl
   alias CodeMySpec.Users.Scope
 
   defmodule Build do
@@ -94,94 +103,109 @@ defmodule CodeMySpec.Provisioning.Builder do
     x86: %{server_type: "cpx31", location: "fsn1"}
   }
 
-  # The Docker app image, not a bare OS.
-  #
-  # Every system image Hetzner offers is the same 5GB minimal cloud image —
-  # Debian is not lighter than Ubuntu here, they are the same size. So the
-  # weight that matters is not the image, it is what has to be installed before
-  # the box can do its job. A bare OS pays `apt-get install docker` on every
-  # single build: a minute or two, and a dependency on apt mirrors being up
-  # during a customer's deploy.
-  #
-  # `docker-ce` asks for a 40GB disk, which both cax21 and cpx21 clear
-  # comfortably. It is heavier on paper and much lighter in practice.
-  @builder_image "docker-ce"
+  # The same mechanism `create_image/3` writes a snapshot's id with — a
+  # Hetzner label, the only way a snapshot is found again without storing its
+  # id anywhere this account could lose track of.
+  @burst_box_image_label "cms-burst-image-role"
 
-  # Shared with `builder_name/1` below and with the age-based reap, so a
-  # renamed prefix cannot silently stop matching one of the two places that
-  # depend on it recognizing the same boxes.
-  @builder_prefix "builder-"
+  # A disk with real content on it (this app's own built release, docker
+  # layers, kamal and its gems — not just the bare `docker-ce` marketplace
+  # base image) takes longer for Hetzner to snapshot than the 90s/30-attempt
+  # window this used to poll for. Confirmed live (story 877/992 follow-on):
+  # that window gave up, and the caller destroyed the source server anyway —
+  # losing a real, already-finished `install_release` build with nothing to
+  # show for it. 20 minutes, backing off from 5s to 30s between checks, is a
+  # generous but bounded budget for a snapshot of a populated disk.
+  @default_image_poll_attempts 60
+  @default_image_poll_interval_ms 5_000
+  @default_image_poll_backoff_factor 1.5
+  @default_image_poll_max_interval_ms 30_000
 
-  # How a custom builder image is found again without storing its id
-  # anywhere this account could lose track of — a Hetzner label, the same
-  # mechanism `create_image/3` writes it with.
-  @builder_image_label "cms-builder-role"
+  # Marks a temp bootstrap server while its snapshot's outcome is still
+  # unknown — `finish_snapshot/8` leaving one running on `:image_not_confirmed`
+  # needs a way for `BurstBox.Sweep` to find it later without reaping it
+  # mid-poll. Value is the architecture, same shape as `@burst_box_image_label`'s
+  # own value on the image it is waiting for.
+  @bootstrap_role_label "cms-bootstrap-role"
 
-  # How old a `builder-*` box has to be before it stops being read as
-  # in-flight. A build either finishes or fails in minutes (see moduledoc);
-  # nothing here is legitimately long-lived, so a box past this age is not
-  # somebody's run in progress, it is the box a killed process — SIGKILL, a
-  # killed `mix test`, a cancelled drill — never got a chance to destroy
-  # (issue 13ad1abe). An hour matches the window `mix cms.provisioning_leaks`
-  # already uses for the same judgment call.
-  @orphan_max_age_minutes 60
-
-  # Who a builder belongs to, written on it at creation: the project, the
-  # `RunLock` run doing the build, and which CodeMySpec instance holds that
-  # lock. A same-named box is then judged by whether its run is still in
-  # flight (`run_verdict/1`), not by how old it is — a server restart kills a
-  # run mid-build without its `destroy` ever running, and the retry minutes
-  # later found a box "too recent to be an abandoned run" whose run was gone
-  # (issue 0c1b5110).
-  @project_label "cms-builder-project"
-  @run_label "cms-builder-run"
-  @instance_label "cms-builder-instance"
+  @doc "The label `BurstBox.Sweep` looks for to find a temp bootstrap server whose snapshot outcome is not yet confirmed."
+  @spec bootstrap_role_label() :: String.t()
+  def bootstrap_role_label, do: @bootstrap_role_label
 
   @doc """
-  Build `ref` for `architecture`, and take the builder with it either way.
+  Build `ref` for `architecture` on the environment's one shared burst box,
+  freeing it the moment this build is the last thing using it.
 
   `:build_fun` is injectable because a container build is a bad thing to record —
   enormous output, non-deterministic layer digests, minutes per run, and
   invalidated by any Dockerfile edit. What is worth proving is ours: the
-  architecture asked for, that the builder is destroyed even when the build
-  fails, that a mismatch is caught rather than shipped. The Hetzner calls stay
-  real, because "the builder was destroyed" is exactly the claim that costs
-  money when it silently stops being true.
+  architecture asked for, that the shared box is asked about after every
+  build — success, failure or raise alike — and that a mismatch is caught
+  rather than shipped. The Hetzner calls stay real, because "the box was
+  checked" is exactly the claim that costs money when it silently stops being
+  true.
   """
   @spec build(Scope.t(), String.t(), keyword()) :: {:ok, Build.t()} | {:error, term()}
   def build(%Scope{} = scope, ref, opts \\ []) when is_binary(ref) do
     architecture = Keyword.get(opts, :architecture, :arm)
 
     with {:ok, spec} <- builder_spec(architecture),
-         opts = with_builder_image(scope, architecture, opts),
-         {:ok, server} <- start_builder(scope, ref, spec, opts) do
+         {:ok, server} <- ensure_box(scope, architecture, spec, opts) do
       Logger.info(
-        "[Builder] #{architecture} builder #{server_name(server)} is up " <>
-          "(image #{inspect(Keyword.get(opts, :builder_image, @builder_image))}) — building #{ref}"
+        "[Builder] #{architecture} burst box #{server_name(server)} is up — building #{ref}"
       )
 
-      # A builder outlives a raise, a non-zero exit and an early return alike,
-      # and each of those leaves a box nobody is watching on an invoice
-      # somebody is paying. So every path destroys.
-      #
-      # Spelled out rather than left to `after` because the outcome is worth
-      # recording: "the builder was destroyed" asserted from a constant is a
-      # claim that keeps reading true after it stops being true. The abnormal
-      # paths still only have to destroy, since there is no result to decorate.
+      # A build outlives a raise, a non-zero exit and an early return alike,
+      # and the box is shared — so every path still has to ask whether it
+      # should be freed, the same discipline this used to apply to an
+      # unconditional destroy of a box no caller could use again anyway. The
+      # abnormal paths only ask; there is no result left to decorate.
       try do
         result = run(scope, server, ref, architecture, opts)
         log_build_outcome(result, server)
-        record_disposition(result, server, destroy(scope, server, opts), opts)
+        record_disposition(result, server, release_box(scope, server, opts))
       rescue
         error ->
-          _ = destroy(scope, server, opts)
+          _ = release_box(scope, server, opts)
           reraise error, __STACKTRACE__
       catch
         kind, value ->
-          _ = destroy(scope, server, opts)
+          _ = release_box(scope, server, opts)
           :erlang.raise(kind, value, __STACKTRACE__)
       end
     end
+  end
+
+  # `:server_type`/`:location` forwarded explicitly so a box that has to be
+  # *created* gets the CPU-bound builder sizing above rather than
+  # `BurstBox.ensure_box/3`'s own app-server-sized default — the common case
+  # (the box already exists) never looks at either, `Hetzner.find_server/2`
+  # is one list call and nothing else.
+  defp ensure_box(scope, architecture, spec, opts) do
+    ensure = Keyword.get(opts, :ensure_box, &BurstBox.ensure_box/3)
+
+    box_opts =
+      opts
+      |> Keyword.put(:architecture, architecture)
+      |> Keyword.put(:server_type, Keyword.get(opts, :server_type) || spec.server_type)
+      |> Keyword.put(:location, Keyword.get(opts, :builder_location) || spec.location)
+
+    ensure.(scope, BurstBox.box_name(), box_opts)
+  end
+
+  # The box is shared and persistent now (story 877) — nothing here destroys
+  # it outright any more. Every path still asks `Lifecycle.check/3` eagerly,
+  # which is the happy-path caller its own moduledoc already describes: an
+  # idle box is freed the moment the last job of its billing hour ends,
+  # rather than waiting on `BurstBox.Sweep`'s next tick. `Sweep` itself is
+  # the safety net for whatever puts a box on the board in the first place,
+  # builds included, and is untouched by this.
+  defp release_box(scope, server, opts) do
+    busy? = Keyword.get(opts, :busy?, &BurstBox.busy?/2)
+    destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
+
+    Lifecycle.check(scope, server, busy?: busy?, destroy: destroy, now: now)
   end
 
   # The only line that says a build actually finished, one way or the other
@@ -196,29 +220,33 @@ defmodule CodeMySpec.Provisioning.Builder do
     Logger.warning("[Builder] #{server_name(server)} failed: #{inspect(reason)}")
   end
 
-  defp record_disposition({:ok, %Build{} = build}, _server, disposition, opts) do
+  # `builder_destroyed` now means what `release_box/3` actually decided —
+  # `:deleted` when the shared box was idle at the end of its billing hour,
+  # `false` for `:kept`/`:not_due`/an error. `builder_image` is read off the
+  # box's own Hetzner record (`server_image/1`) rather than a constant: there
+  # is only one kind of image a burst box ever boots from now
+  # (`ensure_burst_box_image/3`'s own snapshot), so the honest per-build
+  # answer is whatever that box's record actually says it was created from,
+  # not a value this module decided on the caller's behalf.
+  defp record_disposition({:ok, %Build{} = build}, server, disposition) do
     {:ok,
-     %{
-       build
-       | builder_destroyed: disposition == :ok,
-         builder_image: Keyword.get(opts, :builder_image, @builder_image)
-     }}
+     %{build | builder_destroyed: disposition == :deleted, builder_image: server_image(server)}}
   end
 
   # A failed build has a disposition too, and it is the one most worth having:
-  # "the builder is destroyed even when the build fails" is exactly the claim
-  # that rots quietly, because a failed deploy already looks like a failure and
-  # a leaked box adds nothing visible to it.
-  defp record_disposition({:error, reason}, server, disposition, opts) do
+  # "the box was checked even when the build fails" is exactly the claim
+  # that rots quietly, because a failed deploy already looks like a failure
+  # and a box left running an extra billed hour adds nothing visible to it.
+  defp record_disposition({:error, reason}, server, disposition) do
     {:error, reason,
      %{
        builder: server_name(server),
-       builder_image: Keyword.get(opts, :builder_image, @builder_image),
-       builder_destroyed: disposition == :ok
+       builder_image: server_image(server),
+       builder_destroyed: disposition == :deleted
      }}
   end
 
-  defp record_disposition(other, _server, _disposition, _opts), do: other
+  defp record_disposition(other, _server, _disposition), do: other
 
   defp builder_spec(architecture) do
     case Map.fetch(@builders, architecture) do
@@ -227,81 +255,105 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  # An explicit `:builder_image` always wins — a caller that already knows
-  # which image it wants (a test, a drill, a caller mid-migration off this
-  # entirely) is answering a question this has no business re-deciding.
-  # Otherwise this is where `docker-ce` quietly becomes whichever custom
-  # image `ensure_builder_image/3` finds or builds — `start_builder/4`
-  # already reads `opts[:builder_image]` unconditionally, so nothing else
-  # has to change to pick it up.
-  #
-  # Never fails the build. An account with no Hetzner token configured, or a
-  # real provider error resolving the image, falls back to the stock image
-  # and `Remote.ensure_kamal/1`'s own full install — slower, but the same
-  # path that has worked all along. An optimization is not allowed to be the
-  # reason a deploy that would otherwise have succeeded does not.
-  defp with_builder_image(scope, architecture, opts) do
-    if Keyword.has_key?(opts, :builder_image) do
-      opts
-    else
-      case ensure_builder_image(scope, architecture, opts) do
-        {:ok, image_id} -> Keyword.put(opts, :builder_image, image_id)
-        {:error, _reason} -> opts
-      end
-    end
-  end
-
   @doc """
-  A builder image for `architecture` with kamal already on it — found by
-  label if one already exists, built once if not.
+  The burst box's own snapshot for `architecture` — docker-ce and kamal, the
+  same as any Hetzner box this codebase builds on, *plus* this app's own OTP
+  release installed directly on the box, found by label if one already
+  exists, built once if not (story 877).
 
-  Every ordinary build used to pay `apt-get install ruby-full build-essential
-  && gem install kamal` fresh, on the stock `docker-ce` image, every single
-  time — 30-90s of apt-mirror-dependent work on every deploy, for a toolchain
-  that never changes between builds. This is the box that stops paying it:
-  built once from the same stock image and the same `Remote.ensure_kamal/1`
-  every ordinary builder already runs, then kept and labelled so the next
-  build finds it instead of re-paying the bootstrap.
+  A burst box's own embedding runners need the release on the box itself,
+  not inside a container: "our own embedding jobs on it run as FLAME
+  runners, no container layer needed — it's our own trusted workload."
+  Customer builds on the same box still run in throwaway Docker containers
+  (criteria 789/790), which is exactly what docker-ce and the kamal gem are
+  still for.
+
+  `:install_release` is required and has no default: `(run, server, opts ->
+  :ok | {:error, term()})`, called once, after kamal and before the disk is
+  synced for the snapshot — same place `ensure_kamal/1` itself runs. This
+  module does not know how a release gets built — same reason `:create`,
+  `:destroy` and `:build_fun` elsewhere in this file are injected rather than
+  called directly — but the shape a real caller wires up is: build this
+  app's own `Dockerfile` for `ref` the same way `Remote.build/4` already
+  builds a customer's, then extract `/app` from the built image
+  (`docker create` + `docker cp` + `docker rm`) onto the box's filesystem
+  rather than pushing it anywhere or running it as a container.
+
+  One snapshot per Hetzner account: `list_images/2` is already scoped to the
+  calling account's own token, so a customer's environment and ours can
+  never find each other's burst-box image by accident, and nothing here
+  assumes a snapshot is portable across accounts at all.
   """
-  @spec ensure_builder_image(Scope.t(), :arm | :x86, keyword()) ::
+  @spec ensure_burst_box_image(Scope.t(), :arm | :x86, keyword()) ::
           {:ok, String.t() | integer()} | {:error, term()}
-  def ensure_builder_image(%Scope{} = scope, architecture, opts \\ []) do
+  def ensure_burst_box_image(%Scope{} = scope, architecture, opts \\ []) do
     list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
-    selector = "#{@builder_image_label}=#{architecture}"
+    selector = "#{@burst_box_image_label}=#{architecture}"
 
     case list_images.(scope, label_selector: selector, status: "available") do
       {:ok, [image | _]} -> {:ok, image["id"]}
-      {:ok, []} -> build_builder_image(scope, architecture, opts)
+      {:ok, []} -> build_burst_box_image(scope, architecture, opts)
       {:error, _reason} = error -> error
     end
   end
 
-  # A temporary box, bootstrapped exactly like an ordinary builder, snapshot
-  # and gone either way — the same "every path destroys" discipline
-  # `build/3` itself follows, for the same reason: a box this leaves behind
-  # is one nobody is watching on an invoice somebody pays.
-  defp build_builder_image(scope, architecture, opts) do
+  @doc """
+  Whether an available burst-box snapshot already exists for `architecture`.
+
+  `BurstBox.Sweep`'s own check for a stale `@bootstrap_role_label`-tagged
+  server: once this is true, whichever attempt built the image (this
+  server's own, or a different one that got there first) already succeeded,
+  so a lingering bootstrap server for this architecture is a leftover safe
+  to reap rather than one still waiting on a snapshot in flight.
+  """
+  @spec burst_box_image_available?(Scope.t(), :arm | :x86, keyword()) :: boolean()
+  def burst_box_image_available?(%Scope{} = scope, architecture, opts \\ []) do
+    list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    selector = "#{@burst_box_image_label}=#{architecture}"
+
+    case list_images.(scope, label_selector: selector, status: "available") do
+      {:ok, [_ | _]} -> true
+      _ -> false
+    end
+  end
+
+  # A temporary box, bootstrapped, snapshotted, destroyed either way — a box
+  # this leaves behind is one nobody is watching on an invoice somebody pays.
+  defp build_burst_box_image(scope, architecture, opts) do
     with {:ok, spec} <- builder_spec(architecture) do
       create = Keyword.get(opts, :create, &Hetzner.create_server/3)
       destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
       create_image = Keyword.get(opts, :create_image, &Hetzner.create_image/3)
-      name = "cms-builder-bootstrap-#{architecture}-#{System.unique_integer([:positive])}"
+      install_release = Keyword.fetch!(opts, :install_release)
+      name = "cms-burst-bootstrap-#{architecture}-#{System.unique_integer([:positive])}"
 
       create_opts = [
         server_type: spec.server_type,
         location: Keyword.get(opts, :builder_location) || spec.location,
-        image: @builder_image,
+        # The Hetzner marketplace image this temporary bootstrap box boots
+        # from — not a bare OS. Every system image Hetzner offers is the
+        # same 5GB minimal cloud image, so the weight that matters is not
+        # the image, it is what has to be installed before the box can do
+        # its job; `docker-ce` already has Docker, which is the one thing
+        # every snapshot built from it needs. 40GB disk, which this spec's
+        # server types clear comfortably.
+        image: "docker-ce",
         ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
-        network_ids: Keyword.get(opts, :network_ids)
+        network_ids: Keyword.get(opts, :network_ids),
+        labels: %{@bootstrap_role_label => to_string(architecture)}
       ]
-
-      Logger.warning(
-        "[Builder] bootstrap create_opts location=#{inspect(create_opts[:location])} " <>
-          "network_ids=#{inspect(create_opts[:network_ids])} spec.location=#{inspect(spec.location)}"
-      )
 
       case create.(scope, name, create_opts) do
         {:ok, server} ->
+          opts =
+            opts
+            |> Keyword.put(:image_label, @burst_box_image_label)
+            |> Keyword.put(:extra_bootstrap, install_release)
+            |> Keyword.put_new(
+              :image_description,
+              "CodeMySpec burst box (#{architecture})"
+            )
+
           bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
 
         {:error, _reason} = error ->
@@ -313,32 +365,81 @@ defmodule CodeMySpec.Provisioning.Builder do
   # The source server is not destroyed until the snapshot Hetzner is taking
   # *of* it is confirmed done. `create_image/3`'s own moduledoc says the
   # caller polls for the image to actually appear rather than trusting a
-  # bare "accepted" response — this used to say that and not do it: the
-  # image the initial response names is `status: "creating"`, and deleting
-  # its source while Hetzner is still reading from it is exactly the timing
-  # bug this discipline exists to close. `Builder.build/3`'s own "every path
-  # destroys" only ever meant "eventually", not "before the thing being
-  # destroyed still owes something to a request already in flight."
+  # bare "accepted" response — the image the initial response names is
+  # `status: "creating"`, and deleting its source while Hetzner is still
+  # reading from it is exactly the timing bug this discipline exists to
+  # close.
+  #
+  # That close used to be unconditional — `destroy_temp_server` ran after
+  # the `with` chain regardless of which branch it took, including a
+  # `create_image` that succeeded followed by a poll that merely gave up.
+  # Confirmed live: giving up is not the same as the image being done, and
+  # destroying the source on a timeout is exactly the race the comment
+  # above describes, just reached a different way. So this only reaches
+  # `destroy_temp_server` directly for a failure *before* `create_image`
+  # returned an id (nothing pending to protect yet) — anything after that
+  # hands off to `finish_snapshot/8`, which is the only place the source is
+  # destroyed once a snapshot might be mid-write.
   defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
     run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
     attempts = Keyword.get(opts, :ssh_attempts, 90)
     list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    label = Keyword.fetch!(opts, :image_label)
+    description = Keyword.fetch!(opts, :image_description)
 
-    result =
-      with :ok <- Remote.await_ssh(run, attempts, opts),
-           :ok <- Remote.ensure_kamal(run),
-           :ok <- sync_disk(run),
-           {:ok, %{"image" => image}} <-
-             create_image.(scope, server_id(server),
-               description: "CodeMySpec builder (#{architecture})",
-               labels: %{@builder_image_label => to_string(architecture)}
-             ),
-           :ok <- await_image_ready(list_images, scope, image["id"], architecture, opts) do
+    with :ok <- Remote.await_ssh(run, attempts, opts),
+         :ok <- Remote.ensure_kamal(run),
+         :ok <- maybe_extra_bootstrap(run, server, opts),
+         :ok <- sync_disk(run),
+         {:ok, %{"image" => image}} <-
+           create_image.(scope, server_id(server),
+             description: description,
+             labels: %{label => to_string(architecture)}
+           ) do
+      finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts)
+    else
+      error ->
+        destroy_temp_server(destroy, scope, server, architecture)
+        error
+    end
+  end
+
+  # Destroys the source on exactly one confirmed outcome each: the image is
+  # actually available (the normal case), or Hetzner has actually dropped it
+  # (nothing left to protect by keeping the box around). A poll that merely
+  # ran out of attempts without either answer leaves the source running and
+  # names it in the error — a human (or a retried call against the same
+  # image id) decides from there, rather than this module guessing by
+  # deleting the one thing that could still turn into a usable snapshot.
+  defp finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts) do
+    case await_image_ready(list_images, scope, image["id"], architecture, label, opts) do
+      :ok ->
+        destroy_temp_server(destroy, scope, server, architecture)
         {:ok, image["id"]}
-      end
 
-    destroy_temp_server(destroy, scope, server, architecture)
-    result
+      {:error, {:image_vanished, _id}} = error ->
+        destroy_temp_server(destroy, scope, server, architecture)
+        error
+
+      {:error, reason} ->
+        Logger.error(
+          "[Builder] #{architecture} burst-box image #{inspect(image["id"])} was not " <>
+            "confirmed ready (#{inspect(reason)}) — leaving bootstrap server " <>
+            "#{server_id(server)} (#{inspect(server_name(server))}) running rather than " <>
+            "risk deleting it while the snapshot may still be mid-write. Check Hetzner's " <>
+            "own status for that image, then either destroy the server by hand (mix " <>
+            "cms.provisioning_leaks) or re-run once it is clear which way the snapshot went."
+        )
+
+        {:error, {:image_not_confirmed, image["id"], server_id(server)}}
+    end
+  end
+
+  defp maybe_extra_bootstrap(run, server, opts) do
+    case Keyword.get(opts, :extra_bootstrap) do
+      nil -> :ok
+      step -> step.(run, server, opts)
+    end
   end
 
   # A process exiting 0 says its writes were issued, not that they have
@@ -376,9 +477,8 @@ defmodule CodeMySpec.Provisioning.Builder do
   # or failed delete left no trace anywhere a caller — or a log — could ever
   # see it, so a temp bootstrap box stuck on an account's invoice looked
   # identical to one that was cleanly destroyed. Logged loudly rather than
-  # threaded into the return value, the same reason `Builder.destroy/3`
-  # itself is best-effort: a cleanup failure must not turn a successful
-  # image build into a failed one, but it must not vanish either.
+  # threaded into the return value: a cleanup failure must not turn a
+  # successful image build into a failed one, but it must not vanish either.
   defp destroy_temp_server(destroy, scope, server, architecture) do
     case destroy.(scope, server_id(server)) do
       {:ok, _} ->
@@ -398,24 +498,52 @@ defmodule CodeMySpec.Provisioning.Builder do
   # effect, not an action id. Hetzner reports a snapshot as `status:
   # "creating"` for a real span (bigger disks take longer), and nothing
   # downstream — `Hetzner.create_server/3` asked to build from this image,
-  # or the source server this function is about to let its caller delete —
-  # is safe to run against an image still in that state.
-  defp await_image_ready(list_images, scope, image_id, architecture, opts, attempts \\ 30)
+  # or the source server `finish_snapshot/8` is about to let its caller
+  # delete — is safe to run against an image still in that state.
+  #
+  # Queried *without* a `status` filter, unlike `ensure_burst_box_image/3`'s
+  # own lookup of an already-finished image — this has to tell "still
+  # creating" apart from "Hetzner dropped it," and a `status: "available"`
+  # filter makes both of those read as the same empty list. The id is
+  # matched exactly, so an older, already-available image sharing this
+  # architecture's label (a previous successful snapshot) is never mistaken
+  # for the one this call is actually waiting on.
+  defp await_image_ready(list_images, scope, image_id, architecture, label, opts) do
+    attempts = Keyword.get(opts, :image_poll_attempts, @default_image_poll_attempts)
+    interval = Keyword.get(opts, :image_poll_interval_ms, @default_image_poll_interval_ms)
+    poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval)
+  end
 
-  defp await_image_ready(_list_images, _scope, image_id, _architecture, _opts, 0) do
+  defp poll_image_ready(_list_images, _scope, image_id, _architecture, _label, _opts, 0, _interval) do
     {:error, {:image_not_ready, image_id}}
   end
 
-  defp await_image_ready(list_images, scope, image_id, architecture, opts, attempts) do
-    selector = "#{@builder_image_label}=#{architecture}"
+  defp poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval) do
+    selector = "#{label}=#{architecture}"
 
-    case list_images.(scope, label_selector: selector, status: "available") do
+    case list_images.(scope, label_selector: selector) do
       {:ok, images} ->
-        if Enum.any?(images, &(&1["id"] == image_id)) do
-          :ok
-        else
-          Wait.sleep(Keyword.get(opts, :image_poll_interval_ms, 3_000))
-          await_image_ready(list_images, scope, image_id, architecture, opts, attempts - 1)
+        case Enum.find(images, &(&1["id"] == image_id)) do
+          %{"status" => "available"} ->
+            :ok
+
+          %{} ->
+            Wait.sleep(interval)
+            next_interval = min(round(interval * backoff_factor(opts)), max_interval(opts))
+
+            poll_image_ready(
+              list_images,
+              scope,
+              image_id,
+              architecture,
+              label,
+              opts,
+              attempts - 1,
+              next_interval
+            )
+
+          nil ->
+            {:error, {:image_vanished, image_id}}
         end
 
       {:error, _reason} = error ->
@@ -423,260 +551,11 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  defp start_builder(scope, ref, spec, opts) do
-    create = Keyword.get(opts, :create, &Hetzner.create_server/3)
-    name = builder_name(ref)
+  defp backoff_factor(opts),
+    do: Keyword.get(opts, :image_poll_backoff_factor, @default_image_poll_backoff_factor)
 
-    # `ssh_key_ids` is forwarded rather than dropped: `create_server/3` refuses
-    # without one, and a builder nobody can log into cannot build anything.
-    create_opts = [
-      server_type: spec.server_type,
-      # The app box's location when there is one. The builder pushes to a
-      # registry on that box's private network, and a network's subnet lives in
-      # exactly one zone — so a builder in another zone holds an address on a
-      # network it cannot actually reach. It also means the image crosses a
-      # datacenter instead of an ocean.
-      location: Keyword.get(opts, :builder_location) || spec.location,
-      image: Keyword.get(opts, :builder_image, @builder_image),
-      ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
-      # The registry it pushes to answers on a private address, so the builder
-      # has to be on that network. Attached at creation rather than after: the
-      # reference it was handed names an address it would not yet hold.
-      network_ids: Keyword.get(opts, :network_ids),
-      labels: ownership_labels(scope)
-    ]
-
-    Logger.warning(
-      "[Builder] start_builder create_opts location=#{inspect(create_opts[:location])} " <>
-        "network_ids=#{inspect(create_opts[:network_ids])} spec.location=#{inspect(spec.location)} " <>
-        "opts[:builder_location]=#{inspect(Keyword.get(opts, :builder_location))} " <>
-        "opts[:registry_host]=#{inspect(Keyword.get(opts, :registry_host))}"
-    )
-
-    case create.(scope, name, create_opts) do
-      {:error, {:hetzner_error, 409, _}} ->
-        reclaim_orphan(scope, name, create, create_opts, opts)
-
-      {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} =
-          error ->
-        reap_and_retry(scope, name, create, create_opts, opts, error)
-
-      other ->
-        other
-    end
-  end
-
-  # A server-limit refusal reads as "the account is too small" (issue
-  # 13ad1abe's whole point), when the true cause is often a `builder-*` box a
-  # dead process never destroyed still holding a slot. Before surfacing that
-  # error, clear anything that fits — named like a builder, older than
-  # `@orphan_max_age_minutes` — and retry the create once.
-  #
-  # If nothing was old enough to reap, the shortage is real and the original
-  # error is the honest answer; retrying would only ask Hetzner the same
-  # question again. If something was reaped but the retry still fails —
-  # Hetzner's delete is asynchronous, so the slot may not be free yet — that
-  # retry's own error is what the caller sees, which is no worse than today.
-  defp reap_and_retry(scope, name, create, create_opts, opts, error) do
-    case reap_orphaned_builders(scope, opts) do
-      [] -> error
-      _reaped -> create.(scope, name, create_opts)
-    end
-  end
-
-  # Needs no cooperation from the process that died, which is the one signal
-  # a SIGKILL, a killed `mix test`, or a cancelled drill can never give: an
-  # owner-labelled box is judged by whether its run still holds the lock,
-  # anything else by age (`abandoned?/2`).
-  defp reap_orphaned_builders(scope, opts) do
-    list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
-    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    destroy_server = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
-    cutoff = DateTime.add(now.(), -@orphan_max_age_minutes * 60, :second)
-
-    case list.(scope) do
-      {:ok, servers} ->
-        orphans = Enum.filter(servers, &stale_orphan?(&1, cutoff))
-        Enum.each(orphans, &destroy_server.(scope, server_id(&1)))
-        orphans
-
-      _ ->
-        []
-    end
-  end
-
-  defp stale_orphan?(server, cutoff) do
-    name = server_name(server) || ""
-    String.starts_with?(name, @builder_prefix) and abandoned?(server, cutoff)
-  end
-
-  defp abandoned?(server, cutoff) do
-    case run_verdict(server) do
-      :abandoned -> true
-      :live -> false
-      :undetermined -> created_before?(server, cutoff)
-    end
-  end
-
-  # Only a run this caller is doing the work of can own the box it creates.
-  # Built outside any run (a drill, a mix task, a test with no lock), the box
-  # carries no owner and is judged by age, as before.
-  defp ownership_labels(%Scope{active_project_id: project_id}) do
-    case RunLock.caller_run_id(project_id) do
-      nil ->
-        nil
-
-      run_id ->
-        %{@project_label => project_id, @run_label => run_id, @instance_label => instance()}
-    end
-  end
-
-  # Is the run that made this box still going?
-  #
-  #   * `:live` — its run holds its project's `RunLock` right now, somewhere
-  #     in this cluster. Never destroyed, whatever its age.
-  #   * `:abandoned` — its run no longer holds the lock: it finished, failed,
-  #     or died with its process (a restart, a kill) before `destroy` ran.
-  #     `RunLock` is a Registry, so a dead holder's entry goes with it, and
-  #     the lock is per project, so another run holding it means this box's
-  #     run is over. The caller's own run counts as over too: a run builds
-  #     one image at a time, so a box it made earlier is from a build that
-  #     already returned.
-  #   * `:undetermined` — no owner labels (made before they existed, or
-  #     outside a run), another CodeMySpec instance's run (a laptop and the
-  #     cloud can share a Hetzner account; this instance cannot see the
-  #     other's locks, and a run id it never issued must not read as ended),
-  #     or a node that could not be asked. The age rule decides those.
-  defp run_verdict(server) do
-    labels = server["labels"] || %{}
-
-    with project when is_binary(project) <- labels[@project_label],
-         run when is_binary(run) <- labels[@run_label],
-         true <- labels[@instance_label] == instance() do
-      if run == RunLock.caller_run_id(project), do: :abandoned, else: lock_verdict(project, run)
-    else
-      _ -> :undetermined
-    end
-  end
-
-  defp lock_verdict(project, run) do
-    case RunLock.run_state(project, run) do
-      :in_flight -> :live
-      :ended -> :abandoned
-      :unknown -> :undetermined
-    end
-  end
-
-  # Which CodeMySpec holds a builder's run. Hashed: a label value is capped at
-  # 63 characters of a restricted set, and a URL is neither.
-  defp instance do
-    :sha256
-    |> :crypto.hash(PublicUrl.base())
-    |> Base.encode16(case: :lower)
-    |> binary_part(0, 12)
-  end
-
-  # No timestamp is not evidence of age. The safe reading is "not old enough
-  # to reap" — the mirror of `mix cms.provisioning_leaks`' own rule that no
-  # timestamp reads as "recent" for the opposite question.
-  defp created_before?(server, cutoff) do
-    case DateTime.from_iso8601(to_string(server["created"] || "")) do
-      {:ok, created, _} -> DateTime.compare(created, cutoff) == :lt
-      _ -> false
-    end
-  end
-
-  # The name is deterministic from `ref` (criterion: same commit always
-  # builds on the same box name), so RunLock (project.id-keyed) rules out two
-  # runs of *this* project racing each other onto it. It does not rule out
-  # everything else the account can do to the same name: a different project
-  # whose own ref happens to collide, a manual retry issued outside
-  # `run_provisioning_step`, anything else with a Hetzner token for this
-  # account. Confirmed live against MarketMySpec: a builder mid-deploy — SSH
-  # reachable, image already pushed, migrate about to run against it — was
-  # destroyed out from under a build that owned it, and there was no crash,
-  # no kill, nothing RunLock would have seen, to explain it. The only honest
-  # read left was that this destroyed it: unconditionally, on nothing but a
-  # name match, with no check that the thing at that name was actually dead.
-  #
-  # `Hetzner.ensure_server/3` would adopt a same-named collision, and that is
-  # right for a server meant to live for months. Adopting is wrong here — a
-  # builder is single-use and destroyed at the end of every build specifically
-  # so one customer's source never sits on a box that held another's (see
-  # moduledoc) — but destroying on sight is just as wrong when the box is new
-  # enough to plausibly still be somebody's live build. So the box is judged
-  # the way `reap_orphaned_builders/2` judges one: by its run when it carries
-  # owner labels (`run_verdict/1` — destroyed once that run no longer holds the
-  # lock, refused while it does), by age when it does not (issue faaf76b6).
-  # Refuses, loud, rather than kill something it cannot show is abandoned.
-  defp reclaim_orphan(scope, name, create, create_opts, opts) do
-    find = Keyword.get(opts, :find, &Hetzner.find_server/2)
-    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    cutoff = DateTime.add(now.(), -@orphan_max_age_minutes * 60, :second)
-
-    case find.(scope, name) do
-      {:ok, orphan} ->
-        reclaim_if_stale(scope, orphan, cutoff, name, create, create_opts, opts)
-
-      {:error, :not_found} ->
-        # Destroyed between the 409 and this lookup — by another cleanup, or
-        # a server the API hasn't listed yet. Either way the retry is the
-        # caller's best shot, not a second special case.
-        create.(scope, name, create_opts)
-
-      {:error, reason} ->
-        {:error,
-         {:orphaned_builder,
-          "A builder named #{name} already exists at Hetzner, left over from an earlier " <>
-            "interrupted run, but looking it up to clear it failed: #{inspect(reason)}."}}
-    end
-  end
-
-  defp reclaim_if_stale(scope, orphan, cutoff, name, create, create_opts, opts) do
-    case run_verdict(orphan) do
-      :live -> live_run_error(name)
-      :abandoned -> reclaim(scope, orphan, name, create, create_opts, opts)
-      :undetermined -> reclaim_if_old(scope, orphan, cutoff, name, create, create_opts, opts)
-    end
-  end
-
-  defp reclaim_if_old(scope, orphan, cutoff, name, create, create_opts, opts) do
-    if created_before?(orphan, cutoff),
-      do: reclaim(scope, orphan, name, create, create_opts, opts),
-      else: too_young_to_reclaim_error(name)
-  end
-
-  defp reclaim(scope, orphan, name, create, create_opts, opts) do
-    Logger.warning("[Builder] #{name} is left from a run no longer in flight — destroying it")
-
-    case destroy(scope, orphan, opts) do
-      :ok -> create.(scope, name, create_opts)
-      other -> orphan_undestroyable_error(name, other)
-    end
-  end
-
-  defp live_run_error(name) do
-    {:error,
-     {:orphaned_builder,
-      "A builder named #{name} already exists at Hetzner and belongs to a deploy run still " <>
-        "in flight. Refusing to destroy it; retry once that run finishes."}}
-  end
-
-  defp too_young_to_reclaim_error(name) do
-    {:error,
-     {:orphaned_builder,
-      "A builder named #{name} already exists at Hetzner and is too recent to be an " <>
-        "abandoned run — most likely a live build using it right now. Refusing to destroy " <>
-        "it; retry once that build finishes."}}
-  end
-
-  defp orphan_undestroyable_error(name, reason) do
-    {:error,
-     {:orphaned_builder,
-      "A builder named #{name} already exists at Hetzner, left over from an earlier " <>
-        "interrupted run, and could not be removed to make way for this one: " <>
-        "#{inspect(reason)}. Delete it manually at Hetzner and re-run."}}
-  end
+  defp max_interval(opts),
+    do: Keyword.get(opts, :image_poll_max_interval_ms, @default_image_poll_max_interval_ms)
 
   defp run(scope, server, ref, architecture, opts) do
     # `:build_fun`, not `:build`. The deploy step's opts are threaded straight
@@ -808,23 +687,37 @@ defmodule CodeMySpec.Provisioning.Builder do
     |> Enum.join("/")
   end
 
-  # Best effort, and deliberately not part of the return. A failure to destroy
-  # is worth knowing about, but it must not turn a successful build into a
-  # failed one — the image exists either way, and the leak is what the audit
-  # is for.
-  defp destroy(scope, server, opts) do
-    case Keyword.get(opts, :destroy, &Hetzner.delete_server/2).(scope, server_id(server)) do
-      {:ok, _} -> :ok
-      other -> other
-    end
-  end
-
-  defp builder_name(ref), do: @builder_prefix <> String.slice(ref, 0, 12)
-
   defp server_id(%{"id" => id}), do: id
   defp server_id(%{"server" => %{"id" => id}}), do: id
 
   defp server_name(%{"name" => name}), do: name
   defp server_name(%{"server" => %{"name" => name}}), do: name
   defp server_name(_), do: nil
+
+  # Read off the box's own Hetzner record rather than assumed — the same
+  # "read, don't assume" discipline `server_architecture/1` already applies
+  # to a live server object. `"unknown"` rather than a raise or a stale
+  # guess: the box's own data not saying is the same shape of gap
+  # `check_architecture/2` already treats as non-fatal elsewhere in this
+  # file.
+  defp server_image(%{"image" => %{"description" => description}})
+       when is_binary(description) and description != "",
+       do: sanitize_image(description)
+
+  defp server_image(%{"image" => %{"name" => name}}) when is_binary(name) and name != "",
+    do: sanitize_image(name)
+
+  defp server_image(%{"image" => %{"id" => id}}), do: to_string(id)
+  defp server_image(%{"server" => server}), do: server_image(server)
+  defp server_image(_server), do: "unknown"
+
+  # `Steps.builder_resource/1` packs this into a `"key=value key=value"`
+  # identifier string, read back apart by splitting on spaces
+  # (`ResourceFields.identifier_field/2`) — the same format every other
+  # provisioning resource already uses. A description like "CodeMySpec burst
+  # box (arm)" is several words, and `@builder_image` (the single-word
+  # "docker-ce" this replaced) never had to account for that — read back
+  # through that parser unchanged, only the first word would survive. One
+  # token, so the round trip is exact.
+  defp sanitize_image(value), do: String.replace(value, " ", "_")
 end
