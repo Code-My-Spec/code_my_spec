@@ -17,6 +17,7 @@ defmodule CmsHarnessTest.LiveHarness do
   """
 
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Project.ChannelClient
   alias CmsHarnessTest.ConnectHeaders
   alias CmsHarnessTest.Projects
   alias Phoenix.ConnTest
@@ -149,6 +150,14 @@ defmodule CmsHarnessTest.LiveHarness do
     Projects.stop_project(root)
     ConnectHeaders.delete(root)
   end
+
+  @doc """
+  Scan `root` and send its manifest now — what the harness's watcher does once
+  its debounce lapses. Asynchronous, and ignored by a client not joined, which
+  rescans on rejoin.
+  """
+  @spec sync_now(String.t()) :: :ok
+  def sync_now(root), do: ChannelClient.request_sync(root)
 
   @doc """
   POST a hook to the harness, the way Claude Code's plugin does, and decode the

@@ -47,14 +47,20 @@ defmodule CodeMySpecSpex.Story1042.Criterion3050Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   import CodeMySpecSpex.AgentToolsHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The alert and the stop decision are separate deliveries; receiving one does not suppress the other", criterion: 1124 do
+  spex "The alert and the stop decision are separate deliveries; receiving one does not suppress the other",
+    criterion: 1124 do
     scenario "Being alerted mid-work does not cost the agent its stop decision" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "an agent under Alloy alerted that a run landed with problems", context do
         Fixtures.problem_fixture(context.scope, %{
           source: "compiler",
@@ -79,16 +85,10 @@ defmodule CodeMySpecSpex.Story1042.Criterion3050Spex do
         # speak, and a spec red because one of those was missing would be red
         # about the hook's preconditions rather than about this criterion.
         told =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(
-            CodeMySpecLocalWeb.Endpoint,
-            :post,
-            "/api/hooks/post-tool-use",
-            %{"session_id" => "a-later-reader", "tool_name" => "Read"}
-          )
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "post-tool-use", %{
+            "session_id" => "a-later-reader",
+            "tool_name" => "Read"
+          })
 
         {:ok, Map.put(context, :later, told["systemMessage"] || "")}
       end

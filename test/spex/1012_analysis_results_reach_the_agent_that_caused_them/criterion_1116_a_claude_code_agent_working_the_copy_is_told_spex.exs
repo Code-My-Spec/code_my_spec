@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion3042Spex do
   import CodeMySpecSpex.AgentToolsHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   @endpoint CodeMySpecLocalWeb.Endpoint
 
@@ -45,6 +46,10 @@ defmodule CodeMySpecSpex.Story1012.Criterion3042Spex do
 
   spex "The hook is the whole of this story's reach", criterion: 1116 do
     scenario "an analyzer run has landed with problems on the copy the agent is working" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "an agent under Claude Code with an open working copy", context do
         {:ok, Map.put(context, :agent_id, running_agent(context))}
       end
@@ -61,15 +66,11 @@ defmodule CodeMySpecSpex.Story1012.Criterion3042Spex do
 
       when_ "the agent makes its next tool call", context do
         told =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/post-tool-use", %{
+          HarnessHooks.post_hook(context, "post-tool-use", %{
             "session_id" => "a-claude-code-session",
             "tool_name" => "Read",
             "tool_input" => %{"file_path" => "lib/example_context.ex"}
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :told, told["systemMessage"])}
       end

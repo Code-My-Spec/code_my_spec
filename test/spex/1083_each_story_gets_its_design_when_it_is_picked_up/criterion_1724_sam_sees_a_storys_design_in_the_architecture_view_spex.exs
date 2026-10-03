@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -20,6 +21,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
 
   spex "Sam sees a story's design in the architecture view", criterion: 1724 do
     scenario "the architecture view shows the story's new component with no proposal file" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the architect has just designed a story", context do
         app = context.project.module_name || "MyApp"
 

@@ -47,27 +47,25 @@ defmodule CodeMySpecSpex.Story555.Criterion1539Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Persisted unresolved problems block the stop even when no files changed this turn", criterion: 147 do
+  spex "Persisted unresolved problems block the stop even when no files changed this turn",
+    criterion: 147 do
     scenario "a previously-recorded test failure blocks a stop with no new writes" do
       given_ :synced_context_component
       given_ :context_implementation_task_started
 
       given_ "the session recorded its edit to the component's file via PostToolUse", context do
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/post-tool-use", %{
+        HarnessHooks.post_hook(context, "post-tool-use", %{
           "session_id" => context.session_id,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => @impl_path}
         })
-        |> Phoenix.ConnTest.json_response(200)
 
         {:ok, context}
       end
@@ -89,11 +87,7 @@ defmodule CodeMySpecSpex.Story555.Criterion1539Spex do
 
       when_ "the stop hook fires with no additional file writes", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

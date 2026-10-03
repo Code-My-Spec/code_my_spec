@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.HarnessHooks
+
   import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
@@ -32,11 +34,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
 
       when_ "the stop hook fires with no additional file writes", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

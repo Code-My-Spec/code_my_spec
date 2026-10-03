@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6089Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -22,16 +23,16 @@ defmodule CodeMySpecSpex.Story704.Criterion6089Spex do
 
   spex "Fresh registration survives within the TTL window", criterion: 434 do
     scenario "sub-agent registered less than TTL ago appears in list_session_subagents" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session with a freshly-registered sub-agent (heartbeat ~now)",
              context do
         session_id = "spex-6089-#{System.unique_integer([:positive])}"
         agent_id = "fresh-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         # Heartbeat 1 minute ago (well within the 10-minute default TTL)
         {:ok, _session} =
