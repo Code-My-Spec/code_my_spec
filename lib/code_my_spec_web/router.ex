@@ -213,6 +213,10 @@ defmodule CodeMySpecWeb.Router do
     # carries an `active_project_id` and only falls back to resolving one from a
     # working directory. Here there is no working directory and no fallback: a
     # request without a project is refused rather than guessed at.
+    #
+    # A file-touching tool also needs a working copy: `X-Harness-Id` names one,
+    # and an `X-Agent-Id` with no harness falls back to that agent's own copy
+    # (`AgentScope`). With neither, such a tool refuses with `:no_environment`.
     # The library's bare 30s default is shorter than a real provisioning step
     # against real infrastructure: :deploy alone measures ~167s (RunLock's own
     # moduledoc), and :server provisioning two environments' Postgres/registry
