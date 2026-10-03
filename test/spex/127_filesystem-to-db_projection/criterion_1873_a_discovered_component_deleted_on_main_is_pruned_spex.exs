@@ -12,7 +12,9 @@ defmodule CodeMySpecSpex.Story127.Criterion1873Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.ComponentGraphHelpers, only: [app: 1, listed: 1]
-  import CodeMySpecSpex.HarnessedKnowledgeHelpers, only: [checkout: 2, manifest: 1]
+
+  import CodeMySpecSpex.HarnessedKnowledgeHelpers,
+    only: [checkout: 2, manifest: 1, remove_code: 2, write_code: 3]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,10 +27,10 @@ defmodule CodeMySpecSpex.Story127.Criterion1873Spex do
         module = "#{app(context)}.RetiredChecker"
 
         # Main keeps other code too: an empty checkout's manifest is refused.
-        write_module(main, "lib/anchor.ex", "#{app(context)}.Anchor")
+        write_code(main, "lib/anchor.ex", "#{app(context)}.Anchor")
 
         for copy <- [main, stale] do
-          write_module(copy, "lib/retired_checker.ex", module)
+          write_code(copy, "lib/retired_checker.ex", module)
           manifest(copy)
         end
 
@@ -41,7 +43,7 @@ defmodule CodeMySpecSpex.Story127.Criterion1873Spex do
       end
 
       when_ "main deletes the file and syncs", context do
-        File.rm!(Path.join(context.main.dir, "lib/retired_checker.ex"))
+        remove_code(context.main, "lib/retired_checker.ex")
         manifest(context.main)
         {:ok, context}
       end
@@ -56,10 +58,4 @@ defmodule CodeMySpecSpex.Story127.Criterion1873Spex do
   end
 
   defp on(context, copy), do: Map.put(context, :scope, Map.fetch!(context, copy).scope)
-
-  defp write_module(%{dir: dir}, path, module) do
-    full = Path.join(dir, path)
-    File.mkdir_p!(Path.dirname(full))
-    File.write!(full, "defmodule #{module} do\n  @moduledoc false\nend\n")
-  end
 end

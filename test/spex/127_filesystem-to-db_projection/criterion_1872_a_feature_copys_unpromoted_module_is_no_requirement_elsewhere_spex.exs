@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story127.Criterion1872Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.ComponentGraphHelpers, only: [app: 1, listed: 1]
-  import CodeMySpecSpex.HarnessedKnowledgeHelpers, only: [checkout: 2, manifest: 1]
+  import CodeMySpecSpex.HarnessedKnowledgeHelpers, only: [checkout: 2, manifest: 1, write_code: 3]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story127.Criterion1872Spex do
 
       when_ "the feature copy writes a module main does not have, and both sync", context do
         module = "#{app(context)}.UnpromotedProbe"
-        write_module(context.feature, "lib/unpromoted_probe.ex", module)
+        write_code(context.feature, "lib/unpromoted_probe.ex", module)
         manifest(context.feature)
         manifest(context.main)
         {:ok, Map.put(context, :module, module)}
@@ -41,11 +41,5 @@ defmodule CodeMySpecSpex.Story127.Criterion1872Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp write_module(%{dir: dir}, path, module) do
-    full = Path.join(dir, path)
-    File.mkdir_p!(Path.dirname(full))
-    File.write!(full, "defmodule #{module} do\n  @moduledoc false\nend\n")
   end
 end

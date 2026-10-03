@@ -88,6 +88,16 @@ defmodule CodeMySpecSpex.HarnessedKnowledgeHelpers do
   @spec remove_knowledge(map(), String.t()) :: :ok
   def remove_knowledge(%{dir: dir}, name), do: File.rm!(Path.join([dir, @knowledge, name]))
 
+  @doc "Write a one-module source file at `path` in the checkout."
+  def write_code(%{dir: dir}, path, module) do
+    full = Path.join(dir, path)
+    File.mkdir_p!(Path.dirname(full))
+    File.write!(full, "defmodule #{module} do\n  @moduledoc false\nend\n")
+  end
+
+  @doc "Delete `path` from the checkout."
+  def remove_code(%{dir: dir}, path), do: File.rm!(Path.join(dir, path))
+
   @doc "Write the checkout's `mix.lock`."
   @spec write_lock(map(), String.t()) :: :ok
   def write_lock(%{dir: dir}, content), do: File.write!(Path.join(dir, "mix.lock"), content)
