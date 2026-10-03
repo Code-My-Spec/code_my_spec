@@ -31,6 +31,7 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -931,6 +932,43 @@ defmodule CodeMySpec.Notifications do
     with {:ok, request} <- insert_question_request(user_id, attrs) do
       deliver_question(request)
       {:ok, request}
+    end
+  end
+
+  @doc """
+  Save a Claude Code session's question and its task blocker atomically, then
+  deliver it — the session half of `create_agent_question_request/4`.
+
+  `session_id` is the external conversation id the PreToolUse hook injects; a
+  session that cannot be resolved from it (no id, a stale negotiation, no
+  `register_session` yet) falls back to a plain, unblocked question rather
+  than refusing the ask.
+  """
+  def create_session_question_request(scope, user_id, attrs, task_ref, session_id) do
+    case session_id && Sessions.get_by_external_id(scope, session_id) do
+      nil ->
+        with {:ok, request} <- insert_question_request(user_id, attrs) do
+          deliver_question(request)
+          {:ok, request}
+        end
+
+      session ->
+        result =
+          Repo.transaction(fn ->
+            with {:ok, task} <- question_task(session, task_ref),
+                 attrs = Map.put(attrs, "task_id", task && task.id),
+                 {:ok, request} <- insert_question_request(user_id, attrs),
+                 :ok <- block_question_task(scope, session, task, request) do
+              request
+            else
+              {:error, reason} -> Repo.rollback(reason)
+            end
+          end)
+
+        with {:ok, request} <- result do
+          deliver_question(request)
+          {:ok, request}
+        end
     end
   end
 
