@@ -263,12 +263,6 @@ defmodule CodeMySpecWeb.Application do
 
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
 
-  # `:box_name` is not generated or derived from anything else — `BurstBox`'s
-  # own moduledoc: there is exactly one shared box per environment, so every
-  # runner this backend ever boots asks for the same literal name, matching
-  # `HetznerFlameBackend`'s and `BurstBox`'s own test fixtures.
-  @hetzner_burst_box_name "burst-platform"
-
   defp hetzner_burst_box_configured? do
     case System.get_env("HETZNER_API_TOKEN") do
       token when is_binary(token) and token != "" -> true
@@ -293,7 +287,7 @@ defmodule CodeMySpecWeb.Application do
     platform_scope = %Scope{}
 
     Application.put_env(:flame, HetznerFlameBackend,
-      box_name: @hetzner_burst_box_name,
+      box_name: BurstBox.box_name(),
       ensure_box: fn name -> BurstBox.ensure_box(platform_scope, name) end,
       start_runner: fn server, runner_name, env ->
         BurstBox.start_runner(platform_scope, server, runner_name, env)

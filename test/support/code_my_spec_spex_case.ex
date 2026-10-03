@@ -4078,10 +4078,10 @@ defmodule CodeMySpecSpex.Case do
   hardware.
 
   Story 992's criteria are about the build: that deploying causes one, that the
-  architecture is checked, that the builder goes away either way. None of them
-  are about Docker, and none are about object storage, so the box, the build
-  and the registry's bucket are injected while everything the deploy step
-  itself does stays real.
+  architecture is checked, that the shared box is asked whether to release
+  itself either way. None of them are about Docker, and none are about object
+  storage, so the box, the build and the registry's bucket are injected while
+  everything the deploy step itself does stays real.
 
   Every other step is scripted, because a criterion about the build should not
   provision a server to reach the deploy.
@@ -4091,13 +4091,25 @@ defmodule CodeMySpecSpex.Case do
     * `:architecture` — what the environment's box runs (default `:arm`)
     * `:builds` — what the build produces; `:error` for a build that fails,
       otherwise the architecture it actually produced (default: matches)
-    * `:on_destroy` — called with the builder's id when it is destroyed
+    * `:on_destroy` — called with the shared box's id when `BurstBox.Lifecycle`
+      decides to release it
+    * `:box_release` — what `BurstBox.Lifecycle.check/3` should decide for the
+      shared box this build runs on: `:not_due` (default — an ordinary build,
+      mid billing-hour, where nothing about release is observable), `:idle`
+      (due for a check and nothing else is using it — gets released), or
+      `:busy` (due for a check but something else still needs it — stays up).
+      Story 877: the box is shared and persistent, found rather than created
+      on every build, so unlike the old per-build box this is no longer
+      something every build does unconditionally — a criterion actually about
+      release has to ask for one of the two `:due` outcomes explicitly rather
+      than getting it by default.
   """
   def stage_build(context, opts \\ []) do
     architecture = Keyword.get(opts, :architecture, :arm)
     builds = Keyword.get(opts, :builds, architecture)
     on_destroy = Keyword.get(opts, :on_destroy, fn _id -> :ok end)
     tag = Keyword.get(opts, :tag, "a1b2c3d4e5f6")
+    box_release = Keyword.get(opts, :box_release, :not_due)
 
     context = stage_deploy(context)
 
@@ -4113,6 +4125,22 @@ defmodule CodeMySpecSpex.Case do
             {:ok, %{reference: "registry.example.com/app:#{ref}", architecture: produced}}
           end
       end
+
+    # `"image"` matches what the real box's own Hetzner record carries —
+    # `build_burst_box_image/3`'s own snapshot description — since
+    # `Builder.server_image/1` reads it straight off the box rather than off
+    # a caller-chosen constant (story 877).
+    box = %{
+      "id" => 4242,
+      "name" => "burst-platform",
+      "image" => %{"description" => "CodeMySpec burst box (#{architecture})"}
+    }
+
+    # `"created"` only when a criterion actually asked for a release
+    # decision — absent (the default), `BurstBox.Lifecycle.check/3` reads
+    # `:not_due` and never touches `:busy?`/`:destroy` at all, which is the
+    # ordinary case for every criterion here that is not about release.
+    box = if box_release == :not_due, do: box, else: Map.put(box, "created", "2026-01-01T00:00:00Z")
 
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
@@ -4137,7 +4165,7 @@ defmodule CodeMySpecSpex.Case do
         # which is every failure in story 992.
         build: true,
         build_fun: build,
-        # The two seams that otherwise reach a provider for real.
+        # The seams that otherwise reach a provider for real.
         #
         # `with_access_key/2` asks Hetzner for the account's SSH key when
         # `:ssh_key_ids` is absent, and `with_builder_ssh/2` writes the private
@@ -4149,7 +4177,23 @@ defmodule CodeMySpecSpex.Case do
         # reading.
         ssh_key_ids: [4242],
         ssh_key_path: "/dev/null",
-        create: fn _scope, name, _o -> {:ok, %{"id" => 4242, "name" => name}} end,
+        # Story 877: `Builder.build/3` now asks `BurstBox.ensure_box/3` for
+        # the one shared box, found rather than created — `:find` answers
+        # that directly so every criterion here gets the cheap, common path
+        # by default. `:create`/`:ensure_burst_box_image` stay in Hetzner's
+        # own `{:ok, %{"server" => ...}}` create-response shape, for the
+        # unusual case a caller overrides `:find` to force the box through
+        # creation instead.
+        find: fn _scope, _box_name -> {:ok, box} end,
+        create: fn _scope, name, _o -> {:ok, %{"server" => %{"id" => 4242, "name" => name}}} end,
+        ensure_burst_box_image: fn _scope, _architecture, _o -> {:ok, "burst-box-image"} end,
+        # `BurstBox.Lifecycle.check/3`'s own two questions: is the box due
+        # for a check at all (`:now` against `box["created"]` above), and if
+        # so, is anything else still using it. `on_destroy` only ever fires
+        # when `box_release == :idle`, matching what `Lifecycle.check/3`
+        # itself would decide.
+        busy?: fn _scope, _server -> box_release == :busy end,
+        now: fn -> ~U[2026-01-01 00:58:00Z] end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
         registry_host: "registry.example.com",
@@ -4159,7 +4203,7 @@ defmodule CodeMySpecSpex.Case do
         # above has no real address for `Remote.ssh_runner/2` to reach, and
         # none of story 992's criteria are about whether that deploy
         # succeeded — an inert stub answers it harmlessly, the same way the
-        # fake `create`/`destroy` above answer the box's own lifecycle.
+        # fake `find`/`destroy` above answer the box's own lifecycle.
         run: fn [_command] -> {"", 0} end
       )
     )

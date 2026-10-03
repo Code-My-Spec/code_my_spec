@@ -214,13 +214,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   Install kamal on the builder before it orchestrates a deploy over it,
   unless it is already there.
 
-  Checked first rather than assumed either way: `Builder.custom_image?/1`
-  builders come from a snapshot with kamal already baked in (built once by
-  `Builder.ensure_builder_image/2`, exactly to skip this on every ordinary
-  deploy), but the stock `docker-ce` fallback — used until that snapshot
-  exists, or if it is ever unavailable — still needs it installed fresh
-  every time. One `command -v` check makes this correct under both without
-  the caller having to know which box it got.
+  Checked first rather than assumed: every burst box now comes from the one
+  shared snapshot (`Builder.ensure_burst_box_image/3`, story 877) with kamal
+  already baked in from whenever that snapshot was last built — but a
+  snapshot's own kamal can be stale or broken (see below), so this is
+  checked rather than trusted blind. One `command -v` check makes this
+  correct regardless of how long ago the box's snapshot was taken.
 
   Ruby is not part of the `docker-ce` base image, and nothing installed it
   before one particular night: nothing had gotten a real harness-only
@@ -243,9 +242,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   not pull that in on Debian: confirmed live, the very next failure once
   `ruby-full` alone installed cleanly was `mkmf.log`/`extconf failed`.
 
-  `command -v kamal` alone is not enough of a check: a custom builder image
-  (`Builder.custom_image?/1`) has kamal baked in from whenever it was last
-  captured, and RubyGems does not revisit an already-installed gem's
+  `command -v kamal` alone is not enough of a check: the burst box's own
+  snapshot has kamal baked in from whenever it was last captured, and
+  RubyGems does not revisit an already-installed gem's
   dependencies — if that snapshot's `ed25519`/`bcrypt_pbkdf` never actually
   landed (an older kamal version that did not yet depend on them, or a
   build that satisfied `kamal` itself before failing on their native

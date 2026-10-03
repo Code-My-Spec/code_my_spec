@@ -152,10 +152,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   document handed to the box at creation and run once on first boot, before
   anything we do over SSH afterwards. Nothing in this codebase used it before
   the Hetzner-burst-box groundwork (577de9bb) — every existing caller either
-  ships a pre-baked image (`Builder.ensure_builder_image/3`) or configures the
-  box over SSH after it answers (`Builder.Remote`), so there was nothing to
-  boot-time-configure until a FLAME runner needed to come up and dial home on
-  its own, unattended, with no SSH step in between.
+  ships a pre-baked image (`Builder.ensure_burst_box_image/3`) or configures
+  the box over SSH after it answers (`Builder.Remote`), so there was nothing
+  to boot-time-configure until a FLAME runner needed to come up and dial
+  home on its own, unattended, with no SSH step in between.
 
   Attaching an SSH key at creation is not optional in practice. A server made
   without one has a root password Hetzner emails to the account owner and

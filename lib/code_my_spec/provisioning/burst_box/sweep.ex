@@ -19,11 +19,12 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
 
   This is the other path: list every box this process knows how to find, and
   ask the same policy about each of them, on a timer, needing no cooperation
-  from whatever was using it. Same shape as
-  `CodeMySpec.Provisioning.Builder`'s own `reap_orphaned_builders/2` — list by
-  label, judge each, act — applied to a box that is never abandoned the way a
-  `builder-*` box is (a burst box is *supposed* to still be there), only
-  sometimes idle for longer than its billing hour warrants.
+  from whatever was using it. Same shape `CodeMySpec.Provisioning.Builder`'s
+  own `reap_orphaned_builders/2` once had for the ephemeral-per-build boxes
+  story 877 retired — list by label, judge each, act — applied here to a box
+  that is never abandoned the way a `builder-*` box could be (a burst box is
+  *supposed* to still be there), only sometimes idle for longer than its
+  billing hour warrants.
 
   ## What this does not solve
 

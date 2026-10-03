@@ -376,9 +376,9 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     # "found" and the install command is never even reached.
     defp kamal_missing, do: %{"command -v kamal" => {"", 1}}
 
-    # A custom builder image (`Builder.ensure_builder_image/2`) already has
-    # kamal baked in — the whole reason it exists is to skip this dance on
-    # every ordinary deploy.
+    # The burst box's own snapshot (`Builder.ensure_burst_box_image/3`)
+    # already has kamal baked in — the whole reason it exists is to skip
+    # this dance on every ordinary deploy.
     test "does nothing when kamal is already on the box" do
       run =
         recorder(self(), %{

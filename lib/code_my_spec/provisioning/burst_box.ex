@@ -113,6 +113,19 @@ defmodule CodeMySpec.Provisioning.BurstBox do
   @spec release_path() :: String.t()
   def release_path, do: @release_path
 
+  # One name, defined once, because every caller asking `ensure_box/3` for a
+  # *different* name would each get their own box — exactly the thing this
+  # module's own moduledoc promises does not happen. `Builder.build/3` (a
+  # customer deploy or our own) and `HetznerFlameBackend`'s own config
+  # (wired in `application.ex`, for our own environment only) both have to
+  # agree on this literal string or an environment quietly ends up with two
+  # boxes instead of one.
+  @box_name "burst-platform"
+
+  @doc "The one burst box name every caller in this account should pass to `ensure_box/3` — see the moduledoc."
+  @spec box_name() :: String.t()
+  def box_name, do: @box_name
+
   ## ensure_box
 
   @doc """

@@ -17,10 +17,12 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.DeployConfig do
   then succeeds or fails); each phase, migration completing before the swap
   starts (8007), and on a failure which phase stopped it and which version
   stayed live (8008, 8009); the image and whether this deploy built it
-  (8234/8235); the builder box, which exists for one build and is destroyed
-  either way (8236/8237); retention, enforced by one of two mechanisms per
-  deploy and never both (6dcb62b8, 8241); the version actually shipped and
-  the one actually live; and a deploy or boot failure.
+  (8234/8235); the box it built on — shared and persistent since story 877,
+  so "destroyed" now means `BurstBox.Lifecycle` decided this build was the
+  last one using it, asked on every path out regardless of outcome
+  (8236/8237); retention, enforced by one of two mechanisms per deploy and
+  never both (6dcb62b8, 8241); the version actually shipped and the one
+  actually live; and a deploy or boot failure.
   """
 
   use CodeMySpecWeb, :html

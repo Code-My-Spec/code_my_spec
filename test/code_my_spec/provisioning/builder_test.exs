@@ -5,12 +5,19 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   A container build is a bad recording subject and a worse unit-test subject —
   minutes per run, non-deterministic digests, invalidated by any Dockerfile
   edit. What is worth testing is ours: which architecture gets asked for, that
-  the builder is destroyed even when the build fails, and that an image built
-  for the wrong architecture never leaves the builder.
+  the shared box is asked whether to release itself after every outcome, and
+  that an image built for the wrong architecture never leaves the builder.
 
   The Hetzner calls are injected here too, so these stay unit tests. Story 992
-  keeps the real create/destroy under a cassette, because "the builder was
-  destroyed" is the claim that costs money when it silently stops being true.
+  keeps the real create/destroy under a cassette, because "the box was
+  checked" is exactly the claim that costs money when it silently stops being
+  true.
+
+  Story 877 moved `build/3` onto the one shared burst box
+  (`CodeMySpec.Provisioning.BurstBox.ensure_box/3`) instead of a fresh box
+  created and destroyed per build. The default `opts/1` below answers `:find`
+  with a box that already exists — the common, cheap case, and the one every
+  test not specifically exercising box *creation* or *release* should use.
   """
   use ExUnit.Case, async: true
 
@@ -19,14 +26,15 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.Deploy
-  alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Users.Scope
 
   defp scope, do: %Scope{}
 
-  defp server(name \\ "builder-abc123"), do: %{"id" => 42, "name" => name}
+  defp server(overrides \\ %{}), do: Map.merge(%{"id" => 42, "name" => "burst-platform"}, overrides)
 
-  # Records every destroy so a test can assert the builder went away, and for
+  defp build_fun, do: fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+
+  # Records every destroy so a test can assert the box went away, and for
   # whom.
   defp recording_destroy(owner) do
     fn _scope, id ->
@@ -35,34 +43,38 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
+  # The box already exists by default — the cheap, common path
+  # `BurstBox.ensure_box/3` is built around — so a test that does not care
+  # about creation or release needs nothing else. `:destroy` flunks by
+  # default: nothing here is due for a check (no `"created"` on `server/1`'s
+  # default), so a real destroy call would mean something is wrong with the
+  # wiring, not a legitimate outcome.
   defp opts(overrides) do
     Keyword.merge(
       [
-        create: fn _scope, _name, _create_opts -> {:ok, server()} end,
-        destroy: recording_destroy(self()),
+        find: fn _scope, _box_name -> {:ok, server()} end,
+        destroy: fn _scope, _id -> flunk("a box not due for a check must never be destroyed") end,
         now: fn -> ~U[2026-08-03 00:00:00Z] end
       ],
       overrides
     )
   end
 
-  # A `create` stub that fails once (recording that it did, in the process
-  # dictionary — this closure is called from inside the code under test, not
-  # from the test process) and returns `then_result` on every call after.
-  # Shared by the orphan/stale-builder retry tests below, which differ only in
-  # what the first failure and the eventual outcome look like.
-  defp create_once_then(first, then_result) do
-    fn _scope, _name, _create_opts ->
-      once_then(Process.get(:create_calls, 0), first, then_result)
-    end
+  # `"created"` 58 minutes before `now` below — inside `Lifecycle`'s own
+  # check window (`due_for_check?/2`, >= minute 55) — so these tests reach
+  # the `:busy?`/`:destroy` decision instead of short-circuiting on
+  # `:not_due` the way every other test in this file does by default.
+  defp due_opts(overrides) do
+    Keyword.merge(
+      [
+        find: fn _scope, _box_name -> {:ok, server(%{"created" => "2026-08-03T00:00:00Z"})} end,
+        now: fn -> ~U[2026-08-03 00:58:00Z] end,
+        busy?: fn _scope, _server -> false end,
+        destroy: recording_destroy(self())
+      ],
+      overrides
+    )
   end
-
-  defp once_then(0, first, _then_result) do
-    Process.put(:create_calls, 1)
-    first
-  end
-
-  defp once_then(_after_first, _first, then_result), do: then_result
 
   # `list_images` stub: nothing found on the first call, the built image found
   # on every call after. Simulates the image not existing yet, then existing
@@ -88,41 +100,40 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert result.architecture == :arm
     end
 
-    test "destroys the builder once the image exists" do
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
-      end
+    test "reads the box's own image off its live Hetzner record, sanitized to one token" do
+      # The box the deploy step's `builder_resource/1` packs into a
+      # `"key=value key=value"` identifier, parsed back apart by splitting on
+      # spaces — a multi-word description like a real burst-box snapshot
+      # carries would silently truncate on that round trip otherwise.
+      server = server(%{"image" => %{"description" => "CodeMySpec burst box (arm)"}})
 
-      assert {:ok, _} = Builder.build(scope(), "abc123", opts(build_fun: build))
+      assert {:ok, result} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(build_fun: build_fun(), find: fn _scope, _box_name -> {:ok, server} end)
+               )
 
-      assert_received {:destroyed, 42}
+      assert result.builder_image == "CodeMySpec_burst_box_(arm)"
     end
 
-    test "destroys the builder when the build fails" do
+    test "a failed build reports its own disposition" do
       build = fn _scope, _server, _ref, _arch -> {:error, :compilation_failed} end
 
       assert {:error, :compilation_failed, disposition} =
                Builder.build(scope(), "abc123", opts(build_fun: build))
 
-      # The whole point: a failed build must not leave a box running. Sam is
-      # billed for it either way.
-      assert_received {:destroyed, 42}
-
-      # And the failure says so, rather than leaving the caller to assume it.
-      # A leaked builder adds nothing visible to an already-failed deploy,
-      # which is why this is the disposition most worth recording.
-      assert disposition.builder_destroyed
-      assert disposition.builder == "builder-abc123"
+      # A leaked box adds nothing visible to an already-failed deploy, which
+      # is why the disposition is worth recording even on failure.
+      assert disposition.builder == "burst-platform"
     end
 
-    test "destroys the builder when the build raises" do
+    test "a build that raises still propagates the error" do
       build = fn _scope, _server, _ref, _arch -> raise "docker exploded" end
 
       assert_raise RuntimeError, fn ->
         Builder.build(scope(), "abc123", opts(build_fun: build))
       end
-
-      assert_received {:destroyed, 42}
     end
 
     test "an image built for the wrong architecture is not shipped" do
@@ -130,12 +141,8 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         {:ok, %{reference: "img", architecture: :x86}}
       end
 
-      assert {:error, {:architecture_mismatch, [built: :x86, wanted: :arm]}, disposition} =
+      assert {:error, {:architecture_mismatch, [built: :x86, wanted: :arm]}, _disposition} =
                Builder.build(scope(), "abc123", opts(build_fun: build))
-
-      # And the builder still goes, because a mismatch is a failed build.
-      assert_received {:destroyed, 42}
-      assert disposition.builder_destroyed
     end
 
     test "builds on the architecture the servers run" do
@@ -143,18 +150,20 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       create = fn _scope, _name, create_opts ->
         send(owner, {:created, create_opts[:server_type], create_opts[:location]})
-        {:ok, server()}
-      end
-
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
+        {:ok, %{"server" => server()}}
       end
 
       assert {:ok, _} =
                Builder.build(
                  scope(),
                  "abc123",
-                 opts(build_fun: build, create: create, architecture: :x86)
+                 opts(
+                   build_fun: build_fun(),
+                   find: fn _scope, _box_name -> {:error, :not_found} end,
+                   ensure_burst_box_image: fn _scope, _arch, _opts -> {:ok, "image-id"} end,
+                   create: create,
+                   architecture: :x86
+                 )
                )
 
       # cpx31, not cpx32: identical on paper, but cpx32 does not exist in ash or
@@ -171,11 +180,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       create = fn _scope, _name, create_opts ->
         send(owner, {:created, create_opts[:location]})
-        {:ok, server()}
-      end
-
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
+        {:ok, %{"server" => server()}}
       end
 
       assert {:ok, _} =
@@ -183,7 +188,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  scope(),
                  "abc123",
                  opts(
-                   build_fun: build,
+                   build_fun: build_fun(),
+                   find: fn _scope, _box_name -> {:error, :not_found} end,
+                   ensure_burst_box_image: fn _scope, _arch, _opts -> {:ok, "image-id"} end,
                    create: create,
                    architecture: :x86,
                    builder_location: "ash"
@@ -203,18 +210,21 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       create = fn _scope, _name, create_opts ->
         send(owner, {:created, create_opts[:location]})
-        {:ok, server()}
-      end
-
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
+        {:ok, %{"server" => server()}}
       end
 
       assert {:ok, _} =
                Builder.build(
                  scope(),
                  "abc123",
-                 opts(build_fun: build, create: create, architecture: :x86, location: "fsn1")
+                 opts(
+                   build_fun: build_fun(),
+                   find: fn _scope, _box_name -> {:error, :not_found} end,
+                   ensure_burst_box_image: fn _scope, _arch, _opts -> {:ok, "image-id"} end,
+                   create: create,
+                   architecture: :x86,
+                   location: "fsn1"
+                 )
                )
 
       assert_received {:created, "fsn1"},
@@ -242,245 +252,8 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
-  # Every ordinary build used to pay `apt-get install ruby-full build-essential
-  # && gem install kamal` fresh, on the stock image, every single time. This is
-  # the box that stops paying it — built once, found by label after that.
-  describe "ensure_builder_image/3" do
-    test "finds an existing image by label rather than building a new one" do
-      list_images = fn _scope, opts ->
-        assert opts[:label_selector] == "cms-builder-role=x86"
-        {:ok, [%{"id" => 555}]}
-      end
-
-      create = fn _scope, _name, _create_opts ->
-        flunk("a matching image already exists — nothing should be created")
-      end
-
-      assert {:ok, 555} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create
-               )
-    end
-
-    test "builds one from scratch when none exists yet, then destroys the temp box" do
-      owner = self()
-      # The first call answers the "does one already exist" lookup with
-      # nothing; every call after that is `await_image_ready/6` polling for
-      # the same image to actually finish — real by then, per Hetzner.
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
-
-      list_images = fn _scope, _opts ->
-        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
-      end
-
-      create = fn _scope, name, create_opts ->
-        assert name =~ "cms-builder-bootstrap-x86-"
-        assert create_opts[:image] == "docker-ce"
-        {:ok, server()}
-      end
-
-      run = fn
-        ["command -v kamal" <> _] -> {"", 1}
-        [_command] -> {"", 0}
-      end
-
-      create_image = fn _scope, 42, image_opts ->
-        assert image_opts[:labels] == %{"cms-builder-role" => "x86"}
-        {:ok, %{"image" => %{"id" => 777}}}
-      end
-
-      destroy = fn _scope, 42 ->
-        send(owner, :destroyed)
-        {:ok, %{}}
-      end
-
-      assert {:ok, 777} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 create_image: create_image,
-                 destroy: destroy,
-                 image_poll_interval_ms: 0
-               )
-
-      assert_received :destroyed
-    end
-
-    # The bug this guards: `create_image` snapshots the block device as it is
-    # the instant it is called — a process exiting 0 says its writes were
-    # issued, not that the kernel has flushed them off the page cache and
-    # onto it. Confirmed live against MarketMySpec: `gem install kamal` ran
-    # to completion and every gemspec it had just written came back
-    # corrupted in the resulting snapshot, reused across every later build
-    # from it. `sync` has to run, and run *before* the snapshot, not after.
-    test "syncs the disk before snapshotting, not after" do
-      owner = self()
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
-
-      list_images = fn _scope, _opts ->
-        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
-      end
-
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-
-      run = fn
-        ["command -v kamal" <> _] -> {"", 1}
-        ["sync"] -> send(owner, :synced) && {"", 0}
-        [_command] -> {"", 0}
-      end
-
-      create_image = fn _scope, 42, _image_opts ->
-        # By the time the snapshot is taken, the disk must already have been
-        # synced — asserted here, at the one call that matters, rather than
-        # on call order overall.
-        assert_received :synced
-        {:ok, %{"image" => %{"id" => 777}}}
-      end
-
-      destroy = fn _scope, 42 -> {:ok, %{}} end
-
-      assert {:ok, 777} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 create_image: create_image,
-                 destroy: destroy,
-                 image_poll_interval_ms: 0
-               )
-    end
-
-    test "the source server is not destroyed while Hetzner is still creating the snapshot" do
-      owner = self()
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
-
-      list_images = fn _scope, _opts ->
-        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> not_ready_until_third_poll()
-      end
-
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-      run = fn [_command] -> {"", 0} end
-      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
-
-      destroy = fn _scope, 42 ->
-        # By the time this runs, the image must already show as available —
-        # asserted via the counter directly rather than timing, so this
-        # fails loudly instead of flaking.
-        assert Agent.get(counter, & &1) >= 4,
-               "the source server was destroyed before the snapshot was confirmed done"
-
-        send(owner, :destroyed)
-        {:ok, %{}}
-      end
-
-      assert {:ok, 777} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 create_image: create_image,
-                 destroy: destroy,
-                 image_poll_interval_ms: 0
-               )
-
-      assert_received :destroyed
-    end
-
-    test "gives up and still destroys the source if the image never becomes available" do
-      owner = self()
-      list_images = fn _scope, _opts -> {:ok, []} end
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-      run = fn [_command] -> {"", 0} end
-      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
-
-      destroy = fn _scope, 42 ->
-        send(owner, :destroyed)
-        {:ok, %{}}
-      end
-
-      assert {:error, {:image_not_ready, 777}} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 create_image: create_image,
-                 destroy: destroy,
-                 image_poll_interval_ms: 0
-               )
-
-      assert_received :destroyed
-    end
-
-    # `_ = destroy.(...)` used to discard this outright — a refused or
-    # failed delete left no trace anywhere, so a temp box stuck on the
-    # account's invoice looked identical to one cleanly destroyed.
-    test "logs loudly, rather than silently, when the temp box cannot be destroyed" do
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
-
-      list_images = fn _scope, _opts ->
-        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
-      end
-
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-      run = fn [_command] -> {"", 0} end
-      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
-      destroy = fn _scope, 42 -> {:error, {:hetzner_error, 423, %{}}} end
-
-      log =
-        capture_log(fn ->
-          assert {:ok, 777} =
-                   Builder.ensure_builder_image(scope(), :x86,
-                     list_images: list_images,
-                     create: create,
-                     run: run,
-                     create_image: create_image,
-                     destroy: destroy,
-                     image_poll_interval_ms: 0
-                   )
-        end)
-
-      assert log =~ "could not destroy temporary x86 bootstrap server"
-      assert log =~ "42"
-      assert log =~ "still running and being billed"
-    end
-
-    test "destroys the temp box even when the bootstrap fails" do
-      owner = self()
-
-      list_images = fn _scope, _opts -> {:ok, []} end
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-      run = fn [_command] -> {"connection refused", 255} end
-
-      destroy = fn _scope, 42 ->
-        send(owner, :destroyed)
-        {:ok, %{}}
-      end
-
-      assert {:error, {:builder_unreachable, _seconds, _last}} =
-               Builder.ensure_builder_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 destroy: destroy,
-                 ssh_attempts: 1,
-                 ssh_interval_ms: 0
-               )
-
-      assert_received :destroyed
-    end
-
-    test "an unknown architecture is refused rather than building the wrong box" do
-      list_images = fn _scope, _opts -> {:ok, []} end
-
-      assert {:error, {:unknown_architecture, :sparc}} =
-               Builder.ensure_builder_image(scope(), :sparc, list_images: list_images)
-    end
-  end
-
   describe "ensure_burst_box_image/3" do
-    test "finds an existing burst-box image by its own label, distinct from an ordinary builder's" do
+    test "finds an existing burst-box image by its own label" do
       list_images = fn _scope, opts ->
         assert opts[:label_selector] == "cms-burst-image-role=x86"
         {:ok, [%{"id" => 909}]}
@@ -518,9 +291,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
         ["sync"] ->
           # By the time the disk is synced, the release must already have
-          # been installed — asserted here, at the one call that matters,
-          # the same way `ensure_builder_image/3`'s own sync-ordering test
-          # pins it above.
+          # been installed — asserted here, at the one call that matters.
           assert_received :release_installed
           send(owner, :synced)
           {"", 0}
@@ -561,6 +332,139 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
+    # The bug this guards: `create_image` snapshots the block device as it is
+    # the instant it is called — a process exiting 0 says its writes were
+    # issued, not that the kernel has flushed them off the page cache and
+    # onto it. Confirmed live against MarketMySpec: `gem install kamal` ran
+    # to completion and every gemspec it had just written came back
+    # corrupted in the resulting snapshot, reused across every later build
+    # from it. `sync` has to run, and run *before* the snapshot, not after.
+    test "the source server is not destroyed while Hetzner is still creating the snapshot" do
+      owner = self()
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, _opts ->
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> not_ready_until_third_poll()
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> :ok end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+
+      destroy = fn _scope, 42 ->
+        # By the time this runs, the image must already show as available —
+        # asserted via the counter directly rather than timing, so this
+        # fails loudly instead of flaking.
+        assert Agent.get(counter, & &1) >= 4,
+               "the source server was destroyed before the snapshot was confirmed done"
+
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:ok, 777} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    test "gives up and still destroys the source if the image never becomes available" do
+      owner = self()
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> :ok end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:error, {:image_not_ready, 777}} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
+    # `_ = destroy.(...)` used to discard this outright — a refused or
+    # failed delete left no trace anywhere, so a temp box stuck on the
+    # account's invoice looked identical to one cleanly destroyed.
+    test "logs loudly, rather than silently, when the temp box cannot be destroyed" do
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      list_images = fn _scope, _opts ->
+        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
+      end
+
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> :ok end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+      destroy = fn _scope, 42 -> {:error, {:hetzner_error, 423, %{}}} end
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 777} =
+                   Builder.ensure_burst_box_image(scope(), :x86,
+                     list_images: list_images,
+                     create: create,
+                     run: run,
+                     install_release: install_release,
+                     create_image: create_image,
+                     destroy: destroy,
+                     image_poll_interval_ms: 0
+                   )
+        end)
+
+      assert log =~ "could not destroy temporary x86 bootstrap server"
+      assert log =~ "42"
+      assert log =~ "still running and being billed"
+    end
+
+    test "destroys the temp box even when the bootstrap fails" do
+      owner = self()
+
+      list_images = fn _scope, _opts -> {:ok, []} end
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"connection refused", 255} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert {:error, {:builder_unreachable, _seconds, _last}} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: fn _run, _server, _opts -> :ok end,
+                 destroy: destroy,
+                 ssh_attempts: 1,
+                 ssh_interval_ms: 0
+               )
+
+      assert_received :destroyed
+    end
+
     test "a failed :install_release still destroys the temp box and is returned as the error" do
       owner = self()
       list_images = fn _scope, _opts -> {:ok, []} end
@@ -594,102 +498,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
     end
 
-    test "never reuses or writes the ordinary builder's own image label" do
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
+    test "an unknown architecture is refused rather than building the wrong box" do
+      list_images = fn _scope, _opts -> {:ok, []} end
 
-      list_images = fn _scope, opts ->
-        refute opts[:label_selector] == "cms-builder-role=x86"
-        counter |> Agent.get_and_update(&{&1, &1 + 1}) |> list_images_response()
-      end
-
-      create = fn _scope, _name, _create_opts -> {:ok, server()} end
-      run = fn [_command] -> {"", 0} end
-      install_release = fn _run, _server, _opts -> :ok end
-
-      create_image = fn _scope, 42, image_opts ->
-        refute Map.has_key?(image_opts[:labels], "cms-builder-role")
-        {:ok, %{"image" => %{"id" => 777}}}
-      end
-
-      destroy = fn _scope, 42 -> {:ok, %{}} end
-
-      assert {:ok, 777} =
-               Builder.ensure_burst_box_image(scope(), :x86,
-                 list_images: list_images,
-                 create: create,
-                 run: run,
-                 install_release: install_release,
-                 create_image: create_image,
-                 destroy: destroy,
-                 image_poll_interval_ms: 0
-               )
-    end
-  end
-
-  # `build/3` never fails because the optimization failed — the stock image
-  # plus `Remote.ensure_kamal/1`'s own install is the path that has worked
-  # all along, and an account with no Hetzner token configured yet must not
-  # lose the ability to deploy while this resolves.
-  describe "build/3 picks up a custom builder image automatically" do
-    test "uses the found image instead of the stock one, with no caller involvement" do
-      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
-
-      list_images = fn _scope, _opts -> {:ok, [%{"id" => 555}]} end
-
-      create = fn _scope, _name, create_opts ->
-        assert create_opts[:image] == 555
-        {:ok, server()}
-      end
-
-      assert {:ok, _build} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(build_fun: build, create: create, list_images: list_images)
-               )
-    end
-
-    test "an explicit :builder_image always wins, even with a custom image available" do
-      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
-
-      list_images = fn _scope, _opts ->
-        flunk("an explicit :builder_image must not trigger a lookup at all")
-      end
-
-      create = fn _scope, _name, create_opts ->
-        assert create_opts[:image] == "a-specific-image"
-        {:ok, server()}
-      end
-
-      assert {:ok, _build} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(
-                   build_fun: build,
-                   create: create,
-                   list_images: list_images,
-                   builder_image: "a-specific-image"
-                 )
-               )
-    end
-
-    test "an unconfigured account falls back to the stock image, not a failed build" do
-      build = fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
-
-      list_images = fn _scope, _opts -> {:error, :hetzner_not_configured} end
-
-      create = fn _scope, _name, create_opts ->
-        assert create_opts[:image] == "docker-ce"
-        {:ok, server()}
-      end
-
-      assert {:ok, _build} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(build_fun: build, create: create, list_images: list_images)
-               )
+      assert {:error, {:unknown_architecture, :sparc}} =
+               Builder.ensure_burst_box_image(scope(), :sparc, list_images: list_images)
     end
   end
 
@@ -698,10 +511,6 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   # of whichever caller triggered the run. `Build.deploy` carries back
   # whatever `:then` returned; `nil` for every caller that never asked.
   describe "opts[:then]" do
-    defp build_fun do
-      fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
-    end
-
     test "Build.deploy stays nil when no :then is given" do
       assert {:ok, build} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
 
@@ -721,43 +530,6 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert {:ok, build} = Builder.build(scope(), "abc123", opts)
 
       assert build.deploy == {"ran: echo ran", 0}
-    end
-
-    test "runs before the box is destroyed, not after" do
-      owner = self()
-
-      then_fun = fn run, _dir ->
-        send(owner, :then_ran)
-        run.(["true"])
-      end
-
-      opts =
-        opts(
-          build_fun: build_fun(),
-          then: then_fun,
-          run: fn [_command] -> {"", 0} end
-        )
-
-      assert {:ok, _build} = Builder.build(scope(), "abc123", opts)
-
-      # Ordering, not just occurrence: the destroy message arrives from the
-      # injected `destroy` in `opts/1`, so the sequence proves `:then` ran
-      # while the box still existed rather than merely that both happened.
-      assert_received :then_ran
-      assert_received {:destroyed, 42}
-    end
-
-    test "the box is still destroyed when :then fails" do
-      then_fun = fn _run, _dir -> raise "kamal exploded" end
-      run = fn [_command] -> {"", 0} end
-
-      opts = opts(build_fun: build_fun(), then: then_fun, run: run)
-
-      assert_raise RuntimeError, fn ->
-        Builder.build(scope(), "abc123", opts)
-      end
-
-      assert_received {:destroyed, 42}
     end
 
     test "delivers into build_dir, defaulting to /build" do
@@ -806,572 +578,86 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
-  # Issue faaf76b6: a builder name is deterministic from `ref`, so a 409 here
-  # is not two callers racing (RunLock already serializes per project) — it
-  # is a box an earlier interrupted run left behind. These prove that box
-  # gets cleared and the create retried, rather than the bare provider error
-  # propagating forever.
-  describe "build/3 — orphaned builder from an earlier interrupted run" do
-    test "clears the orphan and retries the create" do
-      owner = self()
-      name = "builder-abc123"
-      orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
+  # Story 877: the box is no longer destroyed unconditionally at the end of
+  # every build — it is shared, so every path instead asks
+  # `BurstBox.Lifecycle.check/3` whether *this* was the job that leaves it
+  # idle for the rest of its billing hour. These pin that every outcome
+  # (success, failure, raise) reaches the check, and that its answer is
+  # reported honestly rather than assumed.
+  describe "build/3 — releasing the shared box afterward" do
+    test "keeps the box, and reports it, when it is not due for a check" do
+      assert {:ok, result} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
 
-      create =
-        create_once_then(
-          {:error,
-           {:hetzner_error, 409,
-            %{
-              "error" => %{
-                "code" => "uniqueness_error",
-                "message" => "server name #{name} is already used"
-              }
-            }}},
-          {:ok, server()}
-        )
+      refute result.builder_destroyed
+    end
 
-      find = fn _scope, ^name -> {:ok, orphan} end
-      destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
+    test "frees an idle box due for a check, and reports it" do
+      assert {:ok, build} = Builder.build(scope(), "abc123", due_opts(build_fun: build_fun()))
 
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
+      assert_received {:destroyed, 42}
+      assert build.builder_destroyed
+    end
+
+    test "keeps a busy box due for a check, and reports it" do
+      opts = due_opts(build_fun: build_fun(), busy?: fn _scope, _server -> true end)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      refute_received {:destroyed, _}
+      refute build.builder_destroyed
+    end
+
+    test "still asks whether to release the box when the build fails" do
+      build = fn _scope, _server, _ref, _arch -> {:error, :compilation_failed} end
+
+      assert {:error, :compilation_failed, disposition} =
+               Builder.build(scope(), "abc123", due_opts(build_fun: build))
+
+      assert_received {:destroyed, 42}
+      assert disposition.builder_destroyed
+    end
+
+    test "still asks whether to release the box when the build raises" do
+      build = fn _scope, _server, _ref, _arch -> raise "docker exploded" end
+
+      assert_raise RuntimeError, fn ->
+        Builder.build(scope(), "abc123", due_opts(build_fun: build))
       end
 
-      # `now` is well past the orphan's `created` — past `@orphan_max_age_minutes`,
-      # so it reads as abandoned rather than somebody's live build.
-      assert {:ok, _} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(
-                   create: create,
-                   find: find,
-                   destroy: destroy,
-                   build_fun: build,
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
-
-      # The orphan goes, and so does the box this run actually built on.
-      assert_received {:destroyed, 999}
       assert_received {:destroyed, 42}
     end
 
-    test "leaves a same-named collision alone when it is younger than the age cutoff" do
-      name = "builder-abc123"
-      recent = %{"id" => 999, "name" => name, "created" => "2026-08-03T01:50:00Z"}
-
-      create = fn _scope, _name, _create_opts ->
-        {:error,
-         {:hetzner_error, 409,
-          %{
-            "error" => %{
-              "code" => "uniqueness_error",
-              "message" => "server name #{name} is already used"
-            }
-          }}}
-      end
-
-      find = fn _scope, ^name -> {:ok, recent} end
-
-      # No `:destroy` fake — a destroy call here would raise the default
-      # `Keyword.get(opts, :destroy, ...)` real Hetzner call and fail the
-      # test, which is exactly the point: nothing this young should be
-      # destroyed on a name collision alone.
-      assert {:error, {:orphaned_builder, message}} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 Keyword.merge(opts(create: create, find: find),
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
-
-      assert message =~ "too recent"
-    end
-
-    test "retries the create when the orphan is gone by the time it looks" do
-      create =
-        create_once_then(
-          {:error,
-           {:hetzner_error, 409,
-            %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}},
-          {:ok, server()}
-        )
-
-      find = fn _scope, _name -> {:error, :not_found} end
-
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
-      end
-
-      assert {:ok, _} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(create: create, find: find, build_fun: build)
-               )
-    end
-
-    test "surfaces a clear, distinguishing error when the orphan cannot be removed" do
-      name = "builder-abc123"
-      orphan = %{"id" => 999, "name" => name, "created" => "2026-08-03T00:00:00Z"}
-
-      create = fn _scope, _name, _create_opts ->
-        {:error,
-         {:hetzner_error, 409,
-          %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
-      end
-
-      find = fn _scope, ^name -> {:ok, orphan} end
-
-      destroy = fn _scope, 999 ->
-        {:error, {:hetzner_error, 423, %{"error" => %{"code" => "locked"}}}}
-      end
-
-      assert {:error, {:orphaned_builder, message}} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(
-                   create: create,
-                   find: find,
-                   destroy: destroy,
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
-
-      assert message =~ "already exists at Hetzner"
-      assert message =~ "could not be removed"
-    end
-
-    test "surfaces a clear, distinguishing error when the orphan can't be looked up" do
-      create = fn _scope, _name, _create_opts ->
-        {:error,
-         {:hetzner_error, 409,
-          %{"error" => %{"code" => "uniqueness_error", "message" => "already used"}}}}
-      end
-
-      find = fn _scope, _name -> {:error, {:hetzner_error, 500, %{}}} end
-
-      assert {:error, {:orphaned_builder, message}} =
-               Builder.build(scope(), "abc123", opts(create: create, find: find))
-
-      assert message =~ "already exists at Hetzner"
-    end
-
-    test "a non-collision creation error is left alone" do
-      create = fn _scope, _name, _create_opts -> {:error, {:capacity_unavailable, "no boxes"}} end
-
-      assert {:error, {:capacity_unavailable, "no boxes"}} =
-               Builder.build(scope(), "abc123", opts(create: create))
-    end
-  end
-
-  # Issue 13ad1abe: a killed process leaves its builder running, attributable
-  # to no project. Nothing about it collides on name with the *next* build —
-  # that build asks for a differently-named box and gets refused for account
-  # capacity instead, which reads as "this account is too small" when the
-  # truth is "a box from a run that died hours ago is still holding a slot".
-  describe "build/3 — a server-limit refusal from an old orphaned builder" do
-    defp resource_limit_error do
-      {:error,
-       {:hetzner_error, 403,
-        %{
-          "error" => %{
-            "code" => "resource_limit_exceeded",
-            "details" => %{"limits" => [%{"name" => "server_limit"}]}
-          }
-        }}}
-    end
-
-    test "reaps a stale builder-* box and retries the create" do
+    test "runs :then before the box is released, not after" do
       owner = self()
 
-      stale = %{
-        "id" => 501,
-        "name" => "builder-deadbeef0000",
-        "created" => "2026-08-03T00:00:00Z"
-      }
-
-      create = create_once_then(resource_limit_error(), {:ok, server()})
-
-      list = fn _scope -> {:ok, [stale]} end
-      destroy = fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
-
-      build = fn _scope, _server, _ref, arch ->
-        {:ok, %{reference: "img", architecture: arch}}
+      then_fun = fn run, _dir ->
+        send(owner, :then_ran)
+        run.(["true"])
       end
 
-      # `now` is an hour past the stale box's `created` — well past
-      # `@orphan_max_age_minutes`, so it reads as abandoned rather than
-      # in-flight.
-      assert {:ok, _} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(
-                   create: create,
-                   list: list,
-                   destroy: destroy,
-                   build_fun: build,
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
+      opts = due_opts(build_fun: build_fun(), then: then_fun, run: fn [_command] -> {"", 0} end)
 
-      # The stale box goes, and so does the one this run actually built on.
-      assert_received {:destroyed, 501}
+      assert {:ok, _build} = Builder.build(scope(), "abc123", opts)
+
+      # Ordering, not just occurrence: the destroy message arrives from the
+      # injected `destroy` in `due_opts/1`, so the sequence proves `:then`
+      # ran while the box still existed rather than merely that both
+      # happened.
+      assert_received :then_ran
       assert_received {:destroyed, 42}
     end
 
-    test "leaves a builder-* box alone when it is younger than the age cutoff" do
-      recent = %{
-        "id" => 501,
-        "name" => "builder-deadbeef0000",
-        "created" => "2026-08-03T01:50:00Z"
-      }
+    test "the box is still checked for release when :then fails" do
+      then_fun = fn _run, _dir -> raise "kamal exploded" end
+      run = fn [_command] -> {"", 0} end
 
-      create = fn _scope, _name, _create_opts -> resource_limit_error() end
-      list = fn _scope -> {:ok, [recent]} end
+      opts = due_opts(build_fun: build_fun(), then: then_fun, run: run)
 
-      # No `:destroy` fake — a destroy call here would raise the default
-      # `Keyword.get(opts, :destroy, ...)` real Hetzner call and fail the
-      # test, which is exactly the point: nothing should be reaped.
-      assert {:error, {:hetzner_error, 403, _}} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 Keyword.merge(opts(create: create, list: list),
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
-    end
-
-    test "leaves non-builder boxes alone even when old" do
-      other = %{"id" => 501, "name" => "fuellytics-prod", "created" => "2020-01-01T00:00:00Z"}
-
-      create = fn _scope, _name, _create_opts -> resource_limit_error() end
-      list = fn _scope -> {:ok, [other]} end
-
-      assert {:error, {:hetzner_error, 403, _}} =
-               Builder.build(scope(), "abc123", opts(create: create, list: list))
-    end
-
-    test "a box with no creation timestamp is not reaped" do
-      undated = %{"id" => 501, "name" => "builder-deadbeef0000"}
-
-      create = fn _scope, _name, _create_opts -> resource_limit_error() end
-      list = fn _scope -> {:ok, [undated]} end
-
-      assert {:error, {:hetzner_error, 403, _}} =
-               Builder.build(scope(), "abc123", opts(create: create, list: list))
-    end
-
-    test "a real shortage with nothing to reap surfaces unchanged" do
-      create = fn _scope, _name, _create_opts -> resource_limit_error() end
-      list = fn _scope -> {:ok, []} end
-
-      assert {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}} =
-               Builder.build(scope(), "abc123", opts(create: create, list: list))
-    end
-
-    test "a retry that still fails surfaces its own error, not the original" do
-      stale = %{
-        "id" => 501,
-        "name" => "builder-deadbeef0000",
-        "created" => "2026-08-03T00:00:00Z"
-      }
-
-      create =
-        create_once_then(
-          resource_limit_error(),
-          {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}}
-        )
-
-      list = fn _scope -> {:ok, [stale]} end
-      destroy = fn _scope, _id -> {:ok, %{}} end
-
-      assert {:error, {:hetzner_error, 403, _}} =
-               Builder.build(
-                 scope(),
-                 "abc123",
-                 opts(
-                   create: create,
-                   list: list,
-                   destroy: destroy,
-                   now: fn -> ~U[2026-08-03 02:00:00Z] end
-                 )
-               )
-    end
-  end
-
-  # Issue 0c1b5110: prod deployed, then uat's deploy of the same commit was
-  # killed mid-build by a server restart, before its `destroy` could run. The
-  # retry minutes later asked for the same deterministic name, got a 409, and
-  # refused the box as "too recent to be an abandoned run" — though no run
-  # held it any more. A builder is judged by whether its run still holds the
-  # project's RunLock, not by its age.
-  describe "build/3 — a builder judged by its run, not its age" do
-    # A Hetzner account in an Agent: a create collides on name the way the API
-    # does, a destroy removes the box, and every box remembers its labels.
-    defp fake_account(now) do
-      {:ok, account} = Agent.start_link(fn -> %{next_id: 100, servers: %{}} end)
-      owner = self()
-
-      create = fn _scope, name, create_opts ->
-        server = %{
-          "name" => name,
-          "created" => DateTime.to_iso8601(now.()),
-          "labels" => create_opts[:labels] || %{}
-        }
-
-        Agent.get_and_update(account, &account_create(&1, Map.has_key?(&1.servers, name), server))
+      assert_raise RuntimeError, fn ->
+        Builder.build(scope(), "abc123", opts)
       end
 
-      destroy = fn _scope, id ->
-        send(owner, {:destroyed, id})
-
-        Agent.update(account, fn state ->
-          %{state | servers: Map.reject(state.servers, fn {_, s} -> s["id"] == id end)}
-        end)
-
-        {:ok, %{}}
-      end
-
-      find = fn _scope, name -> account_found(Agent.get(account, &Map.get(&1.servers, name))) end
-
-      list = fn _scope -> {:ok, Agent.get(account, &Map.values(&1.servers))} end
-
-      %{account: account, create: create, destroy: destroy, find: find, list: list}
-    end
-
-    defp account_create(state, true = _taken, _server),
-      do: {{:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error"}}}}, state}
-
-    defp account_create(state, false = _taken, server) do
-      server = Map.put(server, "id", state.next_id)
-
-      {{:ok, server},
-       %{
-         state
-         | next_id: state.next_id + 1,
-           servers: Map.put(state.servers, server["name"], server)
-       }}
-    end
-
-    defp account_found(nil), do: {:error, :not_found}
-    defp account_found(server), do: {:ok, server}
-
-    defp account_opts(account, overrides) do
-      Keyword.merge(
-        [
-          create: account.create,
-          destroy: account.destroy,
-          find: account.find,
-          list: account.list,
-          builder_image: "docker-ce",
-          build_fun: fn _scope, _server, _ref, arch ->
-            {:ok, %{reference: "img", architecture: arch}}
-          end,
-          now: fn -> ~U[2026-10-01 04:27:00Z] end
-        ],
-        overrides
-      )
-    end
-
-    defp project_scope, do: %Scope{active_project_id: Ecto.UUID.generate()}
-
-    defp servers(account), do: Agent.get(account.account, &Map.values(&1.servers))
-
-    defp kill(pid) do
-      ref = Process.monitor(pid)
-      Process.exit(pid, :kill)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :killed}
-    end
-
-    # A run that starts a build and is then killed before it can finish —
-    # what a server restart does to the task holding the RunLock.
-    defp killed_mid_build(scope, ref, account, extra \\ []) do
-      test_pid = self()
-
-      blocking_build = fn _scope, server, _ref, _arch ->
-        send(test_pid, {:building, server["id"]})
-
-        receive do
-          :never -> :ok
-        end
-      end
-
-      pid =
-        spawn(fn ->
-          RunLock.with_lock(scope.active_project_id, fn ->
-            Builder.build(scope, ref, account_opts(account, [build_fun: blocking_build] ++ extra))
-          end)
-        end)
-
-      assert_receive {:building, id}
-      {pid, id}
-    end
-
-    test "prod then uat back to back: uat's retry clears the box its killed run left" do
-      scope = project_scope()
-      account = fake_account(fn -> ~U[2026-10-01 04:23:19Z] end)
-      ref = "2633473a5e14"
-
-      # prod deploys and finishes: its builder is destroyed, as it always was.
-      assert {:ok, _} =
-               RunLock.with_lock(scope.active_project_id, fn ->
-                 Builder.build(scope, ref, account_opts(account, architecture: :x86))
-               end)
-
-      assert servers(account) == []
-
-      # uat starts on the same commit and is killed mid-build by a restart.
-      {pid, uat_box} = killed_mid_build(scope, ref, account)
-      kill(pid)
-      assert [%{"id" => ^uat_box}] = servers(account)
-
-      # The retry, four minutes later. The box is young, but its run is gone.
-      log =
-        capture_log(fn ->
-          assert {:ok, build} =
-                   RunLock.with_lock(scope.active_project_id, fn ->
-                     Builder.build(scope, ref, account_opts(account, []))
-                   end)
-
-          assert build.builder_destroyed
-        end)
-
-      assert_received {:destroyed, ^uat_box}
-      assert servers(account) == []
-      assert log =~ "no longer in flight"
-    end
-
-    test "a builder whose run is still in flight is refused, however old it is" do
-      scope = project_scope()
-      account = fake_account(fn -> ~U[2026-10-01 01:00:00Z] end)
-      ref = "2633473a5e14"
-
-      {pid, live_box} = killed_mid_build(scope, ref, account)
-
-      # Hours later, by a caller outside the run (a drill, a manual retry):
-      # age alone would call this box abandoned.
-      assert {:error, {:orphaned_builder, message}} =
-               Builder.build(
-                 scope,
-                 ref,
-                 account_opts(account, now: fn -> ~U[2026-10-01 05:00:00Z] end)
-               )
-
-      assert message =~ "still in flight"
-      refute_received {:destroyed, ^live_box}
-      assert [%{"id" => ^live_box}] = servers(account)
-
-      kill(pid)
-    end
-
-    test "the box carries its owner: project, run and instance" do
-      scope = project_scope()
-      test_pid = self()
-
-      create = fn _scope, _name, create_opts ->
-        send(test_pid, {:labels, create_opts[:labels]})
-        {:ok, server()}
-      end
-
-      RunLock.with_lock(scope.active_project_id, fn ->
-        Builder.build(
-          scope,
-          "abc123",
-          opts(create: create, builder_image: "docker-ce", build_fun: build_fun())
-        )
-      end)
-
-      assert_received {:labels, labels}
-      assert labels["cms-builder-project"] == scope.active_project_id
-      assert is_binary(labels["cms-builder-run"])
-      assert labels["cms-builder-instance"] =~ ~r/^[0-9a-f]{12}$/
-    end
-
-    test "a box built outside any run carries no owner" do
-      test_pid = self()
-
-      create = fn _scope, _name, create_opts ->
-        send(test_pid, {:labels, create_opts[:labels]})
-        {:ok, server()}
-      end
-
-      Builder.build(
-        project_scope(),
-        "abc123",
-        opts(create: create, builder_image: "docker-ce", build_fun: build_fun())
-      )
-
-      assert_received {:labels, nil}
-    end
-
-    test "another instance's builder falls back to the age rule" do
-      scope = project_scope()
-      name = "builder-2633473a5e14"
-
-      foreign = %{
-        "id" => 999,
-        "name" => name,
-        "created" => "2026-10-01T04:23:19Z",
-        "labels" => %{
-          "cms-builder-project" => scope.active_project_id,
-          "cms-builder-run" => "0000000000000000",
-          "cms-builder-instance" => "000000000000"
-        }
-      }
-
-      create = fn _scope, _name, _opts ->
-        {:error, {:hetzner_error, 409, %{"error" => %{"code" => "uniqueness_error"}}}}
-      end
-
-      # No `:destroy` fake: destroying here would reach for real Hetzner.
-      assert {:error, {:orphaned_builder, message}} =
-               RunLock.with_lock(scope.active_project_id, fn ->
-                 Builder.build(
-                   scope,
-                   "2633473a5e14",
-                   Keyword.merge(
-                     opts(create: create, find: fn _scope, ^name -> {:ok, foreign} end),
-                     builder_image: "docker-ce",
-                     now: fn -> ~U[2026-10-01 04:27:00Z] end
-                   )
-                 )
-               end)
-
-      assert message =~ "too recent"
-    end
-
-    test "a server-limit refusal reaps a young box whose run is gone, never a live one" do
-      scope = project_scope()
-      other_scope = project_scope()
-      account = fake_account(fn -> ~U[2026-10-01 04:23:19Z] end)
-
-      {dead, dead_box} = killed_mid_build(scope, "deadbeef0000", account)
-      kill(dead)
-      {live, live_box} = killed_mid_build(other_scope, "1111aaaa2222", account)
-
-      create =
-        create_once_then(
-          {:error, {:hetzner_error, 403, %{"error" => %{"code" => "resource_limit_exceeded"}}}},
-          {:ok, server()}
-        )
-
-      capture_log(fn ->
-        assert {:ok, _} =
-                 RunLock.with_lock(scope.active_project_id, fn ->
-                   Builder.build(scope, "abc123", account_opts(account, create: create))
-                 end)
-      end)
-
-      assert_received {:destroyed, ^dead_box}
-      refute_received {:destroyed, ^live_box}
-
-      kill(live)
+      assert_received {:destroyed, 42}
     end
   end
 end

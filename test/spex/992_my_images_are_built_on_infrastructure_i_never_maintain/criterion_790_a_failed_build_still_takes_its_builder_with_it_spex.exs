@@ -5,13 +5,18 @@ defmodule CodeMySpecSpex.Story992.Criterion8237Spex do
 
   8236's failure path, and the one that actually rots. A successful deploy that
   leaked a box at least has someone looking at it; a failed deploy already
-  looks like a failure, so a leaked builder adds nothing visible to it. Nobody
-  goes looking, and the box keeps billing.
+  looks like a failure, so a leak adds nothing visible to it. Nobody goes
+  looking, and the box keeps billing.
 
   A build fails for ordinary reasons — a syntax error, a disk that filled — so
-  this is the common case rather than the exotic one. The builder is destroyed
-  on every path out of the build, and the failure carries what became of it
-  rather than leaving the reader to assume.
+  this is the common case rather than the exotic one. Story 877 moved the box
+  itself onto a shared, persistent one, so what has to survive a failure
+  unconditionally is not "destroy" any more, it is "ask the same release
+  question a success asks" — the exact same `BurstBox.Lifecycle.check/3` call,
+  on the exact same box, whether the build that just ran on it succeeded or
+  not. This scenario stages the same due-and-idle box 789 does, on the failure
+  path, to prove the two get identical treatment rather than failure quietly
+  skipping the check a success remembers to make.
 
   Surface: `CodeMySpecWeb.ProvisioningLive`.
   """
@@ -30,9 +35,10 @@ defmodule CodeMySpecSpex.Story992.Criterion8237Spex do
   setup :real_working_directory
 
   spex "A failed build still takes its builder with it", criterion: 790 do
-    scenario "a build that fails leaves no builder behind" do
-      given_ "Sam's build is going to fail", context do
-        {:ok, built_deploy_run(context, builds: :error)}
+    scenario "a build that fails on a due, idle shared box still gets it released" do
+      given_ "Sam's build is going to fail, on a shared box that is due for its end-of-hour check and idle",
+             context do
+        {:ok, built_deploy_run(context, builds: :error, box_release: :idle)}
       end
 
       when_ "he deploys", context do
@@ -51,16 +57,16 @@ defmodule CodeMySpecSpex.Story992.Criterion8237Spex do
         {:ok, Map.put(context, :document, document)}
       end
 
-      then_ "and the builder was still destroyed", context do
+      then_ "and the box was still released, the same as a success would be", context do
         builder = Floki.find(context.document, "[data-test='builder']")
 
         assert builder != [],
-               "the failed deploy recorded no builder, so nothing says whether the box " <>
-                 "it made is still running"
+               "the failed deploy recorded no box, so nothing says whether it is still running"
 
         assert Floki.attribute(builder, "data-destroyed") == ["true"],
-               "the build failed and left its builder running — the leak nobody goes " <>
-                 "looking for, because the deploy already looked like a failure"
+               "the build failed and the box it ran on — due for a check, and idle — was " <>
+                 "left running anyway: the leak nobody goes looking for, because the deploy " <>
+                 "already looked like a failure"
 
         {:ok, context}
       end
