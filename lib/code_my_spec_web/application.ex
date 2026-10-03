@@ -255,25 +255,9 @@ defmodule CodeMySpecWeb.Application do
   # test are untouched either way — `embed_pool_backend/1` is never called
   # for them at all (see `embeddings_configured?/0` above).
   #
-  # ## Go-live checklist — neither of these lands with this code; both are
-  # separate, human, outside-this-session steps before Hetzner activates
-  # for real in prod rather than this cond silently falling through:
-  #
-  #   1. `HETZNER_API_TOKEN` has to actually be set in the prod environment.
-  #      Proven live tonight against a real account with a token sourced
-  #      from `envs/test.env` — nothing here sets it for prod on its own.
-  #   2. `BurstBox.FlyPeering`'s own config (`config :code_my_spec,
-  #      CodeMySpec.Provisioning.BurstBox.FlyPeering, peer: %{...}`) needs a
-  #      real Fly WireGuard peer, minted by a human running `flyctl
-  #      wireguard create` once for this environment — only John can do
-  #      this (it needs a Fly credential this session was never handed).
-  #      Without it, box creation itself still works (proven live), but its
-  #      embedding runners boot with no route back to the Fly-hosted parent
-  #      and can't actually serve a FLAME call — see that module's own
-  #      moduledoc for the full "what this does not do."
-  #
-  # Builds on the burst box (no FLAME runner involved) work today without
-  # either step — only the embedding half needs step 2.
+  # Go-live checklist: HETZNER_API_TOKEN and the five BURST_BOX_WG_* vars
+  # are staged as Fly secrets; config/runtime.exs maps the WG ones into
+  # BurstBox.FlyPeering. Left: a human deploying those staged secrets.
   #
   # `min: 0` means no runner boots at app start regardless — a backend's own
   # `init/1` only ever runs lazily, inside the pool's own async boot task,

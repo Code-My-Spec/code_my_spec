@@ -288,6 +288,21 @@ if config_env() == :prod do
   config :code_my_spec, CodeMySpec.Mailer,
     adapter: Swoosh.Adapters.Resend,
     api_key: env!("RESEND_API_KEY", :string, "")
+
+  # BurstBox.FlyPeering's WireGuard peer (go-live checklist, application.ex).
+  # Unset unless all five are present.
+  burst_box_wg = [
+    private_key: System.get_env("BURST_BOX_WG_PRIVATE_KEY"),
+    address: System.get_env("BURST_BOX_WG_ADDRESS"),
+    peer_public_key: System.get_env("BURST_BOX_WG_PEER_PUBLIC_KEY"),
+    endpoint: System.get_env("BURST_BOX_WG_ENDPOINT"),
+    allowed_ips: System.get_env("BURST_BOX_WG_ALLOWED_IPS")
+  ]
+
+  if Enum.all?(burst_box_wg, fn {_key, value} -> is_binary(value) and value != "" end) do
+    config :code_my_spec, CodeMySpec.Provisioning.BurstBox.FlyPeering,
+      peer: Map.new(burst_box_wg)
+  end
 end
 
 # Resend Domains API (in-app sending-domain onboarding). Needed in ALL envs,
