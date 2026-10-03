@@ -45,6 +45,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "develop_context" => AgentTasks.DevelopContext,
       "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
       "fix_bdd_specs" => AgentTasks.FixBddSpecs,
+      "ready_for_qa" => AgentTasks.ReadyForQa,
       "develop_live_view" => AgentTasks.DevelopLiveView,
       "component_code" => AgentTasks.ComponentCode,
       "component_test" => AgentTasks.ComponentTest,
@@ -204,7 +205,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     # silently skips (e.g., StartImplementation never sets continuous).
     Code.ensure_loaded?(agent_task_module)
 
-    if function_exported?(agent_task_module, :init_session, 2) do
+    if Code.ensure_loaded?(agent_task_module) and
+         function_exported?(agent_task_module, :init_session, 2) do
       agent_task_module.init_session(scope, session)
     else
       {:ok, session}

@@ -27,9 +27,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -50,7 +48,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
         {:ok, Map.put(context, :spec_path, path)}
       end
 
-      given_ "the agent starts the specs-passing task", context do
+      given_ "the agent's session has started", context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
         post(
@@ -62,43 +60,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
         )
         |> Phoenix.ConnTest.json_response(200)
 
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "bdd_specs_passing",
-              entity_type: "story",
-              entity_id: to_string(context.story.number),
-              session_id: session_id
-            },
-            frame
-          )
-
-        refute response.isError,
-               "expected start_task on bdd_specs_passing to succeed, got: #{inspect(response)}"
-
         {:ok, Map.put(context, :session_id, session_id)}
-      end
-
-      given_ "a fresh green run passes", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
-
-        {:ok, Map.put(context, :green_response, response)}
       end
 
       given_ :story_latched_by_promotion

@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
       given_ "a session exists with a pending qa_complete requirement on a story",
              context do
         # Advance project to qa_complete frontier: all prereqs satisfied through
-        # bdd_specs_passing, leaving qa_complete open as the next actionable
+        # ready_for_qa, leaving qa_complete open as the next actionable
         # requirement so the dispatch directive surfaces the :qa role.
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
         session_id = "spex-#{System.unique_integer([:positive])}"

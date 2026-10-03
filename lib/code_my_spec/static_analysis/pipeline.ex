@@ -226,7 +226,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   def task_analyzers(task) do
     module = task.session_type
 
-    if module && function_exported?(module, :analyzers, 0) do
+    if module && Code.ensure_loaded?(module) && function_exported?(module, :analyzers, 0) do
       module.analyzers()
     else
       []
@@ -247,7 +247,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   def task_excluded_analyzers(task) do
     module = task.session_type
 
-    if module && function_exported?(module, :excluded_analyzers, 0) do
+    if module && Code.ensure_loaded?(module) && function_exported?(module, :excluded_analyzers, 0) do
       module.excluded_analyzers()
     else
       []

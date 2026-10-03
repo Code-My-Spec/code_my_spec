@@ -121,7 +121,7 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   Both read a field on the owning **story**, because both definitions that use
   them are story-scoped: `component_linked` on `component_id`, and
-  `bdd_specs_passing` on `specs_ready`. They correlate through `story_id` rather
+  `ready_for_qa` on `qa_ready_commit`. They correlate through `story_id` rather
   than dispatching on the owner, so a component- or project-owned node matches
   no story and reads unsatisfied.
 

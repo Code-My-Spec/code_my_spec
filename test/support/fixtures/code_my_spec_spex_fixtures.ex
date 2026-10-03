@@ -3738,6 +3738,8 @@ defmodule CodeMySpecSpex.Fixtures do
         id: task_id,
         status: Keyword.get(opts, :status, :active),
         requirement_name: Keyword.get(opts, :requirement_name, "qa_complete"),
+        # The task module `evaluate_task` dispatches to; unset is a task with none.
+        session_type: Keyword.get(opts, :session_type),
         story_id: Keyword.get(opts, :story_id),
         # Settable, because a criterion about how long a task has been open
         # cannot produce elapsed time any other way and must not sleep for it.
@@ -4946,7 +4948,7 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
     # And say so. Whether spex has run is a graph input — `Preloader` feeds it
-    # to `analysis_ran`, and `bdd_specs_passing` reads it.
+    # to `analysis_ran`, and `ready_for_qa` reads it.
     #
     # `fresh_analysis_runs_fixture/2` calls `RunsRepository.finish_run/3`
     # directly rather than going through `Analysis.Reconciler.reconcile/4`,

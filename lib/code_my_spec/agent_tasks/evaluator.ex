@@ -87,10 +87,11 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.TriageIssues,
       CodeMySpec.AgentTasks.FixIssues,
       CodeMySpec.AgentTasks.WriteBddSpecs,
-      # The specs-passing gate SETS `specs_ready` as a side effect of
-      # passing. The calculator's `:field_true` check can only read the
-      # latch, so without this the stop hook would evaluate the field,
-      # find it false, and block forever — nothing would ever flip it.
+      # The ready-for-QA gate SETS `qa_ready_commit` as a side effect of
+      # certifying. The calculator can only read the stamp, so without this the
+      # stop hook would evaluate the field, find it unset, and block forever.
+      # `FixBddSpecs` delegates to it, for the same reason.
+      CodeMySpec.AgentTasks.ReadyForQa,
       CodeMySpec.AgentTasks.FixBddSpecs,
       # And Three Amigos, for exactly the reason above. Its gate SETS
       # `three_amigos_sealed` as a side effect of passing, and the requirement
@@ -132,7 +133,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   defp run_before_evaluate(nil, _scope, _task), do: :ok
 
   defp run_before_evaluate(module, scope, task) do
-    if function_exported?(module, :before_evaluate, 2) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :before_evaluate, 2) do
       Logger.info("[Evaluator] Running before_evaluate for #{inspect(module)}")
       module.before_evaluate(scope, task)
     end
@@ -201,12 +202,17 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   end
 
   defp find_definition(_scope, :story, requirement_name, _entity) do
-    find_by_name(RequirementDefinitionData.story_requirements(), requirement_name)
+    find_by_name(RequirementDefinitionData.story_requirements(), current_name(requirement_name))
   end
 
   defp find_definition(_scope, :project, requirement_name, _entity) do
     find_by_name(RequirementDefinitionData.project_requirements(), requirement_name)
   end
+
+  # A task held on a requirement since renamed completes through its successor.
+  # `bdd_specs_passing` became `ready_for_qa` (2026-10-02) while agents held it.
+  defp current_name("bdd_specs_passing"), do: "ready_for_qa"
+  defp current_name(name), do: name
 
   defp find_by_name(definitions, name) do
     case Enum.find(definitions, &(&1.name == name)) do

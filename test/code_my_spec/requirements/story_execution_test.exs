@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
 
   alias CodeMySpec.Requirements.{Requirement, StoryExecution}
 
-  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist bdd_specs_passing story_promoted qa_complete story_issues_resolved story_issues_triaged)
+  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist ready_for_qa story_promoted qa_complete story_issues_resolved story_issues_triaged)
 
   defp fixture do
     story = %{
@@ -54,7 +54,7 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
     {story, ctx, nodes} = fixture()
     external = node("story", 2, "bdd_specs_exist", false)
     middle = node("component", "surface", "implementation_file", true)
-    target = Enum.find(nodes, &(&1.name == "bdd_specs_passing"))
+    target = Enum.find(nodes, &(&1.name == "ready_for_qa"))
     edges = [%{from: key(external), to: key(middle)}, %{from: key(middle), to: key(target)}]
     result = StoryExecution.from_graph(story, [external, middle | nodes], edges, ctx, nil)
     assert result.status == :blocked
@@ -127,8 +127,8 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
     test "another story's unmet node does not hold the bound story" do
       {story, ctx, nodes} = fixture()
       external = node("story", 2, "bdd_specs_exist", false)
-      nodes = Enum.map(nodes, &unsatisfy(&1, "bdd_specs_passing"))
-      target = Enum.find(nodes, &(&1.name == "bdd_specs_passing"))
+      nodes = Enum.map(nodes, &unsatisfy(&1, "ready_for_qa"))
+      target = Enum.find(nodes, &(&1.name == "ready_for_qa"))
       edges = [%{from: key(external), to: key(target)}]
 
       result = StoryExecution.from_graph(story, [external | nodes], edges, bound(ctx), :coding)
@@ -144,10 +144,10 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
 
       nodes =
         nodes
-        |> Enum.map(&(&1 |> unsatisfy("bdd_specs_exist") |> unsatisfy("bdd_specs_passing")))
+        |> Enum.map(&(&1 |> unsatisfy("bdd_specs_exist") |> unsatisfy("ready_for_qa")))
 
       exist = Enum.find(nodes, &(&1.name == "bdd_specs_exist"))
-      passing = Enum.find(nodes, &(&1.name == "bdd_specs_passing"))
+      passing = Enum.find(nodes, &(&1.name == "ready_for_qa"))
       edges = [%{from: key(exist), to: key(passing)}]
 
       result = StoryExecution.from_graph(story, nodes, edges, bound(ctx), :coding)
@@ -158,8 +158,8 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
     test "an unbound read is still held by the other story" do
       {story, ctx, nodes} = fixture()
       external = node("story", 2, "bdd_specs_exist", false)
-      nodes = Enum.map(nodes, &unsatisfy(&1, "bdd_specs_passing"))
-      target = Enum.find(nodes, &(&1.name == "bdd_specs_passing"))
+      nodes = Enum.map(nodes, &unsatisfy(&1, "ready_for_qa"))
+      target = Enum.find(nodes, &(&1.name == "ready_for_qa"))
       edges = [%{from: key(external), to: key(target)}]
 
       result = StoryExecution.from_graph(story, [external | nodes], edges, ctx, :coding)

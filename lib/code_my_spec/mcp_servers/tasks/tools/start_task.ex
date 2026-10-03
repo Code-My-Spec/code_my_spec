@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   schema do
     field :requirement_name, :string,
       required: true,
-      doc: "Name of the requirement (e.g., implementation_file, bdd_specs_passing)"
+      doc: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
 
     field :entity_type, :string,
       required: true,
@@ -450,7 +450,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # against an agent would be a second thing writing the mode, which is how the
   # two would come to disagree.
   defp maybe_init_session(scope, %Session{} = session, task_module) do
-    if function_exported?(task_module, :init_session, 2) do
+    if Code.ensure_loaded?(task_module) and function_exported?(task_module, :init_session, 2) do
       {:ok, s} = task_module.init_session(scope, session)
       s
     else

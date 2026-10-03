@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
 
   Rule: a story enters development with its specs not ready.
 
-  `specs_ready` is the latch behind the `bdd_specs_passing` requirement.
+  `specs_ready` is the latch behind the `ready_for_qa` requirement.
   A story that has never been through the chain has never earned a green
   spex run, so the node must render unsatisfied the moment the story
   enters the graph.
@@ -75,8 +75,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
         assert body =~ "component_linked",
                "expected the released story to produce requirements, got: #{body}"
 
-        assert body =~ ~r/\[ \]\s+\*\*bdd_specs_passing\*\*/,
-               "expected bdd_specs_passing to be unsatisfied on a story that has never gone green, got: #{body}"
+        assert body =~ ~r/\[ \]\s+\*\*ready_for_qa\*\*/,
+               "expected ready_for_qa to be unsatisfied on a story that has never gone green, got: #{body}"
 
         {:ok, context}
       end

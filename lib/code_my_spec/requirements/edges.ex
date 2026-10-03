@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.Edges do
       component_linked` in, `qa_complete → qa_journey_plan` out, and
       `qa_journey_plan` is downstream of `qa_setup`;
     * a story enters the component graph from `bdd_specs_exist` and the
-      component graph re-enters the story at `bdd_specs_passing`, downstream;
+      component graph re-enters the story at `ready_for_qa`, downstream;
     * so no path between two component nodes passes through a story or the
       project, and no path from a component node reaches a story's kickoff.
 
@@ -219,7 +219,7 @@ defmodule CodeMySpec.Requirements.Edges do
   # exactly that node — the kickoff lands on it and the exit leaves from it,
   # which is a path of length two the pass drops the story's own edge for.
   # Measured on dev the first time this was asked of the bits: 34 stories at
-  # the unscoped vantage carried `bdd_specs_exist → bdd_specs_passing` that
+  # the unscoped vantage carried `bdd_specs_exist → ready_for_qa` that
   # the pass did not.
   defp touches?(reach, node, sources),
     do: node in sources or Topology.reaches?(reach, node, Topology.mask(reach, sources))
