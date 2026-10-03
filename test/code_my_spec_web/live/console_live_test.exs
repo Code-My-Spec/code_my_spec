@@ -93,6 +93,29 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       {:ok, _view, html} = live(conn, settings_path(project))
       assert html =~ ~s(data-test="console-settings")
       assert html =~ ~s(data-test="add-environment-form")
+      assert html =~ ~s(data-test="setup-options-form")
+      assert html =~ ~s(data-test="setup-option-telemetry")
+    end
+  end
+
+  describe "setup options" do
+    test "toggling one off persists it on the project", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, settings_path(project))
+
+      assert has_element?(view, "[data-test='setup-option-telemetry'] input:checked")
+
+      view
+      |> element("[data-test='setup-option-telemetry'] input")
+      |> render_click(%{"option" => "telemetry"})
+
+      refute has_element?(view, "[data-test='setup-option-telemetry'] input:checked")
+
+      project = CodeMySpec.Projects.get_project!(scope, project.id)
+      refute :telemetry in CodeMySpec.Provisioning.setup_options(project)
     end
   end
 

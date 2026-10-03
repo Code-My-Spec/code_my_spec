@@ -77,6 +77,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
   alias CodeMySpecWeb.ConsoleLive.Components.ResourceDetail
+  alias CodeMySpecWeb.ConsoleLive.Components.SetupOptionsForm
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
   alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
@@ -1004,11 +1005,17 @@ defmodule CodeMySpecWeb.ConsoleLive do
         environment_rows={@environment_rows}
         show_close?={false}
       />
+
+      <SetupOptionsForm.setup_options_form options={@options} />
     </section>
     """
   end
 
   defp setup_done_count(plan), do: Enum.count(plan, &(&1.state == :done))
+
+  defp setup_option_summary(option, updated) do
+    if option in updated, do: "enabled #{option}", else: "disabled #{option}"
+  end
 
   # Every environment, not just whichever one the switcher currently points
   # at — the old page showed every environment's deploy card side by side,
@@ -1441,6 +1448,39 @@ defmodule CodeMySpecWeb.ConsoleLive do
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, inspect(reason))}
       end
+    end
+  end
+
+  # Same split as add/remove environment above: `refresh/1` because toggling
+  # an option changes the plan itself, not the URL.
+  def handle_event("toggle_setup_option", %{"option" => option}, socket) do
+    scope = socket.assigns.current_scope
+
+    case string_to_key(option) do
+      nil ->
+        {:noreply, socket}
+
+      option ->
+        current = socket.assigns.options
+        updated = if option in current, do: List.delete(current, option), else: [option | current]
+
+        case Provisioning.put_setup_options(scope, updated) do
+          {:ok, project} ->
+            Activity.record(
+              scope,
+              "setup_options_edit",
+              "settings",
+              setup_option_summary(option, updated)
+            )
+
+            {:noreply,
+             socket
+             |> assign(:current_scope, %{scope | active_project: project})
+             |> refresh()}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, inspect(reason))}
+        end
     end
   end
 
