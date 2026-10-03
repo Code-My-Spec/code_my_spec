@@ -49,6 +49,16 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
       "defmodule PkgD do\n  @moduledoc \"PkgD was still unembedded when the runner was killed.\"\nend\n"
   }
 
+  # Same reasoning as pkg_c/pkg_d — fresh names so this scenario's own sweep
+  # has real pending work of its own.
+  @pkg_e %{
+    "lib/pkg_e.ex" => "defmodule PkgE do\n  @moduledoc \"PkgE finished before the caller died.\"\nend\n"
+  }
+  @pkg_f %{
+    "lib/pkg_f.ex" =>
+      "defmodule PkgF do\n  @moduledoc \"PkgF was still embedding when the caller died.\"\nend\n"
+  }
+
   defp lock(entries) do
     body =
       Enum.map_join(entries, ",\n  ", fn {name, version, checksum} ->
@@ -210,6 +220,94 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
 
         assert count_occurrences(text, "**hexdocs:pkg_d/PkgD.md**") == 1,
                "pkg_d's chunk does not appear exactly once — duplicated on resume: #{text}"
+
+        {:ok, context}
+      end
+    end
+
+    # `InFlightCalls.call/3` now forces `link: false` (the fix above) so a
+    # dead runner can't take its caller down with it. That trade has a
+    # mirror image worth proving on its own: if the *caller* dies instead —
+    # the reconciler's own task crashing, a node restart mid-call — the
+    # runner is no longer linked to it either, so it keeps running with
+    # nobody left to hand its result to. Harness's own question: is that
+    # harmless? This proves it is — the runner finishes and exits on its
+    # own (no leak), its write already landed by the time anyone looks
+    # (nothing was lost), and a later sweep finds nothing left to do
+    # (idempotent, not redone).
+    scenario "the reconciler's own caller dies, but the runner it started keeps working" do
+      given_ "pkg_e finished embedding, and the next batch will block until released",
+              context do
+        :ok = Fixtures.fail_embedding(false)
+
+        main = checkout(context, main?: true)
+        harness_up(main)
+        {tarball_e, checksum_e} = Fixtures.hex_tarball(@pkg_e)
+        {tarball_f, checksum_f} = Fixtures.hex_tarball(@pkg_f)
+        serve(%{"pkg_e" => tarball_e, "pkg_f" => tarball_f})
+
+        write_lock(main, lock([{"pkg_e", "1.0.0", checksum_e}]))
+        manifest(main)
+        :ok = Fixtures.hex_doc_sweep_runs()
+        assert search(main, "hexdocs") =~ "PkgE finished before the caller died."
+        _ = embedded()
+
+        write_lock(
+          main,
+          lock([{"pkg_e", "1.0.0", checksum_e}, {"pkg_f", "1.0.0", checksum_f}])
+        )
+
+        manifest(main)
+        RecordingEmbeddingServing.pause_until_released(true)
+        {:ok, Map.put(context, :main, main)}
+      end
+
+      when_ "the sweep's own caller is killed while pkg_f's runner is still mid-batch",
+            context do
+        capture_log(fn ->
+          {sweep_pid, sweep_ref} = spawn_monitor(fn -> Fixtures.hex_doc_sweep_runs() end)
+
+          assert_receive {:runner_pid, runner_pid}, 5_000
+          runner_ref = Process.monitor(runner_pid)
+
+          Process.exit(sweep_pid, :kill)
+          assert_receive {:DOWN, ^sweep_ref, :process, ^sweep_pid, _reason}, 5_000
+
+          # The one claim this scenario exists to check: the caller dying
+          # does not take the runner with it — the opposite direction from
+          # the scenario above, now that `link: false` cuts both ways.
+          refute_receive {:DOWN, ^runner_ref, :process, ^runner_pid, _}, 200
+
+          RecordingEmbeddingServing.release(runner_pid)
+
+          assert_receive {:DOWN, ^runner_ref, :process, ^runner_pid, reason}, 5_000
+
+          assert reason in [:normal, :shutdown],
+                 "the orphaned runner did not exit cleanly on its own: #{inspect(reason)}"
+        end)
+
+        {:ok, context}
+      end
+
+      then_ "pkg_f's own write already landed — nothing was lost", context do
+        assert search(context.main, "hexdocs") =~ "PkgF was still embedding when the caller died."
+
+        {:ok, context}
+      end
+
+      when_ "a later sweep runs with no caller left orphaned", context do
+        :ok = Fixtures.hex_doc_sweep_runs()
+        {:ok, context}
+      end
+
+      then_ "neither package was redone or duplicated", context do
+        text = search(context.main, "hexdocs")
+
+        assert count_occurrences(text, "**hexdocs:pkg_e/PkgE.md**") == 1,
+               "pkg_e's own chunk does not appear exactly once: #{text}"
+
+        assert count_occurrences(text, "**hexdocs:pkg_f/PkgF.md**") == 1,
+               "pkg_f's chunk does not appear exactly once — the later sweep redid it: #{text}"
 
         {:ok, context}
       end

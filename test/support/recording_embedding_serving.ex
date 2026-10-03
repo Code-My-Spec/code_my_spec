@@ -26,6 +26,9 @@ defmodule CodeMySpecTest.RecordingEmbeddingServing do
   """
   def pause_until_released(pause?), do: :persistent_term.put({__MODULE__, :pause}, pause?)
 
+  @doc "Release one runner paused in `embed_batch/2`, by the pid it reported."
+  def release(pid), do: send(pid, :release)
+
   @doc "Answer `model_name/0` with `name`, as a different model would."
   def model(name), do: :persistent_term.put({__MODULE__, :model}, name)
 
