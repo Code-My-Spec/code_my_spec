@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements.Requirement do
   @moduledoc """
   A requirement node in the computed graph.
 
-  Not persisted — computed on the fly from Files, Problems, and definitions.
+  Not persisted — computed from Files, the project's records, and definitions.
   Carries entity_type/entity_id for grouping but the graph treats all nodes
   uniformly: edges are same-entity prerequisite links, cross-entity gates
   affect actionability only.
