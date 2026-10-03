@@ -425,7 +425,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
                 <span class="font-mono">{container.name}</span>
                 <.link
                   :if={container.project_id}
-                  navigate={~p"/app/projects/#{container.project_id}/provisioning"}
+                  navigate={~p"/app/projects/#{container.project_id}/console"}
                   class="badge badge-ghost badge-sm link link-hover"
                 >
                   {container.project_name}

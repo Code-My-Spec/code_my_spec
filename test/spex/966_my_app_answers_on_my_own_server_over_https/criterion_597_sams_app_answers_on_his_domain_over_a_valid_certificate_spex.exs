@@ -7,7 +7,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
   returns Sam's app, over a certificate a browser trusts, with no warning.
   Everything else in this story exists to make this true.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): `:tls`
+  lives on the `dns_domain` resource group now, mounted with `?env=uat` so
+  its one row needs no further disambiguation — see criterion 588's
+  moduledoc for the mount-before-domain ordering.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -38,7 +43,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
         # this criterion reads what the run recorded.
         context = certificate_issued_by_the_step(context)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/dns_domain?env=uat"
+          )
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend outside every cassette.
@@ -48,15 +57,9 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
       end
 
       when_ "setup verifies the environment over HTTPS", context do
-        # "uat" — the environment `stage_deploy/2` staged above.
-        html =
-          context.view
-          |> element(
-            "[data-test='setup-step'][data-step='tls'][data-environment='uat'] [data-test='run-step']"
-          )
-          |> render_click()
+        run_console_step(context.view, :tls)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "his app comes back on his own hostname", context do

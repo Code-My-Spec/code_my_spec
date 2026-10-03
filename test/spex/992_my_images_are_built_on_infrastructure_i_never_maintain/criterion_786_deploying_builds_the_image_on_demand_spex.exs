@@ -13,7 +13,15 @@ defmodule CodeMySpecSpex.Story992.Criterion8233Spex do
   deploy asks for a build at all, and records what came back — is what this
   asserts, through the page.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive`, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  deploy step's own markup (`DeployConfig`) is unchanged — it was reused
+  as-is — only the page it's rendered under moved. The old page's single
+  "start setup" button ran the whole step sequence to reach deploy; the
+  console's deploy form runs `:deploy` alone, which is sufficient here since
+  `built_deploy_run/2` scripts every other step and nothing in this criterion
+  reads them.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`, driving
   `CodeMySpec.Provisioning.Builder` through the deploy step.
   """
 
@@ -40,15 +48,18 @@ defmodule CodeMySpecSpex.Story992.Criterion8233Spex do
       end
 
       when_ "he deploys", context do
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
-        html =
-          view
-          |> element("[data-test='start-setup']")
-          |> render_click()
-          |> then(fn _ -> await_provisioning(view) end)
+        view
+        |> form(
+          "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] " <>
+            "[data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(view))}
       end
 
       then_ "the image the deploy runs was built by this deploy", context do

@@ -9,7 +9,15 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
   the other's records alone, and only asserting it in one direction would
   leave the other free to clobber.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): both
+  steps now run from mail's Config tab via `run_console_step/2` — see
+  criterion 651's moduledoc for the general shape of the move. Running
+  `:inbound` this way settles at `:paused` rather than `:done` (it still
+  needs a destination address to prove delivery, per 2f8c4208), but its
+  records are already published by the time it pauses, which is all this
+  criterion reads.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
 
   ## Against fakes, not cassettes
@@ -45,13 +53,10 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
         own_domain(context.project, @domain)
         zone_exists(context, @domain)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
-        view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(view, :email)
+        run_console_step(view, :email)
 
         html = render(view)
 
@@ -66,11 +71,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
       end
 
       when_ "the inbound step publishes its records", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(context.view, :inbound)
+        run_console_step(context.view, :inbound)
 
         {:ok,
          context
@@ -117,7 +118,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
   defp step_states(html) do
     html
     |> Floki.parse_document!()
-    |> Floki.find("[data-test='setup-step']")
+    |> Floki.find("[data-test='resource-step']")
     |> Enum.map_join("\n", fn step ->
       "  #{attr(step, "data-step")}: #{attr(step, "data-state")}"
     end)

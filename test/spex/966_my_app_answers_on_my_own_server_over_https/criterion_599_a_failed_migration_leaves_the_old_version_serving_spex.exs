@@ -8,7 +8,13 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
   over. A failed migration that still swaps gives Sam an outage on top of
   a bad migration.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): deploy
+  is its own page now (`/console/deploys`), not a resource group — see
+  criterion 785's moduledoc. See criterion 596's moduledoc for why a
+  `render/1` call is needed after each deploy-form submit rather than using
+  `render_submit/1`'s own return value, in both the `given_` and the `when_`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -30,16 +36,18 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         # real kamal run — the criterion is about what happens to *this* live
         # version when the next deploy fails, not about kamal.
         context = stage_deploy(context, :ok)
-        view = mount_provisioning(context)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         view
         |> form(
-          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
           %{"environment" => "uat"}
         )
         |> render_submit()
 
-        {:ok, context |> Map.put(:view, view)}
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "a deploy's migration fails partway", context do
@@ -54,15 +62,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
 
         context.view
         |> form(
-          "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
           %{"environment" => "uat"}
         )
         |> render_submit()
 
-        await_step(context.view, :deploy)
-        html = render(context.view)
-
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the deploy stops", context do

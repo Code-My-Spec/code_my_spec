@@ -16,7 +16,12 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
   re-verify `:storage` on mount would crash it — and then opening the page
   must succeed and report how long ago that check was.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  manual-check model is unchanged — `StatusBadge` is reused as-is — so this
+  just moves the mount and the step run onto the console's own routes and
+  `run_console_step/2`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -35,10 +40,18 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
     criterion: 575 do
     scenario "opening the page later reports the old check, and calls nobody to get there" do
       given_ "the bucket step succeeded and was checked a week ago", context do
-        view = mount_provisioning(context)
-        paste_storage_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "prod")
+        paste_storage_credentials(credentials_view)
+
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups?env=prod"
+          )
+
+        run_console_step(view, :storage)
         Fixtures.age_step_check(context.scope, :storage, "prod", @a_week_in_seconds)
 
         {:ok, context}
@@ -52,7 +65,10 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
 
       when_ "Sam opens the status page later", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups?env=prod"
+          )
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

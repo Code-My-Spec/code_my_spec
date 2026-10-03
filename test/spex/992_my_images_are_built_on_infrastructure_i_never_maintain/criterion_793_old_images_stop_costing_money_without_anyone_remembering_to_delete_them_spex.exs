@@ -14,7 +14,17 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
   expires blobs whether or not setup ever runs again — the same mechanism as
   the backups' retention (8016), pointed at the registry's blob prefix.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive`.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  deploy step's own markup (`DeployConfig`) is unchanged — it was reused
+  as-is — only the page it's rendered under moved. The old page's single
+  "start setup" button ran the whole step sequence to reach deploy; the
+  console's deploy form runs `:deploy` alone, which is sufficient here since
+  `built_deploy_run/2` scripts every other step and nothing in this criterion
+  reads them. The diagnostic helpers below read `deploy-row` instead of the
+  old page's `setup-step`, since `/console/deploys` renders only the deploy
+  step.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`.
   """
 
   use CodeMySpecSpex.Case
@@ -54,10 +64,18 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
       end
 
       when_ "he deploys", context do
-        view = mount_provisioning(context)
-        view |> element("[data-test='start-setup']") |> render_click()
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
-        {:ok, Map.put(context, :html, await_provisioning(view))}
+        view
+        |> form(
+          "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] " <>
+            "[data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
+
+        {:ok, Map.put(context, :html, render(view))}
       end
 
       then_ "images expire after a stated window", context do
@@ -95,9 +113,9 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
   defp step_states(html) do
     html
     |> Floki.parse_document!()
-    |> Floki.find("[data-test='setup-step']")
+    |> Floki.find("[data-test='deploy-row']")
     |> Enum.map_join("\n", fn step ->
-      "  #{attr(step, "data-step")}: #{attr(step, "data-state")}"
+      "  #{attr(step, "data-step")}[#{attr(step, "data-environment")}]: #{attr(step, "data-state")}"
     end)
   end
 

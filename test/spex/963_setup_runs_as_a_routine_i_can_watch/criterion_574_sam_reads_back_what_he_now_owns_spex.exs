@@ -8,7 +8,15 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
   consoles. A routine that provisions infrastructure without telling him
   what it made leaves him unable to audit, bill, or clean up.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): "the
+  setup record" was one page listing everything; the console has no
+  equivalent single page — each resource group's own Config tab lists what
+  it owns instead. Running each scripted step on its own group's page and
+  reading that group's `provisioned-resource` listing tests the same claim
+  (every provisioned resource reads back its kind and location) without a
+  single page to gather them all on.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -19,6 +27,8 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
   setup :setup_active_project
   setup :devops_on
   setup :fake_providers
+
+  @groups %{repository: :repository, server: :servers, domain: :dns_domain, storage: :storage_backups}
 
   spex "Sam reads back what he now owns", criterion: 574 do
     scenario "the record lists each provisioned resource and where it lives" do
@@ -36,29 +46,32 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
             storage: {:ok, [%{kind: "bucket", location: "his-app-prod"}]}
           })
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        for {step, group} <- @groups do
+          {:ok, view, _html} =
+            live(context.conn, "/app/projects/#{context.project.id}/console/resources/#{group}")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        await_provisioning(view)
+          run_console_step(view, step)
+        end
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, context}
       end
 
-      when_ "Sam opens the setup record", context do
-        html =
-          context.view
-          |> element("[data-test='setup-record']")
-          |> render()
+      when_ "Sam opens each resource group he just ran", context do
+        resources =
+          Enum.flat_map(@groups, fn {_step, group} ->
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/console/resources/#{group}")
 
-        {:ok, Map.put(context, :record, html)}
+            render(view)
+            |> Floki.parse_document!()
+            |> Floki.find("[data-test='provisioned-resource']")
+          end)
+
+        {:ok, Map.put(context, :resources, resources)}
       end
 
       then_ "he sees each provisioned resource and where it lives", context do
-        resources =
-          context.record
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='provisioned-resource']")
+        resources = context.resources
 
         # Anchor: the record listed anything at all.
         assert resources != [], "expected the setup record to list provisioned resources"

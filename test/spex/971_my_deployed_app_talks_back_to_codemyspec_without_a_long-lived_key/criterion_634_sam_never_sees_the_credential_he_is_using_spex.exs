@@ -8,7 +8,18 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
   `deploy_key` lives in four config files that somebody pasted it into; the
   criterion is that the credential is placed, not transcribed.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` for the placement, HTTP for the
+  Retargeted onto the console (provisioning-console-step6, unmerged):
+  `callback_credential` is one of the `servers` resource group's steps
+  (see `ConsoleLive.ResourceGroups`), so it runs on
+  `/console/resources/servers`'s Config tab — `prod` is the default
+  environment there, same as every other per-environment step criterion
+  603's moduledoc describes retargeting. `run_step_interaction/3` is
+  coupled to the old page, so this uses `run_console_step/2` instead —
+  followed by its own `render/1`, since `run_step`'s handler only
+  reassigns `@plan` when the step's PubSub broadcast is handled, not
+  inside the `handle_event` call `render_click/1` returns from.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` for the placement, HTTP for the
   proof it works.
   """
 
@@ -35,14 +46,20 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
         app_holds_refresh_secret(context.scope)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "setup finishes placing the callback credential", context do
-        html =
-          CodeMySpecSpex.Case.run_step_interaction(context.view, :callback_credential, "prod")
+        run_console_step(context.view, :callback_credential)
+
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

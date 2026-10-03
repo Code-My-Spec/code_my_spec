@@ -11,6 +11,9 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
   The scenario reads what an agent would read: the files in the working
   tree, and the process environment it inherits.
 
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 603's moduledoc for the move onto `/console/secrets`.
+
   Surface: filesystem and process environment, as an agent working in the
   project would see them.
   """
@@ -32,7 +35,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
     scenario "neither the tree nor the process environment yields a secret value" do
       given_ "the project has an encrypted secret", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 
