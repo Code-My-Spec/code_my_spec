@@ -227,10 +227,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp handle_existing(nil, scope, owner, requirement, agent_id, frame) do
-    with :ok <- not_already_done(scope, owner, requirement),
-         :ok <- role_may_claim(owner, requirement),
+    # Whose work it is first: a claim outside the caller's role, story or team
+    # is refused for that, whatever state the work is in.
+    with :ok <- role_may_claim(owner, requirement),
          :ok <- story_may_claim(scope, owner, requirement),
-         :ok <- team_may_claim(scope, owner, requirement) do
+         :ok <- team_may_claim(scope, owner, requirement),
+         :ok <- not_already_done(scope, owner, requirement) do
       create_and_activate(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
