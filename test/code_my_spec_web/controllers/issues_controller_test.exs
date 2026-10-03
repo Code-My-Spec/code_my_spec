@@ -182,8 +182,9 @@ defmodule CodeMySpecWeb.IssuesControllerTest do
     end
 
     test "links a story by its number and reports the number back", %{conn: conn, scope: scope} do
-      for _ <- 1..2, do: CodeMySpec.StoriesFixtures.story_fixture(scope)
-      story = CodeMySpec.StoriesFixtures.story_fixture(scope)
+      # A number no id reaches, so reporting the id instead could not pass
+      # (883a14a5: two filler stories only made them differ by luck).
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{number: unreachable_number()})
       assert story.id != story.number
 
       params = %{
@@ -220,4 +221,6 @@ defmodule CodeMySpecWeb.IssuesControllerTest do
       assert json_response(conn, 422)
     end
   end
+
+  defp unreachable_number, do: 7_000_000 + System.unique_integer([:positive])
 end

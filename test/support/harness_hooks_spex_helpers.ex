@@ -113,7 +113,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
     end)
 
     :ok = LiveHarness.serve(root, sandbox_user_agent())
-    await_joined(working_copy_id)
+    await_joined(working_copy_id, root)
 
     Map.put(context, :harness, %{
       root: root,
@@ -277,7 +277,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
     end
   end
 
-  defp await_joined(id) do
+  defp await_joined(id, root) do
     receive do
       {:live_harness_joined, ^id, :ok} ->
         :ok
@@ -285,14 +285,38 @@ defmodule CodeMySpecSpex.HarnessHooks do
       {:live_harness_joined, ^id, refused} ->
         flunk("the cloud refused the harness's join: #{inspect(refused)}")
     after
-      @timeout -> flunk("the harness never joined the cloud within #{@timeout}ms")
+      @timeout ->
+        flunk("the harness never joined the cloud within #{@timeout}ms; #{client_state(root)}")
     end
 
     receive do
       {:live_harness_ready, ^id} -> :ok
     after
-      @timeout -> flunk("the harness joined but never asked for its read model")
+      @timeout ->
+        flunk("the harness joined but never asked for its read model; #{client_state(root)}")
     end
+  end
+
+  # What the harness's own channel client says about itself, so a join that
+  # never happens names its cause — no process, a climbing reconnect, a refusal,
+  # no credential — instead of only the time it took (57aa576c).
+  defp client_state(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [] ->
+        "no channel client is running for #{root} (never started, or it crashed)"
+
+      [{pid, _}] ->
+        case :sys.get_state(pid, 2_000) do
+          %{assigns: assigns} ->
+            "channel client: " <>
+              inspect(Map.take(assigns, [:joined, :attempts, :refused, :no_credential?, :topic]))
+
+          other ->
+            "channel client state: #{inspect(other, limit: 20)}"
+        end
+    end
+  catch
+    :exit, reason -> "channel client did not answer (#{inspect(reason)})"
   end
 
   defp teardown(%{root: root, working_copy_id: id} = live) do
