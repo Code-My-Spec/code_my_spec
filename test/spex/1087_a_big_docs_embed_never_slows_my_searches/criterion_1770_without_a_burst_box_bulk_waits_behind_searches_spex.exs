@@ -45,20 +45,22 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
   # scenario is holding) names the queue's actual dispatch choice, with no
   # race against how fast the fake work underneath happens to run.
   defp release_remaining(import_task) do
-    case Task.yield(import_task, 50) do
-      nil ->
-        receive do
-          {:worker_blocked, pid, _kind, _texts} -> send(pid, :go)
-        after
-          0 -> :ok
-        end
-
-        release_remaining(import_task)
-
-      {:ok, result} ->
-        result
-    end
+    import_task
+    |> Task.yield(50)
+    |> continue_release(import_task)
   end
+
+  defp continue_release(nil, import_task) do
+    receive do
+      {:worker_blocked, pid, _kind, _texts} -> Fixtures.notify(pid, :go)
+    after
+      0 -> :ok
+    end
+
+    release_remaining(import_task)
+  end
+
+  defp continue_release({:ok, result}, _import_task), do: result
 
   spex "Without a burst box, bulk waits behind searches", criterion: 1770 do
     scenario "an agent searches while a large embedding job runs locally with no burst box" do
@@ -87,7 +89,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
 
         search_task =
           Task.async(fn ->
-            send(test_pid, :search_calling)
+            Fixtures.notify(test_pid, :search_calling)
             search(context.main, "hexdocs")
           end)
 
@@ -96,12 +98,12 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
         # search call before the held batch is released.
         Process.sleep(20)
 
-        send(context.batch_pid, :go)
+        Fixtures.notify(context.batch_pid, :go)
 
         # Whichever job the queue hands the worker next, held in turn
         # before it can run — this is the dispatch choice under test.
         assert_receive {:worker_blocked, next_pid, next_kind, _texts}, :timer.seconds(5)
-        send(next_pid, :go)
+        Fixtures.notify(next_pid, :go)
 
         text = Task.await(search_task, :timer.seconds(10))
 
