@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :devops_without_telemetry
   setup :connect_providers
 
   spex "Marking survives the resource list being rebuilt", criterion: 836 do

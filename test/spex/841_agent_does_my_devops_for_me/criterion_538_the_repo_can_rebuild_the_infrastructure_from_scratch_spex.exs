@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :devops_without_telemetry
   setup :fake_providers
   # A modelled shell over the memory filesystem, so a step reading what an
   # earlier step wrote finds it.

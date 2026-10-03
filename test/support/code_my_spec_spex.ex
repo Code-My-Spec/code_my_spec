@@ -68,6 +68,11 @@ defmodule CodeMySpecSpex do
       CodeMySpec.ScreenState,
       CodeMySpec.Stories,
       CodeMySpec.TempFile,
+      # Story 1081's criterion 1719 calls `Telemetry.retention_days/0`
+      # directly — the module under test (the retention window is the fact
+      # under test, not a live ClickHouse TTL), the same reasoning as
+      # `CodeMySpec.AgentTasks` above.
+      CodeMySpec.Telemetry,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       # Criteria 1586/1587 call `PreviewTunnel.ensure/1` and `PreviewAddress.host/1`

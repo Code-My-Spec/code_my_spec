@@ -71,6 +71,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Widget
+  alias CodeMySpec.Telemetry
   alias CodeMySpec.Users.Scope
 
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
@@ -148,6 +149,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
       |> assign_new(:mail_send_result, fn -> nil end)
       |> assign_new(:widget_degradation_running?, fn -> false end)
       |> assign_new(:widget_degradation, fn -> nil end)
+      |> assign_new(:telemetry_check_running?, fn -> false end)
+      |> assign_new(:telemetry_check, fn -> nil end)
       # Each callback calls list_domains/1 independently rather than once up
       # front, so a real Resend round-trip only happens the first time either
       # key is actually missing — assign_new is a no-op on every later patch,
@@ -608,6 +611,38 @@ defmodule CodeMySpecWeb.ConsoleLive do
             >
               {@widget_degradation.summary}
             </div>
+          </DiagnosticsPanel.diagnostics_panel>
+        </div>
+      </:checks>
+
+      <:checks :if={@resource_key == :telemetry}>
+        <div data-test="telemetry-check-panel" data-state={telemetry_check_state(assigns)}>
+          <DiagnosticsPanel.diagnostics_panel
+            title="Telemetry"
+            checked_at={telemetry_check_field(@telemetry_check, :checked_at)}
+          >
+            <p class="opacity-70 text-sm">
+              Checks the collector host over HTTPS, that the read-only login
+              can read, and that it cannot write.
+            </p>
+
+            <.button
+              data-test="run-check"
+              data-check="telemetry"
+              phx-click="run_telemetry_check"
+              class="btn btn-primary mt-3"
+              disabled={@telemetry_check_running?}
+            >
+              {if @telemetry_check_running?, do: "Checking…", else: "Check"}
+            </.button>
+
+            <div
+              :if={@telemetry_check}
+              data-test="telemetry-check-result"
+              data-reachable={to_string(@telemetry_check.reachable)}
+              data-reads={to_string(@telemetry_check.reads)}
+              data-writes={to_string(@telemetry_check.writes)}
+            />
           </DiagnosticsPanel.diagnostics_panel>
         </div>
       </:checks>
@@ -1076,7 +1111,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
            image: registry_image(scope),
            kamal_image: registry_repository(scope),
            prod_registry: registry_address(scope, "prod"),
-           uat_registry: registry_address(scope, "uat")
+           uat_registry: registry_address(scope, "uat"),
+           telemetry_host: "telemetry.#{project.domain || "example.com"}"
          ) do
       {:ok, []} ->
         {:noreply, put_flash(socket, :info, "Every deploy file is already in place.")}
@@ -1285,6 +1321,19 @@ defmodule CodeMySpecWeb.ConsoleLive do
       |> start_async(:widget_degradation_probe, fn ->
         widget_degradation(site && Widget.probe_degraded(site, []))
       end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("run_telemetry_check", _params, socket) do
+    scope = socket.assigns.current_scope
+    environment = socket.assigns.environment
+    opts = step_opts()
+
+    socket =
+      socket
+      |> assign(:telemetry_check_running?, true)
+      |> start_async(:telemetry_check, fn -> Telemetry.check(scope, environment, opts) end)
 
     {:noreply, socket}
   end
@@ -1686,6 +1735,20 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> put_flash(:error, "Widget degradation probe crashed: #{inspect(reason)}")}
   end
 
+  def handle_async(:telemetry_check, {:ok, result}, socket) do
+    {:noreply,
+     socket
+     |> assign(:telemetry_check_running?, false)
+     |> assign(:telemetry_check, result)}
+  end
+
+  def handle_async(:telemetry_check, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:telemetry_check_running?, false)
+     |> put_flash(:error, "Telemetry check crashed: #{inspect(reason)}")}
+  end
+
   # Same as ProvisioningLive.handle_info({:provisioning, :step/:finished, ...}).
   # `refresh/1` instead of `load/2`: a broadcast only ever changes the plan
   # and the environment-derived state, never the URL-driven `environment`/
@@ -1899,6 +1962,13 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp widget_degradation_field(nil, _key), do: nil
   defp widget_degradation_field(result, key), do: Map.get(result, key)
+
+  defp telemetry_check_state(%{telemetry_check_running?: true}), do: "running"
+  defp telemetry_check_state(%{telemetry_check: nil}), do: "unchecked"
+  defp telemetry_check_state(_assigns), do: "checked"
+
+  defp telemetry_check_field(nil, _key), do: nil
+  defp telemetry_check_field(result, key), do: Map.get(result, key)
 
   defp mail_inbound_field(nil, _key), do: nil
   defp mail_inbound_field(result, key), do: Map.get(result, key)

@@ -6266,6 +6266,22 @@ defmodule CodeMySpecSpex.Case do
     context
   end
 
+  @doc """
+  Every setup option except telemetry.
+
+  For criteria written before telemetry existed, asserting a full run
+  finishes or a health rollup's problem count -- telemetry's own probe is a
+  deliberate stub until `CodeMySpec.Telemetry` has a real collector behind
+  it, so leaving it enabled here would charge these criteria for a step
+  they know nothing about and have no way to finish.
+  """
+  def devops_without_telemetry(%{scope: scope} = context) do
+    options = CodeMySpec.Provisioning.available_options() -- [:telemetry]
+    {:ok, project} = CodeMySpec.Provisioning.put_setup_options(scope, options)
+
+    %{context | scope: %{scope | active_project: project}}
+  end
+
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do
     # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
     # Create a real stub directory with a mix.exs to satisfy the
