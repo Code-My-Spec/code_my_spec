@@ -21,6 +21,9 @@ defmodule CodeMySpecSpex do
       # module's `execute/2` directly rather than going in behind it.
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
+      # `HarnessHooks`' teardown waits for the cloud channel holding its working
+      # copy to go, and the registry is the only place that names that process.
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Conversations,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Environments,
