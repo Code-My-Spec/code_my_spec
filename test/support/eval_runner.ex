@@ -478,21 +478,44 @@ defmodule CodeMySpec.Support.EvalRunner do
   defp teardown_world(%{root: root, scope: scope}) do
     File.rm_rf(root)
     allow_question_inserts(scope)
-    drop_account(scope)
+    purge(scope)
   end
 
-  defp drop_account(%Scope{active_account_id: id}) when is_binary(id) or is_integer(id) do
-    case CodeMySpec.Repo.get(CodeMySpec.Accounts.Account, id) do
-      nil -> :ok
-      account -> CodeMySpec.Repo.delete(account)
-    end
-  rescue
-    # Best effort. A world that will not delete is a tidiness problem, and
-    # raising here would throw away measurements that have already been taken.
-    _ -> :ok
+  # Everything the world wrote, so a partition is reusable after evals
+  # (a9bd7fda). Deleting the account alone failed on `projects_account_id_fkey`
+  # and a `rescue` hid it: every run left its user, account, project and graph
+  # behind, and the next `mix test` counted them. Children first, in the order
+  # the no-action foreign keys demand; projects cascade the rest.
+  #
+  # Not rescued. A purge that fails is the bug this replaced, and the run's
+  # artifact is already written when it does.
+  defp purge(%Scope{active_account_id: account_id, user: %{id: user_id}})
+       when not is_nil(account_id) do
+    import Ecto.Query
+
+    account = Ecto.UUID.dump!(account_id)
+    projects = from(p in "projects", where: p.account_id == ^account, select: p.id)
+
+    steps = [
+      from(s in "sessions", where: s.account_id == ^account or s.project_id in subquery(projects)),
+      from(r in "rules", where: r.account_id == ^account),
+      from(s in "stories", where: s.locked_by == ^user_id),
+      from(p in "projects", where: p.account_id == ^account),
+      from(a in "accounts", where: a.id == ^account),
+      from(t in "oauth_access_tokens", where: t.resource_owner_id == ^user_id),
+      from(g in "oauth_access_grants", where: g.resource_owner_id == ^user_id),
+      from(a in "oauth_applications", where: a.owner_id == ^user_id),
+      from(v in "versions", where: v.originator_id == ^user_id),
+      from(u in "users", where: u.id == ^user_id)
+    ]
+
+    {:ok, :ok} =
+      CodeMySpec.Repo.transaction(fn -> Enum.each(steps, &CodeMySpec.Repo.delete_all/1) end)
+
+    :ok
   end
 
-  defp drop_account(_scope), do: :ok
+  defp purge(_scope), do: :ok
 
   # ------------------------------------------------------------- one measured run
 
