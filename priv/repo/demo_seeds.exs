@@ -9,7 +9,6 @@
 import Ecto.Query
 
 alias CodeMySpec.{Repo, Accounts, Users, UserPreferences}
-alias CodeMySpec.Users.Scope
 alias CodeMySpec.Projects.Project
 alias CodeMySpec.Oauth.AccessToken
 
@@ -35,7 +34,7 @@ user =
       u
   end
 
-scope = Scope.for_user(user)
+scope = UserPreferences.scope_for(user)
 
 # 2. Account (user is owner)
 account =

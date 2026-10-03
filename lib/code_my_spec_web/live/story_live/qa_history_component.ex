@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
   reason form (`data-role='invalidate-reason-form'`).
   """
 
-  use Phoenix.Component
+  use CodeMySpecWeb, :html
 
   attr :attempts, :list, required: true, doc: "List of QaAttempt structs (most-recent first)"
   attr :invalidating_attempt_id, :string, default: nil, doc: "Attempt id whose inline form is open"
@@ -86,6 +86,26 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
             <span :if={scenario.observation} class="text-base-content/60 ml-1">
               — {scenario.observation}
             </span>
+          </div>
+        </div>
+
+        <%!-- Evidence --%>
+        <div :if={(@attempt.evidence || []) != []} class="mt-2">
+          <div class="text-xs font-semibold text-base-content/60 uppercase tracking-wide">
+            Evidence
+          </div>
+          <div class="flex flex-wrap gap-2 mt-1">
+            <a
+              :for={evidence <- @attempt.evidence || []}
+              href={~p"/app/qa_attempts/#{@attempt.id}/evidence/#{evidence.name}"}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-test="qa-evidence-link"
+              data-name={evidence.name}
+              class="link link-primary text-xs"
+            >
+              {evidence.name}
+            </a>
           </div>
         </div>
 

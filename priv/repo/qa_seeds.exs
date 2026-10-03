@@ -22,7 +22,7 @@ alias CodeMySpec.Stories
 alias CodeMySpec.Stories.Story
 alias CodeMySpec.Users
 alias CodeMySpec.Users.User
-alias CodeMySpec.Users.Scope
+alias CodeMySpec.UserPreferences
 
 email = "qa@codemyspec.local"
 # The QA user's own account, and the dev user is added to it as a member so the
@@ -144,7 +144,7 @@ user =
       user
   end
 
-scope = Scope.for_user(user)
+scope = UserPreferences.scope_for(user)
 
 # 1a. CLI OAuth application — required by the `/codemyspec:authenticate` flow
 #     and any criterion that exercises the dashboard install funnel. Inserted

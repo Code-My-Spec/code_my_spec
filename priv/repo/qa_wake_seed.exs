@@ -41,7 +41,7 @@ alias CodeMySpec.Projects.Project
 alias CodeMySpec.Repo
 alias CodeMySpec.Stories
 alias CodeMySpec.Users
-alias CodeMySpec.Users.Scope
+alias CodeMySpec.UserPreferences
 alias CodeMySpec.Users.User
 
 email = "qa@codemyspec.local"
@@ -132,7 +132,7 @@ user =
       u
   end
 
-scope = Scope.for_user(user)
+scope = UserPreferences.scope_for(user)
 
 account =
   case Accounts.list_accounts(scope) do

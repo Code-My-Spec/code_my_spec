@@ -45,6 +45,12 @@ defmodule CodeMySpecSpex do
       # `CodeMySpec.AgentTasks` above.
       CodeMySpec.Promotion,
       CodeMySpec.Problems,
+      # Story 1089's criterion 1848 calls `Qa.QaAttempts.list/2` directly to
+      # re-read the attempt's own row after submission — the module under
+      # test (does the evidence persist, not just appear in the one-time
+      # tool response), same reasoning as `CodeMySpec.AgentTasks` and
+      # `CodeMySpec.Promotion` above.
+      CodeMySpec.Qa,
       # Story 1116's `ClickHouseCassetteHelpers.configure!/2` writes real
       # `ProjectSecrets` rows and `stub_rows_by_username/1` stubs
       # `Observability.ClickHouseClient` — the module under test for
@@ -62,6 +68,11 @@ defmodule CodeMySpecSpex do
       CodeMySpec.ScreenState,
       CodeMySpec.Stories,
       CodeMySpec.TempFile,
+      # Story 1081's criterion 1719 calls `Telemetry.retention_days/0`
+      # directly — the module under test (the retention window is the fact
+      # under test, not a live ClickHouse TTL), the same reasoning as
+      # `CodeMySpec.AgentTasks` above.
+      CodeMySpec.Telemetry,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       # Criteria 1586/1587 call `PreviewTunnel.ensure/1` and `PreviewAddress.host/1`

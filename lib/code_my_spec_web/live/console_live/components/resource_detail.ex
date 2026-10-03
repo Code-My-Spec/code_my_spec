@@ -184,6 +184,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
                 data-test="provisioned-resource"
                 data-kind={resource.kind}
                 data-location={resource.location}
+                data-identifier={resource.identifier}
                 data-environment={ResourceFields.resource_environment(resource, @environments)}
                 data-name={ResourceFields.resource_name(resource)}
                 data-owner={ResourceFields.resource_owner(resource)}

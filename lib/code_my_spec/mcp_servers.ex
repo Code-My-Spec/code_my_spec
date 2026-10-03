@@ -61,6 +61,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.TaskOwner,
+      CodeMySpec.Telemetry,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,

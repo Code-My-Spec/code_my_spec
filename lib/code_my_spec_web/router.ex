@@ -529,6 +529,7 @@ defmodule CodeMySpecWeb.Router do
     get "/mail/attachments/:id", MailAttachmentController, :show
     get "/mail/image", MailImageController, :show
     get "/issues/:id/screenshot", IssueScreenshotController, :show
+    get "/qa_attempts/:attempt_id/evidence/:name", QaEvidenceController, :show
     get "/inbox/messages/:message_id/attachments/:index", ConversationAttachmentController, :show
 
     live_session :require_authenticated_user,

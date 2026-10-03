@@ -1062,7 +1062,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
           end)
         end)
 
-      assert_receive {:building, id}
+      # The build runs the whole path up to here first; under a full gate's load
+      # that outlasts the default 100ms.
+      assert_receive {:building, id}, 5_000
       {pid, id}
     end
 

@@ -155,6 +155,13 @@ defmodule CodeMySpec.Provisioning.Sequence do
       option: nil,
       why: "how the deployed app talks back without a long-lived key",
       scope: :environment
+    },
+    %{
+      key: :telemetry,
+      label: "Telemetry",
+      option: :telemetry,
+      why: "logs and traces collected into Sam's own ClickHouse while he owns the box",
+      scope: :environment
     }
   ]
 

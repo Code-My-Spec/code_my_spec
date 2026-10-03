@@ -1,220 +1,37 @@
 defmodule CodeMySpec.Qa.EvidenceTest do
   @moduledoc """
-  A QA pass is an audit-grade claim, and this is what checks the evidence is
-  still there tomorrow.
-
-  `0a1435c7`: four briefs sat uncommitted in one worktree while the passes they
-  backed had propagated to the server and closed `qa_complete`. One was for a
-  story that shipped that night. The evidence existed on exactly one machine,
-  and nothing said so at any point.
-
-  The property that matters most here is the third answer. Two states are easy
-  — committed, or not — and it is the "could not tell" case that turns this into
-  the defect it is guarding against, because a check that silently answers
-  "clean" when it could not look is worse than no check.
+  One evidence file's own shape — the changeset every file
+  `EvidenceUpload.collect/4` finds a home for has to pass.
   """
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Qa.Evidence
 
-  setup do
-    {:ok, root} = Briefly.create(directory: true)
-    submodule = Path.join(root, ".code_my_spec")
-    File.mkdir_p!(Path.join(submodule, "qa/874"))
+  describe "changeset/2" do
+    test "accepts a fully-formed entry" do
+      attrs = %{
+        name: "screenshot.png",
+        s3_key: "qa/11111111-1111-1111-1111-111111111111/attempt-1/screenshot.png",
+        content_type: "image/png",
+        bytes: 1024
+      }
 
-    git!(submodule, ["init", "--quiet"])
-    git!(submodule, ["config", "user.email", "test@example.com"])
-    git!(submodule, ["config", "user.name", "Test"])
+      changeset = Evidence.changeset(%Evidence{}, attrs)
 
-    %{env: Environment.new(:local, root), submodule: submodule}
-  end
-
-  defp git!(dir, args) do
-    {_out, 0} = System.cmd("git", args, cd: dir, stderr_to_stdout: true)
-  end
-
-  defp write_brief(submodule, story_id, body \\ "# brief\n") do
-    File.write!(Path.join(submodule, "qa/#{story_id}/brief.md"), body)
-  end
-
-  describe "committed?/2" do
-    test "an untracked brief is uncommitted", %{env: env, submodule: submodule} do
-      write_brief(submodule, 874)
-
-      assert {:uncommitted, paths} = Evidence.committed?(env, 874)
-      assert "qa/874/brief.md" in paths
+      assert changeset.valid?
+      assert Ecto.Changeset.apply_changes(changeset).name == "screenshot.png"
     end
 
-    test "a committed brief passes", %{env: env, submodule: submodule} do
-      write_brief(submodule, 874)
-      git!(submodule, ["add", "."])
-      git!(submodule, ["commit", "--quiet", "-m", "evidence"])
+    test "requires every field" do
+      changeset = Evidence.changeset(%Evidence{}, %{})
 
-      assert :ok = Evidence.committed?(env, 874)
-    end
+      refute changeset.valid?
 
-    test "a committed brief edited afterwards is uncommitted again", %{
-      env: env,
-      submodule: submodule
-    } do
-      write_brief(submodule, 874)
-      git!(submodule, ["add", "."])
-      git!(submodule, ["commit", "--quiet", "-m", "evidence"])
-
-      write_brief(submodule, 874, "# brief, revised\n")
-
-      assert {:uncommitted, paths} = Evidence.committed?(env, 874)
-      assert "qa/874/brief.md" in paths
-    end
-
-    # `hex_docs/` churns constantly in this submodule and belongs to nobody. A
-    # gate that fired on it would fire on every QA pass, for a reason its reader
-    # cannot act on — which is how gates get ignored.
-    test "dirt outside the story's directory is not this story's problem", %{
-      env: env,
-      submodule: submodule
-    } do
-      write_brief(submodule, 874)
-      git!(submodule, ["add", "."])
-      git!(submodule, ["commit", "--quiet", "-m", "evidence"])
-
-      File.mkdir_p!(Path.join(submodule, "hex_docs"))
-      File.write!(Path.join(submodule, "hex_docs/phoenix.md"), "churn\n")
-      File.mkdir_p!(Path.join(submodule, "qa/880"))
-      write_brief(submodule, 880)
-
-      assert :ok = Evidence.committed?(env, 874)
-    end
-
-    test "no working copy is unknown, never ok" do
-      assert {:unknown, :no_working_copy} = Evidence.committed?(nil, 874)
-    end
-
-    # A harness environment answers `{:error, :not_supported_on_harness}` to any
-    # `cmd` — `analysis/run` owns running commands there. That is a transport
-    # limit, and reading it as "git said nothing, so nothing is dirty" is the
-    # exact shape this module exists to prevent, one level up.
-    test "a harness environment is unknown, never ok" do
-      env = Environment.new(:harness, working_copy_id: Ecto.UUID.generate())
-
-      assert {:unknown, _reason} = Evidence.committed?(env, 874)
-    end
-
-    test "a directory that is not a git repository is unknown, never ok" do
-      {:ok, root} = Briefly.create(directory: true)
-      File.mkdir_p!(Path.join(root, ".code_my_spec/qa/874"))
-
-      assert {:unknown, _reason} = Evidence.committed?(Environment.new(:local, root), 874)
-    end
-
-    # The shape every QA session run from a git worktree is in: the superproject
-    # records `.code_my_spec` as a gitlink, and the directory itself is not
-    # checked out, so it holds whatever was written into it and nothing more.
-    #
-    # `ab52cdfa`, three diversions in one day. This is the case the module could
-    # not see, and it is worse than the bare non-repository above because git
-    # answers confidently: it ignores a gitlink's contents, so `status` prints
-    # nothing whether the evidence is committed, uncommitted, or missing. That
-    # is indistinguishable from clean, and it was read as clean.
-    test "an uninitialized submodule is unknown, not clean" do
-      {:ok, root} = Briefly.create(directory: true)
-      submodule = Path.join(root, ".code_my_spec")
-
-      git!(root, ["init", "--quiet"])
-      File.mkdir_p!(Path.join(submodule, "qa/874"))
-      git!(submodule, ["init", "--quiet"])
-      git!(submodule, ["config", "user.email", "test@example.com"])
-      git!(submodule, ["config", "user.name", "Test"])
-      File.write!(Path.join(submodule, "seed"), "x")
-      git!(submodule, ["add", "."])
-      git!(submodule, ["commit", "--quiet", "-m", "seed"])
-
-      # The superproject now records it as a gitlink…
-      git!(root, ["add", ".code_my_spec"])
-      # …and this is what a worktree has: the pointer, without the checkout.
-      File.rm_rf!(Path.join(submodule, ".git"))
-
-      write_brief(submodule, 874)
-
-      # The defect, stated as an assertion rather than as prose: the command
-      # this module used to trust reports nothing at all, with the brief sitting
-      # right there untracked.
-      assert {"", 0} =
-               System.cmd("git", ["status", "--porcelain", "-uall", "--", "qa/874"],
-                 cd: submodule,
-                 stderr_to_stdout: true
-               )
-
-      assert {:unknown, :submodule_not_initialized} =
-               Evidence.committed?(Environment.new(:local, root), 874),
-             "an empty `git status` from a directory that is not its own repository is " <>
-               "the outer repo ignoring a gitlink, not evidence that anything is committed"
-    end
-  end
-
-  describe "refusal/2" do
-    test "names the paths and the commands, in order" do
-      text = Evidence.refusal(874, ["qa/874/brief.md", "qa/874/screenshots/one.png"])
-
-      assert text =~ "qa/874/brief.md"
-      assert text =~ "git -C .code_my_spec add qa/874"
-      assert text =~ "git -C .code_my_spec commit"
-      assert text =~ "git -C .code_my_spec push"
-
-      assert text =~ "refuses the claim, not the result",
-             "the QA work is done and recorded; what is missing is the evidence " <>
-               "being saved, and a reader who thinks their pass was thrown away " <>
-               "will redo the whole thing"
-    end
-
-    test "truncates a long list rather than dumping every screenshot" do
-      paths = for n <- 1..25, do: "qa/874/screenshots/#{n}.png"
-      text = Evidence.refusal(874, paths)
-
-      assert text =~ "… and 15 more"
-    end
-  end
-
-  describe "unknown_note/1" do
-    test "the harness case reads as expected, not as a retry signal" do
-      note = Evidence.unknown_note(:not_supported_on_harness)
-
-      assert note =~ "not independently verified"
-      assert note =~ "expected, not"
-      assert note =~ "qa/<story_number>"
-    end
-
-    # The harness note is the one that fires on nearly every real pass, and the
-    # command it hands over is the one that lies in a worktree. Telling an agent
-    # to run a check that cannot fail is worse than telling it nothing.
-    test "the harness case hands over the tell as well as the check" do
-      note = Evidence.unknown_note(:not_supported_on_harness)
-
-      assert note =~ "rev-parse --show-toplevel"
-      assert note =~ "worktree"
-    end
-
-    test "the uninitialized submodule case names the remedy and both consequences" do
-      note = Evidence.unknown_note(:submodule_not_initialized)
-
-      assert note =~ "git submodule update --init"
-
-      assert note =~ "looks missing is not missing",
-             "the read side matters as much as the write side — a QA agent that " <>
-               "concludes the plan is absent regenerates it, over a tracked 32KB file"
-
-      assert note =~ "destination path already exists",
-             "the obvious remedy fails here when the stub holds loose files, and " <>
-               "the next step is to move them aside rather than delete them"
-    end
-
-    test "any other reason says it could not check, rather than implying it did" do
-      note = Evidence.unknown_note(:no_working_copy)
-
-      assert note =~ "not verified"
-      assert note =~ "no working copy"
+      for field <- [:name, :s3_key, :content_type, :bytes] do
+        assert field in Keyword.keys(changeset.errors),
+               "expected #{field} to be required"
+      end
     end
   end
 end
