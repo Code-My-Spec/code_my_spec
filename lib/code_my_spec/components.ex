@@ -132,7 +132,7 @@ defmodule CodeMySpec.Components do
   defdelegate count_components(scope), to: ComponentRepository
   defdelegate list_child_components(scope, parent_component_id), to: ComponentRepository
   defdelegate list_components_with_dependencies(scope), to: ComponentRepository
-  defdelegate list_components_for_coverage(scope), to: ComponentRepository
+  defdelegate any_authored?(scope), to: ComponentRepository
   defdelegate list_contexts(scope), to: ComponentRepository
   defdelegate list_contexts_with_dependencies(scope), to: ComponentRepository
   defdelegate list_orphaned_contexts(scope), to: ComponentRepository
@@ -247,6 +247,7 @@ defmodule CodeMySpec.Components do
   defdelegate get_dependency!(scope, id), to: DependencyRepository
   defdelegate get_dependency_between(scope, source_id, target_id), to: DependencyRepository
   defdelegate create_dependency(scope, attrs), to: DependencyRepository
+  defdelegate update_dependency(scope, dependency, attrs), to: DependencyRepository
   defdelegate delete_dependency(scope, dependency), to: DependencyRepository
   defdelegate validate_dependency_graph(scope), to: DependencyRepository
 

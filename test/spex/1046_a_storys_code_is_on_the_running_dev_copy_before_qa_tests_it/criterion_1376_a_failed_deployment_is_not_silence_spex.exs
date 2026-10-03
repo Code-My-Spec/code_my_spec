@@ -78,10 +78,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         {:ok, context |> Map.put(:agent, agent) |> Map.put(:story, story)}
       end
 
-      when_ "the agent promotes, and the restart comes back down rather than serving",
+      when_ "the agent promotes, the reload fails, and the restart after it comes back down",
             context do
         response = promote(context, context.story.number)
-        answer_restart_app_down(context.running_socket)
+        answer_app_down(context.running_socket, "reload_app")
+        answer_app_down(context.running_socket, "restart_app")
 
         # Waited for here, before inspecting the error log below — the log
         # line and the correction are two steps of the same detached
@@ -106,7 +107,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         assert errors != [], "expected the restart failure to log at :error"
 
         for error <- errors do
-          assert error.message =~ "restart FAILED"
+          assert error.message =~ ~r/restart.*FAILED/
         end
 
         SexySpex.ErrorCapture.clear()
@@ -164,15 +165,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
     response
   end
 
-  # Standing in for the harness on the other end of `restart_app`, the way
-  # criterion 1183's own `answer_restart_app/2` does — except this app comes
-  # back down instead of serving, which is what makes the restart a genuine
-  # failure rather than a confirmed one.
-  defp answer_restart_app_down(socket) do
-    assert_push "restart_app", %{"ref" => ref}, 5_000
+  # Standing in for the harness on the other end of `verb`, whose app comes
+  # back down instead of serving. A failed reload is followed by a restart in
+  # the same promote; only a restart that also fails is a failed deployment.
+  defp answer_app_down(socket, verb) do
+    assert_push ^verb, %{"ref" => ref}, 5_000
 
     reply_ref =
-      Phoenix.ChannelTest.push(socket, "restart_app_result", %{
+      Phoenix.ChannelTest.push(socket, verb <> "_result", %{
         "ref" => ref,
         "status" => "ok",
         "app_status" => "down",
@@ -183,7 +183,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
     receive do
       %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
     after
-      1_000 -> flunk("restart_app_result was never acknowledged")
+      1_000 -> flunk("#{verb}_result was never acknowledged")
     end
   end
 
@@ -213,7 +213,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
     _ = out
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in")
+      join_working_copy_socket(context, running_root, "the checkout the dev app runs in",
+        app_verbs: ["reload_app"]
+      )
 
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
 

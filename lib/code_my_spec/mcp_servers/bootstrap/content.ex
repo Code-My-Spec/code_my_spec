@@ -122,7 +122,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     |---|---|
     | `implementation_file` | Implementation code in `lib/` |
     | `bdd_specs_exist` | BDD scenario files for a story's acceptance criteria |
-    | `bdd_specs_passing` | Fix failing story specifications |
+    | `ready_for_qa` | Certify the story's copy for QA: clean tree, analyzers clean at HEAD, its specs green |
     | `qa_complete` | QA brief and results for a story |
 
     ### Step 4: Automatic Evaluation
@@ -242,11 +242,10 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     ## Architecture Reference
 
-    | Need | File |
+    | Need | Where |
     |---|---|
-    | Component graph with types and deps | `#{base}/architecture/overview.md` |
-    | Namespace hierarchy | `#{base}/architecture/namespace_hierarchy.md` |
-    | Dependency diagram (Mermaid) | `#{base}/architecture/dependency_graph.mmd` |
+    | Component graph with types and deps | `show_architecture_overview` tool |
+    | One component and its dependencies | `get_component` tool |
     | Architecture decisions | `#{base}/architecture/decisions/` |
     | Implementation status | `#{base}/status/#{app}.md` |
     """

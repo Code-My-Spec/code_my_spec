@@ -13,7 +13,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
   `Steps.mail_environments/2` is where that lives: it filters the project's
   environments down to production before the email step does anything.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 619's moduledoc for the move onto `/console/resources/mail`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
   """
 
@@ -49,7 +52,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
         tear_down_after(context.scope, [:email])
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
 
         # The *updated* project, not the one setup made. `own_domain/2` returns
         # a new struct rather than mutating, so a later step reading
@@ -59,9 +62,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
       end
 
       when_ "the email step has run", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :email)
 
         # The page *after* the run, not what the click handed back. A step
         # announces itself with `{:provisioning, :step, …}`, and the

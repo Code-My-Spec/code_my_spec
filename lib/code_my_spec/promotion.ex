@@ -18,8 +18,9 @@ defmodule CodeMySpec.Promotion do
       agent working directly on the running copy satisfy it by arriving, with
       no branch to merge and no promotion to run.
 
-    * **An action.** `promote/1` gates, merges, restarts, and reports what is
-      being served.
+    * **An action.** `promote/1` gates, merges, reloads the app (or restarts
+      it, when the change needs that — `deployment_plan/2`), and reports what
+      is being served.
 
   Distinct from `CodeMySpec.Deploys`, which is the infrastructure path for
   remote environments. This is not a deploy: it is how work gets onto the local
@@ -37,19 +38,19 @@ defmodule CodeMySpec.Promotion do
   one, and "which branch is the app actually running?" becomes a question with
   two answers.
 
-  ## Why the restart is a recipe
+  ## Why the deployment is a recipe
 
-  `promote/1` shells out to `just restart` in the running checkout rather than
-  bringing the app up itself. Restarting a Phoenix app is app-specific — deps,
-  migrations, assets, and for this project a harness on a second port — and
+  `promote/1` asks the main copy's harness to bring the app current rather
+  than doing it itself, and the harness runs project recipes: `just reload`
+  (migrate, let the code reloader compile, health-check) by default, `just
+  serve` behind a restart. Both are app-specific — deps, migrations, assets,
+  and for this project a harness on a second port — and
   `CodeMySpec.Workspaces` is not it: that runs a *preview* instance out of
   `~/.codemyspec/workspaces/<container>/<app>`, a different app in a different
   directory.
 
-  A recipe is a seam the project owns and can read. `just restart` is also
-  where the unconditional part lives: `Workspaces.boot/1` deliberately returns
-  a running workspace as-is rather than starting it twice, which is the exact
-  opposite of what a promotion needs.
+  A recipe is a seam the project owns and can read. A project with no
+  `reload` recipe is restarted, as before.
   """
 
   use Boundary,
@@ -57,6 +58,7 @@ defmodule CodeMySpec.Promotion do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Problems,
@@ -74,6 +76,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.BootVersion
   alias CodeMySpec.Files
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Promotion.Lock
@@ -133,6 +136,9 @@ defmodule CodeMySpec.Promotion do
   (e1174640). `nil` is work that is not a story's — a fix from an issue — and
   merges and restarts without latching or stamping anything.
 
+  `restart: true` restarts the app instead of reloading it; see
+  `deployment_plan/2` for when a promote restarts on its own.
+
   `verify_within:`/`verify_every:` (ms) bound how long a restart whose
   acknowledgement was lost is checked against what the app is serving
   (08744186).
@@ -148,6 +154,39 @@ defmodule CodeMySpec.Promotion do
       end
 
     log_outcome(result)
+  end
+
+  @doc """
+  Certify the scope's working copy for `story` at its HEAD, merging nothing: a
+  clean tree, a clean run of every analyzer at that exact commit (`gate/3`,
+  which starts any run that is missing and answers `{:pending, _}` until it
+  lands), and the story's own spex green on it (`story_spex_pass/3`). With
+  `main:`, the copy must also contain main — promotion's one extra check.
+
+  The procedure the ready-for-QA gate and promotion share (John, 2026-10-02):
+  ready-for-QA stamps the commit this answers for, promotion merges it. A
+  promote at a commit already certified finds that commit's runs and starts
+  none (`Analysis.answer_at_commit/3`).
+  """
+  @spec certify(Scope.t(), Stories.Story.t() | nil, keyword()) ::
+          {:ok, %{head: String.t(), certified_by: [map()], precheck: map()}}
+          | {:pending, map()}
+          | {:error, map()}
+  def certify(%Scope{} = scope, story, opts \\ []) do
+    with {:ok, from} <- promoting_copy(scope, nil) do
+      certify_copy(scope, from, story, Keyword.get(opts, :main), opts)
+    end
+  end
+
+  defp certify_copy(scope, from, story, main, opts) do
+    named = named_copy(from.id)
+
+    with {:ok, pre} <- Runner.precheck(scope, from.root, from.id, main),
+         {:ok, head} <- reported_head(pre, named),
+         {:ok, swept} <- gate(scope, head, opts),
+         :ok <- story_spex_pass(scope, story, named) do
+      {:ok, %{head: head, certified_by: swept, precheck: pre}}
+    end
   end
 
   defp story_to_promote(_scope, nil), do: {:ok, nil}
@@ -214,11 +253,18 @@ defmodule CodeMySpec.Promotion do
          :ok <- story_spex_pass(scope, story, named) do
       stamp_promoted_story(scope, story, version, head)
 
-      # `restart/3` always answers `{:error, %{reason: ...}}` — dispatched, not
-      # awaited (54aa534c) — so this wraps it as the success it is.
-      {:error, reason} = restart(scope, running, Keyword.put(opts, :expect, %{to: head}))
+      # Always a restart: nothing was merged, so there is no diff to judge a
+      # reload by, and this path exists for an app that is down.
+      plan = %{
+        action: :restart,
+        reason: "nothing was merged, so there is no change to judge a reload by"
+      }
 
-      {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}}}
+      # `deploy/4` always answers `{:error, %{reason: ...}}` — dispatched, not
+      # awaited (54aa534c) — so this wraps it as the success it is.
+      {:error, reason} = deploy(scope, running, plan, Keyword.put(opts, :expect, %{to: head}))
+
+      {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}, deployment: plan}}
       |> with_story(story, version)
     else
       {:pending, pending} -> {:ok, %{pending: pending}}
@@ -252,10 +298,8 @@ defmodule CodeMySpec.Promotion do
     with {:ok, from} <- promoting_copy(scope, running),
          named = named_copy(from.id),
          {:ok, main} <- main_head(scope, running, from),
-         {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id, main),
-         {:ok, head} <- reported_head(pre, named),
-         {:ok, swept} <- gate(scope, head, opts),
-         :ok <- story_spex_pass(scope, story, named),
+         {:ok, %{head: head, certified_by: swept, precheck: %{branch: branch} = pre}} <-
+           certify_copy(scope, from, story, main, opts),
          :ok <- head_unmoved(scope, from, head, named),
          {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
@@ -268,7 +312,7 @@ defmodule CodeMySpec.Promotion do
         "[Promotion] merged #{branch} at #{head} into #{running.root} " <>
           "(#{Map.get(merge_result, :before) || "?"} -> #{Map.get(merge_result, :after) || "?"}), " <>
           "version #{version || "none"}, stamping #{stamp_version || "none"}, " <>
-          "certified by #{describe_certifications(swept)}, dispatching restart"
+          "certified by #{describe_certifications(swept)}, dispatching deployment"
       )
 
       # Not `version`. A no-op merge originates nothing and still has a story to
@@ -276,11 +320,22 @@ defmodule CodeMySpec.Promotion do
       # questions and what it cost to find out.
       stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
 
-      expect = %{from: Map.get(merge_result, :before), to: Map.get(merge_result, :after)}
+      # `head` is past the version bump, which is what the app will serve;
+      # `after` is the merge alone. A harness older than `head` sends only the
+      # latter.
+      expect = %{
+        from: Map.get(merge_result, :before),
+        to: Map.get(merge_result, :head) || Map.get(merge_result, :after)
+      }
+
+      plan = deployment_plan(Map.get(merge_result, :changed), reload_opts(running, opts))
+
+      Logger.info("[Promotion] #{plan.action} #{running.root}: #{plan.reason}")
 
       scope
-      |> restart(running, Keyword.put(opts, :expect, expect))
+      |> deploy(running, plan, Keyword.put(opts, :expect, expect))
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
+      |> with_deployment(plan)
       |> with_story(story, stamp_version)
     else
       {:pending, pending} ->
@@ -337,6 +392,9 @@ defmodule CodeMySpec.Promotion do
 
   defp unconfirmed(false, reason, _branch, _running, _swept, _untracked, _version),
     do: {:error, reason}
+
+  defp with_deployment({:ok, report}, plan), do: {:ok, Map.put(report, :deployment, plan)}
+  defp with_deployment(error, _plan), do: error
 
   defp with_story(result, nil, _version), do: result
 
@@ -467,7 +525,7 @@ defmodule CodeMySpec.Promotion do
        %{
          reason:
            "story #{story.number} has no spex linked on #{named}, so nothing says " <>
-             "its spex pass. Write them (or sync so they link), then promote again.",
+             "its spex pass. Write them (or sync so they link), then try again.",
          working_copy: named
        }}
     else
@@ -482,7 +540,7 @@ defmodule CodeMySpec.Promotion do
          "story #{story.number}'s spex are not all passing on #{named}'s certifying " <>
            "spex run, so it is not promoted:\n" <>
            describe("spex", failing) <>
-           "\n\nFix them, let spex run, then promote again.",
+           "\n\nFix them, let spex run, then try again.",
        failing_spex: failing |> Enum.map(& &1.file_path) |> Enum.uniq(),
        working_copy: named
      }}
@@ -560,11 +618,13 @@ defmodule CodeMySpec.Promotion do
   without one.
   """
   @spec outcome_text(term()) :: String.t()
-  def outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}}}) do
+  def outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
+    {action, why} = deployment_words(report)
+
     "Your promotion merged #{branch} onto the running dev copy. The application " <>
-      "restart is running now in the background, not waited on — that is by " <>
+      "#{action} (#{why}) is running now in the background, not waited on — that is by " <>
       "design, so a promotion answers in seconds regardless of how long the " <>
-      "restart takes or whether it is this checkout's own process restarting. " <>
+      "#{action} takes or whether it is this checkout's own process restarting. " <>
       "QA on these stories can start against the merge already; check what is " <>
       "serving in a moment if you want the restart confirmed:\n\n" <>
       "    git merge-base --is-ancestor HEAD $(curl -s localhost:4004/health " <>
@@ -590,6 +650,13 @@ defmodule CodeMySpec.Promotion do
 
   def outcome_text(other),
     do: "Your promotion returned something unexpected: #{inspect(other)}"
+
+  @doc "Whether a promote reloads or restarts, and why, in words."
+  @spec deployment_words(map()) :: {String.t(), String.t()}
+  def deployment_words(%{deployment: %{action: action, reason: reason}}),
+    do: {to_string(action), reason}
+
+  def deployment_words(_report), do: {"restart", "no deployment plan was recorded"}
 
   @doc """
   What a pending promotion says: analysis is running at the commit it will
@@ -861,21 +928,61 @@ defmodule CodeMySpec.Promotion do
   defp problems_of(scope, sources),
     do: ProblemRepository.list_project_problems(scope, sources: sources)
 
-  # Always, never conditionally.
-  #
-  # Whatever would decide "this merge did not need a restart" — no `.ex` files
-  # touched, no deps moved — is a second implementation of the code-reloading
-  # rules, and when it is wrong the application serves a build nobody can
-  # identify while every signal says the promotion completed. Restarting an app
-  # that did not need it costs seconds.
-  #
+  @doc """
+  Whether a promote reloads the running app or restarts it, and why.
+
+  Reload by default (John, 2026-10-02): a restart of :4000 kills every
+  in-flight agent turn and analysis run on the box, and the app's own code
+  reloader takes most changes. Restart when `changed` (the merge's paths)
+  touches anything in `BootVersion.restart_paths/0`, when it is `nil` (not
+  readable, so not judged), when the harness cannot reload (`reload_supported:
+  false`), or when the caller asks (`restart: true`). A reload that then fails
+  restarts too, inside the same deployment.
+
+  This replaces "always, never conditionally". The worry behind that rule — a
+  second implementation of the reload rules, wrong and silent — is answered by
+  keeping the list short and in one place, and by the health check: a reload
+  that did not take reports unhealthy and falls back to a restart.
+  """
+  @spec deployment_plan([String.t()] | nil, keyword()) ::
+          %{action: :reload | :restart, reason: String.t()}
+  def deployment_plan(changed, opts \\ []) do
+    cond do
+      Keyword.get(opts, :restart) == true ->
+        %{action: :restart, reason: "a restart was asked for"}
+
+      Keyword.get(opts, :reload_supported, true) == false ->
+        %{action: :restart, reason: "the harness serving the app predates reloads"}
+
+      not is_list(changed) ->
+        %{action: :restart, reason: "the merge did not report which files it changed"}
+
+      (touched = BootVersion.needs_restart(changed)) != [] ->
+        %{
+          action: :restart,
+          reason: "the change touches #{describe_paths(touched)}, which a reload cannot pick up"
+        }
+
+      true ->
+        %{action: :reload, reason: "nothing in the change needs a restart"}
+    end
+  end
+
+  defp describe_paths(paths) do
+    shown = Enum.take(paths, 3) |> Enum.join(", ")
+    if length(paths) > 3, do: "#{shown} and #{length(paths) - 3} more", else: shown
+  end
+
+  defp reload_opts(running, opts),
+    do: Keyword.put(opts, :reload_supported, AppTransport.reload_supported?(running.id))
+
   # Dispatched, never awaited (54aa534c, phase two — John: "the deployment
   # should follow async"). `promote/1` answers as soon as the merge lands;
   # the actual deployment — migrations, if the recipe runs them, and the
   # application coming back up — runs in a detached task this call does not
   # wait on.
   #
-  # Not optional for a self-hosted checkout: `just restart` kills whatever is
+  # Not optional for a self-hosted checkout: a restart kills whatever is
   # listening on :4000, and when that is this very BEAM — the one running the
   # promotion — running it inline takes the promotion's own Task down with
   # it, before it can answer. No exception to catch, no `after` block
@@ -884,7 +991,9 @@ defmodule CodeMySpec.Promotion do
   # survives to release it. Dispatching detached is what lets this process
   # answer at all in that case. Doing it unconditionally — for a remote
   # harness too — means one mechanism rather than a path that waits and a
-  # path that cannot.
+  # path that cannot. A reload leaves this BEAM up, but its code reloader
+  # swaps modules under this task, and a failed reload restarts anyway, so a
+  # reload is dispatched the same way.
   #
   # Reuses the shape `e721ccf0d` already built for a remote harness's dropped
   # channel: `merged/5` reads this as "merged, restart unconfirmed" either
@@ -900,14 +1009,14 @@ defmodule CodeMySpec.Promotion do
   # rather than an observation, deliberately: over-claiming costs one QA
   # attempt that meets a real failure and reports it; under-claiming costs an
   # agent that cannot get out of the gate at all.
-  defp restart(%Scope{} = scope, %WorkingCopy{root: root} = running, opts) do
-    dispatch_restart(scope, root, running.id, opts)
+  defp deploy(%Scope{} = scope, %WorkingCopy{root: root} = running, plan, opts) do
+    dispatch_deployment(scope, root, running.id, plan, opts)
     {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
-    {:error, %{reason: deployment_dispatched_reason()}}
+    {:error, %{reason: deployment_dispatched_reason(plan)}}
   end
 
   # Detached rather than linked or awaited: this process may not exist by the
-  # time `just restart` returns, and it must not need to for the restart to
+  # time a restart returns, and it must not need to for the restart to
   # have happened. `CodeMySpec.TaskSupervisor` is the same one `promote_async/2`
   # already reports through for the same reason — fire, do not wait.
   #
@@ -918,18 +1027,60 @@ defmodule CodeMySpec.Promotion do
   # here that wasn't already gated — had nowhere to go. The caller had already
   # been told "merged, restart unconfirmed" and moved on; this is the one
   # place that outcome is ever actually resolved one way or the other.
-  defp dispatch_restart(scope, root, working_copy_id, opts) do
+  defp dispatch_deployment(scope, root, working_copy_id, plan, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        scope
-        |> Runner.restart(root, working_copy_id)
-        |> classify_restart()
-        |> verify_unconfirmed(working_copy_id, opts)
-        |> log_restart_outcome(root)
-        |> tell_the_agent(scope, root, Keyword.get(opts, :notify))
+        {done, outcome} = deploy_now(plan, scope, root, working_copy_id, opts)
+
+        outcome
+        |> log_restart_outcome(root, done)
+        |> tell_the_agent(scope, root, done, Keyword.get(opts, :notify))
       end)
 
     :ok
+  end
+
+  # `done` names what actually ran, for the log and the agent: the plan, or
+  # the restart a reload fell back to.
+  defp deploy_now(%{action: :restart}, scope, root, working_copy_id, opts) do
+    outcome =
+      scope
+      |> Runner.restart(root, working_copy_id)
+      |> classify_restart()
+      |> verify_unconfirmed(working_copy_id, opts)
+
+    {"restart", outcome}
+  end
+
+  defp deploy_now(%{action: :reload}, scope, root, working_copy_id, opts) do
+    scope
+    |> Runner.reload(root, working_copy_id)
+    |> reloaded(scope, root, working_copy_id, opts)
+  end
+
+  # The far side restarted instead (app not running, no `reload` recipe).
+  defp reloaded({:ok, %{action: "restarted"} = done}, _scope, _root, _id, _opts),
+    do:
+      {"restart (#{done.action_reason || "the harness restarted instead"})",
+       {:confirmed, done.revision}}
+
+  defp reloaded({:ok, %{revision: revision}}, _scope, _root, _id, _opts),
+    do: {"reload", {:confirmed, revision}}
+
+  # A channel lost mid-reload may have taken a reload that worked with it —
+  # :4000's own reloader swaps the channel's modules. Asked what is serving
+  # before restarting over it.
+  defp reloaded({:error, %{reason: reason} = error}, scope, root, working_copy_id, opts) do
+    with true <- restart_acknowledgement_lost?(error),
+         {:confirmed, _} = confirmed <-
+           verify_unconfirmed({:unconfirmed, reason}, working_copy_id, opts) do
+      {"reload", confirmed}
+    else
+      _ ->
+        Logger.warning("[Promotion] reload of #{root} failed (#{reason}); restarting instead")
+        {"restart", outcome} = deploy_now(%{action: :restart}, scope, root, working_copy_id, opts)
+        {"restart after a failed reload (#{reason})", outcome}
+    end
   end
 
   # One reading of the outcome, made once and consulted twice, rather than two
@@ -991,17 +1142,28 @@ defmodule CodeMySpec.Promotion do
   defp await_serving(working_copy_id, expected, every, deadline, seen) do
     remaining = deadline - System.monotonic_time(:millisecond)
 
-    case AppTransport.ensure_app_running(working_copy_id, max(remaining, every)) do
-      {:ok, %{status: "serving", commit: commit}} when expected in [nil, commit] ->
+    working_copy_id
+    |> AppTransport.ensure_app_running(max(remaining, every))
+    |> serving_commit()
+    |> case do
+      {"serving", commit} when expected in [nil, commit] ->
         {:confirmed, commit}
 
-      {:ok, %{commit: commit}} when is_binary(commit) ->
+      {_status, commit} when is_binary(commit) ->
         retry_serving(working_copy_id, expected, every, deadline, commit)
 
       _unreachable_or_down ->
         retry_serving(working_copy_id, expected, every, deadline, seen)
     end
   end
+
+  # What the app serves, not what it launched from: a reload moves the first
+  # and leaves the second, and reading the launch commit called a reload that
+  # worked "still on <old>".
+  defp serving_commit({:ok, %{status: status} = info}),
+    do: {status, Map.get(info, :serving_commit) || Map.get(info, :commit)}
+
+  defp serving_commit(_other), do: :unanswered
 
   defp retry_serving(working_copy_id, expected, every, deadline, seen) do
     if System.monotonic_time(:millisecond) + every < deadline do
@@ -1017,30 +1179,30 @@ defmodule CodeMySpec.Promotion do
 
   defp settle_unverified(seen), do: {:failed, "restart failed: still on #{seen}"}
 
-  defp log_restart_outcome({:confirmed, revision} = outcome, root) do
+  defp log_restart_outcome({:confirmed, revision} = outcome, root, done) do
     Logger.info(
-      "[Promotion] restart confirmed for #{root}, now serving #{revision || "unknown revision"}"
+      "[Promotion] #{done} confirmed for #{root}, now serving #{revision || "unknown revision"}"
     )
 
     outcome
   end
 
-  defp log_restart_outcome({:unconfirmed, reason} = outcome, root) do
-    Logger.warning("[Promotion] restart for #{root} not confirmed: #{reason}")
+  defp log_restart_outcome({:unconfirmed, reason} = outcome, root, done) do
+    Logger.warning("[Promotion] #{done} for #{root} not confirmed: #{reason}")
     outcome
   end
 
-  defp log_restart_outcome({:failed, reason} = outcome, root) do
+  defp log_restart_outcome({:failed, reason} = outcome, root, done) do
     Logger.error(
-      "[Promotion] restart FAILED for #{root}, application not confirmed up: #{reason}"
+      "[Promotion] #{done} FAILED for #{root}, application not confirmed up: #{reason}"
     )
 
     outcome
   end
 
-  defp log_restart_outcome({:unexpected, other} = outcome, root) do
+  defp log_restart_outcome({:unexpected, other} = outcome, root, done) do
     Logger.error(
-      "[Promotion] restart for #{root} returned something unexpected: #{inspect(other)}"
+      "[Promotion] #{done} for #{root} returned something unexpected: #{inspect(other)}"
     )
 
     outcome
@@ -1066,11 +1228,11 @@ defmodule CodeMySpec.Promotion do
   # there. Only the tool call knows which agent received the first answer,
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
-  defp tell_the_agent(outcome, _scope, _root, nil), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, _done, nil), do: outcome
 
-  defp tell_the_agent({:confirmed, revision} = outcome, scope, root, agent_id) do
+  defp tell_the_agent({:confirmed, revision} = outcome, scope, root, done, agent_id) do
     text =
-      "The restart from your promotion is confirmed: the application at #{root} " <>
+      "The #{done} from your promotion is confirmed: the application at #{root} " <>
         "is up and serving #{revision || "an unreported revision"}. Your merged " <>
         "work is live — nothing more to wait for."
 
@@ -1084,7 +1246,7 @@ defmodule CodeMySpec.Promotion do
   # either a real failure or an app verified still on the old commit — never a
   # retry over a restart that already worked, which would restart the shared
   # dev server every other working copy on the box is using.
-  defp tell_the_agent({:failed, reason} = outcome, scope, root, agent_id) do
+  defp tell_the_agent({:failed, reason} = outcome, scope, root, _done, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
         "deployment that followed it failed, so the application at #{root} is NOT " <>
@@ -1096,7 +1258,7 @@ defmodule CodeMySpec.Promotion do
     outcome
   end
 
-  defp tell_the_agent(outcome, _scope, _root, _agent_id), do: outcome
+  defp tell_the_agent(outcome, _scope, _root, _done, _agent_id), do: outcome
 
   # Logged rather than retried, matching `report_to/3`: the agent may already be
   # acting on the first message, and a delivery loop does not fix that.
@@ -1113,11 +1275,18 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  defp deployment_dispatched_reason do
+  # "not awaited" is what `restart_acknowledgement_lost?/1` reads; keep it.
+  defp deployment_dispatched_reason(%{action: :restart}) do
     "the restart is dispatched, not awaited: promote answers as soon as the " <>
       "merge lands, and the application restart runs separately. Always, " <>
       "including for a checkout whose own process this restart would " <>
       "otherwise end before it could answer."
+  end
+
+  defp deployment_dispatched_reason(%{action: :reload}) do
+    "the reload is dispatched, not awaited: promote answers as soon as the " <>
+      "merge lands, and the application reloads separately, restarting if " <>
+      "the reload fails."
   end
 
   @shown_per_source 3

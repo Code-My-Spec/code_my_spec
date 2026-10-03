@@ -11,14 +11,14 @@ defmodule CodeMySpec.Agents.Waiting do
   kind of wait is one entry here.
 
   An agent's own pending question holds the paths its role's
-  `RoleProfile.waiting_on` names: main's only the nudge, product's the nudge,
-  work offers and resume (it holds one chain of thought through a design).
+  `RoleProfile.waiting_on` names: main's only the nudge.
 
   Not entries, deliberately:
 
-    * A coding or QA agent's pending question. It blocks only the task it was
-      asked about, so the agent stays available for everything else
-      (0b324cab).
+    * Any other role's pending question. It blocks only the task it was asked
+      about, so the agent stays available for everything else (0b324cab,
+      story 1080).
+    * A tap-out naming a task. It blocks only that task (story 1080).
     * The decline damper (`Work.already_declined?/2`). It is about the offer,
       not the agent: the same agent is offered a *different* offer at once.
   """
@@ -64,8 +64,7 @@ defmodule CodeMySpec.Agents.Waiting do
 
   # Waiting on the answer to its own question; the answer wakes it. Main's
   # event wakes (a teammate stalls, a step lands, a teammate asks) still reach
-  # it; product waits whole. metric_flow 2026-10-01: main was nudged turn after
-  # turn while it waited.
+  # it. metric_flow 2026-10-01: main was nudged turn after turn while it waited.
   defp check(:question_pending, _scope, %{role: role} = agent, path) do
     if RoleProfile.waits_on?(role, :question_pending, path) and awaiting_question?(agent),
       do: :question_pending
@@ -90,8 +89,8 @@ defmodule CodeMySpec.Agents.Waiting do
     end
   end
 
-  # Holding nothing and waiting on its tap-out; the decision wakes it (070d1bab,
-  # fad1a314). An agent still holding a task is not idle on it.
+  # Holding nothing and waiting on a tap-out naming no task; the decision wakes
+  # it (070d1bab, fad1a314). An agent still holding a task is not idle on it.
   defp check(:tap_out, _scope, agent) do
     if is_nil(Agent.active_task(agent)) and awaiting_tap_out?(agent), do: :tap_out
   end
@@ -122,18 +121,19 @@ defmodule CodeMySpec.Agents.Waiting do
   defp own_holder(_role), do: ""
 
   @doc """
-  Whether this agent has a tap-out waiting on a person.
+  Whether this agent has a tap-out naming no task waiting on a person.
 
   Read off the pending request rather than a blocked task: a tap-out with no
-  `task_id` blocks no task (fad1a314). Schemaless because `Notifications`,
-  which owns the row, depends on `Agents`.
+  `task_id` blocks no task (fad1a314). One naming a task holds only that task
+  (story 1080). Schemaless because `Notifications`, which owns the row, depends
+  on `Agents`.
   """
   @spec awaiting_tap_out?(Agent.t()) :: boolean()
   def awaiting_tap_out?(%Agent{id: agent_id}) do
     from(p in "permission_requests",
       where:
         p.agent_id == type(^agent_id, :binary_id) and p.tool_name == "tap_out" and
-          p.status == "pending"
+          p.status == "pending" and is_nil(p.task_id)
     )
     |> Repo.exists?()
   end

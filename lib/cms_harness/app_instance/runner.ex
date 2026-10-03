@@ -49,7 +49,11 @@ defmodule CmsHarness.AppInstance.Runner do
               {pos_integer(), pos_integer() | nil} | nil
 
   @doc "Clone `main_database` into a fresh `database` — dump and restore, not a template."
-  @callback clone_database(root :: String.t(), main_database :: String.t(), database :: String.t()) ::
+  @callback clone_database(
+              root :: String.t(),
+              main_database :: String.t(),
+              database :: String.t()
+            ) ::
               :ok | {:error, term()}
 
   @doc "Run `root`'s `seed` recipe, if it declares one. Always succeeds — seeding is optional."
@@ -118,6 +122,20 @@ defmodule CmsHarness.AppInstance.Runner do
               tunnel_held_by_harness? :: boolean(),
               host :: String.t() | nil
             ) :: {:ok, os_pid :: pos_integer()} | {:error, term()}
+
+  @doc """
+  Run `root`'s `reload` recipe against the app already running on `port`,
+  synchronously, with the same `PORT`/`HTTPS_PORT`/`DATABASE_NAME` the launch
+  had, appending its output to `log_path`. Only called once `recipe?/2` has
+  confirmed the recipe exists. `:ok` on exit 0.
+  """
+  @callback reload(
+              root :: String.t(),
+              port :: pos_integer(),
+              https_port :: pos_integer() | nil,
+              database :: String.t(),
+              log_path :: String.t()
+            ) :: :ok | {:error, term()}
 
   @doc "Whether `os_pid` can still be signalled."
   @callback alive?(os_pid :: pos_integer()) :: boolean()
@@ -195,7 +213,8 @@ defmodule CmsHarness.AppInstance.Runner do
   def main_ports(root), do: impl().main_ports(root)
 
   @spec clone_database(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
-  def clone_database(root, main_database, database), do: impl().clone_database(root, main_database, database)
+  def clone_database(root, main_database, database),
+    do: impl().clone_database(root, main_database, database)
 
   @spec seed(String.t()) :: :ok
   def seed(root), do: impl().seed(root)
@@ -219,8 +238,32 @@ defmodule CmsHarness.AppInstance.Runner do
           boolean(),
           String.t() | nil
         ) :: {:ok, pos_integer()} | {:error, term()}
-  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host \\ nil),
-    do: impl().launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host)
+  def launch(
+        root,
+        port,
+        https_port,
+        database,
+        log_path,
+        main?,
+        tunnel_held_by_harness?,
+        host \\ nil
+      ),
+      do:
+        impl().launch(
+          root,
+          port,
+          https_port,
+          database,
+          log_path,
+          main?,
+          tunnel_held_by_harness?,
+          host
+        )
+
+  @spec reload(String.t(), pos_integer(), pos_integer() | nil, String.t(), String.t()) ::
+          :ok | {:error, term()}
+  def reload(root, port, https_port, database, log_path),
+    do: impl().reload(root, port, https_port, database, log_path)
 
   @spec alive?(pos_integer()) :: boolean()
   def alive?(os_pid), do: impl().alive?(os_pid)

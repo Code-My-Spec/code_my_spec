@@ -97,26 +97,24 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    # Emitted for spex runs only: the first completed one is what lets a clean
-    # `bdd_specs_passing` through.
-    "analysis_completed" => [:specs],
+    # Nothing in the graph reads analysis any more (John, 2026-10-02): the
+    # gate before QA reads a stamp its task writes. Settles nothing.
+    "analysis_completed" => [],
     # Safe again: the four project delegates a sync moves —
     # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
     # `architecture_designed` — now have `settle/3` clauses, so nothing this
     # event moves is left to the marks it discards.
-    "files_synced" => [:files, :specs],
-    # Story test verdicts must be refreshed when analysis problems change.
-    "problems_changed" => [:specs],
+    "files_synced" => [:files],
+    "problems_changed" => [],
     "deploy_changed" => [:links],
     # A setup step, environment or option changing moves what an undeployed
     # story's `deploy` is waiting on.
     "devops_setup_changed" => [:links],
-    # A story row reaches five profiles, which is why this event took five
-    # conversions to turn on:
+    # A story row reaches four profiles:
     #
-    #   * `:stories`  — the seal, `promoted_version`, `ready_for_dev`, `epic_id`
+    #   * `:stories`  — the seal, `promoted_version`, `qa_ready_commit`,
+    #                   `ready_for_dev`, `epic_id`
     #   * `:links`    — `component_id`, which `component_linked` resolves
-    #   * `:specs`    — `specs_ready`, the first thing `bdd_specs_passing` asks
     #   * `:issues`   — `exclude_other_copies_stories/2` filters issues by the
     #                   story's `working_copy_id`, so moving a story between
     #                   checkouts moves which issues gate here
@@ -126,7 +124,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     # handles, and so is `story_readiness_changed`: `ready_for_dev` decides
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
-    "story_changed" => [:stories, :links, :specs, :issues],
+    "story_changed" => [:stories, :links, :issues],
     "qa_attempt_submitted" => [:qa],
     # A component appearing, going or changing moves `architecture_designed`
     # — the orphan rule reads the component set — and that is settled here
@@ -202,17 +200,14 @@ defmodule CodeMySpec.Requirements.Handlers do
   #
   # Usually the two are the same list, which is the bare-list shape. They come
   # apart for the rollups in `@delegate_requirements`, written
-  # `{moved_by, reads}`: `architecture_designed` is moved by files *and* by
-  # stories — it expands a dependency graph and reports released stories with no
-  # component — while its clause calls `ArchitectureChecker`, which queries for
-  # itself and reads no profile at all. Collapsing the two would put the 120ms
-  # file read on every story update to hand a checker data it ignores.
+  # `{moved_by, reads}`, for a rollup moved by more than it reads — see
+  # `personas_complete`.
   @requirement_profiles %{
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
     "story_issues_resolved" => [:issues],
     "story_issues_triaged" => [:issues],
-    "bdd_specs_passing" => [:specs],
+    "ready_for_qa" => [:stories],
     "implementation_file" => [:files],
     # Files for the spec paths, stories for the criteria those paths have to
     # cover. Not a `@file_requirements` row any more — see its `settle/3`.
@@ -241,17 +236,16 @@ defmodule CodeMySpec.Requirements.Handlers do
     # settled nothing here, and the story-560 criteria read "personas_complete
     # is still the blocking requirement" after every artifact existed.
     "personas_complete" => {[:files, :personas], [:personas]},
-    # Reads all three now. It used to read nothing and query for itself —
-    # four fresh reads per drain, one of them every component with two
-    # preloads.
-    "architecture_designed" => [:files, :stories, :architecture],
+    # Files for proposal.md, components for whether any is authored. Stories
+    # no longer move it: linking is per story (`component_linked`).
+    "architecture_designed" => [:files, :architecture],
     "stories_exist" => [:stories],
     "work_dispatched" => [:stories]
   }
 
   # Requirements whose verdict is a rollup no event determines.
   #
-  # `architecture_designed` expands a dependency graph to find orphan contexts;
+  # `architecture_designed` asks whether a plan exists;
   # `personas_complete` checks two artifacts per persona; `spex_boundary_ready`
   # asks five questions about four directories; `qa_integration_plan` validates
   # an index against the specs it names. None of those is a value an event
@@ -449,38 +443,22 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # Three outcomes, and the default is the one most stories are in.
-  #
-  # `SpecsPassingChecker.passing?/3` takes them in order: not `specs_ready` is
-  # judged from its own failing specs; `specs_ready` with no completed spex run
-  # passes, because there is nothing to re-check against; `specs_ready` with a
-  # completed run passes only if none of this story's own spec files are
-  # failing on it.
-  #
-  # So the sweep defaults to the first — a story nobody has marked ready — and
-  # names the ready ones, which are the few. The alternative, emitting every
-  # story as an exception, is one write per story for a population that is
-  # mostly in one state.
-  #
-  # Since e1174640 only a promote latches a story, and the promote is
-  # downstream, so an unlatched story with linked specs is judged the way
-  # `SpecsPassingChecker` judges it: from its failing specs alone, tagged
-  # `analysis_source: "spex"` so `RequirementGraph.serve/2` withholds a clean
-  # verdict on read while no spex run has completed.
-  defp settle("bdd_specs_passing", %{specs: profile}, _scope) do
-    ready = for {story_id, true} <- profile.specs_ready, do: story_id
-
-    unlatched =
-      for {story_id, failing} <- profile.failing_by_story,
-          Map.get(profile.specs_ready, story_id) != true,
-          do: unlatched_story_verdict(story_id, failing)
-
+  # The stamp `ReadyForQa` writes, read the way `story_promoted` reads
+  # `promoted_version`: a story column, nothing about analysis. Unset is the
+  # common state, so it is the default and the stamped stories are named.
+  defp settle("ready_for_qa", %{stories: profile}, _scope) do
     %{
       entity_type: "story",
-      name: "bdd_specs_passing",
+      name: "ready_for_qa",
       default: false,
-      default_details: details(%{reason: "No spec files are linked to this story"}),
-      except: Enum.map(ready, &ready_story_verdict(&1, profile)) ++ unlatched
+      default_details: details(%{reason: "qa_ready_commit is not set"}),
+      except:
+        for %{qa_ready_commit: commit, id: id} <- profile.stories, is_binary(commit) do
+          change("story", id, "ready_for_qa", true, %{
+            status: "Certified ready for QA at #{commit}",
+            qa_ready_commit: commit
+          })
+        end
     }
   end
 
@@ -695,46 +673,6 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  defp ready_story_verdict(story_id, %{spex_ran?: false}),
-    do:
-      change(
-        "story",
-        story_id,
-        "bdd_specs_passing",
-        true,
-        %{status: "Specs ready (no spex run to re-check against)"}
-      )
-
-  defp ready_story_verdict(story_id, profile) do
-    case Map.get(profile.failing_by_story, story_id, []) do
-      [] ->
-        change("story", story_id, "bdd_specs_passing", true, %{
-          status: "Specs ready and green on the latest spex run"
-        })
-
-      failing ->
-        change("story", story_id, "bdd_specs_passing", false, %{
-          reason:
-            "Marked specs-ready, but #{length(failing)} of this story's own specs " <>
-              "are failing on the latest spex run"
-        })
-    end
-  end
-
-  defp unlatched_story_verdict(story_id, []),
-    do:
-      change("story", story_id, "bdd_specs_passing", true, %{
-        status: "Specs green on the latest spex run (latched when promoted)",
-        analysis_source: "spex"
-      })
-
-  defp unlatched_story_verdict(story_id, _failing),
-    do:
-      change("story", story_id, "bdd_specs_passing", false, %{
-        reason: "This story's own specs fail on the latest spex run",
-        analysis_source: "spex"
-      })
-
   defp change(entity_type, entity_id, name, satisfied, detail_map),
     do: %{
       entity_type: entity_type,
@@ -844,8 +782,7 @@ defmodule CodeMySpec.Requirements.Handlers do
       {ArchitectureChecker, :complete?} ->
         ArchitectureChecker.complete?(scope, scope.active_project, %{
           files: profiles.files,
-          stories: profiles.stories.stories,
-          components: profiles.architecture.components
+          authored?: profiles.architecture.authored?
         })
 
       {module, function} ->

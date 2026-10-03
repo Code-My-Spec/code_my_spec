@@ -287,10 +287,14 @@ defmodule CodeMySpec.Stories do
   @doc """
   Sets or clears the story's specs-ready latch.
 
-  The latch is what `bdd_specs_passing` checks and what the stop hook
-  consults before letting a spex failure block. Only a promote of the story
-  sets it (`mark_story_promoted/4`, e1174640); rewriting the story's BDD
-  specs, editing its criteria, and the story page's Unenforce clear it.
+  The latch is what the stop hook and the promote gate consult before letting
+  a spex failure block. Only a promote of the story sets it
+  (`mark_story_promoted/4`, e1174640); rewriting the story's BDD specs,
+  editing its criteria, and the story page's Unenforce clear it.
+
+  Clearing also clears the ready-for-QA stamp (`set_qa_ready/4`): the events
+  that unlatch a story are the ones that make its certified commit no longer
+  answer for it, and one write path keeps the two from drifting.
 
   Deliberately narrower than `update_story/3` — the latch carries
   enforcement consequences, so the write path is named rather than
@@ -320,8 +324,22 @@ defmodule CodeMySpec.Stories do
     update_story(scope, story, %{
       specs_ready: false,
       specs_ready_at: nil,
-      specs_ready_commit: nil
+      specs_ready_commit: nil,
+      qa_ready_commit: nil,
+      qa_ready_at: nil
     })
+  end
+
+  @doc """
+  Stamps `story` ready for QA at `commit` — the commit `Promotion.certify/3`
+  passed at. The only writer of `qa_ready_commit`; `ready_for_qa` reads it.
+  Cleared by `set_specs_ready(scope, story, false)`.
+  """
+  @spec set_qa_ready(Scope.t(), Story.t(), String.t(), DateTime.t()) ::
+          {:ok, Story.t()} | {:error, Ecto.Changeset.t()}
+  def set_qa_ready(%Scope{} = scope, %Story{} = story, commit, at \\ DateTime.utc_now())
+      when is_binary(commit) do
+    update_story(scope, story, %{qa_ready_commit: commit, qa_ready_at: at})
   end
 
   @doc """

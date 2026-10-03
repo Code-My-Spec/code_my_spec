@@ -252,6 +252,45 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
     end
   end
 
+  describe "a harness restart (f5699eb9)" do
+    test "an idle agent's restart notice records a resume offer linked to it", ctx do
+      agent = agent(ctx.scope)
+
+      :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
+
+      assert [offer] = Offers.list_for_agent(agent.id)
+      assert {offer.kind, offer.subject_type, offer.subject_key} == {:resume, "restart", nil}
+      assert offer.template_version == "resume/1"
+      assert [notice] = linked_texts(offer)
+      assert notice =~ "The harness restarted. No turn of yours was interrupted"
+    end
+
+    test "a mid-turn agent's interrupted notice records a resume offer linked to it", ctx do
+      agent = agent(ctx.scope)
+
+      {:ok, mid_turn} =
+        AgentsRepository.update_agent(ctx.scope, agent, %{turn_started_at: DateTime.utc_now()})
+
+      :ok = Agents.account_for_interrupted_turns(ctx.scope, [mid_turn])
+
+      assert [offer] = Offers.list_for_agent(agent.id)
+      assert {offer.kind, offer.subject_type, offer.subject_key} == {:resume, "restart", nil}
+      assert [notice] = linked_texts(offer)
+      assert notice =~ "while you were part-way through a turn"
+    end
+
+    test "a second restart supersedes the first notice's offer", ctx do
+      agent = agent(ctx.scope)
+
+      :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
+      :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
+
+      assert [first, second] = Offers.list_for_agent(agent.id)
+      assert first.status == :superseded
+      assert second.status == :open
+    end
+  end
+
   describe "a failed turn" do
     @failure "Claude Code returned tool_use without any tool calls"
 

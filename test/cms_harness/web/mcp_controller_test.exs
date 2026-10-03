@@ -16,6 +16,7 @@ defmodule CmsHarness.Web.McpControllerTest do
   # node-global application env.
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Web.McpController
   alias CmsHarnessTest.FakeUpstream
 
   setup do
@@ -405,6 +406,20 @@ defmodule CmsHarness.Web.McpControllerTest do
   end
 
   describe "refusing" do
+    test "a restart says so rather than blaming the config" do
+      message = McpController.message(:restarting)
+
+      assert message =~ "restarting"
+      refute message =~ "config.yml"
+    end
+
+    test "a directory naming no project says which files it read, not a removed variable" do
+      message = McpController.message(:no_project_id)
+
+      assert message =~ ".code_my_spec/config.yml" and message =~ ".cms_harness.json"
+      refute message =~ "CMS_PROJECT_ID"
+    end
+
     test "with no credential it says so instead of forwarding", %{conn: conn} do
       Application.delete_env(:code_my_spec, :harness_token)
       %{root: dir} = project_dir()

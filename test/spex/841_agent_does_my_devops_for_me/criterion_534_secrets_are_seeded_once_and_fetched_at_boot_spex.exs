@@ -7,9 +7,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1965Spex do
   gets it. Fetched at boot: the app reads them when it starts rather than
   having them baked into an image, so rotating one does not mean rebuilding.
 
-  Surface: `ProvisioningLive`. The page is where a secret is set and where the
-  encrypted files it lands in are named, so both halves are checkable there —
-  and the encrypted file is the thing the boot reads.
+  Retargeted onto the console (provisioning-console-step6, unmerged): secrets
+  live on their own plain page now (`/console/secrets`) with the form always
+  visible, so there is no secrets dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`. The page is where a secret is set and
+  where the encrypted files it lands in are named, so both halves are
+  checkable there — and the encrypted file is the thing the boot reads.
   """
 
   use CodeMySpecSpex.Case
@@ -24,14 +28,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1965Spex do
     scenario "one secret, every environment, read at start" do
       given_ "Sam is on the setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he sets a secret once", context do
-        open_secrets_dialog(context.view)
-
         html =
           context.view
           # `key`, which is what the form is named — `name` matched no input at

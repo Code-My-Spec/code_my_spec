@@ -12,14 +12,16 @@ defmodule CodeMySpec.Agents.Offers do
     * `:work` — `start_task` on the subject this turn; a task-scoped `tap_out`
       on it is `:declined` with its reason. A questions-only offer (main) wants
       `answer_notification`.
-    * `:problems`, `:menu`, `:retry` — any tool call after delivery.
-    * `:answer` — `check_answer`, or `start_task` with nothing still blocked on it.
+    * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
+      after delivery. An answer's text is in the delivered message, so it wants
+      no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
     * `:unblocked` — resuming a task the blocker held.
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
   """
 
   import Ecto.Query
+  require Logger
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Offer
@@ -33,8 +35,9 @@ defmodule CodeMySpec.Agents.Offers do
   # Bump a kind's version when its prompt text changes, so claim rates can be
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
   # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
-  # `Validation.Menu`; `:retry` in `Agents`; `:answer` and `:unblocked` in
-  # `Notifications` and `TaskOwner`.
+  # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
+  # `:answer` and `:unblocked` in `Notifications`, `TaskOwner` and `Work`; `:stalled` in
+  # `MainAgent.Cadence.announce_stalls/2`.
   @template_versions %{
     work: "work/1",
     menu: "menu/1",
@@ -43,7 +46,8 @@ defmodule CodeMySpec.Agents.Offers do
     retry: "retry/1",
     answer: "answer/1",
     unblocked: "unblocked/1",
-    check_in: "check_in/1"
+    check_in: "check_in/1",
+    stalled: "stalled/1"
   }
 
   @type subject :: {String.t(), term()}
@@ -54,7 +58,8 @@ defmodule CodeMySpec.Agents.Offers do
   no message there, the offer stands unlinked.
 
   An open offer of the same kind and subject is superseded. Answers the offer,
-  or nil when none was written, for `undelivered/1`.
+  or nil when none was written, for `undelivered/1`. A failed write is logged
+  at warning and never raised: recording must not change what is sent (f5699eb9).
   """
   @spec record(term(), Agent.t(), Offer.kind(), subject()) :: Offer.t() | nil
   def record(recorded, %Agent{id: agent_id} = agent, kind, {type, key})
@@ -75,7 +80,12 @@ defmodule CodeMySpec.Agents.Offers do
         link(offer, recorded)
         offer
 
-      {:error, _changeset} ->
+      {:error, changeset} ->
+        Logger.warning(
+          "[Offers] offer not recorded: kind=#{inspect(kind)} subject=#{inspect({type, key})} " <>
+            "agent=#{agent_id} errors=#{inspect(errors(changeset))}"
+        )
+
         nil
     end
   end
@@ -205,8 +215,9 @@ defmodule CodeMySpec.Agents.Offers do
   defp outcome(%Offer{kind: :check_in}, _agent, calls),
     do: %{status: :n_a, note: tools_note(calls)}
 
-  defp outcome(%Offer{kind: kind}, _agent, calls) when kind in [:problems, :menu, :retry],
-    do: claimed_if(calls != [])
+  defp outcome(%Offer{kind: kind}, _agent, calls)
+       when kind in [:problems, :menu, :retry, :answer, :stalled],
+       do: claimed_if(calls != [])
 
   defp outcome(%Offer{kind: :work, subject_type: "questions"}, _agent, calls),
     do: claimed_if(called?(calls, "answer_notification"))
@@ -219,13 +230,6 @@ defmodule CodeMySpec.Agents.Offers do
       tapped -> %{status: :declined, reason: tapped.blocked_reason}
     end
   end
-
-  defp outcome(%Offer{kind: :answer} = offer, agent, calls),
-    do:
-      claimed_if(
-        called?(calls, "check_answer") or
-          (called?(calls, "start_task") and not blocked_by?(agent, offer.subject_key))
-      )
 
   defp outcome(%Offer{kind: :unblocked} = offer, agent, _calls),
     do: claimed_if(resumed?(agent, offer.subject_key))
@@ -334,9 +338,22 @@ defmodule CodeMySpec.Agents.Offers do
     %{offer_id: offer.id, message_id: message_id}
     |> OfferMessage.changeset()
     |> Repo.insert()
+    |> tap(fn
+      {:ok, _link} ->
+        :ok
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Offers] offer #{offer.id} not linked to message #{message_id}: " <>
+            "errors=#{inspect(errors(changeset))}"
+        )
+    end)
   end
 
   defp link(_offer, _not_recorded), do: {:ok, nil}
+
+  defp errors(changeset),
+    do: Ecto.Changeset.traverse_errors(changeset, fn {message, _opts} -> message end)
 
   defp subject_key(nil), do: nil
   defp subject_key(key) when is_binary(key), do: key

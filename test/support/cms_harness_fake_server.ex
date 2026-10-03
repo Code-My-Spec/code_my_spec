@@ -200,7 +200,8 @@ defmodule CmsHarnessTest.FakeServer do
   ref included, since the real server always includes one for the harness to
   echo back on the matching `_result`.
   """
-  def push_app_event(event, payload \\ %{}) when event in ~w(ensure_app_running restart_app stop_app) do
+  def push_app_event(event, payload \\ %{})
+      when event in ~w(ensure_app_running restart_app reload_app stop_app) do
     ref = payload["ref"] || Integer.to_string(System.unique_integer([:positive]))
 
     case :persistent_term.get({__MODULE__, :channel}, nil) do
@@ -378,6 +379,11 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
 
   def handle_in("restart_app_result", payload, socket) do
     FakeServer.notify({:restart_app_result, payload})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("reload_app_result", payload, socket) do
+    FakeServer.notify({:reload_app_result, payload})
     {:reply, :ok, socket}
   end
 

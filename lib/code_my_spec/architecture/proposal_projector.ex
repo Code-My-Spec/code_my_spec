@@ -36,46 +36,6 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
     "# Architecture Proposal\n\n" <> Enum.join(sections, "\n")
   end
 
-  @doc """
-  Returns a summary of what changed since the last proposal.
-
-  Compares current DB state against story assignments to identify:
-  - New stories without surface component assignments
-  - Components with no stories or dependencies (orphaned)
-  """
-  @spec change_summary(Scope.t()) :: String.t()
-  def change_summary(%Scope{} = scope) do
-    unsatisfied = Stories.list_unsatisfied_stories(scope)
-    orphaned = Components.list_orphaned_contexts(scope)
-
-    parts = []
-
-    parts =
-      if unsatisfied != [] do
-        story_list =
-          Enum.map_join(unsatisfied, "\n", fn s -> "  - Story #{s.number}: #{s.title}" end)
-
-        parts ++ ["**#{length(unsatisfied)} stories without surface components:**\n#{story_list}"]
-      else
-        parts ++ ["All stories are mapped to surface components."]
-      end
-
-    parts =
-      if orphaned != [] do
-        orphan_list =
-          Enum.map_join(orphaned, "\n", fn c -> "  - #{c.module_name}" end)
-
-        parts ++
-          [
-            "**#{length(orphaned)} orphaned contexts** (no stories, not depended on):\n#{orphan_list}"
-          ]
-      else
-        parts
-      end
-
-    Enum.join(parts, "\n\n")
-  end
-
   # Private
 
   defp build_stories_map(scope, components) do

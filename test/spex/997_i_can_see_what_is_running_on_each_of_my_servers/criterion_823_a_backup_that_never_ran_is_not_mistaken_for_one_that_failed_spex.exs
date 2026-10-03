@@ -66,11 +66,23 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
           "203.0.113.10"
         )
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Retargeted onto the console (provisioning-console-step6, unmerged):
+        # see criterion 822's given_ for why running exactly the scripted
+        # steps directly has the same effect the whole-run cascade did.
+        {:ok, server_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        await_step_state(view, "deploy", "errored")
+        run_console_step(server_view, :server)
+
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+        deploys_view
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
 
         {:ok, context}
       end

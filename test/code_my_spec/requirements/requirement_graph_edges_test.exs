@@ -248,17 +248,17 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert entry,
              "should have entry edge from story.bdd_specs_exist to component.implementation_file"
 
-      # Exit: component.implementation_file → story.bdd_specs_passing
+      # Exit: component.implementation_file → story.ready_for_qa
       # (terminal for schema). The specs-passing gate sits between the
       # component tree and QA, so component terminals land there rather
       # than on qa_complete directly.
       exit_edge =
         Enum.find(edges, fn e ->
           e.from == {"component", component.id, "implementation_file"} and
-            e.to == {"story", story.id, "bdd_specs_passing"}
+            e.to == {"story", story.id, "ready_for_qa"}
         end)
 
-      assert exit_edge, "should have exit edge from component terminal to story.bdd_specs_passing"
+      assert exit_edge, "should have exit edge from component terminal to story.ready_for_qa"
     end
 
     test "creates edges for direct dependencies" do
@@ -432,7 +432,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       assert %{
                from: {"component", parent.id, "implementation_file"},
-               to: {"story", story.id, "bdd_specs_passing"}
+               to: {"story", story.id, "ready_for_qa"}
              } in edges
     end
 
@@ -453,7 +453,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # `story_promoted` moved from *before* `qa_complete` to *after* it.
     # Promotion records verified work landing; it no longer gates what QA can
     # test. `story_issues_resolved` sits ahead of `qa_complete` instead,
-    # straight off `bdd_specs_passing`: a story's own known issues have to be
+    # straight off `ready_for_qa`: a story's own known issues have to be
     # clear before QA spends a pass on it. Analyzer findings are the promote
     # gate's (28d72f8a), so `problems_resolved` is gone.
     #
@@ -485,8 +485,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         end)
       end
 
-      assert edge?.("bdd_specs_passing", "story_issues_resolved"),
-             "story_issues_resolved should follow bdd_specs_passing directly"
+      assert edge?.("ready_for_qa", "story_issues_resolved"),
+             "story_issues_resolved should follow ready_for_qa directly"
 
       assert edge?.("story_issues_resolved", "qa_complete"),
              "qa_complete should wait on the story's known issues being resolved"
@@ -494,15 +494,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert edge?.("qa_complete", "story_promoted"),
              "promotion should follow QA, not the other way round"
 
-      refute edge?.("bdd_specs_passing", "qa_complete"),
+      refute edge?.("ready_for_qa", "qa_complete"),
              "the direct edge would let QA start on a story whose code has not " <>
                "left the coding agent's worktree"
 
       refute edge?.("story_promoted", "qa_complete"),
              "the old direction — promotion gating QA — must not survive the reorder"
 
-      refute edge?.("bdd_specs_passing", "story_promoted"),
-             "promotion is no longer reached straight off bdd_specs_passing; it " <>
+      refute edge?.("ready_for_qa", "story_promoted"),
+             "promotion is no longer reached straight off ready_for_qa; it " <>
                "waits on qa_complete now"
     end
 

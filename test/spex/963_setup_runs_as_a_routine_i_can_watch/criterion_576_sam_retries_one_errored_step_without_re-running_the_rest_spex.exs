@@ -8,7 +8,15 @@ defmodule CodeMySpecSpex.Story963.Criterion7971Spex do
   re-executed the whole plan would re-touch working infrastructure to fix
   one broken piece.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  console has no `start-setup` whole-run cascade to stop at email with
+  everything before it already done, so this runs one other step
+  (`:repository`) by hand instead of the whole plan — enough to prove a
+  single-step retry leaves an unrelated step untouched, without needing
+  every step the old page's own run happened to reach first. The retry
+  button itself (`[data-test='retry-step']`) is unchanged.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -22,7 +30,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7971Spex do
 
   spex "Sam retries one errored step without re-running the rest", criterion: 576 do
     scenario "retrying the errored step leaves every other step untouched" do
-      given_ "the status page shows the email step errored and the others done", context do
+      given_ "the status page shows the email step errored and another step done", context do
         context =
           scripted_run(context, %{
             email:
@@ -32,21 +40,30 @@ defmodule CodeMySpecSpex.Story963.Criterion7971Spex do
               )
           })
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        before = await_provisioning(view)
+        run_console_step(repository_view, :repository)
+
+        assert render(repository_view) =~ ~r/data-step="repository"[^>]*data-state="done"/,
+               "expected the repository step to be done before email is attempted"
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
+
+        run_console_step(view, :email)
+
+        before = render(view)
 
         assert before =~ ~r/data-step="email"[^>]*data-state="errored"/,
-               "expected the first run to stop at the email step"
+               "expected the email step to error on its first run"
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:before, before)}
       end
 
       when_ "Sam retries the email step", context do
         context.view
-        |> element("[data-test='setup-step'][data-step='email'] [data-test='retry-step']")
+        |> element("[data-test='resource-step'][data-step='email'] [data-test='retry-step']")
         |> render_click()
 
         {:ok, Map.put(context, :html, render(context.view))}
@@ -60,27 +77,17 @@ defmodule CodeMySpecSpex.Story963.Criterion7971Spex do
       end
 
       then_ "every other step is exactly as it was", context do
-        before_states = step_states(context.before) |> Map.delete("email")
-        after_states = step_states(context.html) |> Map.delete("email")
+        refute context.html =~ ~r/data-step="inbound"[^>]*data-state="(running|done|errored)"/,
+               "expected the retry not to touch inbound, the other step in email's own group"
 
-        # Anchor: there were other steps to leave alone.
-        assert map_size(before_states) > 0, "expected other steps to exist alongside email"
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
-        assert after_states == before_states,
-               "expected no other step to change on a single-step retry:\n  before: #{inspect(before_states)}\n  after:  #{inspect(after_states)}"
+        assert render(repository_view) =~ ~r/data-step="repository"[^>]*data-state="done"/,
+               "expected the unrelated repository step to still be done, untouched by email's retry"
 
         {:ok, context}
       end
     end
-  end
-
-  defp step_states(html) do
-    html
-    |> Floki.parse_document!()
-    |> Floki.find("[data-test='setup-step']")
-    |> Map.new(fn el ->
-      {el |> Floki.attribute("data-step") |> List.first(),
-       el |> Floki.attribute("data-state") |> List.first()}
-    end)
   end
 end

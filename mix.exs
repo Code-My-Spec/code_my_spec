@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.287",
+      version: "2.0.312",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli, :desktop],
@@ -240,7 +240,6 @@ defmodule CodeMySpec.MixProject do
       {:tokenizers, "~> 0.5"},
       {:nx, "~> 0.9"},
       {:flame, "~> 0.1"},
-      {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli, :cli_demo]},
 
       # CLI release
       {:burrito,

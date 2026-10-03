@@ -60,10 +60,12 @@ defmodule CodeMySpecWeb.Application do
         # since this app is already a Fly machine — `FLY_APP_NAME` and
         # `FLY_IMAGE_REF` are Fly's own runtime env, so the only new
         # requirement is the `FLY_API_TOKEN` secret (not auto-injected by
-        # Fly for security reasons). A Hetzner backend was the original
-        # plan, but the app isn't Hetzner-deployed at all — nothing
-        # portable exists there yet for a runner to boot from, while Fly
-        # already has exactly that. dev/test keep `LocalBackend`, where a
+        # Fly for security reasons). `embed_pool_backend/1` falls back to
+        # `LocalBackend` when neither secret is set yet, so a prod boot
+        # before either is configured still works — see that function.
+        # Hetzner (story 877) is now real — `hetzner_burst_box_configured?/0`
+        # wins when present, `FlyBackend` otherwise. dev/test keep
+        # `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
           {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
@@ -252,12 +254,26 @@ defmodule CodeMySpecWeb.Application do
   # :prod falls back to `FlyBackend` exactly as before this existed. Dev and
   # test are untouched either way — `embed_pool_backend/1` is never called
   # for them at all (see `embeddings_configured?/0` above).
+  #
+  # `min: 0` means no runner boots at app start regardless — a backend's own
+  # `init/1` only ever runs lazily, inside the pool's own async boot task,
+  # the first time a burst actually needs a runner. That isolates a missing
+  # token to one failed boot attempt rather than a boot-time crash, but
+  # "isolated" still means every burst fails until someone notices —
+  # checking the token is present is the one fact that tells a backend's
+  # `init/1` apart from "will actually boot something" before committing to
+  # it.
   defp embed_pool_backend(:prod) do
-    if hetzner_burst_box_configured?() do
-      configure_hetzner_flame_backend!()
-      HetznerFlameBackend
-    else
-      FLAME.FlyBackend
+    cond do
+      hetzner_burst_box_configured?() ->
+        configure_hetzner_flame_backend!()
+        HetznerFlameBackend
+
+      fly_api_token_configured?() ->
+        FLAME.FlyBackend
+
+      true ->
+        FLAME.LocalBackend
     end
   end
 
@@ -265,6 +281,13 @@ defmodule CodeMySpecWeb.Application do
 
   defp hetzner_burst_box_configured? do
     case System.get_env("HETZNER_API_TOKEN") do
+      token when is_binary(token) and token != "" -> true
+      _ -> false
+    end
+  end
+
+  defp fly_api_token_configured? do
+    case System.get_env("FLY_API_TOKEN") do
       token when is_binary(token) and token != "" -> true
       _ -> false
     end

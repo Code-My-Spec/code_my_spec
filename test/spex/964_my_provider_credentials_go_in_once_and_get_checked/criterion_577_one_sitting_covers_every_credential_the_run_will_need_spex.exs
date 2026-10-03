@@ -8,7 +8,18 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
   walks away; the run does not interrupt him halfway through to collect
   something it could have asked for up front.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged):
+  `all_setup_options/1` drove the old page's `setup-options-form`/
+  `toggle_options` event, which `ConsoleLive` has not ported — there is no
+  console UI for choosing setup options. Dropped rather than worked around:
+  `Provisioning.setup_options/1` already returns every available option for
+  a project whose `setup_options` is `nil` (`setup_active_project`'s own
+  fixture never sets it), so a freshly created project already has every
+  option on — the same state `all_setup_options/1` would have submitted back.
+  "Every option is genuinely on" is still true, just by construction instead
+  of by an explicit (and currently unreachable) toggle.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -21,26 +32,11 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
 
   spex "One sitting covers every credential the run will need", criterion: 577 do
     scenario "every credential the chosen options need is asked for at once" do
-      given_ "Sam has chosen his setup options", context do
-        # Turned on explicitly rather than relying on every option defaulting
-        # to on. "One sitting covers every credential the run will need" is
-        # only a real question when every option is genuinely on, and if the
-        # defaults ever narrow, this criterion would quietly start asserting
-        # something much weaker while still passing.
-        view = mount_provisioning(context)
-        options = all_setup_options(view)
-
-        {:ok, Map.put(context, :options, options)}
-      end
-
       when_ "he opens credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        html =
-          view
-          |> element("[data-test='manage-credentials']")
-          |> render_click()
+        html = render(view)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

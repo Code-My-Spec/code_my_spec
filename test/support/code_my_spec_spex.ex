@@ -44,6 +44,13 @@ defmodule CodeMySpecSpex do
       # `CodeMySpec.AgentTasks` above.
       CodeMySpec.Promotion,
       CodeMySpec.Problems,
+      # Story 1116's `ClickHouseCassetteHelpers.configure!/2` writes real
+      # `ProjectSecrets` rows and `stub_rows_by_username/1` stubs
+      # `Observability.ClickHouseClient` — the module under test for
+      # every criterion in that story, the same reasoning as
+      # `CodeMySpec.AgentTasks` and `CodeMySpec.Promotion` above.
+      CodeMySpec.Observability,
+      CodeMySpec.ProjectSecrets,
       CodeMySpec.RecordingLock,
       # A submodule of `Requirements`, not its own boundary — `GraphInputs`
       # alone cannot be named as a dep (Boundary classifies by the nearest

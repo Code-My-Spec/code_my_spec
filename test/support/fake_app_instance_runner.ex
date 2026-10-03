@@ -32,20 +32,29 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
 
   defp defaults(opts, base \\ %{}) do
     %{
-      recipe?: Map.get(base, :recipe?, %{"serve" => true, "seed" => false}) |> Map.merge(Keyword.get(opts, :recipe, %{})),
+      recipe?:
+        Map.get(base, :recipe?, %{"serve" => true, "seed" => false})
+        |> Map.merge(Keyword.get(opts, :recipe, %{})),
       app_name: Keyword.get(opts, :app_name, Map.get(base, :app_name, "fakeapp")),
-      database_exists?: Keyword.get(opts, :database_exists?, Map.get(base, :database_exists?, false)),
-      main_database_name: Keyword.get(opts, :main_database_name, Map.get(base, :main_database_name, "fakeapp_dev")),
+      database_exists?:
+        Keyword.get(opts, :database_exists?, Map.get(base, :database_exists?, false)),
+      main_database_name:
+        Keyword.get(opts, :main_database_name, Map.get(base, :main_database_name, "fakeapp_dev")),
       main_ports: Keyword.get(opts, :main_ports, Map.get(base, :main_ports, {4000, 4001})),
       clone_result: Keyword.get(opts, :clone_result, Map.get(base, :clone_result, :ok)),
-      current_commit: Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
-      after_promote_result: Keyword.get(opts, :after_promote_result, Map.get(base, :after_promote_result, :ok)),
+      current_commit:
+        Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
+      after_promote_result:
+        Keyword.get(opts, :after_promote_result, Map.get(base, :after_promote_result, :ok)),
       listener_pid: Keyword.get(opts, :listener_pid, Map.get(base, :listener_pid, nil)),
       process_root: Keyword.get(opts, :process_root, Map.get(base, :process_root, nil)),
-      launch_result: Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
+      launch_result:
+        Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
       probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving)),
-      start_tunnel_result: Keyword.get(opts, :start_tunnel_result, Map.get(base, :start_tunnel_result, :ok))
+      reload_result: Keyword.get(opts, :reload_result, Map.get(base, :reload_result, :ok)),
+      start_tunnel_result:
+        Keyword.get(opts, :start_tunnel_result, Map.get(base, :start_tunnel_result, :ok))
     }
   end
 
@@ -53,11 +62,14 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
 
   @doc "Sets whether `root`'s justfile declares `name` — defaults: serve true, seed false."
   def put_recipe(name, present?) do
-    Agent.update(__MODULE__, fn state -> %{state | recipe?: Map.put(state.recipe?, name, present?)} end)
+    Agent.update(__MODULE__, fn state ->
+      %{state | recipe?: Map.put(state.recipe?, name, present?)}
+    end)
   end
 
   @doc "Sets what `database_exists?/1` answers — flips true after a successful `clone_database/3` on its own."
-  def put_database_exists(exists?), do: Agent.update(__MODULE__, &%{&1 | database_exists?: exists?})
+  def put_database_exists(exists?),
+    do: Agent.update(__MODULE__, &%{&1 | database_exists?: exists?})
 
   @doc "Sets what `clone_database/3` answers — `:ok` or `{:error, reason}`."
   def put_clone_result(result), do: Agent.update(__MODULE__, &%{&1 | clone_result: result})
@@ -143,7 +155,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   end
 
   @doc "Sets what `run_after_promote/1` answers — `:ok` or `{:error, reason}`."
-  def put_after_promote_result(result), do: Agent.update(__MODULE__, &%{&1 | after_promote_result: result})
+  def put_after_promote_result(result),
+    do: Agent.update(__MODULE__, &%{&1 | after_promote_result: result})
 
   @impl true
   def run_after_promote(root) do
@@ -152,8 +165,26 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   end
 
   @impl true
-  def launch(root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host \\ nil) do
-    record(:launch, [root, port, https_port, database, log_path, main?, tunnel_held_by_harness?, host])
+  def launch(
+        root,
+        port,
+        https_port,
+        database,
+        log_path,
+        main?,
+        tunnel_held_by_harness?,
+        host \\ nil
+      ) do
+    record(:launch, [
+      root,
+      port,
+      https_port,
+      database,
+      log_path,
+      main?,
+      tunnel_held_by_harness?,
+      host
+    ])
 
     # `running?/1` in real `AppInstance` now checks `process_root(pid) ==
     # root` before trusting `alive?/1` — see criterion 1589. Defaulting to
@@ -165,6 +196,15 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
     Agent.update(__MODULE__, &%{&1 | process_root: root})
 
     Agent.get(__MODULE__, & &1.launch_result)
+  end
+
+  @doc "Sets what `reload/5` answers — `:ok` or `{:error, reason}`."
+  def put_reload_result(result), do: Agent.update(__MODULE__, &%{&1 | reload_result: result})
+
+  @impl true
+  def reload(root, port, https_port, database, log_path) do
+    record(:reload, [root, port, https_port, database, log_path])
+    Agent.get(__MODULE__, & &1.reload_result)
   end
 
   @impl true
@@ -205,7 +245,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   end
 
   @doc "Sets what `start_tunnel/2` answers — `:ok` (a real, checkable fake pid) or `{:error, reason}`."
-  def put_start_tunnel_result(result), do: Agent.update(__MODULE__, &%{&1 | start_tunnel_result: result})
+  def put_start_tunnel_result(result),
+    do: Agent.update(__MODULE__, &%{&1 | start_tunnel_result: result})
 
   @impl true
   def start_tunnel(credentials, origin_url) do

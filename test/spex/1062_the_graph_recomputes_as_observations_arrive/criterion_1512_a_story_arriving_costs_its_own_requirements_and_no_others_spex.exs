@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3616Spex do
 
   Dropping stories from the topology gate was tried on its own and reverted. The
   incremental branch reuses `stored_edges` wholesale, so the arriving story got
-  its seven requirements and **no edges between them** — `bdd_specs_passing` no
+  its seven requirements and **no edges between them** — `ready_for_qa` no
   longer gated on `bdd_specs_exist`, prerequisites silently stopped gating, and
   work would be offered out of order. Nothing failed; the graph was just wrong.
 
@@ -132,7 +132,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3616Spex do
                """
                The arriving story's requirements carry no prerequisites.
 
-               This is the half a cheap fix breaks. `bdd_specs_passing` is
+               This is the half a cheap fix breaks. `ready_for_qa` is
                gated on `bdd_specs_exist`, `qa_complete` on the work before it;
                a story whose edges were never computed offers every one of them
                at once, in any order, and nothing anywhere says the ordering is

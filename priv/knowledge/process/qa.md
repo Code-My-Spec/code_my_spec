@@ -36,7 +36,7 @@ than "the app must be healthy":
 
 `erroring` passing is deliberate. **A 500 is the application answering** —
 that is a QA finding, not a reason to keep QA away from it. `down` refuses
-because there is nothing to test; the fix is to promote, which restarts it.
+because there is nothing to test; the fix is to promote, which starts an app that is down.
 `nil` passes because holding every story on a status nobody has reported
 yet would be a gate no agent can clear.
 

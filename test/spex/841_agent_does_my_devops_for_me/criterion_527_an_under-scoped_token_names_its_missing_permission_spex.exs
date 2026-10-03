@@ -8,9 +8,15 @@ defmodule CodeMySpecSpex.Story841.Criterion1958Spex do
   and hit the same wall. The answer has to name the permission that was
   missing, so the fix is "add Registrar write" rather than "try again".
 
-  Surface: `ProvisioningLive`, checking credentials against the providers. The
-  check is a real call — a token that looks right and cannot do the job is
-  precisely what this criterion is about, so nothing here asserts on format.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`, checking credentials against the
+  providers. The check is a real call — a token that looks right and cannot
+  do the job is precisely what this criterion is about, so nothing here
+  asserts on format.
   """
 
   use CodeMySpecSpex.Case
@@ -30,11 +36,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1958Spex do
     scenario "a token the provider accepts but will not act on" do
       given_ "Sam has entered a token that the provider will refuse", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         view
         |> form("[data-test='credentials-form']",

@@ -21,7 +21,7 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
   *depend on* `qa_complete` (story 1108 gave every copy its own app, so QA no
   longer needs the story's code on main first) — leaving this node's
   prerequisite at `story_promoted` would have closed the same cycle the
-  2026-09-23 fix broke, one hop later. Repointed straight to `bdd_specs_passing`:
+  2026-09-23 fix broke, one hop later. Repointed straight to `ready_for_qa`:
   the checker was never reading the edge for its own safety anyway, so nothing
   is lost by offering the work as soon as specs are green. (`problems_resolved`
   sat beside it until 28d72f8a moved analyzer findings to the promote gate.)
@@ -70,13 +70,13 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs bdd_specs_passing → story_issues_resolved → qa_complete → story_promoted → deploy" do
+    test "the chain runs ready_for_qa → story_issues_resolved → qa_complete → story_promoted → deploy" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
 
       assert by_name["story_issues_resolved"].prerequisites ==
-               [id_of.("bdd_specs_passing")],
+               [id_of.("ready_for_qa")],
              """
              Known issues have to be clearable before QA runs, independent of
              promotion — repointing this at story_promoted (or leaving

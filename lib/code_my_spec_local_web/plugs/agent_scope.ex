@@ -38,6 +38,9 @@ defmodule CodeMySpecLocalWeb.Plugs.AgentScope do
   is a call without an agent, and the tools that need one say so themselves.
   Refusing here would take down every call on the connection, including the
   ninety-odd that never wanted an agent.
+
+  The working copy follows `Agents.scope_for/2`, as on the hosted side; here a
+  harness is always named, so that only ever logs a disagreement.
   """
 
   import Plug.Conn
@@ -50,7 +53,9 @@ defmodule CodeMySpecLocalWeb.Plugs.AgentScope do
     with agent_id when is_binary(agent_id) <- header(conn, "x-agent-id"),
          %{} = scope <- conn.assigns[:current_scope],
          {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
-      assign(conn, :agent_id, agent.id)
+      conn
+      |> assign(:agent_id, agent.id)
+      |> assign(:current_scope, Agents.scope_for(scope, agent))
     else
       _ -> conn
     end

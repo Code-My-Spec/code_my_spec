@@ -226,9 +226,19 @@ defmodule CodeMySpec.SpexGivensTest do
   # environment, `sync_project`, `execute_proposal`, `add_dependency` — and
   # assert their own success (3aeb66cf). Listed by the same precedent as
   # `StoryHelpers.`: a helper whose body is the drive.
+  # Story 1016's 1749-1754 builders (`CodeMySpecSpex.StoryBoundHelpers`):
+  # set_active_story, accept_issue and sync_project through their tools, each
+  # asserting it took.
+  #
   # Story 1080's state builders (`CodeMySpecSpex.OfferHelpers`): each drives
   # `put_to_work`, `start_task` and turn events and asserts the offer it
   # expects arrived, so a given naming one has made its precondition true.
+  # Story 1116's `ClickHouseCassetteHelpers.configure!/2` and
+  # `.stub_rows_for_username/2`: the same precedent as `Fixtures.` and
+  # `Req.Test.stub` combined — the first writes a real `ProjectSecrets` row
+  # through the same function story 1081 will use, the second pins the
+  # provider seam the way `Req.Test.stub` always does, just wrapped so every
+  # criterion in that story doesn't repeat the same four lines.
   @establishes ~w(
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
@@ -262,7 +272,9 @@ defmodule CodeMySpec.SpexGivensTest do
     app_instance_rig push_app_event push_app_event_as_main
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
+    team_on_a_story issue_accepted qa_plan_missing
     refuse_verify_calls
+    ClickHouseCassetteHelpers.
   )
 
   # The failure message has always offered a second remedy — "if the
@@ -290,7 +302,6 @@ defmodule CodeMySpec.SpexGivensTest do
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_267_oauth_signup_is_treated_as_a_confirmed_account_from_the_moment_the_callback_completes_no_separate_spex.exs",
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_269_repeat_oauth_sign-ins_are_idempotent_the_same_provider_identity_reuses_the_existing_user_row_and_spex.exs",
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_270_same_email_from_a_different_oauth_provider_links_to_the_existing_user_instead_of_creating_a_spex.exs",
-    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_732_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",
     "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_739_reaching_specs-ready_releases_qa_on_the_story_spex.exs"
   ]
 

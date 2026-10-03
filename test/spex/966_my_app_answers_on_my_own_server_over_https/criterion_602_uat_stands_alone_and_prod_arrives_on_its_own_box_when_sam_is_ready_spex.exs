@@ -14,7 +14,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   configuration already rejected. Turning production on provisions; it never
   migrates.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): there
+  is no `start-setup` whole-run to run UAT through and run again for prod —
+  each step is run directly via `run_console_step/2` on its own resource
+  group's page instead (`repository` once, then `secrets`/`server` per
+  environment on `servers`). The environment listing this reads
+  (`[data-test='environment']`, from `EnvironmentsForm`) is unchanged, now
+  on `/console/settings`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -43,8 +51,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # so the step still saw a repository belonging to nobody and paused.
         own_repository(context.project)
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # Before setup runs, or it stops at its second step. `secrets` seeds
         # each environment's encrypted env, and sops will not create the file
@@ -53,12 +61,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # it the step exits 100 with "cannot operate on non-existent file" and
         # every step after it stays not_started, which reads as "UAT was never
         # provisioned" — the thing this criterion asserts.
-        view |> element("[data-test='generate-project']") |> render_click()
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
 
-        # The options form is `phx-change`, and its params are
-        # `options[<key>]`. A submit carrying a `provisioning` map changed
-        # nothing at all — the page kept every default and the criterion
-        # passed while asserting the opposite of what it says.
         # Production is off because the project has no production environment,
         # not because a checkbox is unticked — there is no `prod` option on the
         # setup form, and there never was. Environments are rows; the steps fan
@@ -68,22 +72,28 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         tear_down_after(context.scope, [:server])
         tear_down_repository(context.project)
 
-        paste_provider_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        view |> element("[data-test='start-setup']") |> render_click()
+        paste_provider_credentials(credentials_view)
 
-        # The click starts the run and returns; the step transitions
-        # arrive afterwards, so reading what `render_click/1` handed back
-        # shows the page as it was *before* anything ran — every step
-        # not_started, which reads as "nothing was provisioned".
-        await_provisioning(view)
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
-        # The environment rows this reads live behind their own dialog now
-        # (7ba5d249) — `paste_provider_credentials/1` above left the page on
-        # the *credentials* dialog, so this switches it before rendering.
-        open_environments_dialog(view)
-        html = Phoenix.LiveViewTest.render(view)
+        run_console_step(repository_view, :repository)
 
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/servers?env=uat"
+          )
+
+        for step <- [:secrets, :server], do: run_console_step(view, step)
+
+        {:ok, settings_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/settings")
+
+        html = render(settings_view)
         servers = servers_by_environment(html)
 
         # Anchor: UAT really was provisioned on its own, and production was
@@ -104,19 +114,25 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # Adding the environment, because that is what turning production on
         # is here — there is no `prod` checkbox, and the steps fan out over
         # whichever environment rows exist.
-        context.view
+        {:ok, settings_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/settings")
+
+        settings_view
         |> form("[data-test='add-environment-form']", environment: %{name: "prod"})
         |> render_submit()
 
-        context.view |> element("[data-test='start-setup']") |> render_click()
+        {:ok, prod_view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/servers?env=prod"
+          )
 
-        # Waiting for production's server specifically. "Nothing is
-        # running" cannot distinguish this run finishing from the previous
-        # one having finished, and the previous one halted — so that wait
-        # returns the page as it was before this run wrote anything.
-        html = await_environment_server(context.view, "prod")
+        for step <- [:secrets, :server], do: run_console_step(prod_view, step)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, settings_view2, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/settings")
+
+        {:ok, Map.put(context, :html, render(settings_view2))}
       end
 
       then_ "production is provisioned on a server of its own", context do
@@ -155,33 +171,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         "#{name}=#{inspect(server)}"
       end)
 
-    steps =
-      parsed
-      |> Floki.find("[data-test='setup-step']")
-      |> Enum.map_join(", ", fn s ->
-        name = s |> Floki.attribute("data-step") |> List.first()
-        state = s |> Floki.attribute("data-state") |> List.first()
-
-        step_line(name, state, s)
-      end)
-
-    "environments: #{environments}. steps: #{steps}"
+    # No step markup on this page anymore (it's /console/settings, not a
+    # resource-detail page) — the environment listing is the whole of what's
+    # worth printing here now.
+    "environments: #{environments}"
   end
-
-  # Only a failed step carries a reason worth printing, and a healthy one's text
-  # is the whole rendered card — which would bury the failures this exists to
-  # surface.
-  #
-  # 900 characters, not 160. At 160 it cut off inside the cassette's own
-  # filename, so the diagnostic named neither the request that missed nor the
-  # cassette it missed in — which is the entire question. Reading the
-  # untruncated message is what identified the SSH key mismatch.
-  defp step_line(name, state, element) when state in ["errored", "paused"] do
-    detail = element |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 900)
-    "#{name}=#{state} (#{detail})"
-  end
-
-  defp step_line(name, state, _element), do: "#{name}=#{state}"
 
   defp servers_by_environment(html) do
     html

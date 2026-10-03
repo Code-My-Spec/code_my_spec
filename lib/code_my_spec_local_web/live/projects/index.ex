@@ -130,15 +130,20 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
               </.link>
               <button
                 type="button"
-                phx-click="delete"
-                phx-value-id={project.id}
-                data-confirm={"Delete project #{project.name}? This only removes the local record."}
+                phx-click={show_confirm("delete-project-#{project.id}")}
                 class="btn btn-xs btn-ghost text-error"
               >
                 Delete
               </button>
             </div>
           </div>
+          <.confirm_dialog
+            id={"delete-project-#{project.id}"}
+            title="Delete this project?"
+            message={"Delete project #{project.name}? This only removes the local record."}
+            confirm_label="Delete"
+            on_confirm={JS.push("delete", value: %{id: project.id})}
+          />
         </div>
       </div>
     </Layouts.app>

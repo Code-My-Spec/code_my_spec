@@ -12,7 +12,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
   Two cassettes: the first provisions the server, the second answers
   "that server does not exist" when setup re-checks.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  server step re-runs directly via `run_console_step/2` rather than through
+  `start-setup`'s whole-run cascade, which the console has no equivalent
+  of — this isolates the step's own re-verification from the rest of a run
+  just as well, maybe better.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -48,8 +54,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
         # so the step still saw a repository belonging to nobody and paused.
         own_repository(context.project)
 
-        view = mount_provisioning(context)
-
         # Everything the server step needs before it can reach Hetzner, and
         # a teardown registered before anything is made — a recording that
         # fails partway must still not leave a box running.
@@ -66,19 +70,22 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
         # Saving a credential proves it with a real call now, so this is a
         # provider interaction and belongs inside the cassette.
-        paste_provider_credentials(view)
+        paste_provider_credentials(credentials_view)
 
-        view
-        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(view, :server)
 
         html = render(view)
 
         assert html =~ ~r/data-step="server"[^>]*data-state="done"/,
-               "expected the server step to be done before the resource is deleted. " <>
-                 step_detail(html, "server")
+               "expected the server step to be done before the resource is deleted"
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -86,7 +93,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
       when_ "Sam has deleted that server and setup runs again", context do
         # The cassette answers the existence check with "not found", which
         # is how setup learns the resource is gone.
-        context.view |> element("[data-test='start-setup']") |> render_click()
+        run_console_step(context.view, :server)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

@@ -9,7 +9,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
   @doc """
@@ -28,7 +27,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     Problem
     |> where([p], p.project_id == ^project_id)
     |> scope_to_harness(scope)
-    |> reject_superseded()
     |> select([p], {count(p.id), max(p.updated_at)})
     |> Repo.one()
   end
@@ -61,7 +59,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     Problem
     |> where([p], p.project_id == ^project_id)
     |> scope_to_harness(scope)
-    |> reject_superseded()
     |> apply_filters(opts)
     |> order_by([p], [
       fragment(
@@ -569,65 +566,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # corruption, one layer over. A scope with no harness clears across the
   # project, which is what a caller holding the project rather than a copy of it
   # means.
-  # Hide a finding only when the file it describes has provably changed since it
-  # was recorded — both fingerprints present and different.
-  #
-  # A reconcile replaces problems per source per file, so a finding survives any
-  # run that does not re-examine its exact path, and is then reported against a
-  # file that moved underneath it. That is how a credo finding came to be
-  # reported at line 86 of an 83-line file, as a current result rather than a
-  # stale one, with credo run by hand disagreeing.
-  #
-  # Deliberately conservative: a missing fingerprint on either side keeps the
-  # problem. Everything else tonight went wrong by treating absent information
-  # as good news, and hiding a real finding is worse than showing an old one.
-  defp reject_superseded(query) do
-    # The replacement run, not the edit, is what retires a finding.
-    #
-    # This used to hide a problem the moment its file's fingerprint moved on.
-    # The row survived — supersession is a query-time filter, never a delete —
-    # so the finding simply stopped being visible, and stopped blocking, before
-    # any analyzer had looked at the new content. Story 988's criterion 8201 is
-    # exactly that: "a finding from before the last edit still blocks until the
-    # rerun lands". It did not; an edit was enough to clear the gate.
-    #
-    # That is also why it read as a plumbing bug for so long. Every input to the
-    # blocking decision was correct — mode `:block_all`, one credo problem,
-    # matching harness — and the problem was still there afterwards, which looks
-    # like proof that supersession never fired. A filter that hides without
-    # deleting leaves no evidence of having run.
-    #
-    # So the fingerprint difference is now a necessary condition rather than a
-    # sufficient one: the analyzer must also have finished a run for that source
-    # against the changed file. Once it has, reconciliation has already replaced
-    # that source's set, so anything still standing was re-reported and belongs
-    # on the gate anyway.
-    reruns =
-      from(r in CodeMySpec.Analysis.Run,
-        where: r.source == parent_as(:problem).source,
-        where: r.project_id == parent_as(:problem).project_id,
-        where: r.status == :completed,
-        where: not is_nil(r.finished_at),
-        where: r.finished_at > parent_as(:file).mtime,
-        select: 1
-      )
-
-    files =
-      from(f in CodeMySpec.Files.File,
-        as: :file,
-        where: parent_as(:problem).file_path == f.path,
-        where: parent_as(:problem).working_copy_id == f.working_copy_id,
-        where: not is_nil(f.fingerprint),
-        where: f.fingerprint != parent_as(:problem).file_fingerprint,
-        where: not is_nil(f.mtime),
-        where: exists(reruns),
-        select: 1
-      )
-
-    query
-    |> from(as: :problem)
-    |> where([p], is_nil(p.file_fingerprint) or not exists(files))
-  end
 
   # A scope that names no working copy means *the project's default one* — the
   # same thing it already meant on the way in, where `insert_all_problems/2`
@@ -665,13 +603,9 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     # that one; one that did not shares the project's nil object, same as files.
     working_copy_id = scope.active_working_copy_id || WorkingCopies.ensure_default(scope)
 
-    # Likewise once: which version of each file these were found in, so a
-    # finding that outlives its file can later be recognised as superseded.
-    fingerprints = fingerprints_for(project_id, working_copy_id, problems)
-
     problems
     |> Enum.reduce_while([], fn problem_data, acc ->
-      case insert_single_problem(problem_data, project_id, working_copy_id, fingerprints) do
+      case insert_single_problem(problem_data, project_id, working_copy_id) do
         {:ok, problem} -> {:cont, [problem | acc]}
         {:error, changeset} -> {:halt, {:error, changeset}}
       end
@@ -682,36 +616,12 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     end
   end
 
-  # One query for the whole batch — a reconcile inserts hundreds, and per-problem
-  # lookups would be hundreds of round trips for data that does not change
-  # inside a single reconcile.
-  defp fingerprints_for(project_id, working_copy_id, problems) do
-    paths =
-      problems
-      |> Enum.map(&problem_path/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-
-    CodeMySpec.Files.File
-    |> where([f], f.project_id == ^project_id and f.working_copy_id == ^working_copy_id)
-    |> where([f], f.path in ^paths)
-    |> select([f], {f.path, f.fingerprint})
-    |> Repo.all()
-    |> Map.new()
-  end
-
-  defp problem_path(%{file_path: path}) when is_binary(path), do: path
-  defp problem_path(%{"file_path" => path}) when is_binary(path), do: path
-  defp problem_path(_), do: nil
-
-  defp insert_single_problem(problem_data, project_id, working_copy_id, fingerprints) do
-    attrs = problem_data |> to_attrs_map() |> Map.put(:project_id, project_id)
-    fingerprint = Map.get(fingerprints, MapAccess.get(attrs, :file_path))
-
+  defp insert_single_problem(problem_data, project_id, working_copy_id) do
     attrs =
-      attrs
+      problem_data
+      |> to_attrs_map()
+      |> Map.put(:project_id, project_id)
       |> Map.put(:working_copy_id, working_copy_id)
-      |> Map.put(:file_fingerprint, fingerprint)
 
     %Problem{}
     |> Problem.changeset(attrs)

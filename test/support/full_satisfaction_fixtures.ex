@@ -141,7 +141,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   `apply_specs_enforced/1` used to be the last step here, on the theory that
   `apply_fresh_analysis_runs/1` alone was the transition that made
   `qa_complete` actionable. It is not: `SpecsPassingChecker.passing?/2` reads
-  the `specs_ready` latch alone as satisfying `bdd_specs_passing` whenever no
+  the `specs_ready` latch alone as satisfying `ready_for_qa` whenever no
   fresh spex run exists yet to contradict it, so enforcing specs before any
   spex run has happened satisfied the gate by itself, one step early. 3199
   found this by asserting the premise at the end of its first `given_` and
@@ -168,8 +168,8 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   end
 
   @doc """
-  The QA-readiness transition: enforce the story's specs and stamp a fresh
-  green analysis run, together.
+  The QA-readiness transition: a fresh green analysis run, and the story
+  certified ready for QA at a commit (`ready_for_qa`'s stamp), together.
 
   Split out of `apply_up_to_analysis/1` because the two steps cannot be
   separated and still leave `qa_complete` inactionable in between — see that
@@ -179,25 +179,19 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   @spec apply_qa_readiness_transition(map()) :: map()
   def apply_qa_readiness_transition(context) do
     context
-    |> apply_specs_enforced()
     |> apply_fresh_analysis_runs()
+    |> apply_ready_for_qa()
   end
 
-  # `bdd_specs_passing` checks the story's `specs_ready` latch, and writing the
-  # spec file satisfies `bdd_specs_exist` and nothing more. Without this the
-  # chain stopped one requirement short of where its own docstring says it
-  # stops: `qa_complete` never became reachable, so every spex built on this
-  # frontier got a `FixBddSpecs` prompt for the story the fixture had just
-  # created, naming an id that changed on every run.
-  #
-  # Directly, because nothing a fixture can drive sets it any more: the story
-  # page lost its Enforce button and only a promote of the story latches it
-  # (e1174640), which needs a merge this frontier does not have. Reloaded,
-  # because `context.story` is the map `StoryHelpers.fetch/2` answers rather
-  # than a `%Story{}`, and `set_specs_ready/4` matches on the struct.
-  defp apply_specs_enforced(context) do
+  # What completing `ready_for_qa` leaves behind: the story stamped with the
+  # commit its copy was certified at. Directly, because certifying needs a
+  # harness to read the tree and run the analyzers, which this frontier does
+  # not have. Not `specs_ready` — that latch now means promoted, and a story on
+  # its way to QA has not been. Reloaded, because `context.story` is the map
+  # `StoryHelpers.fetch/2` answers rather than a `%Story{}`.
+  defp apply_ready_for_qa(context) do
     story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
-    {:ok, _} = CodeMySpec.Stories.set_specs_ready(context.scope, story, true)
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40))
     context
   end
 

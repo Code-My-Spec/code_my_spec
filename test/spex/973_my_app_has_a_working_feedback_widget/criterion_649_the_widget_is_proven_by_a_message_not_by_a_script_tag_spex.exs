@@ -11,7 +11,13 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
   Same prove-it-before-claiming-it gate as 968's restore, 972's render and
   974's inbound delivery.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move. The widget
+  step is environment-scoped and this criterion needs the "prod" row
+  specifically (the fleet's real site), so the mount carries `?env=prod`
+  rather than relying on the default environment a bare resource URL picks.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Widget`.
   """
 
@@ -75,13 +81,18 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
         ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "the widget works"})
         assert_reply(ref, :ok, %{}, 1000)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/widget?env=prod"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
-        html = CodeMySpecSpex.Case.run_step_interaction(context.view, :widget, "prod")
+        run_console_step(context.view, :widget)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -118,7 +129,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
 
         done_at =
           context.parsed
-          |> Floki.find("[data-test='setup-step'][data-step='widget']")
+          |> Floki.find("[data-test='resource-step'][data-step='widget']")
           |> Floki.attribute("data-completed-at")
           |> List.first()
 

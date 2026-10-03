@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
         assert body =~ "bdd_specs_exist",
                "expected the story to still produce requirements, got: #{body}"
 
-        assert body =~ ~r/\[ \]\s+\*\*bdd_specs_passing\*\*/,
+        assert body =~ ~r/\[ \]\s+\*\*ready_for_qa\*\*/,
                "rewriting the BDD specs must return the story to not ready, got: #{body}"
 
         {:ok, context}

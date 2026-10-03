@@ -18,6 +18,16 @@ defmodule CodeMySpecSpex.Story992.Criterion8236Spex do
   scenario forces the one case `builder_destroyed` can actually be `true`:
   the box is due for its end-of-billing-hour check and nothing else is using
   it.
+
+  Retargeted onto the console (provisioning-console-step6): the deploy
+  step's own markup (`DeployConfig`) is unchanged — it was reused as-is —
+  only the page it's rendered under moved. The old page's single "start
+  setup" button ran the whole step sequence to reach deploy; the console's
+  deploy form runs `:deploy` alone, which is sufficient here since
+  `built_deploy_run/2` scripts every other step and nothing in this
+  criterion reads them.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`.
   """
 
   use CodeMySpecSpex.Case
@@ -41,10 +51,18 @@ defmodule CodeMySpecSpex.Story992.Criterion8236Spex do
       end
 
       when_ "he deploys and the image is built", context do
-        view = mount_provisioning(context)
-        view |> element("[data-test='start-setup']") |> render_click()
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
-        {:ok, Map.put(context, :html, await_provisioning(view))}
+        view
+        |> form(
+          "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] " <>
+            "[data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
+
+        {:ok, Map.put(context, :html, render(view))}
       end
 
       then_ "the image exists", context do

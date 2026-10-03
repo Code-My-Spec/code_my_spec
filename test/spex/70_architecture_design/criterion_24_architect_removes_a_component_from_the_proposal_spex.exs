@@ -143,10 +143,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
 
       then_ "execution does not delete the existing component", context do
         # Observable at the surface twice over: the proposal applied without a
-        # deletion error, and the gate that runs afterwards still names the
-        # component. Since components became records (3aeb66cf, step 5) a kept
-        # component no story covers is an authored orphan, so the gate asks for
-        # it to be resolved — which it could not do if it had been deleted.
+        # deletion error, and `list_components` still lists the component.
         body = response_text(context.execute_response)
 
         refute context.execute_response.isError,
@@ -156,9 +153,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         refute body =~ ~r/error.*Stories\.RemoteClient|Stories\.RemoteClient.*error/i,
                "expected no deletion error for Stories.RemoteClient, got: #{inspect(body)}"
 
-        assert response_text(context.evaluate_response) =~ "RemoteClient",
-               "the gate no longer knows the component the proposal left out — it was " <>
-                 "deleted: " <> inspect(response_text(context.evaluate_response))
+        assert CodeMySpecSpex.ComponentGraphHelpers.listed(context) =~ "Stories.RemoteClient",
+               "the component the proposal left out was deleted"
 
         {:ok, context}
       end

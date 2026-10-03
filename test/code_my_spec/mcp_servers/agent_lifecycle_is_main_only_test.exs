@@ -106,5 +106,21 @@ defmodule CodeMySpec.McpServers.AgentLifecycleIsMainOnlyTest do
                "a #{unquote(role)} agent was refused `#{name}` without the role reason:\n\n#{text}"
       end
     end
+
+    test "a #{role} agent cannot borrow main's grant by naming main's agent_id" do
+      scope = full_scope_fixture()
+      scoped = agent(scope, unquote(role))
+      main = agent(scope, "main")
+      frame = %Frame{assigns: %{current_scope: scope, agent_id: scoped.id}}
+
+      for name <- @lifecycle do
+        {error?, text} = run(frame, name, main.id)
+
+        assert error?,
+               "a #{unquote(role)} agent reached `#{name}` by naming main's agent_id:\n\n#{text}"
+
+        refute text =~ "reached"
+      end
+    end
   end
 end

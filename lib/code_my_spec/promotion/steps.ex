@@ -193,7 +193,8 @@ defmodule CodeMySpec.Promotion.Steps do
   outside a promotion.
 
   A successful merge's result also carries `before`/`after` — the checkout's
-  HEAD on either side of it, which `Promotion` logs.
+  HEAD on either side of it, which `Promotion` logs — and `changed`, the paths
+  between them, which `Promotion` reads to choose a reload or a restart.
 
   It also carries `version` — the version this promotion originated by
   bumping and tagging `root`'s own `mix.exs`, or `nil` for a checkout that has
@@ -278,12 +279,29 @@ defmodule CodeMySpec.Promotion.Steps do
            output: String.trim(out),
            before: before,
            after: after_sha,
+           changed: changed_between(env, root, before, after_sha),
+           # HEAD once the version bump is committed: what the app serves next.
+           head: head(env, root),
            version: originated,
            stamp_version: originated || current_version(env, root)
          }}
 
       {out, _} ->
         merge_refused(root, branch, out)
+    end
+  end
+
+  # What the merge brought in, which `Promotion` reads to choose a reload or a
+  # restart. `before..after` is the merge alone: the version bump this merge
+  # then commits touches `mix.exs` every time, and counting it would make
+  # every promote a restart. `nil` when it cannot be read, which restarts.
+  defp changed_between(_env, _root, same, same), do: []
+  defp changed_between(_env, _root, nil, _after_sha), do: nil
+
+  defp changed_between(env, root, before, after_sha) do
+    case git(env, root, ["diff", "--name-only", "#{before}..#{after_sha}"]) do
+      {out, 0} -> String.split(out, "\n", trim: true)
+      _ -> nil
     end
   end
 

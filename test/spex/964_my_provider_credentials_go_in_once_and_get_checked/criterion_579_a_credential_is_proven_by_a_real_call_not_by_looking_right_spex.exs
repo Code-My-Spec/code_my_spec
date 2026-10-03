@@ -13,7 +13,16 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
   spec drives the LiveView and the cassette intercepts the app's
   outbound HTTP, rather than the spec stubbing the surface under test.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first. "Nothing has been provisioned
+  yet" is checked against the Overview page's project-wide
+  `setup-checklist-item` listing, the console's equivalent of the old page's
+  full `setup-step` list, since no single resource-group page shows every
+  step at once.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -29,11 +38,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
     scenario "the Hetzner token is confirmed against Hetzner before it reads verified" do
       given_ "Sam is on credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -64,10 +69,10 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
       end
 
       then_ "nothing has been provisioned yet", context do
-        {:ok, provisioning, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, overview, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console")
 
-        refute has_element?(provisioning, "[data-test='setup-step'][data-state='done']"),
+        refute has_element?(overview, "[data-test='setup-checklist-item'][data-state='done']"),
                "expected credential verification to provision nothing"
 
         {:ok, context}

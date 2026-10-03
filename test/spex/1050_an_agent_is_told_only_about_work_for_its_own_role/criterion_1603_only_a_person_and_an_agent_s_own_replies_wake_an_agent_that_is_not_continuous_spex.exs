@@ -37,7 +37,8 @@ defmodule CodeMySpecSpex.Story1050.Criterion1603Spex do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
 
-      given_ "a main agent that is not continuous, and an app that files issues", context do
+      given_ "a main agent that is not continuous, and a coding teammate running beside it",
+             context do
         # On the main checkout: that is where "the main agent" is looked for.
         {:ok, _} =
           CodeMySpec.WorkingCopies.designate_main(
@@ -46,42 +47,36 @@ defmodule CodeMySpecSpex.Story1050.Criterion1603Spex do
           )
 
         main = Fixtures.running_agent(context.scope, role: "main", continuous: false)
-        key = :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
-
-        Fixtures.set_project_deploy_key(context.scope, context.scope.active_project, key)
+        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
 
         {:ok,
          context
-         |> Map.merge(%{agent: main, deploy_key: key})
+         |> Map.merge(%{agent: main, coder: coder})
          |> Map.put(:before, heard_count(context, main.id))}
       end
 
-      when_ "an end user of the app files an issue through the widget", context do
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("accept", "application/json")
-        |> Plug.Conn.put_req_header("authorization", "Bearer #{context.deploy_key}")
-        |> post(~p"/api/widget/issues", %{
-          "issue" => %{
-            "title" => "the export button does nothing",
-            "description" => "clicked twice"
+      when_ "the harness reports main still running and the coder gone", context do
+        # The teammate-died notice is the fleet telling main something; a main
+        # outside the loop is not woken for it.
+        CodeMySpecSpex.WorkingCopyHelpers.report_agents(context, [
+          %{
+            "working_copy_id" => context.scope.active_working_copy_id,
+            "role" => "main",
+            "agent_id" => context.agent.id
           }
-        })
-        |> Phoenix.ConnTest.json_response(201)
+        ])
 
         {:ok, context}
       end
 
       then_ "main is not woken by it", context do
-        # The notice is sent from a task, so the transport is given a moment.
+        # Sent from a task, so the transport is given a moment. The notice may
+        # still be written to main's thread for its next turn; what must not
+        # happen is a turn or a dispatch now.
         main_id = context.agent.id
         refute_receive {:agent_message, ^main_id, _text}, 1_000
-
-        refute_told_anything(
-          context,
-          context.agent.id,
-          context.before,
-          "a main agent outside the loop was woken by a widget issue"
-        )
+        refute_received {:agent_dispatch, ^main_id, _ref, _text}
+        refute_received {:work_turn_requested, ^main_id, _ref, _prompt}
 
         {:ok, context}
       end

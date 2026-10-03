@@ -28,7 +28,7 @@ defmodule CmsHarness.Agents.Tools.StartTask do
       properties: %{
         requirement_name: %{
           type: "string",
-          description: "Name of the requirement, e.g. implementation_file, bdd_specs_passing"
+          description: "Name of the requirement, e.g. implementation_file, ready_for_qa"
         },
         entity_type: %{
           type: "string",

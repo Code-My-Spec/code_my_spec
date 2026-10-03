@@ -24,28 +24,12 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Users.Scope
 
-  # Which analyzers a changed role *schedules*. It used to have to agree with
-  # `Analysis.Fingerprint`'s `@source_roles` (gone with fingerprint freshness,
-  # 28d72f8a), which decided which roles made a source *stale*; when the two
-  # disagreed, the stop blocked on a source it would never re-run.
-  #
-  # `test: [:credo]` was exactly that. Editing a test file changed exunit's
-  # fingerprint — `:test` is in `@toolchain_only`, correctly, since editing a
-  # test changes what the suite reports — so the hook said "blocking on stale
-  # sources: exunit" while `resolve_analyzers/3` returned `[:credo]` and
-  # `ensure_stale_runs/3` was never asked for exunit. Observed as:
-  #
-  #     [Validation] Changed files: test(1)
-  #     [Validation] blocking on stale sources: exunit
-  #     [Pipeline]   Analyzers: [:credo] (role-derived)
-  #     [Analysis]   enqueued: compiler, credo
-  #
-  # repeating every stop. An agent that fixes the failing test is blocked by
-  # the same stale finding afterwards, because fixing it is a `:test` edit and
-  # a `:test` edit does not schedule the suite that would clear it. The only
-  # exits were an unrelated `:implementation` edit or R8's stuck escape.
   @qa_journey_result_path CodeMySpec.Paths.qa_journey_result()
 
+  # Which analyzers a changed role schedules. A role an analyzer reports
+  # findings against has to schedule that analyzer, or editing the file can
+  # never refresh the findings that block it: a `:test` edit schedules exunit,
+  # because the suite is what the edit changed.
   @role_analyzers %{
     implementation: [:credo, :exunit_stale, :spex_stale],
     test: [:credo, :exunit_stale],
@@ -242,7 +226,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   def task_analyzers(task) do
     module = task.session_type
 
-    if module && function_exported?(module, :analyzers, 0) do
+    if module && Code.ensure_loaded?(module) && function_exported?(module, :analyzers, 0) do
       module.analyzers()
     else
       []
@@ -263,7 +247,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   def task_excluded_analyzers(task) do
     module = task.session_type
 
-    if module && function_exported?(module, :excluded_analyzers, 0) do
+    if module && Code.ensure_loaded?(module) && function_exported?(module, :excluded_analyzers, 0) do
       module.excluded_analyzers()
     else
       []

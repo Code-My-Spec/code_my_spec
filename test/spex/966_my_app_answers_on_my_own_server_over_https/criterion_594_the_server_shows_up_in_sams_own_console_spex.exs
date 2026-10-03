@@ -7,7 +7,14 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
   one billed for it. Nothing is held on the platform's side — he can stop
   paying CodeMySpec tomorrow and keep the box.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  server step lives on the `servers` resource group now — see criterion
+  613's moduledoc. `paste_provider_credentials/1` needs the credentials-form
+  (or its trigger) on the mounted view, which only the dedicated
+  `/console/credentials` page carries, so it runs against a separately
+  mounted credentials view.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -33,7 +40,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
   spex "The server shows up in Sam's own console", criterion: 594 do
     scenario "the provisioned server is recorded under Sam's own account" do
       given_ "Sam is on the setup status page with credentials entered", context do
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
         # A real Hetzner server is created; register its teardown before it is
         # made so a recording that fails partway still leaves no box running.
@@ -43,18 +51,14 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
       end
 
       when_ "the server step has run", context do
-        paste_provider_credentials(context.view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        context.view
-        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
+        paste_provider_credentials(credentials_view)
 
-        # Waited for, then read: the step runs under a supervised task, so
-        # `render_click/1` returns while it is still running.
-        await_step(context.view, :server)
-        html = render(context.view)
+        run_console_step(context.view, :server)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the server is recorded under his own account", context do

@@ -56,16 +56,9 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
     assert {:ok, _} = Validation.validate_stop(scope, nil)
   end
 
-  # The path a spex takes, which is not the one above.
-  #
-  # `Problems.create_problems/2` stamps `file_fingerprint` from the file as it
-  # stands at insert, and `reject_superseded/1` drops any finding whose file has
-  # moved on since. That is the point of both — a finding about bytes that no
-  # longer exist is not evidence about the bytes that do.
-  #
-  # It also means a scenario that records a finding and *then* touches the file
-  # loses it, which reads as "the finding did not block" rather than "the
-  # finding was superseded". 988's scenarios record and then re-sync.
+  # The path a spex takes, which is not the one above. A finding stands until
+  # its analyzer's next run replaces the source's set; editing its file does not
+  # retire it (28d72f8a, story 988 criterion 8201).
   describe "a finding recorded the way the pipeline records them" do
     test "blocks while its file is unchanged", %{scope: scope} do
       {:ok, _} =
@@ -85,7 +78,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
       assert {:error, _reason, _key} = Validation.validate_stop(scope, nil)
     end
 
-    test "is superseded once the file moves on", %{scope: scope} do
+    test "still blocks after its file moves on", %{scope: scope} do
       {:ok, _} =
         CodeMySpec.Problems.create_problems(scope, [
           %{
@@ -102,10 +95,8 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
       {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
       fresh_analysis_runs_fixture(scope)
 
-      assert {:ok, _} = Validation.validate_stop(scope, nil),
-             "the finding cites bytes that no longer exist, so it is superseded — " <>
-               "which is correct, and is why a scenario that records then edits " <>
-               "sees no block and reads it as the rule failing"
+      assert {:error, _reason, _key} = Validation.validate_stop(scope, nil),
+             "an edit alone retired the finding; only the analyzer's rerun may"
     end
   end
 end

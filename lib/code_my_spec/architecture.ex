@@ -1,9 +1,9 @@
 defmodule CodeMySpec.Architecture do
   @moduledoc """
-  A coordination context that generates and maintains text-based architectural views for AI agent consumption.
-
-  Provides projectors that create documentation artifacts (component hierarchies,
-  namespace trees) written to the repository and synchronized with current project state during full syncs.
+  Read-side views of the component graph: the overview, namespace tree and
+  Mermaid diagram, rendered on demand from the component records for the
+  architecture tools and the architecture page. Nothing is written to the
+  repository.
   """
 
   use Boundary,

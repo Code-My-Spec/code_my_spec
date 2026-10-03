@@ -182,7 +182,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   # as "is this one of ours" is wrong in both directions, which is how an agent
   # in our own BEAM came to be told to `curl` a harness id this machine does not
   # serve (it should have been told to stop and wait to be notified).
+  #
+  # Loaded first: `function_exported?/3` answers false for a module that has not
+  # been loaded yet, and in interactive mode (dev, test) a task module nobody has
+  # touched since boot is not. A held `bdd_specs_passing` task's `FixBddSpecs`
+  # fell through to its read-only `evaluate/2` on exactly that, answering "not
+  # certified" without ever certifying (2026-10-02).
   defp dispatch_evaluate(module, scope, task, owner) do
+    Code.ensure_loaded(module)
+
     cond do
       function_exported?(module, :evaluate, 3) -> module.evaluate(scope, task, owner)
       Evaluator.has_custom_evaluate?(module) -> module.evaluate(scope, task)

@@ -138,10 +138,8 @@ RUN mix deps.get \
 # at is still the source of truth.
 #
 # `deps.get` again rather than assumed-safe from the run above: `only:` env
-# restrictions in mix.exs mean prod_cli and dev_sprite do not depend on
-# exactly the same set (sqlite_vec is prod_cli-only), so a dev_sprite compile
-# against prod_cli's fetched deps would be missing nothing it needs and
-# carrying one it does not — get is idempotent, so asking again just to be
+# restrictions in mix.exs mean prod_cli and dev_sprite need not depend on
+# exactly the same set — get is idempotent, so asking again just to be
 # sure costs a skipped-already-present check, not a redownload.
 RUN MIX_ENV=dev_sprite mix deps.get \
   && MIX_ENV=dev_sprite mix compile \

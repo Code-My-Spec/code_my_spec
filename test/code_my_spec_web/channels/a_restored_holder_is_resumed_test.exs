@@ -171,4 +171,110 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
                    restored agent off, and the once-per-join sweep walked past it.
                    """
   end
+
+  describe "a turn the restart discarded (5a977f41)" do
+    defp mid_turn(scope, attrs, said) do
+      {:ok, agent} =
+        AgentsRepository.create_agent(scope, %{
+          provider: "anthropic",
+          engine: :alloy,
+          role: Map.get(attrs, :role, "coding"),
+          continuous: Map.get(attrs, :continuous, true),
+          status: :running,
+          working_copy: "/tmp/discarded-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      {:ok, conversation} =
+        Conversations.find_or_create_agent_conversation(
+          scope.active_account_id,
+          scope.active_project_id,
+          agent.id
+        )
+
+      {:ok, _message} = Conversations.add_message(conversation, :user, said, "user")
+
+      {:ok, agent} =
+        AgentsRepository.update_agent(
+          scope,
+          agent,
+          Map.merge(
+            %{turn_started_at: DateTime.utc_now()},
+            Map.take(attrs, [:declined_offer_count, :declined_offer, :declined_offer_at])
+          )
+        )
+
+      agent
+    end
+
+    test "is offered again with the message it was answering", ctx do
+      agent = mid_turn(ctx.scope, %{}, "Rename the export columns, then run the suite.")
+
+      restart(ctx.socket, [agent])
+
+      agent_id = agent.id
+      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
+
+      assert prompt =~ "Rename the export columns, then run the suite.",
+             "the restored agent's turn did not carry the message its discarded turn answered:\n#{prompt}"
+    end
+
+    test "reaches an agent out of the loop that was answering a person", ctx do
+      agent = mid_turn(ctx.scope, %{continuous: false, role: "main"}, "Escalate f247c90f.")
+
+      restart(ctx.socket, [agent])
+
+      agent_id = agent.id
+      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
+      assert prompt =~ "Escalate f247c90f."
+    end
+
+    test "reaches an agent whose work offers are damped", ctx do
+      agent =
+        mid_turn(
+          ctx.scope,
+          %{
+            declined_offer: "damped",
+            declined_offer_count: 5,
+            declined_offer_at: DateTime.utc_now()
+          },
+          "Carry on with the task."
+        )
+
+      restart(ctx.socket, [agent])
+
+      agent_id = agent.id
+      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
+      assert prompt =~ "Carry on with the task."
+    end
+
+    test "an agent that was idle is not handed an old message", ctx do
+      {:ok, agent} =
+        AgentsRepository.create_agent(ctx.scope, %{
+          provider: "anthropic",
+          engine: :alloy,
+          role: "coding",
+          continuous: false,
+          status: :running,
+          working_copy: "/tmp/idle-#{System.unique_integer([:positive])}",
+          working_copy_id: ctx.scope.active_working_copy_id
+        })
+
+      {:ok, conversation} =
+        Conversations.find_or_create_agent_conversation(
+          ctx.scope.active_account_id,
+          ctx.scope.active_project_id,
+          agent.id
+        )
+
+      {:ok, _} = Conversations.add_message(conversation, :user, "An old request.", "user")
+
+      restart(ctx.socket, [agent])
+
+      :ok = CodeMySpecSpex.Fixtures.drain_background_work()
+
+      agent_id = agent.id
+      refute_received {:work_turn_requested, ^agent_id, _ref, _prompt}
+    end
+  end
 end
