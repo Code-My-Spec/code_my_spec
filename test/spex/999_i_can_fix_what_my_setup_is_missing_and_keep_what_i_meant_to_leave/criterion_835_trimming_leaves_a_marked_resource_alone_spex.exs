@@ -49,17 +49,14 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
             end
           })
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Retargeted onto the console (provisioning-console-step6, unmerged):
+        # see criterion 822's given_ for why running exactly the scripted
+        # steps directly has the same effect the whole-run cascade did — no
+        # more "wait for a removed step" problem either.
+        {:ok, server_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        # The run settling, not a step by name. This waited on `monitoring`,
-        # a step removed from the sequence when it turned out to need an
-        # account, an API key and a notification target only a person can
-        # supply — so the wait could never succeed, spent its full thirty
-        # seconds, and the criterion passed because thirty seconds is long
-        # enough for the run to finish on its own.
-        await_provisioning(view)
+        run_console_step(server_view, :server)
 
         {:ok, context}
       end

@@ -80,11 +80,21 @@ defmodule CodeMySpecSpex.Story997.Criterion8288Spex do
           "203.0.113.10"
         )
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Retargeted onto the console (provisioning-console-step6, unmerged):
+        # `scripted_run/2` replaces every step's execute/verify globally, so
+        # running exactly the steps this criterion cares about directly has
+        # the same effect `start-setup`'s whole-run cascade did — every other
+        # step would have trivially no-opped under the same script anyway.
+        {:ok, server_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        await_step_state(view, "dns", "done")
+        run_console_step(server_view, :server)
+
+        {:ok, dns_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
+
+        run_console_step(dns_view, :dns)
+        run_console_step(dns_view, :tls)
 
         {:ok, context}
       end
