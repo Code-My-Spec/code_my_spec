@@ -1,7 +1,7 @@
 import Config
 import_config "harness_base.exs"
 
-# The harness: `just harness` in dev and the `code_my_spec_cli` release that
+# The harness: `just harness` in dev and the `cms_harness` release that
 # brew and the MSI install. One env for both — what differs between a dev
 # harness and an installed one is set by environment variables in
 # runtime.exs (`CMS_SERVER_URL`, `CMS_ANALYSIS_SLOTS`, `CMS_HARNESS_PORT`),

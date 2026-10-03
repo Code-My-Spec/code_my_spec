@@ -101,8 +101,8 @@ jobs:
         run: |
           rm -rf _build/harness release/
           mix compile --warnings-as-errors
-          mix release code_my_spec_cli
-          cp _build/harness/code_my_spec_cli-*.tar.gz "${{ matrix.asset }}"
+          mix release cms_harness
+          cp _build/harness/cms_harness-*.tar.gz "${{ matrix.asset }}"
           ls -la "${{ matrix.asset }}"
 
       - name: Upload release tarball
@@ -139,7 +139,7 @@ jobs:
           # Read from mix.exs (robust for both tag pushes and workflow_dispatch,
           # where GITHUB_REF is a branch and would inject slashes into sed).
           VERSION=$(grep -m1 'version:' mix.exs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          REL="$GITHUB_WORKSPACE/_build/harness/rel/code_my_spec_cli"
+          REL="$GITHUB_WORKSPACE/_build/harness/rel/cms_harness"
           # GITHUB_WORKSPACE is D:\a\... on Windows; backslashes in a sed
           # replacement get escape-interpreted (\a -> BEL 0x07) and corrupt the
           # path. Forward slashes are valid in WiX globs and sed-safe.
