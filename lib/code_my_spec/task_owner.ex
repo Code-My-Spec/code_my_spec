@@ -336,12 +336,34 @@ defmodule CodeMySpec.TaskOwner do
   # it which task to resume.
   defp wake_holder(_scope, _owner, _released, {:question, _id, :withdrawn}, _opts), do: :ok
 
-  defp wake_holder(scope, %Agent{} = agent, released, {_type, id, _outcome} = blocker, opts) do
-    notice = blocker_resolved_notice(released, blocker, Keyword.get(opts, :detail))
+  # Mid-turn, the answer itself says what to do with the task (`Notifications`):
+  # one message, not two.
+  defp wake_holder(
+         _scope,
+         %Agent{turn_started_at: %DateTime{}},
+         _released,
+         {:question, _id, :answered},
+         _opts
+       ),
+       do: :ok
 
-    Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Work.wake_with_notice(scope, agent, notice, :blocker_resolved, {"blocker", id})
-    end)
+  # Busy on another task: resuming now would make it a second active one
+  # (story 1080). Told, not offered; `Work` offers it back once that task is
+  # done.
+  defp wake_holder(scope, %Agent{} = agent, released, {_type, id, _outcome} = blocker, opts) do
+    detail = Keyword.get(opts, :detail)
+
+    case active_task(agent) do
+      nil ->
+        notice = blocker_resolved_notice(released, blocker, detail)
+
+        Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Work.wake_with_notice(scope, agent, notice, :blocker_resolved, {"blocker", id})
+        end)
+
+      _active ->
+        Work.note_released(agent, deferred_notice(released, blocker, detail))
+    end
 
     :ok
   end
@@ -349,13 +371,28 @@ defmodule CodeMySpec.TaskOwner do
   defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
 
   defp blocker_resolved_notice(released, {type, id, outcome}, detail) do
-    tasks = Enum.map_join(released, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
-
-    notice =
-      "Your blocker #{type} #{id} #{outcome_phrase(outcome)}; resume #{tasks} with `start_task`."
-
-    if is_binary(detail) and detail != "", do: notice <> "\n\n" <> detail, else: notice
+    with_detail(
+      "Your blocker #{type} #{id} #{outcome_phrase(outcome)}; resume #{task_list(released)} " <>
+        "with `start_task`.",
+      detail
+    )
   end
+
+  defp deferred_notice(released, {type, id, outcome}, detail) do
+    with_detail(
+      "Your blocker #{type} #{id} #{outcome_phrase(outcome)}. Finish your active task " <>
+        "first; #{task_list(released)} is offered back to you once it is done.",
+      detail
+    )
+  end
+
+  defp task_list(released),
+    do: Enum.map_join(released, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
+
+  defp with_detail(notice, detail) when is_binary(detail) and detail != "",
+    do: notice <> "\n\n" <> detail
+
+  defp with_detail(notice, _detail), do: notice
 
   defp outcome_phrase(:below_threshold), do: "is below the project's fix threshold"
   defp outcome_phrase(outcome), do: "was #{outcome}"

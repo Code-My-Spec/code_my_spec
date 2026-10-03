@@ -279,6 +279,47 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  The scope a call from `agent` acts in: which working copy is part of who is
+  calling (John, ed28189c).
+
+    * No working copy named, and the agent has one in the scope's project — the
+      agent's copy, with its environment (`WorkingCopies.put_scope/2`), exactly
+      as an `X-Harness-Id` would have set it. An agent-only call over the
+      hosted `/mcp/harness` used to carry no environment and every
+      file-touching tool refused it with `:no_environment`.
+    * A copy named that is not the agent's — the named copy stands: it is the
+      connection's own disk. Logged, because the two come from one launch
+      request and disagreeing means something upstream is wrong.
+    * Otherwise unchanged.
+  """
+  @spec scope_for(Scope.t(), Agent.t()) :: Scope.t()
+  def scope_for(%Scope{active_working_copy_id: nil} = scope, %Agent{working_copy_id: id})
+      when is_binary(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{project_id: project_id} = copy} when project_id == scope.active_project_id ->
+        WorkingCopies.put_scope(scope, copy)
+
+      _elsewhere ->
+        scope
+    end
+  end
+
+  def scope_for(
+        %Scope{active_working_copy_id: named} = scope,
+        %Agent{working_copy_id: own} = agent
+      )
+      when is_binary(named) and is_binary(own) and named != own do
+    Logger.warning(
+      "[Agents] agent #{agent.id} called naming working copy #{named} but runs on #{own}; " <>
+        "acting on the named copy"
+    )
+
+    scope
+  end
+
+  def scope_for(%Scope{} = scope, _agent), do: scope
+
+  @doc """
   Who is acting, as an off record names them: the calling agent when there is
   one, otherwise the scope's person.
   """
