@@ -47,10 +47,9 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
   end
 
   # Analysis state and problems are deliberately absent: the rule is
-  # **changing files moves the graph; running analyzers does not.** No
-  # requirement reads a component's findings any more (28d72f8a), and the one
-  # that reads spex findings, `bdd_specs_passing`, is settled from the
-  # `problems_changed` event rather than by a recompute.
+  # **changing files moves the graph; running analyzers does not.** Nothing in
+  # the graph reads findings (John, 2026-10-02); promotion reads them at a
+  # commit.
 
   # The code that turns inputs into a graph is an input.
   #

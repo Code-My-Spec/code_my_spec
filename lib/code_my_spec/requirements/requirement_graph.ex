@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Requirements.RequirementGraph do
   @moduledoc """
-  Computes the full requirement graph — nodes AND edges — from Files + Problems.
+  Computes the full requirement graph — nodes AND edges — from Files and the project's records.
 
   The graph is entity-agnostic: edges represent real dependencies regardless of
   whether they cross entity boundaries. There are three kinds of edges:
@@ -165,90 +165,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # different question from whether an answer is current. A graph that is
   # slower than it needs to be costs time; a graph that is wrong is an agent
   # doing work that does not exist.
-  @doc """
-  Withhold a clean analyzer verdict from a source that has never completed a
-  run, on the way out.
-
-  The latest completed run answers for its source, however old (28d72f8a):
-  analysis and requirements are orthogonal, so a run being behind the code
-  never hides or withholds work here. Whether results are current is the
-  promote gate's question, keyed on the commit.
-
-  What remains is absence. A source with no completed run on this working copy
-  has recorded nothing, so a zero count from it is not a pass. That fact is
-  project-wide and changes on its own schedule, so it is applied here rather
-  than baked into rows — baking a project-wide term into rows made an analyzer
-  finishing recompute 1116 of 1347 requirements (criterion 3448).
-
-  **Downgrades only**, so it is idempotent and safe on both the cached and the
-  computed path. A count is always served as it stands.
-
-  Keyed off `details.analysis_source`, written by `problem_verdict/5`, so a
-  requirement says for itself which analyzer it leans on.
-  """
-  @spec serve([Requirement.t()], Preloader.context()) :: [Requirement.t()]
-  def serve(nodes, ctx) do
-    ran = Map.get(ctx, :analysis_ran, %{})
-    Enum.map(nodes, &withhold_unanswered(&1, ran))
-  end
-
-  defp withhold_unanswered(%{satisfied: true} = node, ran) do
-    case analysis_source(node) do
-      source when is_binary(source) ->
-        if Map.get(ran, source, false), do: node, else: unanswered(node, source)
-
-      nil ->
-        node
-    end
-  end
-
-  defp withhold_unanswered(node, _ran), do: node
-
-  defp unanswered(node, source) do
-    %{
-      node
-      | satisfied: false,
-        details:
-          put_detail(
-            node.details,
-            :reason,
-            "No #{source} run has completed on this working copy yet, so there is " <>
-              "no result to read — start one with `start_analysis`"
-          )
-    }
-  end
-
-  # Written back in the key style the map already uses.
-  #
-  # `problem_verdict/5` builds atom-keyed details and a rehydrated row carries
-  # string-keyed ones, and both reach here. Normalising to strings on the way
-  # out broke `details.reason` for every caller holding a freshly computed
-  # requirement — `StaleAnalysisTest` caught it — so the overlay preserves
-  # whichever style it was handed rather than imposing one.
-  defp put_detail(details, key, value) when is_map(details) do
-    if atom_keyed?(details),
-      do: Map.put(details, key, value),
-      else: Map.put(details, to_string(key), value)
-  end
-
-  defp put_detail(_details, key, value), do: %{key => value}
-
-  defp atom_keyed?(details) do
-    case Map.keys(details) do
-      [] -> true
-      keys -> Enum.any?(keys, &is_atom/1)
-    end
-  end
-
-  defp analysis_source(%{details: details}) when is_map(details) do
-    case Requirement.normalize_details(details) do
-      %{"analysis_source" => source} when is_binary(source) -> source
-      _ -> nil
-    end
-  end
-
-  defp analysis_source(_node), do: nil
-
   defp recompute_stale(scope, ctx, config, preload_ms) do
     # What a pass costs, on the line that already says what it did.
     #
@@ -351,14 +267,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       nodes = kept ++ fresh
 
-      # Split by kind, and with the two project-wide inputs beside it, because
-      # "665 entities stale" does not say whether that was 665 real changes or
-      # one shared input taking everybody with it. Stories and components have
-      # different shared inputs — `analysis_ran` for components, the running
-      # copy for stories — so the split alone distinguishes them: all components
-      # and no stories is the analyser flipping, all stories and no components
-      # is the running copy moving, and a partial count of each is genuine file
-      # change. Guessing between those three cost most of a day.
+      # Split by kind, with the shared inputs beside it, because "665 entities
+      # stale" does not say whether that was 665 real changes or one shared
+      # input taking everybody with it.
       {stale_stories, stale_comps} =
         Enum.split_with(written, fn {type, _id} -> type == "story" end)
 
@@ -370,8 +281,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           "#{length(stale_comps)}/#{length(ctx.components)} components); " <>
           "in #{elapsed_ms(started)}ms " <>
           "(preload #{ms_or_na(preload_ms)}, projection #{projection_ms}ms); " <>
-          "shared=#{shared_parts(ctx)}; " <>
-          "analysis_ran=#{inspect(Map.get(ctx, :analysis_ran, %{}))}"
+          "shared=#{shared_parts(ctx)}"
       )
 
       # `reduced`, not `ctx`, and this is the whole reason the first attempt
@@ -395,19 +305,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         edge_nodes: edge_nodes
       )
 
-      {serve_ms, served} = timed(fn -> serve(nodes, ctx) end)
-
       log_pass_cost(started, %{
         preload: preload_ms,
         projection: projection_ms,
         topology: topology_ms,
         project: project_ms,
         fingerprint: fingerprint_ms,
-        edges: edges_ms,
-        serve: serve_ms
+        edges: edges_ms
       })
 
-      {served, edges}
+      {nodes, edges}
     end
   end
 
@@ -1182,11 +1089,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     )
     |> persist_projection(scope, enriched_ctx, nodes, edges)
 
-    # Persisted durable, returned overlaid — in that order. The rows must hold
-    # the component's own answer so a source's first run does not invalidate
-    # them; the caller must see the qualified one so it never acts on a clean
-    # verdict no run has produced.
-    {serve(nodes, ctx), edges}
+    {nodes, edges}
   end
 
   # What the graph costs, split the way the work splits.
@@ -1625,19 +1528,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # graph does not re-verify that something really changed. Re-deriving is
   # re-verification of everything, every time.
   #
-  # So: load the rows, apply the serving overlay, answer. Freshness comes from
+  # So: load the rows and answer. Freshness comes from
   # the rows themselves — `checked_at` is per requirement and always has been,
   # which is the direction story 1020's notes already name: "is this current"
   # is a per-row question.
   defp serve_with_actionable(scope, ctx) do
-    {stored, edges} = Projection.load(scope, ctx)
-    nodes = serve(stored, ctx)
+    {nodes, edges} = Projection.load(scope, ctx)
 
-    log_stale_read(scope, ctx, stored)
+    log_stale_read(scope, ctx, nodes)
 
     # The un-enriched ctx, as in `next_actionable/1`: `actionable_from/3` reads
     # `ctx.components` and `ctx.stories`, both of which the preloader supplies.
-    {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(stored)}
+    {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(nodes)}
   end
 
   @doc """
@@ -2956,8 +2858,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # majority of every pass, unaccounted for, on passes doing no work: that is
   # the number worth chasing, and it cannot be chased from a total.
   #
-  # `fingerprint` and `serve` are the two named steps left on the zero-stale
-  # path. Whatever the four still do not cover is `stale_entities/3` — the
+  # `fingerprint` is the named step left on the zero-stale path. Whatever the
+  # others still do not cover is `stale_entities/3` — the
   # per-entity hash of every component and story — and naming the others is how
   # that gets isolated without restructuring the `with` guards, which would
   # change which work the short-circuits skip.
@@ -2966,7 +2868,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     accounted = parts |> Map.values() |> Enum.map(&(&1 || 0)) |> Enum.sum()
 
     named =
-      ~w(preload projection topology project fingerprint edges serve)a
+      ~w(preload projection topology project fingerprint edges)a
       |> Enum.map_join(", ", fn key -> "#{key} #{ms_or_na(parts[key])}" end)
 
     Logger.info(

@@ -4947,23 +4947,8 @@ defmodule CodeMySpecSpex.Fixtures do
         at_head(scope, opts)
       )
 
-    # And say so. Whether spex has run is a graph input — `Preloader` feeds it
-    # to `analysis_ran`, and `ready_for_qa` reads it.
-    #
-    # `fresh_analysis_runs_fixture/2` calls `RunsRepository.finish_run/3`
-    # directly rather than going through `Analysis.Reconciler.reconcile/4`,
-    # which is the only production path that announces a finished run. So the
-    # rows land and the graph never hears, and a silent write now leaves the
-    # graph stale rather than being repaired by whoever reads next.
-    #
-    # Without this, a fixture that advances a project to the `qa_complete`
-    # frontier left the graph believing the specs had never passed, so every
-    # scenario built on that frontier was handed `FixBddSpecs` for the story the
-    # fixture had just prepared — criteria 6529 and 6533, deterministically.
-    :ok = GraphInputs.announce(scope, "Analysis", [], :project_wide)
-
-    # And settled before returning, so the graph agrees with the world this
-    # fixture has just finished building.
+    # Settled before returning, so the graph agrees with the world this fixture
+    # has just finished building. Runs are not a graph input, but the sync is.
     #
     # Announcing alone leaves a window: the pass is scheduled, the fixture
     # returns, and whether the scenario's first read sees the finished setup

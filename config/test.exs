@@ -185,7 +185,12 @@ config :code_my_spec, CodeMySpec.Repo,
       do: DBConnection.ConnectionPool,
       else: Ecto.Adapters.SQL.Sandbox
     ),
-  pool_size: System.schedulers_online() * 2
+  pool_size: System.schedulers_online() * 2,
+  # A spex shares one sandbox connection with its own background tasks, and
+  # under gate load DBConnection's 50ms target dropped waiters at ~150ms
+  # (d1f5a541). A real deadlock still fails, five seconds later.
+  queue_target: 5_000,
+  queue_interval: 10_000
 
 # Homebrew's Unix socket avoids TCP port exhaustion during busy local runs.
 if :os.type() == {:unix, :darwin} and File.exists?("/tmp/.s.PGSQL.5432") do

@@ -58,6 +58,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1759Spex do
 
         refute tapped.isError, response_text(tapped)
         :ok = Fixtures.end_turn(context.scope, context.coder, [])
+        :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
 
@@ -84,6 +85,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1759Spex do
 
         refute tapped.isError, response_text(tapped)
         :ok = Fixtures.end_turn(context.scope, context.coder, [])
+        :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
 
