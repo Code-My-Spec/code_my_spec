@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Case do
   alias CodeMySpec.Content.S3Client
   alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
   alias ExUnit.Callbacks
   alias Phoenix.ConnTest
@@ -1793,7 +1794,15 @@ defmodule CodeMySpecSpex.Case do
 
   The target is a context, a scope, or the id itself, because callers have all
   three.
+
+  A context with a live harness (`:harness`, from
+  `CodeMySpecSpex.HarnessHooks`) is posted through that harness instead — the
+  path production takes — and answers what it answers. The others still reach
+  `CodeMySpecLocalWeb.Endpoint`.
   """
+  def post_hook(%{harness: %{}} = context, "/api/hooks/" <> hook, params),
+    do: HarnessHooks.post_hook(context, hook, params)
+
   def post_hook(target, path, params) do
     ConnTest.build_conn()
     |> Conn.put_req_header("x-harness-id", working_copy_id(target))
@@ -4140,7 +4149,8 @@ defmodule CodeMySpecSpex.Case do
     # decision — absent (the default), `BurstBox.Lifecycle.check/3` reads
     # `:not_due` and never touches `:busy?`/`:destroy` at all, which is the
     # ordinary case for every criterion here that is not about release.
-    box = if box_release == :not_due, do: box, else: Map.put(box, "created", "2026-01-01T00:00:00Z")
+    box =
+      if box_release == :not_due, do: box, else: Map.put(box, "created", "2026-01-01T00:00:00Z")
 
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 

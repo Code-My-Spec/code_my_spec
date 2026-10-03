@@ -52,6 +52,8 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   alias CmsHarnessTest.LiveHarness
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpecSpex.Fixtures
   alias Phoenix.ConnTest
   alias Phoenix.Ecto.SQL.Sandbox, as: SQLSandbox
@@ -60,6 +62,8 @@ defmodule CodeMySpecSpex.HarnessHooks do
   # A join, a read-model round trip, a scan and a reconcile. Generous because
   # the machine running this is usually running other suites too.
   @timeout 10_000
+
+  @mix_exs "defmodule App.MixProject do\n  use Mix.Project\nend\n"
 
   @doc """
   A checkout of `context.project` on disk, onboarded, served by a real harness
@@ -123,6 +127,54 @@ defmodule CodeMySpecSpex.HarnessHooks do
       device_id: device.id,
       server_url: url
     })
+  end
+
+  @doc """
+  `context` with a live harness: the one it already has, or one started now.
+
+  A new checkout holds what `context.environment` holds, so the files earlier
+  givens seeded in memory (and synced) are on the disk the hook path reads, and
+  in the manifest its File rows come from. Files written to the environment
+  after this are the caller's to put on disk, with `write_file/3`.
+  """
+  @spec ensure_live_harness(map()) :: map()
+  def ensure_live_harness(%{harness: %{}} = context), do: context
+
+  def ensure_live_harness(context) do
+    given_a_live_harness(context, files: checkout_files(Map.get(context, :environment)))
+  end
+
+  # A mix.exs, as every checkout has: the scan has to find something, and a
+  # project whose environment is still empty would otherwise give it nothing.
+  defp checkout_files(%Environment{type: :memory} = env) do
+    env
+    |> Environments.glob("**/*")
+    |> Enum.reject(&(String.starts_with?(&1, "/") or String.starts_with?(&1, "\0")))
+    |> Map.new(fn path -> {path, read!(env, path)} end)
+    |> Map.put_new("mix.exs", @mix_exs)
+  end
+
+  defp checkout_files(_environment), do: %{"mix.exs" => @mix_exs}
+
+  defp read!(env, path) do
+    {:ok, content} = Environments.read_file(env, path)
+    content
+  end
+
+  @doc """
+  A Claude Code session opened on the live harness: `session-start` for a fresh
+  session id, posted through the harness `ensure_live_harness/1` gives the
+  context. Answers `{context, session_id}`.
+  """
+  @spec open_session(map()) :: {map(), String.t()}
+  def open_session(context) do
+    context = ensure_live_harness(context)
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    case post_hook(context, "session-start", %{"session_id" => session_id}) do
+      %{"status" => "active"} -> {context, session_id}
+      refused -> flunk("session-start did not open the session: #{inspect(refused)}")
+    end
   end
 
   @doc """

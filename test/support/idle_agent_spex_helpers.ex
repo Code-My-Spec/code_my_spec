@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
-  alias Phoenix.ConnTest
+  alias CodeMySpecSpex.HarnessHooks
 
   @doc """
   Put this working copy to work and populate the graph the menu counts from.
@@ -110,26 +110,14 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   `*_task_started` shared givens are the wrong premise for them: they open a
   task, and an open task is work. What is still needed is a session — the stop
   hook is addressed to one — so this drives the same `session-start` hook those
-  givens do and stops there.
+  givens do, through the live harness (`HarnessHooks.open_session/1`), and stops
+  there.
 
-  Answers the context with `:session_id` on it.
+  Answers the context with `:session_id` and `:harness` on it.
   """
   @spec start_session(map()) :: map()
   def start_session(context) do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    # Dispatched explicitly rather than through `post/3`, because hooks live on
-    # the local router and several of these criteria set `@endpoint` to the
-    # cloud one for the pages they read. A helper that inherited whichever the
-    # caller happened to declare would 404 in half of them.
-    ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/session-start", %{
-      "session_id" => session_id
-    })
-    |> ConnTest.json_response(200)
-
+    {context, session_id} = HarnessHooks.open_session(context)
     Map.put(context, :session_id, session_id)
   end
 
