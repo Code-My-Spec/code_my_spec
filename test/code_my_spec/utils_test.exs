@@ -18,20 +18,20 @@ defmodule CodeMySpec.UtilsTest do
     end
 
     test "handles sibling namespace modules correctly", %{project: project} do
-      # CodeMySpecCli is a sibling namespace, not a child of CodeMySpec
+      # CodeMySpecDesktop is a sibling namespace, not a child of CodeMySpec
       component = %Component{
         id: Ecto.UUID.generate(),
         project_id: project.id,
         name: "ValidateEdits",
-        module_name: "CodeMySpecCli.Hooks.ValidateEdits",
+        module_name: "CodeMySpecDesktop.Hooks.ValidateEdits",
         type: "context"
       }
 
       files = Utils.component_files(component, project)
 
       # Should NOT have extra "code_my_spec/" prefix
-      assert files.code_file == "lib/code_my_spec_cli/hooks/validate_edits.ex"
-      assert files.test_file == "test/code_my_spec_cli/hooks/validate_edits_test.exs"
+      assert files.code_file == "lib/code_my_spec_desktop/hooks/validate_edits.ex"
+      assert files.test_file == "test/code_my_spec_desktop/hooks/validate_edits_test.exs"
     end
 
     test "handles project-prefixed modules correctly", %{project: project} do

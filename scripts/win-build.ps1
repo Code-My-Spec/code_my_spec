@@ -13,12 +13,12 @@
   fresh each run and then execs `mix $Args`.
 
 .EXAMPLE
-  pwsh -File scripts/win-build.ps1 -MixEnv prod_cli compile
-  pwsh -File scripts/win-build.ps1 -MixEnv prod_cli -BurritoTarget windows release code_my_spec_cli
+  pwsh -File scripts/win-build.ps1 -MixEnv harness compile
+  pwsh -File scripts/win-build.ps1 -MixEnv harness -BurritoTarget windows release code_my_spec_cli
 #>
 [CmdletBinding()]
 param(
-  [string]$MixEnv = "prod_cli",
+  [string]$MixEnv = "harness",
   [string]$BurritoTarget = "",
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$MixArgs

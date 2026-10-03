@@ -2,8 +2,7 @@
 #
 # Seeds the auth + project that the recorded harness sessions expect, so a full
 # session replay can run against the demo server (:4006) without interactive
-# OAuth. Idempotent. Prints the access token to paste into the cli_demo harness
-# (client_users.oauth_token) via the harness-side seed.
+# OAuth. Idempotent. Prints the access token for the harness side.
 #
 # Usage: MIX_ENV=demo mix run priv/repo/demo_seeds.exs
 
@@ -164,7 +163,4 @@ email:        #{email}
 account_id:   #{account.id}
 project_id:   #{project.id}
 ACCESS_TOKEN: #{token.token}
-
-Next (harness side, SQLite cli_demo.db):
-  CMS_OAUTH_TOKEN=#{token.token} MIX_ENV=cli_demo mix run priv/repo/cli_demo_seeds.exs
 """)

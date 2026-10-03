@@ -1,4 +1,4 @@
-defmodule CodeMySpecCli.Repo.Migrations.CreateQaAttempts do
+defmodule CodeMySpec.CliRepo.Migrations.CreateQaAttempts do
   use Ecto.Migration
 
   def change do

@@ -1,83 +1,25 @@
-defmodule CodeMySpecCli.Release.PackageExtension do
+defmodule CodeMySpec.Release.PackageExtension do
   @moduledoc """
-  Burrito post-build step that packages the CodeMySpec Claude Code extension.
+  Lays out the CodeMySpec plugin marketplace repo (Claude Code, Antigravity and
+  Codex ports) from `plugins/` for release: copies the plugin trees, rewrites
+  dev values to prod, and writes the marketplace manifests, install scripts and
+  README. `mix cms.package_plugin` drives it; CI publishes what it writes.
 
-  This step:
-  1. Creates a release directory with extension files
-  2. Copies the binary for GitHub Release upload
-  3. Creates an install script that downloads the binary
-
-  All file paths are derived from the Burrito build context and module
+  All file paths are derived from the caller's arguments and module
   constants — no user input reaches file operations.
   """
 
-  @behaviour Burrito.Builder.Step
+  alias CodeMySpec.Release.PluginPorts
 
-  @binary_name "cms"
-  @release_dir "codemyspec-extension"
   @github_repo "Code-My-Spec/plugins"
   @plugin_slug "codemyspec"
-
-  # sobelow_skip ["Traversal"]
-  @impl true
-  def execute(%Burrito.Builder.Context{} = context) do
-    log("Packaging CodeMySpec extension...")
-
-    app_path = File.cwd!()
-    release_name = Atom.to_string(context.mix_release.name)
-    target_name = Atom.to_string(context.target.alias)
-
-    # Source paths. Burrito appends `.exe` to Windows binaries; mirror that
-    # here so the copy step finds the file regardless of target OS.
-    source_basename = "#{release_name}_#{target_name}" <> source_ext(context.target)
-    source_binary = Path.join([app_path, "burrito_out", source_basename])
-    source_extension = Path.join(app_path, "plugins/claude")
-
-    # Output paths
-    release_base = Path.join(app_path, "release")
-    extension_dir = Path.join(release_base, @release_dir)
-    binaries_dir = Path.join(release_base, "binaries")
-
-    File.rm_rf!(binaries_dir)
-    File.mkdir_p!(binaries_dir)
-
-    # Plugin file shuffle — copy, port rewrite, marketplace.json, README,
-    # install.sh, .gitignore. Lives in its own function so `mix cms.package_plugin`
-    # can run the same dance without a burrito context.
-    package_plugin_files(source_extension, extension_dir)
-
-    # Copy binary for GitHub Release
-    binary_name = binary_name_for_target(context.target)
-    target_binary = Path.join(binaries_dir, binary_name)
-    File.copy!(source_binary, target_binary)
-    File.chmod!(target_binary, 0o755)
-    log("Copied binary to #{target_binary}")
-
-    log("Extension packaged to: #{extension_dir}")
-    log("Binary ready for upload: #{target_binary}")
-
-    # Get version from plugin.json
-    version = get_plugin_version(extension_dir)
-
-    # Push to GitHub and create release (if PUBLISH_RELEASE env var is set)
-    if System.get_env("PUBLISH_RELEASE") == "true" do
-      log("Publishing release v#{version}...")
-      push_to_github(extension_dir, version)
-      create_github_release(target_binary, binary_name, version)
-      log("Release v#{version} published!")
-    else
-      log("Skipping publish (set PUBLISH_RELEASE=true to publish)")
-    end
-
-    context
-  end
 
   @doc """
   Runs the plugin file-shuffling steps (copy, port rewrite, marketplace.json,
   install.sh, README, .gitignore) into `extension_dir`.
 
-  Pure file I/O — no burrito, no binary, no GitHub. `mix cms.package_plugin`
-  uses this to lay out the release locally for inspection.
+  Pure file I/O — no binary, no GitHub. `mix cms.package_plugin` runs it, in
+  CI and locally to inspect what will ship.
 
   Returns `%{extension_dir: ..., plugin_dest: ...}`.
   """
@@ -304,91 +246,6 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     )
   end
 
-  # sobelow_skip ["Traversal"]
-  defp get_plugin_version(extension_dir) do
-    plugin_json_path =
-      Path.join([extension_dir, "plugins", @plugin_slug, ".claude-plugin", "plugin.json"])
-
-    case File.read(plugin_json_path) do
-      {:ok, content} ->
-        case Jason.decode(content) do
-          {:ok, %{"version" => version}} -> version
-          _ -> "0.1.0"
-        end
-
-      _ ->
-        "0.1.0"
-    end
-  end
-
-  defp push_to_github(extension_dir, version) do
-    # Initialize git repo if needed
-    unless File.exists?(Path.join(extension_dir, ".git")) do
-      run_cmd("git", ["init", "-b", "main"], extension_dir)
-
-      run_cmd(
-        "git",
-        ["remote", "add", "origin", "https://github.com/#{@github_repo}.git"],
-        extension_dir
-      )
-    end
-
-    # Commit and push
-    run_cmd("git", ["add", "."], extension_dir)
-    run_cmd("git", ["commit", "-m", "Release v#{version}", "--allow-empty"], extension_dir)
-    run_cmd("git", ["tag", "-f", "v#{version}"], extension_dir)
-    # Push branch and tag - ignore branch push errors since we only need the tag for releases
-    run_cmd("git", ["push", "-u", "origin", "main", "--force"], extension_dir)
-    run_cmd("git", ["push", "origin", "v#{version}", "--force"], extension_dir)
-  end
-
-  # sobelow_skip ["CI"]
-  defp create_github_release(binary_path, _binary_name, version) do
-    # Use GitHub CLI (gh) to create release and upload binary
-    tag = "v#{version}"
-
-    # Delete existing release if it exists (ignore errors)
-    System.cmd("gh", ["release", "delete", tag, "--yes", "--repo", @github_repo],
-      stderr_to_stdout: true
-    )
-
-    # Create new release and upload binary
-    {output, exit_code} =
-      System.cmd(
-        "gh",
-        [
-          "release",
-          "create",
-          tag,
-          binary_path,
-          "--repo",
-          @github_repo,
-          "--title",
-          "Release #{tag}",
-          "--notes",
-          "CodeMySpec CLI release #{tag}\n\nDownload the binary for your platform and run `./install.sh` to install."
-        ],
-        stderr_to_stdout: true
-      )
-
-    if exit_code != 0 do
-      log("Warning: Failed to create GitHub release: #{output}")
-    else
-      log("GitHub release created: https://github.com/#{@github_repo}/releases/tag/#{tag}")
-    end
-  end
-
-  # sobelow_skip ["CI"]
-  defp run_cmd(cmd, args, dir) do
-    {output, exit_code} = System.cmd(cmd, args, cd: dir, stderr_to_stdout: true)
-
-    if exit_code != 0 do
-      log("Warning: #{cmd} #{Enum.join(args, " ")} failed: #{output}")
-    end
-
-    {output, exit_code}
-  end
-
   defp log(message) do
     IO.puts("--> [PackageExtension] #{message}")
   end
@@ -458,35 +315,11 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
       rewritten =
         content
-        |> CodeMySpec.Release.PluginPorts.rewrite()
+        |> PluginPorts.rewrite()
         |> String.replace("dev.codemyspec.com", "codemyspec.com")
 
       if rewritten != content, do: File.write!(path, rewritten)
     end)
-  end
-
-  defp source_ext(%{os: :windows}), do: ".exe"
-  defp source_ext(_), do: ""
-
-  defp binary_name_for_target(target) do
-    os =
-      case target.os do
-        :darwin -> "darwin"
-        :linux -> "linux"
-        :windows -> "windows"
-      end
-
-    arch =
-      case target.cpu do
-        :aarch64 -> "arm64"
-        :x86_64 -> "x64"
-      end
-
-    if target.os == :windows do
-      "#{@binary_name}-#{os}-#{arch}.exe"
-    else
-      "#{@binary_name}-#{os}-#{arch}"
-    end
   end
 
   # sobelow_skip ["Traversal"]

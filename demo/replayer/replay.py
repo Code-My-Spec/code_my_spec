@@ -2,7 +2,7 @@
 """Session-replay driver for CodeMySpec demos.
 
 Walks a Claude Code session .jsonl and replays its tool calls against a sealed
-sandbox (the cli_demo harness on :4005 + a throwaway project dir), rebuilding a
+sandbox (a demo harness on :4005 + a throwaway project dir), rebuilding a
 project from scratch so we can capture a demo with no staging.
 
 SAFETY (load-bearing):
@@ -32,7 +32,7 @@ import sys
 DEFAULT_SOURCE_ROOT = "/Users/johndavenport/Documents/github/market_my_spec"
 # The throwaway project dir the replay writes INTO (remapped TO).
 DEFAULT_FAKE_DIR = "/tmp/cms_demo_mms"
-# The cli_demo harness endpoint (config/cli_demo.exs).
+# The demo harness endpoint (see `mix demo.replay`).
 DEFAULT_HARNESS_URL = "http://localhost:4005"
 
 SESSIONS_DIR = os.path.join(os.path.dirname(__file__), "..", "sessions")

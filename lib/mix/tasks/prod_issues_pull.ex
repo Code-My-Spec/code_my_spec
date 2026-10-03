@@ -20,7 +20,7 @@ defmodule Mix.Tasks.ProdIssues.Pull do
         > ~/.codemyspec/prod_token
       chmod 600 ~/.codemyspec/prod_token
 
-  The token expires hourly; the running `cms server` (prod_cli) refreshes
+  The token expires hourly; the running `cms` harness refreshes
   its own copy on its own cadence — re-extract when the script 401s.
 
   Issues are inserted into the `code_my_spec_dev` `issues` table with

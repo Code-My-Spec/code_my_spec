@@ -151,12 +151,18 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   def migrate_if_exists(database) do
     config = Keyword.put(Repo.config(), :database, database)
 
-    case Repo.__adapter__().storage_status(config) do
+    case adapter().storage_status(config) do
       :up -> migrate(config)
       :down -> :absent
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # From config rather than `Repo.__adapter__/0`, which is the same value fixed
+  # at compile time: under the SQLite harness env its `storage_status/1` cannot
+  # return an error, and the type checker then fails that build on the clause
+  # Postgres needs.
+  defp adapter, do: Application.get_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres)
 
   # A plain, unpooled connection for the duration of one migration — never the
   # sandbox pool `config/test.exs` configures for everyday test runs, which

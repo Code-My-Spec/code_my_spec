@@ -687,38 +687,37 @@ refresh-harness port="4004" pull="true":
         echo "→ pull=false — the checkout is already where it needs to be"
     fi
 
-    # The same satisfiability check `refresh` carries, in dev_cli — the env the
-    # harness actually boots in, and a different `_build` tree from dev.
+    # The same satisfiability check `refresh` carries, in the harness env — the
+    # env the harness actually boots in, and a different `_build` tree from dev.
     #
     # Without it this recipe killed the harness and could not start it again:
     #
-    #     Unchecked dependencies for environment dev_cli:
+    #     Unchecked dependencies for environment <the harness's env>:
     #     * req (Hex package)
     #       the dependency does not match the requirement "~> 0.7", got "0.5.17"
     #
     # mix.lock had not moved, so deps.get was skipped — and deps.get would not
     # have helped anyway. The stale copy is the compiled artifact under
-    # `_build/dev_cli/lib/req`, which `deps.get` never touches and reports "all
+    # `_build/<env>/lib/req`, which `deps.get` never touches and reports "all
     # dependencies have been fetched" over. `deps.compile` is what fixes it.
     #
     # The cost of not checking is not a failed recipe. It is every agent's hooks
     # down until somebody notices, because the harness is already dead by this
     # point.
-    if ! ( cd "$main" && MIX_ENV=dev_cli mix loadpaths >/dev/null 2>&1 ); then
-        echo "→ dev_cli deps do not satisfy mix.exs — fetching and recompiling"
-        ( cd "$main" && MIX_ENV=dev_cli mix deps.get && MIX_ENV=dev_cli mix deps.compile )
+    if ! ( cd "$main" && MIX_ENV=harness mix loadpaths >/dev/null 2>&1 ); then
+        echo "→ harness deps do not satisfy mix.exs — fetching and recompiling"
+        ( cd "$main" && MIX_ENV=harness mix deps.get && MIX_ENV=harness mix deps.compile )
     fi
 
     # And the app's own modules, which the deps check above does not cover.
     #
-    # `_build/dev_cli` is a different tree from `_build/dev`, and only `dev`
-    # refreshes on its own here — so the harness booted whatever dev_cli was
-    # compiled the last time somebody thought to do it by hand. Measured
-    # 2026-08-13: `_build/dev_cli/.../PostToolUse.beam` was two days stale while
+    # `_build/harness` is a different tree from `_build/dev`, and only `dev`
+    # refreshes on its own here — so the harness booted whatever its env was
+    # compiled to the last time somebody thought to do it by hand. Measured
+    # 2026-08-13: the harness tree's `PostToolUse.beam` was two days stale while
     # `_build/dev` matched the source from that morning.
     #
-    # The failure has no error in it, which is what makes it expensive. The hook
-    # endpoints live on `CodeMySpecLocalWeb` — the app this env boots — so a new
+    # The failure has no error in it, which is what makes it expensive. A new
     # hook or MCP tool simply is not there: `{}` from a hook that should answer,
     # "No such tool available" from a tool that is registered in source. QA
     # spent a pass concluding the feature did not exist, correctly, because on
@@ -727,8 +726,8 @@ refresh-harness port="4004" pull="true":
     # Before the kill, deliberately: compiling while the harness is live risks
     # the lock, and compiling after it would delay every agent's hooks by the
     # length of a cold build.
-    echo "→ compiling dev_cli (the env the harness boots; _build/dev_cli is its own tree)"
-    ( cd "$main" && MIX_ENV=dev_cli mix compile )
+    echo "→ compiling the harness env (_build/harness is its own tree)"
+    ( cd "$main" && MIX_ENV=harness mix compile )
 
     pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
 
@@ -842,9 +841,6 @@ refresh-harness port="4004" pull="true":
     echo "✗ harness did not come up in 180s — see $log" >&2
     exit 1
 
-cli *args:
-    MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
-
 # Make sure `.code_my_spec` is the real submodule and not an empty mount point
 #
 # `git worktree add` does not populate submodules, and nothing downstream
@@ -916,8 +912,13 @@ harness port="4004" server="http://localhost:4000": _submodules
     # credential on disk — the exact inversion of the failure it was written
     # for. An unonboarded checkout is what has no credential, and `onboard` is
     # the remedy for that, not an exported variable.
+    #
+    # One env serves this and the installed release; what makes this one the
+    # dev harness is the environment below. CMS_ANALYSIS_SLOTS=1 because this
+    # box runs one harness for every worktree of this repo, and two full suites
+    # at once each ran longer than serialising them (measured 2026-09-15).
     CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
-      MIX_ENV=dev_cli elixir -S mix run --no-halt
+      CMS_ANALYSIS_SLOTS=1 MIX_ENV=harness elixir -S mix run --no-halt
 
 # Start Claude Code against this checkout's own plugin — pair with `just harness`
 claude-dev *args: _submodules
@@ -1017,9 +1018,9 @@ reset-db:
 check:
     mix compile --warnings-as-errors
 
-# Build CLI release (Burrito binary)
+# Build the harness release (the `code_my_spec_cli` tarball brew and the MSI install)
 build-cli:
-    MIX_ENV=prod_cli mix release code_my_spec_cli
+    MIX_ENV=harness mix release code_my_spec_cli
 
 # Build the devbox image — the container a cloud working copy runs in
 devbox-image:
@@ -1046,7 +1047,7 @@ devbox-image:
 
 # Dry-run the plugin packager — lays out release/codemyspec-extension/ locally for inspection
 package-plugin:
-    MIX_ENV=dev_cli mix cms.package_plugin
+    mix cms.package_plugin
     @echo
     @echo "Diff vs source: diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec"
     @echo "Sanity check:   grep -rn 4004 release/codemyspec-extension   # should be empty"
@@ -1195,22 +1196,22 @@ publish_claude_extension VERSION:
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT
 
-    echo "→ building the darwin release (MIX_ENV=prod_cli)"
-    rm -rf _build/prod_cli release/
+    echo "→ building the darwin release (MIX_ENV=harness)"
+    rm -rf _build/harness release/
     ( cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay . )
-    MIX_ENV=prod_cli mix deps.get
+    MIX_ENV=harness mix deps.get
     # Not --warnings-as-errors: this is packaging a release build, not
     # re-validating the whole codebase's warning-cleanliness — that already
     # happened on whatever was actually changed, before it was committed. On
     # a night several sessions are landing work concurrently, a warning in
     # someone else's unrelated, already-merged file has nothing to do with
     # what this recipe is releasing and should not be able to block it.
-    MIX_ENV=prod_cli mix compile
-    MIX_ENV=prod_cli mix release code_my_spec_cli
-    cp _build/prod_cli/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
+    MIX_ENV=harness mix compile
+    MIX_ENV=harness mix release code_my_spec_cli
+    cp _build/harness/code_my_spec_cli-*.tar.gz "$work/cms-darwin-arm64.tar.gz"
 
     echo "→ packaging the extension"
-    MIX_ENV=prod_cli mix cms.package_plugin release/codemyspec-extension
+    MIX_ENV=harness mix cms.package_plugin release/codemyspec-extension
     ext="release/codemyspec-extension"
     chmod +x "$ext"/plugins/codemyspec/.claude-plugin/bin/* 2>/dev/null || true
     [ -f "$ext/install.sh" ] && chmod +x "$ext/install.sh"

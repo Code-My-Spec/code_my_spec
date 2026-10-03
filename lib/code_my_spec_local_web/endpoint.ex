@@ -13,11 +13,6 @@ defmodule CodeMySpecLocalWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
 
-  # Data-plane socket the Pi harness connects to (see CodeMySpec.AgentHarness).
-  socket "/harness_socket", CodeMySpecLocalWeb.HarnessSocket,
-    websocket: true,
-    longpoll: false
-
   # Serve static assets (JS bundle for LiveView)
   plug Plug.Static,
     at: "/local/assets",
@@ -33,7 +28,7 @@ defmodule CodeMySpecLocalWeb.Endpoint do
 
   plug Plug.RequestId
   # log: :debug demotes "GET /foo" + "Sent 200 in Xms" to debug — dev still
-  # shows them, prod_cli (:info) drops them. Keeps the structured log focused
+  # shows them, an :info level drops them. Keeps the structured log focused
   # on app events, not request boilerplate.
   plug Plug.Telemetry, event_prefix: [:phoenix, :local_endpoint], log: :debug
 

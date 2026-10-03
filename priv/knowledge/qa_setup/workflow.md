@@ -58,7 +58,7 @@ requires a tunnel — note this in System Issues.
     grep -rn "use Ecto.Repo\|Ecto.Adapters" config/ lib/
 
 If the app has multiple env-conditional adapters (e.g. `:dev` →
-Postgres, `:dev_cli` → SQLite) or multiple Repos, plan a seed script per
+Postgres, `:harness` → SQLite) or multiple Repos, plan a seed script per
 target. Show the right `MIX_ENV=…` invocation.
 
 ### 5. Verify Vibium screenshot landing dir

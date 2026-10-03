@@ -6,15 +6,13 @@ defmodule CodeMySpec.Workspaces.HarnessSource.Checkout do
   does not control the cadence of. See `HarnessSource`'s own moduledoc for
   what trusting the installed release cost instead.
 
-  `MIX_ENV=dev_sprite`, not `prod_cli`: `mix.exs` already says why —
-  "dev_sprite ships the same release as prod_cli — a sprite is the CLI
-  harness, just compiled against Postgres instead of SQLite" — and this
-  server's own database is Postgres. `mix run --no-halt` rather than a
-  packaged release for the same reason a release is skipped everywhere else
-  in dev: assembling one costs minutes this workspace's visitor is waiting
-  through, and `app_module/0` in `mix.exs` boots the identical
-  `CodeMySpecLocalWeb.Application` either way — `mix run` is not a
-  different harness, only a different way of starting the same one.
+  `MIX_ENV=harness`, the env the installed release is built from, so this is
+  the same harness the tap ships, from this checkout's source. `mix run
+  --no-halt` rather than a packaged release for the same reason a release is
+  skipped everywhere else in dev: assembling one costs minutes this
+  workspace's visitor is waiting through, and `app_module/0` in `mix.exs`
+  boots the identical `CmsHarness.Application` either way — `mix run` is not
+  a different harness, only a different way of starting the same one.
 
   `File.cwd!()`, not a configured path: the server evaluating this is
   already running from the main checkout — established practice on this
@@ -26,5 +24,5 @@ defmodule CodeMySpec.Workspaces.HarnessSource.Checkout do
   @behaviour CodeMySpec.Workspaces.HarnessSource
 
   @impl true
-  def command, do: "cd #{File.cwd!()} && MIX_ENV=dev_sprite mix run --no-halt"
+  def command, do: "cd #{File.cwd!()} && MIX_ENV=harness mix run --no-halt"
 end

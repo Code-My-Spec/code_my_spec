@@ -99,10 +99,11 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
       assert rules =~ "origin/main"
     end
 
-    # The most expensive hour of the night: `config/dev_cli.exs` written into a
-    # game, because that env appears in CodeMySpec's own justfile.
-    test "dev_cli is named as the framework's and not a project's", %{rules: rules} do
-      assert rules =~ "dev_cli"
+    # The most expensive hour of the night: a config file for CodeMySpec's own
+    # harness env written into a game, because that env appears in CodeMySpec's
+    # own justfile.
+    test "the harness env is named as the framework's and not a project's", %{rules: rules} do
+      assert rules =~ "`harness` environment means nothing inside a project"
 
       assert rules =~ "wrong environment",
              "the symptom is a missing config file, and an agent that reads that as " <>

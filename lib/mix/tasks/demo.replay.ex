@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Demo.Replay do
 
   @moduledoc """
   Replays one or more Claude Code transcripts onto the demo project dir and the
-  running cli_demo harness, in chronological order.
+  running demo harness, in chronological order.
 
       mix demo.replay PATH [PATH ...] [options]
 
@@ -25,8 +25,9 @@ defmodule Mix.Tasks.Demo.Replay do
       # narrate, then continue:
       mix demo.replay SESSION --delay 700 --from 60 --to 130
 
-  The harness must already be running (`MIX_ENV=cli_demo mix phx.server`) and a
-  project row must authorize the target dir. Transcripts are read directly; the
+  A harness must already be running on :4005 against the demo server
+  (`CMS_HARNESS_PORT=4005 CMS_SERVER_URL=http://localhost:4006 MIX_ENV=harness
+  mix run --no-halt`) and a project row must authorize the target dir. Transcripts are read directly; the
   originals are never modified.
   """
 

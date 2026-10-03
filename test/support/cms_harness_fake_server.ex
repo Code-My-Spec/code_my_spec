@@ -68,8 +68,8 @@ defmodule CmsHarnessTest.FakeServer do
     # above `CMS_SERVER_URL`, but `:harness_server_url` below it. Setting only
     # the lower one meant a `CMS_SERVER_URL` this process inherited (a live
     # harness's own real one, when `mix spex` runs as its analyzer child; a
-    # leaked one from a different test's `CodeMySpecLocalWeb.Application`
-    # elsewhere in the same run) still outranked this rig's own port, and a
+    # leaked one from a different test's `CmsHarness.Application` elsewhere in
+    # the same run) still outranked this rig's own port, and a
     # 1075 spex's harness dialed the real server instead of this one — a
     # story 1108 branch sweep's exact failure (403 on the websocket upgrade,
     # "the copy's harness never connected to the fake server"), reproduced by

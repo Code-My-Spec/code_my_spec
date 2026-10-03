@@ -451,8 +451,8 @@ defmodule CodeMySpec.Projects do
 
   @doc """
   Returns the distinct `account_id` for every project that has a
-  `local_path` set. Used by `CodeMySpecLocalWeb.SocketSupervisor` at
-  boot to start one socket per local-tracked account.
+  `local_path` set. Its one caller, the local app's socket supervisor, is
+  gone; nothing calls this now.
   """
   @spec list_local_account_ids() :: [Ecto.UUID.t()]
   def list_local_account_ids do
