@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Activity,
       CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.AgentTasks,

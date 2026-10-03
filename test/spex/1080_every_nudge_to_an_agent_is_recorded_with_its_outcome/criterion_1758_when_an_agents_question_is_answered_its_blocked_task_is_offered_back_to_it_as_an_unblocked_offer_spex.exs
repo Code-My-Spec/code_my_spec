@@ -65,6 +65,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
       when_ "the user answers the first question", context do
         :ok = Fixtures.answer_question(context.scope, context.question, "Shopper")
+        :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
 
@@ -115,6 +116,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
         refute evaluated.isError, response_text(evaluated)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
+        :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
 

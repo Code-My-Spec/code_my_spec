@@ -11,7 +11,6 @@ defmodule CodeMySpec.Requirements.Preloader do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
@@ -31,7 +30,6 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_project: [File.t()],
           files_by_path: %{String.t() => File.t()},
           issues_by_story: %{integer() => [{integer(), NaiveDateTime.t()}]},
-          analysis_ran: %{String.t() => boolean()},
           components: [Component.t()],
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
@@ -200,7 +198,6 @@ defmodule CodeMySpec.Requirements.Preloader do
     {rest_us, rest} =
       :timer.tc(fn ->
         %{
-          analysis_ran: analysis_ran(scope),
           criteria_by_story: criteria_by_story(story_ids),
           personas_by_story: personas_by_story(story_ids),
           qa_latest_by_story: qa_latest_by_story(story_ids),
@@ -225,7 +222,6 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_project: all_files,
        files_by_path: Map.new(all_files, &{&1.path, &1}),
        issues_by_story: shared.issues_by_story,
-       analysis_ran: rest.analysis_ran,
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
        children_by_parent: Enum.group_by(components, & &1.parent_component_id),
@@ -673,21 +669,6 @@ defmodule CodeMySpec.Requirements.Preloader do
       files_by_component: Enum.group_by(files, & &1.component_id)
     })
   end
-
-  @doc """
-  Whether spex has a completed full run on this working copy, as
-  `%{"spex" => boolean}` — the one source a requirement still leans on
-  (`bdd_specs_passing`).
-
-  The latest completed run answers however old (28d72f8a). This is only the
-  absence check: a source that has never completed a run has no answer, and an
-  empty Problems table is not evidence of a pass. One `exists` query, read by
-  `RequirementGraph.serve/2` on the whole-graph paths; narrow loads leave it
-  out and the checker asks for the one story it is computing.
-  """
-  @spec analysis_ran(Scope.t()) :: %{String.t() => boolean()}
-  def analysis_ran(%Scope{} = scope),
-    do: %{"spex" => RunsRepository.answered?(scope, "spex")}
 
   defp rules_by_story(project_id) do
     Rule

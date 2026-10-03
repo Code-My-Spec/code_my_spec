@@ -24,10 +24,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
   Not an idle drain. A drain with no marks at all trivially writes nothing and
   would let a system that rewrites every row on every observation pass this.
 
-  So the observation here is real and is applied — the same findings are
-  recorded a second time. Something genuinely happened, the drain genuinely ran,
-  and every verdict it computes lands on the value already stored. That is the
-  case where writing is pure cost and the only correct number of rows is zero.
+  So the observation here is real and is applied — the component's code is
+  edited and synced. Something genuinely happened, the drain genuinely ran, and
+  every verdict it computes lands on the value already stored: an edit inside a
+  file that exists changes none of the component's answers. That is the case
+  where writing is pure cost and the only correct number of rows is zero.
 
   ## What it observes
 
@@ -48,26 +49,21 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  # Recorded as spex: since 28d72f8a it is the only source whose findings
-  # announce an observation at all, so a credo write would leave nothing to
-  # drain.
-  @finding %{
-    message: "Function body is nested too deep (max_nesting is 2).",
-    file_path: "lib/reservations/booking.ex",
-    line: 14
-  }
+  # The component's own code, which `:synced_context_component` wrote.
+  @impl_path "lib/example_context.ex"
 
   spex "An observation that changes no answer costs no writes", criterion: 1426 do
-    scenario "the same findings are recorded a second time" do
+    scenario "the component's code is edited without changing any answer" do
       given_ :synced_context_component
 
-      given_ "a settled graph that already carries these findings", context do
-        :ok = Fixtures.replace_problems(context.scope, context.component.id, "spex", [@finding])
+      given_ "a settled graph", context do
         :ok = Fixtures.settle_graph(context.scope)
 
         graph = read_settled_graph(context)
@@ -78,8 +74,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
         {:ok, context}
       end
 
-      when_ "the same findings are recorded again and the drain runs", context do
-        :ok = Fixtures.replace_problems(context.scope, context.component.id, "spex", [@finding])
+      when_ "the code is edited, synced, and the drain runs", context do
+        :ok =
+          Environments.write_file(context.environment, @impl_path, """
+          defmodule ExampleContext do
+            @moduledoc false
+
+            def edited, do: :no_answer_moves
+          end
+          """)
+
+        GraphGivens.sync(context)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :drain, read_graph(context)["last_drain"])}

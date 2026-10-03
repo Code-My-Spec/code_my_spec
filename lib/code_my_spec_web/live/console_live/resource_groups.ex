@@ -37,6 +37,22 @@ defmodule CodeMySpecWeb.ConsoleLive.ResourceGroups do
   def get(key), do: Enum.find(@groups, &(&1.key == key))
 
   @doc """
+  Which group's tab a step's own activity belongs under, as a string —
+  `deploy` has no group (it's `Deploys`' own page), so it answers for
+  itself rather than through a lookup that would otherwise return nil.
+  """
+  def for_step(:deploy), do: "deploys"
+
+  def for_step(key) do
+    @groups
+    |> Enum.find(&(key in &1.step_keys))
+    |> case do
+      %{key: group_key} -> to_string(group_key)
+      nil -> to_string(key)
+    end
+  end
+
+  @doc """
   A group's own steps from the plan, scoped to one environment — a
   per-environment step (dns, tls, server, ...) shows only that
   environment's row, same as `ConsoleLive.environment_scoped/2` does for a

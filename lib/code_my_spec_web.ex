@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec,
       CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Accounts,
+      CodeMySpec.Activity,
       CodeMySpec.Agents,
       # The harness channel records the turns a sprite reports. `AgentHarness`
       # is top-level for the same reason `Hooks` is — it reaches McpServers.

@@ -45,7 +45,6 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Notifications,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,

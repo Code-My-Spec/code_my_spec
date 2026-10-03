@@ -43,6 +43,8 @@ defmodule CodeMySpec.SpexGivensTest do
   # precondition true in the only way available — the provider is the thing
   # that decides, and the seam is how a criterion about *display* avoids
   # buying a machine to say so.
+  # `checkout(` (`HarnessedKnowledgeHelpers`) issues a working copy on a real
+  # directory and designates it main when asked: the copies are the premise.
   # `given_a_harnessed_checkout` is listed by the same precedent as
   # `given_a_main_checkout`: its whole body is the drive. It makes a directory,
   # joins `harness_project` for it — which is what mints the working copy — and
@@ -239,6 +241,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # through the same function story 1081 will use, the second pins the
   # provider seam the way `Req.Test.stub` always does, just wrapped so every
   # criterion in that story doesn't repeat the same four lines.
+  # Story 1086's `CodeMySpec.Activity.record/4,5` (`Activity.record(`, which
+  # also matches the fully-qualified form): the real write every other path
+  # into the log goes through — `Application.put_env` and `File.write`'s own
+  # precedent, a direct call rather than a Case helper, listed because it
+  # genuinely persists the row a given_ names rather than describing one.
   @establishes ~w(
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
@@ -258,7 +265,7 @@ defmodule CodeMySpec.SpexGivensTest do
     put_env! delete_env!
     join_working_copy report_agents
     EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
-    given_a_harnessed_checkout
+    given_a_harnessed_checkout checkout(
     machine_out_of_reach
     main_answers user_answers
     Req.Test.stub
@@ -275,6 +282,7 @@ defmodule CodeMySpec.SpexGivensTest do
     team_on_a_story issue_accepted qa_plan_missing
     refuse_verify_calls
     ClickHouseCassetteHelpers.
+    Activity.record(
   )
 
   # The failure message has always offered a second remedy — "if the

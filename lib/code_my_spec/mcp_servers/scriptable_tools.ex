@@ -80,6 +80,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
   component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
   component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
+  component(CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential)
   component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)

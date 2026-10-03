@@ -18,8 +18,10 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   `ConsoleLive` passes through the `:checks` slot — one `DiagnosticsPanel`
   per probe that group owns — and falls back to a placeholder for groups
   that don't have one wired up yet (see the moduledoc on `ConsoleLive` for
-  which do). Activity combines every step's own timestamps, the same
-  stand-in `ConsoleLive`'s Overview uses, not a persisted event log.
+  which do). Activity renders `activity_entries` as `ConsoleLive` passes
+  it — `CodeMySpec.Activity.list_for_resource/2`'s own rows, not derived
+  from `@steps` — so this tab shows only entries recorded against this
+  resource's own key.
   """
 
   use CodeMySpecWeb, :html
@@ -45,6 +47,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   attr :tab, :string, required: true
   attr :project_id, :any, required: true
   attr :environment, :string, required: true
+  attr :activity_entries, :list, required: true
   slot :checks
   slot :domain_search
   slot :mail_panel
@@ -230,13 +233,16 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
         data-panel="activity"
         class="flex flex-col gap-1"
       >
-        <p :if={activity_entries(@steps) == []} class="opacity-70 text-sm">Nothing yet.</p>
+        <p :if={@activity_entries == []} class="opacity-70 text-sm">Nothing yet.</p>
         <p
-          :for={{step_key, kind, at} <- activity_entries(@steps)}
+          :for={entry <- @activity_entries}
           data-test="resource-activity-entry"
-          data-step={step_key}
+          data-kind={entry.kind}
+          data-environment={entry.environment}
+          data-actor={entry.actor}
+          data-at={DateTime.to_iso8601(entry.inserted_at)}
         >
-          {step_key} {kind} {at}
+          {entry.summary} — {entry.actor}
         </p>
       </div>
     </section>
@@ -274,16 +280,4 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
   defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_verified_at(_step), do: nil
 
-  defp activity_entries(steps) do
-    for step <- steps,
-        {kind, at} <- [
-          {"started", step.started_at},
-          {"completed", step.completed_at},
-          {"verified", step.verified_at}
-        ],
-        not is_nil(at) do
-      {step.key, kind, at}
-    end
-    |> Enum.sort_by(fn {_key, _kind, at} -> at end, {:desc, DateTime})
-  end
 end

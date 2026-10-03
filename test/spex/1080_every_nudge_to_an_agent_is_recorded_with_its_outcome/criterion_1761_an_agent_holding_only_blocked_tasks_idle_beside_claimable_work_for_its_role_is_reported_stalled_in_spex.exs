@@ -48,7 +48,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
       end
 
       when_ "an issue needing triage is filed and product takes no turn", context do
-        {:ok, file_issue(context)}
+        context = file_issue(context)
+        :ok = Fixtures.settle_graph(context.scope)
+        {:ok, context}
       end
 
       then_ "list_agent_work reports product stalled, its blocked task still shown", context do
@@ -81,7 +83,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
       end
 
       when_ "an issue needing triage is filed", context do
-        {:ok, file_issue(context)}
+        context = file_issue(context)
+        :ok = Fixtures.settle_graph(context.scope)
+        {:ok, context}
       end
 
       then_ "list_agent_work does not report product stalled", context do
