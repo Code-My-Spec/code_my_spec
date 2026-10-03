@@ -41,7 +41,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
           live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         {:ok, Map.put(context, :view, view)}
@@ -58,7 +61,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
         migration_fails(context)
 
         context.view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         {:ok, Map.put(context, :html, render(context.view))}

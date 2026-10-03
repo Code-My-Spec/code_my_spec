@@ -89,7 +89,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
 
       when_ "the deploy runs", context do
         context.view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         html = render(context.view)

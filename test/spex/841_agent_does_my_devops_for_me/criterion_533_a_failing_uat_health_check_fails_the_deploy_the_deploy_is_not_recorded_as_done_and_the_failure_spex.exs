@@ -49,7 +49,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
 
       when_ "the deploy runs and UAT does not answer its health check", context do
         context.view
-        |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
         |> render_submit()
 
         html = render(context.view)

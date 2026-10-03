@@ -13,12 +13,15 @@ defmodule CodeMySpecWeb.ConsoleLive do
   ## Layout
 
   A sidebar (Overview, Resources, Deploys, Secrets, Credentials, Activity,
-  Settings) plus a header `EnvironmentSwitcher`. Credentials, Secrets and
-  Settings are project-wide; Overview, Resources and Deploys are scoped to
-  the selected environment via `?env=`, patched rather than navigated so
-  switching environments does not remount the page — the same ?param-over-
-  route shape `AgentConversationLive` already uses for its own in-page
-  selection.
+  Settings) plus a header `EnvironmentSwitcher` on the pages it applies to.
+  Credentials, Secrets and Settings are project-wide; Overview and Resources
+  are scoped to the selected environment via `?env=`, patched rather than
+  navigated so switching environments does not remount the page — the same
+  ?param-over-route shape `AgentConversationLive` already uses for its own
+  in-page selection. Deploys shows every environment's own card side by
+  side instead — deploying is a decision about one environment made from a
+  page showing all of them, not a resource scoped to whichever one the
+  switcher points at, so it carries no switcher at all.
 
   ## What's real here and what's a first pass
 
@@ -208,7 +211,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
               Menu
             </label>
             <EnvironmentSwitcher.environment_switcher
-              :if={@live_action in [:overview, :resources, :resource_detail, :deploys]}
+              :if={@live_action in [:overview, :resources, :resource_detail]}
               environment={@environment}
               environments={@environments}
               base_path={~p"/app/projects/#{@current_scope.active_project_id}/console"}
@@ -841,7 +844,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       </.button>
 
       <div
-        :for={step <- deploy_steps(@plan, @environment)}
+        :for={step <- deploy_steps(@plan)}
         data-test="deploy-row"
         data-step={step.key}
         data-environment={step.environment}
@@ -925,8 +928,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp setup_done_count(plan), do: Enum.count(plan, &(&1.state == :done))
 
-  defp deploy_steps(plan, environment) do
-    Enum.filter(plan, &(&1.key == :deploy and &1.environment == environment))
+  # Every environment, not just whichever one the switcher currently points
+  # at — the old page showed every environment's deploy card side by side,
+  # and Deploys is where Sam ships to either one, not a per-environment
+  # resource view. Limiting this to @environment (fixed and caught by
+  # criteria 786-793, which drive uat specifically regardless of which
+  # environment the page happened to default to) hid every deploy but one.
+  defp deploy_steps(plan) do
+    Enum.filter(plan, &(&1.key == :deploy))
   end
 
   # Same as ResourceDetail's own copies — see that module's comment for why
