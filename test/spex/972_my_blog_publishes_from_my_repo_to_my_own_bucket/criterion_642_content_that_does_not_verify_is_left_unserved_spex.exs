@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
   unverified content would mean a corrupted or truncated publish silently
   replacing a working page.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move. `ContentConfig`
+  is reused as-is, so `content-verification` and `content-served-version`
+  render unchanged once the step runs from its new page.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.ContentPublishing`.
   """
 
@@ -38,17 +43,15 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
           )
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/publishing")
 
         # Against the fleet, not a recording: the claim is that something good
         # was really being served before the failing publish, and a cassette
         # answers that from a file whatever the code did. The step's run button
         # is what records the proof — the publish button reports a result but
         # leaves no resource for the page to keep.
-        before =
-          view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
+        run_console_step(view, :content)
+        before = render(view)
 
         # Anchor: something good was serving before the bad publish.
         assert before =~ ~r/data-test="content-render-check"[^>]*data-status="200"/,
@@ -80,10 +83,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
         end)
 
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
+        run_console_step(context.view, :content)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -128,7 +129,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
     step =
       html
       |> Floki.parse_document!()
-      |> Floki.find("[data-test='setup-step'][data-step='content']")
+      |> Floki.find("[data-test='resource-step'][data-step='content']")
 
     state = step |> Floki.attribute("data-state") |> List.first()
     detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)

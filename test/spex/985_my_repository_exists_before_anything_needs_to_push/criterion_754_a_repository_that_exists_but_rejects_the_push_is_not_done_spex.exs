@@ -12,7 +12,10 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
   believe he has a remote, and the first thing the harness tried to push would
   fail somewhere far from setup.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Repository`.
   """
 
@@ -54,20 +57,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
         # And it is this project's, so setup adopts rather than asking.
         own_repository(context.project)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the repository step runs and the push is refused", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :repository)
 
-        # Waited for, then read. The step runs under a supervised task — a deploy
-        # or a push takes longer than a LiveView event may — so `render_click/1`
-        # returns while it is still running and the page has not caught up.
-        await_step(context.view, :repository)
         html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
@@ -84,7 +82,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
         text =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step'][data-step='repository']")
+          |> Floki.find("[data-test='resource-step'][data-step='repository']")
           |> Floki.text()
 
         assert text =~ ~r/push/i,

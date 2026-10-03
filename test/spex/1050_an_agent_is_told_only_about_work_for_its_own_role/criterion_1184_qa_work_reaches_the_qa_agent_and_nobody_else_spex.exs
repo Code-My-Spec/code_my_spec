@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
 
   ## The premise, borrowed rather than reinvented
 
-  `qa_complete`'s real gate is `bdd_specs_passing`, not a release-and-deploy —
+  `qa_complete`'s real gate is `ready_for_qa`, not a release-and-deploy —
   1048's criterion 3192 already found that the hard way: releasing a story and
   recording a deploy to dev satisfies nothing, because `code_on_running_copy`
   was already trivially true with no main copy designated. So this uses the
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
         # Everything coding owns except the one thing the `when_` is about.
         #
         # `apply_up_to_analysis/1` withholds the analysis run entirely, so
-        # coding is left holding both `tests_passing` and `bdd_specs_passing`.
+        # coding is left holding both `tests_passing` and `ready_for_qa`.
         # The transition in the `when_` satisfies the second and not the first,
         # so coding would still have real work afterwards — and a role that has
         # work is woken correctly, which is indistinguishable here from the leak
@@ -87,13 +87,13 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
         # above describes, one step further in.
         #
         # Every source but `spex`, so `tests_passing` is satisfied now and
-        # `bdd_specs_passing` is left for the transition. Coding then holds
+        # `ready_for_qa` is left for the transition. Coding then holds
         # exactly one requirement, the `when_` clears it, and afterwards coding's
         # queue is empty — so any message it receives is a leak rather than its
         # own work arriving.
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
 
-        assert Fixtures.actionable_names(context.scope, :coding) == ["bdd_specs_passing"],
+        assert Fixtures.actionable_names(context.scope, :coding) == ["ready_for_qa"],
                """
                Coding should hold exactly the one requirement the `when_` is
                about to satisfy, and nothing else.

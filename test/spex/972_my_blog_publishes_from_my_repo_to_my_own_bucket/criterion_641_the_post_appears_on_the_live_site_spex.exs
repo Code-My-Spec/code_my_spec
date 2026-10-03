@@ -7,7 +7,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
   site. Files in a bucket are not a blog — the criterion is satisfied by a
   page, not by an object listing.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move. `ContentConfig`
+  is reused as-is, so `content-render-check` renders unchanged once the step
+  runs from its new page.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.ContentPublishing`.
   """
 
@@ -41,15 +46,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
           )
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/publishing")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he publishes, and the pipeline fetches its address on the deployed site", context do
-        context.view
-        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(context.view, :content)
 
         html = render(context.view)
 

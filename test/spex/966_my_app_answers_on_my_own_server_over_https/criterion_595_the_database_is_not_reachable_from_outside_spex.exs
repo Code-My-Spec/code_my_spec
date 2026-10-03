@@ -9,7 +9,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
   holds — a spec that only checked the host firewall would pass while
   Postgres sat open to the world.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 594's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -35,7 +38,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
   spex "The database is not reachable from outside", criterion: 595 do
     scenario "only the web ports are open at the network edge" do
       given_ "Sam is on the setup status page with credentials entered", context do
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
         # A real Hetzner server is created; register its teardown before it is
         # made so a recording that fails partway still leaves no box running.
@@ -45,18 +49,14 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
       end
 
       when_ "the server step has provisioned the box and its firewall", context do
-        paste_provider_credentials(context.view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        context.view
-        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
+        paste_provider_credentials(credentials_view)
 
-        # Waited for, then read: the step runs under a supervised task, so
-        # `render_click/1` returns while it is still running.
-        await_step(context.view, :server)
-        html = render(context.view)
+        run_console_step(context.view, :server)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the ports open from the internet are only the ones the app needs", context do

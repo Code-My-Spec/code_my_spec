@@ -8,7 +8,14 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
   decryption — which is what keeps the server reproducible and keeps the
   key out of a shell history.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  secret is set on `/console/secrets` (see criterion 603's moduledoc), and
+  deploy is its own page now, not a row on the same long page — each
+  environment is a `[data-test='deploy-row']` on `/console/deploys`, same
+  as criterion 613's moduledoc describes for other steps moving onto
+  per-resource pages.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -26,7 +33,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
     scenario "the key travels as deploy configuration, not as a file placed by hand" do
       given_ "the project has encrypted secrets for an environment", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 
@@ -36,14 +43,17 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
         )
         |> render_submit()
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
+
+        {:ok, Map.put(context, :view, deploys_view)}
       end
 
       when_ "Sam deploys that environment", context do
         html =
           context.view
           |> form(
-            "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+            "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
             %{"environment" => "uat"}
           )
           |> render_submit()

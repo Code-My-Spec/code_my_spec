@@ -46,17 +46,89 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
             end
           })
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Retargeted onto the console (provisioning-console-step6, unmerged).
+        # The final then_ checks the account reads fully healthy, which
+        # (same as 998's criterion 831 and 999's criterion 834) means every
+        # checklist entry has to read non-`:missing`, not just the scripted
+        # `storage` step — so every step is run individually across its
+        # resource group and, for environment-scoped steps, each
+        # environment. `storage` itself is environment-scoped; running it
+        # on both environments calls the same scripted function twice, but
+        # `recorded_buckets` is a set keyed by name, so the duplicate
+        # doesn't change what's dangling.
+        {:ok, server_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        # The run settling, not a step by name. This waited on `monitoring`,
-        # a step removed from the sequence when it turned out to need an
-        # account, an API key and a notification target only a person can
-        # supply — so the wait could never succeed, spent its full thirty
-        # seconds, and the criterion passed because thirty seconds is long
-        # enough for the run to finish on its own.
-        await_provisioning(view)
+        run_console_step(server_view, :server)
+
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
+
+        run_console_step(repository_view, :repository)
+
+        {:ok, mail_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
+
+        run_console_step(mail_view, :email)
+        run_console_step(mail_view, :inbound)
+
+        for env <- ["uat", "prod"] do
+          {:ok, servers_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/servers?env=#{env}"
+            )
+
+          run_console_step(servers_view, :secrets)
+          run_console_step(servers_view, :callback_credential)
+
+          {:ok, dns_domain_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/dns_domain?env=#{env}"
+            )
+
+          run_console_step(dns_domain_view, :domain)
+          run_console_step(dns_domain_view, :dns)
+          run_console_step(dns_domain_view, :tls)
+
+          {:ok, deploys_view, _html} =
+            live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+          deploys_view
+          |> form(
+            "[data-test='deploy-row'][data-environment='#{env}'] [data-test='deploy-environment-form']",
+            %{"environment" => env}
+          )
+          |> render_submit()
+
+          {:ok, storage_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/storage_backups?env=#{env}"
+            )
+
+          run_console_step(storage_view, :storage)
+          run_console_step(storage_view, :backups)
+
+          {:ok, widget_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/widget?env=#{env}"
+            )
+
+          run_console_step(widget_view, :widget)
+        end
+
+        # `content` plans one entry total, pinned to the primary
+        # environment (`prod`) — see criterion 831.
+        {:ok, publishing_view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/publishing?env=prod"
+          )
+
+        run_console_step(publishing_view, :content)
 
         context =
           stage_inventory(context, %{

@@ -9,13 +9,30 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
   path needed the secret — at which point the cause is far from the
   symptom.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 605's moduledoc for the same move — secrets on
+  `/console/secrets`, deploy on its own `/console/deploys` page. Unlike
+  every other step, `run_step_with_environment` always dispatches the
+  deploy through `Provisioning.run_step_async/3` regardless of the
+  `provisioning_run_async` test setting, so `render_submit/1` returns
+  before the run settles — the same reason the old page's
+  `run_step_interaction(view, :deploy)` was always paired with an
+  `await_step/3`. `await_operation/3` stands in for that here.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  defp deploy_settled?(html) do
+    Regex.match?(
+      ~r/data-test="deploy-row"[^>]*data-environment="uat"[^>]*data-state="(done|errored)"/,
+      html
+    )
+  end
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,7 +63,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
         deploy_ready_checkout(context)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         # Deliberately set only one of the required secrets, leaving
         # SECRET_KEY_BASE absent. Not clearing it afterwards — it was never
@@ -59,14 +76,21 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
         )
         |> render_submit()
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
+
+        {:ok, Map.put(context, :view, deploys_view)}
       end
 
       when_ "the app boots", context do
-        html =
-          context.view
-          |> form("[data-test='deploy-environment-form']", %{"environment" => "uat"})
-          |> render_submit()
+        context.view
+        |> form(
+          "[data-test='deploy-row'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
+
+        html = await_operation(context.view, &deploy_settled?/1, &deploy_settled?/1)
 
         {:ok, Map.put(context, :html, html)}
       end

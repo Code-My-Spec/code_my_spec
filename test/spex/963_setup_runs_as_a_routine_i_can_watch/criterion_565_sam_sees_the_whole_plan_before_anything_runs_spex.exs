@@ -9,7 +9,25 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
   the routine walks it — that is what makes setup watchable instead of
   a black box that reports after the fact.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): "the
+  whole plan before anything runs" now means the Overview page's
+  `setup-checklist`, which lists `@plan` the same way the old page's flat
+  step list did — just not scoped to one step's own card, since the console
+  has no single page that renders every step's full markup at once. Added
+  `data-environment` to `setup-checklist-item` (it only carried `data-step`),
+  since this criterion's own claim — each step/environment *pair* appears
+  once — cannot be checked without it.
+
+  Narrower than before in one way: `all_setup_options/1` drives a
+  `setup-options-form` the console does not have — picking which options
+  run is no longer a page action (see criterion 573, which loses its subject
+  for exactly this reason). This now prints the plan `setup_options/1`
+  returns by default rather than a form-chosen subset; it still proves the
+  plan is fully visible before anything runs, just not that it reflects an
+  arbitrary choice of options — that half of the original claim no longer
+  has a surface to prove it from.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -22,27 +40,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
 
   spex "Sam sees the whole plan before anything runs", criterion: 565 do
     scenario "the status page lists every step in order, none of them started" do
-      given_ "Sam has a project with setup options chosen", context do
-        # Chosen through the form, not assumed from the defaults. The plan
-        # under test is rendered *from* these options, so a spex that let
-        # them default would stop testing the relationship the moment the
-        # defaults changed — and would fail in the `then_` counting steps,
-        # which points at the plan rather than at the options behind it.
-        #
-        # Still no step rows pre-seeded: the page renders the plan from the
-        # options alone, and that is the behaviour under test.
-        view = mount_provisioning(context)
-        options = all_setup_options(view)
-
-        {:ok, Map.put(context, :options, options)}
-      end
-
-      # A fresh mount on purpose. The options chosen above are persisted to
-      # the project, so opening the page again is the journey Sam actually
-      # takes — and if that ever stops being true, this is where it shows.
       when_ "he opens the setup status page", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
         steps =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step']")
+          |> Floki.find("[data-test='setup-checklist-item']")
 
         # Anchor: the page rendered a plan at all. Without this the
         # ordering assertion below would pass on an empty document.
@@ -88,9 +88,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
         end
 
         # Nothing has run, so no step may claim a terminal or in-flight state.
-        refute has_element?(context.view, "[data-test='setup-step'][data-state='running']")
-        refute has_element?(context.view, "[data-test='setup-step'][data-state='done']")
-        refute has_element?(context.view, "[data-test='setup-step'][data-state='errored']")
+        refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='running']")
+        refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='done']")
+        refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='errored']")
 
         {:ok, context}
       end
@@ -98,9 +98,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
   end
 
   defp step_selector(step, nil),
-    do: "[data-test='setup-step'][data-step='#{step}'][data-state='not_started']"
+    do: "[data-test='setup-checklist-item'][data-step='#{step}'][data-state='not_started']"
 
   defp step_selector(step, env),
     do:
-      "[data-test='setup-step'][data-step='#{step}'][data-environment='#{env}'][data-state='not_started']"
+      "[data-test='setup-checklist-item'][data-step='#{step}'][data-environment='#{env}'][data-state='not_started']"
 end

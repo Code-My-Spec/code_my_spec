@@ -20,6 +20,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.DevopsSetup,
     AgentTasks.FixAllBddSpecs,
     AgentTasks.FixBddSpecs,
+    AgentTasks.ReadyForQa,
     AgentTasks.FixIssues,
     AgentTasks.FixStoryIssues,
     AgentTasks.LinkStoryComponent,

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
   2. **Story → component tree**: bdd_specs_exist → component's first req;
-     component's terminal req → bdd_specs_passing → qa_complete
+     component's terminal req → ready_for_qa → qa_complete
   3. **Stories → project**: each story's qa_complete → qa_journey_plan
      (project-level fan-in node — gives the requirements graph a structural
      seam where story state aggregates into project state, which the
@@ -2502,12 +2502,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.any?(&(&1.name == name))
   end
 
-  # bdd_specs_passing is gated on the LEAVES of the surface's
+  # ready_for_qa is gated on the LEAVES of the surface's
   # orchestration tree:
   # - leaf surface (template has no :child defs): the surface's own
-  #   last :self def feeds bdd_specs_passing.
+  #   last :self def feeds ready_for_qa.
   # - container surface (template has :child defs): each direct
-  #   child's terminal feeds bdd_specs_passing. Sibling children
+  #   child's terminal feeds ready_for_qa. Sibling children
   #   with cross-context deps collapse via transitive reduction —
   #   only the deepest leaf survives.
   #
@@ -2537,7 +2537,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         [
           %{
             from: {"component", surface.id, terminal.name},
-            to: {"story", story.id, "bdd_specs_passing"}
+            to: {"story", story.id, "ready_for_qa"}
           }
         ]
     end
@@ -2555,7 +2555,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           [
             %{
               from: {"component", child.id, name},
-              to: {"story", story.id, "bdd_specs_passing"}
+              to: {"story", story.id, "ready_for_qa"}
             }
           ]
       end
@@ -3404,7 +3404,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Map.new()
   end
 
-  # Depth is the longest prerequisite chain behind a node. `bdd_specs_passing`
+  # Depth is the longest prerequisite chain behind a node. `ready_for_qa`
   # sits deeper than `bdd_specs_exist`, so finishing beats starting.
   # The visited set guards a template that ever gains a cycle; without it a bad
   # edit would hang the sort rather than mis-order it.

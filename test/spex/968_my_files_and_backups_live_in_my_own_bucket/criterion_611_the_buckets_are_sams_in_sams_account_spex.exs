@@ -7,7 +7,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
   his is held in platform-owned storage — his uploads and his database
   dumps are his, and stay his if he stops paying us.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  storage step moved onto `storage_backups`'s Config tab and credentials
+  onto their own always-visible page — see criterion 613's moduledoc.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Hetzner`.
   """
 
@@ -23,17 +27,23 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
   spex "The buckets are Sam's, in Sam's account", criterion: 611 do
     scenario "the created buckets are recorded under Sam's own account" do
       given_ "Sam is on the setup status page", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        paste_storage_credentials(view)
+        paste_storage_credentials(credentials_view)
         tear_down_after(context.scope, [:storage])
+
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the storage step has run", context do
-        CodeMySpecSpex.Case.run_step_interaction(context.view, :storage, "prod")
+        run_console_step(context.view, :storage)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

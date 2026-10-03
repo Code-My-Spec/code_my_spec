@@ -8,7 +8,16 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
   locally from whatever happens to be in the working tree — so "what is
   running in production" has an answer Sam can check.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): deploy
+  is its own page now (`/console/deploys`), not a resource group — see
+  criterion 785's moduledoc. Unlike the old page's `run_step_with_environment`
+  handler, the console's does not reassign `@plan` before returning — it
+  relies on a PubSub broadcast the LiveView processes on its next message, so
+  `render_submit/1`'s own return value is stale and a separate `render/1`
+  call is needed afterward to see the settled step (the step itself already
+  ran synchronously by then; only the socket's assigns lagged).
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy`.
   """
 
@@ -26,21 +35,22 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
     scenario "the running version is traceable to the commit CI built" do
       given_ "Sam's project is pushed to its remote", context do
         context = stage_deploy(context, :ok)
-        view = mount_provisioning(context)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the deploy runs", context do
-        html =
-          context.view
-          |> form(
-            "[data-test='setup-step'][data-step='deploy'][data-environment='uat'] [data-test='deploy-environment-form']",
-            %{"environment" => "uat"}
-          )
-          |> render_submit()
+        context.view
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "it deployed the image built from that commit", context do

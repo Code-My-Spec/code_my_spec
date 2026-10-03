@@ -688,14 +688,10 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/mail", MailLive, :index
       live "/projects/:project_id/mail/:id", MailLive, :show
 
-      live "/projects/:project_id/provisioning", ProvisioningLive, :index
-      live "/projects/:project_id/provisioning/credentials", ProvisioningLive, :credentials
-      live "/projects/:project_id/provisioning/environments", ProvisioningLive, :environments
-      live "/projects/:project_id/provisioning/secrets", ProvisioningLive, :secrets
-      # The console (story: provisioning page becomes the project console).
-      # A new LiveView rather than new live_actions on ProvisioningLive — the
-      # two pages' render trees don't share a shape, and bolting the console
-      # onto the page it is replacing would undo what step 5 just did to it.
+      # The console (story: provisioning page became the project console,
+      # retiring /provisioning — ProvisioningLive's own routes and sidebar
+      # link are gone; its render tree didn't share ConsoleLive's shape, so
+      # this replaced the page rather than adding live_actions to it).
       # Credentials, secrets and settings stay project-wide — environment
       # selection (`?env=`) only scopes resources and deploys, the same
       # ?param-over-route shape AgentConversationLive already uses for its own

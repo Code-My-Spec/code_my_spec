@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
       given_ "a story exists with a passing-spec'd qa_complete requirement pending",
              context do
         # Advance the project to the qa_complete frontier: all prereqs satisfied
-        # (project chain + story chain through bdd_specs_passing) but qa_complete
+        # (project chain + story chain through ready_for_qa) but qa_complete
         # itself left open so it appears as the next actionable requirement.
         {:ok, FullSatisfactionFixtures.apply_without_qa_story(context)}
       end

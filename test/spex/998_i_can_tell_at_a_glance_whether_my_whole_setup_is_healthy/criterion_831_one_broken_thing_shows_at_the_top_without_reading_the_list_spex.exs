@@ -45,17 +45,92 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
             end
           })
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Retargeted onto the console (provisioning-console-step6, unmerged).
+        # Unlike the other 997/998/999 retargets, this one can't get away
+        # with running only the scripted step: `problems` counts every
+        # checklist entry still `:missing` (resources.ex), and the old
+        # whole-run cascade left every *other* step `:done`-with-no-resources
+        # along the way. Reproducing "everything is set up, then one box died
+        # behind setup's back" means actually running every step the plan
+        # expects — project-scoped once, environment-scoped once per
+        # environment — so the checklist carries zero `:missing` entries and
+        # the dangling DNS record is the only problem left to count.
+        {:ok, server_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        # The run settling, not a step by name. This waited on `monitoring`,
-        # a step removed from the sequence when it turned out to need an
-        # account, an API key and a notification target only a person can
-        # supply — so the wait could never succeed, spent its full thirty
-        # seconds, and the criterion passed because thirty seconds is long
-        # enough for the run to finish on its own.
-        await_provisioning(view)
+        run_console_step(server_view, :server)
+
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
+
+        run_console_step(repository_view, :repository)
+
+        {:ok, mail_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/mail")
+
+        run_console_step(mail_view, :email)
+        run_console_step(mail_view, :inbound)
+
+        for env <- ["uat", "prod"] do
+          {:ok, servers_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/servers?env=#{env}"
+            )
+
+          run_console_step(servers_view, :secrets)
+          run_console_step(servers_view, :callback_credential)
+
+          {:ok, dns_domain_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/dns_domain?env=#{env}"
+            )
+
+          run_console_step(dns_domain_view, :domain)
+          run_console_step(dns_domain_view, :dns)
+          run_console_step(dns_domain_view, :tls)
+
+          {:ok, deploys_view, _html} =
+            live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+          deploys_view
+          |> form(
+            "[data-test='deploy-row'][data-environment='#{env}'] [data-test='deploy-environment-form']",
+            %{"environment" => env}
+          )
+          |> render_submit()
+
+          {:ok, storage_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/storage_backups?env=#{env}"
+            )
+
+          run_console_step(storage_view, :storage)
+          run_console_step(storage_view, :backups)
+
+          {:ok, widget_view, _html} =
+            live(
+              context.conn,
+              "/app/projects/#{context.project.id}/console/resources/widget?env=#{env}"
+            )
+
+          run_console_step(widget_view, :widget)
+        end
+
+        # Unlike the other environment-scoped steps, `content` plans one
+        # entry total, pinned to the primary environment (`prod`, when it
+        # exists) — `Provisioning.plan_environments/2`'s special case for
+        # `:content`. Visiting it per-environment above would 404 on uat's
+        # "nothing in this environment yet".
+        {:ok, publishing_view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/publishing?env=prod"
+          )
+
+        run_console_step(publishing_view, :content)
 
         {:ok, context}
       end

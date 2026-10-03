@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
 
         outgoing = GraphAssertions.edges_from(context.graph, bdd_exist_key)
         # bdd_specs_exist also has an internal-story prereq edge to
-        # qa_complete (replacing the now-removed bdd_specs_passing
+        # qa_complete (replacing the now-removed ready_for_qa
         # gate); we only care about the surface-tree kickoff edges
         # here, so filter to component targets.
         component_targets =

@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   spex "Promoting a specs-ready story marks its code on the running copy",
     criterion: 1394 do
     scenario "the stamp lands once and a later promotion does not repeat it" do
-      given_ "a story whose specs-ready latch is set, from its own passing specs evaluation, not yet promoted",
+      given_ "a story certified ready for QA, not yet promoted",
              context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
 
         story = Stories.get_story(context.scope, context.story.id)
-        assert story.specs_ready, "the premise failed: specs_ready should already be set"
+        assert story.qa_ready_commit, "the premise failed: the story should be certified for QA"
         refute story.promoted_version, "the premise failed: the story should not be promoted yet"
 
         sibling = a_promotable_story(context, title: "A different story, not the one promoted")

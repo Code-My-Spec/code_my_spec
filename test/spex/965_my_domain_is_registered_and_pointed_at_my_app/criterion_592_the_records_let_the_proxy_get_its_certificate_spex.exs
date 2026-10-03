@@ -9,7 +9,13 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
   challenge at Cloudflare's edge and the proxy on Sam's box never sees it,
   so issuance hangs with correct-looking DNS.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): same
+  move criterion 588 made — see that spex's moduledoc. `:dns` and `:tls`
+  both live on the `dns_domain` resource group; mounted with `?env=prod` so
+  the per-environment `:tls` row needs no further disambiguation, matching
+  the "prod" `run_step_interaction/3` call this replaces.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Cloudflare`.
   """
 
@@ -43,7 +49,11 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
         # immediately before the click, is a race the click can win.
         stage_certificate(context)
 
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/dns_domain?env=prod"
+          )
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend and the mount is outside every
@@ -59,11 +69,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
           CodeMySpecSpex.Fixtures.seed_environment_ip(context.scope, name, ip)
         end
 
-        view
-        |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
-        |> render_click()
-
-        CodeMySpecSpex.Case.await_step(view, :dns)
+        run_console_step(view, :dns)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:dns_html, render(view))}
       end
@@ -88,8 +94,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
       end
 
       when_ "the proxy requests a certificate for that hostname", context do
-        CodeMySpecSpex.Case.run_step_interaction(context.view, :tls, "prod")
-        CodeMySpecSpex.Case.await_step(context.view, :tls, "prod", 600)
+        run_console_step(context.view, :tls)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   Two main functions:
   - `command/3` — Reads spex problems, builds fix prompt with failure details
-  - `evaluate/3` — Checks that no relevant spex failures remain
+  - `evaluate/3` — the ready-for-QA certification (`ReadyForQa`)
   """
 
   def analyzers, do: [:spex_stale]
@@ -21,13 +21,12 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "when a story's BDD spec files exist but one or more criteria fail."
   end
 
+  alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.SpecsPassingChecker
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
@@ -87,81 +86,18 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   end
 
   @doc """
-  Evaluate the specs-passing gate for the task's story. Reports green; does
-  not latch.
+  Completing this task is the ready-for-QA certification (`ReadyForQa`).
 
-  It reads the latest completed spex run on this working copy, however old
-  (28d72f8a): every one of the story's own specs green on it is a pass.
-  Whether that run saw the current code is the promote gate's question.
-  Since e1174640 the `specs_ready` latch is set only by a promote of the
-  story (`Stories.mark_story_promoted/4`).
-
-  No completed run at all is reported as *pending*, never as *failure*: an
-  agent told its specs failed goes hunting for a bug that isn't there.
-
-  Returns:
-  - `{:ok, :valid}` when the story's specs are green on the latest run
-  - `{:ok, :invalid, feedback}` when specs fail, are missing, or no spex run
-    has completed yet
+  The specs-passing gate it used to evaluate is gone (John, 2026-10-02): no
+  requirement reads analysis results any more, and a story's specs are
+  required green by `Promotion.certify/3` — at ready-for-QA and again at
+  promotion. So this delegates, which is also what lets a task held on the
+  retired `bdd_specs_passing` complete through the new check.
   """
-  def evaluate(scope, task), do: evaluate(scope, task, nil)
+  def evaluate(scope, task), do: ReadyForQa.evaluate(scope, task)
 
-  @doc """
-  As `evaluate/2`, told who owns the task.
-
-  The owner is what says whether this agent waits. One we run has a process on
-  the other end and is sent the result; anything else polls. `Task.agent_id`
-  cannot answer it — see `dispatch_evaluate/4` in `Tools.EvaluateTask`.
-  """
-  def evaluate(scope, task, owner) do
-    case story_for(scope, task) do
-      nil ->
-        {:ok, :invalid, "No story found for this task — cannot evaluate the specs-passing gate."}
-
-      story ->
-        evaluate_story(scope, story, task, owner)
-    end
-  end
-
-  defp evaluate_story(scope, story, _task, owner) do
-    cond do
-      latched_and_uncontradicted?(scope, story) ->
-        # Already latched. No run, or a failure on somebody else's story, must
-        # not un-latch it — that is why the node can exist at all.
-        #
-        # What it must not survive is the latest run showing *this* story's own
-        # specs red, because that means the latch was never earned. It was set
-        # by a gate that matched problems to stories by parsing a directory
-        # name and found none, and finding none is the branch that latches.
-        # Evaluating such a story answered `:valid` instantly and forever, so
-        # the story sailed to QA with its feature unbuilt.
-        {:ok, :valid}
-
-      not has_bdd_specs?(scope, story) ->
-        {:ok, :invalid, no_specs_message(story)}
-
-      not Analysis.answered?(scope, "spex") ->
-        {:ok, :invalid, analysis_pending_message(story, scope, owner)}
-
-      true ->
-        # Green is reported, not latched: only a promote of this story sets
-        # `specs_ready` (e1174640).
-        case story_spex_problems(scope, story) do
-          [] ->
-            {:ok, :valid}
-
-          problems ->
-            {:ok, :invalid, build_feedback(Enum.map(problems, &{&1, story}))}
-        end
-    end
-  end
-
-  # The same question `bdd_specs_passing` asks, asked the same way, because an
-  # evaluator and the requirement it closes disagreeing is how a story reads
-  # done on one surface and undone on another.
-  defp latched_and_uncontradicted?(scope, story) do
-    match?({true, _}, SpecsPassingChecker.passing?(scope, story))
-  end
+  @doc "As `evaluate/2`, told who owns the task (`ReadyForQa.evaluate/3`)."
+  def evaluate(scope, task, owner), do: ReadyForQa.evaluate(scope, task, owner)
 
   defp story_for(scope, %{story_id: story_id}) when not is_nil(story_id),
     do: Stories.get_story(scope, story_id)
@@ -200,12 +136,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     scope
     |> Problems.list_project_problems(source: "spex")
     |> Enum.filter(&MapSet.member?(story_paths, &1.file_path))
-  end
-
-  defp has_bdd_specs?(scope, story) do
-    scope
-    |> Files.list_story_files(story.id)
-    |> Enum.any?(&(&1.role == :bdd_spec))
   end
 
   # ============================================================================
@@ -275,109 +205,22 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # theories were built to explain it and one was filed as an issue that had to
   # be withdrawn.
   #
-  # e1174640: the latch moved to promote. A fresh green run now satisfies
-  # `bdd_specs_passing` for an unlatched story; evaluating only reports it.
+  # Completing the task is the ready-for-QA certification (`ReadyForQa`).
   defp green_message(story) do
     """
-    # Specs Passing — evaluate to confirm
+    # Specs Passing — complete to certify
 
     Story #{story.number} (#{story.title}) has no failing spex problems recorded. The
     work looks done.
 
-    `bdd_specs_passing` is satisfied by the latest spex run showing this story's
-    own specs green. Evaluating does not latch anything: the `specs_ready`
-    latch is set when this story is promoted.
-
-    Call `evaluate_task` on this task. If no spex run has completed on this
-    working copy yet the evaluation will say so and ask you to wait — that is a
-    pending answer, not a failure.
+    Commit, then call `evaluate_task` on this task. Completing it certifies this
+    copy for QA: a clean tree, every analyzer clean at your HEAD, and this story's
+    own specs green there. If a run at your HEAD is missing it is started and the
+    task stays open — end your turn; you are told when it lands.
 
     Other stories may have failing specs. They are not yours and they do not
-    gate this requirement.
+    gate this certification.
     """
-  end
-
-  defp no_specs_message(story) do
-    """
-    # Specs Passing — not yet
-
-    Story #{story.number} (#{story.title}) has no BDD spec files on disk, so there is
-    nothing for a spex run to prove. Write the story's specs first
-    (`bdd_specs_exist`), then come back to this gate.
-    """
-  end
-
-  # Deliberately worded as pending rather than failing. No run means "we don't
-  # know yet", and an agent told its specs failed will go looking for a bug
-  # that isn't there.
-  defp analysis_pending_message(story, scope, owner) do
-    """
-    # Specs Passing — analysis pending
-
-    Story #{story.number} (#{story.title}) cannot be evaluated yet: no spex run has
-    completed on this working copy, so there is no result to read. This is
-    **not** a spec failure — nothing is known to be broken.
-
-    #{wait_directive(scope, owner)}
-    """
-  end
-
-  # Every harness route names the working copy it is about, so the unaddressed
-  # URL 404s — and it does so with exit code 0, which an agent backgrounding the
-  # curl reads as the sweep having finished. It never waited, the next
-  # evaluation says "pending" again, and the loop repeats.
-  #
-  # Same shape as `Hooks.Stop.wait_directive/1`, including the fallback: a scope
-  # with no harness has no local address to offer, and no URL beats a wrong one.
-  #
-  # It also names `analysis/run`, because waiting only works when something is
-  # running. With nothing in flight the wait returns immediately with the same
-  # stale results, the next evaluation says pending again, and that is the same
-  # loop by the other door — no failing step anywhere in it. A harness restart
-  # is the ordinary way to get here: `just refresh` kills every in-flight sweep
-  # and says so.
-  # Matched as an atom rather than a struct pattern: `CodeMySpec.Agents` is not
-  # a dependency of this boundary, and `%Agent{}` would make it one for the sake
-  # of a type test.
-  defp wait_directive(_scope, %{__struct__: CodeMySpec.Agents.Agent}), do: internal_directive()
-
-  defp wait_directive(scope, _owner), do: external_directive(scope)
-
-  # An agent in our own BEAM does not wait. It has a process we can reach, so
-  # the run reports back when it lands — `Agents.AnalysisReport` dispatches the
-  # digest at the end of `Reconciler.reconcile/4`. Telling it to hold a `curl`
-  # open instead spends a turn watching a sweep that takes several minutes,
-  # which is what it was doing when John found it.
-  defp internal_directive do
-    "Stop when you have nothing else to do. The spex run reports back to you " <>
-      "as a message when it lands — you do not need to wait for it, and you " <>
-      "must not hold a command open watching it. Anything the result does not " <>
-      "block, finish first."
-  end
-
-  # And the agent these endpoints were written for keeps them: Claude Code
-  # runs on, fires hooks, and collects the digest on its next tool call. Two
-  # consumers of one result, and the difference is whether there is a process
-  # on the other end.
-  defp external_directive(%{active_working_copy_id: id}) when not is_nil(id) do
-    "Wait for the spex run with " <>
-      "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
-      "the background and you will be notified when it returns — then evaluate this " <>
-      "requirement again.\n\n" <>
-      "If that returns straight away, nothing was running: " <>
-      "start one with " <>
-      "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/run " <>
-      ~s(-H 'content-type: application/json' -d '{"source":"spex"}'`, in the ) <>
-      "background — a sweep takes several minutes."
-  end
-
-  defp external_directive(_scope) do
-    "Wait for the analyzers to finish, then evaluate this requirement again. Both " <>
-      "endpoints are on the harness and name the working copy — " <>
-      "`POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` to wait for a " <>
-      ~s(run, and `.../analysis/run` with `{"source":"spex"}` to start one when the ) <>
-      "wait returns immediately and nothing has changed. The id is in " <>
-      "`.cms_harness.json` in the working copy."
   end
 
   defp unimplemented_message do
@@ -464,13 +307,4 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # ============================================================================
   # Feedback
   # ============================================================================
-
-  defp build_feedback(relevant_pairs) do
-    lines =
-      Enum.map_join(relevant_pairs, "\n", fn {problem, story} ->
-        "- `#{problem.file_path}` (story: #{story.title}): #{problem.message}"
-      end)
-
-    "#{length(relevant_pairs)} BDD spec failure(s) remain for implemented components:\n\n#{lines}\n\nFix the implementation code so these specs pass."
-  end
 end

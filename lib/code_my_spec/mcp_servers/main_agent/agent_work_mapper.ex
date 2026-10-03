@@ -126,9 +126,15 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
   defp holding(%AgentWork{} = work) do
     """
     task: #{work.task_name}#{task_state(work)}#{story(work)}
-      task opened: #{moment(work.task_started_at)}\
+      task opened: #{moment(work.task_started_at)}#{beside_blocked(work)}\
     """
   end
+
+  # A blocked task holds only itself, so the queue beside it still counts.
+  defp beside_blocked(%AgentWork{task_status: :blocked, idle?: false} = work),
+    do: "\n  " <> AgentWork.unclaimed_work(work)
+
+  defp beside_blocked(%AgentWork{}), do: ""
 
   # A blocked attempt is still the work the agent is on, and saying only its
   # name would read as an agent that is working when it is waiting. The line

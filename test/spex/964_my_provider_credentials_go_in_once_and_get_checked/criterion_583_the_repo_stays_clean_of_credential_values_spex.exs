@@ -12,7 +12,12 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
   boundary rules precisely because "no credential value on disk" *is*
   the user-visible effect here.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -38,11 +43,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
     scenario "no credential value appears anywhere in the working tree" do
       given_ "Sam is on credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -85,11 +86,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
         # Anchor: proves the refute above is not passing because intake
         # silently dropped everything.
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         assert has_element?(
                  view,
