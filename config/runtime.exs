@@ -70,12 +70,6 @@ if config_env() == :harness do
     config :code_my_spec, analysis_slots: String.to_integer(slots)
   end
 
-  # A harness pinned to one project (a workspace or a sprite). Read by
-  # `CmsHarness.Device`, which reports such a machine as `cloud`.
-  if project_id = System.get_env("CMS_PROJECT_ID") do
-    config :code_my_spec, project_id: project_id
-  end
-
   # The harness log handler takes `CMS_LOG_LEVEL`; the primary level has to
   # admit what it asks for, or a debug handler receives nothing.
   if (level = System.get_env("CMS_LOG_LEVEL")) in ~w(debug info warning error) do
