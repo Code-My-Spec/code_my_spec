@@ -19,16 +19,14 @@ defmodule CodeMySpecSpex.Story1087.Criterion1769Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RecordingFlameBackend
-  alias CodeMySpecTest.RecordingEmbeddingServing
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :embedding_serving)
-    Application.put_env(:code_my_spec, :embedding_serving, RecordingEmbeddingServing)
-    RecordingEmbeddingServing.listen(self())
+    :ok = Fixtures.embedding_serving_is_recorded()
     RecordingFlameBackend.listen(self())
 
     start_supervised!(
@@ -36,17 +34,10 @@ defmodule CodeMySpecSpex.Story1087.Criterion1769Spex do
        name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: RecordingFlameBackend}
     )
 
-    on_exit(fn ->
-      RecordingEmbeddingServing.reset()
-      RecordingFlameBackend.reset()
-      restore_embedding_serving(previous)
-    end)
+    on_exit(fn -> RecordingFlameBackend.reset() end)
 
     :ok
   end
-
-  defp restore_embedding_serving(nil), do: Application.delete_env(:code_my_spec, :embedding_serving)
-  defp restore_embedding_serving(value), do: Application.put_env(:code_my_spec, :embedding_serving, value)
 
   defp read(_path), do: {:ok, "defmodule Big do\n  @moduledoc \"big enough to bulk embed.\"\nend\n"}
 

@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
 
   alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecTest.RecordingEmbeddingServing
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -170,7 +169,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
         )
 
         manifest(main)
-        RecordingEmbeddingServing.pause_until_released(true)
+        Fixtures.pause_embedding_until_released(true)
         {:ok, Map.put(context, :main, main)}
       end
 
@@ -189,7 +188,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
 
           assert_receive {:runner_pid, runner_pid}, 5_000
           Process.exit(runner_pid, :lost_connection)
-          RecordingEmbeddingServing.pause_until_released(false)
+          Fixtures.pause_embedding_until_released(false)
 
           assert_receive {:DOWN, ^sweep_ref, :process, ^sweep_pid, _reason}, :timer.seconds(30)
         end)
@@ -258,7 +257,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
         )
 
         manifest(main)
-        RecordingEmbeddingServing.pause_until_released(true)
+        Fixtures.pause_embedding_until_released(true)
         {:ok, Map.put(context, :main, main)}
       end
 
@@ -278,7 +277,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
           # the scenario above, now that `link: false` cuts both ways.
           refute_receive {:DOWN, ^runner_ref, :process, ^runner_pid, _}, 200
 
-          RecordingEmbeddingServing.release(runner_pid)
+          Fixtures.release_embedding(runner_pid)
 
           assert_receive {:DOWN, ^runner_ref, :process, ^runner_pid, reason}, 5_000
 
