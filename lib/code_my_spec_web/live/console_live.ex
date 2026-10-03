@@ -1,14 +1,15 @@
 defmodule CodeMySpecWeb.ConsoleLive do
   @moduledoc """
-  The project console — step 6 of the provisioning-page redesign (held on
-  its own branch for review, not promoted).
+  The project console — step 6 of the provisioning-page redesign, and now
+  the only page: `/provisioning`, `ProvisioningLive` and its sidebar link
+  are retired (gate 2 of the step 6 rollout).
 
-  A new LiveView rather than new `live_action`s on `ProvisioningLive`: the
-  two pages' render trees don't share a shape, and bolting a sidebar-and-tabs
-  console onto the page step 5 just finished de-nesting would undo that work.
-  `ProvisioningLive` keeps serving `/provisioning` unchanged — every spex that
-  targets it still passes — while this serves the new `/console` routes
-  side by side.
+  A new LiveView rather than new `live_action`s on the old `ProvisioningLive`:
+  the two pages' render trees didn't share a shape, and bolting a
+  sidebar-and-tabs console onto the page step 5 just finished de-nesting
+  would have undone that work. `ProvisioningLive.Components` and
+  `ProvisioningLive.ResourceFields` live on under the old namespace and are
+  still aliased here — only the top-level LiveView itself was retired.
 
   ## Layout
 
