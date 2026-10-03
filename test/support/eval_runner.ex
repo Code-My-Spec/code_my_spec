@@ -314,13 +314,13 @@ defmodule CodeMySpec.Support.EvalRunner do
       },
       %{
         id: "criterion_1870",
-        behaviour: "An agent offered work already done rejects the offer, not taps out",
+        behaviour: "An agent offered work already done closes or rejects it, never taps out",
         role: "coding",
         prepare: &work_already_done/2,
         threshold: 0.9,
         deadline_ms: 180_000,
         seed: &seed_ready_for_qa_work/2,
-        judge: &rejected_not_tapped_out?/1
+        judge: &closed_or_rejected?/1
       },
       %{
         id: "criterion_3544",
@@ -1448,8 +1448,11 @@ defmodule CodeMySpec.Support.EvalRunner do
     end
   end
 
-  defp rejected_not_tapped_out?(%{trace: trace} = record) do
-    Enum.any?(trace, &(&1[:event] == :turn_ended)) and reached?(record, "reject_offer") and
+  # Closed or rejected, never tapped out or left open — judged on the whole
+  # turn (criterion 1870 as reworded 2026-10-03).
+  defp closed_or_rejected?(%{trace: trace} = record) do
+    Enum.any?(trace, &(&1[:event] == :turn_ended)) and
+      (reached?(record, "evaluate_task") or reached?(record, "reject_offer")) and
       not reached?(record, "tap_out")
   end
 
