@@ -407,7 +407,8 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:ok, Agent.t(), {:unreachable, String.t()}} | {:error, term()}
   def retire_agent(%Scope{} = scope, id, opts \\ []) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
-         {:ok, retired} <- record_retired(scope, agent, opts) do
+         {:ok, recorded} <- record_retired(scope, agent, opts),
+         {:ok, retired} <- release_tasks(recorded) do
       :ok = hand_off_questions(scope, retired)
 
       case end_process(scope, retired) do
@@ -422,6 +423,28 @@ defmodule CodeMySpec.Agents do
       end
     end
   end
+
+  # A retired agent's open tasks kept their requirement claimed, so the seat's
+  # next agent was refused with `:task_owned_by_another_agent` (59c93382).
+  # Closed as cancelled on the retired row, which keeps their history.
+  defp release_tasks(%Agent{id: id}) do
+    import Ecto.Query, only: [from: 2]
+
+    Repo.transaction(fn ->
+      agent = Repo.one!(from a in Agent, where: a.id == ^id, lock: "FOR UPDATE")
+      tasks = Enum.map(agent.tasks || [], &release_task(&1, DateTime.utc_now()))
+
+      agent
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.put_embed(:tasks, tasks)
+      |> Repo.update!()
+    end)
+  end
+
+  defp release_task(%{status: status} = task, now) when status in [:active, :blocked],
+    do: %{task | status: :cancelled, completed_at: now}
+
+  defp release_task(task, _now), do: task
 
   # A retired agent's open questions would orphan: the answer is delivered to
   # an agent that will never read it. They go to its successor in the role —

@@ -138,7 +138,7 @@ defmodule CmsHarness.Analysis do
   # set rather than inherited: the harness runs as `harness`, an env a project's
   # config need not define, and `deps.get` fetches for every env regardless.
   defp deps_get(env) do
-    :global.trans({__MODULE__, :deps_get, env.cwd}, fn ->
+    serialize_deps_get(env.cwd, fn ->
       case Environments.cmd(env, "mix", ["deps.get"],
              stderr_to_stdout: true,
              env: [{"MIX_ENV", "dev"}]
@@ -148,6 +148,14 @@ defmodule CmsHarness.Analysis do
       end
     end)
   end
+
+  @doc "Run `fun` holding the checkout's `deps.get` lock, so concurrent runs fetch one at a time."
+  # A `:global` lock id is `{ResourceId, RequesterId}`; a bare three-tuple
+  # raises `function_clause` in `:global.set_lock`, which killed every analyzer
+  # the first time a tree's deps went stale (fc08e5e2's regression).
+  @spec serialize_deps_get(String.t(), (-> result)) :: result when result: term()
+  def serialize_deps_get(cwd, fun),
+    do: :global.trans({{__MODULE__, :deps_get, cwd}, self()}, fun)
 
   @doc """
   The checkout's commit and whether its tree has uncommitted changes, read
@@ -443,8 +451,8 @@ defmodule CmsHarness.Analysis do
   #
   # `Runners.spex_location/1` is the one place that decides it now. CmsHarness
   # may depend on CodeMySpec, so this needs no third home.
-  @doc false
-  # Public only so the harness's own diagnostic can be asserted without a live
+  @doc "One spex failure as the problem map the server receives, located at its spec file and line."
+  # Public so the harness's own diagnostic can be asserted without a live
   # `mix spex`. Its absence is why a location fix shipped against the server's
   # copy and changed nothing here.
   def spex_failure(failure) do
