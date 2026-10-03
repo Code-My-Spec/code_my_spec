@@ -15,7 +15,7 @@ alias CodeMySpec.Accounts
 alias CodeMySpec.Projects
 alias CodeMySpec.Repo
 alias CodeMySpec.Users
-alias CodeMySpec.Users.Scope
+alias CodeMySpec.UserPreferences
 
 email = "e2e-harness@example.com"
 
@@ -29,7 +29,7 @@ user =
       user
   end
 
-scope = Scope.for_user(user)
+scope = UserPreferences.scope_for(user)
 
 account =
   case Accounts.list_accounts(scope) do
