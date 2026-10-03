@@ -3,7 +3,7 @@ defmodule CodeMySpecDesktop.Application do
   The desktop env's `mod` (bb8bc042). The web application's tree with the
   desktop's children added: FirstBoot after PubSub and before anything reads
   the database, then the harness after the Endpoint it talks to, then the
-  browser. The host setup a harness needs under a service supervisor (PATH,
+  native window (or, with `CMS_BROWSER`, the default browser). The host setup a harness needs under a service supervisor (PATH,
   `~/.codemyspec`, harness.log) and creating the database run before the tree.
   """
 
@@ -28,6 +28,21 @@ defmodule CodeMySpecDesktop.Application do
       {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot]
       child -> [child]
     end) ++
-      [CmsHarness.Supervisor, {Browser, Application.fetch_env!(:code_my_spec, :base_url)}]
+      [CmsHarness.Supervisor, view(Application.fetch_env!(:code_my_spec, :base_url) <> "/app")]
+  end
+
+  # The native window; `CMS_BROWSER` falls back to opening the default browser.
+  def view(url) do
+    if System.get_env("CMS_BROWSER") in [nil, ""] do
+      {Desktop.Window,
+       app: :code_my_spec,
+       id: CodeMySpecWindow,
+       title: "CodeMySpec",
+       size: {1280, 860},
+       min_size: {900, 600},
+       url: fn -> url end}
+    else
+      {Browser, url}
+    end
   end
 end

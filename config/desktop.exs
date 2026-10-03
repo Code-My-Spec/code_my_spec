@@ -31,5 +31,8 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
 config :paper_trail, strict_mode: true
 
+config :desktop, :backend, DesktopWebview.Backend
+config :desktop, :menu_adapter, DesktopWebview.Menu.Adapter
+
 # Mail stays in memory (config.exs's Local adapter); prod.exs turned the store off.
 config :swoosh, local: true

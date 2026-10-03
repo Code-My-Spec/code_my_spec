@@ -207,6 +207,18 @@ defmodule CodeMySpec.MixProject do
       # its own VM and drops that dependency, so there is no NIF-free claim to
       # re-check at a layer below this one.
       {:lua, "~> 1.0"},
+      # The desktop build's native window (bb8bc042): elixir-desktop driving
+      # desktop_webview's host (WKWebView / WebView2), no wx. Pinned to commits:
+      # Hex `desktop` is from 2024 and desktop_webview is unpublished.
+      {:desktop,
+       github: "elixir-desktop/desktop",
+       ref: "f736ff479e415f1da0cc36de7d1e26e8e3b5b976",
+       only: :desktop,
+       override: true},
+      {:desktop_webview,
+       github: "elixir-desktop/webview",
+       ref: "626b270cdcc133fb05f84c12ee98f1cfae009a8a",
+       only: :desktop},
       {:yaml_elixir, "~> 2.11"},
       {:dir_walker, "~> 0.0.8"},
       {:assent, "~> 0.3.1"},
