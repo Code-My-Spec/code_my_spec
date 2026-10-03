@@ -37,31 +37,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
   # Watching a step change state needs a run that is still going.
   setup :watchable_run
 
-  defp resource_step_state?(html, step, state),
-    do: html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/
-
-  defp await_resource_step_state(view, step, state, deadline \\ nil)
-
-  defp await_resource_step_state(view, step, state, nil) do
-    await_resource_step_state(view, step, state, System.monotonic_time(:millisecond) + 30_000)
-  end
-
-  defp await_resource_step_state(view, step, state, deadline) do
-    html = render(view)
-
-    cond do
-      resource_step_state?(html, step, state) ->
-        html
-
-      System.monotonic_time(:millisecond) > deadline ->
-        raise "the #{step} step never reached #{state}"
-
-      true ->
-        Process.sleep(50)
-        await_resource_step_state(view, step, state, deadline)
-    end
-  end
-
   spex "A step's state changes under Sam's eyes", criterion: 566 do
     scenario "the page moves a step from running to done without a reload" do
       given_ "setup is ready to run, with repository and secrets already done", context do
