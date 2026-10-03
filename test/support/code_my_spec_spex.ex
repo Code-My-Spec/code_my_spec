@@ -8,6 +8,12 @@ defmodule CodeMySpecSpex do
       # leg stopped silently discarding its findings (see `866ba007b`,
       # `fa6d31bf`). None of this is a new crossing — every one of these was
       # already being called from a spex file; only the declaration was stale.
+      # Story 1086's criteria 1765/1766 call `Activity.record/4,5` and
+      # `.list_for_resource/2` directly — the module under test (an
+      # append-only log has no page of its own to assert "an entry exists"
+      # or "nothing erases it" through), same reasoning as `AgentTasks` and
+      # `Promotion` below.
+      CodeMySpec.Activity,
       CodeMySpec.Agents,
       # Story 1108, criterion 4657 calls `QaStory.command/2` directly — it is
       # the module under test (the prompt `start_task` hands a QA agent), the

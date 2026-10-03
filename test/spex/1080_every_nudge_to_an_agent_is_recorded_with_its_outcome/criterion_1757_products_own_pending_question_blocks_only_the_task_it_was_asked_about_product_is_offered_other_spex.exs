@@ -108,6 +108,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
           )
 
         refute filed.isError, response_text(filed)
+        :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
 

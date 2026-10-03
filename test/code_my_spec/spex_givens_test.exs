@@ -239,6 +239,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # through the same function story 1081 will use, the second pins the
   # provider seam the way `Req.Test.stub` always does, just wrapped so every
   # criterion in that story doesn't repeat the same four lines.
+  # Story 1086's `CodeMySpec.Activity.record/4,5` (`Activity.record(`, which
+  # also matches the fully-qualified form): the real write every other path
+  # into the log goes through — `Application.put_env` and `File.write`'s own
+  # precedent, a direct call rather than a Case helper, listed because it
+  # genuinely persists the row a given_ names rather than describing one.
   @establishes ~w(
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
@@ -275,6 +280,7 @@ defmodule CodeMySpec.SpexGivensTest do
     team_on_a_story issue_accepted qa_plan_missing
     refuse_verify_calls
     ClickHouseCassetteHelpers.
+    Activity.record(
   )
 
   # The failure message has always offered a second remedy — "if the

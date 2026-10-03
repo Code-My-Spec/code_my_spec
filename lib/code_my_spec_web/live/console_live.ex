@@ -43,18 +43,21 @@ defmodule CodeMySpecWeb.ConsoleLive do
   handlers as the old page, with the Cloudflare calls behind `start_async`
   too since both can block on a real registrar round-trip.
   `mail_send_probe`/`refresh_mail_dns`/`widget_degradation_probe` are not
-  part of this pass and still only run from the old page. Activity is still
-  a placeholder.
+  part of this pass and still only run from the old page.
 
-  Overview's "recent activity" is derived from each step's own
-  started_at/completed_at/verified_at, sorted — not a persisted event log.
-  There is no audit trail of credential saves, secret writes or environment
-  edits yet, so those never appear here. A real Activity feed needs that
-  log built first.
+  Activity (gate 3, story 1086) is `CodeMySpec.Activity` — a persisted,
+  append-only log, not step timestamps. Every step trigger, check probe,
+  credential save, secret write and environment edit records its own
+  entry, attributed via `Agents.actor/2` (a person's email, or "the
+  <role> agent <id>" when an MCP tool acted). Overview's "recent activity"
+  shows the project's last 10 regardless of environment; the Activity tab
+  shows everything with an environment filter; a resource tab shows only
+  its own entries (`resource` matches `ResourceGroups.for_step/1`'s key).
   """
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Activity
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
@@ -63,6 +66,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.ContentPublishing
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -121,6 +125,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       socket
       |> assign(:environment, environment)
       |> assign(:resource_key, string_to_key(params["key"]))
+      |> assign(:activity_environment, params["activity_env"])
       |> assign(:tab, params["tab"] || "config")
       |> assign_new(:credentials, fn -> Credentials.list(scope) end)
       |> assign_new(:missing_credentials, fn -> Credentials.missing(scope) end)
@@ -284,16 +289,21 @@ defmodule CodeMySpecWeb.ConsoleLive do
       <div data-test="console-activity" class="card bg-base-100">
         <div class="card-body">
           <h2 class="card-title">Recent activity</h2>
-          <p :if={recent_activity(@plan) == []} class="opacity-70 text-sm">Nothing yet.</p>
+          <p :if={overview_activity(@current_scope) == []} class="opacity-70 text-sm">
+            Nothing yet.
+          </p>
           <ul class="mt-2 flex flex-col gap-1">
             <li
-              :for={entry <- recent_activity(@plan)}
+              :for={entry <- overview_activity(@current_scope)}
               data-test="activity-entry"
-              data-step={entry.step}
-              data-at={DateTime.to_iso8601(entry.at)}
+              data-kind={entry.kind}
+              data-resource={entry.resource}
+              data-environment={entry.environment}
+              data-actor={entry.actor}
+              data-at={DateTime.to_iso8601(entry.inserted_at)}
               class="text-sm opacity-70"
             >
-              {entry.step} {entry.kind} at {entry.at}
+              {entry.summary} — {entry.actor}
             </li>
           </ul>
         </div>
@@ -337,6 +347,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       tab={@tab}
       project_id={@current_scope.active_project_id}
       environment={@environment}
+      activity_entries={resource_activity(@current_scope, @resource_key)}
     >
       <:checks :if={@resource_key == :storage_backups && @storage_ready?}>
         <div data-test="storage-probe" data-state={storage_probe_state(assigns)}>
@@ -901,16 +912,50 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp render_section(%{live_action: :activity} = assigns) do
     ~H"""
-    <section data-test="console-activity-page" class="flex flex-col gap-1">
-      <p :if={recent_activity(@plan) == []} class="opacity-70 text-sm">Nothing yet.</p>
-      <div
-        :for={entry <- recent_activity(@plan)}
-        data-test="activity-entry"
-        data-step={entry.step}
-        data-at={DateTime.to_iso8601(entry.at)}
-        class="text-sm opacity-70 border-b border-base-200 py-1"
-      >
-        {entry.step} {entry.kind} at {entry.at}
+    <section data-test="console-activity-page" class="flex flex-col gap-4">
+      <div data-test="activity-env-filter" role="tablist" class="tabs tabs-boxed w-fit">
+        <.link
+          patch={~p"/app/projects/#{@current_scope.active_project_id}/console/activity"}
+          data-test="activity-filter-option"
+          data-environment="all"
+          role="tab"
+          class={["tab", is_nil(@activity_environment) && "tab-active"]}
+        >
+          All
+        </.link>
+        <.link
+          :for={env <- @environments}
+          patch={
+            ~p"/app/projects/#{@current_scope.active_project_id}/console/activity?activity_env=#{env}"
+          }
+          data-test="activity-filter-option"
+          data-environment={env}
+          role="tab"
+          class={["tab", @activity_environment == env && "tab-active"]}
+        >
+          {env}
+        </.link>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <p
+          :if={activity_feed(@current_scope, @activity_environment) == []}
+          class="opacity-70 text-sm"
+        >
+          Nothing yet.
+        </p>
+        <div
+          :for={entry <- activity_feed(@current_scope, @activity_environment)}
+          data-test="activity-entry"
+          data-kind={entry.kind}
+          data-resource={entry.resource}
+          data-environment={entry.environment}
+          data-actor={entry.actor}
+          data-at={DateTime.to_iso8601(entry.inserted_at)}
+          class="text-sm opacity-70 border-b border-base-200 py-1"
+        >
+          {entry.summary} — {entry.actor}
+        </div>
       </div>
     </section>
     """
@@ -976,22 +1021,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
     )
   end
 
-  # Not a persisted event log — see the moduledoc. Every timestamp a step
-  # already carries, newest first, capped at 10 the same way the plan's
-  # Overview calls for.
-  defp recent_activity(plan) do
-    for step <- plan,
-        {kind, at} <- [
-          {"started", step.started_at},
-          {"completed", step.completed_at},
-          {"verified", step.verified_at}
-        ],
-        not is_nil(at) do
-      %{step: step.key, kind: kind, at: at}
-    end
-    |> Enum.sort_by(& &1.at, {:desc, DateTime})
-    |> Enum.take(10)
+  defp overview_activity(scope) do
+    scope |> Activity.list_for_project() |> Enum.take(10)
   end
+
+  defp activity_feed(scope, environment), do: Activity.list_for_project(scope, environment: environment)
+
+  defp resource_activity(_scope, nil), do: []
+  defp resource_activity(scope, key), do: Activity.list_for_resource(scope, key)
 
   # Same as ProvisioningLive.scope_for/2 — see the mount/3 comment above for
   # why this is its own copy rather than a shared import.
@@ -1058,16 +1095,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
         socket
       )
       when is_binary(environment) and environment != "" do
-    scope = socket.assigns.current_scope
+    opts = Keyword.put(step_opts(), :environment, environment)
 
-    :ok =
-      Provisioning.run_step_async(
-        scope,
-        String.to_existing_atom(key),
-        Keyword.put(step_opts(), :environment, environment)
-      )
-
-    {:noreply, put_flash(socket, :info, "Started.")}
+    {:noreply,
+     socket
+     |> run_step_and_log(String.to_existing_atom(key), opts)
+     |> put_flash(:info, "Started.")}
   end
 
   # Same as ProvisioningLive.handle_event("run_step", ...) — the per-step
@@ -1078,8 +1111,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # button, so it went unnoticed until wiring the storage probe needed to
   # provision a bucket through it.
   def handle_event("run_step", %{"key" => key} = params, socket) do
-    scope = socket.assigns.current_scope
-
     opts =
       case Map.get(params, "environment") do
         environment when is_binary(environment) and environment != "" ->
@@ -1089,9 +1120,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
           step_opts()
       end
 
-    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), opts)
-
-    {:noreply, put_flash(socket, :info, "Started.")}
+    {:noreply,
+     socket
+     |> run_step_and_log(String.to_existing_atom(key), opts)
+     |> put_flash(:info, "Started.")}
   end
 
   # Manual, async, one result — not the old page's accumulating list. Sam
@@ -1103,6 +1135,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
     environment = Map.get(probe, "environment", "prod")
     key = Map.get(probe, "key", "probe.txt")
     content = Map.get(probe, "body", "")
+
+    Activity.record(scope, "check", "storage_backups", "ran the storage probe",
+      environment: environment
+    )
 
     socket =
       socket
@@ -1117,6 +1153,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
   def handle_event("run_restore_probe", _params, socket) do
     scope = socket.assigns.current_scope
     options = socket.assigns.options
+
+    Activity.record(scope, "check", "storage_backups", "ran the restore probe")
 
     socket =
       socket
@@ -1152,6 +1190,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
         address when is_binary(address) and address != "" -> address
         _ -> default_inbound_address(scope, domain)
       end
+
+    Activity.record(scope, "check", "mail", "ran the inbound mail probe")
 
     socket =
       socket
@@ -1199,6 +1239,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
     to = Map.get(probe, "to", "delivered@resend.dev")
     environment = Map.get(probe, "environment", "prod")
 
+    Activity.record(scope, "check", "mail", "ran the outbound mail probe",
+      environment: environment
+    )
+
     socket =
       socket
       |> assign(:mail_send_running?, true)
@@ -1232,6 +1276,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
   def handle_event("run_widget_degradation_probe", _params, socket) do
     scope = socket.assigns.current_scope
     site = site_url(scope.active_project.domain)
+
+    Activity.record(scope, "check", "widget", "ran the widget degradation probe")
 
     socket =
       socket
@@ -1270,8 +1316,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
     socket =
       case saved_labels do
-        [] -> put_flash(socket, :info, "Nothing to save — every field was blank.")
-        labels -> put_flash(socket, :info, "Saved #{Enum.join(labels, ", ")}.")
+        [] ->
+          put_flash(socket, :info, "Nothing to save — every field was blank.")
+
+        labels ->
+          # Labels only — `field.key`'s own value is the credential, and
+          # must never reach a summary any more than the flash above does.
+          Activity.record(scope, "credential_save", "credentials", "saved #{Enum.join(labels, ", ")}")
+          put_flash(socket, :info, "Saved #{Enum.join(labels, ", ")}.")
       end
 
     {:noreply,
@@ -1301,6 +1353,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
            params["value"] || ""
          ) do
       {:ok, %{key: key, environment: environment}} ->
+        # The name, never `params["value"]` — the whole point of this
+        # criterion.
+        Activity.record(scope, "secret_write", "secrets", "wrote secret #{key}",
+          environment: environment
+        )
+
         {:noreply,
          socket
          |> assign(:secret_error, nil)
@@ -1324,8 +1382,15 @@ defmodule CodeMySpecWeb.ConsoleLive do
       {:noreply, put_flash(socket, :error, "an environment needs a name")}
     else
       case Provisioning.put_environment(scope, name) do
-        {:ok, _environment} -> {:noreply, refresh(socket)}
-        {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
+        {:ok, _environment} ->
+          Activity.record(scope, "environment_edit", "settings", "added environment #{name}",
+            environment: name
+          )
+
+          {:noreply, refresh(socket)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, inspect(reason))}
       end
     end
   end
@@ -1335,6 +1400,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
     case Teardown.environment(scope, name) do
       {:ok, removed} ->
+        Activity.record(scope, "environment_edit", "settings", "removed environment #{name}",
+          environment: name
+        )
+
         {:noreply,
          socket
          |> put_flash(:info, removed_summary(name, removed))
@@ -1361,28 +1430,16 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # ConsoleLive never started (see ProvisioningLive's own halt plumbing);
   # the step's own row carries its state the same way any other step's does.
   def handle_event("confirm_apex_repoint", _params, socket) do
-    scope = socket.assigns.current_scope
-    :ok = Provisioning.run_step_async(scope, :dns, step_opts() ++ [confirm_apex_repoint: true])
-    {:noreply, socket}
+    {:noreply, run_step_and_log(socket, :dns, step_opts() ++ [confirm_apex_repoint: true])}
   end
 
   def handle_event("confirm_inbound_mx_repoint", _params, socket) do
-    scope = socket.assigns.current_scope
-
-    :ok =
-      Provisioning.run_step_async(
-        scope,
-        :inbound,
-        step_opts() ++ [confirm_inbound_mx_repoint: true]
-      )
-
-    {:noreply, socket}
+    {:noreply,
+     run_step_and_log(socket, :inbound, step_opts() ++ [confirm_inbound_mx_repoint: true])}
   end
 
   def handle_event("adopt_repository", _params, socket) do
-    scope = socket.assigns.current_scope
-    :ok = Provisioning.run_step_async(scope, :repository, step_opts() ++ [adopt: true])
-    {:noreply, socket}
+    {:noreply, run_step_and_log(socket, :repository, step_opts() ++ [adopt: true])}
   end
 
   def handle_event("rename_repository", _params, socket) do
@@ -1394,16 +1451,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   def handle_event("run_step_with_probe_address", %{"key" => key, "probe_to" => address}, socket)
       when is_binary(address) and address != "" do
-    scope = socket.assigns.current_scope
-
-    :ok =
-      Provisioning.run_step_async(
-        scope,
-        String.to_existing_atom(key),
-        [inbound_probe_to: address] ++ step_opts()
-      )
-
-    {:noreply, socket}
+    {:noreply,
+     run_step_and_log(
+       socket,
+       String.to_existing_atom(key),
+       [inbound_probe_to: address] ++ step_opts()
+     )}
   end
 
   defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
@@ -1412,6 +1465,41 @@ defmodule CodeMySpecWeb.ConsoleLive do
     do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
 
   defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+  # Every trigger of a step — the run button, a paused confirmation, an
+  # inbound probe's address form — goes through here so the activity log
+  # and the run itself can never drift apart (one records what the other
+  # just started). Logged optimistically, on trigger rather than on the
+  # async result: the row IS the state (`run_step_async/3`'s own doc), and
+  # a page already showing "Started." has started something worth a line
+  # in the log even if it later halts.
+  defp run_step_and_log(socket, key, opts) do
+    scope = socket.assigns.current_scope
+    environment = activity_environment(key, opts, socket)
+
+    :ok = Provisioning.run_step_async(scope, key, opts)
+
+    Activity.record(scope, kind_for_step(key), resource_for_step(key), "ran the #{key} step",
+      environment: environment
+    )
+
+    socket
+  end
+
+  defp kind_for_step(:deploy), do: "deploy"
+  defp kind_for_step(_key), do: "provision"
+
+  defp resource_for_step(:deploy), do: "deploys"
+  defp resource_for_step(key), do: ResourceGroups.for_step(key)
+
+  defp activity_environment(:deploy, opts, _socket), do: Keyword.get(opts, :environment)
+
+  defp activity_environment(key, _opts, socket) do
+    case Sequence.scope(key) do
+      :project -> nil
+      :environment -> socket.assigns[:environment]
+    end
+  end
 
   defp registry_image(scope) do
     case Provisioning.Registry.image(scope) do

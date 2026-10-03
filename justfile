@@ -70,9 +70,12 @@ init-worktree name target:
 # itself, one at a time, and it is the third that is expensive: a stale or
 # missing database presents as broken code across contexts nobody touched.
 #
-# Symlinks rather than copies. `envs` holds secrets that must not be duplicated
-# per worktree, and the test repos are a fixture several worktrees share; a copy
-# would drift and the drift is silent.
+# `envs` is decrypted, not linked: dev and test are committed sops-encrypted
+# (`envs/<env>.enc.env`), and the harness puts their age keys in the machine's
+# sops keyring when it serves the project. A link to the main checkout's plain
+# `envs/` cannot coexist with tracked files under it. The test repos are a
+# fixture several worktrees share, so they stay a symlink; a copy would drift
+# and the drift is silent.
 #
 # **Run this after a rebase, not only once.** Every step is idempotent, and the
 # two that matter — deps and migrations — are exactly the per-worktree state a
@@ -97,11 +100,21 @@ worktree-setup:
     echo "→ worktree: $here"
     echo "→ main:     $main"
 
-    # -n so a re-run replaces the symlink rather than creating one inside the
-    # directory it already points at, which is what `ln -sf` does to a link that
-    # resolves to a directory and is a genuinely confusing mess to unpick.
-    ln -sfn "$main/envs" "$here/envs"
-    echo "  envs -> $main/envs"
+    # A worktree made before the encrypted files still has `envs` linked to the
+    # main checkout's; replace the link with the directory git now tracks.
+    if [ -L "$here/envs" ]; then
+      rm "$here/envs"
+      git -C "$here" checkout -- envs
+    fi
+    for e in dev test; do
+      if ! (umask 077 && sops -d --input-type dotenv --output-type dotenv \
+          "$here/envs/$e.enc.env" > "$here/envs/$e.env"); then
+        rm -f "$here/envs/$e.env"
+        echo "  cannot decrypt envs/$e.enc.env — its age key is not in this machine's sops keyring; the harness installs it when it serves the project" >&2
+        exit 1
+      fi
+      echo "  envs/$e.env decrypted"
+    done
 
     repos="$(dirname "$main")/code_my_spec_test_repos"
     if [ -d "$repos" ]; then
