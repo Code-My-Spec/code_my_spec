@@ -28,6 +28,9 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
   spex "Drift is reported but doesn't block by default", criterion: 1733 do
     scenario "an unplanned dependency finding does not block the stop" do
       given_ "Sam's project uses the default architecture setting", context do
+        # given: already true — `setup :setup_active_project` creates a
+        # fresh ProjectConfiguration and nothing in this spec changes
+        # `architecture`, so it stays at the schema default.
         {:ok, context}
       end
 

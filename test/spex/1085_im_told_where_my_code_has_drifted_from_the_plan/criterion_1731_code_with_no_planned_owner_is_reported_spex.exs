@@ -30,6 +30,14 @@ defmodule CodeMySpecSpex.Story1085.Criterion1731Spex do
       end
 
       given_ "no planned component owns it", context do
+        # given: already true — the prior step wrote a file directly, with
+        # no `design!` call authoring a matching component.
+        {:ok, context}
+      end
+
+      given_ "the project is synced so the checker sees the code", context do
+        ComponentGraphHelpers.sync!(context)
+
         {:ok, context}
       end
 

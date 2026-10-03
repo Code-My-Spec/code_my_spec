@@ -32,6 +32,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           exunit: analyzer_mode(),
           spex: analyzer_mode(),
           qa_validation: analyzer_mode(),
+          architecture: analyzer_mode(),
           fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
           inserted_at: DateTime.t() | nil,
@@ -58,6 +59,14 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # protected the moment the mode changes.
     field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
     field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
+
+    # Story 1085 — whether live code names a dependency nobody planned, a
+    # planned dependency the code never uses, a planned component with no
+    # code, or code with no planned owner. Defaults to `:dont_block`
+    # (criterion 1733): drift is worth reporting the moment a project exists,
+    # but it should never be the thing that stops an agent by default — only
+    # `:block_all`/`:block_changed` turn a finding into a block.
+    field :architecture, Ecto.Enum, values: @analyzer_modes, default: :dont_block
 
     # Story 608 — minimum severity for the FixIssues loop. Accepted
     # issues at or above this gate the requirement; anything strictly
@@ -106,6 +115,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :exunit,
       :spex,
       :qa_validation,
+      :architecture,
       :fix_issues_min_severity,
       :subagent_ttl_minutes,
       :main_agent_cadence_seconds,

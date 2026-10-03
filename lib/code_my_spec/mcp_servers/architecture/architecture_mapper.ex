@@ -142,6 +142,55 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
     |> Response.text(prompt)
   end
 
+  def drift_response(:off) do
+    Response.tool()
+    |> Response.text("# Architecture Check\n\nArchitecture checking is off for this project.\n")
+  end
+
+  def drift_response(drift) do
+    Response.tool()
+    |> Response.text(format_drift(drift))
+  end
+
+  defp format_drift(drift) do
+    sections =
+      [
+        format_section(
+          "Unplanned dependencies",
+          drift.unplanned_dependencies,
+          &"#{&1.source_component.module_name} depends on #{&1.target_component.module_name}, which was never planned."
+        ),
+        format_section(
+          "Planned dependencies not used in code",
+          drift.unused_dependencies,
+          &"#{&1.source_component.module_name} is planned to depend on #{&1.target_component.module_name}, but the code never calls it."
+        ),
+        format_section(
+          "Planned components with no code",
+          drift.missing_code,
+          &"#{&1.module_name} is planned but has no code."
+        ),
+        format_section(
+          "Code with no planned owner",
+          drift.unowned_code,
+          &"#{&1.module_name} exists in code but has no planned component."
+        )
+      ]
+      |> Enum.reject(&(&1 == ""))
+
+    case sections do
+      [] -> "# Architecture Check\n\nNo drift found.\n"
+      _ -> "# Architecture Check\n\n" <> Enum.join(sections, "\n\n")
+    end
+  end
+
+  defp format_section(_title, [], _line_fn), do: ""
+
+  defp format_section(title, items, line_fn) do
+    lines = Enum.map_join(items, "\n", &"- #{line_fn.(&1)}")
+    "## #{title}\n\n#{lines}"
+  end
+
   def validation_error(changeset) do
     Response.tool()
     |> Response.error(Formatters.format_changeset_errors(changeset))

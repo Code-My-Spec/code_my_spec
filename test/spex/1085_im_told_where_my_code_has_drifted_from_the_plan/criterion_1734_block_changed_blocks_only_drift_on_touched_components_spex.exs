@@ -84,6 +84,18 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
         {:ok, context |> Map.put(:billing, billing) |> Map.put(:reports, reports)}
       end
 
+      given_ "a session starts work on the project", context do
+        session_id = "spex-#{System.unique_integer([:positive])}"
+
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
+        |> Phoenix.ConnTest.json_response(200)
+
+        {:ok, Map.put(context, :session_id, session_id)}
+      end
+
       when_ "an agent finishes a change touching only Billing", context do
         app = ComponentGraphHelpers.app(context)
 
@@ -95,12 +107,23 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
           end
           """)
 
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post(~p"/api/hooks/post-tool-use", %{
+          "session_id" => context.session_id,
+          "tool_name" => "Write",
+          "tool_input" => %{"file_path" => @billing_path}
+        })
+        |> Phoenix.ConnTest.json_response(200)
+
         response =
           use_cmd_cassette "clean", record: :none do
             Phoenix.ConnTest.build_conn()
             |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
+              "session_id" => context.session_id,
               "test_output_files" => %{
                 "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
                 "exunit" => fixture_path("exunit.json"),

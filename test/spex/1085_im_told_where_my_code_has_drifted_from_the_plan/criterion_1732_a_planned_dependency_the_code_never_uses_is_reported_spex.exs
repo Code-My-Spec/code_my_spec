@@ -38,6 +38,12 @@ defmodule CodeMySpecSpex.Story1085.Criterion1732Spex do
         {:ok, context}
       end
 
+      given_ "the project is synced so the checker sees the code", context do
+        ComponentGraphHelpers.sync!(context)
+
+        {:ok, context}
+      end
+
       when_ "architecture is checked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, response, _frame} = CheckArchitecture.execute(%{}, frame)

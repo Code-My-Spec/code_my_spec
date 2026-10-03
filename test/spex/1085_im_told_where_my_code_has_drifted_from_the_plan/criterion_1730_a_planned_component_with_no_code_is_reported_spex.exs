@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.Story1085.Criterion1730Spex do
       end
 
       given_ "no Reports module exists in the code", context do
+        # given: already true — the prior step only authored the component
+        # record; no implementation file was ever written for it.
         {:ok, context}
       end
 
