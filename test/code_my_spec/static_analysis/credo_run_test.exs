@@ -79,4 +79,24 @@ defmodule CodeMySpec.StaticAnalysis.CredoRunTest do
       assert {:ok, %{"issues" => []}} = CredoRun.extract_json(@warning <> ~s({"issues": []}))
     end
   end
+
+  describe "parse/1 on a stale deps/ (fc08e5e2)" do
+    test "a mix lock refusal says to fetch deps, not that credo printed no JSON" do
+      output = """
+      Unchecked dependencies for environment dev:
+      * alloy (https://github.com/Code-My-Spec/alloy.git - main)
+        lock mismatch: the dependency is out of date. To fetch locked version run "mix deps.get"
+      ** (Mix) Can't continue due to errors on dependencies
+      """
+
+      assert {:error, reason} = CredoRun.parse(output)
+      assert reason =~ "deps out of date with mix.lock; run `mix deps.get`"
+      refute reason =~ "not JSON"
+    end
+
+    test "other unreadable output is still called what it is" do
+      assert {:error, reason} = CredoRun.parse(~s{** (Mix) The task "credo" could not be found})
+      assert reason =~ "not JSON"
+    end
+  end
 end

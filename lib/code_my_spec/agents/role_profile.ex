@@ -269,15 +269,20 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # runs constantly and reads more than it reasons. Main leads with the
   # strongest, because it is the one explaining the project to somebody who
   # cannot read the code.
+  #
+  # openai-codex is `gpt-6-astra` in both. `gpt-5.4` and `gpt-5.4-mini` are
+  # refused on a ChatGPT-plan account ("not supported when using Codex with a
+  # ChatGPT account", checked against the CLI 2026-10-03), so every turn of a
+  # Codex agent failed.
   @strong [
     {"anthropic", "claude-sonnet-5"},
-    {"openai-codex", "gpt-5.4"},
+    {"openai-codex", "gpt-6-astra"},
     {"zai", "glm-5.3"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
-    {"openai-codex", "gpt-5.4-mini"},
+    {"openai-codex", "gpt-6-astra"},
     {"anthropic", "claude-haiku-4-5"}
   ]
 
