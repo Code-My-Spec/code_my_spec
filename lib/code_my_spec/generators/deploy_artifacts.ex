@@ -70,7 +70,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         image: Keyword.get(opts, :image),
         kamal_image: Keyword.get(opts, :kamal_image),
         prod_registry: Keyword.get(opts, :prod_registry),
-        uat_registry: Keyword.get(opts, :uat_registry)
+        uat_registry: Keyword.get(opts, :uat_registry),
+        telemetry_host: Keyword.get(opts, :telemetry_host, "telemetry.#{host}")
       )
 
     artifacts
@@ -148,13 +149,15 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     kamal_image = Keyword.get(opts, :kamal_image) || image
     prod_registry = Keyword.get(opts, :prod_registry) || registry
     uat_registry = Keyword.get(opts, :uat_registry) || registry
+    telemetry_host = Keyword.get(opts, :telemetry_host) || "telemetry.#{host}"
 
     [
       {"Dockerfile", dockerfile(app)},
       {".github/workflows/build.yml", ci_workflow(image)},
-      {"config/deploy.yml", kamal_config(app, kamal_image, host, "prod", prod_registry)},
+      {"config/deploy.yml",
+       kamal_config(app, kamal_image, host, "prod", prod_registry, telemetry_host)},
       {"config/deploy.uat.yml",
-       kamal_config(app, kamal_image, "uat.#{host}", "uat", uat_registry)},
+       kamal_config(app, kamal_image, "uat.#{host}", "uat", uat_registry, telemetry_host)},
       {".sops.yaml", sops_rules()},
       {"rel/overlays/bin/boot", boot_overlay(app)},
       {"rel/overlays/bin/migrate", migrate_overlay(app)},
@@ -386,10 +389,12 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  defp kamal_config(app, image, host, environment, registry) do
+  defp kamal_config(app, image, host, environment, registry, telemetry_host) do
+    service_name = "#{app}#{if environment == "prod", do: "", else: "-#{environment}"}"
+
     """
     # Kamal deploys #{environment} for #{app}.
-    service: #{app}#{if environment == "prod", do: "", else: "-#{environment}"}
+    service: #{service_name}
     image: #{image}
     #{kamal_ssh_block()}
     servers:
@@ -417,6 +422,11 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       clear:
         APP_ENV: #{environment}
         PHX_HOST: #{host}
+        # Names this deploy to the project's own telemetry collector, so
+        # traces and logs land under the right ServiceName with no manual
+        # config on Sam's part (criterion 1713/1855).
+        OTEL_SERVICE_NAME: #{service_name}
+        OTEL_EXPORTER_OTLP_ENDPOINT: https://#{telemetry_host}
       secret:
         - SECRET_KEY_BASE
         - DATABASE_URL

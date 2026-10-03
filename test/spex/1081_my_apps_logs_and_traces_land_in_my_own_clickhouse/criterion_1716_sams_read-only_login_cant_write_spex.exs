@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1716Spex do
   Criterion 1716 -- Sam's read-only login can't write.
 
   Surface: `CodeMySpecWeb.ConsoleLive`'s Checks tab, driving the
-  `:monitoring` step's own read/write probe.
+  `:telemetry` step's own read/write probe.
   """
 
   use CodeMySpecSpex.Case
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1716Spex do
         Application.put_env(
           :code_my_spec,
           :provisioning_step_opts,
-          Keyword.put(previous, :telemetry_check_probe, fn _opts ->
+          Keyword.put(previous, :check_probe, fn _opts ->
             %{reachable: true, reads: :ok, writes: :refused}
           end)
         )
@@ -34,10 +34,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1716Spex do
         on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
 
-        run_console_step(view, :monitoring)
-        await_console_step(view, :monitoring)
+        run_console_step(view, :telemetry)
+        await_console_step(view, :telemetry)
 
         {:ok, context}
       end
@@ -46,12 +46,12 @@ defmodule CodeMySpecSpex.Story1081.Criterion1716Spex do
         {:ok, checks_view, _html} =
           live(
             context.conn,
-            "/app/projects/#{context.project.id}/console/resources/servers?env=uat&tab=checks"
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat&tab=checks"
           )
 
         checks_view
-        |> LiveViewTest.element("[data-test='run-check'][data-check='monitoring']")
-        |> LiveViewTest.render_click()
+        |> element("[data-test='run-check'][data-check='telemetry']")
+        |> render_click()
 
         {:ok, Map.put(context, :html, render(checks_view))}
       end

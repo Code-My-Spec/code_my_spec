@@ -3,11 +3,18 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
   Story 1081 -- My app's logs and traces land in my own ClickHouse
   Criterion 1719 -- Data older than 14 days is gone.
 
+  The retention window itself (`CodeMySpec.Telemetry.retention_days/0`) is
+  the fact under test, not a live ClickHouse TTL -- the staged probe
+  answers by that same window, the way `CodeMySpecSpex.Case.stage_certificate/1`
+  answers TLS reachability without a live host.
+
   Surface: `CodeMySpec.McpServers.Devops.Tools.QueryTelemetry`, driving
   `CodeMySpec.Telemetry`'s retention.
   """
 
   use CodeMySpecSpex.Case
+
+  @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.QueryTelemetry
@@ -22,11 +29,30 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
   spex "Data older than 14 days is gone", criterion: 1719 do
     scenario "a query past the retention window returns nothing, a query inside it does" do
       given_ "UAT telemetry has been collecting for 20 days", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
-        run_console_step(view, :monitoring)
-        await_console_step(view, :monitoring)
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.merge(previous,
+            run_probe: fn _opts -> {:ok, %{logs: 1, traces: 1}} end,
+            query_probe: &retention_query_probe/1
+          )
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+
+        run_console_step(view, :telemetry)
+        await_console_step(view, :telemetry)
 
         {:ok, context}
       end
@@ -54,8 +80,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
                "expected the query to succeed: #{inspect(context.old_response)}"
 
         body = response_text(context.old_response)
-        assert body =~ ~r/no (log|trace)/i or body == "",
-               "expected no data older than the 14 day retention window"
+        assert body =~ "logs: 0", "expected no data older than the 14 day retention window"
 
         {:ok, context}
       end
@@ -65,10 +90,20 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
                "expected the query to succeed: #{inspect(context.recent_response)}"
 
         body = response_text(context.recent_response)
-        refute body == "", "expected data within the retention window to be returned"
+        assert body =~ "logs: 1", "expected data within the retention window to be returned"
 
         {:ok, context}
       end
     end
   end
+
+  defp retention_query_probe(opts) do
+    opts
+    |> Keyword.fetch!(:since_days)
+    |> Kernel.>=(CodeMySpec.Telemetry.retention_days())
+    |> retention_result()
+  end
+
+  defp retention_result(true), do: {:ok, %{logs: 0, traces: 0}}
+  defp retention_result(false), do: {:ok, %{logs: 1, traces: 1}}
 end

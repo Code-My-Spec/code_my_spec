@@ -76,6 +76,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey)
   component(CodeMySpec.McpServers.Devops.Tools.AdoptRepository)
   component(CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep)
+  component(CodeMySpec.McpServers.Devops.Tools.QueryTelemetry)
   component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
   component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
   component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)

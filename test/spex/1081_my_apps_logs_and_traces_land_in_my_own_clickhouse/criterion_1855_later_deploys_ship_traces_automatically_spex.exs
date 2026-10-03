@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1855Spex do
   Twin of criterion 1713.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving the
-  `:deploy` step once `:monitoring` has run.
+  `:deploy` step once `:telemetry` has run.
   """
 
   use CodeMySpecSpex.Case
@@ -23,20 +23,55 @@ defmodule CodeMySpecSpex.Story1081.Criterion1855Spex do
   spex "Later deploys ship traces automatically", criterion: 1855 do
     scenario "a later deploy ships traces with no manual telemetry configuration" do
       given_ "telemetry setup has run once for Sam's project", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
-        run_console_step(view, :monitoring)
-        await_console_step(view, :monitoring)
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :run_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+
+        run_console_step(view, :telemetry)
+        await_console_step(view, :telemetry)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam deploys a new release", context do
-        run_console_step(context.view, :deploy)
-        await_console_step(context.view, :deploy)
+        {:ok, secrets_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
-        {:ok, Map.put(context, :html, render(context.view))}
+        open_secrets_dialog(secrets_view)
+
+        secrets_view
+        |> form("[data-test='secret-form']",
+          secret: %{key: "SECRET_KEY_BASE", value: "generated-value", environment: "uat"}
+        )
+        |> render_submit()
+
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
+
+        deploys_view
+        |> element(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']"
+        )
+        |> render_submit()
+
+        {:ok, Map.put(context, :html, render(deploys_view))}
       end
 
       then_ "traces ship automatically with no manual telemetry configuration", context do

@@ -54,6 +54,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Repo
   alias CodeMySpec.Servers
   alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Telemetry
   alias CodeMySpec.TempFile
   alias CodeMySpec.Utils.MapAccess
 
@@ -1001,6 +1002,17 @@ defmodule CodeMySpec.Provisioning.Steps do
           end
       end
     end)
+  end
+
+  # One telemetry collector per environment, the same fan-out shape backups
+  # and storage already use -- a caller naming no environment gets every
+  # permitted one; a caller naming one gets just that one, the way `:tls`
+  # and `:dns` already read `opts[:environment]`.
+  def run(:telemetry, %Scope{} = scope, opts) do
+    case Keyword.fetch(opts, :environment) do
+      {:ok, environment} -> Telemetry.run(scope, environment, opts)
+      :error -> telemetry_for_environments(scope, environments(scope, opts), opts)
+    end
   end
 
   # Named rather than silently succeeding — see the moduledoc.
@@ -3920,6 +3932,19 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp environments(scope, opts) do
     Keyword.get(opts, :environments) || permitted_environments(scope)
+  end
+
+  defp telemetry_for_environments(_scope, [], _opts) do
+    {:error, "no permitted environments to set up telemetry for"}
+  end
+
+  defp telemetry_for_environments(scope, environments, opts) do
+    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
+      case Telemetry.run(scope, environment, opts) do
+        {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
+        {:error, reason} -> {:halt, {:error, reason, acc}}
+      end
+    end)
   end
 
   # What the project asked for, not what it has rows for.

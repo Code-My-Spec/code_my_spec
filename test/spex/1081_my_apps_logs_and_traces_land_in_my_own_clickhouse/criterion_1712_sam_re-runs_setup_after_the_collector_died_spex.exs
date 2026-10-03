@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1712Spex do
   recovered on its second (what the re-run proves).
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving the
-  `:monitoring` step's repair-on-rerun behavior.
+  `:telemetry` step's repair-on-rerun behavior.
   """
 
   use CodeMySpecSpex.Case
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1712Spex do
       given_ "UAT telemetry is set up but its collector container has stopped", context do
         previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
-        probe =
+        stepped_run_probe =
           first_then(
             fn -> {:error, "the telemetry collector is not running"} end,
             fn -> {:ok, %{logs: 1, traces: 1}} end
@@ -36,28 +36,37 @@ defmodule CodeMySpecSpex.Story1081.Criterion1712Spex do
         Application.put_env(
           :code_my_spec,
           :provisioning_step_opts,
-          Keyword.put(previous, :telemetry_probe, probe)
+          Keyword.put(previous, :run_probe, fn _opts -> stepped_run_probe.() end)
         )
 
         on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
 
-        run_console_step(view, :monitoring)
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+
+        run_console_step(view, :telemetry)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam re-runs setup", context do
-        run_console_step(context.view, :monitoring)
-        await_console_step(context.view, :monitoring)
+        context.view
+        |> element("[data-test='resource-step'][data-step='telemetry'] [data-test='retry-step']")
+        |> render_click()
+
+        await_console_step(context.view, :telemetry)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the collector is running again and new traces arrive", context do
-        assert resource_step_state?(context.html, "monitoring", "done"),
+        assert resource_step_state?(context.html, "telemetry", "done"),
                "expected the re-run to repair the collector rather than stay errored"
 
         {:ok, context}

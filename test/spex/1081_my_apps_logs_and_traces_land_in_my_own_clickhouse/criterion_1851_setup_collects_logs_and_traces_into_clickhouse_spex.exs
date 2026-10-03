@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1851Spex do
   step -- setup itself is the claim here.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
-  `CodeMySpec.Telemetry` through the `:monitoring` step.
+  `CodeMySpec.Telemetry` through the `:telemetry` step.
   """
 
   use CodeMySpecSpex.Case
@@ -29,20 +29,26 @@ defmodule CodeMySpecSpex.Story1081.Criterion1851Spex do
         Application.put_env(
           :code_my_spec,
           :provisioning_step_opts,
-          Keyword.put(previous, :telemetry_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
+          Keyword.put(previous, :run_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
         )
 
         on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
 
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
+
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam runs telemetry setup for that environment", context do
-        run_console_step(context.view, :monitoring)
-        await_console_step(context.view, :monitoring)
+        run_console_step(context.view, :telemetry)
+        await_console_step(context.view, :telemetry)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
@@ -56,8 +62,8 @@ defmodule CodeMySpecSpex.Story1081.Criterion1851Spex do
         assert resource != [],
                "expected setup to record a telemetry collector proving data landed"
 
-        assert resource_step_state?(context.html, "monitoring", "done"),
-               "expected the monitoring step to be done"
+        assert resource_step_state?(context.html, "telemetry", "done"),
+               "expected the telemetry step to be done"
 
         {:ok, context}
       end

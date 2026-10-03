@@ -23,10 +23,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1860Spex do
     scenario "nothing checks on its own, so the panel reads unchecked" do
       given_ "a project's telemetry has never been checked", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
 
-        run_console_step(view, :monitoring)
-        await_console_step(view, :monitoring)
+        run_console_step(view, :telemetry)
+        await_console_step(view, :telemetry)
 
         {:ok, context}
       end
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1860Spex do
         {:ok, _checks_view, html} =
           live(
             context.conn,
-            "/app/projects/#{context.project.id}/console/resources/servers?env=uat&tab=checks"
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat&tab=checks"
           )
 
         {:ok, Map.put(context, :html, html)}

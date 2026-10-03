@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1861Spex do
   and recorded as its own resource so it can be read back.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving the
-  `:monitoring` step's retention policy.
+  `:telemetry` step's retention policy.
   """
 
   use CodeMySpecSpex.Case
@@ -26,15 +26,31 @@ defmodule CodeMySpecSpex.Story1081.Criterion1861Spex do
   spex "Old telemetry data is purged after 14 days", criterion: 1861 do
     scenario "the retention policy drops data older than 14 days automatically" do
       given_ "telemetry data exists that is older than 14 days", context do
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :run_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
+
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the retention policy runs", context do
-        run_console_step(context.view, :monitoring)
-        await_console_step(context.view, :monitoring)
+        run_console_step(context.view, :telemetry)
+        await_console_step(context.view, :telemetry)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

@@ -155,6 +155,13 @@ defmodule CodeMySpec.Provisioning.Sequence do
       option: nil,
       why: "how the deployed app talks back without a long-lived key",
       scope: :environment
+    },
+    %{
+      key: :telemetry,
+      label: "Telemetry",
+      option: nil,
+      why: "logs and traces collected into Sam's own ClickHouse while he owns the box",
+      scope: :environment
     }
   ]
 
@@ -195,7 +202,7 @@ defmodule CodeMySpec.Provisioning.Sequence do
   ## Examples
 
       iex> CodeMySpec.Provisioning.Sequence.for_options([]) |> Enum.map(& &1.key)
-      [:repository, :secrets, :server, :deploy, :callback_credential]
+      [:repository, :secrets, :server, :deploy, :callback_credential, :telemetry]
   """
   @spec for_options([atom()] | MapSet.t()) :: [step()]
   def for_options(enabled) do

@@ -71,7 +71,8 @@ defmodule CodeMySpec.Provisioning.Step do
     :content,
     :widget,
     :callback_credential,
-    :monitoring
+    :monitoring,
+    :telemetry
   ]
 
   @type state :: :not_started | :running | :done | :errored | :paused

@@ -1,4 +1,12 @@
 defmodule CodeMySpec.Telemetry do
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Provisioning,
+      CodeMySpec.Users.Scope
+    ],
+    exports: :all
+
   @moduledoc """
   Collects a deployed project's logs and traces into the owner's own
   ClickHouse, and lets owners and agents query them.
@@ -10,12 +18,11 @@ defmodule CodeMySpec.Telemetry do
   answer (a spec, a resumed run) can supply its own instead.
 
   Setup refuses to run ahead of the environment's own server -- there is
-  nowhere to run a collector otherwise, the same precondition
-  `CodeMySpec.Provisioning.Backups` enforces for its own bucket.
+  nowhere to run a collector otherwise, the same `EnvironmentRepository`
+  address check `Steps.on_the_environments_box/3` makes before backups.
   """
 
-  alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Users.Scope
 
   @retention_days 14
@@ -92,8 +99,8 @@ defmodule CodeMySpec.Telemetry do
   ## -- Private --
 
   defp require_server(scope, environment) do
-    case Provisioning.get_step(scope, :server) do
-      %Step{state: :done} ->
+    case EnvironmentRepository.get(scope, environment) do
+      %{ip: ip} when is_binary(ip) and ip != "" ->
         :ok
 
       _ ->

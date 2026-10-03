@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1710Spex do
   Criterion 1710 -- Sam's telemetry host answers over HTTPS.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving the
-  `:monitoring` step's DNS publication and TLS reachability.
+  `:telemetry` step's DNS publication and TLS reachability.
   """
 
   use CodeMySpecSpex.Case
@@ -23,17 +23,33 @@ defmodule CodeMySpecSpex.Story1081.Criterion1710Spex do
   spex "Sam's telemetry host answers over HTTPS", criterion: 1710 do
     scenario "the telemetry host has a DNS record and a working certificate" do
       given_ "Sam's domain is example.app", context do
-        {:ok, project} = Fixtures.set_project_domain(context.project, "example.app")
+        project = Fixtures.set_project_domain(context.project, "example.app")
+
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :run_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{project.id}/console/resources/telemetry?env=uat")
 
         {:ok, context |> Map.put(:project, project) |> Map.put(:view, view)}
       end
 
       when_ "telemetry setup for UAT completes", context do
-        run_console_step(context.view, :monitoring)
-        await_console_step(context.view, :monitoring)
+        run_console_step(context.view, :telemetry)
+        await_console_step(context.view, :telemetry)
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
@@ -46,7 +62,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1710Spex do
           |> Floki.find("[data-test='provisioned-resource'][data-kind='telemetry_dns']")
 
         assert resource != [],
-               "expected the monitoring step to publish a DNS record for the telemetry host"
+               "expected the telemetry step to publish a DNS record for the telemetry host"
 
         {:ok, context}
       end

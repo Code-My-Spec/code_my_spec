@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1852Spex do
   rather than from the record's own existence.
 
   Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving the
-  `:monitoring` step's DNS publication and TLS reachability.
+  `:telemetry` step's DNS publication and TLS reachability.
   """
 
   use CodeMySpecSpex.Case
@@ -26,13 +26,29 @@ defmodule CodeMySpecSpex.Story1081.Criterion1852Spex do
   spex "Telemetry host is reachable over HTTPS with DNS set up", criterion: 1852 do
     scenario "the client's connection succeeds at a host setup created on Sam's domain" do
       given_ "setup has run for Sam's project", context do
-        {:ok, project} = Fixtures.set_project_domain(context.project, "example.app")
+        project = Fixtures.set_project_domain(context.project, "example.app")
+
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :run_probe, fn _opts -> {:ok, %{logs: 1, traces: 1}} end)
+        )
+
+        on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        await_console_step(servers_view, :server)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{project.id}/console/resources/servers?env=uat")
+          live(context.conn, "/app/projects/#{project.id}/console/resources/telemetry?env=uat")
 
-        run_console_step(view, :monitoring)
-        await_console_step(view, :monitoring)
+        run_console_step(view, :telemetry)
+        await_console_step(view, :telemetry)
 
         {:ok, context |> Map.put(:project, project) |> Map.put(:view, view)}
       end
