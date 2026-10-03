@@ -20,7 +20,7 @@ class Codemyspec < Formula
     # launcher resolves RELEASE_ROOT from libexec, not the bin symlink.
     (bin/"cms").write <<~SH
       #!/bin/bash
-      exec "#{libexec}/bin/code_my_spec_cli" "$@"
+      exec "#{libexec}/bin/cms_harness" "$@"
     SH
     chmod 0755, bin/"cms"
 
@@ -31,7 +31,7 @@ class Codemyspec < Formula
     (bin/"cms-migrate").write <<~SH
       #!/bin/bash
       export CMS_MIGRATE=1
-      exec "#{libexec}/bin/code_my_spec_cli" start "$@"
+      exec "#{libexec}/bin/cms_harness" start "$@"
     SH
     chmod 0755, bin/"cms-migrate"
 

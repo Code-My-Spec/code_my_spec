@@ -33,6 +33,26 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   @ssh_attempts 90
   @ssh_interval_ms 2_000
 
+  # The label `build/4` stamps on its own throwaway in-flight marker
+  # container — see `CodeMySpec.Provisioning.BurstBox.build_in_progress?/3`,
+  # the other side of this same marker (story 877, item 1).
+  #
+  # A plain `docker build` is not reliably `docker ps`-observable for its
+  # whole duration: under BuildKit (the default on any Docker new enough to
+  # matter — see `docker_build/5`'s own comment), a build's steps never
+  # materialize as inspectable containers at all, confirmed live against this
+  # box's own Docker — `docker ps -a` during a deliberately slow `RUN` step
+  # showed nothing for the build in progress. So "is a CodeMySpec build
+  # happening on this box right now" has no answer without something that
+  # *is* `docker ps`-visible for exactly as long as the build runs — a
+  # trivial long-running container, started right before and removed right
+  # after (success or failure alike), is that something.
+  @build_marker_label "cms-build-in-progress"
+
+  @doc "Label `build/4`'s own in-flight marker carries, shared so `BurstBox.build_in_progress?/3` can filter on the same string without either file hardcoding the other's constant."
+  @spec build_marker_label() :: String.t()
+  def build_marker_label, do: @build_marker_label
+
   @doc """
   Build `ref` on `server` and push it to `reference`.
 
@@ -54,14 +74,78 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     # build and a hung one were indistinguishable from the outside.
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          _ = Logger.info("[Builder] ssh reachable, delivering #{ref}"),
-         :ok <- deliver_source(deliver, ref, dir, opts),
-         _ = Logger.info("[Builder] source delivered, running docker build"),
-         :ok <- docker_build(run, reference, ref, dir, opts),
-         _ = Logger.info("[Builder] docker build finished, pushing #{reference}"),
-         :ok <- maybe_push(run, reference, opts),
-         _ = Logger.info("[Builder] pushed #{reference}, reading back its architecture"),
-         {:ok, architecture} <- built_architecture(run, reference) do
-      {:ok, %{reference: reference, architecture: architecture}}
+         :ok <- deliver_source(deliver, ref, dir, opts) do
+      Logger.info("[Builder] source delivered, running docker build")
+      build_marked(run, ref, reference, dir, opts)
+    end
+  end
+
+  # The box this runs on is now shared (story 877) — a customer's build is
+  # never the only thing that might be running there, so the marker has to
+  # bracket every phase the box is doing *this build's* work, not just the
+  # `docker build` invocation itself. Removed either way, the same "every
+  # path destroys" discipline `Builder.build/3` already follows for the box
+  # as a whole.
+  defp build_marked(run, ref, reference, dir, opts) do
+    marker = start_build_marker(run, ref)
+
+    result =
+      with :ok <- docker_build(run, reference, ref, dir, opts),
+           _ = Logger.info("[Builder] docker build finished, pushing #{reference}"),
+           :ok <- maybe_push(run, reference, opts),
+           _ = Logger.info("[Builder] pushed #{reference}, reading back its architecture"),
+           {:ok, architecture} <- built_architecture(run, reference) do
+        {:ok, %{reference: reference, architecture: architecture}}
+      end
+
+    stop_build_marker(run, marker)
+    result
+  end
+
+  # `alpine` rather than anything bespoke: already the smallest image anyone
+  # would reach for, pulled once per box and cached by Docker after that.
+  # `sleep infinity` so the only thing that ends this container is the `rm
+  # -f` below — nothing about it is meant to do real work, only to exist and
+  # be findable by label for as long as the build it marks is running.
+  #
+  # `nil` on failure to start it, not an error — the marker is an
+  # observability aid for `busy?`, never load-bearing for the build itself;
+  # a box that for some reason can't run a trivial container is about to
+  # find that out for real from `docker_build/5` a moment later anyway.
+  defp start_build_marker(run, ref) do
+    name = "cms-build-marker-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+
+    command =
+      "docker run -d --label #{@build_marker_label}=#{ref} --name #{name} alpine:3 sleep infinity"
+
+    case run.([command]) do
+      {_, 0} ->
+        name
+
+      {output, status} ->
+        Logger.warning(
+          "[Builder] could not start the in-progress build marker: exit #{status}: " <>
+            "#{trim(output)} — a busy-check against this box will not see this build"
+        )
+
+        nil
+    end
+  end
+
+  defp stop_build_marker(_run, nil), do: :ok
+
+  defp stop_build_marker(run, name) do
+    case run.(["docker rm -f #{name}"]) do
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        Logger.warning(
+          "[Builder] could not remove the build marker #{name}: exit #{status}: " <>
+            "#{trim(output)} — it may linger and read as a build still in flight"
+        )
+
+        :ok
     end
   end
 
@@ -130,13 +214,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   Install kamal on the builder before it orchestrates a deploy over it,
   unless it is already there.
 
-  Checked first rather than assumed either way: `Builder.custom_image?/1`
-  builders come from a snapshot with kamal already baked in (built once by
-  `Builder.ensure_builder_image/2`, exactly to skip this on every ordinary
-  deploy), but the stock `docker-ce` fallback — used until that snapshot
-  exists, or if it is ever unavailable — still needs it installed fresh
-  every time. One `command -v` check makes this correct under both without
-  the caller having to know which box it got.
+  Checked first rather than assumed: every burst box now comes from the one
+  shared snapshot (`Builder.ensure_burst_box_image/3`, story 877) with kamal
+  already baked in from whenever that snapshot was last built — but a
+  snapshot's own kamal can be stale or broken (see below), so this is
+  checked rather than trusted blind. One `command -v` check makes this
+  correct regardless of how long ago the box's snapshot was taken.
 
   Ruby is not part of the `docker-ce` base image, and nothing installed it
   before one particular night: nothing had gotten a real harness-only
@@ -159,9 +242,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   not pull that in on Debian: confirmed live, the very next failure once
   `ruby-full` alone installed cleanly was `mkmf.log`/`extconf failed`.
 
-  `command -v kamal` alone is not enough of a check: a custom builder image
-  (`Builder.custom_image?/1`) has kamal baked in from whenever it was last
-  captured, and RubyGems does not revisit an already-installed gem's
+  `command -v kamal` alone is not enough of a check: the burst box's own
+  snapshot has kamal baked in from whenever it was last captured, and
+  RubyGems does not revisit an already-installed gem's
   dependencies — if that snapshot's `ed25519`/`bcrypt_pbkdf` never actually
   landed (an older kamal version that did not yet depend on them, or a
   build that satisfied `kamal` itself before failing on their native
@@ -355,9 +438,25 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # its own builder and deploys with `--skip-push`, so nothing else was ever
   # going to add it — the pull succeeded and the very next command rejected
   # what it had just pulled.
+  #
+  # `--force-rm` closes a gap story 877's revised criteria (789/790) actually
+  # care about: "a failed build still takes its container with it." Checked
+  # live rather than assumed, on both builders this box could end up running:
+  # with `DOCKER_BUILDKIT=0` (the legacy builder), a failing `RUN` step's
+  # intermediate container survives by design — `--rm`'s default only removes
+  # them on a *successful* build, kept on failure so a human can `docker
+  # commit` and debug it — confirmed by running a deliberately-failing build
+  # and finding the exited container still in `docker ps -a` afterward.
+  # `--force-rm` is the documented flag for exactly this: it removed that same
+  # container even on the failing step. Under BuildKit (the default on any
+  # Docker new enough that this box's `docker-ce` almost certainly runs it),
+  # a failed build already leaves nothing in `docker ps -a` at all — BuildKit
+  # never materializes build steps as inspectable containers the way the
+  # legacy builder does — so `--force-rm` is accepted and does nothing there.
+  # Correct either way, with no need to detect which builder is active.
   defp docker_build(run, reference, ref, dir, opts) do
     labels = "--label commit=#{ref}" <> service_label(Keyword.get(opts, :service))
-    flags = labels <> platform_flag(Keyword.get(opts, :platform))
+    flags = "--force-rm " <> labels <> platform_flag(Keyword.get(opts, :platform))
 
     case run.(["cd #{dir} && docker build #{flags} -t #{reference} ."]) do
       {_, 0} -> :ok

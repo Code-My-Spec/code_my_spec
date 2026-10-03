@@ -14,7 +14,7 @@
 
 .EXAMPLE
   pwsh -File scripts/win-build.ps1 -MixEnv harness compile
-  pwsh -File scripts/win-build.ps1 -MixEnv harness -BurritoTarget windows release code_my_spec_cli
+  pwsh -File scripts/win-build.ps1 -MixEnv harness -BurritoTarget windows release cms_harness
 #>
 [CmdletBinding()]
 param(

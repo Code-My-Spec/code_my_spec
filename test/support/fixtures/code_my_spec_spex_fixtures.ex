@@ -2702,6 +2702,42 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Route embedding calls through the recorder for this test, undone
+  automatically on exit — the seam for a criterion that needs its own
+  pool/backend configured around it (unlike `embed_on_pgvector/1`, this
+  leaves `:embeddings_backend` alone).
+  """
+  @spec embedding_serving_is_recorded() :: :ok
+  def embedding_serving_is_recorded do
+    previous = Application.get_env(:code_my_spec, :embedding_serving)
+    Application.put_env(:code_my_spec, :embedding_serving, CodeMySpecTest.RecordingEmbeddingServing)
+    CodeMySpecTest.RecordingEmbeddingServing.listen(self())
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        nil -> Application.delete_env(:code_my_spec, :embedding_serving)
+        value -> Application.put_env(:code_my_spec, :embedding_serving, value)
+      end
+
+      CodeMySpecTest.RecordingEmbeddingServing.reset()
+    end)
+
+    :ok
+  end
+
+  @doc "Block the recorder's next batch (`true`) until released, or stop blocking (`false`)."
+  @spec pause_embedding_until_released(boolean()) :: :ok
+  def pause_embedding_until_released(pause?) do
+    CodeMySpecTest.RecordingEmbeddingServing.pause_until_released(pause?)
+  end
+
+  @doc "Release a batch the recorder paused, naming the runner process it paused in."
+  @spec release_embedding(pid()) :: :ok
+  def release_embedding(pid) do
+    CodeMySpecTest.RecordingEmbeddingServing.release(pid)
+  end
+
+  @doc """
   The server starting, as far as framework knowledge goes: the boot child
   the application lists, run to completion. Answers once it has exited.
   """

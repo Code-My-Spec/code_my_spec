@@ -10,6 +10,9 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpec.Agents.GraphWake
   alias CodeMySpec.Analytics.GoogleAnalytics
+  alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Provisioning.BurstBox
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def start(_type, args) do
@@ -58,12 +61,11 @@ defmodule CodeMySpecWeb.Application do
         # `FLY_IMAGE_REF` are Fly's own runtime env, so the only new
         # requirement is the `FLY_API_TOKEN` secret (not auto-injected by
         # Fly for security reasons). `embed_pool_backend/1` falls back to
-        # `LocalBackend` when that secret isn't set yet, so a prod boot
-        # before it's configured still works — see that function. A
-        # Hetzner backend was the original plan, but the app isn't
-        # Hetzner-deployed at all — nothing portable exists there yet for
-        # a runner to boot from, while Fly already has exactly that.
-        # dev/test keep `LocalBackend`, where a
+        # `LocalBackend` when neither secret is set yet, so a prod boot
+        # before either is configured still works — see that function.
+        # Hetzner (story 877) is now real — `hetzner_burst_box_configured?/0`
+        # wins when present, `FlyBackend` otherwise. dev/test keep
+        # `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
           {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
@@ -79,6 +81,15 @@ defmodule CodeMySpecWeb.Application do
         # Framework knowledge (step 4): one reconcile per boot, no watcher. A
         # `:temporary`, non-raising Task, so it never blocks or fails boot.
         embeddings_configured?() && CodeMySpec.Embeddings.FrameworkKnowledgeReconciler,
+        # How many `FLAME.call`s are in flight on `CodeMySpec.EmbedPool` right
+        # now, per pool — the fact `BurstBox.busy?/3`'s embedding half needs
+        # (story 877, item 1 correction) with no FLAME-internals
+        # introspection. Same shape as `Faults`/`DrainCost` below: a process
+        # that owns one ETS table, unconditional for the same reason they
+        # are — it costs nothing idle, and gating it on
+        # `embeddings_configured?()` would just be one more thing a test
+        # starting its own pool has to remember to start first.
+        CodeMySpec.Embeddings.InFlightCalls,
         # Per-caller failure injection, so QA can break one project's digest or
         # one visitor's intake without breaking the shared box. Owns an ETS
         # table and nothing else; only `/dev/faults` ever writes to it, and that
@@ -237,24 +248,97 @@ defmodule CodeMySpecWeb.Application do
       CodeMySpec.Embeddings.PgVectorBackend
   end
 
-  # `min: 0` means no runner boots at app start regardless — `FlyBackend.init/1`
-  # only ever runs lazily, inside the pool's own async boot task, the first
-  # time a burst actually needs a runner. That isolates a missing token to
-  # one failed boot attempt rather than a boot-time crash, but "isolated"
-  # still means every burst fails until someone notices — checking the token
-  # is present is the one fact that tells `FlyBackend.init/1` apart from
-  # "will actually boot something" before committing to it.
+  # Hetzner is the capability (story 877) — never activated by this alone.
+  # `hetzner_burst_box_configured?/0` is the gate: present and valid, same as
+  # `FLY_API_TOKEN` was meant to be for `FlyBackend` above, this wins; absent,
+  # :prod falls back to `FlyBackend` exactly as before this existed. Dev and
+  # test are untouched either way — `embed_pool_backend/1` is never called
+  # for them at all (see `embeddings_configured?/0` above).
+  #
+  # ## Go-live checklist — neither of these lands with this code; both are
+  # separate, human, outside-this-session steps before Hetzner activates
+  # for real in prod rather than this cond silently falling through:
+  #
+  #   1. `HETZNER_API_TOKEN` has to actually be set in the prod environment.
+  #      Proven live tonight against a real account with a token sourced
+  #      from `envs/test.env` — nothing here sets it for prod on its own.
+  #   2. `BurstBox.FlyPeering`'s own config (`config :code_my_spec,
+  #      CodeMySpec.Provisioning.BurstBox.FlyPeering, peer: %{...}`) needs a
+  #      real Fly WireGuard peer, minted by a human running `flyctl
+  #      wireguard create` once for this environment — only John can do
+  #      this (it needs a Fly credential this session was never handed).
+  #      Without it, box creation itself still works (proven live), but its
+  #      embedding runners boot with no route back to the Fly-hosted parent
+  #      and can't actually serve a FLAME call — see that module's own
+  #      moduledoc for the full "what this does not do."
+  #
+  # Builds on the burst box (no FLAME runner involved) work today without
+  # either step — only the embedding half needs step 2.
+  #
+  # `min: 0` means no runner boots at app start regardless — a backend's own
+  # `init/1` only ever runs lazily, inside the pool's own async boot task,
+  # the first time a burst actually needs a runner. That isolates a missing
+  # token to one failed boot attempt rather than a boot-time crash, but
+  # "isolated" still means every burst fails until someone notices —
+  # checking the token is present is the one fact that tells a backend's
+  # `init/1` apart from "will actually boot something" before committing to
+  # it.
   defp embed_pool_backend(:prod) do
-    if fly_api_token_configured?(), do: FLAME.FlyBackend, else: FLAME.LocalBackend
+    cond do
+      hetzner_burst_box_configured?() ->
+        configure_hetzner_flame_backend!()
+        HetznerFlameBackend
+
+      fly_api_token_configured?() ->
+        FLAME.FlyBackend
+
+      true ->
+        FLAME.LocalBackend
+    end
   end
 
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
+
+  defp hetzner_burst_box_configured? do
+    case System.get_env("HETZNER_API_TOKEN") do
+      token when is_binary(token) and token != "" -> true
+      _ -> false
+    end
+  end
 
   defp fly_api_token_configured? do
     case System.get_env("FLY_API_TOKEN") do
       token when is_binary(token) and token != "" -> true
       _ -> false
     end
+  end
+
+  # The three closures `HetznerFlameBackend`'s own moduledoc already
+  # sketches, built here rather than inside either boundary: `Embeddings` and
+  # `Provisioning` are both `top_level?: true` with no dependency between
+  # them (see that module's own moduledoc for the forbidden-reference this
+  # avoids), so the wiring can only happen where both are already in scope —
+  # this module already depends on `CodeMySpec.Provisioning` (`RunLock`
+  # above) and on `CodeMySpec.Embeddings` (`OrtexServing`, `HexDocSweep`
+  # above).
+  #
+  # `%Scope{}` — no account, no project — is the platform acting for itself,
+  # the same reading `BurstBox.ensure_box/3`'s own `platform_scope?/1` and
+  # `Hetzner.token/1`'s application-config fallback both already give that
+  # shape of scope.
+  defp configure_hetzner_flame_backend! do
+    platform_scope = %Scope{}
+
+    Application.put_env(:flame, HetznerFlameBackend,
+      box_name: BurstBox.box_name(),
+      ensure_box: fn name -> BurstBox.ensure_box(platform_scope, name) end,
+      start_runner: fn server, runner_name, env ->
+        BurstBox.start_runner(platform_scope, server, runner_name, env)
+      end,
+      stop_runner: fn server, runner_name ->
+        BurstBox.stop_runner(platform_scope, server, runner_name)
+      end
+    )
   end
 
   defp maybe_install_file_logger do

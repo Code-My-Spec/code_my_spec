@@ -35,6 +35,7 @@ defmodule CodeMySpec.Embeddings.FrameworkKnowledgeReconciler do
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.EmbeddingService
+  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpec.Embeddings.PgVectorBackend
   alias CodeMySpec.Embeddings.Serving
   alias CodeMySpec.Repo
@@ -223,7 +224,7 @@ defmodule CodeMySpec.Embeddings.FrameworkKnowledgeReconciler do
   defp embed_batch(batch) do
     texts = Enum.map(batch, fn {_path, _index, chunk, _file_hash} -> chunk end)
 
-    FLAME.call(CodeMySpec.EmbedPool, fn -> Serving.embed_batch(texts, :bulk) end,
+    InFlightCalls.call(CodeMySpec.EmbedPool, fn -> Serving.embed_batch(texts, :bulk) end,
       timeout: @flame_timeout
     )
   end

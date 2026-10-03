@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.325",
+      version: "2.0.327",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :harness, :desktop],
@@ -253,15 +253,14 @@ defmodule CodeMySpec.MixProject do
         # The desktop build ships as a tarball (installers/macos/codemyspec-desktop.rb).
         steps: if(Mix.env() == :desktop, do: [:assemble, :tar], else: [:assemble])
       ]
-    ] ++ cli_release()
+    ] ++ harness_release()
   end
 
-  # The harness release. The name predates the harness and stays: the brew
-  # formula and the MSI both run `bin/code_my_spec_cli`.
-  defp cli_release do
+  # The harness release: the brew formula and the MSI both run `bin/cms_harness`.
+  defp harness_release do
     if Mix.env() == :harness do
       [
-        code_my_spec_cli: [
+        cms_harness: [
           steps: [:assemble, &copy_bcrypt_nif_dll/1, &copy_mcp_relay/1, :tar]
         ]
       ]
