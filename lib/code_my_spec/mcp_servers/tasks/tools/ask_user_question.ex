@@ -33,6 +33,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
     field :title, :string, doc: "Notification heading."
     field :task_id, :string, doc: "Task to block; omitted defaults to your active task."
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
 
     field :about, :string,
       doc: "`criteria` for a story's acceptance criteria or spec: it goes to product."
@@ -182,7 +183,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       "session_external_id" => session_id_unless_agent(frame.assigns[:agent_id], scope)
     }
 
-    with {:ok, request} <- create_question(scope, user_id, attrs, task_ref) do
+    with {:ok, request} <-
+           create_question(scope, user_id, attrs, task_ref, Map.get(params, :session_id)) do
       # Delivered rather than discovered. Story 1059 wakes the main agent on a
       # cadence, so a question raised now would be seen eventually — at the cost
       # of the asking agent waiting out a window for somebody who was idle
@@ -196,13 +198,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     {:error, "No user on this scope, so there is nobody to ask. Ask in the terminal instead."}
   end
 
-  defp create_question(scope, _user_id, %{"agent_id" => id} = attrs, task_ref)
+  defp create_question(scope, _user_id, %{"agent_id" => id} = attrs, task_ref, _session_id)
        when is_binary(id) do
     Notifications.create_agent_question_request(scope, id, attrs, task_ref)
   end
 
-  defp create_question(_scope, user_id, attrs, _task_ref),
-    do: Notifications.create_question_request(user_id, attrs)
+  defp create_question(scope, user_id, attrs, task_ref, session_id),
+    do: Notifications.create_session_question_request(scope, user_id, attrs, task_ref, session_id)
 
   defp title_or_default(title) when is_binary(title) and title != "", do: title
   defp title_or_default(_title), do: "Claude has a question"
@@ -260,8 +262,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   end
 
   defp waiting_advice(_agent_id) do
-    "They will not answer instantly. Do other work, or stop — the stop hook will " <>
-      "bring you back. Call `check_answer` with that id for the reply."
+    "The linked task is blocked, if any. They will not answer instantly — continue " <>
+      "unrelated work, or stop and the stop hook will bring you back to it. Call " <>
+      "`check_answer` with that id for the reply, and `start_task` to deliberately " <>
+      "resume eligible work."
   end
 
   # A session or an agent, never both. `Sessions.external_id_for_harness/1`
