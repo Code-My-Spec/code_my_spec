@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     {:ok, dir} = Briefly.create(directory: true)
-    :ok = Fixtures.embed_on_pgvector(dir)
+    :ok = Fixtures.embed_on_pgvector_queued(dir)
     Req.Test.set_req_test_to_shared()
     :ok
   end
@@ -40,11 +40,23 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
     do:
       ~s(%{\n  "big_docs_pkg": {:hex, :big_docs_pkg, "1.0.0", "chk", [:mix], [], "hexpm", "#{checksum}"}\n}\n)
 
-  defp next_bulk_batch_already_landed? do
-    receive do
-      {:embedded, _texts, :bulk} -> true
-    after
-      0 -> false
+  # Every job this fixture's `OrtexServing` dispatches blocks until told
+  # `:go`, so whichever remains blocked next (after releasing the one the
+  # scenario is holding) names the queue's actual dispatch choice, with no
+  # race against how fast the fake work underneath happens to run.
+  defp release_remaining(import_task) do
+    case Task.yield(import_task, 50) do
+      nil ->
+        receive do
+          {:worker_blocked, pid, _kind, _texts} -> send(pid, :go)
+        after
+          0 -> :ok
+        end
+
+        release_remaining(import_task)
+
+      {:ok, result} ->
+        result
     end
   end
 
@@ -65,23 +77,42 @@ defmodule CodeMySpecSpex.Story1087.Criterion1770Spex do
         manifest(main)
 
         import_task = Task.async(fn -> Fixtures.hex_doc_sweep_runs() end)
-        assert_receive {:embedded, _texts, :bulk}, :timer.seconds(5)
+        assert_receive {:worker_blocked, batch_pid, :bulk, _texts}, :timer.seconds(5)
 
-        {:ok, Map.merge(context, %{main: main, import_task: import_task})}
+        {:ok, Map.merge(context, %{main: main, import_task: import_task, batch_pid: batch_pid})}
       end
 
       when_ "an agent searches the project's docs", context do
-        text = search(context.main, "hexdocs")
-        next_batch_landed? = next_bulk_batch_already_landed?()
+        test_pid = self()
 
-        {:ok, Map.merge(context, %{text: text, next_batch_landed?: next_batch_landed?})}
+        search_task =
+          Task.async(fn ->
+            send(test_pid, :search_calling)
+            search(context.main, "hexdocs")
+          end)
+
+        assert_receive :search_calling, :timer.seconds(5)
+        # A small margin for the GenServer to have actually enqueued the
+        # search call before the held batch is released.
+        Process.sleep(20)
+
+        send(context.batch_pid, :go)
+
+        # Whichever job the queue hands the worker next, held in turn
+        # before it can run — this is the dispatch choice under test.
+        assert_receive {:worker_blocked, next_pid, next_kind, _texts}, :timer.seconds(5)
+        send(next_pid, :go)
+
+        text = Task.await(search_task, :timer.seconds(10))
+
+        {:ok, Map.merge(context, %{text: text, next_kind: next_kind})}
       end
 
       then_ "the search is answered before the next bulk batch", context do
-        refute context.next_batch_landed?,
-               "a further bulk batch finished before the search was answered"
+        assert context.next_kind == :search,
+               "a further bulk batch was dispatched before the search was"
 
-        :ok = Task.await(context.import_task, :timer.seconds(30))
+        :ok = release_remaining(context.import_task)
         {:ok, context}
       end
     end

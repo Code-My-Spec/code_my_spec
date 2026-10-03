@@ -2669,6 +2669,67 @@ defmodule CodeMySpecSpex.Fixtures do
   defp start_embed_pool(_running), do: :ok
 
   @doc """
+  Like `embed_on_pgvector/1`, but through the real `OrtexServing` priority
+  queue instead of the synchronous recording fake. Criterion 1770 needs an
+  actual search-preempts-bulk guarantee to exercise, and nothing proves
+  that when every embed call just returns inline on whatever process
+  happens to call it.
+
+  Every job — search or bulk — blocks until told `:go`, reporting
+  `{:worker_blocked, pid, kind, texts}` once held. Holding every job, not
+  just the first, is what lets a scenario confirm *which* job the queue
+  dispatches next one at a time, deterministically — everything here is
+  otherwise instant, so once released, a real race to completion would
+  reach the test process before it could tell the correct order from the
+  wrong one.
+  """
+  @spec embed_on_pgvector_queued(String.t()) :: :ok
+  def embed_on_pgvector_queued(knowledge_dir) do
+    keys = [:embeddings_backend, :embedding_serving, :framework_knowledge_dir]
+    previous = Map.new(keys, &{&1, Application.get_env(:code_my_spec, &1)})
+
+    Application.put_env(:code_my_spec, :embeddings_backend, CodeMySpec.Embeddings.PgVectorBackend)
+    Application.put_env(:code_my_spec, :embedding_serving, CodeMySpec.Embeddings.OrtexServing)
+    Application.put_env(:code_my_spec, :framework_knowledge_dir, knowledge_dir)
+
+    start_embed_pool(Process.whereis(CodeMySpec.EmbedPool))
+
+    test_pid = self()
+    vector = List.duplicate(0.1, 384)
+
+    run_fn = fn
+      _pipeline, {:single, text} ->
+        send(test_pid, {:worker_blocked, self(), :search, [text]})
+
+        receive do
+          :go -> :ok
+        end
+
+        {:ok, vector}
+
+      _pipeline, {:batch, texts} ->
+        send(test_pid, {:worker_blocked, self(), :bulk, texts})
+
+        receive do
+          :go -> :ok
+        end
+
+        {:ok, Enum.map(texts, fn _ -> vector end)}
+    end
+
+    ExUnit.Callbacks.start_supervised!({CodeMySpec.Embeddings.OrtexServing, run_fn: run_fn})
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Enum.each(previous, fn
+        {key, nil} -> Application.delete_env(:code_my_spec, key)
+        {key, value} -> Application.put_env(:code_my_spec, key, value)
+      end)
+    end)
+
+    :ok
+  end
+
+  @doc """
   A hex package tarball holding `sources` (path => Elixir source), and the
   outer checksum a `mix.lock` entry for it carries. For `Req.Test.stub` on
   `CodeMySpec.Embeddings.HexPackageFetch`: hex.pm is the provider here.
