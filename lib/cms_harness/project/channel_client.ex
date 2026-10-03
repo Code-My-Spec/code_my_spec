@@ -521,7 +521,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # to one dialing the right one and getting refused, and the two need
         # opposite fixes. Token redacted: it is a credential, not a diagnostic.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-        {:noreply, connect!(socket, uri: uri)}
+        {:noreply, connect!(socket, uri: uri, headers: connect_headers(socket))}
 
       {:error, :no_credential} ->
         # Not a retry loop. Nothing about waiting produces a credential, and a
@@ -2277,7 +2277,7 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info(:reconnect, socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri)
+        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
         {:noreply, socket}
 
       {:error, _} ->
@@ -2813,6 +2813,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # The wire, read at call time so a test can swap it per-case. See
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
+  defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
+
   defp transport, do: Transport.impl()
 
   # This working copy is already being served. Usually by the process this one is

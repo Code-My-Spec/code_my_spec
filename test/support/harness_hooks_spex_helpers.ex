@@ -18,38 +18,43 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   `CodeMySpecWeb.Endpoint` runs `server: false` in test. This starts a Bandit
   listener on a free loopback port with the endpoint itself as its plug — the
-  same `/socket` mount, `UserSocket` and channel as production, with no
-  production code changed — and points the harness's `:harness_server_url` at
-  it. The listener is this context's alone and is stopped on exit.
+  same `/socket` mount, `UserSocket` and channel as production. The listener
+  and its port are this context's alone and are stopped on exit.
 
-  ## Sandbox ownership
+  ## Isolation, so it runs `async: true`
 
-  The processes that touch the database on one hook are none of the test's:
-  Bandit's connection process (`UserSocket.connect/3` resolves the deploy key),
-  the channel process (join, authorization, the manifest reconcile), the
-  channel's `reply_async` task (the decision itself) and the graph watcher.
-  Phoenix gives a channel no `$callers` to inherit an allowance through, and
-  the join's own queries run before any pid is known to allow. So this runs
-  only in `{:shared, owner}` mode, which a non-async spex (and a non-async
-  `DataCase`) is already in, and refuses an async context rather than failing
-  later with an ownership error.
+  Each test has its own listener, checkout and database connection, and sets
+  nothing in the application or OS environment.
+
+    * **The database.** The cloud processes on one hook — Bandit's connection
+      process, the channel, its decision and reconcile tasks — are none of the
+      test's. The test's SQL sandbox metadata rides in the socket's
+      `user-agent` (`CmsHarnessTest.ConnectHeaders`, keyed on the checkout's
+      root) and `UserSocket.connect/3` allows it, as the endpoint's
+      `Phoenix.Ecto.SQL.Sandbox` plug does for HTTP. The channel and its tasks
+      inherit the allowance through `$callers`.
+    * **The server.** `.cms_harness.json` records the server that minted the
+      copy — this listener — and the copy dials that
+      (`CmsHarness.Config.server_url_for/1`), not the node's configured one.
+    * **The harness side** touches no database, and everything it holds is
+      keyed on the checkout's root.
 
   ## Teardown
 
-  One `on_exit`, registered before anything starts so a join that fails is
+  One `on_exit`, registered before the harness starts so a join that fails is
   still cleaned up, and run before the sandbox owner stops. In order: stop the
   listener, so the *cloud* closes the socket (a harness that hangs up first is
   logged at `:error` by the channel as a death); wait for the channel process
-  to be gone; stop serving the checkout; put the harness's environment back.
+  to be gone; stop serving the checkout.
   """
 
   import ExUnit.Assertions
 
   alias CmsHarnessTest.LiveHarness
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.TempFile
   alias CodeMySpecSpex.Fixtures
   alias Phoenix.ConnTest
+  alias Phoenix.Ecto.SQL.Sandbox, as: SQLSandbox
   alias Plug.Conn
 
   # A join, a read-model round trip, a scan and a reconcile. Generous because
@@ -67,17 +72,16 @@ defmodule CodeMySpecSpex.HarnessHooks do
   Options:
 
     * `:files` — `%{relative_path => content}` written into the checkout and
-      committed before the harness starts. Give it at least one file the
+      left uncommitted on the template's commit. Give it at least one file the
       scanner tracks: a harness whose scan finds nothing refuses to send it.
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
   def given_a_live_harness(context, opts \\ []) do
-    refuse_async!(context)
-
     %{scope: scope, project: project} = context
     key = "dk_live_#{System.unique_integer([:positive])}"
     _project = Fixtures.set_project_deploy_key(scope, project, key)
     device = Fixtures.device_fixture(scope)
+    {listener, url} = listen()
 
     root =
       LiveHarness.checkout(%{
@@ -92,26 +96,23 @@ defmodule CodeMySpecSpex.HarnessHooks do
       LiveHarness.onboard(root, %{
         working_copy_id: working_copy_id,
         project_id: project.id,
-        deploy_key: key
+        deploy_key: key,
+        server_url: url
       })
 
-    device_file = device_file(device.id)
-    {listener, url} = listen()
     topic = "harness_project:#{project.id}"
     handler = watch_channel(topic, working_copy_id)
-    saved = LiveHarness.save_env()
 
     ExUnit.Callbacks.on_exit(fn ->
       teardown(%{
         root: root,
         working_copy_id: working_copy_id,
         listener: listener,
-        handler: handler,
-        saved: saved
+        handler: handler
       })
     end)
 
-    :ok = LiveHarness.serve(root, url, device_file, saved)
+    :ok = LiveHarness.serve(root, sandbox_user_agent())
     await_joined(working_copy_id)
 
     Map.put(context, :harness, %{
@@ -196,18 +197,14 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   # --- setup ---
 
-  defp refuse_async!(%{async: true}) do
-    raise ArgumentError, """
-    given_a_live_harness/2 cannot run in an async test.
-
-    The cloud's channel, its decision task and the socket that carries them are
-    processes this test does not start and cannot allow before they query, so
-    they reach the database through the sandbox's shared mode. An async test
-    owns its connection privately and they would see none of it.
-    """
+  # This test's connection, as `Phoenix.Ecto.SQL.Sandbox` encodes it for a
+  # client to send back. Not trapping exits: the process it is applied to is
+  # the socket's transport, whose exit handling is Phoenix's.
+  defp sandbox_user_agent do
+    CodeMySpec.Repo
+    |> SQLSandbox.metadata_for(self(), trap_exit: false)
+    |> SQLSandbox.encode_metadata()
   end
-
-  defp refuse_async!(_context), do: :ok
 
   # What `mix cms.harness.onboard` does: ask the cloud for an id for this
   # checkout, presenting the project's deploy key.
@@ -228,15 +225,6 @@ defmodule CodeMySpecSpex.HarnessHooks do
     )
     |> ConnTest.json_response(200)
     |> Map.fetch!("working_copy_id")
-  end
-
-  defp device_file(device_id) do
-    dir = TempFile.dir("live_harness_device")
-    File.mkdir_p!(dir)
-    file = Path.join(dir, "device.json")
-    File.write!(file, Jason.encode!(%{device_id: device_id}))
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
-    file
   end
 
   defp listen do
@@ -314,7 +302,6 @@ defmodule CodeMySpecSpex.HarnessHooks do
     ThousandIsland.stop(live.listener, 1_000)
     await_channel_down(channel)
     LiveHarness.stop_serving(root)
-    LiveHarness.restore(live.saved)
   end
 
   defp await_channel_down({:ok, pid, _instance}) do

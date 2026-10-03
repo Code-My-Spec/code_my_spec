@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelTest do
+defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
   @moduledoc """
   Hooks, driven the whole way the way production drives them.
 
@@ -15,15 +15,18 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelTest do
   complete — and the verdict has to follow what is on disk. A cut `fs_request`
   path reads as "could not read, nothing to report" and lets the first stop
   through.
+
+  Driven from two async test modules below, so the two run at once (ExUnit
+  runs one module's tests in sequence, and modules side by side): two projects,
+  two checkouts, two listeners and two channels on one node, each test on its
+  own database connection. A leak between them — a shared server URL, a shared
+  connection, a channel answering for the other copy — fails one of the two.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  import ExUnit.Assertions
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
-
-  setup :register_log_in_setup_account
-  setup :setup_active_project
 
   @incomplete_brief """
   # QA Brief
@@ -57,7 +60,8 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelTest do
   `.code_my_spec/qa/result.md`
   """
 
-  test "session-start opens the session, and stop judges a file it reads over the channel", ctx do
+  @doc "session-start, then two stops that judge a file read over the channel."
+  def drive_a_session(ctx) do
     ctx =
       HarnessHooks.given_a_live_harness(ctx, files: %{"lib/app.ex" => "defmodule App do\nend\n"})
 
@@ -104,5 +108,27 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelTest do
       })
 
     refute answer["decision"] == "block", "post-tool-use refused the write: #{inspect(answer)}"
+  end
+end
+
+defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelTest do
+  use CodeMySpecSpex.Case, async: true
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  test "session-start opens the session, and stop judges a file it reads over the channel", ctx do
+    CodeMySpecWeb.HooksOverTheRealHarnessChannel.drive_a_session(ctx)
+  end
+end
+
+defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannelBesideTest do
+  use CodeMySpecSpex.Case, async: true
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  test "the same, at the same time, for another project on the same node", ctx do
+    CodeMySpecWeb.HooksOverTheRealHarnessChannel.drive_a_session(ctx)
   end
 end

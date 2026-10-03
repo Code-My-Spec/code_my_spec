@@ -23,6 +23,7 @@ defmodule CmsHarnessTest do
     exports: [
       Machine,
       LiveHarness,
+      ConnectHeaders,
       HeldProvider,
       AnalysisResults,
       Projects,

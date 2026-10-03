@@ -8,6 +8,7 @@ defmodule CmsHarness.Config do
   """
 
   alias CmsHarness.Credentials
+  alias CmsHarness.HarnessConfig
 
   # The server this harness points at when nothing else says.
   #
@@ -200,13 +201,51 @@ defmodule CmsHarness.Config do
   def socket_url(root \\ nil) do
     with {:ok, token} <- credential(root) do
       url =
-        server_url()
+        root
+        |> server_url_for()
         |> String.replace(~r{^https://}, "wss://")
         |> String.replace(~r{^http://}, "ws://")
         |> String.trim_trailing("/")
         |> Kernel.<>("/socket/websocket?token=#{token}&vsn=2.0.0")
 
       {:ok, url}
+    end
+  end
+
+  @doc """
+  The server one working copy talks to: the one its `.cms_harness.json` says
+  minted it, or `server_url/0` when it records none.
+
+  The copy's record is what actually happened — `ProjectIdentity.server_url/1`
+  says so of the committed default, and `ServedRoots` already serves only the
+  copies whose record matches. A copy onboarded against another server joined
+  this build's instead and was refused there (a6d07cf3). Nil, or a copy whose
+  file names no server, answers exactly as before.
+  """
+  @spec server_url_for(String.t() | nil) :: String.t()
+  def server_url_for(nil), do: server_url()
+
+  def server_url_for(root) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{server_url: url}} when is_binary(url) and url != "" -> url
+      _ -> server_url()
+    end
+  end
+
+  @doc """
+  Extra headers a working copy's socket connects with. None, unless
+  `:harness_connect_headers` names a module answering `headers/1` for a root.
+
+  The test suite is the only thing that names one: it puts a copy's SQL sandbox
+  metadata in the `user-agent`, which `CodeMySpecWeb.UserSocket` reads to let
+  the channel use that test's own connection. A config value naming a module,
+  not a header value, so nothing global changes per test.
+  """
+  @spec connect_headers(String.t()) :: [{String.t(), String.t()}]
+  def connect_headers(root) do
+    case Application.get_env(:code_my_spec, :harness_connect_headers) do
+      nil -> []
+      module -> module.headers(root)
     end
   end
 

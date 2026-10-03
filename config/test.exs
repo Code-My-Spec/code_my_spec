@@ -343,6 +343,12 @@ config :code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport
 # seam as `:harness_transport` for the channel.
 config :code_my_spec, :harness_mcp_transport, CodeMySpecTest.InVmMcpTransport
 
+# A served copy's socket headers, per root. A test serving a real harness
+# against a listening cloud endpoint puts its SQL sandbox metadata here, and
+# `CodeMySpecWeb.UserSocket` allows that test's connection from it — so the
+# channel is isolated per test rather than shared across the run.
+config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
+
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —
 # and an unset plug plus a real credential is a live request that logs nothing

@@ -17,39 +17,33 @@ defmodule CmsHarnessTest.LiveHarness do
   """
 
   alias CmsHarness.HarnessConfig
+  alias CmsHarnessTest.ConnectHeaders
   alias CmsHarnessTest.Projects
   alias Phoenix.ConnTest
 
-  # What a harness reads from the OS environment before it reads the checkout.
-  # A spex run under the harness's own analyzer inherits all of them — and
-  # `CMS_HARNESS_ID` alone would make this checkout answer to another copy's id.
-  @environment_vars ~w(
-    CMS_TOKEN CMS_DEPLOY_KEY CMS_SERVER_URL CMS_PROJECT_ID CMS_PROJECT_DIR CMS_HARNESS_ID
-  )
-
-  # Application env the harness reads, and what this sets each to.
-  @app_env ~w(
-    harness_server_url harness_server_url_override harness_token device_config_path
-    harness_served_roots_dir harness_decision_timeout
-  )a
-
-  # Production's own. The suite's 1s exists for tests about the timeout firing;
-  # a hook that reads files over the channel on a loaded box needs the real one,
-  # or a slow answer reads as a dead channel.
-  @decision_timeout 10_000
+  # Everything per copy rides in the checkout or in `ConnectHeaders`, keyed on
+  # its root — no application or OS environment is set, so two copies served at
+  # once by one node cannot see each other's settings. What the harness reads
+  # globally on this path is read-only here: `:harness_token` (unset in test, so
+  # the checkout's deploy key is the credential), the device identity file
+  # (an id the cloud does not know attaches nothing; onboarding already gave the
+  # copy its device), and `:harness_decision_timeout` (the suite's 1s).
 
   @doc """
-  A checkout on disk, before onboarding: `.code_my_spec/config.yml` naming the
-  project, `files` (`%{path => content}`), and a git repository with all of it
-  committed.
+  A checkout on disk, before onboarding: a copy of the run's template
+  repository, with `.code_my_spec/config.yml` naming the project and `files`
+  (`%{path => content}`) written into the working tree, uncommitted.
 
-  A repository because the harness asks git for the checkout's HEAD on every
-  sync, and a directory that is not one answers for whatever repository
+  Uncommitted is enough. The harness scans the working tree, not HEAD; the only
+  thing it asks git is `rev-parse HEAD`, which the template's commit answers.
+  A directory with no repository at all would answer for whatever repository
   happens to enclose it.
   """
   @spec checkout(map()) :: String.t()
   def checkout(%{project_id: project_id, account_id: account_id} = opts) do
-    %{root: root} = Projects.project_dir(project_id: project_id, working_copy_id: nil)
+    root = CodeMySpec.TempFile.dir("cms_harness_live")
+    File.cp_r!(template(), root)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
 
     Projects.write(
       root,
@@ -57,12 +51,36 @@ defmodule CmsHarnessTest.LiveHarness do
       "project_id: #{project_id}\naccount_id: #{account_id}\n"
     )
 
+    # The partition a checkout's analyzers would run in, recorded as onboarding
+    # records it — `CmsHarnessTest.Projects.project_dir/1` does the same.
+    Projects.write(
+      root,
+      ".claude/settings.local.json",
+      Jason.encode!(%{
+        "env" => %{"MIX_TEST_PARTITION" => "fixture#{System.unique_integer([:positive])}"}
+      })
+    )
+
     Enum.each(Map.get(opts, :files, %{}), fn {path, content} ->
       Projects.write(root, path, content)
     end)
 
-    commit_all!(root)
     Path.expand(root)
+  end
+
+  # One repository per run, built with real git the first time a checkout is
+  # asked for and copied after that. Three git calls per given, across every
+  # hook spex, is the nested-subprocess load that produced phantom `killed`
+  # failures on a contended box; three per run is not.
+  #
+  # Under a lock, because async tests ask for their first checkout at once.
+  defp template do
+    :global.trans({__MODULE__, :template}, fn ->
+      case :persistent_term.get({__MODULE__, :template}, nil) do
+        nil -> build_template()
+        dir -> dir
+      end
+    end)
   end
 
   # Isolated from the machine's own config: a global signing key or hooks path
@@ -78,64 +96,45 @@ defmodule CmsHarnessTest.LiveHarness do
     "core.hooksPath=/dev/null"
   ]
 
-  defp commit_all!(root) do
-    Projects.cmd!(root, "git", @vcs_config ++ ["init", "--quiet", "--initial-branch=main"])
-    Projects.cmd!(root, "git", @vcs_config ++ ["add", "--all"])
-    Projects.cmd!(root, "git", @vcs_config ++ ["commit", "--quiet", "--message", "the checkout"])
+  defp build_template do
+    dir = CodeMySpec.TempFile.dir("cms_harness_live_template")
+    Projects.write(dir, ".code_my_spec/config.yml", "project_id: template\n")
+    Projects.write(dir, "lib/.gitkeep", "")
+    Projects.write(dir, "test/.gitkeep", "")
+
+    Projects.cmd!(dir, "git", @vcs_config ++ ["init", "--quiet", "--initial-branch=main"])
+    Projects.cmd!(dir, "git", @vcs_config ++ ["add", "--all"])
+    Projects.cmd!(dir, "git", @vcs_config ++ ["commit", "--quiet", "--message", "the checkout"])
+
+    # Outlives every test that copies it, so it goes with the VM.
+    System.at_exit(fn _status -> File.rm_rf(dir) end)
+    :persistent_term.put({__MODULE__, :template}, dir)
+    dir
   end
 
   @doc """
   Write what onboarding issued into the checkout's `.cms_harness.json`: the
-  working copy id, the project, and the deploy key the harness connects with.
+  working copy id, the project, the deploy key the harness connects with, and
+  the server that minted the id — which is the one this copy's channel dials.
   """
   @spec onboard(String.t(), map()) :: :ok
-  def onboard(root, %{working_copy_id: id, project_id: project_id, deploy_key: key}) do
+  def onboard(root, %{working_copy_id: id, project_id: project_id} = issued) do
     HarnessConfig.write(root, %{
       working_copy_id: id,
       project_id: project_id,
       root: root,
-      deploy_key: key
+      deploy_key: issued.deploy_key,
+      server_url: issued.server_url
     })
   end
 
   @doc """
-  What `serve/4` is about to change, for `restore/1` to put back.
-
-  Taken first and on its own so a caller can register its teardown before
-  anything starts — a join that fails must still be cleaned up.
+  Start serving `root`, its socket carrying `user_agent` — the cloud test's SQL
+  sandbox metadata, so the channel it reaches uses that test's connection.
   """
-  @spec save_env() :: map()
-  def save_env do
-    %{
-      os: Enum.map(@environment_vars, &{&1, System.get_env(&1)}),
-      app: Enum.map(@app_env, &{&1, Application.fetch_env(:code_my_spec, &1)}),
-      served_roots: CodeMySpec.TempFile.dir("live_harness_served_roots")
-    }
-  end
-
-  @doc """
-  Point this node's harness at `server_url` and start serving `root`.
-
-  `device_file` is this machine's identity, kept out of `~/.codemyspec`;
-  `saved` is `save_env/0`'s answer.
-  """
-  @spec serve(String.t(), String.t(), String.t(), map()) :: :ok
-  def serve(root, server_url, device_file, %{served_roots: served_roots}) do
-    Enum.each(@environment_vars, &System.delete_env/1)
-
-    # The override as well as the plain key: `Config.server_url/0` ranks the
-    # override above `CMS_SERVER_URL`, the plain key below it.
-    Application.put_env(:code_my_spec, :harness_server_url, server_url)
-    Application.put_env(:code_my_spec, :harness_server_url_override, server_url)
-    # The checkout's own deploy key is the credential, as onboarding leaves it.
-    # A user token would outrank it.
-    Application.put_env(:code_my_spec, :harness_token, nil)
-    Application.put_env(:code_my_spec, :device_config_path, device_file)
-    # Restart hints go under the run's own temp dir, not `~/.codemyspec`. `mix
-    # spex` loads no `test_helper.exs`, which is where `mix test` points this.
-    Application.put_env(:code_my_spec, :harness_served_roots_dir, served_roots)
-    Application.put_env(:code_my_spec, :harness_decision_timeout, @decision_timeout)
-
+  @spec serve(String.t(), String.t()) :: :ok
+  def serve(root, user_agent) do
+    :ok = ConnectHeaders.put(root, user_agent)
     :ok = Projects.ensure_harness_supervisor_started()
     {:ok, _project} = Projects.ensure_started(root)
     :ok
@@ -146,23 +145,9 @@ defmodule CmsHarnessTest.LiveHarness do
   the registry to forget it.
   """
   @spec stop_serving(String.t()) :: :ok
-  def stop_serving(root), do: Projects.stop_project(root)
-
-  @doc "Put back what `serve/3` changed."
-  @spec restore(map()) :: :ok
-  def restore(%{os: os, app: app, served_roots: served_roots}) do
-    Enum.each(os, fn
-      {name, nil} -> System.delete_env(name)
-      {name, value} -> System.put_env(name, value)
-    end)
-
-    Enum.each(app, fn
-      {key, :error} -> Application.delete_env(:code_my_spec, key)
-      {key, {:ok, value}} -> Application.put_env(:code_my_spec, key, value)
-    end)
-
-    File.rm_rf(served_roots)
-    :ok
+  def stop_serving(root) do
+    Projects.stop_project(root)
+    ConnectHeaders.delete(root)
   end
 
   @doc """
