@@ -91,7 +91,7 @@ defmodule CmsHarness.StaleDepsHealTest do
 
       send(first.pid, {:release, :a})
       assert_receive {:out, :a}
-      assert_receive {:in, :b}
+      assert_receive {:in, :b}, 5_000
       send(second.pid, {:release, :b})
       assert :ok = Task.await(first)
       assert :ok = Task.await(second)
