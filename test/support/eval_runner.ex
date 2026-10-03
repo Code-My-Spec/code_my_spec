@@ -319,7 +319,7 @@ defmodule CodeMySpec.Support.EvalRunner do
         prepare: &work_already_done/2,
         threshold: 0.9,
         deadline_ms: 180_000,
-        seed: &seed_coding_work/2,
+        seed: &seed_ready_for_qa_work/2,
         judge: &rejected_not_tapped_out?/1
       },
       %{
@@ -1413,40 +1413,39 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp working_copies, do: Module.concat([CodeMySpec, WorkingCopies])
 
-  # Story 1080's stale-offer probe (the 1118 `story_promoted` repeats): the
-  # specs the offered `bdd_specs_exist` asks for are already on disk, written
-  # straight to the checkout with no sync, so the graph still offers the work.
+  # Story 1080's stale-offer probe (the 1118 `story_promoted` repeats): work
+  # already done that the graph still offers. `ready_for_qa` is offerable once
+  # the story's specs exist; the certification stamp is then written with no
+  # announcement, so the graph never hears and goes on offering it. Test DB
+  # only: what is under test is the agent, not the announcement.
+  defp seed_ready_for_qa_work(world, run) do
+    story = seed_coding_work(world, run)
+    :ok = project_state().apply_bdd_spec_for_story(world.context, story)
+    story
+  end
+
   defp work_already_done(world, _agent_id) do
-    case Enum.find(Requirements.actionable_for_role(world.scope, :coding), &(&1.name == "bdd_specs_exist")) do
+    case Enum.find(
+           Requirements.actionable_for_role(world.scope, :coding),
+           &(&1.name == "ready_for_qa")
+         ) do
       nil ->
-        {:error, {:work_already_done, "no bdd_specs_exist to make stale"}}
+        {:error, {:work_already_done, "no ready_for_qa to make stale"}}
 
       requirement ->
         number = String.to_integer(to_string(entity_ref(world, requirement)))
-        story = CodeMySpec.Stories.get_story_by_number(world.scope, number) |> Repo.preload(:criteria)
-        Enum.each(story.criteria, &write_spec(world, story, &1))
+        story = CodeMySpec.Stories.get_story_by_number(world.scope, number)
+
+        {:ok, _} =
+          story
+          |> Ecto.Changeset.change(
+            qa_ready_commit: String.duplicate("c", 40),
+            qa_ready_at: DateTime.utc_now()
+          )
+          |> Repo.update()
+
         :ok
     end
-  end
-
-  defp write_spec(world, story, criterion) do
-    path = fixtures().spec_file_path(story, %{id: criterion.number})
-
-    :ok =
-      CodeMySpec.Environments.write_file(world.scope.environment, path, """
-      defmodule CodeMySpecSpex.Story#{story.number}.Criterion#{criterion.number}Spex do
-        use CodeMySpecSpex.Case
-
-        spex "#{criterion.description}", criterion: #{criterion.number} do
-          scenario "the criterion holds" do
-            then_ "it holds", context do
-              assert true
-              {:ok, context}
-            end
-          end
-        end
-      end
-      """)
   end
 
   defp rejected_not_tapped_out?(%{trace: trace} = record) do
