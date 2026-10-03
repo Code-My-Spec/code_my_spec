@@ -84,7 +84,8 @@ defmodule CodeMySpec.Validation do
     "credo" => {:credo, :by_file_path},
     "exunit" => {:exunit, :by_component_id},
     "spex" => {:spex, :by_file_path},
-    "qa_validation" => {:qa_validation, :by_file_path}
+    "qa_validation" => {:qa_validation, :by_file_path},
+    "architecture" => {:architecture, :by_component_id}
   }
 
   @doc """

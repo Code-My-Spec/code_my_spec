@@ -102,6 +102,12 @@ defmodule CodeMySpecWeb.ConfigurationLive do
               value={@configuration.qa_validation}
               modes={@analyzer_modes}
             />
+            <.select_field
+              name="architecture"
+              label="Architecture"
+              value={@configuration.architecture}
+              modes={@analyzer_modes}
+            />
           </div>
         </section>
 
