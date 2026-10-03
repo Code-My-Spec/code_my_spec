@@ -590,7 +590,7 @@ defmodule CodeMySpec.Notifications do
         # thing the agent is answering. It records the prompt itself, so the
         # notice still appears in the transcript exactly once.
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          deliver_denial(scope, agent, copy_id, notice, {"blocker", request.id})
+          deliver_denial(scope, agent, copy_id, notice, {"tap_out", request.id})
         end)
 
         :ok
@@ -615,7 +615,7 @@ defmodule CodeMySpec.Notifications do
       _not_admissible ->
         agent
         |> Conversations.record_sent_to_agent(notice)
-        |> Offers.record(agent, :unblocked, subject)
+        |> Offers.record(agent, :denial, subject)
 
         Work.consider_copy(scope, copy_id, :tap_out_denied)
     end

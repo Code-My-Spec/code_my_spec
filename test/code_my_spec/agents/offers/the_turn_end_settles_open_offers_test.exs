@@ -267,4 +267,144 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert %{attempt: 1} = offer(ctx, :problems, {"problem_set", "abc"})
     end
   end
+
+  # Step 2 (story 1080): settled from what the agent did, not from where its
+  # task stands when the turn ends.
+  describe "evidence from the call" do
+    test "an unblocked offer is claimed by start_task on its task, even if finished in the turn (1862)",
+         ctx do
+      task_id = Ecto.UUID.generate()
+
+      holding(ctx, %{
+        id: task_id,
+        status: :completed,
+        requirement_name: "qa_complete",
+        story_id: 1085
+      })
+
+      offered = offer(ctx, :unblocked, {"task", task_id})
+      called(ctx, "start_task", %{"requirement_name" => "qa_complete", "entity_id" => "1085"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :claimed
+    end
+
+    test "an unblocked offer is ignored when start_task named other work (1862)", ctx do
+      task_id = Ecto.UUID.generate()
+
+      holding(ctx, %{
+        id: task_id,
+        status: :blocked,
+        requirement_name: "qa_complete",
+        story_id: 1085
+      })
+
+      offered = offer(ctx, :unblocked, {"task", task_id})
+      called(ctx, "start_task", %{"requirement_name" => "bdd_specs_exist", "entity_id" => "1085"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :ignored
+    end
+
+    test "a work offer is claimed by resuming a task it already held (1865)", ctx do
+      offered = offer(ctx, :work, {"requirement", @node})
+
+      holding(ctx, %{
+        status: :active,
+        requirement_name: "component_spec",
+        component_id: "c-1",
+        started_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+      })
+
+      called(ctx, "start_task", %{"requirement_name" => "component_spec", "entity_id" => "c-1"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :claimed
+    end
+
+    test "a denial is claimed by taking any work (1672)", ctx do
+      offered = offer(ctx, :denial, {"tap_out", "r-1"})
+      called(ctx, "start_task", %{"requirement_name" => "bdd_specs_exist", "entity_id" => "1087"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :claimed
+    end
+
+    for move <- ~w(answer_notification escalate_question ask_user_question) do
+      test "a questions offer to main is claimed by #{move} (1866)", ctx do
+        offered = offer(ctx, :work, {"questions", nil})
+        called(ctx, "run_script", %{"script" => "return #{unquote(move)}({ question_id = 'q' })"})
+        end_turn(ctx)
+
+        assert settled(offered).status == :claimed
+      end
+    end
+
+    test "a questions offer only listed is ignored (1866)", ctx do
+      offered = offer(ctx, :work, {"questions", nil})
+      called(ctx, "run_script", %{"script" => "return list_notifications({})"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :ignored
+    end
+  end
+
+  describe "the ladder (1739–1741)" do
+    test "each ignored work offer names the next rung, and the third holds it back", ctx do
+      steps =
+        for _ <- 1..3 do
+          offered = offer(ctx, :work, {"requirement", @node})
+          end_turn(ctx)
+          settled(offered).next_step
+        end
+
+      assert steps == ["detail", "alternatives", "held_back"]
+      assert %{ignored: 3, held?: true} = Offers.standing(ctx.agent.id)[@node]
+    end
+
+    test "a claim starts the ladder over", ctx do
+      offer(ctx, :work, {"requirement", @node})
+      end_turn(ctx)
+
+      offer(ctx, :work, {"requirement", @node})
+
+      holding(ctx, %{
+        status: :active,
+        requirement_name: "component_spec",
+        component_id: "c-1",
+        started_at: DateTime.utc_now()
+      })
+
+      end_turn(ctx)
+
+      assert %{ignored: 0, held?: false} = Offers.standing(ctx.agent.id)[@node]
+    end
+
+    test "nothing but work escalates (1742)", ctx do
+      offered = offer(ctx, :resume, {"restart", nil})
+      denial = offer(ctx, :denial, {"tap_out", "r-1"})
+      end_turn(ctx)
+
+      assert settled(offered).next_step == nil
+      assert settled(denial).next_step == nil
+    end
+  end
+
+  describe "reject_offer (1738)" do
+    test "declines the newest open offer with its reason and holds the work back", ctx do
+      offered = offer(ctx, :work, {"requirement", @node})
+
+      assert {:ok, _} = Agents.reject_offer(ctx.scope, ctx.agent.id, nil, "already promoted")
+
+      assert %{status: :declined, reason: "already promoted"} = settled(offered)
+      assert %{held?: true} = Offers.standing(ctx.agent.id)[@node]
+    end
+
+    test "names a specific offer, and refuses one that is not open", ctx do
+      offered = offer(ctx, :work, {"requirement", @node})
+      end_turn(ctx)
+
+      assert {:error, :not_found} = Agents.reject_offer(ctx.scope, ctx.agent.id, offered.id, "x")
+    end
+  end
 end

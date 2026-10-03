@@ -14,7 +14,18 @@ defmodule CodeMySpec.Agents.Offer do
 
   alias CodeMySpec.Agents.OfferMessage
 
-  @kinds [:work, :menu, :problems, :resume, :retry, :answer, :unblocked, :check_in, :stalled]
+  @kinds [
+    :work,
+    :menu,
+    :problems,
+    :resume,
+    :retry,
+    :answer,
+    :unblocked,
+    :denial,
+    :check_in,
+    :stalled
+  ]
   @statuses [:open, :claimed, :declined, :ignored, :superseded, :expired, :n_a, :undelivered]
 
   @type kind ::
@@ -25,6 +36,7 @@ defmodule CodeMySpec.Agents.Offer do
           | :retry
           | :answer
           | :unblocked
+          | :denial
           | :check_in
           | :stalled
   @type status ::

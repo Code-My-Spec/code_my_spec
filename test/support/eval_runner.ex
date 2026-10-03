@@ -262,6 +262,67 @@ defmodule CodeMySpec.Support.EvalRunner do
         judge: &reported_the_tool_failure?/1
       },
       %{
+        id: "criterion_1867",
+        behaviour: "An agent offered back a released task it can work resumes it",
+        role: "coding",
+        # The turn is the release, not the loop: the loop would offer it the
+        # generic work prompt and measure 3539 again.
+        continuous: false,
+        prepare: &released_task/2,
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_coding_work/2,
+        judge: &resumed_the_released_task?/1
+      },
+      %{
+        id: "criterion_1868",
+        behaviour: "An agent told its released task still waits does not start it",
+        role: "coding",
+        continuous: false,
+        prepare: &waiting_released_task/2,
+        # The waiting notice is a note on the thread, not a turn; the person's
+        # nudge is the turn it is read in.
+        say: "Carry on.",
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_coding_work/2,
+        judge: &left_the_waiting_task?/1
+      },
+      %{
+        id: "criterion_1869",
+        behaviour: "An agent whose tap-out is declined goes back to work",
+        role: "coding",
+        continuous: false,
+        prepare: &tap_out_denied/2,
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_coding_work/2,
+        judge: &called_in_order(&1, "get_next_requirement", "start_task")
+      },
+      %{
+        id: "criterion_1871",
+        behaviour: "Main escalates a teammate's question it cannot answer",
+        role: "main",
+        # The question wakes main itself (`:teammate_question`); switching the
+        # loop on afterwards finds it mid-turn and reads as "nothing to do".
+        continuous: false,
+        prepare: &teammate_asks/2,
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: fn _world, _run -> :ok end,
+        judge: &escalated_not_asked?/1
+      },
+      %{
+        id: "criterion_1870",
+        behaviour: "An agent offered work already done rejects the offer, not taps out",
+        role: "coding",
+        prepare: &work_already_done/2,
+        threshold: 0.9,
+        deadline_ms: 180_000,
+        seed: &seed_coding_work/2,
+        judge: &rejected_not_tapped_out?/1
+      },
+      %{
         id: "criterion_3544",
         behaviour: "Repeated tool failures are reported without bypass",
         role: "coding",
@@ -1203,6 +1264,238 @@ defmodule CodeMySpec.Support.EvalRunner do
       {:reply, _r, _} -> confirm_held(world, agent_id)
     end
   end
+
+  # Story 1080's resume probes (1867, 1868): the agent holds coding work, blocks
+  # it on a question through the tool an agent uses, and the question is
+  # answered the way the inbox answers it. That answer is what releases the task
+  # and sends the agent its turn.
+  defp released_task(world, agent_id) do
+    with :ok <- held_coding_task(world, agent_id),
+         {:ok, question_id} <- block_on_a_question(world, agent_id) do
+      answer_it(question_id)
+    end
+  end
+
+  defp held_coding_task(world, agent_id, prefer \\ nil) do
+    actionable = Requirements.actionable_for_role(world.scope, :coding)
+
+    case Enum.filter(actionable, &(&1.name == prefer)) ++ actionable do
+      [requirement | _] ->
+        # Kept for the judge, which is handed the world and not the premise.
+        :persistent_term.put({__MODULE__, :released, world.root}, %{
+          name: requirement.name,
+          entity: to_string(entity_ref(world, requirement))
+        })
+
+        aim(world, agent_id, requirement)
+
+      [] ->
+        {:error, {:released_task, "nothing actionable for coding to hold"}}
+    end
+  end
+
+  # As `released_task/2`, and the task's story loses its component before the
+  # answer, so the task is not actionable when the blocker clears (criterion
+  # 1863's premise). Adding a criterion was tried first and does not block
+  # `bdd_specs_exist`; the premise check below caught it.
+  defp waiting_released_task(world, agent_id) do
+    with :ok <- held_coding_task(world, agent_id),
+         {:ok, question_id} <- block_on_a_question(world, agent_id),
+         :ok <- story_loses_its_component(world),
+         :ok <- still_not_actionable(world) do
+      answer_it(question_id)
+    end
+  end
+
+  # Unlinked, so `component_linked` reopens and everything after it on the
+  # story — `bdd_specs_exist` included — waits on it.
+  defp story_loses_its_component(world) do
+    %{entity: number} = :persistent_term.get({__MODULE__, :released, world.root})
+
+    case clear_story_component().execute(%{story_number: String.to_integer(number)}, frame(world)) do
+      {:reply, %{isError: true} = r, _} -> {:error, {:waiting_released_task, text(r)}}
+      {:reply, _r, _} -> :ok
+    end
+  end
+
+  # A premise that does not hold measures nothing.
+  defp still_not_actionable(world) do
+    %{name: name, entity: entity} = :persistent_term.get({__MODULE__, :released, world.root})
+    settle(world.scope)
+
+    still =
+      world.scope
+      |> Requirements.actionable_for_role(:coding)
+      |> Enum.any?(&(&1.name == name and to_string(entity_ref(world, &1)) == entity))
+
+    if still,
+      do: {:error, {:waiting_released_task, "#{name} on story #{entity} is still actionable"}},
+      else: :ok
+  end
+
+  defp left_the_waiting_task?(%{trace: trace} = record) do
+    ended? = Enum.any?(trace, &(&1[:event] == :turn_ended))
+    said = trace |> Enum.filter(&(&1[:event] in [:text, :message, :assistant_text])) |> Enum.map_join(" ", &(&1[:detail] || ""))
+
+    ended? and not resumed_the_released_task?(record) and said =~ ~r/wait|not ready|blocked/i
+  end
+
+  defp clear_story_component,
+    do: Module.concat([CodeMySpec, McpServers, Stories, Tools, ClearStoryComponent])
+
+  # Story 1080's denial probe: the agent asks to leave the loop with no task,
+  # and a person declines, saying there is work. The denial is the turn.
+  defp tap_out_denied(world, agent_id) do
+    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: agent_id}}
+
+    with {:reply, %{isError: false} = r, _} <-
+           tap_out().execute(%{reason: "I do not see anything for me to do."}, frame),
+         [_, request_id] <- Regex.run(~r/request_id=`([0-9a-f-]{36})`/, text(r)),
+         {:ok, _} <-
+           notifications().resolve_permission_request(
+             request_id,
+             "deny",
+             "There is coding work on the board for you."
+           ) do
+      :ok
+    else
+      other -> {:error, {:tap_out_denied, inspect(other, limit: 5)}}
+    end
+  end
+
+  defp tap_out, do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, TapOut])
+
+  # Story 1080's questions probe: main's copy is the main copy, and a coder
+  # there asks something only the user can decide. The question is what main
+  # is offered when the loop starts.
+  defp teammate_asks(world, _main_id) do
+    {:ok, _} =
+      working_copies().designate_main(world.scope, world.scope.active_working_copy_id)
+
+    {:ok, coder} =
+      AgentsRepository.create_agent(world.scope, %{
+        engine: :alloy,
+        provider: "claude-code",
+        role: "coding",
+        working_copy: world.root,
+        working_copy_id: world.scope.active_working_copy_id,
+        status: :stopped,
+        continuous: false
+      })
+
+    params = %{
+      questions: [
+        %{
+          "question" =>
+            "Should a cancelled booking refund the deposit in full, or keep a fee?",
+          "options" => [%{"label" => "Full refund"}, %{"label" => "Keep a fee"}]
+        }
+      ]
+    }
+
+    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: coder.id}}
+
+    case ask_user_question().execute(params, frame) do
+      {:reply, %{isError: true} = r, _} ->
+        {:error, {:teammate_asks, text(r)}}
+
+      {:reply, _r, _} ->
+        :ok
+    end
+  end
+
+  # Judged on the whole turn: escalating and then asking the user anyway is the
+  # failure, and deciding on the escalation alone would miss it.
+  defp escalated_not_asked?(%{trace: trace} = record) do
+    Enum.any?(trace, &(&1[:event] == :turn_ended)) and reached?(record, "escalate_question") and
+      not reached?(record, "ask_user_question")
+  end
+
+  defp working_copies, do: Module.concat([CodeMySpec, WorkingCopies])
+
+  # Story 1080's stale-offer probe (the 1118 `story_promoted` repeats): the
+  # specs the offered `bdd_specs_exist` asks for are already on disk, written
+  # straight to the checkout with no sync, so the graph still offers the work.
+  defp work_already_done(world, _agent_id) do
+    case Enum.find(Requirements.actionable_for_role(world.scope, :coding), &(&1.name == "bdd_specs_exist")) do
+      nil ->
+        {:error, {:work_already_done, "no bdd_specs_exist to make stale"}}
+
+      requirement ->
+        number = String.to_integer(to_string(entity_ref(world, requirement)))
+        story = CodeMySpec.Stories.get_story_by_number(world.scope, number) |> Repo.preload(:criteria)
+        Enum.each(story.criteria, &write_spec(world, story, &1))
+        :ok
+    end
+  end
+
+  defp write_spec(world, story, criterion) do
+    path = fixtures().spec_file_path(story, %{id: criterion.number})
+
+    :ok =
+      CodeMySpec.Environments.write_file(world.scope.environment, path, """
+      defmodule CodeMySpecSpex.Story#{story.number}.Criterion#{criterion.number}Spex do
+        use CodeMySpecSpex.Case
+
+        spex "#{criterion.description}", criterion: #{criterion.number} do
+          scenario "the criterion holds" do
+            then_ "it holds", context do
+              assert true
+              {:ok, context}
+            end
+          end
+        end
+      end
+      """)
+  end
+
+  defp rejected_not_tapped_out?(%{trace: trace} = record) do
+    Enum.any?(trace, &(&1[:event] == :turn_ended)) and reached?(record, "reject_offer") and
+      not reached?(record, "tap_out")
+  end
+
+  # `start_task` on the released task itself — its requirement and entity —
+  # not on whatever else the graph offers.
+  defp resumed_the_released_task?(%{trace: trace, world: world}) do
+    %{name: name, entity: entity} = :persistent_term.get({__MODULE__, :released, world.root})
+
+    Enum.any?(trace, fn event ->
+      detail = Map.get(event, :detail, "")
+
+      event[:event] == :tool_start and String.starts_with?(detail, "start_task") and
+        detail =~ ~s("requirement_name" => "#{name}") and detail =~ ~s("entity_id" => "#{entity}")
+    end)
+  end
+
+  defp block_on_a_question(world, agent_id) do
+    params = %{
+      questions: [
+        %{
+          "question" => "Should the certification include the browser suite?",
+          "options" => [%{"label" => "Yes"}, %{"label" => "No"}]
+        }
+      ]
+    }
+
+    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: agent_id}}
+
+    case ask_user_question().execute(params, frame) do
+      {:reply, %{isError: true} = r, _} -> {:error, {:released_task, text(r)}}
+      {:reply, r, _} -> {:ok, fixtures().question_id_from(text(r))}
+    end
+  end
+
+  defp answer_it(question_id) do
+    case notifications().answer_question_request(question_id, %{
+           "Should the certification include the browser suite?" => "No"
+         }) do
+      {:ok, _} -> :ok
+      other -> {:error, {:released_task, other}}
+    end
+  end
+
+  defp ask_user_question, do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, AskUserQuestion])
+  defp notifications, do: Module.concat([CodeMySpec, Notifications])
 
   # That the task actually landed on *this* agent's queue.
   #

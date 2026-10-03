@@ -61,6 +61,8 @@ defmodule CodeMySpec.CodeMode.Catalog do
         "of them nobody asked for",
     "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
     "tap_out" => "it ends your turn, which is yours to do and not a script's",
+    "reject_offer" =>
+      "declining work is a decision about your own turn, made once, not a script's",
     "show_in_panel" => "it puts something in front of a person, who is not watching a script",
     "run_script" =>
       "you are already in one — a script starting a script nests a VM inside a tool call",
