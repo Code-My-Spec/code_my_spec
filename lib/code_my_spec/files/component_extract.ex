@@ -50,4 +50,21 @@ defmodule CodeMySpec.Files.ComponentExtract do
     |> normalize()
     |> String.match?(~r/^\s*use\s+Ecto\.Schema\b/m)
   end
+
+  @doc """
+  Module names a file names via `alias`, in declaration order.
+
+  The one way code says what it depends on without a human writing a spec: a
+  single `alias Foo.Bar` per line, the form every fixture and generator
+  writes. A multi-alias group (`alias Foo.{Bar, Baz}`) does not match and
+  names nothing — under-detecting is the safe failure here, since the caller
+  treats an unresolved name as "not a dependency" rather than raising.
+  """
+  @spec extract_aliases(String.t()) :: [String.t()]
+  def extract_aliases(raw) when is_binary(raw) do
+    raw
+    |> normalize()
+    |> then(&Regex.scan(~r/^\s*alias\s+([A-Z][A-Za-z0-9_.]*)/m, &1))
+    |> Enum.map(fn [_, name] -> name end)
+  end
 end
