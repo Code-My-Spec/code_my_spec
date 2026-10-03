@@ -33,7 +33,8 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Qa
-  alias CodeMySpec.Qa.Evidence
+  alias CodeMySpec.Qa.EvidenceUpload
+  alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Stories
 
   schema do
@@ -82,9 +83,9 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
     case Qa.submit_qa_result(scope, build_attrs(params)) do
       {:ok, attempt} ->
         story_number = story_number(scope, attempt.story_id)
+        attempt = upload_evidence(scope, frame, attempt, story_number)
 
-        {:reply, attempt_response(attempt, story_number, evidence(frame, attempt, story_number)),
-         frame}
+        {:reply, attempt_response(attempt, story_number), frame}
 
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, validation_error(changeset), frame}
@@ -135,17 +136,26 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # audit row and leave `qa_complete` open, so there is nothing outliving its
   # evidence.
   #
-  # After rather than before, and this is the part worth being deliberate about.
-  # Refusing to *write the attempt* would lose the QA work — the agent has
-  # finished probing, and the attempt row is the only place that record exists.
-  # So the row lands, and what the response does is refuse to let the agent walk
-  # away believing the job is done. `qa_complete` is satisfied either way; the
-  # gate here is the reader's attention, not the database.
-  defp evidence(frame, %{status: :pass}, story_number) when not is_nil(story_number) do
-    frame |> Validators.mcp_environment() |> Evidence.committed?(story_number)
+  # After rather than before, same reasoning as the git-era check this
+  # replaced: refusing to *write the attempt* would lose the QA work — the
+  # agent has finished probing, and the attempt row is the only place that
+  # record exists. So the row lands first, and uploading evidence is a
+  # second write onto a row that already exists rather than a condition on
+  # whether it gets written at all — `EvidenceUpload.collect/4` and
+  # `QaAttempts.attach_evidence/2` are both best-effort for exactly this
+  # reason (criterion 1847's local-dev case: no S3 bucket configured
+  # records "not uploaded" and does not fail the submission).
+  defp upload_evidence(scope, frame, %{status: :pass} = attempt, story_number)
+       when not is_nil(story_number) do
+    env = Validators.mcp_environment(frame)
+
+    case EvidenceUpload.collect(env, scope.active_project_id, attempt.id, story_number) do
+      [] -> attempt
+      evidence -> QaAttempts.attach_evidence(attempt, evidence)
+    end
   end
 
-  defp evidence(_frame, _attempt, _story_number), do: :skip
+  defp upload_evidence(_scope, _frame, attempt, _story_number), do: attempt
 
   # Pass params straight through to the changeset.
   #
@@ -156,7 +166,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # mixed-key map that crashed `Ecto.Changeset.cast/3`.
   defp build_attrs(params), do: params
 
-  defp attempt_response(attempt, story_number, evidence) do
+  defp attempt_response(attempt, story_number) do
     issue_ids = attempt.issue_ids || []
 
     issue_line =
@@ -179,8 +189,9 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       Scenarios recorded: #{length(attempt.scenarios)}
       #{issue_line}
       #{tools_used_line(attempt.tools_used)}
+      #{evidence_line(attempt.evidence)}
 
-      #{satisfaction_note(attempt.status)}#{wait_note(attempt.wait)}#{evidence_note(story_number, evidence)}
+      #{satisfaction_note(attempt.status)}#{wait_note(attempt.wait)}
       """
     )
   end
@@ -208,19 +219,11 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   defp tools_used_line([]), do: "tools_used: (none — reported explicitly)"
   defp tools_used_line(tools), do: "tools_used: #{Enum.join(tools, ", ")}"
 
-  # The pass is recorded; whether it is *auditable* is a separate sentence.
-  #
-  # `0a1435c7`: four briefs sat uncommitted in one worktree while the passes they
-  # backed had propagated to the server and closed `qa_complete`. One was for a
-  # story that shipped that night. Nothing said so — a submodule takes writes
-  # normally and this project suppresses the dirty-pointer notice everywhere.
-  defp evidence_note(_story_number, :skip), do: ""
-  defp evidence_note(_story_number, :ok), do: ""
+  defp evidence_line(nil), do: "evidence: (none uploaded)"
+  defp evidence_line([]), do: "evidence: (none uploaded)"
 
-  defp evidence_note(story_number, {:uncommitted, paths}),
-    do: "\n\n" <> Evidence.refusal(story_number, paths)
-
-  defp evidence_note(_story_number, {:unknown, reason}), do: Evidence.unknown_note(reason)
+  defp evidence_line(evidence),
+    do: "evidence: #{length(evidence)} file(s) uploaded — " <> Enum.map_join(evidence, ", ", & &1.name)
 
   defp satisfaction_note(:pass),
     do: "Status pass — qa_complete is satisfied for the story."

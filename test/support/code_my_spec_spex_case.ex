@@ -5955,7 +5955,13 @@ defmodule CodeMySpecSpex.Case do
       CodeMySpec.Embeddings.HexPackageFetch,
       # Story 1116's ClickHouse telemetry reads. Same reasoning, added
       # before any spex could find the omission for us.
-      CodeMySpec.Observability.ClickHouseClient
+      CodeMySpec.Observability.ClickHouseClient,
+      # Story 1089: `CodeMySpec.Uploads.upload/3` PUTs QA evidence to a
+      # presigned URL — the half of that split a browser performs for
+      # every other presigned-upload caller, done here instead since the
+      # harness has no browser. Added before any spex could find the
+      # omission for us.
+      CodeMySpec.Uploads
     ]
   end
 

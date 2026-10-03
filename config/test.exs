@@ -604,6 +604,8 @@ config :code_my_spec, CodeMySpec.Content.PullClient,
 
 config :code_my_spec, CodeMySpec.Content.S3Client, plug: {Req.Test, CodeMySpec.Content.S3Client}
 
+config :code_my_spec, CodeMySpec.Uploads, plug: {Req.Test, CodeMySpec.Uploads}
+
 config :code_my_spec, CodeMySpec.AgentHarness.ConversationRecorder,
   plug: {Req.Test, CodeMySpec.AgentHarness.ConversationRecorder}
 

@@ -10,6 +10,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Qa.Evidence
   alias CodeMySpec.Qa.Invalidation
   alias CodeMySpec.Qa.Scenario
   alias CodeMySpec.Stories.Story
@@ -21,6 +22,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
           story_id: integer() | nil,
           status: :pass | :partial | :fail | nil,
           scenarios: [Scenario.t()],
+          evidence: [Evidence.t()],
           issue_ids: [Ecto.UUID.t()],
           agent_id: String.t() | nil,
           task_id: String.t() | nil,
@@ -51,6 +53,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
     field :wait, :any, virtual: true
 
     embeds_many :scenarios, Scenario, on_replace: :delete
+    embeds_many :evidence, Evidence, on_replace: :delete
 
     belongs_to :story, Story
     belongs_to :parent_attempt, __MODULE__, type: :binary_id
@@ -74,6 +77,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
       :submitted_at
     ])
     |> cast_embed(:scenarios, required: true)
+    |> cast_embed(:evidence)
     |> validate_required([:story_id, :status, :submitted_at])
     |> validate_scenarios_non_empty()
   end

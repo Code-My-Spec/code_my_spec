@@ -194,6 +194,28 @@ defmodule CodeMySpec.Qa.QaAttempts do
   end
 
   @doc """
+  Record evidence uploaded for an already-inserted attempt.
+
+  Not a change to the claim the attempt already made — status, scenarios
+  and issue_ids are untouched — but filling in evidence does take a second
+  write, because the S3 key each file lands at is keyed by the attempt's
+  own id (`CodeMySpec.Qa.EvidenceUpload`), which does not exist until the
+  first write returns it. On any failure (vanishingly unlikely — the
+  shape is built from known-good data, not user input) this returns the
+  original attempt rather than lose a recorded pass over an evidence
+  write.
+  """
+  @spec attach_evidence(QaAttempt.t(), [map()]) :: QaAttempt.t()
+  def attach_evidence(attempt, [] = _evidence), do: attempt
+
+  def attach_evidence(attempt, evidence) do
+    case attempt |> QaAttempt.changeset(%{evidence: evidence}) |> Repo.update() do
+      {:ok, updated} -> updated
+      {:error, _changeset} -> attempt
+    end
+  end
+
+  @doc """
   List QA attempts for a story, most-recent first.
 
   Preloads `:invalidations`. Scoped to the active project via story association.
@@ -210,6 +232,23 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> order_by([a], desc: a.inserted_at, desc: a.id)
     |> preload(:invalidations)
     |> Repo.all()
+  end
+
+  @doc """
+  One QA attempt by id, scoped to the active project via its story — for
+  serving its evidence same-origin. `nil` if it does not exist or belongs
+  to a different project.
+  """
+  @spec get(Scope.t(), Ecto.UUID.t()) :: QaAttempt.t() | nil
+  def get(%Scope{active_project_id: nil}, _attempt_id), do: nil
+
+  def get(%Scope{} = scope, attempt_id) do
+    QaAttempt
+    |> where([a], a.id == ^attempt_id)
+    |> by_project(scope)
+    |> Repo.one()
+  rescue
+    Ecto.Query.CastError -> nil
   end
 
   @doc """

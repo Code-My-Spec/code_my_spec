@@ -40,6 +40,7 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TaskOwner,
+      CodeMySpec.Uploads,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
