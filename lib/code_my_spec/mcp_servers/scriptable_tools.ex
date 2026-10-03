@@ -144,6 +144,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
   component(CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview)
   component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
+  component(CodeMySpec.McpServers.Architecture.Tools.CheckArchitecture)
   component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
   component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
   component(CodeMySpec.McpServers.Components.Tools.DeleteComponent)
