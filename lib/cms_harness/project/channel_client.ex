@@ -521,7 +521,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # to one dialing the right one and getting refused, and the two need
         # opposite fixes. Token redacted: it is a credential, not a diagnostic.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-        {:noreply, connect!(socket, uri: uri)}
+        {:noreply, connect!(socket, uri: uri, headers: connect_headers(socket))}
 
       {:error, :no_credential} ->
         # Not a retry loop. Nothing about waiting produces a credential, and a
@@ -2099,8 +2099,11 @@ defmodule CmsHarness.Project.ChannelClient do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp encode_fs_result(:ok), do: %{"ok" => true}
-  defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
+  # `HarnessProjectChannel.decode_fs_result/1` turns these back into atoms
+  # from a fixed list; the round trip is pinned in `FsResultReasonTest`.
+  @doc false
+  def encode_fs_result(:ok), do: %{"ok" => true}
+  def encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   # A refusal with structure keeps it.
   #
   # Filesystem ops fail with an atom — `:enoent`, `:eacces` — and `to_string/1`
@@ -2114,8 +2117,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # Measured on the first live promotion: `git status` on the real disk found
   # ".code_my_spec/qa/994/brief.md" modified, `Steps.precheck/2` refused exactly
   # as designed, and encoding that refusal killed the channel.
-  defp encode_fs_result({:error, %{} = reason}), do: %{"error" => stringify_keys(reason)}
-  defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
+  def encode_fs_result({:error, %{} = reason}), do: %{"error" => stringify_keys(reason)}
+  def encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
 
   defp stringify_keys(map) do
     Map.new(map, fn
@@ -2277,7 +2280,7 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info(:reconnect, socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri)
+        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
         {:noreply, socket}
 
       {:error, _} ->
@@ -2813,6 +2816,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # The wire, read at call time so a test can swap it per-case. See
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
+  defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
+
   defp transport, do: Transport.impl()
 
   # This working copy is already being served. Usually by the process this one is

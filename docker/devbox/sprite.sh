@@ -118,7 +118,7 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ] && [ ! -f "${APP
       -H "Content-Type: application/json" -d '{}' \
       | python3 -c 'import json, sys; print(json.load(sys.stdin).get("app_name") or "")')"
   else
-  APP_NAME="$(CMS_PROJECT_ID="$CMS_PROJECT_ID" /opt/cms/bin/code_my_spec_cli eval '
+  APP_NAME="$(CMS_PROJECT_ID="$CMS_PROJECT_ID" /opt/cms/bin/cms_harness eval '
     {:ok, _} = Application.ensure_all_started(:ecto_sql)
     {:ok, _} = Application.ensure_all_started(:postgrex)
     {:ok, _} = CodeMySpec.Repo.start_link(pool_size: 2, log: false)
@@ -159,7 +159,7 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ] && [ ! -f "${APP
   mix deps.get
 
   log "Installing harness files"
-  CMS_APP_DIR="${APP_DIR}" /opt/cms/bin/code_my_spec_cli eval '
+  CMS_APP_DIR="${APP_DIR}" /opt/cms/bin/cms_harness eval '
     alias CodeMySpec.Environments.Environment
     alias CodeMySpec.McpServers.Bootstrap.Installers
 
@@ -444,8 +444,8 @@ install -d -o agent -g agent /home/agent/.codemyspec
 # --- harness -----------------------------------------------------------------
 # No migrations: the schema belongs to the server, which owns those rows. The
 # sprite role has DML only, so an accidental migration fails loudly rather than
-# altering a table the web app is serving from. (Migrator.run/0 no-ops on
-# :dev_sprite for the same reason.)
+# altering a table the web app is serving from. (The harness runs no
+# migrations at all; only `cms migrate` does, against a local SQLite file.)
 log "Starting the harness for project ${CMS_PROJECT_ID}"
 cd "${APP_DIR}"
 
@@ -589,8 +589,8 @@ RESET
   # through, which is why `application.ex` carries the env-var fallback in the
   # first place.
   exec setpriv --reuid=agent --regid=agent --init-groups \
-    env CMS_HARNESS=1 /opt/cms/bin/code_my_spec_cli start
+    env CMS_HARNESS=1 /opt/cms/bin/cms_harness start
 fi
 
 exec setpriv --reuid=agent --regid=agent --init-groups \
-  /opt/cms/bin/code_my_spec_cli start
+  /opt/cms/bin/cms_harness start

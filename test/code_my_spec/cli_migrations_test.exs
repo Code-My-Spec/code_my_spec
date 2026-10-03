@@ -2,13 +2,13 @@ defmodule CodeMySpec.CliMigrationsTest do
   @moduledoc """
   The CLI migration set has to be runnable against an empty SQLite database.
 
-  `CodeMySpecLocalWeb.Migrator` is a child of the application supervisor, so a
-  migration that cannot run does not get skipped — it stops the app from
-  starting:
+  `CmsHarness.Migrate.Migrator` runs the set before `cms migrate` reads the
+  database, and a migration that cannot run does not get skipped — it stops
+  the import from starting:
 
       ** (Mix) Could not start application code_my_spec:
-         CodeMySpecLocalWeb.Application.start(:normal, []) returned an error:
-         shutdown: failed to start child: CodeMySpecLocalWeb.Migrator
+         CmsHarness.Application.start(:normal, []) returned an error:
+         shutdown: failed to start child: CmsHarness.Migrate.Migrator
 
   And it is invisible until someone makes a fresh database or an existing one
   catches up, because a database *behind* the bad migration never reaches it.
@@ -88,15 +88,15 @@ defmodule CodeMySpec.CliMigrationsTest do
            #{Enum.map_join(orphans, "\n", fn {table, files} -> "  #{table} — #{Enum.join(files, ", ")}" end)}
 
            A migration mirrored from the server set brings the server's schema
-           assumptions with it. `CodeMySpecLocalWeb.Migrator` is supervised, so
-           this is not a skipped migration — the app will not start, for every
-           existing CLI user as well as every fresh install, and the database is
-           only reachable through the app.
+           assumptions with it. `CmsHarness.Migrate.Migrator` is supervised, so
+           this is not a skipped migration — `cms migrate` will not start, for
+           every existing CLI user, and the database is only reachable through
+           it.
 
            Either mirror the migration that creates the table, or — if the CLI
            does not use that table — do not mirror the alter. Check whether
-           anything under `lib/code_my_spec_local_web` or `lib/cms_harness`
-           references it before adding tables the CLI will never read.
+           `CodeMySpec.Migration` reads it before adding tables `cms migrate`
+           will never read.
            """
   end
 

@@ -53,9 +53,42 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
 
   alias Plug.Conn
 
-  @doc "Fresh account state. One per test."
+  @doc """
+  Fresh account state. One per test.
+
+  Pre-seeded with a burst-box image for both architectures (story 877) —
+  simulating an account that already went through its one-time bootstrap,
+  which is the steady state every ordinary deploy actually runs against.
+  `BurstBox.ensure_box/3`'s "not found" branch (`Builder.ensure_burst_box_image/3`
+  building a fresh snapshot from scratch) needs `opts[:ref]`/`opts[:install_release]`
+  wired by whoever is minting *our own app's* release onto the box — never
+  something an ordinary customer deploy provides, and not yet wired anywhere
+  in this codebase (`BurstBox.install_release/3`'s own moduledoc: "whoever
+  wires this for real decides the ref"). Seeding the image here is what keeps
+  an ordinary deploy spex on the path it is actually testing instead of
+  colliding with that separate, still-open gap.
+  """
   def new do
-    %{servers: [], ssh_keys: [], firewalls: [], networks: [], next_id: 1}
+    %{
+      servers: [],
+      ssh_keys: [],
+      firewalls: [],
+      networks: [],
+      images: [
+        burst_box_image(9001, "arm"),
+        burst_box_image(9002, "x86")
+      ],
+      next_id: 1
+    }
+  end
+
+  defp burst_box_image(id, architecture) do
+    %{
+      "id" => id,
+      "status" => "available",
+      "description" => "CodeMySpec burst box (#{architecture})",
+      "labels" => %{"cms-burst-image-role" => architecture}
+    }
   end
 
   # A token the account recognises and will not act on.
@@ -142,20 +175,24 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
   end
 
   defp route("POST", "/servers/" <> rest, body, _params, state) do
-    # `…/actions/attach_to_network`. Hetzner assigns the private address here
-    # rather than at creation — `private_ip/2` reads it back off the server
-    # precisely because the attach call does not say which one it handed out.
-    # A fake that gave servers an address upfront answered
-    # `{:error, :no_private_address}`, because the entry carried no network to
-    # match against.
     id = rest |> String.split("/") |> List.first()
 
-    servers =
-      Enum.map(state.servers, fn server ->
-        attach_if_named(server, id, body["network"])
-      end)
+    if String.ends_with?(rest, "/actions/create_image") do
+      create_image_action(id, body, state)
+    else
+      # `…/actions/attach_to_network`. Hetzner assigns the private address here
+      # rather than at creation — `private_ip/2` reads it back off the server
+      # precisely because the attach call does not say which one it handed out.
+      # A fake that gave servers an address upfront answered
+      # `{:error, :no_private_address}`, because the entry carried no network to
+      # match against.
+      servers =
+        Enum.map(state.servers, fn server ->
+          attach_if_named(server, id, body["network"])
+        end)
 
-    {{201, %{"action" => %{"status" => "success"}}}, %{state | servers: servers}}
+      {{201, %{"action" => %{"status" => "success"}}}, %{state | servers: servers}}
+    end
   end
 
   # -- ssh keys --
@@ -231,6 +268,19 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
     {{204, %{}}, %{state | networks: Enum.reject(state.networks, &(to_string(&1["id"]) == id))}}
   end
 
+  # -- images --
+
+  # `Hetzner.list_images/2` is `ensure_burst_box_image/3`'s only way to find
+  # the one shared burst box's own snapshot again without storing its id
+  # anywhere (story 877) — `label_selector`/`status` are the two filters that
+  # call actually sends, so both are honoured the same way `matching_servers/2`
+  # honours `name` above: an unfiltered list would hand back every image in
+  # the account, including one seeded for the other architecture, which reads
+  # as "found" for the wrong reason.
+  defp route("GET", "/images", _body, params, state) do
+    {{200, %{"images" => matching_images(state, params)}}, promote_images(state)}
+  end
+
   # -- catalogue: fixed, because nothing we assert depends on it varying --
 
   defp route("GET", "/datacenters", _body, _params, state) do
@@ -288,6 +338,58 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
   defp promote(state) do
     %{state | servers: Enum.map(state.servers, &Map.put(&1, "status", "running"))}
   end
+
+  # Same two-read promotion as a server (`promote/1` above): the real action
+  # answers `status: "creating"` for a real span, and `await_image_ready/6`
+  # polls `status: "available"` specifically *because* it cannot trust the
+  # snapshot is readable the instant the action accepts it — `bootstrap_and_snapshot/6`
+  # only destroys the source server once that poll confirms it. A fake that
+  # marked an image available on the same request that created it would never
+  # exercise that poll at all.
+  defp create_image_action(server_id, body, state) do
+    image = %{
+      "id" => state.next_id,
+      "status" => "creating",
+      "description" => body["description"],
+      "labels" => body["labels"] || %{}
+    }
+
+    {{201,
+      %{
+        "image" => image,
+        "action" => %{
+          "status" => "running",
+          "resources" => [%{"id" => server_id, "type" => "server"}]
+        }
+      }}, %{state | images: state.images ++ [image], next_id: state.next_id + 1}}
+  end
+
+  defp promote_images(state) do
+    %{state | images: Enum.map(state.images, &Map.put(&1, "status", "available"))}
+  end
+
+  # Hetzner filters `GET /images` by `label_selector` (`"key=value"`) and
+  # `status` — `label_selector` is how `ensure_burst_box_image/3` finds the
+  # one shared box's own snapshot rather than any other image in the account
+  # (including the one seeded for the other architecture), and `status` is
+  # how it refuses one that is still `"creating"`.
+  defp matching_images(state, params) do
+    state.images
+    |> filter_by_label_selector(Map.get(params, "label_selector"))
+    |> filter_by_status(Map.get(params, "status"))
+  end
+
+  defp filter_by_label_selector(images, nil), do: images
+
+  defp filter_by_label_selector(images, selector) do
+    case String.split(selector, "=", parts: 2) do
+      [key, value] -> Enum.filter(images, &(Map.get(&1["labels"] || %{}, key) == value))
+      _ -> images
+    end
+  end
+
+  defp filter_by_status(images, nil), do: images
+  defp filter_by_status(images, status), do: Enum.filter(images, &(&1["status"] == status))
 
   defp running(server), do: server
 

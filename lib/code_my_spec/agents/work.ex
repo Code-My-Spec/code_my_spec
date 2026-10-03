@@ -463,7 +463,8 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
+         {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
+         :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
 
       # Recorded as well as sent, and recorded first — the same reasoning as
@@ -500,8 +501,29 @@ defmodule CodeMySpec.Agents.Work do
       end
     else
       :none -> {:ok, :not_runnable}
+      :stale -> {:ok, :not_runnable}
       true -> {:ok, :offer_declined}
       hold -> not_admitted(hold)
+    end
+  end
+
+  # The offer is decided from a read taken before the reservation, and the
+  # agent can move in between: a898df49 — product started its design task,
+  # asked a question that blocked it, and was offered that same task as work,
+  # because the claimable read predated the block. Its turn was then held by a
+  # stale offer and the triage it should have been offered could not land.
+  #
+  # Held by the reservation, nothing else can offer this agent a turn, so
+  # recomputing here is the answer as of now. A subject no longer offered
+  # releases the reservation; the next observation offers what is there.
+  defp still_offered(scope, reserved, ref, subject) do
+    case offer(scope, reserved) do
+      {:work, _offer, ^subject} ->
+        :ok
+
+      _moved ->
+        release(scope, reserved.id, ref)
+        :stale
     end
   end
 

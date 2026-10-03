@@ -19,4 +19,14 @@ regexes = [
   # anchoring on the "Public key: " prefix keeps this from also
   # allowlisting a real AGE-SECRET-KEY-1... value if one is ever recorded.
   '''Public key: age1[a-z0-9]+''',
+
+  # `FlyPeeringTest`'s fixture WireGuard "keys" — base64 of the literal
+  # words "privatekey"/"publickey" (`echo privatekey | base64` ==
+  # `cHJpdmF0ZWtleQ==`), not real key material. A real WireGuard key is 32
+  # raw bytes base64-encoded (44 chars); these decode to nine and ten
+  # ASCII letters respectively, which is what makes them safe to allowlist
+  # by exact value rather than by shape — a real leaked key would never
+  # happen to match one of these two specific strings.
+  '''cHJpdmF0ZWtleQ==''',
+  '''cHVibGlja2V5''',
 ]

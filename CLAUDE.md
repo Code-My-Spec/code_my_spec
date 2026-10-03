@@ -34,8 +34,8 @@ so you always know what to work on next and in what order.
 
 ## Logs
 
-Everything lands in `~/.codemyspec/`. **There are four application logs, not
-two** — the split is by *source process*, and grepping the wrong one reads
+Everything lands in `~/.codemyspec/`. **There are three application logs, not
+one** — the split is by *source process*, and grepping the wrong one reads
 exactly like "that never happened."
 
 The one that catches everybody: `server.log` is the packaged `cms server` on
@@ -50,13 +50,12 @@ scans and MCP tool calls happen — is `web.log`.** Asking `server.log` about
 | `~/.codemyspec/server.log` | `cms server` (:4003) | logfmt, `src=server` | `[StopHook]`, `[Analysis]`, `[Files.ComponentSync]`, `[Validation]`, channel handlers |
 | `~/.codemyspec/web.log` | `mix phx.server` (:4000, dev) | logfmt, `src=web`, `inst=<os pid>` | the cloud app: migration/import, `Files` scans, `/mcp` + `/api/harnesses/…` requests, LiveView |
 | `~/.codemyspec/harness.log` | `cms harness` | logfmt, `src=harness` | **every `[CmsHarness]` line** — scans, manifests, hook refusals, reconnects, analyzer runs |
-| `~/.codemyspec/cli.log` | `cms` CLI | plain Logger (`HH:MM:SS.mmm mfa=… [level] msg`) | CLI invocations, `LocalServer`, MCP transport |
 | `~/.codemyspec/mix_phx_4004.log` | `mix phx.server` on :4004 | raw stdout | Ecto `QUERY OK` debug, LiveView, compile output |
 | `~/.codemyspec/server.boot.log` | BEAM startup | raw stdout | pre-logger boot junk |
 | `/opt/homebrew/var/log/codemyspec.log` | `brew services` supervisor | raw stdout/stderr | service-level stdout on macOS (Windows: `C:\ProgramData\CodeMySpec\shawl\`) |
 
 Handler paths are in `CodeMySpec.Logging.default_path/1`; the harness handler is
-installed in `code_my_spec_local_web/application.ex`. Rotation is 10 MB × 3 by
+installed in `cms_harness/application.ex`. Rotation is 10 MB × 3 by
 `:logger_std_h`, so check `server.log.0/.1/.2` for anything older.
 
 **Harness symptoms are in `harness.log`, not `server.log`.** A hook that refused
@@ -105,21 +104,14 @@ One logfmt event per line:
 
 Keys are stable: `ts`, `level`, `src` (`server`|`harness`|`web`), `mfa`, `msg`, plus any
 metadata the call site attached (`request_id` shows up as `request_id=`).
-`cli.log` is **not** logfmt and carries no `src=` — parse it separately.
 Values containing spaces, `=`, `"`, or newlines are double-quoted with
 backslash escaping. Each metadata value is truncated at 500 bytes so a single
 giant payload cannot blow the reader's context window.
 
-### Correlating across one CLI invocation
-
-`CodeMySpecCli.CliRunner` stamps a fresh `request_id` for every command
-invocation. Grep `request_id=<id>` against `cli.log` to see all log lines from
-one `cms` run.
+### Correlating one request
 
 Server-side, Phoenix's `Plug.RequestId` stamps `request_id` per HTTP request,
 so all logs inside one MCP tool call (or LiveView mount, or REST handler)
 share an id automatically — visible as `request_id=` in `server.log`.
 
-CLI ↔ server correlation across the wire is **not** wired up; CLI commands
-mostly act locally and don't push per-command events to the server, so a
-shared id wouldn't have anything to tie together today.
+Harness ↔ server correlation across the wire is **not** wired up.

@@ -39,61 +39,45 @@ if tunnel_config[:mode] == :named do
          Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
 end
 
-# CLI mode — minimal runtime config
-if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
-  # api_base_url / oauth_base_url / base_url are now set per-env in
-  # dev_cli.exs and prod_cli.exs at compile time so the shipped binary
-  # is statically wired to prod and the in-repo build is wired to dev.
+# The harness — `just harness` in dev and the installed `cms_harness`
+# release. Everything that differs between those two is read here, from the
+# environment, so one build serves both.
+if config_env() == :harness do
+  # Which server this harness reports to. `CMS_SERVER_URL` is also read
+  # directly by `CmsHarness.Config.server_url/0`; it is resolved here too so
+  # `:base_url` (the OAuth client, `cms migrate`) names the same server.
+  server_url = System.get_env("CMS_SERVER_URL") || "https://codemyspec.com"
 
-  # Resolve `~` on the user's machine. If we do this at compile time
-  # (in {dev,prod}_cli.exs) it gets baked to the CI builder's $HOME
-  # (`/Users/runner/...`) and every SQLite call fails with EACCES on end users.
-  #
-  # Dev_cli uses a separate file so an in-repo `mix run` can't trample
-  # the schema the published `cms` binary is using.
-  cli_db_filename =
-    case config_env() do
-      :prod_cli -> "cli.db"
-      :dev_cli -> "cli_dev.db"
-      :cli_demo -> "cli_demo.db"
-    end
+  config :code_my_spec,
+    harness_default_server_url: server_url,
+    base_url: server_url
 
-  repo_config = Application.get_env(:code_my_spec, CodeMySpec.Repo, [])
+  # The local CLI database `cms migrate` imports from. Resolved here so `~`
+  # expands on the user's machine and not on the CI builder's.
+  config :code_my_spec,
+         CodeMySpec.Repo,
+         Keyword.put(
+           Application.get_env(:code_my_spec, CodeMySpec.Repo, []),
+           :database,
+           System.get_env("CMS_DB_PATH") || Path.expand("~/.codemyspec/cli.db")
+         )
 
-  repo_config =
-    repo_config
-    |> Keyword.put(
-      :database,
-      System.get_env("CMS_DB_PATH") || Path.expand("~/.codemyspec/#{cli_db_filename}")
-    )
-
-  config :code_my_spec, CodeMySpec.Repo, repo_config
-
-  # Demo/sandbox overrides — env-var gated, no effect on a normal dev_cli boot.
-  # CMS_PORT runs the local web on another port so a replay instance can
-  # coexist with the real dev_cli app on :4004.
-  if demo_port = System.get_env("CMS_PORT") do
-    config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-      http: [ip: {127, 0, 0, 1}, port: String.to_integer(demo_port)]
+  # Concurrent analyzer runs. Unset, `CmsHarness.AnalysisSlots.limit/0` takes a
+  # fourth of the cores. `just harness` sets 1: that box runs one harness for
+  # every worktree of this repo, and two full suites at once on it each took
+  # longer than running them back to back.
+  if slots = System.get_env("CMS_ANALYSIS_SLOTS") do
+    config :code_my_spec, analysis_slots: String.to_integer(slots)
   end
 
-  # CMS_API_BASE_URL repoints sync/auth at a local demo server instead of
-  # dev.codemyspec.com, so a replay never touches real dev/prod data.
-  if api = System.get_env("CMS_API_BASE_URL") do
-    config :code_my_spec, api_base_url: api, oauth_base_url: api, base_url: api
+  # The harness log handler takes `CMS_LOG_LEVEL`; the primary level has to
+  # admit what it asks for, or a debug handler receives nothing.
+  if (level = System.get_env("CMS_LOG_LEVEL")) in ~w(debug info warning error) do
+    config :logger, level: String.to_existing_atom(level)
   end
 
-  # Allow seed scripts to run while the local app already occupies port 4003.
-  # Set NO_SERVER=true to skip the HTTP listener (Repo is still available).
-  # Example: NO_SERVER=true MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
-  if System.get_env("NO_SERVER") do
-    config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
-  end
-
-  # Content publishing (story 712): the local CLI is the publisher — it signs
-  # S3 uploads with the user's own AWS creds and purges Cloudflare directly.
-  # These reach dev_cli via envs/.env (loaded for every env at line 8), so wire
-  # them here too (the web-env block above doesn't run for the cli server).
+  # `mix cms.content.publish` runs under this env (it needs the SQLite repo)
+  # and signs S3 uploads and purges Cloudflare with these.
   config :ex_aws,
     access_key_id: env!("AWS_ACCESS_KEY_ID", :string, ""),
     secret_access_key: env!("AWS_SECRET_ACCESS_KEY", :string, ""),
@@ -102,12 +86,20 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
   config :code_my_spec, CodeMySpec.Content.CloudflareClient,
     api_token: env!("CLOUDFLARE_TOKEN", :string, ""),
     zone_id: env!("CLOUDFLARE_ZONE_ID", :string, "ba45c3c2010cb275de73f91f4f05edab")
+
+  # Where the harness's hooks land. The plugin's `hooks.json` posts to a port
+  # fixed at install time, so the port is what gets configured. Not applied in
+  # test — `config/test.exs` picks its own port and `server: false`.
+  if port = System.get_env("CMS_HARNESS_PORT") do
+    config :code_my_spec, CmsHarness.Web.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
+  end
 end
 
 # The preview address writes a CNAME per project onto our own zone, so it needs
 # our own credential — not the visitor's, who has no reason to have connected
-# Cloudflare at all. Outside the CLI guard above because this runs on the
-# server: the CLI publishes content, the server serves previews.
+# Cloudflare at all. Outside the harness block above because this runs on the
+# server: the harness env publishes content, the server serves previews.
 #
 # Same account as the content client, different zone. Previews live on
 # astralbi.com so a wildcard does not sit across the production domain, and so a
@@ -153,113 +145,8 @@ unless config_env() == :test do
     account_id: env!("CLOUDFLARE_ACCOUNT_ID", :string, "")
 end
 
-# Sprite mode — the harness on centralized data.
-#
-# Deliberately NOT part of the CLI block above: that block's whole job is to
-# resolve a per-machine SQLite path, and a sprite has no local database at all.
-# Connection details come from the environment so one image can be pointed at
-# a different database without a rebuild — which is what makes a sprite
-# disposable.
-# `CMS_HARNESS_PORT` decides where the light harness's hooks land.
-#
-# The plugin's `hooks.json` posts to a URL fixed at install time, so the port
-# is the thing to configure rather than the plugin: editing hooks.json would
-# repoint *every* Claude Code session on the machine, including ones working
-# against the heavy local application.
-#
-# Default 4005 (config.exs) so a laptop can run both. A sprite sets 4004,
-# because there the light harness *is* what serves hooks.
-#
-# Hoisted out of the `[:dev_cli, :prod_cli, :cli_demo]` block above, which is
-# about the CLI's SQLite database and had no business owning this. `:dev_sprite`
-# was missing from that list, so a sprite could not set its harness port at all
-# — it silently kept config.exs's 4005 while `sprite.sh` logged "Starting the
-# light harness on 4003". Measured in a container: `CMS_HARNESS_PORT=4003` and
-# the endpoint came up on 4005 anyway. Nothing noticed because a sprite runs the
-# *standalone* cms_harness release today, which reads its own config (bddb1ac1).
-#
-# Deliberately not adding :dev_sprite to that block instead: it maps each env to
-# a `.db` filename in a `case` with no :dev_sprite clause, so a sprite would
-# have crashed on a CaseClauseError to gain a port it does not need a database
-# for.
-#
-# Still not applied in test — `config/test.exs` picks a port of its own and
-# `server: false`, and runtime config is evaluated last and would undo both.
-if config_env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
-  if port = System.get_env("CMS_HARNESS_PORT") do
-    config :code_my_spec, CmsHarness.Web.Endpoint,
-      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
-  end
-end
-
-if config_env() == :dev_sprite do
-  repo_config =
-    case System.get_env("CMS_DATABASE_URL") do
-      nil ->
-        [
-          database: System.get_env("CMS_DB_NAME") || "code_my_spec_sprite_dev",
-          hostname: System.get_env("CMS_DB_HOST") || "localhost",
-          port: String.to_integer(System.get_env("CMS_DB_PORT") || "5432"),
-          username: System.get_env("CMS_DB_USER") || System.get_env("USER") || "postgres",
-          password: System.get_env("CMS_DB_PASSWORD") || ""
-        ]
-
-      url ->
-        [url: url]
-    end
-
-  config :code_my_spec,
-         CodeMySpec.Repo,
-         Keyword.merge(
-           Application.get_env(:code_my_spec, CodeMySpec.Repo, []),
-           repo_config
-         )
-
-  # Same escape hatches the CLI block provides, since a sprite needs them for
-  # the same reasons: run a script without binding a port, or coexist with
-  # another harness on the machine.
-  if port = System.get_env("CMS_PORT") do
-    config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
-  end
-
-  if System.get_env("NO_SERVER") do
-    config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
-  end
-
-  # Which project this sprite is for, and where it cloned the working copy.
-  #
-  # Both are runtime facts the launcher knows and the shared project row
-  # cannot: that row is one row for every checkout, so it can neither identify
-  # which project *this* container serves nor describe this container's disk.
-  # Scopes scope resolution (Projects.resolve_local_project/1).
-  if project_id = System.get_env("CMS_PROJECT_ID") do
-    config :code_my_spec, project_id: project_id
-  end
-
-  if working_dir = System.get_env("CMS_MCP_WORKING_DIR") do
-    config :code_my_spec, mcp_working_dir: working_dir
-  end
-
-  # The project's deploy key — the sprite's only credential for reaching the
-  # server, and it needs one for exactly one thing: raising a question to a
-  # human when a manual requirement needs a decision. Everything else it does
-  # against the database directly. See Notifications.QuestionClient.
-  if deploy_key = System.get_env("CMS_DEPLOY_KEY") do
-    config :code_my_spec, deploy_key: deploy_key
-  end
-
-  # Point the sprite at a different server than the compile-time default.
-  # dev_sprite.exs wires api/oauth/base to dev.codemyspec.com; this is how a
-  # sprite is aimed at a server running locally, which is the only way to
-  # exercise a server-side change before it is deployed.
-  if api = System.get_env("CMS_API_BASE_URL") do
-    config :code_my_spec, api_base_url: api, oauth_base_url: api, base_url: api
-  end
-end
-
 # Web app mode
-if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
+if config_env() != :harness do
   # Required everywhere but desktop, where OAuth and the deploy key are off.
   required = fn name ->
     if config_env() == :desktop, do: env!(name, :string, ""), else: env!(name)
@@ -401,6 +288,21 @@ if config_env() == :prod do
   config :code_my_spec, CodeMySpec.Mailer,
     adapter: Swoosh.Adapters.Resend,
     api_key: env!("RESEND_API_KEY", :string, "")
+
+  # BurstBox.FlyPeering's WireGuard peer (go-live checklist, application.ex).
+  # Unset unless all five are present.
+  burst_box_wg = [
+    private_key: System.get_env("BURST_BOX_WG_PRIVATE_KEY"),
+    address: System.get_env("BURST_BOX_WG_ADDRESS"),
+    peer_public_key: System.get_env("BURST_BOX_WG_PEER_PUBLIC_KEY"),
+    endpoint: System.get_env("BURST_BOX_WG_ENDPOINT"),
+    allowed_ips: System.get_env("BURST_BOX_WG_ALLOWED_IPS")
+  ]
+
+  if Enum.all?(burst_box_wg, fn {_key, value} -> is_binary(value) and value != "" end) do
+    config :code_my_spec, CodeMySpec.Provisioning.BurstBox.FlyPeering,
+      peer: Map.new(burst_box_wg)
+  end
 end
 
 # Resend Domains API (in-app sending-domain onboarding). Needed in ALL envs,

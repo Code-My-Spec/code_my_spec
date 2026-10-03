@@ -60,7 +60,7 @@ mix ecto.migrate
 # the agent starts against an already-linked project instead of spending its
 # first turns on setup.
 log "Linking to CodeMySpec project ${PROJECT_ID}"
-PROJECT_ID="$PROJECT_ID" APP_DIR="$APP_DIR" /opt/cms/bin/code_my_spec_cli eval '
+PROJECT_ID="$PROJECT_ID" APP_DIR="$APP_DIR" /opt/cms/bin/cms_harness eval '
   alias CodeMySpec.{Repo, Projects.Project}
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Environments.Environment

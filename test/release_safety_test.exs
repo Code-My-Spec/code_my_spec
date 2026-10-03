@@ -34,7 +34,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
     # `Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0)` — which
     # is the correct way to answer "am I running under Mix" and is safe
     # precisely because it never assumes.
-    ~r/^Elixir\.CodeMySpecLocalWeb\.Application$/
+    ~r/^Elixir\.CmsHarness\.Application$/
   ]
 
   test "no Mix.env() calls in lib/ (crashes in compiled releases)" do

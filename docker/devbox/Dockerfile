@@ -16,18 +16,17 @@
 # context root, which inside a git worktree is the worktree — so `../cms_new`
 # finds nothing and the build fails somewhere much later than the mistake.
 #
-# No cms_harness/cms_scan contexts: both releases this image ships (the full
-# desktop harness and the light sprite one) build from `.` — this repo — via
-# `code_my_spec_cli` under two different MIX_ENVs (see Stage 1 below). They
-# used to build from sibling checkouts of that name; those were abandoned
+# No cms_harness/cms_scan contexts: the release this image ships builds from
+# `.` — this repo — as `cms_harness` under MIX_ENV=harness (see Stage 1
+# below). It used to build from sibling checkouts of that name; those were abandoned
 # early extraction prototypes (21 and 8 commits, no remote, frozen since
 # 2026-08-02) that stopped being the source of truth once the harness moved
 # in-repo to `lib/cms_harness/` — the build kept pointing at them anyway,
 # silently baking dead code into every sprite-mode image until caught here.
 #
 # Run (note the host port): a CodeMySpec developer almost certainly has
-# something on 4000/4003/4004 already — the dev server, cli_demo and dev_cli
-# bind those. The container's own ports are unchanged; only the host side is
+# something on 4000/4003/4004 already — the dev server, an installed cms and
+# `just harness` bind those. The container's own ports are unchanged; only the host side is
 # remapped, so pick anything free.
 #
 #   docker run --rm -p 4010:4000 \
@@ -49,8 +48,9 @@
 # credentials rather than brokering model access.
 #
 # --- sprite mode ---------------------------------------------------------
-# Built with `--build-arg CMS_RELEASE_ENV=dev_sprite` (tag it separately), a
-# sprite clones an existing repo and serves MCP against the central Postgres.
+# A sprite clones an existing repo and serves MCP against the central Postgres.
+# (It was a separate `dev_sprite` build; that env is retired, and the image now
+# carries one harness build — see Stage 1.)
 # It has no database of its own, so there is nothing to mount and nothing to
 # back up:
 #
@@ -89,7 +89,7 @@ ARG ELIXIR_IMAGE=hexpm/elixir:1.20.2-erlang-29.0.4-debian-trixie-20260713-slim
 # a multi-stage copy keeps the source out of the final image.
 FROM ${ELIXIR_IMAGE} AS cms-builder
 
-# Rust: prod_cli pulls ortex/tokenizers, whose NIFs compile from source when
+# Rust: the harness build pulls ortex/tokenizers, whose NIFs compile from source when
 # no precompiled artifact matches this platform.
 # Go: the standalone cms-mcp-relay stdio<->HTTP bridge that `mix release`'s
 # copy_mcp_relay step drops into the release bin/.
@@ -101,17 +101,8 @@ RUN apt-get update \
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Which harness this image carries.
-#
-#   prod_cli   — the desktop harness: SQLite in ~/.codemyspec, local-first.
-#   dev_sprite — a sprite: the same code against the central Postgres.
-#
-# It is a build arg rather than a runtime flag because the adapter is a
-# compile-time decision — DocEmbedding derives its column types from
-# `Application.compile_env(:code_my_spec, :adapter)`, so one binary cannot
-# serve both. Two tags, one Dockerfile.
-ARG CMS_RELEASE_ENV=prod_cli
-ENV MIX_ENV=${CMS_RELEASE_ENV}
+# The harness env: the same build the release workflow publishes.
+ENV MIX_ENV=harness
 WORKDIR /src
 
 RUN mix local.hex --force && mix local.rebar --force
@@ -122,28 +113,7 @@ RUN cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay .
 
 RUN mix deps.get \
   && mix compile \
-  && mix release code_my_spec_cli --path /opt/cms
-
-# The light harness — same release, same source checkout, a second MIX_ENV.
-#
-# Used to be a separate stage built from standalone `cms_harness`/`cms_scan`
-# checkouts, back when the harness was its own repo. It moved in-repo to
-# `lib/cms_harness/` and `mix.exs` grew the `dev_sprite` release target for
-# exactly this case ("dev_sprite ships the same release as prod_cli — a
-# sprite is the CLI harness, just compiled against Postgres instead of
-# SQLite") — but the Dockerfile kept building from the old checkouts, which
-# had no remote and had not moved since 2026-08-02. That silently baked a
-# stale, prototype-era harness into every sprite-mode image; nothing failed
-# because a name-matched build context does not care whether what it points
-# at is still the source of truth.
-#
-# `deps.get` again rather than assumed-safe from the run above: `only:` env
-# restrictions in mix.exs mean prod_cli and dev_sprite need not depend on
-# exactly the same set — get is idempotent, so asking again just to be
-# sure costs a skipped-already-present check, not a redownload.
-RUN MIX_ENV=dev_sprite mix deps.get \
-  && MIX_ENV=dev_sprite mix compile \
-  && MIX_ENV=dev_sprite mix release code_my_spec_cli --path /opt/cms_harness
+  && mix release cms_harness --path /opt/cms
 
 # =============================================================================
 # Stage 2 — the devbox itself
@@ -307,15 +277,10 @@ RUN cd /opt/cms_new \
 # the source or the Rust/Go toolchains that produced it.
 COPY --from=cms-builder /opt/cms /opt/cms
 
-# Both harnesses ship. Which one serves a project is a runtime choice
-# (CMS_LIGHT_HARNESS=1 in sprite.sh), not a separate image — a drill that can
-# only be run by rebuilding is a drill that does not get run.
-COPY --from=cms-builder /opt/cms_harness /opt/cms_harness
-
 # A wrapper rather than a symlink, matching the brew formula: the release
 # launcher resolves RELEASE_ROOT relative to its own path, and a symlink in
 # /usr/local/bin would make it resolve there instead of /opt/cms.
-RUN printf '#!/bin/bash\nexec /opt/cms/bin/code_my_spec_cli "$@"\n' > /usr/local/bin/cms \
+RUN printf '#!/bin/bash\nexec /opt/cms/bin/cms_harness "$@"\n' > /usr/local/bin/cms \
   && chmod 0755 /usr/local/bin/cms
 
 # The Claude Code plugin's MCP config spawns `cms-mcp-relay` by bare name, so it

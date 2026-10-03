@@ -1,7 +1,7 @@
 import Config
 
-# Fragment, not an env: the Phoenix development settings shared by dev,
-# dev_cli, demo and cli_demo.
+# Fragment, not an env: the Phoenix development settings shared by dev and
+# demo.
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

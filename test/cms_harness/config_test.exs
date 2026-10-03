@@ -112,10 +112,19 @@ defmodule CmsHarness.ConfigTest do
                "https://dev.codemyspec.com",
                "http://localhost:4000"
              ],
-             "the default is per build environment — prod to codemyspec.com, the " <>
-               "cli/sprite builds to dev, and only a local build to localhost. It was " <>
+             "the harness env defaults to codemyspec.com (CMS_SERVER_URL overrides it " <>
+               "at runtime) and only an unconfigured env falls to localhost. It was " <>
                "a flat localhost, which is right for a laptop and silently wrong for " <>
                "every release."
+    end
+
+    test "is read at runtime, so one build serves dev and the release" do
+      previous = Application.get_env(:code_my_spec, :harness_default_server_url)
+      Application.put_env(:code_my_spec, :harness_default_server_url, "https://runtime.example")
+
+      on_exit(fn -> restore_app(:harness_default_server_url, previous) end)
+
+      assert Config.default_server_url() == "https://runtime.example"
     end
 
     test "the test build points at localhost" do

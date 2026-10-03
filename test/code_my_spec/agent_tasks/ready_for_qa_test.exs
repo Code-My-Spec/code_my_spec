@@ -36,6 +36,9 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     end
   end
 
+  defp answer(:not_a_repository, ["status" | _]),
+    do: {"fatal: not a git repository (or any of the parent directories): .git\n", 128}
+
   defp answer(status, ["status" | _]), do: {status, 0}
   defp answer(_status, ["rev-parse", "--abbrev-ref", "HEAD"]), do: {"story/x\n", 0}
   defp answer(_status, ["rev-parse", "HEAD"]), do: {@head <> "\n", 0}
@@ -104,6 +107,15 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     assert feedback =~ "lib/war.ex"
     assert dispatched_sources() == []
     assert stamp(scope, story) == nil
+  end
+
+  test "a checkout that is not a git repository is refused, and told not to make one" do
+    %{scope: scope, story: story} = a_copy(:not_a_repository)
+
+    assert {:ok, :invalid, feedback} = ReadyForQa.evaluate(scope, task(story), nil)
+    assert feedback =~ "not a git repository"
+    assert feedback =~ "Do not create one"
+    assert dispatched_sources() == []
   end
 
   test "with no run at HEAD, the gate starts every analyzer there and stays open" do

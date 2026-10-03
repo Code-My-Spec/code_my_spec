@@ -314,6 +314,28 @@ defmodule CodeMySpec.Agents.Offers do
     end
   end
 
+  @doc """
+  Close this agent's open work offers on `key` as declined: the work was found
+  already done when it tried to take it (67e6b5cb). The system knows the offer
+  is stale, so it does not wait for the agent to say so. Always `:ok`.
+  """
+  @spec close_stale(Ecto.UUID.t(), String.t()) :: :ok
+  def close_stale(agent_id, key) when is_binary(agent_id) and is_binary(key) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.kind == :work and o.subject_type == "requirement" and
+        o.subject_key == ^key and o.status == :open
+    )
+    |> Repo.update_all(
+      set: [status: :declined, reason: "already satisfied", outcome_at: now, updated_at: now]
+    )
+
+    :ok
+  end
+
   defp open_offer(agent_id, nil) do
     Offer
     |> where([o], o.agent_id == ^agent_id and o.status == :open)

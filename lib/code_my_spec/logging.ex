@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Logging do
   @moduledoc """
   Runtime setup for the `:logger` file handler used by the `cms` server
-  binary and the `code_my_spec_cli` CLI binary.
+  binary and the `cms_harness` CLI binary.
 
   Replaces `:default_handler` (which writes to stderr) with a
   `:logger_std_h` writing to a file, formatted as logfmt by

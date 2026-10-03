@@ -21,7 +21,15 @@ defmodule CodeMySpecSpex do
       # module's `execute/2` directly rather than going in behind it.
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
+      # `HarnessHooks`' teardown waits for the cloud channel holding its working
+      # copy to go, and the registry is the only place that names that process.
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Conversations,
+      # Story 1087, criteria 1769/1770 call `ProjectKnowledgeReconciler.reconcile/3`
+      # directly — the module under test (does a bulk embed call reach the
+      # pool's own configured backend, burst or local), same reasoning as
+      # `CodeMySpec.AgentTasks` above.
+      CodeMySpec.Embeddings,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Environments,
       CodeMySpec.Faults,

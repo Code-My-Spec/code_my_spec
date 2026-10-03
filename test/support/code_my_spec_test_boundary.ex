@@ -49,5 +49,15 @@ defmodule CodeMySpecTest do
     # message dispatch with no other observable surface — no DB row, no MCP
     # response. `CodeMySpecSpex.Fixtures` installs it and hands back the
     # dispatched message the same way it does the other two fakes here.
-    exports: [FakeWorkspaceRunner, RecordingAgentTransport, TurnEventRelay, WorkspaceWatchers]
+    #
+    # `RecordingEmbeddingServing` for the same reason: `CodeMySpecSpex.Fixtures`
+    # installs it and drives it (listen, reset, pause/release, fail, model) on
+    # a criterion's behalf — story 1087's embeddings-airtight work.
+    exports: [
+      FakeWorkspaceRunner,
+      RecordingAgentTransport,
+      RecordingEmbeddingServing,
+      TurnEventRelay,
+      WorkspaceWatchers
+    ]
 end
