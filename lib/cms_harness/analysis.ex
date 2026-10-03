@@ -186,7 +186,14 @@ defmodule CmsHarness.Analysis do
     {:ok,
      %{
        "source" => "compiler",
-       "exit_status" => result.exit_code,
+       # Derived from the diagnostics themselves, exactly as credo and
+       # sobelow are below (71d0d979): `mix compile --return-errors` exits 0
+       # on a genuine warning or boundary violation -- that is the flag's
+       # whole purpose, keeping diagnostics flowing to the JSONL file rather
+       # than aborting -- so the shell's own code can never tell "clean" from
+       # "found something" for this tool. `max/2` only ever raises a false 0;
+       # a real crash's own exit code survives.
+       "exit_status" => compiler_exit_status(result),
        "diagnostics" => Enum.map(result.data.compiler_results, &stringify/1),
        # Whether anything was recording. `mix compile --return-errors` exits 0
        # even on a compile error, so the exit status cannot tell the server
@@ -309,6 +316,22 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute(source, _env, _args), do: {:error, "unknown analyzer source: #{source}"}
+
+  @doc """
+  The compiler source's exit_status, derived from its diagnostics rather than
+  `mix compile --return-errors`'s own exit code — which stays 0 even on a
+  genuine warning or error, since returning diagnostics instead of raising is
+  the whole point of that flag (71d0d979). Non-zero whenever any diagnostic
+  was found; a genuinely non-zero exit (a real crash) is never lowered.
+
+  Public so the convention can be asserted without shelling out to `mix` —
+  the same reason `CodeMySpec.Compile.relativize_diagnostics/2` is.
+  """
+  @spec compiler_exit_status(map()) :: integer()
+  def compiler_exit_status(%{exit_code: exit_code, data: %{compiler_results: []}}),
+    do: exit_code
+
+  def compiler_exit_status(%{exit_code: exit_code}), do: max(exit_code, 1)
 
   defp run_spex(env, args) do
     case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do

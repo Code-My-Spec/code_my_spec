@@ -140,7 +140,41 @@ defmodule CmsHarness.ServedRootsTest do
     [{pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
     # Application shutdown, not deliberate offboarding.
     assert :ok = DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+    await_unregistered({:project, root})
     {project.working_copy_id, root}
+  end
+
+  # Registry's own docs: "if a process crashes, its keys are automatically
+  # removed from the registry but the change may not propagate immediately."
+  # `terminate_child/2` guarantees the project process is dead; it says
+  # nothing about CmsHarness.Registry having processed that death yet. Under
+  # concurrent registry traffic (this suite's other async cases registering
+  # and unregistering their own projects at the same time) that gap is wide
+  # enough for `Projects.list()` to still report a root this very function
+  # just terminated (8034e7b7).
+  #
+  # No sleep: `:erlang.yield/0` reliably resolves this in under a millisecond
+  # in a 30-trial reproduction run under equivalent concurrent registry load
+  # (immediate checks raced ~80% of the time; every yield-based retry cleared
+  # on its first or second iteration). A fixed delay would either flake again
+  # on a slower box or pad every passing run for no reason.
+  defp await_unregistered(key, deadline \\ System.monotonic_time(:millisecond) + 1_000) do
+    await_unregistered(key, deadline, Registry.lookup(CmsHarness.Registry, key))
+  end
+
+  defp await_unregistered(_key, _deadline, []), do: :ok
+
+  defp await_unregistered(key, deadline, entries) do
+    retry_or_flunk(key, deadline, entries, System.monotonic_time(:millisecond) < deadline)
+  end
+
+  defp retry_or_flunk(key, deadline, _entries, _within_deadline? = true) do
+    :erlang.yield()
+    await_unregistered(key, deadline)
+  end
+
+  defp retry_or_flunk(key, _deadline, entries, _within_deadline? = false) do
+    flunk("Registry.lookup(CmsHarness.Registry, #{inspect(key)}) still #{inspect(entries)}")
   end
 
   defp ensure_child(nil, spec), do: start_supervised!(spec)
