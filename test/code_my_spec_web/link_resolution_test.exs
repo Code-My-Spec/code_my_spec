@@ -285,16 +285,6 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/init",
     # TaskQueueLive. Nothing links it in either app.
     "/app/projects/:project_id/tasks",
-    # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
-    "/app/projects/:project_id/provisioning",
-    # The credentials, environments and secrets dialogs, each opened from the
-    # provisioning page through `:live_action` (058d20ed, and the same pattern
-    # extended to the other two). A dialog reached from the page it belongs to
-    # is exactly the case this list is for; a sidebar entry that opens a modal
-    # over a page you were not on is not a surface anyone wants offered.
-    "/app/projects/:project_id/provisioning/credentials",
-    "/app/projects/:project_id/provisioning/environments",
-    "/app/projects/:project_id/provisioning/secrets",
     # Reached from their own list page's actions, not from the sidebar — a nav
     # entry that opens a blank form is a worse offer than the button on the
     # page you are already looking at.
@@ -308,10 +298,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/requirements/stories",
     "/app/projects/:project_id/architecture/overview",
     "/app/projects/:project_id/architecture/namespaces",
-    # The console's own sections (provisioning-console-step6, unmerged):
-    # reached from its own sidebar once you're on `/console`, same as the
-    # tabs above — only the surface itself, `/console`, belongs in the
-    # cloud app's nav.
+    # The console's own sections: reached from its own sidebar once you're
+    # on `/console`, same as the tabs above — only the surface itself,
+    # `/console`, belongs in the cloud app's nav.
     "/app/projects/:project_id/console/deploys",
     "/app/projects/:project_id/console/secrets",
     "/app/projects/:project_id/console/credentials",
