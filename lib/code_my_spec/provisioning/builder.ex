@@ -108,6 +108,30 @@ defmodule CodeMySpec.Provisioning.Builder do
   # id anywhere this account could lose track of.
   @burst_box_image_label "cms-burst-image-role"
 
+  # A disk with real content on it (this app's own built release, docker
+  # layers, kamal and its gems — not just the bare `docker-ce` marketplace
+  # base image) takes longer for Hetzner to snapshot than the 90s/30-attempt
+  # window this used to poll for. Confirmed live (story 877/992 follow-on):
+  # that window gave up, and the caller destroyed the source server anyway —
+  # losing a real, already-finished `install_release` build with nothing to
+  # show for it. 20 minutes, backing off from 5s to 30s between checks, is a
+  # generous but bounded budget for a snapshot of a populated disk.
+  @default_image_poll_attempts 60
+  @default_image_poll_interval_ms 5_000
+  @default_image_poll_backoff_factor 1.5
+  @default_image_poll_max_interval_ms 30_000
+
+  # Marks a temp bootstrap server while its snapshot's outcome is still
+  # unknown — `finish_snapshot/8` leaving one running on `:image_not_confirmed`
+  # needs a way for `BurstBox.Sweep` to find it later without reaping it
+  # mid-poll. Value is the architecture, same shape as `@burst_box_image_label`'s
+  # own value on the image it is waiting for.
+  @bootstrap_role_label "cms-bootstrap-role"
+
+  @doc "The label `BurstBox.Sweep` looks for to find a temp bootstrap server whose snapshot outcome is not yet confirmed."
+  @spec bootstrap_role_label() :: String.t()
+  def bootstrap_role_label, do: @bootstrap_role_label
+
   @doc """
   Build `ref` for `architecture` on the environment's one shared burst box,
   freeing it the moment this build is the last thing using it.
@@ -273,6 +297,26 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
+  @doc """
+  Whether an available burst-box snapshot already exists for `architecture`.
+
+  `BurstBox.Sweep`'s own check for a stale `@bootstrap_role_label`-tagged
+  server: once this is true, whichever attempt built the image (this
+  server's own, or a different one that got there first) already succeeded,
+  so a lingering bootstrap server for this architecture is a leftover safe
+  to reap rather than one still waiting on a snapshot in flight.
+  """
+  @spec burst_box_image_available?(Scope.t(), :arm | :x86, keyword()) :: boolean()
+  def burst_box_image_available?(%Scope{} = scope, architecture, opts \\ []) do
+    list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
+    selector = "#{@burst_box_image_label}=#{architecture}"
+
+    case list_images.(scope, label_selector: selector, status: "available") do
+      {:ok, [_ | _]} -> true
+      _ -> false
+    end
+  end
+
   # A temporary box, bootstrapped, snapshotted, destroyed either way — a box
   # this leaves behind is one nobody is watching on an invoice somebody pays.
   defp build_burst_box_image(scope, architecture, opts) do
@@ -295,7 +339,8 @@ defmodule CodeMySpec.Provisioning.Builder do
         # server types clear comfortably.
         image: "docker-ce",
         ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
-        network_ids: Keyword.get(opts, :network_ids)
+        network_ids: Keyword.get(opts, :network_ids),
+        labels: %{@bootstrap_role_label => to_string(architecture)}
       ]
 
       case create.(scope, name, create_opts) do
@@ -324,6 +369,17 @@ defmodule CodeMySpec.Provisioning.Builder do
   # `status: "creating"`, and deleting its source while Hetzner is still
   # reading from it is exactly the timing bug this discipline exists to
   # close.
+  #
+  # That close used to be unconditional — `destroy_temp_server` ran after
+  # the `with` chain regardless of which branch it took, including a
+  # `create_image` that succeeded followed by a poll that merely gave up.
+  # Confirmed live: giving up is not the same as the image being done, and
+  # destroying the source on a timeout is exactly the race the comment
+  # above describes, just reached a different way. So this only reaches
+  # `destroy_temp_server` directly for a failure *before* `create_image`
+  # returned an id (nothing pending to protect yet) — anything after that
+  # hands off to `finish_snapshot/8`, which is the only place the source is
+  # destroyed once a snapshot might be mid-write.
   defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
     run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
     attempts = Keyword.get(opts, :ssh_attempts, 90)
@@ -331,22 +387,52 @@ defmodule CodeMySpec.Provisioning.Builder do
     label = Keyword.fetch!(opts, :image_label)
     description = Keyword.fetch!(opts, :image_description)
 
-    result =
-      with :ok <- Remote.await_ssh(run, attempts, opts),
-           :ok <- Remote.ensure_kamal(run),
-           :ok <- maybe_extra_bootstrap(run, server, opts),
-           :ok <- sync_disk(run),
-           {:ok, %{"image" => image}} <-
-             create_image.(scope, server_id(server),
-               description: description,
-               labels: %{label => to_string(architecture)}
-             ),
-           :ok <- await_image_ready(list_images, scope, image["id"], architecture, label, opts) do
-        {:ok, image["id"]}
-      end
+    with :ok <- Remote.await_ssh(run, attempts, opts),
+         :ok <- Remote.ensure_kamal(run),
+         :ok <- maybe_extra_bootstrap(run, server, opts),
+         :ok <- sync_disk(run),
+         {:ok, %{"image" => image}} <-
+           create_image.(scope, server_id(server),
+             description: description,
+             labels: %{label => to_string(architecture)}
+           ) do
+      finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts)
+    else
+      error ->
+        destroy_temp_server(destroy, scope, server, architecture)
+        error
+    end
+  end
 
-    destroy_temp_server(destroy, scope, server, architecture)
-    result
+  # Destroys the source on exactly one confirmed outcome each: the image is
+  # actually available (the normal case), or Hetzner has actually dropped it
+  # (nothing left to protect by keeping the box around). A poll that merely
+  # ran out of attempts without either answer leaves the source running and
+  # names it in the error — a human (or a retried call against the same
+  # image id) decides from there, rather than this module guessing by
+  # deleting the one thing that could still turn into a usable snapshot.
+  defp finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts) do
+    case await_image_ready(list_images, scope, image["id"], architecture, label, opts) do
+      :ok ->
+        destroy_temp_server(destroy, scope, server, architecture)
+        {:ok, image["id"]}
+
+      {:error, {:image_vanished, _id}} = error ->
+        destroy_temp_server(destroy, scope, server, architecture)
+        error
+
+      {:error, reason} ->
+        Logger.error(
+          "[Builder] #{architecture} burst-box image #{inspect(image["id"])} was not " <>
+            "confirmed ready (#{inspect(reason)}) — leaving bootstrap server " <>
+            "#{server_id(server)} (#{inspect(server_name(server))}) running rather than " <>
+            "risk deleting it while the snapshot may still be mid-write. Check Hetzner's " <>
+            "own status for that image, then either destroy the server by hand (mix " <>
+            "cms.provisioning_leaks) or re-run once it is clear which way the snapshot went."
+        )
+
+        {:error, {:image_not_confirmed, image["id"], server_id(server)}}
+    end
   end
 
   defp maybe_extra_bootstrap(run, server, opts) do
@@ -412,30 +498,64 @@ defmodule CodeMySpec.Provisioning.Builder do
   # effect, not an action id. Hetzner reports a snapshot as `status:
   # "creating"` for a real span (bigger disks take longer), and nothing
   # downstream — `Hetzner.create_server/3` asked to build from this image,
-  # or the source server this function is about to let its caller delete —
-  # is safe to run against an image still in that state.
-  defp await_image_ready(list_images, scope, image_id, architecture, label, opts, attempts \\ 30)
+  # or the source server `finish_snapshot/8` is about to let its caller
+  # delete — is safe to run against an image still in that state.
+  #
+  # Queried *without* a `status` filter, unlike `ensure_burst_box_image/3`'s
+  # own lookup of an already-finished image — this has to tell "still
+  # creating" apart from "Hetzner dropped it," and a `status: "available"`
+  # filter makes both of those read as the same empty list. The id is
+  # matched exactly, so an older, already-available image sharing this
+  # architecture's label (a previous successful snapshot) is never mistaken
+  # for the one this call is actually waiting on.
+  defp await_image_ready(list_images, scope, image_id, architecture, label, opts) do
+    attempts = Keyword.get(opts, :image_poll_attempts, @default_image_poll_attempts)
+    interval = Keyword.get(opts, :image_poll_interval_ms, @default_image_poll_interval_ms)
+    poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval)
+  end
 
-  defp await_image_ready(_list_images, _scope, image_id, _architecture, _label, _opts, 0) do
+  defp poll_image_ready(_list_images, _scope, image_id, _architecture, _label, _opts, 0, _interval) do
     {:error, {:image_not_ready, image_id}}
   end
 
-  defp await_image_ready(list_images, scope, image_id, architecture, label, opts, attempts) do
+  defp poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval) do
     selector = "#{label}=#{architecture}"
 
-    case list_images.(scope, label_selector: selector, status: "available") do
+    case list_images.(scope, label_selector: selector) do
       {:ok, images} ->
-        if Enum.any?(images, &(&1["id"] == image_id)) do
-          :ok
-        else
-          Wait.sleep(Keyword.get(opts, :image_poll_interval_ms, 3_000))
-          await_image_ready(list_images, scope, image_id, architecture, label, opts, attempts - 1)
+        case Enum.find(images, &(&1["id"] == image_id)) do
+          %{"status" => "available"} ->
+            :ok
+
+          %{} ->
+            Wait.sleep(interval)
+            next_interval = min(round(interval * backoff_factor(opts)), max_interval(opts))
+
+            poll_image_ready(
+              list_images,
+              scope,
+              image_id,
+              architecture,
+              label,
+              opts,
+              attempts - 1,
+              next_interval
+            )
+
+          nil ->
+            {:error, {:image_vanished, image_id}}
         end
 
       {:error, _reason} = error ->
         error
     end
   end
+
+  defp backoff_factor(opts),
+    do: Keyword.get(opts, :image_poll_backoff_factor, @default_image_poll_backoff_factor)
+
+  defp max_interval(opts),
+    do: Keyword.get(opts, :image_poll_max_interval_ms, @default_image_poll_max_interval_ms)
 
   defp run(scope, server, ref, architecture, opts) do
     # `:build_fun`, not `:build`. The deploy step's opts are threaded straight

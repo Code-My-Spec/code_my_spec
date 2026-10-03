@@ -76,16 +76,35 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     )
   end
 
-  # `list_images` stub: nothing found on the first call, the built image found
-  # on every call after. Simulates the image not existing yet, then existing
-  # once `create_image` has finished.
+  # `list_images` stub: nothing found on the first call (the top-level,
+  # `status: "available"`-filtered existence check `ensure_burst_box_image/3`
+  # makes before ever building anything), the built image available on every
+  # call after (the unfiltered polls `await_image_ready/5` makes once a
+  # snapshot is in flight — see that function's own comment for why it does
+  # not filter by status). Simulates the image not existing yet, then
+  # existing once `create_image` has finished.
   defp list_images_response(0), do: {:ok, []}
-  defp list_images_response(_after_first), do: {:ok, [%{"id" => 777}]}
+  defp list_images_response(_after_first), do: {:ok, [%{"id" => 777, "status" => "available"}]}
 
   # Same shape, but the image isn't ready until the third poll — proves the
   # source server survives two "not yet" answers before the confirmed one.
-  defp not_ready_until_third_poll(n) when n < 3, do: {:ok, []}
-  defp not_ready_until_third_poll(_n), do: {:ok, [%{"id" => 777}]}
+  defp not_ready_until_third_poll(0), do: {:ok, []}
+
+  defp not_ready_until_third_poll(n) when n < 3,
+    do: {:ok, [%{"id" => 777, "status" => "creating"}]}
+
+  defp not_ready_until_third_poll(_n), do: {:ok, [%{"id" => 777, "status" => "available"}]}
+
+  # Branches on whether the real `status: "available"`-filtered query is
+  # the one being simulated (the top-level existence check) or the
+  # unfiltered poll (`await_image_ready/5`) — multi-clause rather than an
+  # `if`, per this file's own rule against imperative branching in test
+  # helpers.
+  defp list_images_creating_forever(_scope, opts) when is_list(opts),
+    do: still_creating_response(Keyword.get(opts, :status))
+
+  defp still_creating_response("available"), do: {:ok, []}
+  defp still_creating_response(_not_filtered), do: {:ok, [%{"id" => 777, "status" => "creating"}]}
 
   describe "build/3" do
     test "returns the image the build produced" do
@@ -377,7 +396,41 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
-    test "gives up and still destroys the source if the image never becomes available" do
+    # The bug the live test (story 877/992 follow-on) actually found:
+    # `destroy_temp_server` used to run unconditionally after this `with`
+    # chain, including on a poll that merely gave up — so a real snapshot
+    # that was still mid-write got destroyed along with its own source,
+    # losing the whole (expensive) bootstrap with nothing to show for it.
+    # Giving up now means leaving the source alone and naming it in the
+    # error — never guessing by deleting the one thing that could still
+    # turn into a usable image.
+    test "gives up without destroying the source if the image is never confirmed ready" do
+      list_images = &list_images_creating_forever/2
+      create = fn _scope, _name, _create_opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+      install_release = fn _run, _server, _opts -> :ok end
+      create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
+
+      destroy = fn _scope, _id ->
+        flunk("the source must not be destroyed while the snapshot's outcome is unconfirmed")
+      end
+
+      assert {:error, {:image_not_confirmed, 777, 42}} =
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: list_images,
+                 create: create,
+                 run: run,
+                 install_release: install_release,
+                 create_image: create_image,
+                 destroy: destroy,
+                 image_poll_attempts: 2,
+                 image_poll_interval_ms: 0
+               )
+    end
+
+    # Harness's distinction (3): a timeout and a confirmed loss are not the
+    # same thing, and only one of them still has something worth protecting.
+    test "destroys the source and says the image vanished, rather than merely not-ready, when it is actually gone" do
       owner = self()
       list_images = fn _scope, _opts -> {:ok, []} end
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
@@ -390,7 +443,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         {:ok, %{}}
       end
 
-      assert {:error, {:image_not_ready, 777}} =
+      assert {:error, {:image_vanished, 777}} =
                Builder.ensure_burst_box_image(scope(), :x86,
                  list_images: list_images,
                  create: create,

@@ -42,6 +42,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
 
   require Logger
 
+  alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.BurstBox.Lifecycle
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Users.Scope
@@ -51,6 +52,17 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   # sweep's business — a `builder-*` box or an app server carries no such
   # label and is never looked at twice.
   @role_label "cms-burst-role"
+
+  # A bootstrap server whose snapshot poll gave up without a confirmed
+  # answer (`Builder.finish_snapshot/8`, story 877/992 follow-on) is left
+  # running on purpose rather than destroyed blind — but "on purpose" still
+  # needs an end: once it is old enough that any snapshot it could still be
+  # mid-write on would itself have long since finished or failed, this sweep
+  # reaps it the same way it would have been destroyed on the happy path.
+  # Comfortably past the poll's own 20-minute budget plus whatever the
+  # bootstrap took before that, and conveniently inside the one Hetzner
+  # billing hour it is already paying for either way.
+  @bootstrap_max_age_minutes 60
 
   # Anonymous unless a caller asks for a name. A customer's own sweep and the
   # platform's own are two different `Scope`s with no business sharing one
@@ -68,25 +80,37 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   def role_label, do: @role_label
 
   @doc """
-  Run one sweep now, synchronously, against every burst box `scope` can see.
+  Run one sweep now, synchronously, against every burst box and every
+  pending-outcome bootstrap server `scope` can see.
 
-  `opts` is forwarded to `Lifecycle.check/3` as-is (`:busy?` required,
-  `:destroy` / `:now` optional there). `:list` overrides
-  `Hetzner.list_servers/1` for a test or a caller with its own view.
+  `opts` is forwarded to `Lifecycle.check/3` as-is for burst boxes (`:busy?`
+  required, `:destroy` / `:now` optional there), and reused for bootstrap
+  servers where the names overlap (`:destroy`, `:now`) — `:list` overrides
+  `Hetzner.list_servers/1`, `:list_images` overrides
+  `Hetzner.list_images/2` (used to check whether a bootstrap server's
+  snapshot already succeeded), and `:bootstrap_max_age_minutes` overrides
+  `@bootstrap_max_age_minutes`, all for a test or a caller with its own
+  view.
 
-  Returns one `Lifecycle.check/3` result per burst box found, in no
-  particular order — for a test or a caller that wants to know what
-  happened, not for anything this module itself branches on.
+  Returns one result per box found, in no particular order — for a test or
+  a caller that wants to know what happened, not for anything this module
+  itself branches on. Burst boxes answer with `Lifecycle.check/3`'s own
+  atoms; bootstrap servers answer `:not_due` (still plausibly waiting),
+  `:reaped`, or `{:error, term()}`.
   """
-  @spec sweep_now(Scope.t(), keyword()) :: [:not_due | :kept | :deleted | {:error, term()}]
+  @spec sweep_now(Scope.t(), keyword()) ::
+          [:not_due | :kept | :deleted | :reaped | {:error, term()}]
   def sweep_now(%Scope{} = scope, opts \\ []) do
     list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
 
     case list.(scope) do
       {:ok, servers} ->
-        servers
-        |> Enum.filter(&burst_box?/1)
-        |> Enum.map(&safe_check(scope, &1, opts))
+        burst = servers |> Enum.filter(&burst_box?/1) |> Enum.map(&safe_check(scope, &1, opts))
+
+        bootstrap =
+          servers |> Enum.filter(&bootstrap_box?/1) |> Enum.map(&safe_reap_bootstrap(scope, &1, opts))
+
+        burst ++ bootstrap
 
       {:error, reason} ->
         Logger.error("[BurstBox.Sweep] could not list servers: #{inspect(reason)}")
@@ -111,7 +135,70 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
       {:error, e}
   end
 
+  defp safe_reap_bootstrap(scope, server, opts) do
+    reap_bootstrap(scope, server, opts)
+  rescue
+    e ->
+      Logger.error(
+        "[BurstBox.Sweep] checking bootstrap server #{inspect(server["name"])} raised: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+
+      {:error, e}
+  end
+
+  # Reaps a bootstrap server once its snapshot's outcome is no longer in
+  # doubt — confirmed either way, never guessed from the server's age alone
+  # while that is the only signal: a young server could just as easily be a
+  # legitimate attempt still mid-poll, and destroying it is the exact bug
+  # `Builder.finish_snapshot/8` was changed to stop doing.
+  defp reap_bootstrap(scope, server, opts) do
+    architecture = labels(server)[Builder.bootstrap_role_label()]
+
+    cond do
+      Builder.burst_box_image_available?(scope, String.to_existing_atom(architecture), opts) ->
+        destroy_bootstrap(scope, server, opts, :image_available)
+
+      stale_bootstrap?(server, opts) ->
+        destroy_bootstrap(scope, server, opts, :stale)
+
+      true ->
+        :not_due
+    end
+  end
+
+  defp destroy_bootstrap(scope, server, opts, reason) do
+    destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
+
+    case destroy.(scope, server_id(server)) do
+      {:ok, _} ->
+        Logger.info(
+          "[BurstBox.Sweep] reaping bootstrap server #{inspect(server["name"])} (#{reason})"
+        )
+
+        :reaped
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp stale_bootstrap?(server, opts) do
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0).()
+    max_age = Keyword.get(opts, :bootstrap_max_age_minutes, @bootstrap_max_age_minutes)
+    cutoff = DateTime.add(now, -max_age * 60, :second)
+
+    case DateTime.from_iso8601(to_string(server["created"] || "")) do
+      {:ok, created, _} -> DateTime.compare(created, cutoff) == :lt
+      _ -> false
+    end
+  end
+
+  defp server_id(%{"id" => id}), do: id
+  defp server_id(%{"server" => %{"id" => id}}), do: id
+
   defp burst_box?(server), do: Map.has_key?(labels(server), @role_label)
+  defp bootstrap_box?(server), do: Map.has_key?(labels(server), Builder.bootstrap_role_label())
 
   defp labels(%{"labels" => labels}) when is_map(labels), do: labels
   defp labels(%{"server" => server}), do: labels(server)

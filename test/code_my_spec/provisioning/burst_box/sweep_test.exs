@@ -9,6 +9,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
 
   import ExUnit.CaptureLog
 
+  alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.BurstBox.Sweep
   alias CodeMySpec.Users.Scope
 
@@ -31,6 +32,25 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
   defp other_server(overrides \\ %{}) do
     Map.merge(%{"id" => 1, "name" => "builder-abc123", "created" => "2026-08-03T12:00:00Z"}, overrides)
   end
+
+  # Carries only `Builder.bootstrap_role_label/0` — a server whose snapshot
+  # outcome `Builder.finish_snapshot/8` left unconfirmed (story 877/992
+  # follow-on: that used to be destroyed unconditionally, which is how a
+  # real snapshot got lost mid-write).
+  defp bootstrap_server(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "id" => 9,
+        "name" => "cms-burst-bootstrap-arm-123",
+        "created" => "2026-08-03T12:00:00Z",
+        "labels" => %{Builder.bootstrap_role_label() => "arm"}
+      },
+      overrides
+    )
+  end
+
+  defp no_image_yet, do: fn _scope, _opts -> {:ok, []} end
+  defp image_available, do: fn _scope, _opts -> {:ok, [%{"id" => 1, "status" => "available"}]} end
 
   describe "sweep_now/2" do
     test "only ever checks servers carrying the burst-box label" do
@@ -109,6 +129,83 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       refute_received {:destroyed, 1}
       assert_received {:destroyed, 2}
       assert log =~ "burst-broken"
+    end
+  end
+
+  describe "sweep_now/2 — bootstrap servers (story 877/992 follow-on)" do
+    test "leaves a bootstrap server alone while its snapshot is still plausibly in flight" do
+      list = fn _scope -> {:ok, [bootstrap_server()]} end
+      busy? = fn _scope, _server -> flunk("a bootstrap server has no busy? check") end
+
+      assert [:not_due] =
+               Sweep.sweep_now(scope(),
+                 list: list,
+                 busy?: busy?,
+                 list_images: no_image_yet(),
+                 now: fn -> ~U[2026-08-03 12:05:00Z] end
+               )
+    end
+
+    test "reaps a bootstrap server once its snapshot is confirmed available" do
+      owner = self()
+      list = fn _scope -> {:ok, [bootstrap_server()]} end
+
+      destroy = fn _scope, id ->
+        send(owner, {:destroyed, id})
+        {:ok, %{}}
+      end
+
+      assert [:reaped] =
+               Sweep.sweep_now(scope(),
+                 list: list,
+                 busy?: fn _, _ -> false end,
+                 list_images: image_available(),
+                 destroy: destroy,
+                 now: fn -> ~U[2026-08-03 12:05:00Z] end
+               )
+
+      assert_received {:destroyed, 9}
+    end
+
+    test "reaps a stale bootstrap server whose snapshot never showed up" do
+      owner = self()
+      list = fn _scope -> {:ok, [bootstrap_server()]} end
+
+      destroy = fn _scope, id ->
+        send(owner, {:destroyed, id})
+        {:ok, %{}}
+      end
+
+      assert [:reaped] =
+               Sweep.sweep_now(scope(),
+                 list: list,
+                 busy?: fn _, _ -> false end,
+                 list_images: no_image_yet(),
+                 destroy: destroy,
+                 bootstrap_max_age_minutes: 60,
+                 # created at 12:00:00Z — two hours later is well past the
+                 # default (and this override's) staleness window.
+                 now: fn -> ~U[2026-08-03 14:00:00Z] end
+               )
+
+      assert_received {:destroyed, 9}
+    end
+
+    test "a burst box and a bootstrap server in the same sweep are judged by their own, separate rules" do
+      burst = burst_server()
+      bootstrap = bootstrap_server()
+      list = fn _scope -> {:ok, [burst, bootstrap]} end
+
+      results =
+        Sweep.sweep_now(scope(),
+          list: list,
+          busy?: fn _, _ -> true end,
+          list_images: no_image_yet(),
+          now: fn -> ~U[2026-08-03 12:55:30Z] end
+        )
+
+      assert :kept in results
+      assert :not_due in results
     end
   end
 
