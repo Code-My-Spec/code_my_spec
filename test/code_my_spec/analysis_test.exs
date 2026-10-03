@@ -96,58 +96,6 @@ defmodule CodeMySpec.AnalysisTest do
       assert paths == ["test/new_test.exs"]
     end
 
-    test "a zero shell exit does not mean clean when a problem was actually found",
-         %{scope: scope} do
-      # 71d0d979: `mix compile --return-errors` exits 0 on a genuine warning,
-      # by design -- the tool's exit code and "did it find anything" are
-      # different questions for compiler. The persisted exit_status has to
-      # answer the second one, since that is what an agent reading the ledger
-      # means by it, and it is what Promotion.blocking_problems/2 actually
-      # gates on.
-      {:ok, run} = RunsRepository.start_run(scope, %{source: "compiler", kind: :full})
-
-      {:ok, finished} =
-        Reconciler.reconcile(scope, run, %{
-          problems: [problem("lib/foo.ex", source: "compiler", severity: :warning)],
-          output: "warning: unused alias Agents",
-          exit_status: 0,
-          stats: %{}
-        })
-
-      assert finished.exit_status == 1
-    end
-
-    test "a genuinely non-zero shell exit is never lowered", %{scope: scope} do
-      {:ok, run} = RunsRepository.start_run(scope, %{source: "compiler", kind: :full})
-
-      {:ok, finished} =
-        Reconciler.reconcile(scope, run, %{
-          problems: [problem("lib/foo.ex", source: "compiler", severity: :error)],
-          output: "** (CompileError) ...",
-          exit_status: 2,
-          stats: %{}
-        })
-
-      assert finished.exit_status == 2
-    end
-
-    test "an info-only run stays at its own exit status", %{scope: scope} do
-      {:ok, run} = RunsRepository.start_run(scope, %{source: "credo", kind: :full})
-
-      {:ok, finished} =
-        Reconciler.reconcile(scope, run, %{
-          problems: [problem("lib/foo.ex", source: "credo", severity: :info)],
-          output: "",
-          exit_status: 0,
-          stats: %{}
-        })
-
-      # blocking_problems/2 excludes :info, so a run that found only advisory
-      # findings must not read as "not clean" -- that would tell an agent to
-      # go fix something the gate was never going to stop it on.
-      assert finished.exit_status == 0
-    end
-
     test "a run replaces every problem for its source, not just the files it names",
          %{scope: scope} do
       # A problem from an earlier run, in a file this run does not report on.

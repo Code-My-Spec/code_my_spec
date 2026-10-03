@@ -78,7 +78,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
         {:ok, finished} =
           RunsRepository.finish_run(run, :completed, %{
             output: result.output,
-            exit_status: persisted_exit_status(result.exit_status, problems),
+            exit_status: result.exit_status,
             stats: Signatures.put(result.stats, signatures)
           })
 
@@ -112,35 +112,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         finish_failed(run, inspect(reason), %{})
         {:error, reason}
-    end
-  end
-
-  # 71d0d979: `mix compile --return-errors` exits 0 on a genuine warning
-  # (unused alias, forbidden boundary reference) -- that is what the flag is
-  # for, so the compiler's own exit code says nothing about whether it found
-  # anything (see `CodeMySpec.Compile.execute/1`'s own comment on the same
-  # point). An agent reading `analysis_runs.exit_status` to decide whether a
-  # commit is clean read a 0 for compiler, trusted it, and then had
-  # `promote_sync`'s own gate (which reads `problems`, never `exit_status`)
-  # refuse on a problem the "clean" run had already recorded — twice in a
-  # row on the same branch, each one a wasted round-trip.
-  #
-  # The gate was always right; only the field agents actually look at was
-  # misleading. So the persisted exit_status is corrected here to agree with
-  # the same problems this reconcile just wrote: non-zero whenever any
-  # non-`:info` problem survived, regardless of what the tool's own shell
-  # exit code was. `:info` is excluded because `Promotion.blocking_problems/2`
-  # excludes it too -- this must mean the same thing the gate means, not a
-  # stricter one that reads as broken on an advisory-only run.
-  #
-  # A genuinely non-zero shell exit (a crash, not a diagnostic) is left
-  # exactly as reported: `max/2` only ever raises a false 0, never lowers a
-  # real failure.
-  defp persisted_exit_status(exit_status, problems) do
-    if Enum.any?(problems, &(&1.severity != :info)) do
-      max(exit_status, 1)
-    else
-      exit_status
     end
   end
 

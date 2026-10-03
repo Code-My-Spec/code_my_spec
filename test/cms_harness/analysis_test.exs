@@ -205,6 +205,14 @@ defmodule CmsHarness.AnalysisTest do
 
         assert Enum.any?(result["diagnostics"], &(&1["file"] =~ "broken.ex")),
                "the diagnostic has to name the file, or the Problem lands on `unknown`"
+
+        # 71d0d979: `mix compile --return-errors` exits 0 here regardless —
+        # that flag's whole point is returning errors as diagnostics rather
+        # than raising. A project with a real diagnostic must not report a
+        # clean exit_status; see compiler_exit_status/1 for the derivation.
+        refute result["exit_status"] == 0,
+               "a project with a real diagnostic reported exit_status 0 — " <>
+                 "indistinguishable from a clean compile to anything reading the ledger"
       end)
     end
 
@@ -218,6 +226,7 @@ defmodule CmsHarness.AnalysisTest do
 
         assert {:ok, result} = Analysis.run(project, "compiler")
         assert result["diagnostics"] == []
+        assert result["exit_status"] == 0
       end)
     end
 
@@ -320,6 +329,30 @@ defmodule CmsHarness.AnalysisTest do
              missing every previous time — they should name a file, and that file
              says whose compile produced them.
              """
+    end
+  end
+
+  # Fast and exact, unlike the two compiler tests above: no real compile, so
+  # it also covers the one shape a real compile can't reliably produce — a
+  # genuinely non-zero exit alongside diagnostics, which `--return-errors` is
+  # specifically designed to avoid.
+  describe "compiler_exit_status/1" do
+    test "a clean compile's own exit code survives" do
+      assert Analysis.compiler_exit_status(%{exit_code: 0, data: %{compiler_results: []}}) == 0
+    end
+
+    test "a diagnostic turns a false 0 into non-zero" do
+      diagnostics = [%{"severity" => "warning", "message" => "unused alias Agents"}]
+
+      assert Analysis.compiler_exit_status(%{exit_code: 0, data: %{compiler_results: diagnostics}}) ==
+               1
+    end
+
+    test "a genuine crash's own exit code is never lowered" do
+      diagnostics = [%{"severity" => "error", "message" => "boom"}]
+
+      assert Analysis.compiler_exit_status(%{exit_code: 2, data: %{compiler_results: diagnostics}}) ==
+               2
     end
   end
 
