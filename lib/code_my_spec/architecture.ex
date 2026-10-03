@@ -12,6 +12,7 @@ defmodule CodeMySpec.Architecture do
       CodeMySpec.Components,
       CodeMySpec.Documents,
       CodeMySpec.Environments,
+      CodeMySpec.Files,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
@@ -21,7 +22,8 @@ defmodule CodeMySpec.Architecture do
 
   alias CodeMySpec.Architecture.{MermaidProjector, NamespaceProjector, OverviewProjector}
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.Components.{Component, ComponentRepository, Dependency}
+  alias CodeMySpec.Files
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -29,6 +31,61 @@ defmodule CodeMySpec.Architecture do
   defdelegate generate_overview(components), to: OverviewProjector, as: :project
   defdelegate generate_namespace_hierarchy(components), to: NamespaceProjector, as: :project
   defdelegate generate_mermaid(components), to: MermaidProjector, as: :project
+
+  @doc """
+  Story 1085 — where the planned graph and the live code disagree.
+
+  The comparison is already the data: a full sync (`Files.ComponentSync`,
+  story 1084) marks every component `provenance: :authored` (named by a tool
+  or a proposal) or `:discovered` (named only by code), and every dependency
+  `provenance: :authored` paired with `in_code` (whether live code still
+  names that edge). Checking the architecture is reading those four
+  combinations back, not re-parsing anything:
+
+  - `unplanned_dependencies` — an edge code names that nobody authored
+    (`provenance: :discovered`, necessarily `in_code: true` — a discovered
+    edge code stops naming is deleted, never left behind as `false`).
+  - `unused_dependencies` — an edge somebody authored that live code has
+    never named (`provenance: :authored, in_code: false`).
+  - `missing_code` — an authored component with no linked implementation
+    file.
+  - `unowned_code` — a component that exists only because code named it
+    (`provenance: :discovered`) — nobody planned it.
+
+  ## Examples
+
+      iex> check_drift(scope)
+      %{
+        unplanned_dependencies: [%Dependency{}],
+        unused_dependencies: [%Dependency{}],
+        missing_code: [%Component{}],
+        unowned_code: [%Component{}]
+      }
+
+  """
+  @spec check_drift(Scope.t()) :: %{
+          unplanned_dependencies: [Dependency.t()],
+          unused_dependencies: [Dependency.t()],
+          missing_code: [Component.t()],
+          unowned_code: [Component.t()]
+        }
+  def check_drift(%Scope{} = scope) do
+    dependencies = Components.list_dependencies(scope)
+    components = Components.list_components(scope)
+
+    %{
+      unplanned_dependencies:
+        Enum.filter(dependencies, &(&1.provenance == :discovered and &1.in_code)),
+      unused_dependencies:
+        Enum.filter(dependencies, &(&1.provenance == :authored and not &1.in_code)),
+      missing_code:
+        Enum.filter(components, fn component ->
+          component.provenance == :authored and
+            not Files.has_file?(scope, component.id, :implementation)
+        end),
+      unowned_code: Enum.filter(components, &(&1.provenance == :discovered))
+    }
+  end
 
   @doc """
   Returns a structured summary of architecture metrics for programmatic use.
