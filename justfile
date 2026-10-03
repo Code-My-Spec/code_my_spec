@@ -914,13 +914,13 @@ harness port="4004" server="http://localhost:4000": _submodules
     # the remedy for that, not an exported variable.
     #
     # One env serves this and the installed release; what makes this one the
-    # dev harness is the environment below. CMS_ANALYSIS_SLOTS=2 since
-    # 2026-10-03 (John): this box runs one harness for every worktree of this
-    # repo, and one slot made every copy's gate wait for every other's. It was
-    # 1 because two full suites at once each ran longer than serialising them
-    # (measured 2026-09-15); that is being re-measured, not assumed away.
+    # dev harness is the environment below. CMS_ANALYSIS_SLOTS=1: two full
+    # suites at once each ran longer than serialising them (measured
+    # 2026-09-15). 2 slots were tried on 2026-10-03, so one copy's gate would
+    # not wait on another's; exunit overlapping spex then failed the live-harness
+    # proof (57aa576c) in 3 gates, so it is back to 1 (John).
     CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
-      CMS_ANALYSIS_SLOTS=2 MIX_ENV=harness elixir -S mix run --no-halt
+      CMS_ANALYSIS_SLOTS=1 MIX_ENV=harness elixir -S mix run --no-halt
 
 # Start Claude Code against this checkout's own plugin — pair with `just harness`
 claude-dev *args: _submodules
