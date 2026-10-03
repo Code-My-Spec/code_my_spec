@@ -350,15 +350,15 @@ defmodule CodeMySpec.TaskOwner do
   # Busy on another task: resuming now would make it a second active one
   # (story 1080). Told, not offered; `Work` offers it back once that task is
   # done.
-  defp wake_holder(scope, %Agent{} = agent, released, {_type, id, _outcome} = blocker, opts) do
+  defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
     detail = Keyword.get(opts, :detail)
 
     case active_task(agent) do
       nil ->
-        notice = blocker_resolved_notice(released, blocker, detail)
-
         Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.wake_with_notice(scope, agent, notice, :blocker_resolved, {"blocker", id})
+          Work.wake_released(scope, agent, released, resolved_header(blocker), detail,
+            subject: offer_subject(blocker)
+          )
         end)
 
       _active ->
@@ -370,13 +370,13 @@ defmodule CodeMySpec.TaskOwner do
 
   defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
 
-  defp blocker_resolved_notice(released, {type, id, outcome}, detail) do
-    with_detail(
-      "Your blocker #{type} #{id} #{outcome_phrase(outcome)}; resume #{task_list(released)} " <>
-        "with `start_task`.",
-      detail
-    )
-  end
+  # A denied tap-out is its own kind of offer (criterion 1672); anything else
+  # releasing a task is an unblocked offer on the task.
+  defp offer_subject({:tap_out, id, _outcome}), do: {"tap_out", id}
+  defp offer_subject(_blocker), do: nil
+
+  defp resolved_header({type, id, outcome}),
+    do: "Your blocker #{type} #{id} #{outcome_phrase(outcome)}"
 
   defp deferred_notice(released, {type, id, outcome}, detail) do
     with_detail(

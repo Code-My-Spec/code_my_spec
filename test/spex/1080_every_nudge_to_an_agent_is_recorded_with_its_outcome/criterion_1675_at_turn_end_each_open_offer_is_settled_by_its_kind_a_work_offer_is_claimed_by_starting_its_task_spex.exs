@@ -217,8 +217,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
       end
 
       then_ "the unblocked offer is claimed", context do
-        assert [%{status: "claimed"}] = offers(context, context.coder, %{kind: "unblocked"}),
-               listing(context)
+        # The release and the graph change it causes may both offer the task;
+        # the later supersedes the earlier, and the one that stands is claimed.
+        standing =
+          context
+          |> offers(context.coder, %{kind: "unblocked"})
+          |> Enum.reject(&(&1.status == "superseded"))
+
+        assert [%{status: "claimed"}] = standing, listing(context)
 
         {:ok, context}
       end

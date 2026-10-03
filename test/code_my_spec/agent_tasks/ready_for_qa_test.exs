@@ -156,6 +156,15 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     assert {:ok, :valid, _} = ReadyForQa.evaluate(scope, task(story))
   end
 
+  test "an already certified story's task says there is nothing to do" do
+    %{scope: scope, story: story} = a_copy()
+    {:ok, _} = Stories.set_qa_ready(scope, story, @head)
+
+    assert {:ok, prompt} = ReadyForQa.command(scope, task(story))
+    assert prompt =~ "already certified ready for QA at #{@head}"
+    assert prompt =~ "evaluate_task"
+  end
+
   test "the stamp clears with the specs latch" do
     %{scope: scope, story: story} = a_copy()
     {:ok, story} = Stories.set_qa_ready(scope, story, @head)

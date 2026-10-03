@@ -71,6 +71,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
+  component(CodeMySpec.McpServers.Tasks.Tools.RejectOffer)
   component(CodeMySpec.McpServers.Health.Tools.Health)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
 

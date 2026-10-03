@@ -246,7 +246,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       assert [offer] = Offers.list_for_agent(agent.id)
 
       assert {offer.kind, offer.subject_type, offer.subject_key} ==
-               {:unblocked, "blocker", request.id}
+               {:unblocked, "task", task.id}
 
       assert linked_texts(offer) == [prompt]
     end
