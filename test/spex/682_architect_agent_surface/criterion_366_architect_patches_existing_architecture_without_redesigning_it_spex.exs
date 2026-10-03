@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphReadHelpers
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -43,6 +44,17 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
           description: "Already built",
           acceptance_criteria: ["It exists"]
         )
+
+        # Twice, because `GraphWatcher.settle/1` answers `:ok` when it has no
+        # timer set and cannot tell that from "the announcement has not
+        # arrived yet" — the first read can return before the pass it should
+        # have waited for, and `start_task`'s own single settle (via
+        # `RequirementGraph.cached_graph/2`'s `settle: true` default) then
+        # races that pass instead of waiting behind it. Same mechanism named
+        # in 09-16's reverted async pilot and this suite's own
+        # GraphReadHelpers moduledoc ("Nothing computes unless something
+        # announces").
+        _warm = GraphReadHelpers.read_settled_graph(context)
 
         {:ok, context}
       end
