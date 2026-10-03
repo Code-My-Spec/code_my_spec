@@ -6,15 +6,17 @@ defmodule CodeMySpec.Files.ComponentSync do
   dependencies are authored through the tools, and no file describes them. A
   sync only reconciles what *exists* against live code:
 
-  1. A module a live checkout's code declares, with no component, is created
-     as `:discovered` under its nearest ancestor.
-  2. A component that predates provenance and is named by live code becomes
+  1. A module main's code declares, with no component, is created as
+     `:discovered` under its nearest ancestor.
+  2. A component that predates provenance and is named by main's code becomes
      `:discovered`; one nothing names is left for a person to decide.
-  3. A `:discovered` component no live checkout's code names any more is
-     pruned, unless an authored dependency or a story points at it.
+  3. A `:discovered` component main's code no longer names is pruned, unless an
+     authored dependency or a story points at it.
   4. Files are linked to the component they belong to.
 
-  Spec files play no part. Live checkouts are `Files.LiveCopies`.
+  "Main's code" is `Files.LiveCopies.speaking_ids/1`: the main copy, or every
+  live checkout when the project has none (14f4f837). A feature copy's new
+  module is discovered once it is promoted. Spec files play no part.
   """
 
   require Logger
@@ -58,8 +60,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     removed_module_names = Keyword.get(opts, :removed_module_names, [])
     start = System.monotonic_time(:millisecond)
 
-    # Only a live checkout's code says what exists — a stale worktree's module
-    # is neither created nor kept on its word.
+    # Only main's code says what exists — a feature copy's unpromoted module and
+    # a stale worktree's deleted one are neither created nor kept on its word.
     live_files =
       scope
       |> query_files(changed_paths)
@@ -110,8 +112,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> Repo.all()
   end
 
-  # Project-wide, deliberately — every live checkout's code, not this one's: a
-  # module on a live feature copy exists even if this checkout lacks it.
+  # Project-wide, deliberately — main's code, not this checkout's: a sync from a
+  # feature copy still answers for the project.
   defp query_files(%Scope{active_project_id: project_id}, _changed_paths) do
     File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
   end
@@ -426,8 +428,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   end
 
   defp live_only(files, project_id) do
-    live_ids = MapSet.new(LiveCopies.ids(project_id))
-    Enum.filter(files, &MapSet.member?(live_ids, &1.working_copy_id))
+    speaking = MapSet.new(LiveCopies.speaking_ids(project_id))
+    Enum.filter(files, &MapSet.member?(speaking, &1.working_copy_id))
   end
 
   defp maybe_put(map, _key, nil), do: map
@@ -480,8 +482,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   # -- Cleanup --
 
   # Only a discovered component goes — it existed because code named it — and
-  # only once no live checkout's code names it. A module deleted on main but
-  # still on a live feature copy stays. An authored component is the intended
+  # only once main's code no longer names it, whatever a stale or feature copy
+  # still holds (14f4f837). An authored component is the intended
   # architecture whether or not code exists yet, and an unmarked one is left
   # for a person to decide; only `delete_component` removes either.
   defp cleanup_removed(%Scope{active_project_id: project_id} = scope, existing) do
@@ -507,9 +509,9 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> prune_unreferenced(scope)
   end
 
-  # Only code claims a component, and only a live checkout's code.
+  # Only code claims a component, and only main's code.
   defp live_claimed_names(project_id) do
-    live_ids = LiveCopies.ids(project_id)
+    live_ids = LiveCopies.speaking_ids(project_id)
 
     from(f in File,
       where:
