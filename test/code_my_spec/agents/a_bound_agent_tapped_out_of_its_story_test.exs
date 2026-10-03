@@ -32,7 +32,7 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
 
   # Instrument check: before the claim, the story's work is what is offered.
   test "unbound, it is offered its copy's story work", ctx do
-    assert next(ctx) =~ "requirement_name=`bdd_specs_passing`"
+    assert next(ctx) =~ "requirement_name=`ready_for_qa`"
   end
 
   test "bound, tapped out of its only story task: offered nothing, no project work", ctx do
