@@ -9,9 +9,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestionTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
 
   setup do
     {:ok, scope: full_scope_fixture()}
@@ -104,5 +107,81 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestionTest do
       AskUserQuestion.execute(%{questions: List.duplicate(a_question(), 5)}, frame(scope))
 
     assert response.isError
+  end
+
+  # e3290d96: a Claude Code session's `task_id` never blocked anything — only
+  # the agent path (`create_agent_question_request`) did. John's decision
+  # 2026-09-29: a session's `ask_user_question` with `task_id` blocks that
+  # session's task, the same as for an agent.
+  describe "a session's task_id blocks its task, the same as an agent's" do
+    defp active_session_task(scope) do
+      external_id = "ext-ask-#{System.unique_integer([:positive])}"
+      {:ok, session} = Sessions.find_or_create_session(scope, external_id)
+      component = component_fixture(scope)
+
+      task_attrs = %{
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        requirement_name: "implementation_file",
+        project_id: scope.active_project_id,
+        component_id: component.id,
+        component_module_name: component.module_name
+      }
+
+      {:ok, session_with_task} = Sessions.prepare_task(scope, session, task_attrs)
+      task = Enum.find(session_with_task.tasks, &(&1.status == :prepared))
+      {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
+      active_task = Enum.find(active_session.tasks, &(&1.id == task.id))
+
+      {external_id, active_task}
+    end
+
+    test "the default (active) task is blocked", %{scope: scope} do
+      {external_id, task} = active_session_task(scope)
+
+      {:reply, response, _} =
+        AskUserQuestion.execute(
+          %{questions: [a_question()], session_id: external_id},
+          frame(scope)
+        )
+
+      refute response.isError
+      assert latest(scope).task_id == task.id
+
+      reloaded = Sessions.get_by_external_id(scope, external_id)
+      assert %{status: :blocked, blocker_type: :question} = TaskOwner.find_task(reloaded, task.id)
+    end
+
+    test "an explicit task_id is blocked", %{scope: scope} do
+      {external_id, task} = active_session_task(scope)
+
+      {:reply, response, _} =
+        AskUserQuestion.execute(
+          %{questions: [a_question()], session_id: external_id, task_id: task.id},
+          frame(scope)
+        )
+
+      refute response.isError
+
+      reloaded = Sessions.get_by_external_id(scope, external_id)
+      assert %{status: :blocked} = TaskOwner.find_task(reloaded, task.id)
+    end
+
+    test "a session_id that resolves to nothing still asks, unblocked", %{scope: scope} do
+      {:reply, response, _} =
+        AskUserQuestion.execute(
+          %{questions: [a_question()], session_id: Ecto.UUID.generate()},
+          frame(scope)
+        )
+
+      refute response.isError
+      assert latest(scope).task_id == nil
+    end
+
+    test "no session_id at all still asks, unblocked", %{scope: scope} do
+      {:reply, response, _} = AskUserQuestion.execute(%{questions: [a_question()]}, frame(scope))
+
+      refute response.isError
+      assert latest(scope).task_id == nil
+    end
   end
 end

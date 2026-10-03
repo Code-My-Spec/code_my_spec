@@ -1,4 +1,4 @@
-defmodule CodeMySpecCli.Repo.Migrations.AddPriorityToStories do
+defmodule CodeMySpec.CliRepo.Migrations.AddPriorityToStories do
   use Ecto.Migration
 
   def change do

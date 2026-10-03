@@ -5,9 +5,8 @@ defmodule CmsHarness.Web.SkillsController do
 
   `4396345b`: every `plugins/claude/skills/*/skill.md` posts to
   `http://localhost:4004/api/skills/start`, which is where `SkillController`
-  lives on `CodeMySpecLocalWeb` — a different Phoenix app that is never
-  started in light-harness mode (`CodeMySpecLocalWeb.Application.start_harness/0`
-  boots only `CmsHarness.Supervisor`). `CmsHarness.Web.Endpoint` also only
+  lives on `CodeMySpecLocalWeb` — a different Phoenix app that the harness
+  never starts (`CmsHarness.Application` boots only `CmsHarness.Supervisor`). `CmsHarness.Web.Endpoint` also only
   parses JSON, and the skill.md curl sends `--data-urlencode`, so the request
   never even reached a router before this — it 415'd on content type.
 

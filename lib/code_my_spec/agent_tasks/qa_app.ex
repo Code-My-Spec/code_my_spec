@@ -7,7 +7,10 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   pattern: write prompt files, dispatch subagents, validate via delegation.
 
   Lifecycle:
-  1. Start/verify Phoenix server
+  1. Start/verify Phoenix server, via `ensure_app_running` — never a
+     hand-rolled `mix phx.server &` (83aa6402: an orphaned one outlives the
+     turn and starves the machine's shared analyzer slot for every other
+     working copy)
   2. Smoke-test all routes (visit each, check for 500s)
   3. Dispatch `@"CodeMySpec:qa (agent)"` subagent per story
   4. Write summary to `.code_my_spec/qa/summary.md`
@@ -228,11 +231,16 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     """
     ## App Server
 
-    Before testing, ensure the Phoenix server is running:
+    Before testing, call `ensure_app_running` (no arguments — it is always
+    your own copy, #{project_cwd}). It starts the app if it isn't already
+    serving and answers with the URL to test against.
 
-    1. Check if the server is listening: `lsof -i -P -n | grep LISTEN`
-    2. If not running, start it: `cd #{project_cwd} && mix phx.server &`
-    3. Verify with `web` against the app URL
+    Do not start it by hand with `mix phx.server &`: a shell-backgrounded
+    server is not tracked anywhere, so nothing stops it when your turn ends.
+    One left running this way blocked every other working copy's analyzer
+    runs behind it for 40 minutes (83aa6402) — this copy's app is a managed,
+    persistent instance (it restarts on promote, not on your turn ending),
+    and `ensure_app_running` is the tracked way to reach it.
     """
   end
 
@@ -344,7 +352,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
     ### Step 1: Start/Verify Server
 
-    Make sure the Phoenix server is running (see App Server section above).
+    Call `ensure_app_running` (see App Server section above) and test against
+    the URL it answers with.
 
     ### Step 2: Smoke-Test All Routes
 

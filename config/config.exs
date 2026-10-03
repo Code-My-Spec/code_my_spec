@@ -61,14 +61,10 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
 
 # Configures the light harness endpoint (port 4005, localhost only)
 #
-# `server: false` here and switched on by `start_harness/0`, which only runs
-# under `cms harness`. Every other way this application starts — the
-# server, the SQLite CLI, a sprite, the test suite — compiles these modules and
-# must not open the port.
-#
-# 4005 rather than 4004 so a laptop can run both harnesses side by side during
-# the transition. A sprite sets `CMS_HARNESS_PORT=4004`, because there the light
-# harness *is* the thing serving hooks and nothing else wants the port.
+# `server: false` here and switched on by `CmsHarness.Application`, which only
+# boots under MIX_ENV=harness. Every other way this application starts — the
+# server, desktop, the test suite — compiles these modules and must not open
+# the port. The harness env sets 4003; `CMS_HARNESS_PORT` overrides it.
 config :code_my_spec, CmsHarness.Web.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [ip: {127, 0, 0, 1}, port: 4005],
@@ -135,7 +131,7 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
-# Default metadata kept across all environments. The prod_cli binary uses
+# Default metadata kept across all environments. The harness release uses
 # CodeMySpec.Logging.LogfmtFormatter (installed at runtime by
 # CodeMySpec.Logging) and emits *all* metadata, so this list only governs
 # the dev/test console formatter.

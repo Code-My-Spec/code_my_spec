@@ -8,7 +8,7 @@ defmodule CmsHarness.Agents.ShellTest do
   setup do
     mix_env = System.get_env("MIX_ENV")
     System.put_env("CMS_SHELL_TEST_PROBE", "leaked")
-    System.put_env("MIX_ENV", "dev_cli")
+    System.put_env("MIX_ENV", "harness")
 
     on_exit(fn ->
       System.delete_env("CMS_SHELL_TEST_PROBE")

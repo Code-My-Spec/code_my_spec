@@ -26,7 +26,8 @@ defmodule CodeMySpecWeb.ConsoleLive.ResourceGroups do
     %{key: :mail, label: "Mail in and out", step_keys: [:email, :inbound]},
     %{key: :storage_backups, label: "Storage and backups", step_keys: [:storage, :backups]},
     %{key: :publishing, label: "Publishing", step_keys: [:content]},
-    %{key: :widget, label: "Feedback widget", step_keys: [:widget]}
+    %{key: :widget, label: "Feedback widget", step_keys: [:widget]},
+    %{key: :telemetry, label: "Telemetry", step_keys: [:telemetry]}
   ]
 
   @doc "Every group, in display order."

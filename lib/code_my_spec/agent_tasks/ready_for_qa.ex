@@ -35,8 +35,17 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   def command(scope, task) do
     case story_for(scope, task) do
       nil -> {:ok, "No story on this task — there is nothing to certify for QA."}
+      %{qa_ready_commit: commit} = story when is_binary(commit) -> {:ok, already(story, commit)}
       story -> {:ok, prompt(scope, story)}
     end
+  end
+
+  # Already certified — by another copy, or before this offer was made (probe
+  # 1870). Agents handed the full prompt re-did the certification from scratch,
+  # up to 170s and two dozen calls, for a stamp that was already there.
+  defp already(story, commit) do
+    "Story #{story.number} is already certified ready for QA at #{commit}. There is " <>
+      "nothing to do: complete this task with `evaluate_task`."
   end
 
   @doc "The stamp alone, certifying nothing. See the moduledoc."

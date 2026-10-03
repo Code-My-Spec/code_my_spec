@@ -15,39 +15,37 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   Note that committing and pushing the content repo does **not** publish. Git is
   version control here; this task is what moves content to the site.
 
-  ## CLI env is required
+  ## The harness env is required
 
-  Content publishing lives in the local harness, which runs on SQLite. Run this
-  under a CLI env or the task aborts before touching anything:
+  Content publishing reads the local CLI database, which is SQLite. Run this
+  under the harness env or the task aborts before touching anything:
 
-      MIX_ENV=dev_cli mix cms.content.publish
+      MIX_ENV=harness mix cms.content.publish
 
-  ## The target is not what the env name suggests
+  ## The target is the database's, not the env's
 
-  Each CLI env reads a different SQLite database, and each database stores its
-  own `client_api_url`. As of this writing they are inverted: `dev_cli`
-  (`cli_dev.db`) points at production `codemyspec.com`, while `prod_cli`
-  (`cli.db`) points at `dev.codemyspec.com`. Do not infer the target from the
-  env name. This task prints the resolved target and asks before publishing, so
-  read the banner rather than trusting the flag you typed.
+  The env reads `~/.codemyspec/cli.db` (or `CMS_DB_PATH`), and the database
+  stores its own `client_api_url`. Do not infer the target from anything you
+  typed. This task prints the resolved target and asks before publishing, so
+  read the banner.
 
   ## Usage
 
       # Show the target, sync, confirm, publish
-      MIX_ENV=dev_cli mix cms.content.publish
+      MIX_ENV=harness mix cms.content.publish
 
       # A different project
-      MIX_ENV=dev_cli mix cms.content.publish --project "Get Ai Traffic"
+      MIX_ENV=harness mix cms.content.publish --project "Get Ai Traffic"
 
       # Parse and stage only. No S3 writes, no pull trigger.
-      MIX_ENV=dev_cli mix cms.content.publish --sync-only
+      MIX_ENV=harness mix cms.content.publish --sync-only
 
       # Skip the confirmation prompt (CI, scripts)
-      MIX_ENV=dev_cli mix cms.content.publish --yes
+      MIX_ENV=harness mix cms.content.publish --yes
 
       # Send a specific deploy key, when the target server's DEPLOY_KEY env var
       # differs from the one stored on the project. Not persisted.
-      MIX_ENV=prod_cli mix cms.content.publish --deploy-key "$DEPLOY_KEY"
+      MIX_ENV=harness mix cms.content.publish --deploy-key "$DEPLOY_KEY"
 
   A file with frontmatter errors is staged as an error row and blocks the
   publish. The task names every offending file so the fix is a re-run away.
@@ -133,11 +131,11 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
     unless adapter == Ecto.Adapters.SQLite3 do
       Mix.shell().error("""
-      Content publishing needs a CLI env (SQLite), got #{inspect(adapter)}.
+      Content publishing needs the harness env (SQLite), got #{inspect(adapter)}.
 
       Re-run as:
 
-          MIX_ENV=dev_cli mix cms.content.publish
+          MIX_ENV=harness mix cms.content.publish
       """)
 
       System.halt(1)

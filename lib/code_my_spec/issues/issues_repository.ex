@@ -328,7 +328,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
 
   ## Filtering in Elixir rather than in SQL
 
-  `CodeMySpec.Repo` runs on Postgres normally and on SQLite in `cli_demo`, and
+  `CodeMySpec.Repo` runs on Postgres normally and on SQLite in `harness`, and
   the two disagree about what a `binary_id` is on the wire — Postgres stores a
   `uuid` needing `::text` to pattern-match, SQLite a string that matches
   directly. A fragment for either crashes the other, which is `61351c19`

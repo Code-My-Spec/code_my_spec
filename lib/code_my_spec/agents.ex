@@ -1515,6 +1515,44 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  # Work an agent ignored three times is held back from it, and main is told
+  # (criterion 1741), so a person or main can route it elsewhere.
+  defp tell_main_held_back(scope, agent, settled_at) do
+    agent.id
+    |> Offers.settled_since(settled_at)
+    |> Enum.filter(&(&1.next_step == "held_back"))
+    |> Enum.each(fn offer ->
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "Held back from the #{agent.role} agent #{agent.id}: `#{offer.subject_key}`, offered " <>
+          "#{Offers.held_after()} times and not taken. It is still offered to its teammates.",
+        offer: {:stalled, {"agent", agent.id}}
+      )
+    end)
+  end
+
+  @doc """
+  An agent declining an offer, with its reason (criterion 1738): `offer_id`,
+  or its newest open offer when nil. The offer settles as declined, the work
+  is held back from this agent, and main is told.
+  """
+  @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
+          {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
+  def reject_offer(%Scope{} = scope, agent_id, offer_id, reason) do
+    with {:ok, offer} <- Offers.reject(agent_id, offer_id, reason) do
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
+          "#{offer.subject_key}`. Reason: #{reason}",
+        offer: {:stalled, {"agent", agent_id}}
+      )
+
+      {:ok, offer}
+    end
+  end
+
   @doc """
   Tell the project's main agent about `event`, if one is running and `Wake`
   allows it. Delivered from a task, because delivery waits on a turn the caller
@@ -2322,7 +2360,9 @@ defmodule CodeMySpec.Agents do
         {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
 
         # Settled before the stop menu, which may make new offers of its own.
+        settled_at = DateTime.utc_now()
         :ok = Offers.settle_turn(agent)
+        tell_main_held_back(scope, agent, settled_at)
 
         StopDecision.deliver(scope, agent, opts)
 

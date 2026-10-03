@@ -241,7 +241,7 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
       script = File.read!(p.script_path)
 
       assert script =~
-               ~s(export CMS_PROJECT_DIR="#{p.app_dir}"\ncd #{File.cwd!()} && MIX_ENV=dev_sprite mix run --no-halt &),
+               ~s(export CMS_PROJECT_DIR="#{p.app_dir}"\ncd #{File.cwd!()} && MIX_ENV=harness mix run --no-halt &),
              """
              Left on the default, this dev box's own harness-side fixes never reach a
              bare-metal boot — `promote_sync` updates the server this config lives on,

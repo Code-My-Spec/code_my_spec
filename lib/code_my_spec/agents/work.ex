@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -287,12 +288,12 @@ defmodule CodeMySpec.Agents.Work do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
-      turn_prompt = preface <> "\n\n" <> prompt(reserved)
+      turn_prompt = turn_prompt(preface, event, reserved)
 
       offered =
         reserved
         |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, notice_kind(event), subject)
+        |> Offers.record(reserved, notice_kind(event, subject), subject)
 
       case Transport.request_work_turn(
              reserved.working_copy_id,
@@ -314,6 +315,12 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  # A released or denied task's notice is the whole turn (criterion 1864): the
+  # generic "eligible work is available, no task has been selected" beneath
+  # "resume task X" contradicted it.
+  defp turn_prompt(preface, :blocker_resolved, _agent), do: preface
+  defp turn_prompt(preface, _event, agent), do: preface <> "\n\n" <> prompt(agent)
+
   @doc """
   Tell one agent something in a turn when it can take one, and on its thread
   when it cannot — then offer its copy a turn, so a busy agent still reads the
@@ -328,12 +335,107 @@ defmodule CodeMySpec.Agents.Work do
       _not_admissible ->
         agent
         |> Conversations.record_sent_to_agent(notice)
-        |> Offers.record(agent, notice_kind(event), subject)
+        |> Offers.record_or_link(agent, notice_kind(event, subject), subject)
 
         if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, event)
         :ok
     end
   end
+
+  @doc """
+  Offer an idle agent back the tasks a resolved blocker released — only those
+  its work now includes (criterion 1863). `header` says what resolved, `detail`
+  is the decider's answer when there is one. `:subject` records the offer on
+  something other than the task — a denied tap-out (criterion 1672).
+
+  A released task whose requirement still waits on something is not offered:
+  "resume it" would send the agent to `start_task` for a task it is refused.
+  It is told what the task waits on instead, and `offer/2` offers the task
+  once the graph does.
+  """
+  @spec wake_released(Scope.t(), Agent.t(), [map()], String.t(), String.t() | nil, keyword()) ::
+          :ok
+  def wake_released(scope, %Agent{} = agent, released, header, detail \\ nil, opts \\ []) do
+    execution = work_for(scope, agent.role, agent)
+
+    {waiting, ready} = Enum.split_with(released, &still_waiting?(&1, execution))
+
+    if waiting != [],
+      do: note_released(agent, with_detail(waiting_notice(header, waiting, execution), detail))
+
+    case ready do
+      [] ->
+        if agent.working_copy_id,
+          do: consider_copy(scope, agent.working_copy_id, :blocker_resolved)
+
+        :ok
+
+      [task | _] ->
+        notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
+        subject = Keyword.get(opts, :subject) || {"task", task.id}
+        wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
+    end
+  end
+
+  # Waiting only on its own story's evidence: the agent's work is that story
+  # and the task's node is not in its actionable set. A task the graph cannot
+  # place resumes as it always did.
+  defp still_waiting?(%{story_id: story_id} = task, %{story: %{id: story_id}} = execution)
+       when not is_nil(story_id),
+       do: not Enum.any?(execution.actionable, &task_on_node?(task, &1))
+
+  defp still_waiting?(_task, _execution), do: false
+
+  defp waiting_notice(header, waiting, execution) do
+    "#{header}, but #{task_list(waiting)} is not ready to resume: it waits on " <>
+      "#{waits_on(execution)}. Do not start it yet; it is offered to you when it opens."
+  end
+
+  defp waits_on(%{blockers: [_ | _] = blockers}),
+    do: Enum.map_join(blockers, "; ", &blocker_phrase/1)
+
+  defp waits_on(%{reason: reason}) when is_binary(reason) and reason != "", do: reason
+  defp waits_on(_execution), do: "prerequisites that are not satisfied yet"
+
+  defp blocker_phrase(blocker) do
+    [Map.get(blocker, :name), Map.get(blocker, :entity_name)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" on ")
+  end
+
+  # The exact call that resumes each task (probe 1867): naming the task by id
+  # alone sent agents looking for which story it was on, and one called
+  # `start_task` with no entity at all.
+  defp resume_instruction(scope, tasks) do
+    "resume " <>
+      Enum.map_join(tasks, "; ", fn task ->
+        "task #{task.id} with `start_task(#{start_args(scope, task)})`"
+      end) <> "."
+  end
+
+  defp start_args(scope, %{story_id: story_id} = task) when not is_nil(story_id) do
+    number =
+      case CodeMySpec.Stories.get_story(scope, story_id) do
+        %{number: number} when is_integer(number) -> number
+        _ -> story_id
+      end
+
+    ~s(requirement_name: "#{task.requirement_name}", entity_type: "story", entity_id: "#{number}")
+  end
+
+  defp start_args(_scope, %{component_module_name: module} = task) when is_binary(module),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "component", module_name: "#{module}")
+
+  defp start_args(_scope, task), do: ~s(requirement_name: "#{task.requirement_name}")
+
+  defp task_list(tasks),
+    do: Enum.map_join(tasks, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
+
+  defp with_detail(notice, detail) when is_binary(detail) and detail != "",
+    do: notice <> "\n\n" <> detail
+
+  defp with_detail(notice, _detail), do: notice
 
   @doc """
   Tell an agent holding an active task that a blocked one was released, without
@@ -346,9 +448,10 @@ defmodule CodeMySpec.Agents.Work do
     :ok
   end
 
-  @doc "The offer kind a notice carried under `event` is recorded as."
-  def notice_kind(:question_answered), do: :answer
-  def notice_kind(_event), do: :unblocked
+  @doc "The offer kind a notice carried under `event` on `subject` is recorded as."
+  def notice_kind(:question_answered, _subject), do: :answer
+  def notice_kind(_event, {"tap_out", _id}), do: :denial
+  def notice_kind(_event, _subject), do: :unblocked
 
   @doc """
   Offer `agent` a work turn if it is idle and `Wake` allows `event` — a
@@ -361,7 +464,7 @@ defmodule CodeMySpec.Agents.Work do
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
-      turn_prompt = offer_prompt(reserved, subject)
+      turn_prompt = offer_prompt(scope, reserved, subject)
 
       # Recorded as well as sent, and recorded first — the same reasoning as
       # `StopDecision.send_to/3`, which records because it dispatches through
@@ -522,11 +625,14 @@ defmodule CodeMySpec.Agents.Work do
       declined_offer_count: 1
     }
 
+  # Questions-only offers still go quiet after one decline (b7a705ee). Graph
+  # work no longer does: the ladder in `Offers` escalates it and then holds it
+  # back from this agent alone (criteria 1739–1741).
   defp decline_attrs(scope, agent, turn_started_at) do
     if declined?(scope, agent, turn_started_at) do
       case offer(scope, agent) do
-        {:work, fingerprint, _subject} -> streak(agent, fingerprint)
-        :none -> cleared()
+        {:work, fingerprint, {"questions", nil}} -> streak(agent, fingerprint)
+        _graph_work_or_none -> cleared()
       end
     else
       cleared()
@@ -696,7 +802,7 @@ defmodule CodeMySpec.Agents.Work do
   # questions when there is no graph work.
   defp offer_subject(agent, nodes) do
     case released_tasks(agent, nodes) do
-      [task | _] -> {"blocker", task.blocker_id}
+      [task | _] -> released_subject(task)
       [] -> graph_subject(nodes)
     end
   end
@@ -715,19 +821,93 @@ defmodule CodeMySpec.Agents.Work do
     end)
   end
 
-  defp offer_kind({"blocker", _id}), do: :unblocked
+  # The same subject the release recorded, so the two supersede each other.
+  defp released_subject(%{blocker_type: :tap_out, blocker_id: id}), do: {"tap_out", id}
+  defp released_subject(task), do: {"task", task.id}
+
+  defp offer_kind({"tap_out", _id}), do: :denial
+  defp offer_kind({"task", _id}), do: :unblocked
   defp offer_kind(_subject), do: :work
 
-  defp offer_prompt(agent, {"blocker", id}) do
-    tasks =
-      agent.tasks
-      |> Enum.filter(&(&1.status == :blocked and &1.blocker_id == id))
-      |> Enum.map_join("; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
-
-    "Your blocker #{id} was released; resume #{tasks} with `start_task`."
+  defp offer_prompt(scope, agent, {"task", id}) do
+    tasks = Enum.filter(agent.tasks, &(&1.id == id))
+    "Your blocker was released; #{resume_instruction(scope, tasks)}"
   end
 
-  defp offer_prompt(agent, _subject), do: prompt(agent)
+  defp offer_prompt(scope, agent, {"tap_out", id}) do
+    tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
+    "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
+  end
+
+  defp offer_prompt(scope, agent, {"requirement", key}) do
+    case Offers.standing(agent.id)[key] do
+      %{ignored: 1} -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
+      %{ignored: n} when n > 1 -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
+      _first -> prompt(agent)
+    end
+  end
+
+  defp offer_prompt(_scope, agent, _subject), do: prompt(agent)
+
+  # The second offer of the same work says more about it (criterion 1739).
+  defp detail(scope, agent, key) do
+    case Enum.find(offerable(scope, agent), &(node_key(&1) == key)) do
+      nil ->
+        ""
+
+      node ->
+        """
+        You were offered `#{node.name}` on #{entity(node)} last time and did not take it.
+
+        Why it matters: #{why(node)}
+        #{prerequisites_line(node)}Where to read: `get_next_requirement` lists it, and `start_task` on it returns the full instructions.
+        If it is not yours to do, call `reject_offer` with your reason rather than leaving it.
+        """
+        |> String.trim()
+    end
+  end
+
+  # The third names what else it could take (criterion 1740).
+  defp alternatives(scope, agent, key) do
+    others =
+      scope
+      |> offerable(agent)
+      |> Enum.reject(&(node_key(&1) == key))
+      |> Enum.take(5)
+
+    base = detail(scope, agent, key)
+
+    case others do
+      [] ->
+        base
+
+      _ ->
+        base <>
+          "\n\nOther work you could take instead:\n" <>
+          Enum.map_join(others, "\n", &"- `#{&1.name}` on #{entity(&1)}")
+    end
+  end
+
+  defp entity(node), do: "#{node.entity_type} #{node.entity_name || node.entity_id}"
+
+  defp why(%{description: description}) when is_binary(description) and description != "",
+    do: description |> String.trim() |> String.trim_trailing(".") |> Kernel.<>(".")
+
+  defp why(_node), do: "it is the next requirement for your role here."
+
+  # Prerequisites are definition ids within the entity's graph; named from it.
+  defp prerequisites_line(%{prerequisites: [_ | _] = ids} = node) do
+    case node |> definitions() |> Enum.filter(&(&1.id in ids)) |> Enum.map(& &1.name) do
+      [] -> ""
+      names -> "It follows #{Enum.map_join(names, ", ", &"`#{&1}`")}, which are done.\n"
+    end
+  end
+
+  defp prerequisites_line(_node), do: ""
+
+  defp definitions(%{entity_type: "story"}), do: RequirementDefinitionData.story_graph()
+  defp definitions(%{entity_type: "project"}), do: RequirementDefinitionData.project_graph()
+  defp definitions(_node), do: []
 
   defp questions_only?({"questions", nil}), do: true
   defp questions_only?(_subject), do: false
@@ -862,9 +1042,21 @@ defmodule CodeMySpec.Agents.Work do
   # The nodes themselves rather than a boolean, so the offer can be fingerprinted.
   defp graph_work(scope, agent) do
     scope
-    |> claimable_work(agent)
+    |> offerable(agent)
     |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
+
+  # Claimable work less what this agent ignored three times or declined
+  # (criterion 1741): held back from it alone, so a teammate is still offered it.
+  defp offerable(scope, agent) do
+    standing = Offers.standing(agent.id)
+
+    scope
+    |> claimable_work(agent)
+    |> Enum.reject(&match?(%{held?: true}, standing[node_key(&1)]))
+  end
+
+  defp node_key(node), do: "#{node.entity_type}:#{node.entity_id}:#{node.name}"
 
   @doc """
   The work for one caller: `Requirements.story_execution/4`'s status, its

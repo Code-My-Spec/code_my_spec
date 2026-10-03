@@ -200,9 +200,17 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert prompt =~ "mix phx.routes"
     end
 
-    test "includes server startup instructions", %{scope: scope, task: task} do
+    test "includes server startup instructions, via the tracked tool not a raw shell server", %{
+      scope: scope,
+      task: task
+    } do
       assert {:ok, prompt} = QaApp.command(scope, task)
-      assert prompt =~ "mix phx.server"
+      assert prompt =~ "ensure_app_running"
+
+      # 83aa6402: a hand-started `mix phx.server &` outlives the turn and
+      # starves the machine's shared analyzer slot. Only ever mentioned here
+      # to say not to use it.
+      assert prompt =~ "Do not start it by hand with `mix phx.server &`"
     end
 
     test "instructs agent to dispatch qa subagent", %{scope: scope, task: task} do

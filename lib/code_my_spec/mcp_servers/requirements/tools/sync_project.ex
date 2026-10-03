@@ -68,7 +68,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   # ordinary `observations` path, and the server reconciles it — seconds for a
   # few thousand files. Same shape as `run_analysis`, which is the other thing
   # the server asks a harness to do.
+  #
+  # The component half runs here too, in full: it reads the file rows the
+  # server already holds, so a component main's code no longer names is pruned
+  # without waiting for a manifest that changes something (14f4f837).
   defp remote_sync(scope, frame) do
+    {:ok, _components} = FileComponentSync.sync_from_files(scope)
+
     case Analysis.request_rescan(scope) do
       :ok ->
         text = """
@@ -83,13 +89,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
         seconds, the harness log names what it scanned and the server log names \
         what it reconciled.
 
-        If you deleted a spec to remove a component and the component is still \
-        there, that is not this failing. A component survives while **any** \
-        checkout still carries its spec — it is only an orphan in the checkout \
-        holding the file to resolve it with. Your deletion has removed this \
-        copy's row; the component goes when the deletion reaches the others. \
-        Rescanning again will not change that, and neither will rescanning from \
-        somewhere else.
+        Components were reconciled against main's code as it stands: a \
+        discovered component whose module main no longer has is gone, whatever \
+        another checkout still holds. A module only on a feature copy becomes a \
+        component once it is promoted.
         """
 
         {:reply, Response.tool() |> Response.text(text), frame}

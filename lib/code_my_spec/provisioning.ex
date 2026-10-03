@@ -59,6 +59,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
+      CodeMySpec.Telemetry,
       CodeMySpec.TempFile,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils

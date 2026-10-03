@@ -5999,7 +5999,13 @@ defmodule CodeMySpecSpex.Case do
       CodeMySpec.Embeddings.HexPackageFetch,
       # Story 1116's ClickHouse telemetry reads. Same reasoning, added
       # before any spex could find the omission for us.
-      CodeMySpec.Observability.ClickHouseClient
+      CodeMySpec.Observability.ClickHouseClient,
+      # Story 1089: `CodeMySpec.Uploads.upload/3` PUTs QA evidence to a
+      # presigned URL — the half of that split a browser performs for
+      # every other presigned-upload caller, done here instead since the
+      # harness has no browser. Added before any spex could find the
+      # omission for us.
+      CodeMySpec.Uploads
     ]
   end
 
@@ -6302,6 +6308,22 @@ defmodule CodeMySpecSpex.Case do
     Fixtures.set_devops(scope, :off)
 
     context
+  end
+
+  @doc """
+  Every setup option except telemetry.
+
+  For criteria written before telemetry existed, asserting a full run
+  finishes or a health rollup's problem count -- telemetry's own probe is a
+  deliberate stub until `CodeMySpec.Telemetry` has a real collector behind
+  it, so leaving it enabled here would charge these criteria for a step
+  they know nothing about and have no way to finish.
+  """
+  def devops_without_telemetry(%{scope: scope} = context) do
+    options = CodeMySpec.Provisioning.available_options() -- [:telemetry]
+    {:ok, project} = CodeMySpec.Provisioning.put_setup_options(scope, options)
+
+    %{context | scope: %{scope | active_project: project}}
   end
 
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do

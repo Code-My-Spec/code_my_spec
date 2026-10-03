@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :devops_without_telemetry
   setup :connect_providers
 
   spex "One broken thing shows at the top without reading the list", criterion: 831 do

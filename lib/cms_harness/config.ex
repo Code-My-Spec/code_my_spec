@@ -9,27 +9,19 @@ defmodule CmsHarness.Config do
 
   alias CmsHarness.Credentials
 
-  # The server this build points at when nothing else says.
+  # The server this harness points at when nothing else says.
   #
-  # `compile_env` rather than reading the build environment through Mix: Mix is
-  # not bundled in a release, and a build-environment check in `lib/` once
-  # shipped to prod and crashed every new OAuth user for days.
-  # `test/release_safety_test.exs` guards the whole of `lib/` against that, and
-  # scans comments too — so this says it in words rather than in the call it is
-  # avoiding. Same intent, expressed in a way that survives being packaged.
+  # A runtime read, not `compile_env`: one build serves both the installed
+  # release and `just harness`, so the default has to come from where the
+  # process is started. `config/runtime.exs` fills it from `CMS_SERVER_URL`,
+  # defaulting to codemyspec.com, under the harness env.
   #
-  # It defaults to localhost because that is what an unconfigured build is: a
-  # checkout on somebody's machine. Every environment with a real server names
-  # it, next to the `:base_url` it already sets.
-  @default_server_url Application.compile_env(
-                        :code_my_spec,
-                        :harness_default_server_url,
-                        "http://localhost:4000"
-                      )
-
-  @doc "The server this build points at when nothing overrides it."
+  # Localhost when unset, because that is what an unconfigured env is: a
+  # checkout on somebody's machine, or the test suite.
+  @doc "The server this harness points at when nothing overrides it."
   @spec default_server_url() :: String.t()
-  def default_server_url, do: @default_server_url
+  def default_server_url,
+    do: Application.get_env(:code_my_spec, :harness_default_server_url, "http://localhost:4000")
 
   @doc """
   Base URL of the CodeMySpec server, e.g. `https://codemyspec.com`.
@@ -52,7 +44,7 @@ defmodule CmsHarness.Config do
        from the rest of the application.
     3. `:base_url` — what this application means by "the server" everywhere else
        (`OAuthClient.get_server_url/0`, the issues client), wired per-env.
-    4. `default_server_url/0` — the build environment's own server.
+    4. `default_server_url/0` — `:harness_default_server_url`, set at runtime.
 
   So a harness built from this repo is pointed correctly without being told, and
   each layer above only exists to say something more specific than the one below
@@ -64,7 +56,7 @@ defmodule CmsHarness.Config do
       System.get_env("CMS_SERVER_URL") ||
       Application.get_env(:code_my_spec, :harness_server_url) ||
       Application.get_env(:code_my_spec, :base_url) ||
-      @default_server_url
+      default_server_url()
   end
 
   @doc """
@@ -173,10 +165,9 @@ defmodule CmsHarness.Config do
   # Two things have to happen before the variable below can go, and neither is
   # a rename: `server_url/0` needs a root to be asked about, and every checkout
   # needs `server_url` in its file (`mix harness.onboard --server-url` records
-  # it; none on this machine has one yet). Until then `dev_cli`'s compiled-in
-  # `base_url` is `https://dev.codemyspec.com`, so cutting the variable would
-  # not fail — it would quietly point every local harness at the shared dev
-  # server.
+  # it; none on this machine has one yet). Until then the harness env's
+  # `base_url` falls back to `https://codemyspec.com`, so cutting the variable
+  # would not fail — it would quietly point every dev harness at production.
 
   @spec user_token() :: {:ok, String.t()} | {:error, :no_credential}
   def user_token do

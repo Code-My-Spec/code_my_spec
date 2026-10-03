@@ -9,7 +9,7 @@ defmodule CodeMySpecDesktop.Application do
 
   use Boundary,
     top_level?: true,
-    deps: [CmsHarness, CodeMySpecDesktop, CodeMySpecLocalWeb, CodeMySpecWeb]
+    deps: [CmsHarness, CodeMySpecDesktop, CodeMySpecWeb]
 
   use Application
 
@@ -18,7 +18,7 @@ defmodule CodeMySpecDesktop.Application do
 
   @impl true
   def start(type, _args) do
-    CodeMySpecLocalWeb.Application.prepare_host()
+    CmsHarness.Application.prepare_host()
     FirstBoot.ensure_database()
     CodeMySpecWeb.Application.start(type, children: &children/1)
   end

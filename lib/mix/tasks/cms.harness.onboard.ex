@@ -585,8 +585,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Onboarding a checkout that is not under the one this build came from.
   #
   # The id is minted against `Config.server_url()`, which resolves from *this*
-  # build's env and app config — `@default_server_url` is a `compile_env`, so a
-  # dev build says localhost and the packaged release says production. Nothing
+  # process's env and app config — `CMS_SERVER_URL`, or the harness env's
+  # runtime default, codemyspec.com. Nothing
   # about the target root is consulted, and a checkout has no way to name the
   # server it belongs to.
   #

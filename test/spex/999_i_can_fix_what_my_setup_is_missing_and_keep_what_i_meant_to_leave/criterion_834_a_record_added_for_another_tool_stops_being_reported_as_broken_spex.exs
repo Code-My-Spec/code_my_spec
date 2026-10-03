@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8304Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :devops_without_telemetry
   setup :connect_providers
 
   spex "A record added for another tool stops being reported as broken", criterion: 834 do

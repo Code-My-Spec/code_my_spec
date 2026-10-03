@@ -4,10 +4,10 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.317",
+      version: "2.0.323",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
-      start_permanent: Mix.env() in [:prod, :prod_cli, :desktop],
+      start_permanent: Mix.env() in [:prod, :harness, :desktop],
       aliases: aliases(),
       deps: deps(),
       compilers: compilers(Mix.env()),
@@ -43,8 +43,8 @@ defmodule CodeMySpec.MixProject do
 
   defp app_module do
     cond do
-      Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] ->
-        {CodeMySpecLocalWeb.Application, []}
+      Mix.env() == :harness ->
+        {CmsHarness.Application, []}
 
       Mix.env() == :desktop ->
         {CodeMySpecDesktop.Application, []}
@@ -54,8 +54,6 @@ defmodule CodeMySpec.MixProject do
     end
   end
 
-  # Specifies which paths to compile per environment.
-  # Release modules (Burrito steps) only compile in prod_cli.
   # The spex assert against the event-based graph.
   #
   # `graph_event_is_source` decides which writer fills the tables readers read.
@@ -75,11 +73,8 @@ defmodule CodeMySpec.MixProject do
     Application.put_env(:code_my_spec, :graph_event_is_source, true)
   end
 
+  # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
-  defp elixirc_paths(:dev_cli), do: ["lib", "lib_cli"]
-  defp elixirc_paths(:dev_sprite), do: ["lib", "lib_cli"]
-  defp elixirc_paths(:prod_cli), do: ["lib", "lib_cli"]
-  defp elixirc_paths(:cli_demo), do: ["lib", "lib_cli"]
   defp elixirc_paths(_), do: ["lib"]
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
@@ -116,7 +111,7 @@ defmodule CodeMySpec.MixProject do
       {:ecto_sqlite3, "~> 0.18"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_reload, "~> 1.2", only: [:dev, :dev_cli, :cli_demo, :demo]},
+      {:phoenix_live_reload, "~> 1.2", only: [:dev, :demo]},
       {:phoenix_live_view, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
@@ -125,8 +120,8 @@ defmodule CodeMySpec.MixProject do
       # ResizeObserver addition locked up mobile Safari — a maintained
       # library is less to keep re-debugging by hand.
       {:live_pane, "~> 0.6.6"},
-      {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
-      {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
+      {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :demo]},
+      {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :demo]},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
@@ -159,7 +154,7 @@ defmodule CodeMySpec.MixProject do
       {:sexy_spex,
        git: "https://github.com/Code-My-Spec/spex.git",
        branch: "feature/reusable-givens",
-       only: [:dev, :dev_cli, :test]},
+       only: [:dev, :test]},
       # git rather than hex, so the harness and the library it shares a contract
       # with move together. `Onboarding.databases/2` lists the partitions and
       # `TestDatabase.partition_for/2` uses them; a release boundary between the
@@ -241,14 +236,13 @@ defmodule CodeMySpec.MixProject do
       {:nx, "~> 0.9"},
       {:flame, "~> 0.1"},
 
-      # CLI release
+      # Harness release
       {:burrito,
        github: "Code-My-Spec/burrito",
        ref: "d44eb28befa146f1c12f6b7b4a2cbc598b3c9686",
-       only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite],
+       only: [:harness],
        runtime: false,
-       override: true},
-      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]}
+       override: true}
     ]
   end
 
@@ -262,13 +256,10 @@ defmodule CodeMySpec.MixProject do
     ] ++ cli_release()
   end
 
-  # dev_sprite ships the same release as prod_cli — a sprite is the CLI harness,
-  # just compiled against Postgres instead of SQLite (see config/dev_sprite.exs).
-  # The adapter is a compile-time choice (DocEmbedding keys its column types off
-  # it), so a sprite needs its own build rather than a runtime flag on the
-  # published binary.
+  # The harness release. The name predates the harness and stays: the brew
+  # formula and the MSI both run `bin/code_my_spec_cli`.
   defp cli_release do
-    if Mix.env() in [:prod_cli, :dev_sprite] do
+    if Mix.env() == :harness do
       [
         code_my_spec_cli: [
           steps: [:assemble, &copy_bcrypt_nif_dll/1, &copy_mcp_relay/1, :tar]
