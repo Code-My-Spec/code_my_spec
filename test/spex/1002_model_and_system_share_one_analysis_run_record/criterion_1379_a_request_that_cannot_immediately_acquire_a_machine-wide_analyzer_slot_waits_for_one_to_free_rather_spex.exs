@@ -20,7 +20,13 @@ defmodule CodeMySpecSpex.Story839.Criterion3440Spex do
   dispatched run reaches it, and that is true either way.
   """
 
-  use CodeMySpecSpex.Case
+  # Explicitly sync: `CmsHarness.AnalysisSlots` is a machine-wide semaphore
+  # by design (its own moduledoc: coordinating analyzer runs *across* every
+  # working copy one harness serves, not per-test state) -- two instances of
+  # this file running concurrently are two processes racing for the one real
+  # resource the criterion is about, which is correct production behavior
+  # and a guaranteed `{:already_started, pid}` collision as a test.
+  use CodeMySpecSpex.Case, async: false
 
   import CmsHarnessTest.Projects,
     only: [
@@ -35,7 +41,8 @@ defmodule CodeMySpecSpex.Story839.Criterion3440Spex do
   alias CmsHarnessTest.FakeServer
   alias CmsHarnessTest.SlotHolder
 
-  spex "A request that cannot immediately get a machine-wide slot waits for one", criterion: 1379 do
+  spex "A request that cannot immediately get a machine-wide slot waits for one",
+    criterion: 1379 do
     scenario "the machine's one slot is already held when a run is dispatched" do
       given_ "this machine allows only one analyzer slot", context do
         Application.put_env(:code_my_spec, :analysis_slots, 1)

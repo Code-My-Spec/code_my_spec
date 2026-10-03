@@ -25,7 +25,13 @@ defmodule CodeMySpecSpex.Story839.Criterion3439Spex do
   fact the scenario controls, not a race against a timer.
   """
 
-  use CodeMySpecSpex.Case
+  # Explicitly sync: `CmsHarness.AnalysisSlots` is a machine-wide semaphore
+  # by design (its own moduledoc: coordinating analyzer runs *across* every
+  # working copy one harness serves, not per-test state) -- two instances of
+  # this file running concurrently are two processes racing for the one real
+  # resource the criterion is about, which is correct production behavior
+  # and a guaranteed `{:already_started, pid}` collision as a test.
+  use CodeMySpecSpex.Case, async: false
 
   import CmsHarnessTest.Projects,
     only: [
