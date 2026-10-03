@@ -242,11 +242,10 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     ## Architecture Reference
 
-    | Need | File |
+    | Need | Where |
     |---|---|
-    | Component graph with types and deps | `#{base}/architecture/overview.md` |
-    | Namespace hierarchy | `#{base}/architecture/namespace_hierarchy.md` |
-    | Dependency diagram (Mermaid) | `#{base}/architecture/dependency_graph.mmd` |
+    | Component graph with types and deps | `show_architecture_overview` tool |
+    | One component and its dependencies | `get_component` tool |
     | Architecture decisions | `#{base}/architecture/decisions/` |
     | Implementation status | `#{base}/status/#{app}.md` |
     """

@@ -29,8 +29,8 @@ procedure.
   arrangement.
 - `priv/knowledge/bdd/spex/writing_a_spex.md` — file layout, DSL,
   setup template.
-- `.code_my_spec/architecture/proposal.md` — the architecture proposal
-  the agent mines for project-specific denies in step 2.
+- `show_architecture_overview` — the project's contexts, which the
+  agent mines for project-specific denies in step 2.
 
 ## Step 1 — install the framework Credo checks
 
@@ -62,7 +62,7 @@ can mirror its AST traversal in the project-local check.
 This check carries the whole-module deny list — both the universal
 stdlib bypasses and the project's internal contexts.
 
-Read `.code_my_spec/architecture/proposal.md`. Identify internal
+Read the contexts with `show_architecture_overview`. Identify internal
 namespaces specs must NOT reach.
 
 **Baseline (every project should include these):**
@@ -72,7 +72,7 @@ namespaces specs must NOT reach.
 - `Port` — ports talk to external programs; use cassettes for
   CLI-driven steps.
 
-**Project-specific (mine from the architecture proposal):**
+**Project-specific (mine from the architecture):**
 
 - `<App>.Repo` — direct DB access bypasses the public surface.
 - Every `<App>` context that the spec boundary does NOT dep on. The

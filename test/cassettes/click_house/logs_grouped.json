@@ -1,0 +1,67 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-10-02T13:18:34.228859Z",
+      "request": {
+        "body": "SELECT Body AS message, count() AS count, max(Timestamp) AS last_seen\nFROM otel_logs\nWHERE Timestamp >= {since:DateTime64} AND SeverityText IN ('ERROR', 'FATAL')\nGROUP BY Body\nORDER BY count DESC\nLIMIT {limit:UInt32}\n",
+        "body_type": "text",
+        "headers": {
+          "user-agent": [
+            "req/0.7.4"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-user": [
+            "tel_test_uat"
+          ]
+        },
+        "method": "POST",
+        "query_string": "param_limit=10&param_since=2025-10-01+00%3A00%3A00",
+        "uri": "http://localhost:18123"
+      },
+      "response": {
+        "body_json": {
+          "count": "2",
+          "last_seen": "2025-10-02 08:00:10.000000000",
+          "message": "Ecto.QueryError: column does not exist"
+        },
+        "body_type": "json",
+        "headers": {
+          "connection": [
+            "Keep-Alive"
+          ],
+          "content-type": [
+            "application/x-ndjson; charset=UTF-8"
+          ],
+          "date": [
+            "Fri, 02 Oct 2026 13:18:34 GMT"
+          ],
+          "keep-alive": [
+            "timeout=10, max=9999"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-clickhouse-format": [
+            "JSONEachRow"
+          ],
+          "x-clickhouse-query-id": [
+            "184185e4-b621-4892-99d3-e257dbd11e8d"
+          ],
+          "x-clickhouse-server-display-name": [
+            "dff8d1416c45"
+          ],
+          "x-clickhouse-summary": [
+            "{\"read_rows\":\"3\",\"read_bytes\":\"142\",\"written_rows\":\"0\",\"written_bytes\":\"0\",\"total_rows_to_read\":\"3\",\"result_rows\":\"0\",\"result_bytes\":\"0\",\"elapsed_ns\":\"5823459\"}"
+          ],
+          "x-clickhouse-timezone": [
+            "UTC"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

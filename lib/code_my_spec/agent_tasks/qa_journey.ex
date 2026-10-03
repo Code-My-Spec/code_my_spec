@@ -35,9 +35,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
       qa_plan_exists: Environments.file_exists?(env, Paths.qa_plan()) == true,
       journey_plan_exists: Environments.file_exists?(env, Paths.qa_journey_plan()) == true,
       journey_result_exists: Environments.file_exists?(env, Paths.qa_journey_result()) == true,
-      existing_tests: list_journey_tests(env),
-      architecture_exists:
-        Environments.file_exists?(env, Path.join(Paths.architecture_dir(), "overview.md")) == true
+      existing_tests: list_journey_tests(env)
     }
 
     {:ok, build_prompt(ctx)}
@@ -113,35 +111,24 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   end
 
   defp build_context_section(ctx) do
-    architecture_path = Path.join(Paths.architecture_dir(), "overview.md")
-
     items =
       [
         ctx.qa_plan_exists && "- `#{Paths.qa_plan()}` — QA infrastructure",
-        ctx.architecture_exists && "- `#{architecture_path}` — component graph",
+        "- `show_architecture_overview` — component graph",
         ctx.journey_plan_exists && "- `#{Paths.qa_journey_plan()}` — existing plan",
-        ctx.journey_result_exists && "- `#{Paths.qa_journey_result()}` — existing result"
+        ctx.journey_result_exists && "- `#{Paths.qa_journey_result()}` — existing result",
+        !ctx.qa_plan_exists &&
+          "- No QA plan yet: read the app's router and config for routes, auth, and features"
       ]
       |> Enum.filter(& &1)
 
-    case items do
-      [] ->
-        """
-        ## Context
+    """
+    ## Context
 
-        No QA plan or architecture overview found. Read the app's router
-        and config directly to understand routes, auth, and features.\
-        """
+    Read these before designing or executing journeys:
 
-      _ ->
-        """
-        ## Context
-
-        Read these before designing or executing journeys:
-
-        #{Enum.join(items, "\n")}\
-        """
-    end
+    #{Enum.join(items, "\n")}\
+    """
   end
 
   defp build_stories_section(%{stories: []}) do

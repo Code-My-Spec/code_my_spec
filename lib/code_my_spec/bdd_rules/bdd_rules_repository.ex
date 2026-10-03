@@ -159,6 +159,7 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
       Repo.update_all(from(c in Criterion, where: c.rule_id == ^rule_id),
         set: [retired_at: DateTime.utc_now(), rule_id: nil]
       )
+
       delete_or_rollback(rule)
     end)
   end
@@ -170,11 +171,24 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
     end
   end
 
+  # Live criteria only, and a spec only when its file is still tracked
+  # (0b23ac19): a retired criterion has no work to protect, and a `spec_path`
+  # whose file is gone protects nothing — both refused a cleanup with no reason.
   defp verified_or_specced(rule_id) do
-    Criterion
-    |> where(
-      [c],
-      c.rule_id == ^rule_id and (c.verified == true or not is_nil(c.spec_path))
+    spec_on_file =
+      from(f in CodeMySpec.Files.File,
+        where: f.project_id == parent_as(:story).project_id,
+        where: f.path == parent_as(:criterion).spec_path,
+        select: 1
+      )
+
+    from(c in Criterion,
+      as: :criterion,
+      join: s in Story,
+      as: :story,
+      on: s.id == c.story_id,
+      where: c.rule_id == ^rule_id and is_nil(c.retired_at),
+      where: c.verified == true or exists(spec_on_file)
     )
     |> Repo.all()
   end

@@ -55,7 +55,6 @@ defmodule CodeMySpec.Agents.Wake do
     * `:resume` — a task it holds with no turn open.
     * `:teammate_question` — a teammate raised a question it answers first.
     * `:findings` — an analysis run's findings it did not ask for.
-    * `:issue_filed` — an issue filed from the widget.
     * `:cadence` — the main agent's check-in timer: one turn a tick, continuous
       main only, carrying the digest and its work offer.
     * `:teammate_stalled` — a teammate stalled: running, no task, no turn, while
@@ -72,7 +71,6 @@ defmodule CodeMySpec.Agents.Wake do
           | :resume
           | :teammate_question
           | :findings
-          | :issue_filed
           | :cadence
           | :teammate_stalled
           | :teammate_died
@@ -96,7 +94,6 @@ defmodule CodeMySpec.Agents.Wake do
     :resume,
     :teammate_question,
     :findings,
-    :issue_filed,
     :cadence,
     :teammate_stalled,
     :teammate_died
@@ -137,7 +134,6 @@ defmodule CodeMySpec.Agents.Wake do
     nudge: :hold,
     cadence: :hold,
     findings: :hold,
-    issue_filed: :hold,
     work_offer: :hold,
     resume: :hold,
     teammate_question: :hold,

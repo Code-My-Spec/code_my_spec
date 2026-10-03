@@ -172,6 +172,10 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
     end
   end
 
+  # A blocked task holds only itself, so the queue beside it still counts.
+  defp doing(%AgentWork{task_status: :blocked, idle?: false} = entry),
+    do: "task: #{entry.task_name} [blocked]; " <> AgentWork.unclaimed_work(entry)
+
   defp doing(%AgentWork{} = entry), do: "task: #{entry.task_name}"
 
   # A machine answering is not an agent working: when every provider refuses,

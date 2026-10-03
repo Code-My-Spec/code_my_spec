@@ -2,8 +2,8 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   @moduledoc """
   Generates and stores embeddings for project documentation.
 
-  Chunks markdown, embeds it through `Embeddings.Serving`, and stores it in
-  `doc_embeddings` through the configured backend's `store_chunk/7`.
+  Chunks markdown and stores it in `doc_embeddings` through the configured
+  backend's `store_chunk/7`, which embeds it.
 
   Content-hash deduplication: unchanged chunks skip re-embedding.
   """
@@ -13,9 +13,7 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   import Ecto.Query
 
   alias CodeMySpec.Embeddings.DocEmbedding
-  alias CodeMySpec.Embeddings.Serving
   alias CodeMySpec.Repo
-  alias Ecto.Adapters.SQL, as: AdaptersSQL
 
   @chunk_size 1500
   @chunk_overlap 200
@@ -122,55 +120,6 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     |> Repo.update_all(set: [file_hash: file_hash])
   end
 
-  @doc """
-  Semantic search across embedded docs. Returns top matches with distance scores.
-  """
-  def search(project_id, query, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 10)
-    source = Keyword.get(opts, :source)
-    source_prefix = Keyword.get(opts, :source_prefix)
-
-    with {:ok, query_embedding} <- generate_embedding(query),
-         {:ok, rows} <- run_search_query(project_id, limit, source, source_prefix, query_embedding) do
-      {:ok, Enum.map(rows, &row_to_result/1)}
-    end
-  end
-
-  defp run_search_query(project_id, limit, source, source_prefix, query_embedding) do
-    vector_json = Jason.encode!(query_embedding)
-    {where_clause, params, filtered?} = build_where(project_id, limit, source, source_prefix)
-
-    sql = """
-    SELECT e.source, e.path, e.chunk_index, e.content
-    FROM doc_embeddings e
-    #{where_clause}
-    ORDER BY vec_distance_cosine(e.embedding, vec_f32(?#{if filtered?, do: 4, else: 3}))
-    LIMIT ?2
-    """
-
-    case AdaptersSQL.query(Repo, sql, params ++ [vector_json]) do
-      {:ok, %{rows: rows}} -> {:ok, rows}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp build_where(project_id, limit, source, _source_prefix) when not is_nil(source) do
-    {"WHERE e.project_id = ?1 AND e.source = ?3", [project_id, limit, source], true}
-  end
-
-  defp build_where(project_id, limit, _source, source_prefix) when not is_nil(source_prefix) do
-    {"WHERE e.project_id = ?1 AND e.source LIKE ?3",
-     [project_id, limit, source_prefix <> "%"], true}
-  end
-
-  defp build_where(project_id, limit, _source, _source_prefix) do
-    {"WHERE e.project_id = ?1", [project_id, limit], false}
-  end
-
-  defp row_to_result([src, path, chunk_index, content]) do
-    %{source: src, path: path, chunk_index: chunk_index, content: content}
-  end
-
   # -- Chunking --
 
   @doc """
@@ -224,19 +173,13 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   # -- Embedding generation --
 
-  # Storage is the one adapter-specific step: sqlite_vec and pgvector differ
-  # on vector literals, placeholders, and the upsert conflict target. It is a
-  # Backend callback, so the configured backend is asked directly rather than
-  # sniffed for — see CodeMySpec.Embeddings.Backend.store_chunk/7.
+  # Storage is a Backend callback, so the configured backend is asked
+  # directly rather than sniffed for — see Embeddings.Backend.store_chunk/7.
   defp generate_and_store(project_id, source, path, index, chunk, hash, file_hash) do
     case Application.get_env(:code_my_spec, :embeddings_backend) do
       nil -> {:error, :embeddings_unavailable}
       backend -> backend.store_chunk(project_id, source, path, index, chunk, hash, file_hash)
     end
-  end
-
-  defp generate_embedding(text) do
-    Serving.embed(text, :search)
   end
 
   # -- Deduplication --

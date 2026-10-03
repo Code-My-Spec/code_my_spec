@@ -279,6 +279,47 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  The scope a call from `agent` acts in: which working copy is part of who is
+  calling (John, ed28189c).
+
+    * No working copy named, and the agent has one in the scope's project — the
+      agent's copy, with its environment (`WorkingCopies.put_scope/2`), exactly
+      as an `X-Harness-Id` would have set it. An agent-only call over the
+      hosted `/mcp/harness` used to carry no environment and every
+      file-touching tool refused it with `:no_environment`.
+    * A copy named that is not the agent's — the named copy stands: it is the
+      connection's own disk. Logged, because the two come from one launch
+      request and disagreeing means something upstream is wrong.
+    * Otherwise unchanged.
+  """
+  @spec scope_for(Scope.t(), Agent.t()) :: Scope.t()
+  def scope_for(%Scope{active_working_copy_id: nil} = scope, %Agent{working_copy_id: id})
+      when is_binary(id) do
+    case WorkingCopies.fetch(id) do
+      {:ok, %{project_id: project_id} = copy} when project_id == scope.active_project_id ->
+        WorkingCopies.put_scope(scope, copy)
+
+      _elsewhere ->
+        scope
+    end
+  end
+
+  def scope_for(
+        %Scope{active_working_copy_id: named} = scope,
+        %Agent{working_copy_id: own} = agent
+      )
+      when is_binary(named) and is_binary(own) and named != own do
+    Logger.warning(
+      "[Agents] agent #{agent.id} called naming working copy #{named} but runs on #{own}; " <>
+        "acting on the named copy"
+    )
+
+    scope
+  end
+
+  def scope_for(%Scope{} = scope, _agent), do: scope
+
+  @doc """
   Who is acting, as an off record names them: the calling agent when there is
   one, otherwise the scope's person.
   """
@@ -463,6 +504,23 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
+  The agents among `agents` a restart caught mid-turn, each with the id of the
+  message that turn was answering (nil when none was recorded).
+
+  Read before `account_for_interrupted_turns/2`, which clears the turn and
+  writes the notice this would otherwise find.
+  """
+  @spec interrupted_turns([Agent.t()]) :: %{Ecto.UUID.t() => Ecto.UUID.t() | nil}
+  def interrupted_turns(agents) when is_list(agents) do
+    for %Agent{turn_started_at: %DateTime{} = at} = agent <- agents, into: %{} do
+      {agent.id, starter_id(Conversations.turn_starter(agent.id, at))}
+    end
+  end
+
+  defp starter_id(%{id: id}), do: id
+  defp starter_id(nil), do: nil
+
+  @doc """
   Tell every agent a restart touched what happened to it.
 
   Called when a harness asks what it should be running, which is the only
@@ -499,12 +557,9 @@ defmodule CodeMySpec.Agents do
 
   defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent) do
     with {:ok, conversation} <- open_conversation(scope, agent) do
-      Conversations.add_message(
-        conversation,
-        :operator,
-        idle_restart_notice(scope, agent),
-        "operator"
-      )
+      conversation
+      |> Conversations.add_message(:operator, idle_restart_notice(scope, agent), "operator")
+      |> Offers.record(agent, :resume, {"restart", nil})
     end
 
     drop_dead_reservation(scope, agent)
@@ -512,7 +567,9 @@ defmodule CodeMySpec.Agents do
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
     with {:ok, conversation} <- open_conversation(scope, agent) do
-      Conversations.add_message(conversation, :operator, interrupted_notice(), "operator")
+      conversation
+      |> Conversations.add_message(:operator, interrupted_notice(), "operator")
+      |> Offers.record(agent, :resume, {"restart", nil})
     end
 
     AgentsRepository.update_agent(scope, agent, %{
@@ -1462,21 +1519,40 @@ defmodule CodeMySpec.Agents do
   Tell the project's main agent about `event`, if one is running and `Wake`
   allows it. Delivered from a task, because delivery waits on a turn the caller
   should not.
-  """
-  @spec notify_main(Scope.t(), Wake.event(), String.t()) :: :ok
-  def notify_main(%Scope{} = scope, event, text) when is_binary(text) do
-    with %Agent{} = main <- main_agent(scope),
-         :ok <- Wake.allow?(scope, main, event) do
-      {:ok, _pid} =
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          message_agent(scope, main.id, text)
-        end)
 
-      :ok
-    else
-      _nobody_or_held -> :ok
+  Options: `:offer` — `{kind, subject}` to record the notice on main's
+  conversation and as an offer (`Offers`), marked undelivered when held or
+  when the send fails.
+  """
+  @spec notify_main(Scope.t(), Wake.event(), String.t(), keyword()) :: :ok
+  def notify_main(%Scope{} = scope, event, text, opts \\ []) when is_binary(text) do
+    case main_agent(scope) do
+      %Agent{} = main -> notify(scope, main, event, text, opts[:offer])
+      nil -> :ok
     end
   end
+
+  defp notify(scope, main, event, text, offer) do
+    offered = offer_notice(main, text, offer)
+
+    case Wake.allow?(scope, main, event) do
+      :ok ->
+        {:ok, _pid} =
+          Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+            scope |> message_agent(main.id, text) |> undelivered_on_failure(offered)
+          end)
+
+        :ok
+
+      _held ->
+        Offers.undelivered(offered)
+    end
+  end
+
+  defp offer_notice(_main, _text, nil), do: nil
+
+  defp offer_notice(main, text, offer),
+    do: main |> Conversations.record_sent_to_agent(text) |> record_offer(main, offer)
 
   # Role as well as copy. This matched on the working copy alone, so "the main
   # agent" was whichever agent happened to be running on the main checkout —
@@ -1828,6 +1904,9 @@ defmodule CodeMySpec.Agents do
       if continuous? do
         GraphWatcher.ensure_watching(scope)
         MainAgent.ensure_cadence(scope)
+        # A person switching an agent on is telling it to work, as a denied
+        # tap-out is: what it last declined does not hold the turn back.
+        {:ok, agent} = Work.clear_decline(scope, agent)
         {:ok, agent, enabled_disposition(scope, agent)}
       else
         {:ok, agent, :paused}

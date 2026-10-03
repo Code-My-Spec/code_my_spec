@@ -471,7 +471,7 @@ defmodule CodeMySpec.Analysis do
         reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
-        Reconciler.fail(run, reason)
+        Reconciler.fail(run, reason, %{output: raw["output"], exit_status: raw["exit_status"]})
         {:error, reason}
     end
   rescue

@@ -676,7 +676,12 @@ defmodule CodeMySpec.WorkingCopies do
       app_status: status,
       app_checked_at: DateTime.utc_now(),
       app_url: url,
-      app_commit: Map.get(attrs, :commit, harness.app_commit)
+      app_commit: Map.get(attrs, :commit, harness.app_commit),
+      # A harness older than reloads names no serving commit; a launch serves
+      # the commit it launched from.
+      app_serving_commit:
+        Map.get(attrs, :serving_commit) ||
+          Map.get(attrs, :commit, harness.app_serving_commit)
     })
     |> announce_graph_change(harness)
   end

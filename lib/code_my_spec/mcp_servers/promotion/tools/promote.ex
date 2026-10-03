@@ -17,7 +17,8 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   # What it does, in order: refuses if this copy is behind main or has
   # uncommitted work; gates on clean analyzer runs at its HEAD (starting any
   # that are missing and answering pending); merges exactly that commit into
-  # the running checkout; restarts the application; reports what it serves.
+  # the running checkout; reloads the application, or restarts it when the
+  # change needs that or `restart` is set; reports what it serves.
   #
   # Promoting *from* the running copy is a restart and nothing else — no merge,
   # no gate, no sweep, because nothing crosses. That is the case where the code
@@ -53,6 +54,8 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
       doc:
         "The story being promoted. Latched and stamped only if its spex pass. " <>
           "Omit for work that is not a story's, such as a fix from an issue."
+
+    field :restart, :boolean, doc: "Restart the app instead of reloading it."
   end
 
   @impl true
@@ -61,7 +64,12 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
       {:ok, scope} ->
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
-        result = Promotion.promote(scope, params[:story_number], notify: frame.assigns[:agent_id])
+        result =
+          Promotion.promote(scope, params[:story_number],
+            notify: frame.assigns[:agent_id],
+            restart: params[:restart] == true
+          )
+
         {:reply, Responses.respond(result), frame}
 
       {:error, _reason} ->

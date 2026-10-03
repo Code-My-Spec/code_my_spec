@@ -25,7 +25,6 @@ defmodule CodeMySpec.Agents.WakeTest do
       :resume,
       :teammate_question,
       :findings,
-      :issue_filed,
       :cadence,
       :teammate_stalled,
       :teammate_died
@@ -44,7 +43,6 @@ defmodule CodeMySpec.Agents.WakeTest do
     :teammate_question,
     :nudge,
     :findings,
-    :issue_filed,
     :cadence,
     :teammate_stalled,
     :teammate_died

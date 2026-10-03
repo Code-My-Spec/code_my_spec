@@ -62,14 +62,16 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.VantageReport
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   @doc """
   The current story's execution state; never falls back to project work.
 
   `withheld?` drops nodes the caller cannot claim, before the wave is cut.
-  `assignment` is whose story: `:copy` (the copy's active story) or
-  `{:agent, story_id}` (the calling agent's own).
+  `assignment` is whose story: `:copy` (the copy's team's story),
+  `{:team, story_id, epic_id}`, `{:bound, story_id, epic_id}` (an agent bound
+  to its active story, offered nothing outside it) or `:project`.
   """
   def story_execution(
         scope,
@@ -123,6 +125,21 @@ defmodule CodeMySpec.Requirements do
   end
 
   defp same_id?(id, other), do: to_string(id) == to_string(other)
+
+  @doc """
+  Whether `node` is the work of story `story_id` at the scope's checkout —
+  `StoryExecution.story_work?/3`, the set an agent bound to that story is
+  offered and may claim (4292518a).
+  """
+  @spec story_work?(Scope.t(), term(), map()) :: boolean()
+  def story_work?(%Scope{} = scope, story_id, node) do
+    with %{} = story <- Stories.get_story(scope, story_id),
+         {:ok, ctx} <- Preloader.load(scope) do
+      StoryExecution.story_work?(story, node, ctx)
+    else
+      _ -> false
+    end
+  end
 
   @doc """
   Whether requirement `name` is one `role` is offered, by its profile's

@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListOffers do
     field(:agent_id, :string, doc: "One agent's offers, from `list_agent_work`.")
 
     field(:kind, :string,
-      doc: "work, menu, problems, resume, retry, answer, unblocked or check_in."
+      doc: "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled."
     )
 
     field(:status, :string,

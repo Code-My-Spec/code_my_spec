@@ -60,15 +60,18 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     # Only a live checkout's code says what exists — a stale worktree's module
     # is neither created nor kept on its word.
-    code =
+    live_files =
       scope
       |> query_files(changed_paths)
       |> live_only(scope.active_project_id)
+
+    code =
+      live_files
       |> Enum.map(&parse_impl_file(&1, scope.environment))
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq_by(& &1.module_name)
 
-    do_sync(scope, code, is_list(changed_paths), start, removed_module_names)
+    do_sync(scope, code, live_files, is_list(changed_paths), start, removed_module_names)
   end
 
   @doc """
@@ -113,7 +116,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
   end
 
-  defp do_sync(scope, code, incremental?, start, removed_module_names) do
+  defp do_sync(scope, code, live_files, incremental?, start, removed_module_names) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
@@ -132,6 +135,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     synced_components
     |> Enum.reject(&Map.has_key?(existing_map, &1.module_name))
     |> then(&update_parent_relationships(scope, &1, component_map))
+
+    sync_discovered_dependencies(scope, live_files, component_map, incremental?)
 
     cond do
       not incremental? ->
@@ -287,6 +292,110 @@ defmodule CodeMySpec.Files.ComponentSync do
         nil
     end
   end
+
+  # -- Discovered dependencies --
+
+  # A dependency code itself names, by `alias` crossing contexts. Only a full
+  # sync recomputes this: an incremental sync touches one changed file and
+  # cannot tell whether some *other* live file still names a pair it did not
+  # touch, so it leaves `in_code` as it found it.
+  defp sync_discovered_dependencies(_scope, _live_files, _component_map, true), do: :ok
+
+  defp sync_discovered_dependencies(scope, live_files, component_map, false) do
+    by_id = Map.new(Map.values(component_map), &{&1.id, &1})
+
+    found =
+      live_files
+      |> Enum.flat_map(&dependency_pairs(&1, scope.environment, component_map, by_id))
+      |> MapSet.new()
+
+    reconcile_discovered_dependencies(scope, found)
+  end
+
+  # The source is the file's own module; targets are whatever it `alias`es
+  # that both name an existing component and sit in a different context. A
+  # name `alias` names that no component matches (an external lib, a typo)
+  # resolves to nothing and is silently dropped — the same posture
+  # `parse_impl_file_from_disk/2` takes on a file with no `defmodule`.
+  defp dependency_pairs(%File{path: path}, env, component_map, by_id) do
+    with {:ok, content} <- Environments.read_file(env, path),
+         name when is_binary(name) <- ComponentExtract.extract_defmodule(content),
+         %Component{} = source <- Map.get(component_map, name) do
+      content
+      |> ComponentExtract.extract_aliases()
+      |> Enum.map(&Map.get(component_map, &1))
+      |> Enum.reject(fn target ->
+        is_nil(target) or target.id == source.id or
+          owning_context_id(source, by_id) == owning_context_id(target, by_id)
+      end)
+      |> Enum.map(&{source.id, &1.id})
+    else
+      _ -> []
+    end
+  end
+
+  # A context names itself; anything else climbs to the nearest ancestor that
+  # does, the same reach `ConventionalPaths` and `format_context_section`
+  # assume a child always has. A component with no context ancestor (a root
+  # component outside any context) stands for itself — there is no context to
+  # collapse into.
+  defp owning_context_id(%Component{type: "context", id: id}, _by_id), do: id
+  defp owning_context_id(%Component{parent_component_id: nil, id: id}, _by_id), do: id
+
+  defp owning_context_id(%Component{parent_component_id: parent_id} = component, by_id) do
+    case Map.get(by_id, parent_id) do
+      nil -> component.id
+      parent -> owning_context_id(parent, by_id)
+    end
+  end
+
+  # Mirrors `cleanup_removed/2`'s shape for components: a pair live code still
+  # names is upserted `in_code: true`; a pair it no longer names loses the
+  # flag, and a row that was never anything but the code's own claim
+  # (`:discovered`) is removed outright rather than left as a lone `false`.
+  # An `:authored` row is never deleted here — a planned edge outlives the
+  # code catching up to it, same as `cleanup_removed/2` never prunes an
+  # authored component.
+  defp reconcile_discovered_dependencies(scope, found) do
+    existing =
+      scope
+      |> Components.list_dependencies()
+      |> Map.new(&{{&1.source_component_id, &1.target_component_id}, &1})
+
+    Enum.each(found, fn {source_id, target_id} = pair ->
+      case Map.get(existing, pair) do
+        nil ->
+          Components.create_dependency(scope, %{
+            source_component_id: source_id,
+            target_component_id: target_id,
+            provenance: :discovered,
+            in_code: true
+          })
+
+        %Dependency{in_code: true} ->
+          :ok
+
+        dependency ->
+          Components.update_dependency(scope, dependency, %{in_code: true})
+      end
+    end)
+
+    existing
+    |> Map.values()
+    |> Enum.filter(&stale_in_code?(&1, found))
+    |> Enum.each(&retire_discovered_dependency(scope, &1))
+  end
+
+  defp stale_in_code?(dependency, found) do
+    dependency.in_code and
+      not MapSet.member?(found, {dependency.source_component_id, dependency.target_component_id})
+  end
+
+  defp retire_discovered_dependency(scope, %Dependency{provenance: :discovered} = dependency),
+    do: Components.delete_dependency(scope, dependency)
+
+  defp retire_discovered_dependency(scope, dependency),
+    do: Components.update_dependency(scope, dependency, %{in_code: false})
 
   # -- Upsert --
 

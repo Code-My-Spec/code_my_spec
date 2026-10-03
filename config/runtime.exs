@@ -66,7 +66,6 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
       :database,
       System.get_env("CMS_DB_PATH") || Path.expand("~/.codemyspec/#{cli_db_filename}")
     )
-    |> Keyword.put(:load_extensions, [SqliteVec.path()])
 
   config :code_my_spec, CodeMySpec.Repo, repo_config
 

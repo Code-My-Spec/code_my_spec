@@ -301,11 +301,8 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     """
     ## Architecture Overview
 
-    The project has #{component_count} components defined. Review the architecture views for details:
-
-    - **Overview:** `#{Paths.architecture_dir()}/overview.md`
-    - **Dependency Graph:** `#{Paths.architecture_dir()}/dependency_graph.mmd`
-    - **Namespace Hierarchy:** `#{Paths.architecture_dir()}/namespace_hierarchy.md`
+    The project has #{component_count} components defined. Read them with
+    `show_architecture_overview`, or one at a time with `get_component`.
     """
   end
 

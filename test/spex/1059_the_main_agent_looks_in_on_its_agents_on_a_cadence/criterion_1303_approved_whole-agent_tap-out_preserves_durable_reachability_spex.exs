@@ -154,7 +154,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         # `role_queue_size/2` counts actionable requirements for a role, and
         # this project has never been kicked off — so it reads zero here and
         # would have made the premise false while the eligible work sat in
-        # main's inbox the whole time. `Work.question_work?/2` admits a turn on
+        # main's inbox the whole time. `Work.held_questions/2` admits a turn on
         # exactly what this listing shows.
         {:reply, waiting, _} = ListNotifications.execute(%{}, context.main_frame)
         refute waiting.isError, response_text(waiting)

@@ -166,48 +166,24 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
     assert settled(offered).status == :n_a
   end
 
+  # The answer's text is in the delivered message; acting on it is the claim.
   describe "an answer offer" do
-    test "is claimed by check_answer", ctx do
+    test "is claimed by any tool call after it", ctx do
       offered = offer(ctx, :answer, {"question", "q-1"})
-      called(ctx, "check_answer")
+      called(ctx, "read_file")
       end_turn(ctx)
       assert settled(offered).status == :claimed
     end
 
-    test "is claimed by check_answer reached through run_script", ctx do
+    test "is ignored when the turn called no tools", ctx do
       offered = offer(ctx, :answer, {"question", "q-1"})
-      called(ctx, "run_script", %{"code" => "check_answer(%{id: \"q-1\"})"})
-      end_turn(ctx)
-      assert settled(offered).status == :claimed
-    end
-
-    # Resuming clears the blocker; `start_task` is how the agent resumed.
-    test "is claimed by resuming the task the question blocked", ctx do
-      offered = offer(ctx, :answer, {"question", "q-1"})
-      holding(ctx, %{status: :active, requirement_name: "story_promoted"})
-      called(ctx, "start_task")
-      end_turn(ctx)
-      assert settled(offered).status == :claimed
-    end
-
-    test "is ignored when the task it blocked is still blocked", ctx do
-      offered = offer(ctx, :answer, {"question", "q-1"})
-
-      holding(ctx, %{
-        status: :blocked,
-        requirement_name: "story_promoted",
-        blocker_type: :question,
-        blocker_id: "q-1"
-      })
-
-      called(ctx, "start_task")
       end_turn(ctx)
       assert settled(offered).status == :ignored
     end
 
-    test "is ignored otherwise", ctx do
-      offered = offer(ctx, :answer, {"question", "q-1"})
+    test "is ignored when the only tool calls came before it", ctx do
       called(ctx, "read_file")
+      offered = offer(ctx, :answer, {"question", "q-1"})
       end_turn(ctx)
       assert settled(offered).status == :ignored
     end

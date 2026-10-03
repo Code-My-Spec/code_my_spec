@@ -227,6 +227,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp handle_existing(nil, scope, owner, requirement, agent_id, frame) do
     with :ok <- role_may_claim(owner, requirement),
+         :ok <- story_may_claim(scope, owner, requirement),
          :ok <- team_may_claim(scope, owner, requirement) do
       create_and_activate(scope, owner, requirement, agent_id, frame)
     else
@@ -268,6 +269,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
          {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
       return_prompt(TaskOwner.find_task(updated, task.id), scope, frame)
     else
+      {:error, :active_task_exists} ->
+        {:reply,
+         TasksMapper.error(
+           "Cannot resume task #{task.id} beside your active task. Finish that one first; " <>
+             "this one is offered back to you once it is done."
+         ), frame}
+
       {:error, reason} ->
         {:reply, TasksMapper.error("Cannot resume task #{task.id}: #{inspect(reason)}"), frame}
     end
@@ -301,6 +309,36 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
     "`#{requirement.name}` is #{whose} work, and you are the #{role} agent, so you cannot " <>
       "start it. `get_next_requirement` lists the work your role is offered."
+  end
+
+  # An agent with an active story claims only that story's work, as it is only
+  # offered that (4292518a). Another story's story-level work is
+  # `team_may_claim/3`'s refusal; this one covers everything else — every
+  # project-level requirement, and other stories' components.
+  defp story_may_claim(scope, %Agent{} = agent, requirement) do
+    case Work.bound_story_id(agent) do
+      nil ->
+        :ok
+
+      _story_id when requirement.entity_type == "story" ->
+        :ok
+
+      story_id ->
+        if Agent.active_task(agent) ||
+             Requirements.story_work?(owner_scope(scope, agent), story_id, requirement),
+           do: :ok,
+           else: {:error, outside_active_story(scope, story_id, requirement)}
+    end
+  end
+
+  defp story_may_claim(_scope, _owner, _requirement), do: :ok
+
+  defp outside_active_story(scope, story_id, requirement) do
+    number = with %{number: n} <- Stories.get_story(scope, story_id), do: n
+
+    "`#{requirement.name}` (#{requirement.entity_type}) is not part of your team's active " <>
+      "story #{number || story_id}. While a story is active you take only its work; " <>
+      "`get_next_requirement` lists it."
   end
 
   defp eligible_to_resume(scope, owner, requirement) do

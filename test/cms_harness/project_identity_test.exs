@@ -285,6 +285,26 @@ defmodule CmsHarness.ProjectIdentityTest do
     assert {:error, {:invalid_config, _}} = ProjectIdentity.resolve(project.root)
   end
 
+  # 95baa45e: a parse that fails while the VM is stopping is the restart, not
+  # the file. YamlElixir reports the exit of its `Application.start(:yamerl)`
+  # call as "malformed yaml", against a config that is fine.
+  describe "parse_failure/2" do
+    test "while the VM is stopping, a failed parse is the harness restarting" do
+      assert {:error, :restarting} =
+               ProjectIdentity.parse_failure(
+                 %YamlElixir.ParsingError{message: "malformed yaml"},
+                 {:stopping, :stopping}
+               )
+    end
+
+    test "while it is running, a failed parse is the file's" do
+      reason = %YamlElixir.ParsingError{message: "malformed yaml"}
+
+      assert {:error, {:invalid_config, ^reason}} =
+               ProjectIdentity.parse_failure(reason, {:started, :started})
+    end
+  end
+
   test "the root is absolute, so two spellings of one checkout are one project" do
     project = project_dir(project_id: 712)
     {:ok, %{root: root}} = ProjectIdentity.resolve(project.root <> "/./")

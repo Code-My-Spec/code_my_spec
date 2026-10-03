@@ -34,9 +34,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       `:work_offer` (the graph), `:nudge` (its turn-end review), `:resume`
       (a task it holds with no turn open), `:teammate_question` (questions
       other agents raised that it answers first), `:findings` (analysis
-      findings nobody asked it for), `:issue_filed` (widget issues),
-      `:cadence` (the main agent's check-in timer) and `:teammate_stalled` /
-      `:teammate_died` (a teammate stalled, died or was reaped).
+      findings nobody asked it for), `:cadence` (the main agent's check-in
+      timer) and `:teammate_stalled` / `:teammate_died` (a teammate stalled,
+      died or was reaped).
     * `waiting_on` — role-specific waits, each with the `Agents.Waiting`
       paths it holds. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
@@ -76,7 +76,6 @@ defmodule CodeMySpec.Agents.RoleProfile do
           | :resume
           | :teammate_question
           | :findings
-          | :issue_filed
           | :cadence
           | :teammate_stalled
           | :teammate_died
@@ -142,6 +141,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_tasks list_session_subagents list_notifications
     web_search web_fetch
     browser
+    query_logs get_trace slow_spans error_summary
   )
 
   # Writing code against a spec, and reading everything that says what the spec
@@ -211,6 +211,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     browser
     promote
     ensure_app_running restart_app stop_app
+    query_logs get_trace slow_spans error_summary
   )
 
   # Shaping what gets built, and never building it. The product half of the
@@ -258,6 +259,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_notifications answer_notification escalate_question withdraw_question
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
+    query_logs get_trace slow_spans error_summary
   )
 
   # Models, most preferred first; the first whose provider the account holds a
@@ -292,23 +294,22 @@ defmodule CodeMySpec.Agents.RoleProfile do
       scope: :project,
       story_vantage: :copy,
       home_copy: :main,
-      # Findings because it fixes code; widget issues because a person filed
-      # them for it (6da8e0e5); a teammate stalling or dying because it is the
-      # one who restarts or unsticks it (step 4b).
+      # Findings because it fixes code; a teammate stalling or dying because it
+      # is the one who restarts or unsticks it (step 4b). Not widget issues: a
+      # new issue reaches the fleet as `issues_triaged` work (criterion 1755).
       wake: [
         :work_offer,
         :nudge,
         :resume,
         :teammate_question,
         :findings,
-        :issue_filed,
         :cadence,
         :teammate_stalled,
         :teammate_died
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
-      # A coding or QA agent's question blocks only the task it was asked
-      # about (0b324cab). Its event wakes and check-in still reach it.
+      # Another role's question blocks only the task it was asked about
+      # (0b324cab, story 1080). Its event wakes and check-in still reach it.
       waiting_on: [question_pending: [:turn_end]],
       questions_block?: true,
       # Nobody is above it: its question is a decision it could not make.
@@ -335,10 +336,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # Teammates' questions about criteria and spec are routed to it
       # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
       wake: [:work_offer, :nudge, :resume, :teammate_question],
-      # Its own open question holds it whole — nudge, work offers, resume —
-      # because it holds one chain of thought through the design (John, step
-      # 4c). Its answer and a teammate's question still reach it.
-      waiting_on: [question_pending: [:turn_end, :offer, :resume]],
+      # Its own question blocks only the task it was asked about, as coding's
+      # and QA's do (story 1080).
+      waiting_on: [],
       # A story's red cards are not its own questions: it is the actor that
       # clears them (`questions_answered`), so blocking it on them left the
       # block naming no actor (56cf5697).

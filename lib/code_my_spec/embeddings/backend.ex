@@ -6,8 +6,6 @@ defmodule CodeMySpec.Embeddings.Backend do
 
   * `CodeMySpec.Embeddings.PgVectorBackend` — the server (`:dev`, `:prod`,
     opt-in `:desktop`).
-  * `CodeMySpec.Embeddings.SqliteVecBackend` — still selected by the CLI
-    envs (`config/harness.exs`), though nothing there writes embeddings now.
   * `CodeMySpec.Embeddings.TestBackend` — ETS-backed in-memory store for
     the test env.
 
@@ -45,9 +43,8 @@ defmodule CodeMySpec.Embeddings.Backend do
   @doc """
   Persist one embedded chunk.
 
-  This is the only genuinely adapter-specific operation in the pipeline —
-  sqlite_vec and pgvector spell the vector literal, the placeholders, and the
-  upsert conflict target differently. Everything else `EmbeddingService` does
+  The one storage step `EmbeddingService` leaves to the backend. Everything
+  else it does
   (chunking, hashing, the file_hash fast path, stale-chunk cleanup) is shared,
   so the backends cannot drift on dedupe semantics.
 

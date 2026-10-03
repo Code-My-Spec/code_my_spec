@@ -57,7 +57,14 @@ defmodule CmsHarness.HookDecisionTest do
   end
 
   describe "the message names the harness" do
-    for reason <- [:not_connected, :no_project, :no_credential, :no_reply, :invalid_config] do
+    for reason <- [
+          :not_connected,
+          :no_project,
+          :no_credential,
+          :no_reply,
+          :invalid_config,
+          :restarting
+        ] do
       test "#{reason} points at the harness rather than at the server" do
         text =
           "stop"
@@ -87,7 +94,10 @@ defmodule CmsHarness.HookDecisionTest do
       %{"reason" => reason} = HookDecision.unreachable("stop", :no_project, @dir)
 
       assert reason =~ ".code_my_spec/config.yml"
-      assert reason =~ "CMS_PROJECT_ID"
+
+      # `ProjectIdentity` has no environment fallback any more; naming the
+      # variable sent the reader after a setting nothing reads.
+      refute reason =~ "CMS_PROJECT_ID"
     end
 
     test "a missing credential says so instead of looking like an outage" do

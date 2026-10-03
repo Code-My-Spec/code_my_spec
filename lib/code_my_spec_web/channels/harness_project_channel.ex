@@ -785,11 +785,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # the launch request — so writing first is what makes the notice part of
     # the history the agent comes back holding, rather than a line it would
     # only find by re-reading the page.
+    # Kept for the sweep that follows the re-registration, which is when the
+    # agents are back to take the turns this restart discarded (5a977f41).
+    interrupted = Agents.interrupted_turns(running)
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
     agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
 
-    {:reply, {:ok, %{"agents" => agents}}, socket}
+    {:reply, {:ok, %{"agents" => agents}},
+     assign(
+       socket,
+       :interrupted_turns,
+       Map.merge(socket.assigns[:interrupted_turns] || %{}, interrupted)
+     )}
   end
 
   # One step an agent took, written to its conversation as it arrives.
@@ -868,6 +876,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def handle_in("restart_app_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
+    result = decode_app_result(msg)
+    if from, do: GenServer.reply(from, result)
+    record_app_result(socket, result)
+    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+  end
+
+  def handle_in("reload_app_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     result = decode_app_result(msg)
     if from, do: GenServer.reply(from, result)
@@ -960,8 +976,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp consider_once(socket) do
     scope = socket.assigns.scope
     copy_id = scope.active_working_copy_id
+    interrupted = socket.assigns[:interrupted_turns] || %{}
 
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      # First, so a turn the restart discarded is handed back before anything
+      # else is offered in its place (5a977f41).
+      Agents.Work.redeliver_interrupted_turns(scope, interrupted)
+
       Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
 
       # And the agents `consider_copy/4` cannot reach: a restart discards the
@@ -1165,6 +1186,26 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  # A promote's default: migrate and hot-reload the running app in place, then
+  # the after-promote hook, as a restart does. Pushed only to a harness that
+  # declared `reload_app` at join; an older one would never reply.
+  def handle_call({:reload_app, request}, from, socket) do
+    if HarnessRegistry.supports?(socket.assigns.harness.id, "reload_app") do
+      ref = Integer.to_string(System.unique_integer([:positive]))
+
+      push(
+        socket,
+        "reload_app",
+        request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
+      )
+
+      {:noreply,
+       assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+    else
+      {:reply, {:error, :reload_not_supported}, socket}
+    end
+  end
+
   def handle_call({:stop_app, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -1361,7 +1402,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        status: status,
        url: Map.get(msg, "app_url"),
        commit: Map.get(msg, "app_commit"),
-       head: Map.get(msg, "app_head")
+       serving_commit: Map.get(msg, "app_serving_commit"),
+       head: Map.get(msg, "app_head"),
+       action: Map.get(msg, "app_action"),
+       action_reason: Map.get(msg, "app_action_reason")
      }}
   end
 
@@ -2274,7 +2318,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
-        :ok
+        register_app_verbs(harness, payload)
 
       {:error, {:already_registered, pid}} ->
         Logger.warning(
@@ -2303,6 +2347,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         {:error, id_collision(harness, payload["root"], held_root)}
     end
   end
+
+  # App verbs newer than the channel contract, declared at join. A harness
+  # that predates `reload_app` declares nothing and is only ever restarted.
+  defp register_app_verbs(harness, %{"app_verbs" => verbs}) when is_list(verbs) do
+    for verb <- verbs, is_binary(verb), do: HarnessRegistry.register_verb(harness.id, verb)
+    :ok
+  end
+
+  defp register_app_verbs(_harness, _payload), do: :ok
 
   defp id_collision(harness, joining_root, held_root) do
     %{

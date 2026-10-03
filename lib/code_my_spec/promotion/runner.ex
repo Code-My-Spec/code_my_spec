@@ -32,6 +32,9 @@ defmodule CodeMySpec.Promotion.Runner do
   own optional `after-promote` recipe, run on the far side once the app is
   confirmed serving, rather than a project-specific branch here that every
   other project's promotion would also have to answer for.
+
+  `reload/3` is the same path with the `reload_app` verb: a promote's default,
+  which leaves the app running and hot-reloads it (2026-10-02).
   """
 
   alias CodeMySpec.Analysis
@@ -128,6 +131,27 @@ defmodule CodeMySpec.Promotion.Runner do
     |> decode_app_result()
   end
 
+  @doc """
+  Reload the application at `root` in place — migrate, let its code reloader
+  compile, health-check — through the same per-copy channel `restart/3` uses.
+
+  `{:ok, %{revision:, action:, action_reason:}}`: `action` is `"reloaded"`, or
+  `"restarted"` when the far side restarted instead (app not running, no
+  `reload` recipe). Any error means the app was not reloaded, and the caller
+  restarts it.
+  """
+  @spec reload(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  def reload(_scope, root, nil) do
+    {:error,
+     %{reason: "cannot reload #{root}: no working copy id was given to address its app with."}}
+  end
+
+  def reload(_scope, _root, copy_id) do
+    copy_id
+    |> AppTransport.reload_app(@restart_timeout)
+    |> decode_app_result()
+  end
+
   # `AppTransport.restart_app/2`'s own shape — `%{status:, url:, commit:}` on
   # success, one of a few atoms or `{:harness_gone, reason}` on failure —
   # translated into the `%{revision:}` / `%{reason:}` shape
@@ -145,11 +169,32 @@ defmodule CodeMySpec.Promotion.Runner do
   # down while draining looks like from here — worded so
   # `restart_acknowledgement_lost?/1`'s "draining" check reads it as the
   # unconfirmed success it is, not a failure to retry.
-  defp decode_app_result({:ok, %{status: "serving", commit: commit}}),
-    do: {:ok, %{revision: commit}}
+  # The revision is what the app serves: after a reload that is the reload's
+  # commit, not the launch commit the app process still carries.
+  defp decode_app_result({:ok, %{status: "serving"} = info}) do
+    {:ok,
+     %{
+       revision: Map.get(info, :serving_commit) || Map.get(info, :commit),
+       action: Map.get(info, :action),
+       action_reason: Map.get(info, :action_reason)
+     }}
+  end
 
-  defp decode_app_result({:ok, %{status: status, commit: commit}}) do
-    {:error, %{reason: "the app answered #{status} after restarting" <> commit_suffix(commit)}}
+  defp decode_app_result({:ok, %{status: status} = info}) do
+    {:error,
+     %{
+       reason:
+         "the app answered #{status} after #{Map.get(info, :action) || "restarting"}" <>
+           commit_suffix(Map.get(info, :serving_commit) || Map.get(info, :commit))
+     }}
+  end
+
+  defp decode_app_result({:error, :reload_not_supported}) do
+    {:error, %{reason: "the harness serving this checkout predates reload_app"}}
+  end
+
+  defp decode_app_result({:error, :reload_timed_out}) do
+    {:error, %{reason: "the harness accepted the reload and did not answer within the timeout"}}
   end
 
   defp decode_app_result({:error, :harness_not_connected}) do

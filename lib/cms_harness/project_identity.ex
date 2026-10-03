@@ -11,10 +11,9 @@ defmodule CmsHarness.ProjectIdentity do
 
     1. `project_id` in the working copy's own `.code_my_spec/config.yml`
     2. `project_id` in the working copy's own `.cms_harness.json`
-    3. `CMS_PROJECT_ID` — for a copy that names no project, which is a sprite
-    4. refuse
+    3. refuse
 
-  There is no fifth step. A directory that cannot say which project it is gets
+  There is no fourth step; the `CMS_PROJECT_ID` fallback is gone (below). A directory that cannot say which project it is gets
   an error naming the file it should have said it in, because guessing here
   means syncing one checkout's files over another project's rows.
 
@@ -107,7 +106,9 @@ defmodule CmsHarness.ProjectIdentity do
   checkout cannot start two subtrees against one project.
   """
   @spec resolve(String.t()) ::
-          {:ok, t()} | {:error, :no_project_id | :unreadable_config | {:invalid_config, term()}}
+          {:ok, t()}
+          | {:error,
+             :no_project_id | :unreadable_config | :restarting | {:invalid_config, term()}}
   def resolve(root) when is_binary(root) do
     root = Path.expand(root)
 
@@ -272,9 +273,25 @@ defmodule CmsHarness.ProjectIdentity do
     case YamlElixir.read_from_string(contents) do
       {:ok, %{} = parsed} -> {:ok, parsed}
       {:ok, _} -> {:error, {:invalid_config, :not_a_mapping}}
-      {:error, reason} -> {:error, {:invalid_config, reason}}
+      {:error, reason} -> parse_failure(reason, :init.get_status())
     end
   end
+
+  @doc """
+  What a failed parse means, given `:init.get_status/0`.
+
+  95baa45e: every parse calls `Application.start(:yamerl)`, a call into the
+  application controller. While the VM is stopping that controller is busy
+  stopping this application, the call exits, and YamlElixir's catch-all
+  reports the exit as `"malformed yaml"`. Measured 2026-10-02: a promote's
+  SIGTERM at 18:28:16, and a call at 18:28:21 against an unchanged, valid
+  config refused as malformed. Said as what it is — the harness is restarting —
+  so nobody goes looking for a YAML error.
+  """
+  @spec parse_failure(term(), {atom(), term()}) ::
+          {:error, :restarting | {:invalid_config, term()}}
+  def parse_failure(_reason, {:stopping, _provided}), do: {:error, :restarting}
+  def parse_failure(reason, _status), do: {:error, {:invalid_config, reason}}
 
   # YAML gives an integer for `project_id: 712`; the topic is a string either
   # way. Normalising here means the channel client never has to care.

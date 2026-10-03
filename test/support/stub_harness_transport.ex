@@ -5,9 +5,8 @@ defmodule CodeMySpec.Support.StubHarnessTransport do
   Enough for `file_exists?/2` to be true, which is what gets a caller past the
   "does this directory exist" guard and into the code that actually talks to a
   working copy. Without it a test against a `:harness` environment stops at the
-  first existence check and never reaches the line under test — which is how the
-  first version of the `SpecAlignment` regression test passed against the
-  unfixed code.
+  first existence check and never reaches the line under test — which is how an
+  early regression test passed against the unfixed code.
 
   A top-level module rather than one nested in a test: fakes live in
   `test/support` beside the other ones, and a nested module has to be reached

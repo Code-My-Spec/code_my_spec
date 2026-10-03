@@ -199,4 +199,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
   component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
+  # Story 1116 ("1082"): every agent role reads its own project's deployed
+  # logs and traces. Granted to every role in `RoleProfile`, not main-only.
+  component(CodeMySpec.McpServers.Observability.Tools.QueryLogs)
+  component(CodeMySpec.McpServers.Observability.Tools.GetTrace)
+  component(CodeMySpec.McpServers.Observability.Tools.SlowSpans)
+  component(CodeMySpec.McpServers.Observability.Tools.ErrorSummary)
 end

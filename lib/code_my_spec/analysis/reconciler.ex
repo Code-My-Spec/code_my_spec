@@ -120,7 +120,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           "[Analysis] run #{run.id} (#{run.source}) reconcile failed: #{inspect(reason)}"
         )
 
-        finish_failed(run, inspect(reason))
+        finish_failed(run, inspect(reason), %{})
         {:error, reason}
     end
   end
@@ -155,19 +155,25 @@ defmodule CodeMySpec.Analysis.Reconciler do
   end
 
   @doc "Mark a run failed (tool crash, skip, or task death) — no problem changes."
-  @spec fail(Run.t(), term()) :: {:ok, Run.t()} | {:error, term()}
-  def fail(%Run{} = run, reason) do
+  @spec fail(Run.t(), term(), map()) :: {:ok, Run.t()} | {:error, term()}
+  def fail(%Run{} = run, reason, kept \\ %{}) do
     Logger.warning(
       "[Analysis] run #{run.id} (#{run.source}) failed: #{inspect(reason)}" <>
         requested_by_suffix(run)
     )
 
-    finish_failed(run, reason)
+    finish_failed(run, reason, kept)
   end
 
-  defp finish_failed(run, reason) do
-    with {:ok, failed} <-
-           RunsRepository.finish_run(run, :failed, %{stats: %{"error" => error_text(reason)}}) do
+  # `kept` is what the analyzer said — its output and exit status — kept on the
+  # failed run so the reason can be read past its one-line excerpt.
+  defp finish_failed(run, reason, kept) do
+    attrs =
+      Map.merge(Map.take(kept, [:output, :exit_status]), %{
+        stats: %{"error" => error_text(reason)}
+      })
+
+    with {:ok, failed} <- RunsRepository.finish_run(run, :failed, attrs) do
       announce_failed(failed, reason)
       {:ok, failed}
     end
