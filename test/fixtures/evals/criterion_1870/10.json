@@ -1,0 +1,83 @@
+{
+  "seconds": 16,
+  "trace": [
+    {
+      "event": "message_delivered",
+      "detail": "%{ref: \"84b7a701-791f-41bc-a12d-934b024a1563\"}"
+    },
+    {
+      "event": "turn_started",
+      "detail": "%{}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_end",
+      "detail": "get_next_requirement"
+    },
+    {
+      "event": "tool_start",
+      "detail": "start_task %{\"entity_id\" => \"2\", \"entity_type\" => \"story\", \"requirement_name\" => \"ready_for_qa\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "start_task %{\"entity_id\" => \"2\", \"entity_type\" => \"story\", \"requirement_name\" => \"ready_for_qa\"}"
+    },
+    {
+      "event": "tool_start",
+      "detail": "evaluate_task %{\"task_id\" => \"3f73a7bf-aa9d-4416-be23-77509654af43\"}"
+    },
+    {
+      "event": "tool_end",
+      "detail": "evaluate_task %{\"task_id\" => \"3f73a7bf-aa9d-4416-be23-77509654af43\"}"
+    },
+    {
+      "event": "message",
+      "detail": "%{text: \"Story 2's ready_for_qa requirement was already certified, so I closed the task with evaluate_task (passed). Stopping now as instructed so the validation hook can run.\"}"
+    },
+    {
+      "event": "turn_ended",
+      "detail": "%{usage: %{output_tokens: 778, input_tokens: 8, cache_read_input_tokens: 54208, cache_creation_input_tokens: 9464, estimated_cost_cents: 0}}"
+    }
+  ],
+  "run": 10,
+  "at": "2026-10-03T10:19:53.938732Z",
+  "root": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/full_scope-58892_41028_D_2Wif_WOntX",
+  "usage": {
+    "output_tokens": 778,
+    "input_tokens": 8,
+    "cache_read_input_tokens": 54208,
+    "cache_creation_input_tokens": 9464,
+    "estimated_cost_cents": 0
+  },
+  "behaviour": "An agent offered work already done closes or rejects it, never taps out",
+  "prompt": {
+    "project_brief": null,
+    "provider_brief": null,
+    "role_brief": "You are the CODING agent on this project.\n\nYour job is writing code against a spec, and reading everything that says\nwhat the spec is. You are answerable for the files you edit — when analysis\nreports a finding in one of them, it is yours.\n\nYou resolve the issues you fix — `resolve_issue` is yours and the FixIssues\nworkflow runs on it.\n\nYou cannot *triage*: `accept_issue` and `dismiss_issue` are product's,\nbecause deciding whether a report is worth acting on is a different judgement\nfrom fixing it. And you cannot submit QA results, because an agent that\ngrades its own work is not being graded.\n\nA question about a story's acceptance criteria or its spec is product's:\nask it with `ask_user_question` and `about: \"criteria\"`. When a question of\nyours goes moot, take it back with `withdraw_question` and the reason; that\nreleases the task it blocked.\n\nIf work you are offered or holding should not be done, `tap_out` of it with\nthe reason rather than refusing in prose.",
+    "tool_index": "## Tools you can reach\n\nNames only. `tool_docs` gives arguments for any of them.\n\n**The three lists are reached three different ways, and using the wrong one\nfails.** A name below is a tool you can reach; how you reach it depends on\nwhich list it is in. A name *absent* from all three is a tool you cannot\nreach at all — report that rather than working around it.\n\n**Called directly:** ask_user_question, assign_subagent, cancel_task, check_answer, evaluate_task, get_next_requirement, list_user_questions, promote, reject_offer, run_browser_script, run_script, show_in_panel, start_analysis, start_task, sync_project, tap_out, tool_docs\n\n**Called from inside `run_script`:** add_dependency, clear_problems, create_component, create_issue, ensure_app_running, error_summary, get_component, get_issue, get_story, get_story_gherkin, get_trace, install_credo_checks, list_issues, list_knowledge, list_problems, list_questions, list_requirements, list_rules, list_stories, list_story_titles, list_tasks, query_logs, read_knowledge, read_project_file, remove_dependency, resolve_issue, restart_app, semantic_search, set_story_component, show_architecture_overview, show_component_requirements, show_requirement, show_story_requirements, slow_spans, stop_app, update_component, validate_dependency_graph, web_fetch, web_search, withdraw_question, write_project_file",
+    "universal": "## The loop\n\n**Ask what the work is, claim it, do it, close it.** In that order, every\ntime.\n\n1. **`get_next_requirement`** — the graph decides what is next, not you. Do\n   not pick your own work: two agents choosing for themselves land on the\n   same requirement, and the one that finishes has nothing to close.\n2. **`start_task`** — claim it. It records that you are on it and answers\n   with the prompt for that work: rules to read, files to touch, what done\n   looks like. You cannot hold two; finish, block or cancel first.\n3. **Do what that prompt says.** It is more specific than anything here.\n4. **`evaluate_task`** — close it. Work left open is work nobody can see was\n   done, and the task stays claimed against you. Then stop: do not go looking\n   for more in the same turn.\n\n**When there is nothing for your role, end the turn.** An empty\n`get_next_requirement` is an answer, not a problem to solve: do not take\nanother role's work and do not invent your own. You are woken again when the\ngraph holds something for you, so ending a turn is not leaving.\n\nNot `tap_out` — that asks to leave the loop and a person must answer before\nyou can be woken, so using it for \"nothing right now\" stops you for good over\na queue that was empty for a minute. `list_agent_work` already reports an idle\nagent, so your silence is legible without it.\n\n**A request nobody specified is an issue, not a task.** Being asked for work\nthe graph does not have is different from having nothing to do. Do not build\nit and do not only decline it: `create_issue` puts the request where a person\ncan decide on it. Declining in prose leaves nothing behind.\n\nWork you did without claiming is work nobody can see, evaluate or close.\n\n## How this system works\n\n**A framework tool failure must be reported.** An unknown or missing tool,\nor a tool/platform malfunction, belongs in `create_issue` with\n`scope: \"framework\"`: name the tool and exact error (such as `Unknown tool`).\nStop the affected operation; do not bypass broken machinery. Carry on with\nindependent work. Prose in a transcript is not a report.\n\n**An external source returning HTTP 404 is not a framework failure.** Record\nthe unavailable URL and status in your research notes and continue with other\nsources. Do not file a framework issue or stop research for a dead source.\nIf required evidence remains unavailable, report that specific task blocker.\nFindings about the work belong against the story, at the default scope.\n\n**Some tools return before their work is done.** `promote` and\n`start_analysis` open the work and answer immediately — the result reaches\nyou as a message when it lands. Do not wait for it, do not poll, and do not\nre-run them. Stop when you have nothing else to do; you will be woken.\n\n**Only `error` severity blocks you.** Gates refuse on `error` alone. Fix\nthose; leave `warning` and `info` unless someone asks.\n\n**Never change a rule to clear a gate.** Lowering a check's severity, editing\nanalyzer configuration, deleting a failing assertion or marking a test\nskipped turns a gate into a decoration. If a gate is wrong, file an issue\nsaying why.\n\n**Do not do the machinery's work by hand.** `promote` merges your branch into\nthe running checkout and restarts the application: do not run the restart\nrecipe yourself, and never two at once — they race on `_build`. Do not push\nto `origin/main` from a working copy; promotion merges locally.\n\n**The environments are the project's, not the framework's.** A generated app\nhas the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own\n`dev_cli` means nothing inside a project. A `mix` command asking for a config\nfile that does not exist means the wrong environment, not a missing file.\n\n**A question in your reply reaches nobody.** `ask_user_question` reaches a\nperson: name the alternatives where there are any, one open question where\nthe answer is prose. Then carry on with anything it does not block."
+  },
+  "role": "coding",
+  "actionable": {
+    "product": [],
+    "main": [],
+    "qa": [],
+    "coding": [
+      "bdd_specs_exist"
+    ]
+  },
+  "criterion": "criterion_1870",
+  "calls": [
+    "get_next_requirement",
+    "start_task",
+    "evaluate_task"
+  ],
+  "unsatisfied": [
+    "qa_complete (story)"
+  ],
+  "errored": null,
+  "held?": true
+}
