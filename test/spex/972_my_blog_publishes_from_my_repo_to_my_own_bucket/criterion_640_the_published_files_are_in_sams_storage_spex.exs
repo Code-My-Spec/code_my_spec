@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
   The pipeline itself was built by stories 712/713; this is about it
   pointing at his infrastructure rather than ours.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged) — see
+  criterion 748's moduledoc for the general shape of the move. `ContentConfig`
+  is reused as-is, so `content-object` renders unchanged once the step runs
+  from its new page.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.ContentPublishing`.
   """
 
@@ -38,15 +43,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
           )
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/publishing")
 
         # The step, not the standalone publish button. Both run the same
         # `ContentPublishing.run/2` — the button is the step on demand — but only
         # the step records what it wrote as resources, and "the files are in
         # Sam's own bucket" is a claim about those records.
-        view
-        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-        |> render_click()
+        run_console_step(view, :content)
 
         html = render(view)
 

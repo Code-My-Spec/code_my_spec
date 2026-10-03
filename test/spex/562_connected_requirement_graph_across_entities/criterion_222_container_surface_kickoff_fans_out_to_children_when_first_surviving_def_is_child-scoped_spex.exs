@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
   child-scoped def, instead of landing on the surface itself.
 
   Symmetric counterpart of criterion 5654 (container surface's
-  `bdd_specs_passing` fans IN from every child's terminal).
+  `ready_for_qa` fans IN from every child's terminal).
 
   Reproduction: MarketMySpec runs with all three require_*
   toggles disabled. After filtering, the parent context_graph's

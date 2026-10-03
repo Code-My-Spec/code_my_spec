@@ -9,7 +9,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
   problem, and a repair agent that cannot see the provider's words is
   guessing.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app — the
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  escalation markup (`[data-test='escalation']`) is unchanged — reused as-is
+  in ResourceDetail's Config tab — so :domain is run directly via
+  `run_console_step/2` instead of through `start-setup`'s whole-run cascade,
+  which the console has no equivalent of.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app — the
   escalation record is what the page exposes for the agent to pick up.
   """
 
@@ -36,10 +42,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
           })
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        await_provisioning(view)
+        run_console_step(view, :domain)
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -47,7 +52,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
       when_ "the setup agent session opens for that failure", context do
         html =
           context.view
-          |> element("[data-test='setup-step'][data-step='domain'] [data-test='escalation']")
+          |> element("[data-test='resource-step'][data-step='domain'] [data-test='escalation']")
           |> render()
 
         {:ok, Map.put(context, :escalation, html)}

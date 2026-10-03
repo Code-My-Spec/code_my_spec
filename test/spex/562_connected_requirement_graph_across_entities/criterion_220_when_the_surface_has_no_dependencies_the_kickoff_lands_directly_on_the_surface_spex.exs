@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
           |> Enum.map(& &1["target"])
           # Filter to component kickoffs only — bdd_specs_exist also has
           # an internal-story prereq edge to qa_complete (since the now-
-          # removed bdd_specs_passing gate moved out of the graph).
+          # removed ready_for_qa gate moved out of the graph).
           |> Enum.filter(&String.starts_with?(&1, "component_"))
 
         # The kickoff should resolve to a single component, not multiple

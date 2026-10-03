@@ -7,8 +7,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1957Spex do
   sitting, and once they are in, nothing asks again — the run does not stop
   halfway to request a second thing Sam could have given at the start.
 
-  Surface: `ProvisioningLive` on the cloud app. This is the page Sam actually
-  types into; the credentials are per-project secrets and per-account
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app. This is the page Sam
+  actually types into; the credentials are per-project secrets and per-account
   connections, and only the page collects both in one place.
   """
 
@@ -24,19 +29,18 @@ defmodule CodeMySpecSpex.Story841.Criterion1957Spex do
     scenario "one sitting covers every credential, and the blocker clears" do
       given_ "Sam is on the setup page with nothing entered", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        assert html =~ "Still needed:",
+        # The old page's own top-level banner read "Still needed: ..."
+        # (capital S) separately from the dialog's; the console renders only
+        # `CredentialsForm`'s own banner, whose text is "...still needed: ...".
+        assert html =~ "still needed:",
                "expected setup to refuse to start while credentials are missing"
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he pastes every pasted credential the run needs and saves", context do
-        context.view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
-
         html =
           context.view
           |> form("[data-test='credentials-form']",

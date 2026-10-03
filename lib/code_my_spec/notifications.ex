@@ -901,7 +901,9 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
-  The agent's own pending tap-out request, if it already has one.
+  The agent's own pending tap-out on `task_id` (nil for the one naming no task),
+  if it already has one. An agent holds at most one per task and one naming
+  none.
 
   `request_agent_tap_out/2`'s caller must not create a second row while the
   first is undecided — an agent asks once and is told to stop, not to ask
@@ -912,12 +914,10 @@ defmodule CodeMySpec.Notifications do
   holding 129 — the tool creating a duplicate on every retry, not a human
   answering slowly.
   """
-  @spec get_pending_tap_out_request(Ecto.UUID.t()) :: PermissionRequest.t() | nil
-  def get_pending_tap_out_request(agent_id) when is_binary(agent_id) do
-    PermissionRequest
-    |> where([p], p.agent_id == ^agent_id and p.tool_name == "tap_out" and p.status == "pending")
-    |> Repo.one()
-  end
+  @spec get_pending_tap_out_request(Ecto.UUID.t(), String.t() | nil) ::
+          PermissionRequest.t() | nil
+  def get_pending_tap_out_request(agent_id, task_id) when is_binary(agent_id),
+    do: pending_tap_out(:agent_id, agent_id, task_id)
 
   # --- Question Requests (remote AskUserQuestion) ---
 
@@ -1186,7 +1186,10 @@ defmodule CodeMySpec.Notifications do
     case Repo.get(Agent, request.agent_id) do
       %Agent{turn_started_at: %DateTime{}} = agent ->
         _ =
-          CodeMySpec.Agents.send_to_agent(agent.id, answer_message(request), :question_answered,
+          CodeMySpec.Agents.send_to_agent(
+            agent.id,
+            answer_message(request, agent),
+            :question_answered,
             offer: {:answer, {"question", request.id}}
           )
 
@@ -1197,7 +1200,7 @@ defmodule CodeMySpec.Notifications do
           Work.offer_turn_with(
             owner_scope(agent),
             agent,
-            answer_message(request),
+            answer_message(request, agent),
             :question_answered,
             {"question", request.id}
           )
@@ -1213,7 +1216,7 @@ defmodule CodeMySpec.Notifications do
   # What the agent reads mid-turn. Self-contained, because it is arriving in
   # the middle of something else: a reply without its question is a line of
   # dialogue with no idea what it answers.
-  defp answer_message(%{questions: questions, answers: answers} = request) do
+  defp answer_message(%{questions: questions, answers: answers} = request, agent) do
     body =
       Enum.map_join(questions, "\n\n", fn question ->
         text = MapAccess.get(question, :question)
@@ -1225,17 +1228,26 @@ defmodule CodeMySpec.Notifications do
 
     #{body}
 
-    #{answer_closing(request)}
+    #{answer_closing(request, TaskOwner.active_task(agent))}
     """
   end
 
-  defp answer_closing(%{task_id: nil}),
+  defp answer_closing(%{task_id: nil}, _active),
     do: "It blocked no task. Carry on with whatever you asked it for."
 
-  defp answer_closing(_request) do
+  # The one message a mid-turn asker gets (`TaskOwner` sends none): never a
+  # second active task (story 1080).
+  defp answer_closing(%{task_id: task_id}, nil) do
     """
-    This does not resume the task it blocked. Pick that back up deliberately
-    with `start_task` when you are ready for it.\
+    This does not resume task #{task_id}, which it blocked. Pick that back up
+    deliberately with `start_task` when you are ready for it.\
+    """
+  end
+
+  defp answer_closing(%{task_id: task_id}, _active) do
+    """
+    Finish your active task first; task #{task_id}, which it blocked, is offered
+    back to you once it is done.\
     """
   end
 

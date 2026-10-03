@@ -38,7 +38,7 @@ defmodule CodeMySpec.Requirements.ComponentWorkIsImplementationTest do
   test "story test and QA gates remain" do
     names = Enum.map(Definitions.story_graph(), & &1.name)
     assert "bdd_specs_exist" in names
-    assert "bdd_specs_passing" in names
+    assert "ready_for_qa" in names
     assert "qa_complete" in names
   end
 end

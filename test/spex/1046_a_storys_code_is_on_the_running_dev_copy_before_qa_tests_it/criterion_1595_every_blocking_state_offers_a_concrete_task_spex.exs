@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   work and asserted to get back a concrete, actionable task naming the
   requirement actually blocking it — never "no work available".
 
-  1. Specs red — `bdd_specs_passing` unsatisfied → `FixBddSpecs`.
+  1. Not certified for QA — `ready_for_qa` unsatisfied → `ReadyForQa`.
   2. An accepted issue open — `story_issues_resolved` unsatisfied →
      `FixStoryIssues`.
   3. QA not yet run — `qa_complete` unsatisfied → `QaStory`.
@@ -80,12 +80,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
         {:ok, context}
       end
 
-      then_ "the specs-red story is offered FixBddSpecs", context do
+      then_ "the uncertified story is offered ReadyForQa", context do
         text = ask_for_next_work(context, context.story.number)
 
-        assert text =~ "FixBddSpecs",
-               "a story whose specs have never gone green should be offered " <>
-                 "the task that makes them green. Got: #{text}"
+        assert text =~ "ReadyForQa",
+               "a story not yet certified for QA should be offered the task that " <>
+                 "certifies it. Got: #{text}"
 
         refute no_work?(text), "the story read no actionable work. Got: #{text}"
 
@@ -259,20 +259,18 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
 
-    enforce_specs_ready(context, story)
     _ = Fixtures.fresh_analysis_runs(context.scope)
+    certify_for_qa(context, story)
 
     context
   end
 
-  # The story page lost its Enforce toggle (e1174640): only a `promote` of
-  # the story latches `specs_ready` now, which needs a merge this wedge
-  # check does not build. Set directly, the same way
-  # `FullSatisfactionFixtures.apply_specs_enforced/1` does for the same
-  # reason.
-  defp enforce_specs_ready(context, story) do
+  # What completing `ready_for_qa` leaves behind: the story stamped with a
+  # certified commit. Set directly, as `FullSatisfactionFixtures` does —
+  # certifying needs a real checkout, and this wedge check builds none.
+  defp certify_for_qa(context, story) do
     story = Stories.get_story!(context.scope, story.id)
-    {:ok, _} = Stories.set_specs_ready(context.scope, story, true)
+    {:ok, _} = Stories.set_qa_ready(context.scope, story, String.duplicate("c", 40))
     context
   end
 

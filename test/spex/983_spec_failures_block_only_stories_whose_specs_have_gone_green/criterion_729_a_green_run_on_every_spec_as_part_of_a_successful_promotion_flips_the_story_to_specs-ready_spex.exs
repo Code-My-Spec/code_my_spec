@@ -1,166 +1,67 @@
 defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
   @moduledoc """
   Story 983 — Spec failures block only stories whose specs have gone green
-  Criterion 8158 — A green run on every spec flips the story to specs-ready.
+  Criterion 729 — Promoting a story whose spex are all green on the certifying
+  spex run latches it specs-ready; nothing else sets that latch.
 
-  Rule: the specs-passing gate flips a story to specs-ready only on a
-  fresh spex run showing every one of its BDD specs green.
-
-  The agent writes the story's BDD spec at the story's own path, starts
-  the specs-passing task, and fires the stop hook. The pipeline records a
-  spex run from the `pipeline_clean_credo` fixture's empty `spex.jsonl`
-  (zero failures), the task evaluates, and that fresh green run is what
-  earns the latch.
-
-  The spec file goes at the story-derived path (`test/spex/<story_id>_…`)
-  rather than a flat one, because that is what makes the failure — or the
-  absence of one — attributable to this story.
-
-  Surface: filesystem (agent writes the spec) + `start_task` MCP tool +
-  HTTP stop hook (records the run and evaluates) +
-  `show_story_requirements` MCP tool (observes the flip).
+  The latch means "promoted with its spex green" (John, 2026-10-02). Certifying
+  a story ready for QA stamps a commit on it and leaves this latch alone:
+  that is per copy and pre-merge, and must not make the story's red spex block
+  other copies' promotions.
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
-  import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.PromotionHelpers
+  import CodeMySpecSpex.ReadyForQaHelpers
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.StoryHelpers
-
-  @fixture_dir "test/fixtures/validation/pipeline_clean_credo"
+  alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
   setup :setup_active_project
-  setup :devops_on
 
-  spex "The gate flips a story to specs-ready on a fresh green run", criterion: 729 do
-    scenario "A green run on every spec flips the story to specs-ready" do
-      given_ :synced_context_component
-      given_ :story_linked_to_component
+  defp latched?(context, story), do: Stories.get_story(context.scope, story.id).specs_ready
 
-      given_ "the agent writes the story's BDD spec file and it passes", context do
-        {path, content} = story_spec(context.scope, context.story.id)
-        :ok = Environments.write_file(context.environment, path, content)
-
-        # Synced, so the project links the spec to its story's criterion.
-        {:reply, _synced, _frame} =
-          SyncProject.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
-
-        {:ok, Map.put(context, :spec_path, path)}
+  spex "Promotion latches a green story specs-ready", criterion: 729 do
+    scenario "the story's spex are all green on the certifying run" do
+      given_ "an agent's copy with the story's spex green and analyzers clean at HEAD",
+             context do
+        context = context |> a_promotable_project() |> analyzers_are_current()
+        {:ok, Map.put(context, :story, a_promotable_story(context))}
       end
 
-      # The specs-passing task is started directly rather than layering on
-      # `:bdd_task_started` — a session has one active task, and the stop
-      # hook evaluates that one. Starting bdd_specs_exist first would leave
-      # WriteBddSpecs active and the gate would never run.
-      given_ "the agent starts the specs-passing task", context do
-        session_id = "spex-#{System.unique_integer([:positive])}"
-
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
-
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "bdd_specs_passing",
-              entity_type: "story",
-              entity_id: to_string(context.story.number),
-              session_id: session_id
-            },
-            frame
-          )
-
-        refute response.isError,
-               "expected start_task on bdd_specs_passing to succeed, got: #{inspect(response)}"
-
-        {:ok, Map.put(context, :session_id, session_id)}
+      when_ "the story is promoted", context do
+        {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
-      when_ "a fresh spex run completes with every one of the story's specs green",
-            context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
-
-        {:ok, Map.put(context, :response, response)}
-      end
-
-      then_ "the story's specs are ready", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
-
-        body = response_text(response)
-
-        refute response.isError,
-               "expected show_story_requirements to succeed, got: #{inspect(response)}"
-
-        assert body =~ ~r/\[x\]\s+\*\*bdd_specs_passing\*\*/,
-               "expected a fresh green run to flip bdd_specs_passing to satisfied, got: #{body}"
-
+      then_ "the story is latched specs-ready", context do
+        refute context.response.isError, inspect(context.response)
+        assert latched?(context, context.story)
         {:ok, context}
       end
     end
   end
 
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
+  spex "Certifying for QA does not set the latch", criterion: 729 do
+    scenario "the story is certified ready for QA but not promoted" do
+      given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
+             context do
+        context = context |> a_promotable_project() |> analyzers_are_current()
+        story = a_promotable_story(context)
+        {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
+      end
 
-  # The spec lands at the story's own criterion path, so the bdd_spec
-  # validator applies to it — it has to `use CodeMySpecSpex.Case`, not
-  # bare `use SexySpex`, or the stop blocks on spec_validation before the
-  # specs-passing gate is ever reached.
-  defp story_spec(scope, story_id) do
-    story = StoryHelpers.fetch(scope, story_id)
-    [criterion | _] = story.criteria
+      when_ "the agent completes the task", context do
+        {:ok, Map.put(context, :answer, complete_ready_for_qa(context))}
+      end
 
-    content = """
-    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-      @moduledoc \"\"\"
-      Story #{story.id} — #{story.title}
-      Criterion #{criterion.id} — #{criterion.description}
-      \"\"\"
-
-      use CodeMySpecSpex.Case
-
-      spex "#{story.title}", criterion: #{Map.get(criterion, :number) || criterion.id} do
-        scenario "the criterion holds" do
-          then_ "the placeholder assertion passes" do
-            assert true
-            :ok
-          end
-        end
+      then_ "the story is stamped ready for QA and not latched", context do
+        {error?, text} = context.answer
+        refute error?, text
+        assert qa_stamp(context, context.story)
+        refute latched?(context, context.story)
+        {:ok, context}
       end
     end
-    """
-
-    {Fixtures.spec_file_path(story, criterion), content}
   end
 end

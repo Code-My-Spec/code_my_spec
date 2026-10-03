@@ -8,7 +8,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
   does not have. A silently broken backup is worse than no backup, because
   it removes the pressure to check.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc for the move — deploy file generation onto
+  `/console/deploys`, credentials onto their own always-visible page, and
+  the storage/backups steps onto `storage_backups`'s Config tab for `uat`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -27,14 +32,14 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
   spex "A backup that stops running does not fail silently", criterion: 615 do
     scenario "stalled backups are visible rather than assumed healthy" do
       given_ "the backup schedule was installed", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # The backups step refuses on a project that is not deploy-ready, and it
         # is right to: a dump schedule on a project that cannot be deployed is a
         # schedule for nothing. Generating those files is what makes the premise
         # true (story 970).
-        view |> element("[data-test='generate-project']") |> render_click()
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
 
         # The bucket the dumps land in is real; it goes away with the spex.
         tear_down_after(context.scope, [:storage])
@@ -45,14 +50,23 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
         # them and never reaches the schedule this criterion is about.
 
-        paste_storage_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_storage_credentials(credentials_view)
 
         # Backups land in the bucket the storage step makes, so that has to exist
         # first — otherwise the dump fails with NoSuchBucket, which is true and
         # says nothing about the schedule under test. "uat" — the environment
         # the `when_` below stalls dumps for.
-        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "uat")
-        CodeMySpecSpex.Case.run_step_interaction(view, :backups, "uat")
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups?env=uat"
+          )
+
+        run_console_step(view, :storage)
+        run_console_step(view, :backups)
 
         {:ok, Map.put(context, :view, view)}
       end

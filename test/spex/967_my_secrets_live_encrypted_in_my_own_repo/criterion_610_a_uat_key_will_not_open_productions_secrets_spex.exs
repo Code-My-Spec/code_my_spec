@@ -8,7 +8,10 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
   production. With a single project-wide key, whoever can touch staging can
   read prod — which is the blast radius this criterion exists to close.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 603's moduledoc for the move onto `/console/secrets`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -27,7 +30,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
     scenario "each environment's file is encrypted to its own key only" do
       given_ "each environment has its own key", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 
@@ -47,8 +50,18 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
       end
 
       when_ "the recipients of each environment's file are compared", context do
+        # A fresh mount, not `context.view` re-rendered: the console's
+        # `put_secret` handler (unlike the old page's) does not refresh its
+        # own `sops_recipients` assign after minting a new environment's age
+        # key, so the same view would still show whichever recipients
+        # existed at its own mount. A fresh mount reads the current DB state
+        # directly, which is what this criterion is actually about — not
+        # whether the page live-updates without a reload.
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
+
         recipients =
-          context.view
+          view
           |> render()
           |> Floki.parse_document!()
           |> Floki.find("[data-test='sops-recipient']")

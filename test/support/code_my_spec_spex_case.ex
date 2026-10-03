@@ -4854,6 +4854,56 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Wait for a resource's step to show a specific state — including an
+  intermediate one like `running`, unlike `await_console_step/2,3` which
+  only waits for a settled one. For a spex whose claim is about watching a
+  step's own transition on an already-open page (criterion 566), rather
+  than just outliving it.
+  """
+  def resource_step_state?(html, step, state),
+    do: html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/
+
+  def await_resource_step_state(view, step, state, deadline \\ nil)
+
+  def await_resource_step_state(view, step, state, nil) do
+    await_resource_step_state(view, step, state, System.monotonic_time(:millisecond) + 30_000)
+  end
+
+  def await_resource_step_state(view, step, state, deadline) do
+    html = LiveViewTest.render(view)
+
+    resource_step_state_reached(
+      view,
+      step,
+      state,
+      html,
+      resource_step_state?(html, step, state),
+      deadline
+    )
+  end
+
+  defp resource_step_state_reached(_view, _step, _state, html, true, _deadline), do: html
+
+  defp resource_step_state_reached(view, step, state, _html, false, deadline) do
+    poll_resource_step_state(
+      view,
+      step,
+      state,
+      deadline,
+      System.monotonic_time(:millisecond) > deadline
+    )
+  end
+
+  defp poll_resource_step_state(_view, step, state, _deadline, true) do
+    raise "the #{step} step never reached #{state}"
+  end
+
+  defp poll_resource_step_state(view, step, state, deadline, false) do
+    Process.sleep(50)
+    await_resource_step_state(view, step, state, deadline)
+  end
+
+  @doc """
   Switch a resource-detail page to one of its tabs (config, checks,
   activity) — scoped to `key` so a spex gets a clear failure if it is on the
   wrong resource's page rather than silently clicking nothing.

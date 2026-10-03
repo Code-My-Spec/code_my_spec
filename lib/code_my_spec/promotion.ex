@@ -156,6 +156,39 @@ defmodule CodeMySpec.Promotion do
     log_outcome(result)
   end
 
+  @doc """
+  Certify the scope's working copy for `story` at its HEAD, merging nothing: a
+  clean tree, a clean run of every analyzer at that exact commit (`gate/3`,
+  which starts any run that is missing and answers `{:pending, _}` until it
+  lands), and the story's own spex green on it (`story_spex_pass/3`). With
+  `main:`, the copy must also contain main — promotion's one extra check.
+
+  The procedure the ready-for-QA gate and promotion share (John, 2026-10-02):
+  ready-for-QA stamps the commit this answers for, promotion merges it. A
+  promote at a commit already certified finds that commit's runs and starts
+  none (`Analysis.answer_at_commit/3`).
+  """
+  @spec certify(Scope.t(), Stories.Story.t() | nil, keyword()) ::
+          {:ok, %{head: String.t(), certified_by: [map()], precheck: map()}}
+          | {:pending, map()}
+          | {:error, map()}
+  def certify(%Scope{} = scope, story, opts \\ []) do
+    with {:ok, from} <- promoting_copy(scope, nil) do
+      certify_copy(scope, from, story, Keyword.get(opts, :main), opts)
+    end
+  end
+
+  defp certify_copy(scope, from, story, main, opts) do
+    named = named_copy(from.id)
+
+    with {:ok, pre} <- Runner.precheck(scope, from.root, from.id, main),
+         {:ok, head} <- reported_head(pre, named),
+         {:ok, swept} <- gate(scope, head, opts),
+         :ok <- story_spex_pass(scope, story, named) do
+      {:ok, %{head: head, certified_by: swept, precheck: pre}}
+    end
+  end
+
   defp story_to_promote(_scope, nil), do: {:ok, nil}
 
   defp story_to_promote(scope, number) do
@@ -265,10 +298,8 @@ defmodule CodeMySpec.Promotion do
     with {:ok, from} <- promoting_copy(scope, running),
          named = named_copy(from.id),
          {:ok, main} <- main_head(scope, running, from),
-         {:ok, %{branch: branch} = pre} <- Runner.precheck(scope, from.root, from.id, main),
-         {:ok, head} <- reported_head(pre, named),
-         {:ok, swept} <- gate(scope, head, opts),
-         :ok <- story_spex_pass(scope, story, named),
+         {:ok, %{head: head, certified_by: swept, precheck: %{branch: branch} = pre}} <-
+           certify_copy(scope, from, story, main, opts),
          :ok <- head_unmoved(scope, from, head, named),
          {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
@@ -494,7 +525,7 @@ defmodule CodeMySpec.Promotion do
        %{
          reason:
            "story #{story.number} has no spex linked on #{named}, so nothing says " <>
-             "its spex pass. Write them (or sync so they link), then promote again.",
+             "its spex pass. Write them (or sync so they link), then try again.",
          working_copy: named
        }}
     else
@@ -509,7 +540,7 @@ defmodule CodeMySpec.Promotion do
          "story #{story.number}'s spex are not all passing on #{named}'s certifying " <>
            "spex run, so it is not promoted:\n" <>
            describe("spex", failing) <>
-           "\n\nFix them, let spex run, then promote again.",
+           "\n\nFix them, let spex run, then try again.",
        failing_spex: failing |> Enum.map(& &1.file_path) |> Enum.uniq(),
        working_copy: named
      }}

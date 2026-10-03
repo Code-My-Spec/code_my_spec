@@ -11,6 +11,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
   Surface note: see criterion 7979 — these describe the cms_new generator's
   output, which lives outside the spex boundary.
 
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  "Generate deploy files" button moved onto its own `/console/deploys`
+  page — see criterion 785's moduledoc.
+
   Surface: filesystem — the generated project tree.
   """
 
@@ -32,7 +36,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
     scenario "one config per environment, each naming its own host and discriminator" do
       given_ "Sam generates a project", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         view |> element("[data-test='generate-project']") |> render_click()
 

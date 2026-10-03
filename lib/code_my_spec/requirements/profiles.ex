@@ -37,7 +37,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Analysis
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
@@ -49,7 +48,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Issues
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.{Persona, PersonaStory}
-  alias CodeMySpec.Problems
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
@@ -61,7 +59,6 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   @type name ::
           :issues
-          | :specs
           | :files
           | :links
           | :stories
@@ -136,24 +133,6 @@ defmodule CodeMySpec.Requirements.Profiles do
       # paths rather than about an owner's roles. Same read.
       by_path: Map.new(files, &{&1.path, &1}),
       all: files
-    }
-  end
-
-  # Everything `bdd_specs_passing` reads, for every story, in three reads.
-  #
-  # The requirement has three outcomes and `SpecsPassingChecker.passing?/3`
-  # takes them in order: a story that is not `specs_ready` is judged from its
-  # own failing specs; one that is, with no completed spex run on this copy,
-  # passes because there is nothing to re-check against; one that is, with a
-  # completed run, passes only if none of its own spec files are failing.
-  #
-  # `spex_ran?` is whether the latest completed spex run exists — the run that
-  # answers, however old (28d72f8a).
-  def load(%Scope{active_project_id: project_id} = scope, :specs) do
-    %{
-      spex_ran?: Analysis.answered?(scope, "spex"),
-      specs_ready: specs_ready_by_story(project_id),
-      failing_by_story: failing_specs_by_story(scope, project_id)
     }
   end
 
@@ -294,39 +273,6 @@ defmodule CodeMySpec.Requirements.Profiles do
       nil -> query
       vantage -> from(f in query, where: f.working_copy_id == type(^vantage, Ecto.UUID))
     end
-  end
-
-  defp specs_ready_by_story(project_id) do
-    Repo.all(
-      from(s in Story,
-        where: s.project_id == ^project_id,
-        select: {s.id, s.specs_ready}
-      )
-    )
-    |> Map.new()
-  end
-
-  # This story's own spec files, and which of them the current spex run is
-  # failing. Grouped rather than asked per story, so a project with a hundred
-  # stories costs the same two reads as one with three.
-  defp failing_specs_by_story(scope, project_id) do
-    paths_by_story =
-      Repo.all(
-        from(f in FileRecord,
-          where: f.project_id == ^project_id and f.role == :bdd_spec and not is_nil(f.story_id),
-          select: {f.story_id, f.path}
-        )
-      )
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-    failing =
-      scope
-      |> Problems.list_project_problems(source: "spex", severity: :error)
-      |> Enum.group_by(& &1.file_path)
-
-    Map.new(paths_by_story, fn {story_id, paths} ->
-      {story_id, paths |> Enum.flat_map(&Map.get(failing, &1, [])) |> Enum.uniq()}
-    end)
   end
 
   # `Preloader`'s four, in its shapes — rules and questions carry a project id,

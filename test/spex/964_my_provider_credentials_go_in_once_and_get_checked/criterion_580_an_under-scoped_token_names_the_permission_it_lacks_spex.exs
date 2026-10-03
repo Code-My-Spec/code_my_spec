@@ -12,7 +12,14 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
   ReqCassette; the spec drives the LiveView and the cassette intercepts
   the app's outbound Req call.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first. "No domain has been bought" is
+  checked against the Overview page's project-wide `setup-checklist-item`
+  listing — see criterion 579's moduledoc for why.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -33,11 +40,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
         grant_cannot_use_the_registrar(context)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -70,12 +73,12 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
       end
 
       then_ "no domain has been bought", context do
-        {:ok, provisioning, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, overview, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console")
 
         refute has_element?(
-                 provisioning,
-                 "[data-test='setup-step'][data-step='domain'][data-state='done']"
+                 overview,
+                 "[data-test='setup-checklist-item'][data-step='domain'][data-state='done']"
                ),
                "expected the domain step to remain unrun after a rejected credential"
 

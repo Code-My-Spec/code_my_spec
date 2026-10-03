@@ -86,6 +86,18 @@ defmodule CodeMySpec.Components.DependencyRepository do
   end
 
   @doc """
+  Updates a dependency.
+  """
+  @spec update_dependency(Scope.t(), Dependency.t(), map()) ::
+          {:ok, Dependency.t()} | {:error, Ecto.Changeset.t()}
+  def update_dependency(%Scope{} = scope, %Dependency{} = dependency, attrs) do
+    dependency
+    |> Dependency.changeset(attrs)
+    |> Repo.update()
+    |> announce(scope)
+  end
+
+  @doc """
   Deletes a dependency.
   """
   @spec delete_dependency(Scope.t(), Dependency.t()) ::

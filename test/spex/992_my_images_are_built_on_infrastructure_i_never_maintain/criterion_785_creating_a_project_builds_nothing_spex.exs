@@ -13,7 +13,11 @@ defmodule CodeMySpecSpex.Story992.Criterion8232Spex do
   had happened would have recorded one, because that is the only way a built
   image ever gets there.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive`.
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  deploy step's own markup (`DeployConfig`) is unchanged — it was reused
+  as-is — only the page it's rendered under moved.
+
+  Surface: `CodeMySpecWeb.ConsoleLive`.
   """
 
   use CodeMySpecSpex.Case
@@ -35,7 +39,8 @@ defmodule CodeMySpecSpex.Story992.Criterion8232Spex do
       end
 
       when_ "he opens setup without deploying", context do
-        view = mount_provisioning(context)
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         {:ok, Map.put(context, :html, render(view))}
       end

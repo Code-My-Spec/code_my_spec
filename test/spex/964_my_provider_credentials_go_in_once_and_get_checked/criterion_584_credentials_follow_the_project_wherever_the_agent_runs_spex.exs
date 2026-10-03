@@ -13,7 +13,12 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
   project from a *fresh* connection still finds them recorded. A
   process-environment credential would not survive that.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc. Credentials live on their own plain page now
+  (`/console/credentials`) with the form always visible, so there is no
+  `manage-credentials` dialog to open first.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -28,11 +33,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
     scenario "credentials entered once are found again from a fresh connection" do
       given_ "Sam entered his credentials for the project", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-        view
-        |> element("[data-test='manage-credentials']")
-        |> render_click()
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
         view
         |> form("[data-test='credentials-form']",
@@ -48,13 +49,8 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
         # over in process state, only what the project itself holds.
         fresh_conn = Phoenix.ConnTest.build_conn() |> log_in_user(context.user)
 
-        {:ok, view, _html} =
-          live(fresh_conn, "/app/projects/#{context.project.id}/provisioning")
-
-        html =
-          view
-          |> element("[data-test='manage-credentials']")
-          |> render_click()
+        {:ok, view, html} =
+          live(fresh_conn, "/app/projects/#{context.project.id}/console/credentials")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

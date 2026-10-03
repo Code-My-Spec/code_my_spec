@@ -1,24 +1,29 @@
 defmodule CodeMySpecWeb.ConsoleLive do
   @moduledoc """
-  The project console — step 6 of the provisioning-page redesign (held on
-  its own branch for review, not promoted).
+  The project console — step 6 of the provisioning-page redesign, and now
+  the only page: `/provisioning`, `ProvisioningLive` and its sidebar link
+  are retired (gate 2 of the step 6 rollout).
 
-  A new LiveView rather than new `live_action`s on `ProvisioningLive`: the
-  two pages' render trees don't share a shape, and bolting a sidebar-and-tabs
-  console onto the page step 5 just finished de-nesting would undo that work.
-  `ProvisioningLive` keeps serving `/provisioning` unchanged — every spex that
-  targets it still passes — while this serves the new `/console` routes
-  side by side.
+  A new LiveView rather than new `live_action`s on the old `ProvisioningLive`:
+  the two pages' render trees didn't share a shape, and bolting a
+  sidebar-and-tabs console onto the page step 5 just finished de-nesting
+  would have undone that work. `ProvisioningLive.Components` and
+  `ProvisioningLive.ResourceFields` live on under the old namespace and are
+  still aliased here — only the top-level LiveView itself was retired.
 
   ## Layout
 
   A sidebar (Overview, Resources, Deploys, Secrets, Credentials, Activity,
-  Settings) plus a header `EnvironmentSwitcher`. Credentials, Secrets and
-  Settings are project-wide; Overview, Resources and Deploys are scoped to
-  the selected environment via `?env=`, patched rather than navigated so
-  switching environments does not remount the page — the same ?param-over-
-  route shape `AgentConversationLive` already uses for its own in-page
-  selection.
+  Settings), on the right opposite the content (`drawer-end`) rather than
+  the left, plus a header `EnvironmentSwitcher` on the pages it applies to.
+  Credentials, Secrets and Settings are project-wide; Overview and Resources
+  are scoped to the selected environment via `?env=`, patched rather than
+  navigated so switching environments does not remount the page — the same
+  ?param-over-route shape `AgentConversationLive` already uses for its own
+  in-page selection. Deploys shows every environment's own card side by
+  side instead — deploying is a decision about one environment made from a
+  page showing all of them, not a resource scoped to whichever one the
+  switcher points at, so it carries no switcher at all.
 
   ## What's real here and what's a first pass
 
@@ -70,6 +75,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
   alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
+  alias CodeMySpecWeb.ProvisioningLive.Components.DeployConfig
   alias CodeMySpecWeb.ProvisioningLive.Components.EnvironmentsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.SecretsForm
 
@@ -143,6 +149,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
       # same as every other assign_new above it.
       |> assign_new(:mail, fn -> mail_state(scope, "prod", list_domains(scope)) end)
       |> assign_new(:mail_domains, fn -> mail_domains(scope, list_domains(scope)) end)
+      |> assign_new(:backups, fn -> [] end)
+      |> assign_new(:backup_health, fn -> nil end)
 
     {:noreply, socket}
   end
@@ -196,7 +204,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div class="drawer lg:drawer-open" data-test="console">
+      <div class="drawer lg:drawer-open drawer-end" data-test="console">
         <input id="console-drawer" type="checkbox" class="drawer-toggle" />
 
         <div class="drawer-content p-4 lg:p-8 flex flex-col gap-4">
@@ -205,7 +213,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
               Menu
             </label>
             <EnvironmentSwitcher.environment_switcher
-              :if={@live_action in [:overview, :resources, :resource_detail, :deploys]}
+              :if={@live_action in [:overview, :resources, :resource_detail]}
               environment={@environment}
               environments={@environments}
               base_path={~p"/app/projects/#{@current_scope.active_project_id}/console"}
@@ -242,6 +250,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
               :for={step <- @plan}
               data-test="setup-checklist-item"
               data-step={step.key}
+              data-environment={step.environment}
               data-state={step.state}
               class="flex items-center justify-between text-sm"
             >
@@ -652,6 +661,51 @@ defmodule CodeMySpecWeb.ConsoleLive do
         </section>
       </:mail_panel>
 
+      <:backups_panel :if={@resource_key == :storage_backups}>
+        <section data-test="backups-panel">
+          <h2 class="text-lg font-semibold">Backups</h2>
+
+          <.button data-test="backups-refresh" phx-click="refresh_backups" class="btn btn-primary mt-2">
+            Check the bucket
+          </.button>
+
+          <p :if={@backups == []} data-test="no-backups">
+            no dumps in any bucket yet
+          </p>
+
+          <%!-- A backup that stopped running looks exactly like one that is
+              working, right up until somebody needs it. "never" and "stalled"
+              are reported apart because "it never ran" and "it stopped last
+              Tuesday" send Sam to different places. --%>
+          <div
+            :if={@backup_health}
+            data-test="backup-health"
+            data-state={@backup_health.state}
+            data-last-successful-at={@backup_health.last_seen}
+            data-stale-after-hours={@backup_health.stale_after_hours}
+          >
+            {case @backup_health.state do
+              "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
+              "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
+              "never" -> "no dump has ever landed"
+            end}
+          </div>
+
+          <div
+            :for={dump <- @backups}
+            data-test="backup-dump"
+            data-key={dump.key}
+            data-environment={dump.environment}
+            data-bucket={dump.bucket}
+            data-taken-at={dump.taken_at}
+            data-age-days={dump.age_days}
+            data-size={dump.size}
+          >
+            {dump.environment}: {dump.key} ({dump.taken_at})
+          </div>
+        </section>
+      </:backups_panel>
+
       <:domain_search :if={@resource_key == :dns_domain}>
         <section data-test="domain" data-state={domain_search_state(assigns)} class="my-6">
           <h2 class="text-lg font-semibold">Domain</h2>
@@ -792,22 +846,25 @@ defmodule CodeMySpecWeb.ConsoleLive do
       </.button>
 
       <div
-        :for={step <- deploy_steps(@plan, @environment)}
+        :for={step <- deploy_steps(@plan)}
         data-test="deploy-row"
+        data-step={step.key}
         data-environment={step.environment}
+        data-state={step.state}
+        data-completed-at={step_completed_at(step)}
+        data-started-at={step_started_at(step)}
+        data-verified-at={step_verified_at(step)}
         class="card bg-base-100"
       >
         <div class="card-body">
           <h3 class="card-title text-base">
             Deploy {step.environment} <span class="badge">{step.state}</span>
           </h3>
-          <.form for={%{}} as={:deploy} phx-submit="run_step_with_environment" class="flex gap-2">
-            <input type="hidden" name="key" value={step.key} />
-            <input type="hidden" name="environment" value={step.environment} />
-            <.button type="submit" data-test="deploy-submit" class="btn btn-primary">
-              {if step.state == :errored, do: "Retry", else: "Deploy"}
-            </.button>
-          </.form>
+          <DeployConfig.deploy_config
+            step={step}
+            age_key_environments={age_key_environments(@current_scope, @environments)}
+            runs_in_flight?={Provisioning.runs_in_flight?(@current_scope)}
+          />
         </div>
       </div>
     </section>
@@ -873,9 +930,28 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp setup_done_count(plan), do: Enum.count(plan, &(&1.state == :done))
 
-  defp deploy_steps(plan, environment) do
-    Enum.filter(plan, &(&1.key == :deploy and &1.environment == environment))
+  # Every environment, not just whichever one the switcher currently points
+  # at — the old page showed every environment's deploy card side by side,
+  # and Deploys is where Sam ships to either one, not a per-environment
+  # resource view. Limiting this to @environment (fixed and caught by
+  # criteria 786-793, which drive uat specifically regardless of which
+  # environment the page happened to default to) hid every deploy but one.
+  defp deploy_steps(plan) do
+    Enum.filter(plan, &(&1.key == :deploy))
   end
+
+  # Same as ResourceDetail's own copies — see that module's comment for why
+  # these are duplicated rather than shared.
+  defp step_completed_at(%{state: :done, completed_at: %DateTime{} = at}),
+    do: DateTime.to_iso8601(at)
+
+  defp step_completed_at(_step), do: nil
+
+  defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_started_at(_step), do: nil
+
+  defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_verified_at(_step), do: nil
 
   defp resource_groups(plan, environment) do
     for group <- ResourceGroups.all() do
@@ -1136,6 +1212,20 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # panel's own state, not a one-shot diagnostic with a "checked … ago".
   def handle_event("refresh_mail_dns", _params, socket) do
     {:noreply, refresh_mail(socket)}
+  end
+
+  # Ported from ProvisioningLive.handle_event("refresh_backups", ...) — a
+  # Config action, same reasoning as refresh_mail_dns above: it re-reads
+  # whether the bucket's schedule is still landing dumps, not a one-shot
+  # diagnostic with its own "checked … ago".
+  def handle_event("refresh_backups", _params, socket) do
+    scope = socket.assigns.current_scope
+    dumps = list_backups(scope, socket.assigns.options)
+
+    {:noreply,
+     socket
+     |> assign(:backups, dumps)
+     |> assign(:backup_health, Backups.health(dumps, step_opts()))}
   end
 
   # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...).
@@ -1513,7 +1603,16 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # and the environment-derived state, never the URL-driven `environment`/
   # `resource_key`/`tab` assigns, so the cheaper recompute is the right one.
   @impl true
-  def handle_info({:provisioning, :step, _row}, socket), do: {:noreply, refresh(socket)}
+  def handle_info({:provisioning, :step, row}, socket) do
+    socket = refresh(socket)
+
+    # Same as ProvisioningLive's own handle_info — `refresh/1` keeps the
+    # cached mail state the same way `load/2` does; the steps that actually
+    # change it say so here, so a page that just registered a sending domain
+    # shows it without every other announce paying for a Resend round-trip.
+    {:noreply, if(row.key in [:email, :inbound], do: refresh_mail(socket), else: socket)}
+  end
+
   def handle_info({:provisioning, :finished, _result}, socket), do: {:noreply, refresh(socket)}
   def handle_info(_message, socket), do: {:noreply, socket}
 

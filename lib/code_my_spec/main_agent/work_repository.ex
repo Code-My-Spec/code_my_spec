@@ -77,7 +77,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
       # agent STALLED whose only work a neighbour held, which `Work` never offers
       # and `start_task` refuses (4849f20b). Either way an agent that had stood down
       # correctly read identically to one that was stuck.
-      {claimable, damped} = offer(scope, agent, task, owners)
+      {claimable, damped} = offer(scope, agent, Agent.active_task(agent), owners)
 
       %AgentWork{
         agent_id: agent.id,
@@ -98,9 +98,9 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         provider_refusal: agent.provider_refusal,
         provider_retry_at: agent.provider_retry_at,
         turn_timeouts: Map.get(timeouts, agent.id),
-        # A claimed task means there is work whatever the queue says; idle is
-        # only ever about an agent with nothing in hand.
-        idle?: is_nil(task) and claimable == [],
+        # An active task means there is work whatever the queue says. A blocked
+        # one does not: it holds only itself (story 1080).
+        idle?: is_nil(Agent.active_task(agent)) and claimable == [],
         damped: damped,
         machine_tools: copy && copy.machine_tools,
         problems: Map.get(problems, agent.working_copy_id, [])
@@ -108,8 +108,8 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     end)
   end
 
-  # A claimed task means nothing is being offered, so nothing can be damped.
-  defp offer(_scope, _agent, task, _owners) when not is_nil(task), do: {[], nil}
+  # An active task means nothing is being offered, so nothing can be damped.
+  defp offer(_scope, _agent, active, _owners) when not is_nil(active), do: {[], nil}
 
   defp offer(scope, agent, nil, owners) do
     case Work.claimable_work(scope, agent, owners) do
@@ -129,6 +129,7 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   #
   # Newest first among blocked attempts, because that is the one the agent is
   # waiting on now; older blocked attempts are history it has not cancelled.
+  # Shown, not counted as work: `idle?` and the offer read the active task.
   defp current_task(agent) do
     Agent.active_task(agent) || latest_blocked_task(agent)
   end
@@ -225,13 +226,15 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
     Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
   end
 
-  # `tap_out` writes a pending permission request against the agent, which is
-  # the same row `Notifications.awaiting_answer?/1` and the stop decision read.
+  # A pending tap-out naming no task, the one `Agents.Waiting` holds the agent
+  # on. One naming a task holds only that task (story 1080).
   defp tapped_out(agents) do
     ids = Enum.map(agents, & &1.id)
 
     from(p in PermissionRequest,
-      where: p.agent_id in ^ids and p.status == "pending" and p.tool_name == "tap_out",
+      where:
+        p.agent_id in ^ids and p.status == "pending" and p.tool_name == "tap_out" and
+          is_nil(p.task_id),
       select: p.agent_id
     )
     |> Repo.all()

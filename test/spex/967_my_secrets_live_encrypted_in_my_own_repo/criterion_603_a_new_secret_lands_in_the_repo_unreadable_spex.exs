@@ -12,7 +12,11 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
   rules sanction here because "no plaintext on disk" *is* the
   user-visible effect.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): the
+  secrets form lives on its own plain page now, always visible like
+  `/console/credentials` — see criterion 613's moduledoc for that move.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -33,7 +37,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
     scenario "the value is ciphertext in the file and plaintext nowhere in the tree" do
       given_ "Sam is on the setup status page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         {:ok, Map.put(context, :view, view)}
       end

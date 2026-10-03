@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3507Spex do
 
         scope = %{context.scope | active_working_copy_id: context.first_id}
         # spex: since 28d72f8a it is the one analyzer a requirement reads
-        # (`bdd_specs_passing`), so the only one whose run tells the graph
+        # (`ready_for_qa`), so the only one whose run tells the graph
         # anything. A credo, compiler or exunit run leaves no observation.
         run = Fixtures.start_analysis_run(scope, "spex")
         :ok = Fixtures.complete_analysis_run(scope, run)

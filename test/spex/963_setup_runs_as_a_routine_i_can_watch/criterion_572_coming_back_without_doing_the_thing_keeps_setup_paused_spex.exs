@@ -8,7 +8,14 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
   repeats what still needs doing — it does not take his return as proof
   and march on into a deploy with no domain.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): there
+  is no `resume-setup`/whole-run to come back to, but the claim under test —
+  that re-running a paused step does not treat the return as proof the
+  errand was done — is a per-step property regardless of how the re-run is
+  reached. Running `:domain` a second time directly via `run_console_step/2`
+  tests it the same way `resume-setup` did.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -19,9 +26,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
   setup :setup_active_project
   setup :devops_on
   setup :fake_providers
-
-  defp operation_started?(html), do: html =~ ~r/data-state="(running|done|errored|paused)"/
-  defp operation_done?(html), do: not (html =~ ~s(data-state="running"))
 
   spex "Coming back without doing the thing keeps setup paused", criterion: 572 do
     scenario "resuming with the domain still unregistered stays paused on the same step" do
@@ -37,10 +41,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
           })
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
 
-        view |> element("[data-test='start-setup']") |> render_click()
-        await_operation(view, &operation_started?/1, &operation_done?/1)
+        run_console_step(view, :domain)
 
         assert render(view) =~ ~r/data-step="domain"[^>]*data-state="paused"/,
                "expected setup to be paused on the domain step before resuming"
@@ -49,10 +52,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7967Spex do
       end
 
       when_ "Sam returns without having registered it", context do
-        context.view |> element("[data-test='resume-setup']") |> render_click()
-        html = await_operation(context.view, &operation_started?/1, &operation_done?/1)
+        run_console_step(context.view, :domain)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "setup stays paused on the same step", context do

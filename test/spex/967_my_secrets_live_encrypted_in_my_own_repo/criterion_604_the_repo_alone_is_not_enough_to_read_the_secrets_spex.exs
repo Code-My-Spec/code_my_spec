@@ -10,7 +10,10 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
   The scenario reads the committed file directly, which is exactly what a
   person with the repo and no key would have.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 603's moduledoc for the move onto `/console/secrets`.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Sops`.
   """
 
@@ -31,7 +34,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
     scenario "the encrypted file yields nothing but ciphertext without the key" do
       given_ "the project has an encrypted secret committed", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         open_secrets_dialog(view)
 

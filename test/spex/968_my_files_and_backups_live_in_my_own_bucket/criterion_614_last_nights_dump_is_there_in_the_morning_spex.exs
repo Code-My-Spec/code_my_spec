@@ -8,7 +8,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   Installing a cron entry is not the same as producing a backup — the
   assertion is on the artifact, not the schedule.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc for the move — deploy file generation onto
+  `/console/deploys`, credentials onto their own always-visible page, and
+  the server/storage/backups steps onto their resource groups' Config
+  tabs.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Deploy` (backup scheduling) and
   `CodeMySpec.Provisioning.Hetzner` (the bucket).
   """
@@ -33,35 +39,51 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   spex "Last night's dump is there in the morning", criterion: 614 do
     scenario "a dump dated from the scheduled run is in the bucket" do
       given_ "setup installed the backup schedule", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # The backups step refuses on a project that is not deploy-ready, and it
         # is right to: a dump schedule on a project that cannot be deployed is a
         # schedule for nothing. Generating those files is what makes the premise
         # true (story 970).
-        view |> element("[data-test='generate-project']") |> render_click()
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
 
         # Hetzner issues object-storage keys only in its console, so they are
         # pasted per project — without them the backups step pauses asking for
         # them and never reaches the schedule this criterion is about.
-        paste_storage_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_storage_credentials(credentials_view)
 
         # The boxes first: `bin/backup` runs on the environment's own server —
         # where `cms-postgres` resolves — and the server step is what mints the
         # access key that gets there. Without it the step refuses with "no
         # server access key on this account", which is true and is about the
         # step before this one.
-        view
-        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-        |> render_click()
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
 
         # Backups land in the bucket the storage step makes, so that has to exist
         # first — otherwise the dump fails with NoSuchBucket, which is true and
         # says nothing about the schedule under test.
-        CodeMySpecSpex.Case.run_step_interaction(view, :storage, "prod")
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups"
+          )
 
-        html = CodeMySpecSpex.Case.run_step_interaction(view, :backups, "prod")
+        run_console_step(view, :storage)
+        run_console_step(view, :backups)
+
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
+        html = render(view)
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
                "expected the backup step to complete before checking for dumps, got: " <>

@@ -1,19 +1,11 @@
 defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
   @moduledoc """
   Story 1017 — Agent sees the questions it has open.
-  Criterion 1612 — Product waits on its own open questions: no nudge, work
-  offer or resume until answered, while its answers and teammates' questions
-  still reach it.
+  Criterion 1612 — Teammates' questions reach product.
 
-  John: "Product blocks on ALL open questions (it holds one chain of thought
-  through the whole design)." What holds it is its own question; a teammate's
-  question about the criteria is still product's to answer.
-
-  Only that half is asserted here. The hold itself has no outward sign a spex
-  can tell apart: product's own question blocks the task it holds, so its turn
-  end carries no menu either way, and a repeated offer is already damped. The
-  hold is pinned by unit tests (`product_lives_on_the_main_copy_test.exs`,
-  `Agents.Waiting`).
+  A teammate's question about the criteria is product's to answer, and it
+  reaches product while product has an open question of its own. That its own
+  question blocks only the task it was asked about is criterion 1757.
   """
   use CodeMySpecSpex.Case
 
@@ -38,9 +30,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
     :ok
   end
 
-  spex "Product waits on its own open questions: no nudge, work offer or resume until answered, while its answers and teammates' questions still reach it",
-    criterion: 1612 do
-    scenario "Product asks the user something, waits, and still hears a teammate" do
+  spex "Teammates' questions reach product", criterion: 1612 do
+    scenario "Product has asked the user something and still hears a teammate" do
       given_ "the project has completed kickoff", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
       end
@@ -60,7 +51,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
             persona_id: context.persona_id
           )
 
-        # Design still owed, so a product that was not waiting would be offered it.
         owed =
           StoryHelpers.create_and_link(context.scope, context.component.module_name,
             title: "Receipt formatting",
@@ -101,7 +91,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
         # asked inside it.
         :ok = Fixtures.start_turn(context.scope, context.product.id)
 
-        # Holding a task, so its turn end would carry the menu were it not waiting.
         {:reply, designing, _} =
           StartTask.execute(
             %{

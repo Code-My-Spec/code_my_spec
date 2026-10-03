@@ -11,7 +11,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
   This is the gate criterion: 8017 says a restore *can* work, this says
   setup proves it before claiming the step is finished.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app.
+  Retargeted onto the console (provisioning-console-step6, unmerged): see
+  criterion 613's moduledoc for the move — deploy file generation onto
+  `/console/deploys`, credentials onto their own always-visible page, and
+  the server/storage/backups steps onto their resource groups' Config
+  tabs.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app.
   """
 
   use CodeMySpecSpex.Case
@@ -33,14 +39,19 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         # The bucket the dump lands in has to exist first. Without it the
         # backups step fails on missing storage, and the failure reads as
         # "restore verification broken" rather than "nowhere to write".
-        view = mount_provisioning(context)
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
 
         # The backups step refuses on a project that is not deploy-ready, and it
         # is right to: a dump schedule on a project that cannot be deployed is a
         # schedule for nothing. Generating those files is what makes the premise
         # true (story 970).
-        view |> element("[data-test='generate-project']") |> render_click()
-        paste_storage_credentials(view)
+        deploys_view |> element("[data-test='generate-project']") |> render_click()
+
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_storage_credentials(credentials_view)
 
         # Storage only: the backup step is what the `when_` runs, and
         # running it here too would make the criterion assert about a second
@@ -50,19 +61,30 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         # because dumps land in the bucket it makes. Not backups — that is what
         # the `when_` runs, and running it here would make the criterion assert
         # about a second invocation rather than the first.
-        run_steps(view, [:server, :storage])
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+
+        {:ok, view, _html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/storage_backups"
+          )
+
+        run_console_step(view, :storage)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
-        CodeMySpecSpex.Case.run_step_interaction(context.view, :backups, "prod")
+        run_console_step(context.view, :backups)
 
-        # Waited for, then read. The step runs under a supervised task because
-        # a dump takes longer than a LiveView event may, so `render_click/1`
-        # returns while it is still running and the proof this criterion reads
-        # is not on the page yet.
-        await_step(context.view, :backups, "prod", 600)
+        # Not `run_console_step/2`'s own return: `run_step`'s handler
+        # reassigns `@plan` only when the step's PubSub broadcast arrives
+        # and `refresh/1` runs in `handle_info`, not inside its own
+        # `handle_event` return — so the click's own render can still show
+        # the pre-run state even though the step already completed.
         html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
@@ -110,7 +132,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
         done_at =
           context.parsed
-          |> Floki.find("[data-test='setup-step'][data-step='backups']")
+          |> Floki.find("[data-test='resource-step'][data-step='backups']")
           |> Floki.attribute("data-completed-at")
           |> List.first()
 

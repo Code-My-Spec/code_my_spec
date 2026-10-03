@@ -16,6 +16,8 @@ defmodule CodeMySpec.Stories.Story do
           specs_ready: boolean(),
           specs_ready_at: DateTime.t() | nil,
           specs_ready_commit: String.t() | nil,
+          qa_ready_commit: String.t() | nil,
+          qa_ready_at: DateTime.t() | nil,
           three_amigos_sealed: boolean(),
           promoted_version: String.t() | nil,
           epic_id: Ecto.UUID.t() | nil,
@@ -47,9 +49,9 @@ defmodule CodeMySpec.Stories.Story do
         "Whether the story is released for development. Stories produce no " <>
           "requirements until this is true. New stories start false",
       specs_ready:
-        "Whether the story's BDD specs have gone green. Set by the " <>
-          "specs-passing gate on a fresh green spex run, cleared when the " <>
-          "chain restarts. Spex failures only block the agent on stories " <>
+        "Whether the story is promoted with its BDD specs green. Set only by " <>
+          "promotion, cleared when its spex, criteria or readiness change. " <>
+          "Spex failures only block other copies' promotions on stories " <>
           "where this is true. New stories start false",
       specs_ready_at:
         "When specs_ready was last set true. Display only — a stop-hook " <>
@@ -60,6 +62,12 @@ defmodule CodeMySpec.Stories.Story do
         "The commit sha of the checkout that earned specs_ready, or nil. " <>
           "Same display-only purpose as specs_ready_at — never checked for " <>
           "ancestry, only shown",
+      qa_ready_commit:
+        "The commit the story's working copy was certified ready for QA at " <>
+          "(clean tree, all four analyzers clean there, the story's own spex " <>
+          "green), or nil. Set only by completing the ready_for_qa task; " <>
+          "cleared with specs_ready",
+      qa_ready_at: "When qa_ready_commit was stamped, or nil",
       three_amigos_sealed:
         "Whether the story's Three Amigos session has been sealed. Set by the " <>
           "gate when persona, rules, scenarios and zero open questions all " <>
@@ -85,10 +93,9 @@ defmodule CodeMySpec.Stories.Story do
     # and new stories start parked. The default lives here rather than in
     # the migration.
     field :ready_for_dev, :boolean, default: false
-    # Latch behind `bdd_specs_passing`. Freshness gates the flip, never the
-    # state: once a green run sets this, a later edit that stales the run
-    # leaves it alone. That is the whole reason the node could come back
-    # after bab2f792 removed it for clamping downstream work.
+    # Promoted, with the story's spex green on the certifying run: set only by
+    # promotion (e1174640). Not a graph input; what it decides is whether this
+    # story's red spex block another copy's promote (`Validation.enforceable/2`).
     field :specs_ready, :boolean, default: false
 
     # When and where the latch above was earned — never read to gate
@@ -101,6 +108,14 @@ defmodule CodeMySpec.Stories.Story do
     # argue against. This is display data, not enforcement data.
     field :specs_ready_at, :utc_datetime_usec
     field :specs_ready_commit, :string
+
+    # The ready-for-QA stamp, behind `ready_for_qa` the way `promoted_version`
+    # is behind `story_promoted`: the commit `Promotion.certify/3` passed at.
+    # The graph reads this and nothing about analysis (John, 2026-10-02).
+    # A second latch, not `specs_ready`: it is per copy and pre-merge, and
+    # must not make this story's red spex block other copies' promotes.
+    field :qa_ready_commit, :string
+    field :qa_ready_at, :utc_datetime_usec
 
     # Latch behind `three_amigos_complete`, in the same shape as `specs_ready`
     # above. Recomputed, the requirement meant a red card added to a shipped
@@ -219,6 +234,8 @@ defmodule CodeMySpec.Stories.Story do
       :specs_ready,
       :specs_ready_at,
       :specs_ready_commit,
+      :qa_ready_commit,
+      :qa_ready_at,
       :three_amigos_sealed,
       :promoted_version,
       :priority,
@@ -357,6 +374,8 @@ defmodule CodeMySpec.Stories.Story do
         |> put_change(:specs_ready, false)
         |> put_change(:specs_ready_at, nil)
         |> put_change(:specs_ready_commit, nil)
+        |> put_change(:qa_ready_commit, nil)
+        |> put_change(:qa_ready_at, nil)
     end
   end
 

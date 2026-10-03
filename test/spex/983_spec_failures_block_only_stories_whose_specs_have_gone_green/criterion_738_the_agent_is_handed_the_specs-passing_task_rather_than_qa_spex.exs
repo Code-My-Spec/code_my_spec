@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
   Rule: QA cannot begin on a story until its specs are ready.
 
   The node's position in the chain. `bab2f792` retargeted the component
-  terminals straight at `qa_complete`; restoring `bdd_specs_passing` puts
+  terminals straight at `qa_complete`; restoring `ready_for_qa` puts
   a gate back between them, so a story cannot reach a QA sub-agent before
   its own contract is green.
 
@@ -31,8 +31,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
   setup :setup_active_project
   setup :devops_on
 
-  spex "The specs-passing gate sits in front of QA", criterion: 738 do
-    scenario "The agent is handed the specs-passing task rather than QA" do
+  spex "The ready-for-QA gate sits in front of QA", criterion: 738 do
+    scenario "The agent is handed the ready-for-QA task rather than QA" do
       given_ :synced_context_component
       given_ :story_linked_to_component
 
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
       end
 
       then_ "the specs-passing requirement is open work on the story", context do
-        assert context.requirements_body =~ ~r/\[ \]\s+\*\*bdd_specs_passing\*\*/,
+        assert context.requirements_body =~ ~r/\[ \]\s+\*\*ready_for_qa\*\*/,
                "expected the specs-passing gate to be unsatisfied, got: #{context.requirements_body}"
 
         {:ok, context}
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
 
         # Ordering is the criterion: the gate is listed before QA, so the
         # agent walking the story meets it first.
-        gate_at = :binary.match(body, "bdd_specs_passing") |> elem(0)
+        gate_at = :binary.match(body, "ready_for_qa") |> elem(0)
         qa_at = :binary.match(body, "qa_complete") |> elem(0)
 
         assert gate_at < qa_at,

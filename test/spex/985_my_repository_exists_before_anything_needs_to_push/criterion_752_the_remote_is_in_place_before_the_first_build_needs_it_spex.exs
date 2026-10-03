@@ -12,7 +12,14 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
   list's rendering order, because ordering is what matters and a list can be
   sorted for display.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): there
+  is no `start-setup` whole-run to run repository through deploy — the
+  ordering claim is tested more directly instead, running `:repository`
+  then `:deploy` each on their own page via `run_console_step/2` and the
+  deploy form, and comparing their own recorded timestamps exactly as
+  before.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Repository`.
   """
 
@@ -30,10 +37,6 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
 
   spex "The remote is in place before the first build needs it", criterion: 752 do
     scenario "the repository step completes before the deploy step starts" do
-      # Credentials first. Setup refuses to start while one is missing
-      # (criterion 7985), so without this the run never begins and the
-      # criterion reports the repository step as never finishing — which is
-      # true, and nothing to do with what it is asking.
       given_ "Sam is on the setup status page with his credentials entered", context do
         # The repository an earlier recording made still exists and cannot be
         # deleted, so setup would pause asking whose it is — halting the run
@@ -43,29 +46,43 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
 
         # Saving a credential proves it with a live call, which is why this
         # needed a cassette. Against fakes the proof reaches the fake.
-        view = mount_provisioning(context)
-        paste_provider_credentials(view)
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
 
-        {:ok, Map.put(context, :view, view)}
+        paste_provider_credentials(credentials_view)
+
+        {:ok, Map.put(context, :credentials_view, credentials_view)}
       end
 
-      when_ "he runs setup", context do
-        context.view
-        |> element("[data-test='start-setup']")
-        |> render_click()
+      when_ "he runs the repository step, then tries to deploy", context do
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
 
-        # Started, not finished: the click returns as soon as the run
-        # begins, so the page is read once the run settles.
-        await_provisioning(context.view)
+        run_console_step(repository_view, :repository)
 
-        {:ok, Map.put(context, :html, render(context.view))}
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+        deploys_view
+        |> form(
+          "[data-test='deploy-row'][data-environment='prod'] [data-test='deploy-environment-form']",
+          %{"environment" => "prod"}
+        )
+        |> render_submit()
+
+        html = render(deploys_view)
+
+        {:ok,
+         context
+         |> Map.put(:repository_html, render(repository_view))
+         |> Map.put(:html, html)}
       end
 
       then_ "the repository step records when it finished", context do
         finished =
-          context.html
+          context.repository_html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step'][data-step='repository']")
+          |> Floki.find("[data-test='resource-step'][data-step='repository']")
           # `data-completed-at`, which is what every other step assertion in
           # this epic reads. A second attribute meaning the same thing is how
           # two names for one fact drift apart.
@@ -82,7 +99,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
         started =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='setup-step'][data-step='deploy']")
+          |> Floki.find("[data-test='deploy-row'][data-step='deploy'][data-environment='prod']")
           |> Floki.attribute("data-started-at")
           |> List.first()
 
@@ -110,7 +127,14 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
   end
 
   defp assert_ordering(started, context) do
-    assert context.repo_finished_at <= started,
+    # Parsed, not compared as strings: `data-completed-at` and
+    # `data-started-at` don't share a fractional-second precision (one
+    # truncates to the second, the other doesn't), so two correctly-ordered
+    # timestamps can still sort backwards as raw text.
+    {:ok, finished_at, _} = DateTime.from_iso8601(context.repo_finished_at)
+    {:ok, started_at, _} = DateTime.from_iso8601(started)
+
+    assert DateTime.compare(finished_at, started_at) != :gt,
            "expected the repository to exist before the deploy needed it — " <>
              "repository finished #{context.repo_finished_at}, deploy started #{started}"
   end

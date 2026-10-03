@@ -9,7 +9,17 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
   prove-it-before-claiming-it gate as the backup restore in 968 and the
   inbound delivery in 974.
 
-  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  Retargeted onto the console (provisioning-console-step6, unmerged): each
+  resource group is its own route now, so the `given_` below mounts one page
+  per group (credentials, repository, servers, secrets, dns_domain, deploys,
+  publishing) instead of the one page `mount_provisioning` used to hand every
+  step — see criterion 748's moduledoc for the general shape of the move.
+  `paste_provider_credentials/1` and `open_secrets_dialog/1` both guard on
+  the form already being present (058d20ed/7ba5d249), so they work unchanged
+  against `/console/credentials` and `/console/secrets`, which render their
+  forms directly with no dialog to open.
+
+  Surface: `CodeMySpecWeb.ConsoleLive` on the cloud app, driving
   `CodeMySpec.Provisioning.ContentPublishing`.
   """
 
@@ -88,53 +98,39 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
         end)
 
-        # Mounted before the domain is set, and that ordering is load-bearing.
-        # `ProvisioningLive.load/2` lists Resend's domains at mount whenever the
-        # project has one, and the mount sits outside every cassette by design
-        # — the idiom across this epic is mount, then `run_steps` with a
-        # cassette. So a domain set first put a `GET /domains` into the one
-        # place no recording can cover, and replay failed in `mount/3` with
-        # "cannot find mock/stub", which reads as process scoping rather than
-        # as a call nothing was recording.
-        view = mount_provisioning(context)
-
-        # The domain the drill application is actually built for. Its
-        # `config/deploy.uat.yml` names `uat.drill.astralbi.com`, and
-        # `config_targets_this_project/2` refuses to deploy when the config's
-        # proxy host belongs to a different project — correctly, since that is
-        # how one project's app lands on another's host. Giving this criterion
-        # its own subdomain made the guard refuse and the deploy step do
-        # nothing at all, silently, between dns and storage.
-        #
-        # The steps this `given_` runs — repository, server, secrets — need no
-        # domain, and the ones that do run later against the database rather
-        # than the mount's assigns.
-        own_domain(context.project, "drill.astralbi.com")
-
         # Every pasted credential, not just the storage pair. This `given_`
         # runs the server step, which needs the Hetzner API token —
         # `paste_storage_credentials/1` omits it, so the sequence halted at
-        # `server` and the steps after it never ran. The recording that
-        # produced was four interactions long and stopped at the repository.
-        paste_provider_credentials(view)
-        run_steps(view, [:repository, :server, :secrets])
+        # `server` and the steps after it never ran.
+        {:ok, credentials_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/credentials")
+
+        paste_provider_credentials(credentials_view)
+
+        {:ok, repository_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/repository")
+
+        run_console_step(repository_view, :repository)
+
+        {:ok, servers_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/servers")
+
+        run_console_step(servers_view, :server)
+        run_console_step(servers_view, :secrets)
 
         # The app refuses to boot without these, and `check_secrets/2` is the
         # first thing in the deploy step's `with` — so without them the deploy
-        # never reaches its script and the site never exists. Set after the
-        # `secrets` step, which is what mints the age key they are encrypted
-        # to.
-        #
-        # `paste_provider_credentials/1` above left the page on the
-        # *credentials* dialog — this switches it to secrets before the loop
-        # below fills that form.
-        open_secrets_dialog(view)
+        # never reaches its script and the site never exists. Filled in after
+        # the `secrets` step above, which is what mints the age key they are
+        # encrypted to.
+        {:ok, secrets_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
 
         for {key, value} <- [
               {"SECRET_KEY_BASE", String.duplicate("s", 64)},
               {"DATABASE_URL", "ecto://postgres:postgres@127.0.0.1/drill_uat"}
             ] do
-          view
+          secrets_view
           |> form("[data-test='secret-form']",
             secret: %{environment: "uat", key: key, value: value}
           )
@@ -147,6 +143,31 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # setup run.
         commit_generated_files(context.project.local_path)
 
+        # The domain the drill application is actually built for. Its
+        # `config/deploy.uat.yml` names `uat.drill.astralbi.com`, and
+        # `config_targets_this_project/2` refuses to deploy when the config's
+        # proxy host belongs to a different project — correctly, since that is
+        # how one project's app lands on another's host. Giving this criterion
+        # its own subdomain made the guard refuse and the deploy step do
+        # nothing at all, silently, between dns and storage.
+        own_domain(context.project, "drill.astralbi.com")
+
+        {:ok, dns_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/dns_domain")
+
+        run_console_step(dns_view, :domain)
+        run_console_step(dns_view, :dns)
+
+        {:ok, deploys_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/deploys")
+
+        deploys_view
+        |> form(
+          "[data-test='deploy-row'][data-environment='uat'] [data-test='deploy-environment-form']",
+          %{"environment" => "uat"}
+        )
+        |> render_submit()
+
         # No `:storage`. That step provisions object storage on Hetzner, which
         # is a different story's claim — this one is about the content pipeline
         # proving a render before reporting done, and it publishes to the
@@ -154,33 +175,18 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # both left the criterion with two halves disagreeing about whose
         # storage it was using: the deploy made Hetzner buckets and the content
         # step read one back, against a cassette recorded for neither.
-        #
-        run_steps(view, [:domain, :dns, :deploy])
+        {:ok, publishing_view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/resources/publishing")
 
-        trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy])
-
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.put(context, :view, publishing_view)}
       end
 
       when_ "it verifies itself", context do
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
-
-        # Wait for the step, then read the page — not what the click handed
-        # back. Clicking Run does not wait: the step happens under a
-        # supervised task, because a publish-and-prove takes longer than a
-        # LiveView event may. So `render_click/1` returns while the step is
-        # still running, and the proof this criterion is about is assigned
-        # when `{:provisioning, :step, …}` arrives, strictly afterwards.
-        #
-        # Read too early it looks exactly like a product defect: a full
-        # pipeline runs — server, deploy, publish, 554s of it against real
-        # providers — and the page carries no render proof, so the step
-        # reads as having skipped the thing it exists to do.
-        CodeMySpecSpex.Case.await_step(context.view, :content)
-        render(context.view)
+        # Synchronous in test (`config :code_my_spec, :provisioning_run_async,
+        # false`), so `run_console_step/2` returns only once the step has
+        # settled — unlike the old page, there is nothing left to await here.
+        run_console_step(context.view, :content)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -235,7 +241,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
         done_at =
           context.parsed
-          |> Floki.find("[data-test='setup-step'][data-step='content']")
+          |> Floki.find("[data-test='resource-step'][data-step='content']")
           |> Floki.attribute("data-completed-at")
           |> List.first()
 
