@@ -97,15 +97,11 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    # Nothing in the graph reads analysis any more (John, 2026-10-02): the
-    # gate before QA reads a stamp its task writes. Settles nothing.
-    "analysis_completed" => [],
     # Safe again: the four project delegates a sync moves —
     # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
     # `architecture_designed` — now have `settle/3` clauses, so nothing this
     # event moves is left to the marks it discards.
     "files_synced" => [:files],
-    "problems_changed" => [],
     "deploy_changed" => [:links],
     # A setup step, environment or option changing moves what an undeployed
     # story's `deploy` is waiting on.

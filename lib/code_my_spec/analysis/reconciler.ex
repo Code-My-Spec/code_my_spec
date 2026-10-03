@@ -23,7 +23,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.TaskEvaluator
@@ -86,15 +85,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
         RunsRepository.prune(scope, run.source)
         evaluate_sessions(scope)
         maybe_notify(scope, finished, problems, opts)
-
-        # A spex run finishing is what can newly satisfy `bdd_specs_passing` —
-        # the first completed run is what lets a clean answer through
-        # (`RequirementGraph.serve/2`), and the handler reads the ledger after
-        # this row commits. No other source moves a requirement (28d72f8a), so
-        # their runs stay quiet. After the row commits, only on this success
-        # path, so a recompute never reads a run that might still roll back.
-        if run.source == "spex",
-          do: GraphInputs.event(scope, "Analysis", "analysis_completed", %{}, [], :this_checkout)
 
         # The internal half of story 1042. `maybe_notify/4` above is the push to
         # the *person*; this is the push to the agents running in our own BEAM,

@@ -585,14 +585,9 @@ defmodule CodeMySpec.Hooks.Stop do
       true ->
         # The same count the menu renders two lines below, and deliberately.
         #
-        # A raw row count (the since-deleted `NodeRepository.actionable_count/1`)
-        # reads `n.satisfied` straight from the rows, which hold the *durable*
-        # verdict — a component's own problem count, without the no-run-yet qualifier that
-        # `RequirementGraph.serve/2` applies on the way to a reader. So a
-        # `tests_passing` whose source has never run reads satisfied here and
-        # unsatisfied in the menu: this branch would tell a continuous agent its
-        # work was finished while the menu in the same response listed the work.
-        # Criterion 3448 is what forbids those two disagreeing.
+        # A separate count could disagree with the menu: this branch would tell
+        # a continuous agent its work was finished while the menu in the same
+        # response listed the work. Criterion 3448 forbids those disagreeing.
         case length(Work.actionable(scope, nil, session)) do
           n when n > 0 ->
             Logger.info(
