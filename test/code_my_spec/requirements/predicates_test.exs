@@ -488,12 +488,12 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       RequirementGraph.compute_graph(scope)
 
       refute MapSet.member?(
-               field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready}),
+               field_satisfied(scope, "ready_for_qa", :field_true, %{field: :specs_ready}),
                story.id
              )
 
       assert MapSet.member?(
-               field_satisfied(scope, "bdd_specs_passing", :field_present, %{
+               field_satisfied(scope, "ready_for_qa", :field_present, %{
                  field: :specs_ready
                }),
                story.id
@@ -508,7 +508,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
       RequirementGraph.compute_graph(scope)
 
-      satisfied = field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready})
+      satisfied = field_satisfied(scope, "ready_for_qa", :field_true, %{field: :specs_ready})
 
       assert MapSet.member?(satisfied, ready.id)
       refute MapSet.member?(satisfied, not_ready.id)
@@ -519,7 +519,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       RequirementGraph.compute_graph(scope)
 
       definition = %{
-        name: "bdd_specs_passing",
+        name: "ready_for_qa",
         check_type: :field_true,
         config: %{field: :specs_ready}
       }
@@ -529,7 +529,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
 
       by_query =
         MapSet.member?(
-          field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready}),
+          field_satisfied(scope, "ready_for_qa", :field_true, %{field: :specs_ready}),
           ready.id
         )
 
@@ -556,19 +556,12 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       # Guard against the assertion below passing on empty lists: if these
       # lookups returned nothing, "no offenders" would be true and mean nothing.
       #
-      # `bdd_specs_passing` was here and is now a `:delegate`. It read
-      # `specs_ready` as a bare field, and a bare field read cannot tell a latch
-      # that was earned from one set by a gate that could not find the story's
-      # specs and mistook that for their passing — which is what happened, on 47
-      # of 61 stories in one project. `SpecsPassingChecker` keeps the field as
-      # the latch and adds the contradiction test, and that needs the database
-      # twice, so it cannot be a query clause here.
-      #
-      # Nothing regressed by leaving: `Predicates.satisfied/4` has no production
-      # callers yet — `RequirementCalculator` interprets — so this is a query
-      # form waiting to be wired up, not a fast path that lost a member.
+      # `ready_for_qa` reads the stamp its task writes, `qa_ready_commit`, as a
+      # bare field — the way `story_promoted` reads `promoted_version` — so it
+      # is a field check again (2026-10-02). The tests above borrow its nodes to
+      # exercise `:field_true` on `specs_ready`; any real story node would do.
       assert field_checks.(RequirementDefinitionData.story_graph()) |> Enum.sort() ==
-               ["component_linked"],
+               ["component_linked", "ready_for_qa"],
              "the story graph is where field checks live; if this moved, the search " <>
                "below is looking in the wrong places"
 

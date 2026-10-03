@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
   Its frontier must move even though only the components' files changed.
 
   Which story requirement the frontier lands on is not the claim. It used to
-  be `bdd_specs_passing`, only because the new files made the spex run stale;
+  be `ready_for_qa`, only because the new files made the spex run stale;
   since 28d72f8a the latest completed run answers however old, so the green
   run carries the story on to the next requirement.
   """

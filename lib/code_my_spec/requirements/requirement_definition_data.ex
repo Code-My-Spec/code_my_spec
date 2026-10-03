@@ -148,22 +148,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       }),
       new!(%{
         id: 3,
-        name: "bdd_specs_passing",
+        name: "ready_for_qa",
         role: :coding,
         node_scope: :self,
-        # Was `:field_true` on `:specs_ready` alone. The field is still the
-        # latch; the delegate adds the one thing a bare field read cannot do —
-        # notice the latch was set by a gate that could not find the story's
-        # specs and mistook that for their passing. See `SpecsPassingChecker`.
-        check_type: :delegate,
-        config: %{module: CodeMySpec.Requirements.SpecsPassingChecker, function: :passing?},
-        satisfied_by: AgentTasks.FixBddSpecs,
+        # Was `bdd_specs_passing`, which read the latest spex run live. John,
+        # 2026-10-02: "we shouldn't rely on problems anywhere in the graph
+        # except on promotion" — so the gate before QA works like promotion:
+        # completing its task certifies the copy (`Promotion.certify/3`: clean
+        # tree, all four analyzers clean at HEAD, the story's own spex green)
+        # and stamps the commit. This reads the stamp, the way `story_promoted`
+        # reads `promoted_version`, and nothing about analysis.
+        check_type: :field_present,
+        config: %{field: :qa_ready_commit},
+        satisfied_by: AgentTasks.ReadyForQa,
         artifact_type: :tests,
-        # Phrased as the step, not the state. "BDD specs have gone green on a
-        # fresh spex run" reads as a fact about the world, so an agent whose
-        # sweep had gone green read the unsatisfied node as a broken gate rather
-        # than as an evaluation it had not run yet.
-        description: "BDD specs green on the latest spex run, and evaluated to record it",
+        description:
+          "This story's working copy is certified ready for QA: a clean tree, every " <>
+            "analyzer clean at HEAD, and the story's own specs green there. Completing " <>
+            "this task certifies it and stamps the commit.",
         prerequisites: [2],
         execution_type: :main_agent
       }),
@@ -674,7 +676,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   rather than by a join.
 
   Read across every graph, because a role's work does not respect entity
-  boundaries — coding owns `implementation_file` on a component and `bdd_specs_passing` on
+  boundaries — coding owns `implementation_file` on a component and `ready_for_qa` on
   a story, and an agent that only counted one of those would go home with the
   other outstanding.
 

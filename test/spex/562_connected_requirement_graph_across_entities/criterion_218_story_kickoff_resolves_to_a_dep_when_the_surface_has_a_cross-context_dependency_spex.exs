@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5649Spex do
   surface, and transitive reduction drops it.
 
   This is the visible payoff: the rendered chain follows the order
-  of work — bdd_specs_exist → dep → surface → bdd_specs_passing —
+  of work — bdd_specs_exist → dep → surface → ready_for_qa —
   rather than two parallel kickoff edges (story → surface and
   dep → surface) that hide which one comes first.
   """

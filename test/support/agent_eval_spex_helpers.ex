@@ -265,7 +265,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
 
     # Starting the agent moves the graph, and asking for a turn before it has
     # settled measures a frontier that is still changing. Observed on 3539:
-    # `main: ["technical_strategy"]` at admission and `bdd_specs_passing`
+    # `main: ["technical_strategy"]` at admission and `ready_for_qa`
     # (coding) by the time the admitted agent asked — a different role's work,
     # one turn apart, so whichever role the scenario picked was wrong at one end
     # or the other.

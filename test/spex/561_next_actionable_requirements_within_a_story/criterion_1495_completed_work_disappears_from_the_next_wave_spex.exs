@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3597Spex do
       then_ "the finished work is not offered a second time", context do
         assert context.answer =~ "# Story #{context.story.number}:"
         refute Slice.offered?(context.answer, Slice.component(context, "Reservations.Booking").id)
-        assert context.answer =~ "bdd_specs_passing"
+        assert context.answer =~ "ready_for_qa"
         {:ok, context}
       end
     end

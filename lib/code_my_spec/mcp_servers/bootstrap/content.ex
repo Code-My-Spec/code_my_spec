@@ -122,7 +122,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     |---|---|
     | `implementation_file` | Implementation code in `lib/` |
     | `bdd_specs_exist` | BDD scenario files for a story's acceptance criteria |
-    | `bdd_specs_passing` | Fix failing story specifications |
+    | `ready_for_qa` | Certify the story's copy for QA: clean tree, analyzers clean at HEAD, its specs green |
     | `qa_complete` | QA brief and results for a story |
 
     ### Step 4: Automatic Evaluation
