@@ -6,8 +6,7 @@ config :code_my_spec, env: :demo
 # Isolated demo server — its own Postgres DB and port (:4006) so a session
 # replay's sync/auth target is fully separate from dev (:4000) and prod.
 # Needs envs/demo.env for GITHUB_CLIENT_ID / GOOGLE_CLIENT_ID / DEPLOY_KEY
-# (see runtime.exs web block). Boot only when the replay needs the backend;
-# the cli_demo harness runs standalone for pure local CRUD.
+# (see runtime.exs web block). Boot only when the replay needs the backend.
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
   password: "postgres",

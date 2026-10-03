@@ -284,14 +284,12 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, :test) do
-    # Local web endpoint is needed for spex tests that drive the local UI;
-    # the Analysis run service backs the stop-hook paths those tests hit. The
-    # harness data-plane (Presence + WorkSource) rides with the local endpoint
-    # so harness channel tests have them available.
+    # The local web endpoint is the door the spex suite drives hooks, MCP and
+    # portable LiveViews through; the Analysis run service backs the stop-hook
+    # paths those tests hit.
     children ++
       [
         CodeMySpec.Analysis.Supervisor,
-        CodeMySpecLocalWeb.Presence,
         CodeMySpec.AgentHarness.WorkSource,
         CodeMySpecLocalWeb.Endpoint
       ]

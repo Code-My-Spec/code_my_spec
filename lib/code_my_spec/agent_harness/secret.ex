@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentHarness.Secret do
   **local** cms with this secret — never with the user's server OAuth token,
   which stays on the machine (local cms uses its own OAuth to reach the server).
   The `LocalOnly` IP check is not enough: the local endpoint can be exposed over
-  a Cloudflare tunnel (dev_cli), through which every request looks like
+  a Cloudflare tunnel, through which every request looks like
   localhost. This secret is the real gate.
 
   Generated once and persisted `0600` under `~/.codemyspec/harness_secret`; the

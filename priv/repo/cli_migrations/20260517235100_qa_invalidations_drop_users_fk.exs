@@ -1,4 +1,4 @@
-defmodule CodeMySpecCli.Repo.Migrations.QaInvalidationsDropUsersFk do
+defmodule CodeMySpec.CliRepo.Migrations.QaInvalidationsDropUsersFk do
   use Ecto.Migration
 
   # `qa_invalidations.invalidated_by_user_id` was created with

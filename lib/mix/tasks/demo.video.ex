@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Demo.Video do
     * `--output PATH`   final mp4 (default: /tmp/demo.mp4)
     * `--viewport WxH`  browser viewport (default: 1280x800)
 
-  Preconditions: cli_demo harness on :4005, demo server on :4006, project
+  Preconditions: a harness on :4005 (see `mix demo.replay`), demo server on :4006, project
   pre-seeded, Playwright workspace at /tmp/cms_demo_video (npm install playwright).
   """
 

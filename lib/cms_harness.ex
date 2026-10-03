@@ -9,6 +9,10 @@ defmodule CmsHarness do
   owns the bytes. Wanting a Repo in here is the signal that something belongs
   on the server instead.
 
+  The one exception is `CmsHarness.Migrate` — `cms migrate`, a separate
+  one-shot boot of the same release that imports a local CLI database to the
+  cloud and halts. It never runs inside the harness.
+
   Kept as its own top-level namespace rather than folded into `CodeMySpec`, and
   the collisions are the reason it reads like duplication when it is not:
 
@@ -51,6 +55,12 @@ defmodule CmsHarness do
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Generators,
+      # `CmsHarness.Application` installs the harness's log handler.
+      CodeMySpec.Logging,
+      # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not
+      # the harness.
+      CodeMySpec.Migration,
+      CodeMySpec.Users.Scope,
       CodeMySpec.Paths,
       CodeMySpec.Permissions,
       CodeMySpec.Projects,

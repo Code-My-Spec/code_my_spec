@@ -17,8 +17,8 @@ defmodule CodeMySpec.Agents.Agent do
   `role` is which lane on that copy this agent is, and it is the half of the key
   that was missing. An `Ecto.Enum` since story 983 — the four types are fixed,
   and as a string a misspelling produced a row nothing would ever launch. A copy runs one or more agents; the harness already
-  distinguishes them by role — `CodeMySpecLocalWeb.HarnessChannel` joins one
-  session per copy and tracks Presence under the lane's role — so without it the
+  distinguishes them by role — the harness channel joined one session per copy
+  and tracked Presence under the lane's role — so without it the
   reconcile found "the copy's agent" and a second lane overwrote the first.
   Defaulted here rather than in the migration, because the code that writes rows
   is what needs to see the default.

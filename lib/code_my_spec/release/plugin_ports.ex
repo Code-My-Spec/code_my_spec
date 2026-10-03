@@ -29,9 +29,8 @@ defmodule CodeMySpec.Release.PluginPorts do
 
   ## Why this lives in `lib` rather than beside the packager
 
-  `lib_cli` is not in the test environment's `elixirc_paths`, so nothing under
-  it can be tested by `mix test` — which is why this transform had no tests and
-  could ship broken. The rule is a product decision about what a released
+  The packager was once compiled only in the CLI environments, out of reach of
+  `mix test` — which is why this transform had no tests and could ship broken. The rule is a product decision about what a released
   plugin must be able to reach; the packager is one caller of it.
   """
 

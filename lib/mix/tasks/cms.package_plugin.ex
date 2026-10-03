@@ -1,17 +1,10 @@
 defmodule Mix.Tasks.Cms.PackagePlugin do
   @moduledoc """
-  Run the plugin file-shuffling step of the release packager locally,
-  without burrito, the binary copy, or the GitHub release publish.
+  Lay the plugin marketplace repo out for release — what CI publishes, and
+  what you inspect locally to verify the dev→prod port rewrite before a build.
 
-  Lays the plugin out the way `PackageExtension.execute/1` would, so you
-  can inspect exactly what will ship and verify the dev→prod port rewrite
-  before doing a full build.
-
-  Lives in `lib_cli/` next to `PackageExtension`, so you need the CLI env
-  on the path:
-
-      MIX_ENV=dev_cli mix cms.package_plugin              # writes to release/codemyspec-extension
-      MIX_ENV=dev_cli mix cms.package_plugin tmp/preview  # writes to a custom path
+      mix cms.package_plugin              # writes to release/codemyspec-extension
+      mix cms.package_plugin tmp/preview  # writes to a custom path
 
   Inspect the output:
 
@@ -21,10 +14,10 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
       grep -rn 4003 release/codemyspec-extension          # should show rewrites
   """
   @shortdoc "Lay out the plugin release locally for inspection"
-  use Boundary, classify_to: CodeMySpecCli
+  use Boundary, classify_to: CodeMySpec.Release
   use Mix.Task
 
-  alias CodeMySpecCli.Release.PackageExtension
+  alias CodeMySpec.Release.PackageExtension
 
   @impl Mix.Task
   def run(args) do

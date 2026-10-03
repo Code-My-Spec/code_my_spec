@@ -4,8 +4,8 @@ defmodule CodeMySpec.GuardCliMigrateTest do
   a SQLite CLI database.
 
   `02ff6d6b`: the task runs `priv/repo/migrations` whatever `MIX_ENV` says, so
-  under `dev_cli` it reaches `CREATE EXTENSION IF NOT EXISTS citext` and SQLite
-  answers `near "EXTENSION": syntax error`. That names a statement, a migration
+  under the SQLite `harness` env it reaches `CREATE EXTENSION IF NOT EXISTS
+  citext` and SQLite answers `near "EXTENSION": syntax error`. That names a statement, a migration
   file, and a stack through `Ecto.Migration.Runner` — every signal says broken
   DDL, and none says the wrong set was pointed at the wrong database. It is also
   the second time that shape has cost a diagnosis (`61351c19`).
@@ -25,9 +25,9 @@ defmodule CodeMySpec.GuardCliMigrateTest do
       assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.Postgres)
     end
 
-    # `dev_sprite` sets the adapter back to Postgres under a CLI-shaped env name
-    # and its own config calls that line "the entire architectural difference".
-    # Keying on MIX_ENV would refuse it wrongly, so the adapter is the key.
+    # Desktop imports the harness fragment and sets the adapter back to
+    # Postgres. Keying on MIX_ENV would get one of them wrong, so the adapter is
+    # the key.
     test "passes on any non-SQLite adapter, whatever the environment is called" do
       assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.MyXQL)
     end
@@ -43,7 +43,7 @@ defmodule CodeMySpec.GuardCliMigrateTest do
 
       assert message =~ "Migrator",
              "the operator's real question is how to migrate this database, and " <>
-               "the answer is that booting does it — without that the refusal " <>
+               "the answer is that `cms migrate` does it — without that the refusal " <>
                "leaves them with no next step"
 
       assert message =~ ~s(near "EXTENSION"),
