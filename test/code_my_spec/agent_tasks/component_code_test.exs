@@ -78,7 +78,9 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       assert feedback =~ "requirements not met"
     end
 
-    test "returns invalid when test analysis reports problems", %{
+    # A task completes when its requirement is met, even on a red run (John,
+    # 2026-10-04); red blocks at promotion and certification instead.
+    test "a red test run does not hold a task whose requirements are met", %{
       task: task,
       scope: scope,
       component: component
@@ -98,8 +100,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         details: %{reason: "Test failures found", problem_count: 2}
       })
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
-      assert feedback =~ "Problems found"
+      assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
     test "returns valid when all :code requirements are satisfied", %{
@@ -125,7 +126,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
-    test "returns invalid when problems exist on code file even if requirements pass", %{
+    test "a problem on the code file does not hold a task whose requirements pass", %{
       task: task,
       scope: scope,
       component: component,
@@ -146,11 +147,10 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
-      assert feedback =~ "@moduledoc"
+      assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
-    test "returns invalid when problems exist on test file even if requirements pass", %{
+    test "a problem on the test file does not hold a task whose requirements pass", %{
       task: task,
       scope: scope,
       component: component,
@@ -171,8 +171,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
-      assert feedback =~ "test failed"
+      assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
     test "combines requirement and problem feedback when both fail", %{
