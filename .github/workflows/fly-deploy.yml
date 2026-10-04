@@ -1,10 +1,10 @@
 # See https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
 
 name: Fly Deploy
+# Run by hand only: `just release` is the path to production (John,
+# 2026-10-04). A push to main is not a release.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 jobs:
   deploy:
     name: Deploy app
