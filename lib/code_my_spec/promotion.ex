@@ -525,17 +525,20 @@ defmodule CodeMySpec.Promotion do
   Whether `story`'s own spex all pass on the scope's copy's certifying spex run
   — the check a promotion makes before latching a story. `:ok`, or
   `{:error, %{reason:, failing_spex:}}`. The promotion queue asks it of each
-  story in a batch, on the gate copy.
+  story in a batch: the findings are the gate copy's run, and `files_scope`
+  (the candidate's own copy) says which files are the story's spex — the gate
+  copy's file rows may not have caught up with the checkout a batch just made.
   """
-  @spec story_spex_check(Scope.t(), Stories.Story.t() | nil) :: :ok | {:error, map()}
-  def story_spex_check(%Scope{active_working_copy_id: id} = scope, story),
-    do: story_spex_pass(scope, story, named_copy(id))
+  @spec story_spex_check(Scope.t(), Stories.Story.t() | nil, Scope.t() | nil) ::
+          :ok | {:error, map()}
+  def story_spex_check(%Scope{active_working_copy_id: id} = scope, story, files_scope \\ nil),
+    do: story_spex_pass(scope, story, named_copy(id), files_scope)
 
   defp story_spex_pass(_scope, nil, _named), do: :ok
 
-  defp story_spex_pass(scope, story, named) do
+  defp story_spex_pass(scope, story, named, files_scope \\ nil) do
     paths =
-      scope
+      (files_scope || scope)
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
@@ -1334,6 +1337,10 @@ defmodule CodeMySpec.Promotion do
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
   defp tell_the_agent(outcome, _scope, _root, _done, nil), do: outcome
+
+  # A batch the promotion queue landed tells everyone whose work was in it.
+  defp tell_the_agent(outcome, scope, root, done, agent_ids) when is_list(agent_ids),
+    do: Enum.reduce(agent_ids, outcome, &tell_the_agent(&2, scope, root, done, &1))
 
   defp tell_the_agent({:confirmed, revision} = outcome, scope, root, done, agent_id) do
     text =

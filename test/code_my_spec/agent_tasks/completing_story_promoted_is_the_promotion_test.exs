@@ -4,10 +4,12 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
 
   Its prompt lists every problem the gate would block on and says to fix them
   and complete; it no longer tells the agent to call `promote`. Completing
-  (`evaluate/3`, what `evaluate_task` calls) runs the promotion itself:
-  promoted is valid, pending keeps the task open and wakes the agent when the
-  runs land (its own or ones already running at HEAD), refused keeps it open
-  with the reason.
+  (`evaluate/3`, what `evaluate_task` calls) queues the copy's HEAD for
+  promotion (promote-queue step 2, John 2026-10-04): the task stays open until
+  the candidate lands, and is valid once the story is on main. What a
+  candidate's own copy records — behind main, problems at HEAD — no longer
+  refuses it; the queue's batch gate decides. A dirty tree still refuses at
+  once.
 
   Git is scripted through the in-memory environment's per-env shell; nothing
   shells out.
@@ -22,11 +24,8 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.PromoteWork
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
@@ -144,6 +143,8 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
         working_copy_id: copy.id
       })
 
+    on_exit(fn -> stop_queue(scope.active_project_id) end)
+
     story = story_fixture(scope, %{title: "The war is declared"})
     spex = "test/spex/#{story.number}_feature/criterion_1_spex.exs"
 
@@ -155,43 +156,26 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
   end
 
-  defp certified(scope, sources \\ Run.sources()),
-    do: AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources, commit: @head)
-
-  defp dispatched_sources do
-    receive do
-      {:dispatched, runs} -> Enum.map(runs, & &1["source"]) ++ dispatched_sources()
-    after
-      100 -> []
+  defp stop_queue(project_id) do
+    case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
+      [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
+      [] -> :ok
     end
   end
 
-  # The result arriving, as the harness channel reconciles it: the run re-read
-  # at arrival, then reconciled.
-  defp lands(scope, source) do
-    [run] = RunsRepository.running_full_runs(scope, source)
-
-    Reconciler.reconcile(scope, Repo.get!(Run, run.id), %{
-      problems: [],
-      output: "done",
-      exit_status: 0,
-      stats: %{}
-    })
+  defp queued(scope) do
+    CodeMySpec.Repo.all(CodeMySpec.PromotionQueue.Entry)
+    |> Enum.filter(&(&1.project_id == scope.active_project_id))
   end
+
+  defp certified(scope, sources \\ Run.sources()),
+    do: AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources, commit: @head)
 
   # The detached restart task records what it told the agent after telling it.
   defp settled do
     for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor) do
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
-    end
-  end
-
-  defp told(agent_id) do
-    receive do
-      {:agent_dispatch, ^agent_id, _ref, message} -> [message | told(agent_id)]
-    after
-      200 -> []
     end
   end
 
@@ -230,20 +214,19 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   end
 
   describe "completing" do
-    test "a clean HEAD merges exactly that commit, stamps the story, and is valid" do
+    test "a clean HEAD is queued, the task stays open, and it is valid once on main" do
       %{scope: scope, coder: coder, story: story, task: task} = a_project()
-      certified(scope)
 
-      assert {:ok, :valid, _text} = PromoteWork.evaluate(scope, task, coder)
+      assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
+      assert text =~ "Queued for promotion at position 1"
+      assert [%{commit: @head, status: status, requested_by_agent_id: requester}] = queued(scope)
+      assert status in [:queued, :gating]
+      assert requester == coder.id
+      refute_received {:git, @main, ["merge" | _]}
 
-      assert_received {:git, @main, ["merge", "--ff-only", @head]}
-      assert Stories.get_story!(scope, story.id).promoted_version == "0.3.3"
+      # The queue lands it and stamps the story; completing then sees it on main.
+      {:ok, _} = Stories.mark_story_promoted(scope, story, "0.3.3", commit: @head)
       assert {:ok, :valid, _} = PromoteWork.evaluate(scope, task)
-
-      coder_id = coder.id
-      assert_receive {:agent_dispatch, ^coder_id, _ref, confirmed}, 2_000
-      assert confirmed =~ "restart from your promotion is confirmed"
-      settled()
     end
 
     test "a story already stamped is valid without promoting again" do
@@ -254,69 +237,12 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
       refute_received {:git, _, _}
     end
 
-    test "missing runs are started, the task stays open, and the agent is woken as they land" do
-      %{scope: scope, copy: copy, coder: coder, story: story, task: task} = a_project()
-      certified(scope, ["compiler", "credo"])
-
-      assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
-      assert text =~ "analysis running at #{@head}"
-      assert text =~ "evaluate_task"
-      refute text =~ "`promote`"
-
-      assert Enum.sort(dispatched_sources()) == ["exunit", "spex"]
-      refute_received {:git, @main, ["merge" | _]}
-      assert Stories.get_story!(scope, story.id).promoted_version == nil
-
-      assert Analysis.awaiting_runs?(scope, copy.id, coder.id),
-             "the agent waiting on its promotion's runs must not be nudged"
-
-      lands(scope, "exunit")
-      assert [message] = told(coder.id)
-      assert message =~ "exunit run finished"
-    end
-
-    test "a run already in flight at HEAD counts, and wakes the agent when it lands" do
-      %{scope: scope, copy: copy, coder: coder, task: task} = a_project()
-      certified(scope, ["compiler", "exunit", "spex"])
-
-      someone_else = Ecto.UUID.generate()
-
-      {:ok, credo} =
-        RunsRepository.start_run(scope, %{
-          source: "credo",
-          kind: :full,
-          requested_by: %{kind: "hook", agent_id: someone_else}
-        })
-
-      RunsRepository.record_tree(credo, %{start_commit: @head, start_tree_dirty: false})
-
-      refute Analysis.awaiting_runs?(scope, copy.id, coder.id)
-
-      assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
-      assert text =~ "credo"
-      assert dispatched_sources() == [], "no second run for the same commit"
-
-      assert Analysis.awaiting_runs?(scope, copy.id, coder.id),
-             "a run somebody else started at HEAD is the promoting agent's wait too"
-
-      # Asking again does not add it twice.
-      assert {:ok, :pending, _} = PromoteWork.evaluate(scope, task, coder)
-      assert Repo.get!(Run, credo.id).requested_by["waiters"] == [coder.id]
-
-      lands(scope, "credo")
-
-      assert [message] = told(coder.id)
-      assert message =~ "credo run finished"
-      refute Analysis.awaiting_runs?(scope, copy.id, coder.id)
-    end
-
-    test "a copy behind main is refused and the task stays open with the reason" do
+    test "a copy behind main is queued: the batch certifies it against main" do
       %{scope: scope, coder: coder, task: task} = a_project(contains_main: false)
 
-      assert {:ok, :invalid, feedback} = PromoteWork.evaluate(scope, task, coder)
-      assert feedback =~ "behind main"
-      assert feedback =~ "evaluate_task"
-      assert dispatched_sources() == []
+      assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
+      assert text =~ "Queued for promotion"
+      assert [%{commit: @head}] = queued(scope)
     end
 
     test "a dirty tree is refused, naming the files" do
@@ -327,13 +253,11 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
       refute_received {:git, @main, ["merge" | _]}
     end
 
-    test "problems at HEAD refuse, and nothing merges" do
+    test "problems on its own copy do not refuse: the batch gate decides" do
       %{scope: scope, coder: coder, story: story, task: task} = a_project()
-      certified(scope)
       problem_fixture(scope, %{source: "credo", severity: :warning})
 
-      assert {:ok, :invalid, feedback} = PromoteWork.evaluate(scope, task, coder)
-      assert feedback =~ "1 credo"
+      assert {:ok, :pending, _text} = PromoteWork.evaluate(scope, task, coder)
       refute_received {:git, @main, ["merge" | _]}
       assert Stories.get_story!(scope, story.id).promoted_version == nil
     end

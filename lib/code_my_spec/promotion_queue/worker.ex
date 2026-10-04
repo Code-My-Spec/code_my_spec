@@ -177,7 +177,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     failing =
       for entry <- batch.entries,
           story = story_of(state.scope, entry),
-          {:error, reason} <- [Promotion.story_spex_check(batch.scope, story)],
+          files_scope = %{state.scope | active_working_copy_id: entry.working_copy_id},
+          {:error, reason} <- [Promotion.story_spex_check(batch.scope, story, files_scope)],
           do: {entry, reason}
 
     case failing do
@@ -287,9 +288,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp do_land(%{batch: batch} = state) do
     stories = Enum.map(batch.entries, &{story_of(state.scope, &1), &1.working_copy_id})
     restart = Enum.any?(batch.entries, & &1.restart)
+    notify = batch.entries |> Enum.map(& &1.requested_by_agent_id) |> Enum.reject(&is_nil/1)
 
     case Promotion.land(batch.scope, batch.gate, batch.head, stories, Map.get(batch, :swept, []),
-           restart: restart
+           restart: restart,
+           notify: notify
          ) do
       {:ok, report} = result ->
         for entry <- batch.entries do

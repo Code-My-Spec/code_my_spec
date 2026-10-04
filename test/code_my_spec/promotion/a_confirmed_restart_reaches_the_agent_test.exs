@@ -21,6 +21,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
+  alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
@@ -63,12 +64,18 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     File.rm_rf!(agent_root)
     git!(running_root, ["worktree", "add", "-b", "story/x", agent_root, "main"])
 
+    # The promotion queue's gate copy: the batch is built and gated here.
+    gate_root = CodeMySpec.TempFile.dir("confirmed-restart-gate")
+    File.rm_rf!(gate_root)
+    git!(running_root, ["worktree", "add", "--detach", gate_root, "main"])
+
     on_exit(fn ->
+      File.rm_rf(gate_root)
       File.rm_rf(agent_root)
       File.rm_rf(running_root)
     end)
 
-    {running_root, agent_root}
+    {running_root, agent_root, gate_root}
   end
 
   defp a_copy(scope, root, label) do
@@ -79,10 +86,12 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
   defp ready_to_promote do
     scope = full_scope_fixture()
-    {running_root, agent_root} = a_project_whose_restart_succeeds()
+    {running_root, agent_root, gate_root} = a_project_whose_restart_succeeds()
 
     a_copy(scope, running_root, "the checkout the dev app runs in")
     agent_copy = a_copy(scope, agent_root, "the coding agent's copy")
+    gate_copy = a_copy(scope, gate_root, Worker.gate_label())
+    on_exit(fn -> stop_queue(scope.active_project_id) end)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
@@ -117,6 +126,13 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
 
+    # A lone candidate level with main is its own batch commit, gated there.
+    AnalysisFixtures.fresh_analysis_runs_fixture(
+      %{scope | active_working_copy_id: gate_copy.id},
+      Run.sources(),
+      commit: head
+    )
+
     {scope, agent, running_root, %{story_number: story.number}}
   end
 
@@ -128,12 +144,14 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
     agent_id = agent.id
 
-    assert_receive {:agent_dispatch, ^agent_id, _ref, message}, 30_000, """
+    # The queue tells it the candidate landed first; the confirmation follows.
+    message = confirmation(agent_id, running_root)
+
+    assert message, """
     The restart was confirmed and nothing reached the agent. It was told
     "dispatched, not yet confirmed" and has no other way to learn the outcome.
     """
 
-    assert message =~ "confirmed"
     assert message =~ running_root
 
     assert settled?()
@@ -147,6 +165,26 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
     assert settled?()
     refute_received {:agent_dispatch, _, _, _}
+  end
+
+  # The deployment's outcome, whichever way it went: the message that names
+  # the running checkout. The queue's "landed" notice comes before it.
+  defp confirmation(agent_id, running_root) do
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, message} ->
+        if message =~ running_root and message =~ "confirmed",
+          do: message,
+          else: confirmation(agent_id, running_root)
+    after
+      30_000 -> nil
+    end
+  end
+
+  defp stop_queue(project_id) do
+    case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
+      [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
+      [] -> :ok
+    end
   end
 
   defp settled?(remaining \\ 100)
