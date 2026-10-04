@@ -23,7 +23,7 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecTest.RecordingAgentTransport

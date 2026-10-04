@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
       CodeMySpec.Activity,
       CodeMySpec.Agents,

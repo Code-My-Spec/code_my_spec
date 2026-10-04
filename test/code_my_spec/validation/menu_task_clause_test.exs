@@ -19,7 +19,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
 
   defp task(attrs) do
     struct!(

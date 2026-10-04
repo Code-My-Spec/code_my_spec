@@ -16,7 +16,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account

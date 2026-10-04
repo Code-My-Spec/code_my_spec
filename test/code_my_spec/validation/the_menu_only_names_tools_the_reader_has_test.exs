@@ -23,7 +23,7 @@ defmodule CodeMySpec.Validation.TheMenuOnlyNamesToolsTheReaderHasTest do
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
 
   @roles [:product, :coding, :qa]
 

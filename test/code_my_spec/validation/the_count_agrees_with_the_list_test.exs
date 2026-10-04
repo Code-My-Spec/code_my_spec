@@ -30,7 +30,7 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
 
   defp agent(role), do: %Agent{role: role, continuous: true, tasks: []}
 

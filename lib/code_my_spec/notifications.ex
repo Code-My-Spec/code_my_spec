@@ -7,6 +7,7 @@ defmodule CodeMySpec.Notifications do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
       CodeMySpec.Issues,

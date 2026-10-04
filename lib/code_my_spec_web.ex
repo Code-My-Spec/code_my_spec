@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb do
     top_level?: true,
     deps: [
       CodeMySpec,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
       CodeMySpec.Accounts,
       CodeMySpec.Activity,

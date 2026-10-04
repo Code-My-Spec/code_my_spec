@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.WorkingCopies
 
   setup do

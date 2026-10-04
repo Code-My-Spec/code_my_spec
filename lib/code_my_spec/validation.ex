@@ -29,9 +29,9 @@ defmodule CodeMySpec.Validation do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
       CodeMySpec.AgentTasks,
-      CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
@@ -54,6 +54,7 @@ defmodule CodeMySpec.Validation do
   require Logger
 
   alias CodeMySpec.Stories.AcceptanceCriteria
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
@@ -70,7 +71,6 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Blocking
-  alias CodeMySpec.Validation.Menu
   alias CodeMySpec.WorkingCopies
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
@@ -572,7 +572,7 @@ defmodule CodeMySpec.Validation do
   # gives those roles no problems; this is the gate reading the same rule.
   # No role (a Claude Code session) keeps the exemption as it was.
   defp split_by_role(blocking, role) do
-    if Menu.holds_problems?(role),
+    if RoleProfile.holds_problems?(role),
       do: {blocking, []},
       else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
   end

@@ -36,6 +36,7 @@ defmodule CodeMySpec.DevState do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Projects,

@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
@@ -52,10 +53,13 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
+      CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Configurations,
       CodeMySpec.Devices,
@@ -76,6 +80,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.ProviderRefusal
@@ -97,7 +102,6 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
-  alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
 
   # How long we wait for a turn before reporting "still working" instead of
@@ -658,7 +662,7 @@ defmodule CodeMySpec.Agents do
     "The harness restarted. No turn of yours was interrupted — but if you had " <>
       "uncommitted changes on disk, check `git status`: a restart is not known " <>
       "to preserve them.\n" <>
-      Validation.Menu.render(scope, agent.continuous == true, agent.role, agent)
+      Menu.render(scope, agent.continuous == true, agent.role, agent)
   end
 
   # Starting a `main` agent is what the cadence exists to look after, so it is
