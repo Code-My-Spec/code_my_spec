@@ -149,11 +149,28 @@ jobs:
           key: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ hashFiles('mix.lock') }}
           restore-keys: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-
 
+      # ortex's ort-sys downloads ONNX Runtime from parcel.pyke.io, which 404s
+      # for x86_64-pc-windows-msvc (darwin is still served). Microsoft's own
+      # release has onnxruntime.lib (an import library) in lib/: ort-sys links
+      # it when ORT_LIB_LOCATION points there, and the NIF then needs
+      # onnxruntime.dll beside it (OTP loads NIFs with an altered search path).
+      - name: ONNX Runtime
+        run: |
+          curl -fsSL -o ort.zip \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
+          unzip -q ort.zip -d "$HOME"
+          echo "ORT_LIB_LOCATION=$HOME/onnxruntime-win-x64-${ORT_VERSION}/lib" >> "$GITHUB_ENV"
+        env:
+          ORT_VERSION: "1.19.2"
+
       - name: Build the installer
         run: |
           export DESKTOP_HOST_BINARY="$HOME/webview-host/DesktopWebView.exe"
           mix deps.get
           mix compile
+          native=$(dirname "$(ls _build/desktop/lib/ortex/priv/native/*.dll | head -1)")
+          cp "$ORT_LIB_LOCATION/onnxruntime.dll" "$native/"
+          ls -la "$native"
           mix assets.deploy
           mix release code_my_spec --overwrite
           ls -la _build/desktop/*.exe
