@@ -37,6 +37,7 @@ defmodule CodeMySpec.Sessions.Task do
           component_id: String.t() | nil,
           component_module_name: String.t() | nil,
           story_id: integer() | nil,
+          issue_id: String.t() | nil,
           project_id: String.t() | nil,
           agent_id: String.t() | nil,
           expected_files: [String.t()],
@@ -63,6 +64,9 @@ defmodule CodeMySpec.Sessions.Task do
     field :component_id, :string
     field :component_module_name, :string
     field :story_id, :integer
+    # Story 1091: the issue this task is fixing or QA-ing, for a task
+    # created off `AssignIssueToWorkingCopy` rather than the requirement graph.
+    field :issue_id, :string
     field :project_id, :string
     field :agent_id, :string
     field :expected_files, {:array, :string}, default: []
@@ -110,6 +114,7 @@ defmodule CodeMySpec.Sessions.Task do
       :component_id,
       :component_module_name,
       :story_id,
+      :issue_id,
       :project_id,
       :agent_id,
       :expected_files,

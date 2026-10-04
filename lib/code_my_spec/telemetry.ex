@@ -2,7 +2,9 @@ defmodule CodeMySpec.Telemetry do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Observability,
       CodeMySpec.Provisioning,
+      CodeMySpec.Repo,
       CodeMySpec.Users.Scope
     ],
     exports: :all
@@ -31,7 +33,7 @@ defmodule CodeMySpec.Telemetry do
   @type health :: %{
           reachable: boolean(),
           reads: :ok | :error,
-          writes: :ok | :refused,
+          writes: :ok | :refused | :error,
           checked_at: DateTime.t()
         }
 
@@ -50,7 +52,9 @@ defmodule CodeMySpec.Telemetry do
     with :ok <- require_server(scope, environment) do
       probe = Keyword.get(opts, :run_probe, &default_run_probe/1)
 
-      case probe.(Keyword.put(opts, :environment, environment)) do
+      probe_opts = opts |> Keyword.put(:scope, scope) |> Keyword.put(:environment, environment)
+
+      case probe.(probe_opts) do
         {:ok, _proof} -> {:ok, resources(environment)}
         {:error, reason} -> {:error, reason}
       end
@@ -65,15 +69,43 @@ defmodule CodeMySpec.Telemetry do
   `CodeMySpec.Provisioning.Step` documents for every other step's checks.
   """
   @spec check(Scope.t(), String.t(), keyword()) :: health()
-  def check(%Scope{}, environment, opts \\ []) when is_binary(environment) do
+  def check(%Scope{} = scope, environment, opts \\ []) when is_binary(environment) do
     probe = Keyword.get(opts, :check_probe, &default_check_probe/1)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
-    opts
-    |> Keyword.put(:environment, environment)
-    |> probe.()
-    |> Map.put(:checked_at, now.())
+    result =
+      opts
+      |> Keyword.put(:scope, scope)
+      |> Keyword.put(:environment, environment)
+      |> probe.()
+      |> Map.put(:checked_at, now.())
+
+    attrs = Map.merge(result, %{project_id: scope.active_project_id, environment: environment})
+
+    %CodeMySpec.Telemetry.HealthCheck{}
+    |> CodeMySpec.Telemetry.HealthCheck.changeset(attrs)
+    |> CodeMySpec.Repo.insert!(
+      on_conflict: {:replace, [:reachable, :reads, :writes, :checked_at]},
+      conflict_target: [:project_id, :environment]
+    )
+
+    result
   end
+
+  @doc "The latest completed check for this project and environment, without running a probe."
+  @spec last_check(Scope.t(), String.t() | nil) :: health() | nil
+  def last_check(%Scope{active_project_id: project_id}, environment)
+      when is_binary(project_id) and is_binary(environment) do
+    case CodeMySpec.Repo.get_by(CodeMySpec.Telemetry.HealthCheck,
+           project_id: project_id,
+           environment: environment
+         ) do
+      nil -> nil
+      check -> Map.take(check, [:reachable, :reads, :writes, :checked_at])
+    end
+  end
+
+  def last_check(%Scope{}, _environment), do: nil
 
   @doc """
   Query collected logs and traces for one environment, scoped to the
@@ -89,11 +121,11 @@ defmodule CodeMySpec.Telemetry do
     probe = Keyword.get(opts, :query_probe, &default_query_probe/1)
 
     opts
+    |> Keyword.put(:scope, scope)
     |> Keyword.put(:environment, environment)
     |> Keyword.put(:project_id, project_id)
     |> Keyword.put_new(:since_days, retention_days())
     |> probe.()
-    |> tap(fn _ -> scope end)
   end
 
   ## -- Private --
@@ -104,8 +136,7 @@ defmodule CodeMySpec.Telemetry do
         :ok
 
       _ ->
-        {:error,
-         "no server is provisioned for #{environment} -- set one up first"}
+        {:error, "no server is provisioned for #{environment} -- set one up first"}
     end
   end
 
@@ -118,13 +149,23 @@ defmodule CodeMySpec.Telemetry do
         location: "clickhouse/#{environment}",
         identifier: to_string(retention_days())
       },
-      %{kind: "telemetry_credential", location: "clickhouse/#{environment}", identifier: "read-only"}
+      %{
+        kind: "telemetry_credential",
+        location: "clickhouse/#{environment}",
+        identifier: "read-only"
+      }
     ]
   end
 
-  # No real collector is wired in yet -- an explicit error rather than a
-  # silent "it worked" until a real ClickHouse client replaces this.
-  defp default_run_probe(_opts), do: {:error, "no telemetry collector is configured yet"}
-  defp default_check_probe(_opts), do: %{reachable: false, reads: :error, writes: :error}
-  defp default_query_probe(_opts), do: {:error, "no telemetry collector is configured yet"}
+  defp default_run_probe(opts) do
+    CodeMySpec.Provisioning.ClickHouse.run(Keyword.fetch!(opts, :scope), opts[:environment], opts)
+  end
+
+  defp default_check_probe(opts) do
+    CodeMySpec.Telemetry.Reader.check(Keyword.fetch!(opts, :scope), opts[:environment])
+  end
+
+  defp default_query_probe(opts) do
+    CodeMySpec.Telemetry.Reader.query(Keyword.fetch!(opts, :scope), opts[:environment], opts)
+  end
 end

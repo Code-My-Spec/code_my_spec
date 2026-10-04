@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
   alias CodeMySpec.{Integrations, Users}
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecDesktop.{Browser, Identity, OAuthClients, OAuthHandoff}
   alias CodeMySpecWeb.UserAuth
 
   require Logger
@@ -62,14 +63,18 @@ defmodule CodeMySpecWeb.IntegrationsController do
   def request(conn, %{"provider" => provider_str}) do
     provider = String.to_existing_atom(provider_str)
 
-    case Integrations.authorize_url(provider) do
-      {:ok, %{url: url, session_params: session_params}} ->
-        conn
-        |> put_session(:oauth_session_params, session_params)
-        |> put_session(:oauth_provider, provider)
-        |> put_session(:oauth_flow, :integration)
-        |> redirect(external: url)
-
+    with :ok <- prepare_desktop_client(provider),
+         {:ok, %{url: url, session_params: session_params}} <-
+           Integrations.authorize_url(provider) do
+      if Identity.active?(),
+        do: hand_to_browser(conn, provider, url, session_params),
+        else:
+          conn
+          |> put_session(:oauth_session_params, session_params)
+          |> put_session(:oauth_provider, provider)
+          |> put_session(:oauth_flow, :integration)
+          |> redirect(external: url)
+    else
       {:error, reason} ->
         Logger.error("Failed to generate OAuth URL for #{provider}: #{inspect(reason)}")
 
@@ -84,9 +89,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
   flow based on the session flag set during the request phase.
   """
   def callback(conn, params) do
-    provider = get_session(conn, :oauth_provider)
-    session_params = get_session(conn, :oauth_session_params) || %{}
-    flow = get_session(conn, :oauth_flow) || :integration
+    {provider, session_params, flow} = pending_flow(conn, params)
 
     conn =
       conn
@@ -94,9 +97,56 @@ defmodule CodeMySpecWeb.IntegrationsController do
       |> delete_session(:oauth_provider)
       |> delete_session(:oauth_flow)
 
-    case flow do
-      :login -> handle_login_callback(conn, provider, params, session_params)
-      :integration -> handle_integration_callback(conn, provider, params, session_params)
+    case {provider, flow} do
+      # /callback with a state nobody parked (or that expired): there is no
+      # provider to finish with.
+      {nil, _flow} ->
+        conn
+        |> put_flash(:error, "That sign-in link expired. Connect again from settings.")
+        |> redirect(to: ~p"/app/users/settings")
+
+      {_provider, :login} ->
+        handle_login_callback(conn, provider, params, session_params)
+
+      {_provider, :integration} ->
+        handle_integration_callback(conn, provider, params, session_params)
+    end
+  end
+
+  # The desktop window cannot run the provider's page (Google refuses OAuth in
+  # an embedded webview), and the browser that does has its own cookies, so the
+  # flow waits server-side under its state (CodeMySpecDesktop.OAuthHandoff).
+  defp hand_to_browser(conn, provider, url, session_params) do
+    :ok =
+      OAuthHandoff.park(%{session_params: session_params, provider: provider, flow: :integration})
+
+    :ok = Browser.launch(url)
+
+    conn
+    |> put_flash(:info, "Finish connecting #{provider_name(provider)} in your browser")
+    |> redirect(to: ~p"/app/users/settings")
+  end
+
+  # Resend has no shared desktop client: each install registers its own the
+  # first time it connects (CodeMySpecDesktop.OAuthClients).
+  defp prepare_desktop_client(:resend) do
+    if Identity.active?() do
+      with {:ok, _client_id} <- OAuthClients.ensure_resend(), do: :ok
+    else
+      :ok
+    end
+  end
+
+  defp prepare_desktop_client(_provider), do: :ok
+
+  defp pending_flow(conn, params) do
+    with true <- Identity.active?(),
+         {:ok, flow} <- OAuthHandoff.claim(params["state"]) do
+      {flow.provider, flow.session_params, flow.flow}
+    else
+      _session ->
+        {get_session(conn, :oauth_provider), get_session(conn, :oauth_session_params) || %{},
+         get_session(conn, :oauth_flow) || :integration}
     end
   end
 

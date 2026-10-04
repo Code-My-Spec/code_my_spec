@@ -20,12 +20,13 @@ defmodule CodeMySpecDesktop.Application do
   def start(type, _args) do
     CmsHarness.Application.prepare_host()
     FirstBoot.ensure_database()
+    CodeMySpecDesktop.OAuthClients.configure()
     CodeMySpecWeb.Application.start(type, children: &children/1)
   end
 
   def children(web_children) do
     Enum.flat_map(web_children, fn
-      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot]
+      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot, CodeMySpecDesktop.OAuthHandoff]
       child -> [child]
     end) ++
       [CmsHarness.Supervisor, view(Application.fetch_env!(:code_my_spec, :base_url) <> "/app")]

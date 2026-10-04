@@ -77,6 +77,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
   alias CodeMySpecWeb.ConsoleLive.Components.ResourceDetail
+  alias CodeMySpecWeb.ConsoleLive.Components.SetupOptionsForm
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
   alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
@@ -149,8 +150,11 @@ defmodule CodeMySpecWeb.ConsoleLive do
       |> assign_new(:mail_send_result, fn -> nil end)
       |> assign_new(:widget_degradation_running?, fn -> false end)
       |> assign_new(:widget_degradation, fn -> nil end)
-      |> assign_new(:telemetry_check_running?, fn -> false end)
-      |> assign_new(:telemetry_check, fn -> nil end)
+      |> assign(
+        :telemetry_check_running?,
+        not is_nil(environment) and socket.assigns[:telemetry_check_environment] == environment
+      )
+      |> assign(:telemetry_check, Telemetry.last_check(scope, environment))
       # Each callback calls list_domains/1 independently rather than once up
       # front, so a real Resend round-trip only happens the first time either
       # key is actually missing — assign_new is a no-op on every later patch,
@@ -642,13 +646,45 @@ defmodule CodeMySpecWeb.ConsoleLive do
               data-reachable={to_string(@telemetry_check.reachable)}
               data-reads={to_string(@telemetry_check.reads)}
               data-writes={to_string(@telemetry_check.writes)}
-            />
+              class="mt-4 space-y-2 text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <p>
+                <span class="font-semibold">HTTPS reachability:</span>
+                {case @telemetry_check.reachable do
+                  true -> "Reachable"
+                  false -> "Unavailable — check telemetry setup, DNS, TLS, and server connectivity."
+                end}
+              </p>
+              <p>
+                <span class="font-semibold">Read access:</span>
+                {case {@telemetry_check.reachable, @telemetry_check.reads} do
+                  {_, :ok} -> "Working"
+                  {false, :error} -> "Could not verify while telemetry is unavailable."
+                  {true, :error} -> "Failed — check the reader credentials and table permissions."
+                end}
+              </p>
+              <p>
+                <span class="font-semibold">Write protection:</span>
+                {case @telemetry_check.writes do
+                  :refused ->
+                    "Working — writes refused for the read-only login."
+
+                  :ok ->
+                    "Unsafe — writes are allowed. Remove write permissions from the reader login."
+
+                  :error ->
+                    "Could not verify — restore connectivity and read access, then check again."
+                end}
+              </p>
+            </div>
           </DiagnosticsPanel.diagnostics_panel>
         </div>
       </:checks>
 
       <:mail_panel :if={@resource_key == :mail}>
-        <section data-test="mail" :if={@mail} class="my-6">
+        <section :if={@mail} data-test="mail" class="my-6">
           <h2 class="text-lg font-semibold">Outbound mail</h2>
 
           <div
@@ -711,7 +747,11 @@ defmodule CodeMySpecWeb.ConsoleLive do
         <section data-test="backups-panel">
           <h2 class="text-lg font-semibold">Backups</h2>
 
-          <.button data-test="backups-refresh" phx-click="refresh_backups" class="btn btn-primary mt-2">
+          <.button
+            data-test="backups-refresh"
+            phx-click="refresh_backups"
+            class="btn btn-primary mt-2"
+          >
             Check the bucket
           </.button>
 
@@ -1004,11 +1044,17 @@ defmodule CodeMySpecWeb.ConsoleLive do
         environment_rows={@environment_rows}
         show_close?={false}
       />
+
+      <SetupOptionsForm.setup_options_form options={@options} />
     </section>
     """
   end
 
   defp setup_done_count(plan), do: Enum.count(plan, &(&1.state == :done))
+
+  defp setup_option_summary(option, updated) do
+    if option in updated, do: "enabled #{option}", else: "disabled #{option}"
+  end
 
   # Every environment, not just whichever one the switcher currently points
   # at — the old page showed every environment's deploy card side by side,
@@ -1060,7 +1106,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope |> Activity.list_for_project() |> Enum.take(10)
   end
 
-  defp activity_feed(scope, environment), do: Activity.list_for_project(scope, environment: environment)
+  defp activity_feed(scope, environment),
+    do: Activity.list_for_project(scope, environment: environment)
 
   defp resource_activity(_scope, nil), do: []
   defp resource_activity(scope, key), do: Activity.list_for_resource(scope, key)
@@ -1333,7 +1380,10 @@ defmodule CodeMySpecWeb.ConsoleLive do
     socket =
       socket
       |> assign(:telemetry_check_running?, true)
-      |> start_async(:telemetry_check, fn -> Telemetry.check(scope, environment, opts) end)
+      |> assign(:telemetry_check_environment, environment)
+      |> start_async(:telemetry_check, fn ->
+        {environment, Telemetry.check(scope, environment, opts)}
+      end)
 
     {:noreply, socket}
   end
@@ -1371,7 +1421,13 @@ defmodule CodeMySpecWeb.ConsoleLive do
         labels ->
           # Labels only — `field.key`'s own value is the credential, and
           # must never reach a summary any more than the flash above does.
-          Activity.record(scope, "credential_save", "credentials", "saved #{Enum.join(labels, ", ")}")
+          Activity.record(
+            scope,
+            "credential_save",
+            "credentials",
+            "saved #{Enum.join(labels, ", ")}"
+          )
+
           put_flash(socket, :info, "Saved #{Enum.join(labels, ", ")}.")
       end
 
@@ -1441,6 +1497,39 @@ defmodule CodeMySpecWeb.ConsoleLive do
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, inspect(reason))}
       end
+    end
+  end
+
+  # Same split as add/remove environment above: `refresh/1` because toggling
+  # an option changes the plan itself, not the URL.
+  def handle_event("toggle_setup_option", %{"option" => option}, socket) do
+    scope = socket.assigns.current_scope
+
+    case string_to_key(option) do
+      nil ->
+        {:noreply, socket}
+
+      option ->
+        current = socket.assigns.options
+        updated = if option in current, do: List.delete(current, option), else: [option | current]
+
+        case Provisioning.put_setup_options(scope, updated) do
+          {:ok, project} ->
+            Activity.record(
+              scope,
+              "setup_options_edit",
+              "settings",
+              setup_option_summary(option, updated)
+            )
+
+            {:noreply,
+             socket
+             |> assign(:current_scope, %{scope | active_project: project})
+             |> refresh()}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, inspect(reason))}
+        end
     end
   end
 
@@ -1735,18 +1824,30 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> put_flash(:error, "Widget degradation probe crashed: #{inspect(reason)}")}
   end
 
-  def handle_async(:telemetry_check, {:ok, result}, socket) do
-    {:noreply,
-     socket
-     |> assign(:telemetry_check_running?, false)
-     |> assign(:telemetry_check, result)}
+  def handle_async(:telemetry_check, {:ok, {environment, result}}, socket) do
+    socket =
+      socket
+      |> assign(:telemetry_check_running?, false)
+      |> assign(:telemetry_check_environment, nil)
+
+    socket =
+      if socket.assigns.environment == environment,
+        do: assign(socket, :telemetry_check, result),
+        else: socket
+
+    {:noreply, socket}
   end
 
   def handle_async(:telemetry_check, {:exit, reason}, socket) do
+    socket =
+      if socket.assigns.environment == socket.assigns[:telemetry_check_environment],
+        do: put_flash(socket, :error, "Telemetry check crashed: #{inspect(reason)}"),
+        else: socket
+
     {:noreply,
      socket
      |> assign(:telemetry_check_running?, false)
-     |> put_flash(:error, "Telemetry check crashed: #{inspect(reason)}")}
+     |> assign(:telemetry_check_environment, nil)}
   end
 
   # Same as ProvisioningLive.handle_info({:provisioning, :step/:finished, ...}).
@@ -1807,7 +1908,13 @@ defmodule CodeMySpecWeb.ConsoleLive do
         %{key: key, environment: environment, status: "200", matches: true, reason: nil}
 
       {:ok, _other} ->
-        %{key: key, environment: environment, status: "200", matches: false, reason: "bytes differ"}
+        %{
+          key: key,
+          environment: environment,
+          status: "200",
+          matches: false,
+          reason: "bytes differ"
+        }
 
       {:error, reason} ->
         probe_failure(key, environment, reason)

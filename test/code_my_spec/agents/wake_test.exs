@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.WakeTest do
     coding: [:work_offer, :nudge, :resume, :findings],
     qa: [:work_offer, :nudge, :resume]
   }
-  @always [:operator_message, :own_reply, :question_answered, :blocker_resolved]
+  @always [:operator_message, :own_reply, :question_answered, :blocker_resolved, :team_free]
 
   # A non-continuous agent is woken only by a person and its own replies
   # (step 4b, John: "hold them"); what it asked for is handed it inside a turn.

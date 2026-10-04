@@ -420,16 +420,7 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   def ensure_dns_record(%Scope{} = scope, zone_id, name, content, opts \\ []) do
     type = Keyword.get(opts, :type, "A")
 
-    # `:records` lets a caller writing several records into one zone list it
-    # once instead of once per record. Beyond the saved round-trips this makes
-    # the call count a function of how many records are written rather than of
-    # how many times the zone happened to be listed, which is what a sequential
-    # cassette needs in order to replay the same way it recorded.
-    with {:ok, records} <-
-           (case Keyword.fetch(opts, :records) do
-              {:ok, records} -> {:ok, records}
-              :error -> list_dns_records(scope, zone_id)
-            end) do
+    with {:ok, records} <- dns_records_for(scope, zone_id, opts) do
       case Enum.find(records, &(&1["name"] == name and &1["type"] == type)) do
         nil ->
           create_dns_record(scope, zone_id, name, content, opts)
@@ -440,25 +431,35 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
         # Already there and already right. Marked as adopted so teardown leaves
         # it alone — a record that predates setup is the user's, not ours.
         %{"content" => ^content} = existing ->
-          if priority_matches?(existing, Keyword.get(opts, :priority)) do
-            {:ok, %{"result" => Map.put(existing, "__adopted__", true)}}
-          else
-            update_dns_record(scope, zone_id, existing["id"], name, content, opts)
-          end
+          reconcile_matching_record(scope, zone_id, name, content, opts, existing)
 
         %{"id" => id} ->
-          payload =
-            %{
-              type: type,
-              name: name,
-              content: content,
-              ttl: Keyword.get(opts, :ttl, 60),
-              proxied: Keyword.get(opts, :proxied, false)
-            }
-            |> maybe_put(:priority, Keyword.get(opts, :priority))
-
-          request(scope, :put, "/zones/#{zone_id}/dns_records/#{id}", json: payload)
+          update_dns_record(scope, zone_id, id, name, content, opts)
       end
+    end
+  end
+
+  # `:records` lets a caller writing several records into one zone list it
+  # once instead of once per record. Beyond the saved round-trips this makes
+  # the call count a function of how many records are written rather than of
+  # how many times the zone happened to be listed, which is what a sequential
+  # cassette needs in order to replay the same way it recorded.
+  defp dns_records_for(scope, zone_id, opts) do
+    case Keyword.fetch(opts, :records) do
+      {:ok, records} -> {:ok, records}
+      :error -> list_dns_records(scope, zone_id)
+    end
+  end
+
+  defp reconcile_matching_record(scope, zone_id, name, content, opts, existing) do
+    proxy_matches =
+      not Keyword.has_key?(opts, :proxied) or
+        existing["proxied"] == Keyword.get(opts, :proxied)
+
+    if priority_matches?(existing, Keyword.get(opts, :priority)) and proxy_matches do
+      {:ok, %{"result" => Map.put(existing, "__adopted__", true)}}
+    else
+      update_dns_record(scope, zone_id, existing["id"], name, content, opts)
     end
   end
 

@@ -107,6 +107,22 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       body
     end
 
+    test "both environments send traces to the collector on the shared Docker network" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        body = config(path, @opts)
+
+        assert body =~ "OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318"
+        assert body =~ "OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf"
+        assert body =~ "network: db_net"
+        refute body =~ "OTEL_EXPORTER_OTLP_ENDPOINT: https://"
+      end
+    end
+
+    test "traces use the same service and role identity as Docker logs" do
+      assert config("config/deploy.yml", @opts) =~ "OTEL_SERVICE_NAME: my_app-web\n"
+      assert config("config/deploy.uat.yml", @opts) =~ "OTEL_SERVICE_NAME: my_app-uat-web\n"
+    end
+
     test "logs into ghcr for a project that was never given its own registry" do
       body = config("config/deploy.yml", @opts)
 

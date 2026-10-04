@@ -53,7 +53,8 @@ defmodule CodeMySpec.Agents.Offers do
     unblocked: "unblocked/2",
     denial: "denial/1",
     check_in: "check_in/1",
-    stalled: "stalled/1"
+    stalled: "stalled/1",
+    team_free: "team_free/1"
   }
 
   # What main can do with a waiting question it was offered.

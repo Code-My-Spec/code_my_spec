@@ -74,6 +74,7 @@ defmodule CodeMySpec.Agents.Wake do
           | :cadence
           | :teammate_stalled
           | :teammate_died
+          | :team_free
 
   @type hold ::
           {:off, Agent.t()}
@@ -96,12 +97,22 @@ defmodule CodeMySpec.Agents.Wake do
     :findings,
     :cadence,
     :teammate_stalled,
-    :teammate_died
+    :teammate_died,
+    :team_free
   ]
 
   # Relevant to whoever it is addressed to: a person speaking to it, or the
   # answer to its own request.
-  @always_relevant [:operator_message, :own_reply, :question_answered, :blocker_resolved]
+  # A team becoming free of its issue is main's own administrative notice —
+  # story 1091 — the same standing as `:own_reply`: told regardless of role
+  # (there is only ever one main) and never held by `Agents.Waiting`.
+  @always_relevant [
+    :operator_message,
+    :own_reply,
+    :question_answered,
+    :blocker_resolved,
+    :team_free
+  ]
 
   # The `Agents.Waiting` path each event would start a turn through. A
   # teammate's question, stall or death is on `:wake`, which an open question of
@@ -138,7 +149,8 @@ defmodule CodeMySpec.Agents.Wake do
     resume: :hold,
     teammate_question: :hold,
     teammate_stalled: :hold,
-    teammate_died: :hold
+    teammate_died: :hold,
+    team_free: :wake
   }
 
   @telemetry [:code_my_spec, :agents, :wake]
