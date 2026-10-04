@@ -75,4 +75,19 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
 
     assert {:ok, _} = ComponentSync.sync_from_files(scope)
   end
+
+  test "a reconcile that removes a file whose module has no component does not raise", %{
+    scope: scope,
+    component: component
+  } do
+    # The incremental call a manifest reconcile makes: nothing changed, one file
+    # removed whose module never became a component (4070a52e).
+    assert {:ok, _} =
+             ComponentSync.sync_from_files(scope,
+               changed_paths: [],
+               removed_module_names: ["CodeMySpec.NeverAComponent", component.module_name]
+             )
+
+    assert Components.get_component(scope, component.id)
+  end
 end

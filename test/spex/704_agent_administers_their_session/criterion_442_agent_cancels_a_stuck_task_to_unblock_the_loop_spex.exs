@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -29,14 +30,14 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
     scenario "cancel_task transitions task to :cancelled and removes it from active queries" do
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session with one open task", context do
         session_id = "spex-6097-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 

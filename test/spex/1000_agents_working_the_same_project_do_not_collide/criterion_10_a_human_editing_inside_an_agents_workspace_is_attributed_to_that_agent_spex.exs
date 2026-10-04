@@ -35,13 +35,11 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
-  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @path "lib/typo_fixed_by_hand.ex"
 
   setup :register_log_in_setup_account
@@ -58,50 +56,24 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
       given_ :context_implementation_task_started
 
       given_ "an agent is serving a working copy", context do
-        # Joining with the scope's own harness id, so the agent serving this
-        # checkout and the agent the assertions read back are the same one.
-        {:ok, _reply, socket} =
-          UserSocket
-          |> socket("harness_served", %{scope: context.scope})
-          |> subscribe_and_join(
-            HarnessProjectChannel,
-            "harness_project:#{context.project.id}",
-            %{
-              "contract_version" => @contract_version,
-              "harness_id" => context.scope.active_working_copy_id,
-              "root" => context.scope.cwd,
-              "label" => "the harness serving #{context.scope.cwd}"
-            }
-          )
-
-        {:ok, Map.put(context, :agent, socket)}
+        {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
       when_ "the operator edits a file in it by hand", context do
         # Straight into the working copy. No tool call, so no PostToolUse — that
         # absence is the premise, not an omission.
-        :ok =
-          Environments.write_file(
-            context.environment,
-            @path,
-            "defmodule TypoFixedByHand do\n  @moduledoc false\nend\n"
-          )
-
-        # What a hand edit does produce: the harness notices the tree changed and
-        # says so. This is the only report the operator's edit generates.
-        ref =
-          Phoenix.ChannelTest.push(context.agent, "observations", %{
-            "observations" => [
-              %{
-                "path" => @path,
-                "role" => "implementation",
-                "fingerprint" => "edited-by-hand",
-                "mtime" => DateTime.utc_now() |> DateTime.to_iso8601()
-              }
-            ]
-          })
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
+        #
+        # Red until da2af26: a local stat reports whole-second mtimes, so an edit
+        # made in the same second the task started is not "changed since" it.
+        #
+        # What a hand edit does produce:
+        # the harness notices the tree changed and says so. That is the only
+        # report the operator's edit generates.
+        HarnessHooks.write_file(
+          context,
+          @path,
+          "defmodule TypoFixedByHand do\n  @moduledoc false\nend\n"
+        )
 
         {:ok, context}
       end
@@ -132,16 +104,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
         })
 
         stop =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(
-            CodeMySpecLocalWeb.Endpoint,
-            :post,
-            "/api/hooks/stop",
-            %{"session_id" => context.session_id}
-          )
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         assert stop["decision"] == "block" and (stop["reason"] || "") =~ @path,
                "a finding on the file the operator edited did not hold this agent, so " <>

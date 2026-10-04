@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1668Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,6 +32,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1668Spex do
     scenario "the agent never takes its offered turn, and the offer is made again" do
       given_ "coding work is waiting", context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         {:ok, context}
       end

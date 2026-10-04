@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,15 +34,15 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
     scenario "active manual task → allow with no pipeline and no eval" do
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent starts the qa_integration_plan task on the project via the real contract",
              context do
         external_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => external_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => external_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -61,11 +62,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
 
       when_ "the stop hook fires", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

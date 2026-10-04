@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -31,21 +32,17 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
     :ok
   end
 
-  spex "An external session asks and polls without acquiring a task or durable agent", criterion: 1474 do
+  spex "An external session asks and polls without acquiring a task or durable agent",
+    criterion: 1474 do
     scenario "The existing session question round trip survives work-management changes" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a registered external session has no task or durable agent", context do
         session_id = "spex-3576-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> Phoenix.ConnTest.dispatch(
-          CodeMySpecLocalWeb.Endpoint,
-          :post,
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, tasks, _} = ListTasks.execute(%{session_id: session_id}, frame)

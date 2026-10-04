@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5584Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @match_signature "Always group context functions by domain noun, never by verb."
@@ -62,14 +63,14 @@ defmodule CodeMySpecSpex.Story670.Criterion5584Spex do
 
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent has signalled session start", context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

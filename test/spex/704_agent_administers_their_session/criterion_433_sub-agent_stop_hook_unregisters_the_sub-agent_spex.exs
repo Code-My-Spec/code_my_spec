@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -20,25 +21,21 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
 
   spex "Sub-agent stop hook unregisters the sub-agent", criterion: 433 do
     scenario "POST /subagent-stop removes the registration from session state" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a live session with a registered sub-agent", context do
         session_id = "spex-6088-#{System.unique_integer([:positive])}"
         agent_id = "test-writer-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/subagent-start", %{
+        HarnessHooks.post_hook(context, "subagent-start", %{
           "session_id" => session_id,
           "agent_id" => agent_id,
           "agent_name" => "@test-writer"
         })
-        |> Phoenix.ConnTest.json_response(200)
 
         # Precondition (observed through the public MCP tool): the
         # sub-agent is currently registered.
@@ -56,14 +53,10 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
       end
 
       when_ "the main agent fires POST /subagent-stop with that agent_id", context do
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/subagent-stop", %{
+        HarnessHooks.post_hook(context, "subagent-stop", %{
           "session_id" => context.session_id,
           "agent_id" => context.agent_id
         })
-        |> Phoenix.ConnTest.json_response(200)
 
         {:ok, context}
       end

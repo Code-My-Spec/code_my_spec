@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
@@ -48,26 +49,27 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "turn 1: the agent writes a failing test and fires the stop hook",
              context do
         :ok = Environments.write_file(context.environment, @test_path, failing_test())
+        HarnessHooks.write_file(context, @test_path, failing_test())
         :ok = Environments.write_file(context.environment, @impl_path, impl())
+        HarnessHooks.write_file(context, @impl_path, impl())
 
-        _turn_1_response =
-          use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        _turn_1_response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, context}
       end
@@ -77,12 +79,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         # changes and the pipeline is skipped. No System.cmd is invoked,
         # so no cassette wrapper is needed.
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

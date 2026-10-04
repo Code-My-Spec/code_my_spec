@@ -75,7 +75,10 @@ defmodule CmsHarness.Analysis do
     env = Environment.new(:local, project.root)
     started = System.monotonic_time(:millisecond)
 
-    result = source |> execute(env, args) |> stamp_partition(env, source)
+    result =
+      fn -> execute(source, env, args) end
+      |> heal_stale_deps(fn -> deps_get(env) end)
+      |> stamp_partition(env, source)
 
     Logger.info(
       "[CmsHarness] #{source} #{inspect(args)} in #{project.root}#{run_id_suffix(run_id)} " <>
@@ -84,6 +87,75 @@ defmodule CmsHarness.Analysis do
 
     result
   end
+
+  @doc """
+  Run, and if `mix` refused because `deps/` is behind `mix.lock`, fetch once and
+  run again (fc08e5e2).
+
+  A promote that moves the lock leaves every other checkout unable to run any
+  analyzer until somebody fetches — and the refusal surfaced as a credo "not
+  JSON" parse error and a compiler problem, two gates lost to it in one day.
+  The harness already owns these runs, so it fetches: once, under a lock per
+  checkout (two slots can hit it at once), then the run again. A fetch that
+  fails is reported as that, plainly, rather than as whatever the analyzer made
+  of `mix`'s refusal.
+
+  `run` and `fetch` are arguments so the decision is testable without `mix`.
+  """
+  @spec heal_stale_deps((-> term()), (-> :ok | {:error, String.t()})) :: term()
+  def heal_stale_deps(run, fetch) do
+    result = run.()
+
+    if stale_deps?(result) do
+      case fetch.() do
+        :ok -> run.()
+        {:error, output} -> {:error, deps_get_failed(output)}
+      end
+    else
+      result
+    end
+  end
+
+  defp stale_deps?({:error, reason}) when is_binary(reason), do: stale_marker?(reason)
+
+  defp stale_deps?({:ok, %{} = result}),
+    do: result |> inspect(limit: :infinity) |> stale_marker?()
+
+  defp stale_deps?(_result), do: false
+
+  # Mix's own banner, or the line `Compile` and `CredoRun` turn it into.
+  defp stale_marker?(text),
+    do:
+      Compile.unsatisfied_deps?(text) or text =~ "cannot satisfy its own mix.lock" or
+        text =~ "deps out of date with mix.lock"
+
+  defp deps_get_failed(output) do
+    "deps out of date with mix.lock, and `mix deps.get` in this working copy failed: " <>
+      (output |> String.trim() |> String.slice(0, 400))
+  end
+
+  # The checkout's own `deps/`, which every analyzer and the agent share. MIX_ENV
+  # set rather than inherited: the harness runs as `harness`, an env a project's
+  # config need not define, and `deps.get` fetches for every env regardless.
+  defp deps_get(env) do
+    serialize_deps_get(env.cwd, fn ->
+      case Environments.cmd(env, "mix", ["deps.get"],
+             stderr_to_stdout: true,
+             env: [{"MIX_ENV", "dev"}]
+           ) do
+        {_out, 0} -> :ok
+        {out, _status} -> {:error, out}
+      end
+    end)
+  end
+
+  @doc "Run `fun` holding the checkout's `deps.get` lock, so concurrent runs fetch one at a time."
+  # A `:global` lock id is `{ResourceId, RequesterId}`; a bare three-tuple
+  # raises `function_clause` in `:global.set_lock`, which killed every analyzer
+  # the first time a tree's deps went stale (fc08e5e2's regression).
+  @spec serialize_deps_get(String.t(), (-> result)) :: result when result: term()
+  def serialize_deps_get(cwd, fun),
+    do: :global.trans({{__MODULE__, :deps_get, cwd}, self()}, fun)
 
   @doc """
   The checkout's commit and whether its tree has uncommitted changes, read
@@ -379,8 +451,8 @@ defmodule CmsHarness.Analysis do
   #
   # `Runners.spex_location/1` is the one place that decides it now. CmsHarness
   # may depend on CodeMySpec, so this needs no third home.
-  @doc false
-  # Public only so the harness's own diagnostic can be asserted without a live
+  @doc "One spex failure as the problem map the server receives, located at its spec file and line."
+  # Public so the harness's own diagnostic can be asserted without a live
   # `mix spex`. Its absence is why a location fix shipped against the server's
   # copy and changed nothing here.
   def spex_failure(failure) do

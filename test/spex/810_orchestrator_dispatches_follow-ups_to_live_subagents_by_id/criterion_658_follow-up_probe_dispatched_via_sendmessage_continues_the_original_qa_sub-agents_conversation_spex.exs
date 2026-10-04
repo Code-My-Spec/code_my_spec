@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @qa_agent_id "a-qa-spex-1"
@@ -30,7 +31,8 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Dispatch directive names SendMessage when a live QA sub-agent is registered", criterion: 658 do
+  spex "Dispatch directive names SendMessage when a live QA sub-agent is registered",
+    criterion: 658 do
     scenario "qa_complete requirement + registered QA sub-agent → directive says SendMessage(to: <agent_id>)" do
       given_ "a story exists with a passing-spec'd qa_complete requirement pending",
              context do
@@ -40,33 +42,23 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
         {:ok, FullSatisfactionFixtures.apply_without_qa_story(context)}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       and_ "the session has a live QA sub-agent registered with a known agent_id",
            context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
         # SessionStart — creates the session row.
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         # SubagentStart — registers the QA sub-agent under a known id.
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/subagent-start",
-          %{
-            "session_id" => session_id,
-            "agent_id" => @qa_agent_id,
-            "agent_name" => "qa"
-          }
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "subagent-start", %{
+          "session_id" => session_id,
+          "agent_id" => @qa_agent_id,
+          "agent_name" => "qa"
+        })
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

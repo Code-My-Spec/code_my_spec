@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.HarnessHooks
 
   alias CodeMySpecSpex.Fixtures
 
@@ -49,11 +50,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
       when_ "the agent fires the stop hook on the active fix-issues task",
             context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :stop_response, response)}
       end

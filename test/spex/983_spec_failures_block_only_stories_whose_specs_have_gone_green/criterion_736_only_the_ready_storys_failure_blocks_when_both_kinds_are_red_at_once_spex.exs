@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   @green_fixture_dir "test/fixtures/validation/pipeline_clean_credo"
@@ -89,6 +90,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
         {mid_build_path, mid_build_number} = spec_path(context.scope, context.mid_build_story.id)
 
         :ok = Environments.write_file(context.environment, ready_path, passing_spex(ready_number))
+        HarnessHooks.write_file(context, ready_path, passing_spex(ready_number))
 
         :ok =
           Environments.write_file(
@@ -97,9 +99,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
             failing_spex(mid_build_number)
           )
 
-        # Synced now, so the latch set below is not cleared by the next sync
+        HarnessHooks.write_file(context, mid_build_path, failing_spex(mid_build_number))
+
+        # Already synced: `write_file/3` returns once the harness has reported
+        # each file, so the latch set below is not cleared by a later sync
         # reading these as freshly rewritten specs (criterion 2193).
-        Fixtures.deliver_manifest(context.scope)
 
         {:ok,
          Map.merge(context, %{
@@ -117,6 +121,22 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
       # The ready story regresses without its spec being edited — its
       # implementation broke. Editing the spec would be a rewrite, and a
       # rewrite un-readies the story (criterion 2193).
+      given_ "the agent's change to the shared implementation broke the ready story",
+             context do
+        # The regression this criterion sorts is the agent's own: it edited the
+        # implementation both stories sit on. Without an edit the session owns
+        # nothing and nothing it is shown can block it (story 894).
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "lib/example_context.ex",
+            "defmodule ExampleContext do\n  @moduledoc false\n  def broken, do: :changed\nend\n"
+          )
+
+        :ok = record_edit(context, "lib/example_context.ex")
+        {:ok, context}
+      end
+
       when_ "a run reports both stories red and the stop hook fires", context do
         jsonl =
           Fixtures.spex_run_report([
@@ -124,20 +144,10 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
             {context.mid_build_path, "mid-build story not implemented yet"}
           ])
 
-        response =
-          use_cmd_cassette "pipeline_spex_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => green_fixture("compile.jsonl"),
-                "spex" => jsonl
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", green_fixture("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "spex", jsonl)
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

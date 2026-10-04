@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -95,11 +96,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
 
       when_ "the agent fires the stop hook", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         # The stop hook can start or wake this project's GraphWatcher (a
         # continuous-mode toggle is one of its two triggers), whose recompute

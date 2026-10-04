@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1678Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -32,6 +33,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1678Spex do
       given_ "a coder offered work, which ended a turn without it and was offered it again",
              context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: false)

@@ -190,8 +190,14 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       conn: conn,
       scope: scope
     } do
-      for _ <- 1..2, do: CodeMySpec.StoriesFixtures.story_fixture(scope)
-      story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{title: "Linked story"})
+      # A number no id reaches, so rendering the id instead could not pass
+      # (883a14a5: two filler stories only made them differ by luck).
+      story =
+        CodeMySpec.StoriesFixtures.story_fixture(scope, %{
+          title: "Linked story",
+          number: 7_000_000 + System.unique_integer([:positive])
+        })
+
       assert story.id != story.number
       issue = issue_fixture(scope, %{title: "Linked bug", story_id: story.id})
 

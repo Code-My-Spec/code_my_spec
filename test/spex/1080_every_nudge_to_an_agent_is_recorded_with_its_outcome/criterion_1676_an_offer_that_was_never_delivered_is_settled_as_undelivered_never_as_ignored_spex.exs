@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1676Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,6 +32,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1676Spex do
     scenario "work is offered to a coder whose machine cannot be reached" do
       given_ "coding work is waiting and the coder's machine is out of reach", context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         :ok = machine_out_of_reach()
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

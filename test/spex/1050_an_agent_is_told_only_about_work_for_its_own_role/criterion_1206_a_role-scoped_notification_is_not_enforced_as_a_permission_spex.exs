@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -46,6 +47,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
     scenario "A role-scoped notification is not enforced as a permission" do
       given_ "the project chain is past kickoff", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      end
+
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
       given_ "a coding agent never told about a QA finding", context do

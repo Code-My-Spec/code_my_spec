@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6531Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @qa_agent_id "a-qa-role-1"
@@ -30,35 +31,25 @@ defmodule CodeMySpecSpex.Story810.Criterion6531Spex do
 
   spex "Registry is role-keyed: lookup by role, never by list-scan", criterion: 660 do
     scenario "Two sub-agents under different roles — both surface with role identity" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the session has both a QA sub-agent and a Code Writer sub-agent registered",
              context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         for {agent_id, role} <- [
               {@qa_agent_id, "qa"},
               {@coding_agent_id, "code-writer"}
             ] do
-          post(
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json"),
-            "/api/hooks/subagent-start",
-            %{
-              "session_id" => session_id,
-              "agent_id" => agent_id,
-              "agent_name" => role
-            }
-          )
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "subagent-start", %{
+            "session_id" => session_id,
+            "agent_id" => agent_id,
+            "agent_name" => role
+          })
         end
 
         {:ok, Map.put(context, :session_id, session_id)}

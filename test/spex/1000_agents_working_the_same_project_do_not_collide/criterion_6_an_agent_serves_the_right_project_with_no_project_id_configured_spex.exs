@@ -22,13 +22,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  # See criterion 3059's note: an uncassetted stop runs a real `mix compile`
-  # and a real recursive `mix spex`, which has nothing to do with what this
-  # criterion checks (project identity resolution).
-  @stop_test_output_files %{
-    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
-  }
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -62,34 +56,25 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         {:ok, context}
       end
 
-      when_ "it reconnects and a hook arrives", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => "spex-no-project-id",
-              "test_output_files" => @stop_test_output_files
-            })
-          end
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
 
-        # Status captured rather than asserted here: a refusal *is* the failure
-        # this criterion describes, and forcing 200 in the `when_` would kill the
-        # scenario before it could say so.
-        {:ok, context |> Map.put(:stop, response) |> Map.put(:stop_status, response.status)}
+      when_ "it reconnects and a hook arrives", context do
+        # The harness answers 200 for every decision, refusals included — the
+        # status is asserted by the post itself, and what a refusal says is in
+        # the decision.
+        response =
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => "spex-no-project-id"})
+
+        {:ok, Map.put(context, :stop, response)}
       end
 
       then_ "it acts on the project its identity names", context do
-        assert context.stop_status == 200,
-               "a hook naming only a harness id was refused with status " <>
-                 "#{context.stop_status}, so identity alone does not resolve the project. " <>
-                 "Body: #{context.stop.resp_body}"
-
         # A harness whose project could not be resolved answers about resolution,
         # not about the project's work. Either shape of "I do not know which
         # project this is" fails the criterion.
-        rendered = context.stop.resp_body
+        rendered = inspect(context.stop)
 
         refute rendered =~ "no project" or rendered =~ "project_id is required",
                "the agent could not tell which project it serves from its identity alone, " <>
@@ -105,17 +90,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         put_env!("CMS_PROJECT_ID", other_project_id)
 
         response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => "spex-hijack-attempt",
-              "test_output_files" => @stop_test_output_files
-            })
-          end
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => "spex-hijack-attempt"})
 
-        refute response.resp_body =~ other_project_id,
+        refute inspect(response) =~ other_project_id,
                "an exported CMS_PROJECT_ID reached the agent's work. A developer with two " <>
                  "projects in two terminals has this set, and an agent that reads it writes " <>
                  "one project's files into the other's rows with nothing suspicious in any log."

@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -50,6 +51,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
            story_a: story_a,
            story_b: story_b
          })}
+      end
+
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
       given_ "the agent has signalled session start", context do

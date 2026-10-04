@@ -20,9 +20,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-    alias Anubis.Server.Frame
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
@@ -57,18 +58,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
       given_ :persona_research_task_started
 
       when_ "the agent fires the stop hook", context do
+        # The harness syncs the checkout before firing the stop hook — see
+        # `Validation`, which skips `FileSync.sync_changed/2` "because the
+        # harness has already done" it. No harness here, and the artifacts
+        # this scenario wrote are what the hook is about.
         response =
-          # The harness syncs the checkout before firing the stop hook — see
-          # `Validation`, which skips `FileSync.sync_changed/2` "because the
-          # harness has already done" it. No harness here, and the artifacts
-          # this scenario wrote are what the hook is about.
           ProjectStateFixtures.synced(context)
 
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :stop_response, response)}
       end

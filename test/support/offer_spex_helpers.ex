@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.OfferHelpers do
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   @doc "`list_offers`' text for this project, with optional filters."
   @spec listing(map(), map()) :: String.t()
@@ -130,12 +131,41 @@ defmodule CodeMySpecSpex.OfferHelpers do
   end
 
   @doc """
+  What a harness that has just come back reports about the agents it is
+  running, on the channel it reports it on — a fresh connection, so the cloud's
+  once-per-connection sweep runs.
+  """
+  @spec report_agents_running(map(), [String.t()]) :: :ok
+  def report_agents_running(context, agent_ids) do
+    socket = %Phoenix.Socket{assigns: %{scope: context.scope}}
+
+    {:reply, :ok, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "agents_running",
+        %{"agent_ids" => agent_ids},
+        socket
+      )
+
+    :ok
+  end
+
+  @doc """
   Coding work waiting on a switched-on copy: everything but the spex run, the
   premise criterion 1184 settled on.
+
+  Served by a live harness before the runs are recorded: a run's freshness
+  belongs to a working copy, and the copy the agent's session, task and menu
+  are on is the harness's. Recorded on the fixture copy, the agent's own copy
+  reads stale analysis and its task is never ready to resume. A feature
+  checkout, because a coder holds a story only off the main copy.
   """
   @spec coding_work_waiting(map()) :: map()
   def coding_work_waiting(context) do
-    context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+    context =
+      context
+      |> FullSatisfactionFixtures.apply_up_to_analysis()
+      |> HarnessHooks.ensure_live_harness(feature: true)
+
     Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
     context
   end

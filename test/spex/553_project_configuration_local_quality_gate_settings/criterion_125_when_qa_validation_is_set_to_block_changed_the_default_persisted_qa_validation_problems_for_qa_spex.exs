@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5109Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   # qa_dir is `.code_my_spec/qa/{story_id}/brief.md` — see FileSync.classify_qa.
   # We use 9999 as a stub story id the test sets up implicitly (no Story
@@ -38,6 +39,10 @@ defmodule CodeMySpecSpex.Story553.Criterion5109Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "turn 1: the agent writes a broken qa brief and fires the stop hook",
              context do
         :ok =
@@ -47,39 +52,31 @@ defmodule CodeMySpecSpex.Story553.Criterion5109Spex do
             broken_qa_brief()
           )
 
-        _turn_1_response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.write_file(context, @broken_qa_brief_path, broken_qa_brief())
+
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        _turn_1_response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, context}
       end
 
       when_ "turn 2: the stop hook fires with no file changes", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

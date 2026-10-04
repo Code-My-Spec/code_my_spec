@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6530Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @qa_agent_id "a-qa-recover-1"
@@ -28,31 +29,21 @@ defmodule CodeMySpecSpex.Story810.Criterion6530Spex do
 
   spex "list_session_subagents is the recovery surface for forgotten agent_ids", criterion: 659 do
     scenario "register a QA sub-agent; list returns its agent_id + role" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the session has a live QA sub-agent registered",
              context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/subagent-start",
-          %{
-            "session_id" => session_id,
-            "agent_id" => @qa_agent_id,
-            "agent_name" => "qa"
-          }
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "subagent-start", %{
+          "session_id" => session_id,
+          "agent_id" => @qa_agent_id,
+          "agent_name" => "qa"
+        })
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

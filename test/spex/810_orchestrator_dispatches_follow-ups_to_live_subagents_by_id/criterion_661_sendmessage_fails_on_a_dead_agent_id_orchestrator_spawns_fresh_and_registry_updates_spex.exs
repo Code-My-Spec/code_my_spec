@@ -22,13 +22,19 @@ defmodule CodeMySpecSpex.Story810.Criterion6532Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Without a live sub-agent for the role, dispatch directs fresh Agent spawn", criterion: 661 do
+  spex "Without a live sub-agent for the role, dispatch directs fresh Agent spawn",
+    criterion: 661 do
     scenario "No registered QA sub-agent — directive says Agent spawn, no SendMessage to a stale id" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session exists with NO registered sub-agents for any role",
              context do
         # Advance project to qa_complete frontier so the dispatch directive
@@ -37,14 +43,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6532Spex do
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

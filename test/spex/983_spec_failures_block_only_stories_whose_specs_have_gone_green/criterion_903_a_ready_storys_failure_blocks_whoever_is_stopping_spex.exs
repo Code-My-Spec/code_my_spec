@@ -49,6 +49,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2408Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @spex_path "test/spex/example_context_spex.exs"
   @unrelated_impl_path "lib/example_context.ex"
@@ -76,24 +77,16 @@ defmodule CodeMySpecSpex.Story983.Criterion2408Spex do
 
       given_ "the story's BDD spec exists and is green", context do
         :ok = Environments.write_file(context.environment, @spex_path, passing_spex())
+        HarnessHooks.write_file(context, @spex_path, passing_spex())
         {:ok, context}
       end
 
       given_ "a fresh green run has flipped the story to specs-ready", context do
-        use_cmd_cassette "clean", record: :none do
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{
-            "session_id" => context.session_id,
-            "test_output_files" => %{
-              "compile" => green_fixture("compile.jsonl"),
-              "exunit" => green_fixture("exunit.json"),
-              "spex" => green_fixture("spex.jsonl")
-            }
-          })
-          |> Phoenix.ConnTest.json_response(200)
-        end
+        HarnessHooks.land_analysis(context, "compiler", green_fixture("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", green_fixture("exunit.json"))
+        HarnessHooks.land_analysis(context, "spex", green_fixture("spex.jsonl"))
+
+        HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, context}
       end
@@ -103,16 +96,13 @@ defmodule CodeMySpecSpex.Story983.Criterion2408Spex do
         # The point of the scenario. Without a recorded edit the attributed set
         # is empty, demotion never runs, and a block would prove nothing.
         :ok = Environments.write_file(context.environment, @unrelated_impl_path, impl())
+        HarnessHooks.write_file(context, @unrelated_impl_path, impl())
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/post-tool-use", %{
+        HarnessHooks.post_hook(context, "post-tool-use", %{
           "session_id" => context.session_id,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => @unrelated_impl_path}
         })
-        |> Phoenix.ConnTest.json_response(200)
 
         {:ok, context}
       end
@@ -121,24 +111,15 @@ defmodule CodeMySpecSpex.Story983.Criterion2408Spex do
         # No PostToolUse for this path — it stands in for a rebase, another
         # worktree, or an agent that has since gone away.
         :ok = Environments.write_file(context.environment, @spex_path, failing_spex())
+        HarnessHooks.write_file(context, @spex_path, failing_spex())
         {:ok, context}
       end
 
       when_ "the agent attempts to stop", context do
-        response =
-          use_cmd_cassette "pipeline_spex_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => red_fixture("compile.jsonl"),
-                "spex" => red_fixture("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", red_fixture("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "spex", red_fixture("spex.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

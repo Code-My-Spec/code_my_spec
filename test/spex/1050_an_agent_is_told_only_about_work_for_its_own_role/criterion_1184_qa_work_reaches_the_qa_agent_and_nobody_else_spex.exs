@@ -34,6 +34,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
   import CodeMySpecSpex.IdleAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -60,6 +61,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
         # only transition left for the `when_` is the one this criterion is
         # about.
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
 
         # Asserted, not assumed — a red premise here is honest where a red
         # assertion three steps later is not. This is the check that caught

@@ -47,6 +47,7 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @session_a_impl_path "lib/example_context.ex"
   @other_session_spec_path ".code_my_spec/spec/code_my_spec/other_context.spec.md"
@@ -69,15 +70,17 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
             "defmodule ExampleContext do\n  @moduledoc false\n  def noop, do: :ok\nend\n"
           )
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/post-tool-use", %{
+        HarnessHooks.write_file(
+          context,
+          @session_a_impl_path,
+          "defmodule ExampleContext do\n  @moduledoc false\n  def noop, do: :ok\nend\n"
+        )
+
+        HarnessHooks.post_hook(context, "post-tool-use", %{
           "session_id" => context.session_id,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => @session_a_impl_path}
         })
-        |> Phoenix.ConnTest.json_response(200)
 
         {:ok, context}
       end
@@ -97,6 +100,12 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
             "# OtherContext\n\n## Type\n\ncontext\n\nIntent prose only — no Functions section.\n"
           )
 
+        HarnessHooks.write_file(
+          context,
+          @other_session_spec_path,
+          "# OtherContext\n\n## Type\n\ncontext\n\nIntent prose only — no Functions section.\n"
+        )
+
         # The file is really there, and really invalid. Both assertions below
         # are refutes — and an allowed stop answers `%{}`, which is `Hooks.Stop`
         # returning from `allow/2`, so `nil != "block"` and `"" =~ path` hold
@@ -114,21 +123,16 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
       end
 
       when_ "the stop hook fires for session A", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

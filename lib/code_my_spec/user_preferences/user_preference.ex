@@ -18,5 +18,6 @@ defmodule CodeMySpec.UserPreferences.UserPreference do
     |> cast(attrs, [:active_account_id, :active_project_id, :token])
     |> validate_required([])
     |> put_change(:user_id, user_scope.user.id)
+    |> unique_constraint(:user_id)
   end
 end

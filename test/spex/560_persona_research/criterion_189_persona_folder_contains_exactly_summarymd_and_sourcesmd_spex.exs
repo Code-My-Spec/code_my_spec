@@ -9,9 +9,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.SharedGivens
 
-    alias Anubis.Server.Frame
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
@@ -63,11 +64,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
         # read responsible for a write's visibility and is gone (c83c5b58).
         ProjectStateFixtures.synced(context)
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/stop", %{"session_id" => context.session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)

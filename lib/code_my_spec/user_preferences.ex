@@ -259,12 +259,27 @@ defmodule CodeMySpec.UserPreferences do
           update_user_preferences(scope, attrs)
 
         {:error, :not_found} ->
-          create_user_preferences(scope, attrs)
+          scope |> create_user_preferences(attrs) |> update_if_created_meanwhile(scope, attrs)
       end
     else
       {:error, :not_a_member}
     end
   end
+
+  # A user's first two requests at once (the desktop window and anything else
+  # on a fresh database) both found no row and both inserted; the loser raised
+  # on user_preferences_user_id_index and its page was a 500.
+  defp update_if_created_meanwhile(
+         {:error, %Ecto.Changeset{errors: errors}} = result,
+         scope,
+         attrs
+       ) do
+    if Keyword.has_key?(errors, :user_id),
+      do: update_user_preferences(scope, attrs),
+      else: result
+  end
+
+  defp update_if_created_meanwhile(result, _scope, _attrs), do: result
 
   @doc """
   Selects an active project for the user.
