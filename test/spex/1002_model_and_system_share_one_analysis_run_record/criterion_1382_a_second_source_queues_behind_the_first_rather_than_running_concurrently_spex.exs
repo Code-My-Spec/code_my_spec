@@ -13,7 +13,13 @@ defmodule CodeMySpecSpex.Story839.Criterion3443Spex do
   unverified.
   """
 
-  use CodeMySpecSpex.Case
+  # Explicitly sync: `CmsHarness.AnalysisSlots` is a machine-wide semaphore
+  # by design (its own moduledoc: coordinating analyzer runs *across* every
+  # working copy one harness serves, not per-test state) -- two instances of
+  # this file running concurrently are two processes racing for the one real
+  # resource the criterion is about, which is correct production behavior
+  # and a guaranteed `{:already_started, pid}` collision as a test.
+  use CodeMySpecSpex.Case, async: false
 
   import CmsHarnessTest.Projects,
     only: [
@@ -31,7 +37,8 @@ defmodule CodeMySpecSpex.Story839.Criterion3443Spex do
   # See criterion 3438's spex for why: credo's own "not installed" error is
   # this scenario's expected proof it never ran early, not a defect.
   spex "Given compiler is currently running, credo queues and only starts once it finishes",
-    fail_on_error_logs: false, criterion: 1382 do
+    fail_on_error_logs: false,
+    criterion: 1382 do
     scenario "credo arrives while compiler is still executing" do
       given_ "a working copy whose compiler analyzer blocks until told to proceed", context do
         ensure_harness_supervisor_started()
