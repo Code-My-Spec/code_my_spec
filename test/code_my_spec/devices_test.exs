@@ -148,7 +148,7 @@ defmodule CodeMySpec.DevicesTest do
       {:ok, machine} = Devices.announce(scope, nil, %{hostname: "laptop", kind: :local})
       {:ok, copy} = WorkingCopies.issue(scope, nil, root: "/tmp/restored", device: machine)
       {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/restored")
-      {:ok, copy} = Devices.attach(copy, machine)
+      {:ok, copy} = WorkingCopies.attach_device(copy, machine)
 
       other_account = CodeMySpec.AccountsFixtures.account_fixture()
       CodeMySpec.AccountsFixtures.member_fixture(scope.user, other_account)
@@ -211,7 +211,7 @@ defmodule CodeMySpec.DevicesTest do
       {:ok, other} = Devices.announce(scope, nil, %{hostname: "somewhere-else", kind: :local})
       {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: other)
 
-      assert {:ok, attached} = Devices.attach(copy, device)
+      assert {:ok, attached} = WorkingCopies.attach_device(copy, device)
       assert attached.device_id == device.id
     end
 
@@ -219,7 +219,7 @@ defmodule CodeMySpec.DevicesTest do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
       {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
 
-      assert {:ok, same} = Devices.attach(copy, nil)
+      assert {:ok, same} = WorkingCopies.attach_device(copy, nil)
 
       assert same.device_id == device.id,
              "a join that announces no device must not detach the copy from the machine " <>
@@ -232,8 +232,8 @@ defmodule CodeMySpec.DevicesTest do
       {:ok, sprite} = Devices.announce(scope, nil, %{hostname: "sprite", kind: :cloud})
       {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: laptop)
 
-      {:ok, copy} = Devices.attach(copy, laptop)
-      {:ok, moved} = Devices.attach(copy, sprite)
+      {:ok, copy} = WorkingCopies.attach_device(copy, laptop)
+      {:ok, moved} = WorkingCopies.attach_device(copy, sprite)
 
       assert moved.device_id == sprite.id,
              "the copy's identity is its own and does not belong to the box, so a " <>

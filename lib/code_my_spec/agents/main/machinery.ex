@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.Machinery do
+defmodule CodeMySpec.Agents.Main.Machinery do
   @moduledoc """
   The state of everything the project's agents depend on.
 
@@ -23,7 +23,7 @@ defmodule CodeMySpec.MainAgent.Machinery do
   than an absence.
   """
 
-  alias CodeMySpec.MainAgent.Machinery
+  alias CodeMySpec.Agents.Main.Machinery
 
   @type copy :: %{
           working_copy_id: Ecto.UUID.t(),

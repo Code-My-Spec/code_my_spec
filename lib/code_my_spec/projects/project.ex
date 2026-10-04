@@ -324,4 +324,21 @@ defmodule CodeMySpec.Projects.Project do
   defp apply_url_scheme_validation(false, changeset) do
     validate_format(changeset, :client_api_url, ~r/^https:\/\/.+/, message: "must use https")
   end
+
+  @doc """
+  The project's name, slugified: the default repository name, and what an
+  OTP app name is derived from when no module name is set.
+
+  ## Examples
+
+      iex> CodeMySpec.Projects.Project.slug(%{name: "Code My Spec"})
+      "code-my-spec"
+  """
+  @spec slug(map()) :: String.t()
+  def slug(%{name: name}) when is_binary(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+  end
 end

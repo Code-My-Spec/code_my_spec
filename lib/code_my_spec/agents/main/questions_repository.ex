@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.QuestionsRepository do
+defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   @moduledoc """
   Reads and writes the questions one project's agents have open.
 
@@ -27,7 +27,7 @@ defmodule CodeMySpec.MainAgent.QuestionsRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo

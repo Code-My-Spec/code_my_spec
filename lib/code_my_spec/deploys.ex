@@ -16,8 +16,8 @@ defmodule CodeMySpec.Deploys do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Provisioning,
-      CodeMySpec.Qa,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
@@ -28,6 +28,7 @@ defmodule CodeMySpec.Deploys do
 
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
@@ -157,7 +158,7 @@ defmodule CodeMySpec.Deploys do
     |> where([s], s.project_id == ^project_id)
     |> Repo.all()
     |> Enum.filter(fn story ->
-      match?({true, _}, CodeMySpec.Qa.complete_check(scope, story))
+      match?({true, _}, Verdict.complete_check(scope, story))
     end)
   end
 

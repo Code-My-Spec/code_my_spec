@@ -21,11 +21,10 @@ defmodule CodeMySpec.BddRules do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Personas,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],

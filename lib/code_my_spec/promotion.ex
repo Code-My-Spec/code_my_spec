@@ -56,7 +56,6 @@ defmodule CodeMySpec.Promotion do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
@@ -66,14 +65,13 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
-      CodeMySpec.Validation,
+      CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.BootVersion
@@ -83,7 +81,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.AppTransport
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -419,7 +417,14 @@ defmodule CodeMySpec.Promotion do
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
-  defp notify_team_free(scope, copy_id, story), do: Agents.notify_story_team_free(scope, copy_id, story)
+
+  defp notify_team_free(scope, copy_id, story),
+    do:
+      :telemetry.execute([:code_my_spec, :promotion, :team_free], %{}, %{
+        scope: scope,
+        working_copy_id: copy_id,
+        story: story
+      })
 
   defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
 
@@ -736,7 +741,7 @@ defmodule CodeMySpec.Promotion do
   **zero problems, except the red spex of stories that are not latched.**
   Compiler, credo and exunit findings refuse at `:error` or `:warning`; `:info`
   (low-priority credo) is advisory. A red spex refuses only when its story is
-  latched (`specs_ready`), through `Validation.enforceable/2`.
+  latched (`specs_ready`), through `Blocking.enforceable/2`.
 
   A source with no run at `head` has one started (`requested_by` the agent in
   `opts[:notify]`) unless one is already running there, and the answer is
@@ -915,7 +920,7 @@ defmodule CodeMySpec.Promotion do
   # Credo and compiler findings block whatever the stop hook's mode says: a
   # warning let through here lands on main and blocks every other copy's
   # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
-  # Exunit and spex go through `Validation.enforceable/2`, which drops the red
+  # Exunit and spex go through `Blocking.enforceable/2`, which drops the red
   # spex of unlatched stories — the same latch the stop hook uses.
   #
   # Whether an advisory finding can block at all is `Validation.blockable/2`'s
@@ -927,9 +932,9 @@ defmodule CodeMySpec.Promotion do
 
     scope
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
-    |> then(&Validation.enforceable(scope, &1))
+    |> then(&Blocking.enforceable(scope, &1))
     |> Kernel.++(strict)
-    |> then(&Validation.blockable(scope, &1))
+    |> then(&Blocking.blockable(scope, &1))
   end
 
   defp problems_of(_scope, []), do: []
@@ -1271,17 +1276,14 @@ defmodule CodeMySpec.Promotion do
 
   # Logged rather than retried, matching `report_to/3`: the agent may already be
   # acting on the first message, and a delivery loop does not fix that.
+  # Agents delivers it (`Agents.Events`); Promotion sits below Agents.
   defp deliver(scope, agent_id, text, what) do
-    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
-
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] #{what} could not be delivered to agent #{agent_id}: " <>
-            inspect(deliver_error)
-        )
-    end
+    :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{
+      scope: scope,
+      agent_id: agent_id,
+      text: text,
+      what: what
+    })
   end
 
   # "not awaited" is what `restart_acknowledgement_lost?/1` reads; keep it.

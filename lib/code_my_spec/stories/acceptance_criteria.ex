@@ -1,4 +1,4 @@
-defmodule CodeMySpec.AcceptanceCriteria do
+defmodule CodeMySpec.Stories.AcceptanceCriteria do
   @moduledoc """
   The AcceptanceCriteria context.
 
@@ -10,19 +10,9 @@ defmodule CodeMySpec.AcceptanceCriteria do
   for test doubles.
   """
 
-  use Boundary,
-    top_level?: true,
-    deps: [
-      CodeMySpec.Repo,
-      CodeMySpec.Requirements.GraphInputs,
-      CodeMySpec.Stories,
-      CodeMySpec.Users.Scope
-    ],
-    exports: :all
-
-  alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 

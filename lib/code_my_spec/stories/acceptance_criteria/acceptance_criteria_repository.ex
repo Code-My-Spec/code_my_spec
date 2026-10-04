@@ -1,13 +1,13 @@
-defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
+defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @moduledoc """
   Direct-DB implementation of the AcceptanceCriteria interface.
   """
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -175,8 +175,11 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   @spec retire_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def retire_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
-    do: criterion |> Criterion.retire_changeset() |> Repo.update()
+  def retire_criterion(
+        %Scope{active_project: %{id: project_id}},
+        %Criterion{project_id: project_id} = criterion
+      ),
+      do: criterion |> Criterion.retire_changeset() |> Repo.update()
 
   def retire_criterion(_scope, _criterion), do: {:error, :cross_project}
 
@@ -191,7 +194,10 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   # the same way it does for a new one.
   @spec restore_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def restore_criterion(%Scope{active_project: %{id: project_id}} = scope, %Criterion{project_id: project_id} = criterion) do
+  def restore_criterion(
+        %Scope{active_project: %{id: project_id}} = scope,
+        %Criterion{project_id: project_id} = criterion
+      ) do
     criterion
     |> Criterion.restore_changeset()
     |> Repo.update()

@@ -6,7 +6,7 @@ defmodule CodeMySpec.Files do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
       CodeMySpec.Dependencies,
@@ -19,7 +19,6 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidations,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
@@ -91,7 +90,7 @@ defmodule CodeMySpec.Files do
   defp story_by_spec_path(%Scope{active_project_id: nil}), do: %{}
 
   defp story_by_spec_path(%Scope{} = scope) do
-    CodeMySpec.AcceptanceCriteria.Criterion
+    CodeMySpec.Stories.AcceptanceCriteria.Criterion
     |> where([c], c.project_id == ^scope.active_project_id)
     |> where([c], not is_nil(c.spec_path) and c.spec_path != "")
     |> select([c], {c.spec_path, c.story_id})

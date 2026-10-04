@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -59,7 +60,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects
@@ -92,7 +92,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            ),
          {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
-         {:ok, harness} <- Devices.attach(harness, device),
+         {:ok, harness} <- WorkingCopies.attach_device(harness, device),
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
          :ok <- record_browser_status(harness, payload["browser_status"]),
@@ -538,7 +538,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # saturated, two checkouts on one machine share its processors, and a figure
   # per copy would report the same saturation twice and let the two disagree.
   def handle_in("machine_load", load, socket) when is_map(load) do
-    Devices.record_load(socket.assigns.scope.active_working_copy_id, load)
+    socket.assigns.scope.active_working_copy_id
+    |> WorkingCopies.device_of()
+    |> Devices.record_load(load)
+
     {:reply, :ok, socket}
   end
 

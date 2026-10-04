@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.TheCadenceWatchesAMainAgentTest do
+defmodule CodeMySpec.Agents.Main.TheCadenceWatchesAMainAgentTest do
   @moduledoc """
   Who the cadence is started for, and how a stood-down project gets back.
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.MainAgent.TheCadenceWatchesAMainAgentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.Agents.Main.Cadence
 
   defp agent(scope, attrs) do
     {:ok, agent} =

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.RestartRepository do
+defmodule CodeMySpec.Agents.Main.RestartRepository do
   @moduledoc """
   What has already been tried on an agent, and whether it worked.
 
@@ -28,10 +28,10 @@ defmodule CodeMySpec.MainAgent.RestartRepository do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Main.Restart
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Faults
-  alias CodeMySpec.MainAgent.Restart
   alias CodeMySpec.Repo
 
   @doc """

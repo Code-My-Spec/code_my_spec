@@ -1,11 +1,11 @@
 defmodule CodeMySpec.BddRulesTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Files
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures

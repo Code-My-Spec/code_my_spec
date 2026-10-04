@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.CheckInReport do
+defmodule CodeMySpec.Agents.Main.CheckInReport do
   @moduledoc """
   The check-in, as the main agent reads it.
 
@@ -28,10 +28,10 @@ defmodule CodeMySpec.MainAgent.CheckInReport do
   """
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.Machinery
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.Machinery
+  alias CodeMySpec.Agents.Main.OpenQuestion
 
   @work_offer "Your work: eligible work is waiting. Call get_next_requirement to see it, " <>
                 "then claim it with start_task. Nothing has been selected or assigned for you."

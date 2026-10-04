@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AProviderBlockedFleetIsNotQuietTest do
+defmodule CodeMySpec.Agents.Main.AProviderBlockedFleetIsNotQuietTest do
   @moduledoc """
   An agent its provider refused reads as blocked on the provider, everywhere.
 
@@ -8,7 +8,7 @@ defmodule CodeMySpec.MainAgent.AProviderBlockedFleetIsNotQuietTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.MainAgent.{AgentWork, CheckInReport, Digest, Machinery}
+  alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery}
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
 
   @refusal "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to " <>

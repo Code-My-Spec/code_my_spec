@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.ARestartThatChangedNothingTest do
+defmodule CodeMySpec.Agents.Main.ARestartThatChangedNothingTest do
   @moduledoc """
   An agent that does not recover, which is the state black-box QA could never
   produce.
@@ -21,9 +21,9 @@ defmodule CodeMySpec.MainAgent.ARestartThatChangedNothingTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.RestartRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Faults
-  alias CodeMySpec.MainAgent.RestartRepository
 
   setup do
     scope = full_scope_fixture()

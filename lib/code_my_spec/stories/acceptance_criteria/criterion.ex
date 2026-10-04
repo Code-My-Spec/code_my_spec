@@ -1,4 +1,4 @@
-defmodule CodeMySpec.AcceptanceCriteria.Criterion do
+defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
   @moduledoc """
   Ecto schema representing a single acceptance criterion.
 

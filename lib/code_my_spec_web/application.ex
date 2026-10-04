@@ -8,11 +8,15 @@ defmodule CodeMySpecWeb.Application do
   require Logger
 
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Events
   alias CodeMySpec.Agents.GraphWake
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.RunReconciled
 
   @impl true
   def start(_type, args) do
@@ -68,7 +72,8 @@ defmodule CodeMySpecWeb.Application do
         # `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
-          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
+          {FLAME.Pool,
+           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
@@ -154,14 +159,15 @@ defmodule CodeMySpecWeb.Application do
         # true for every project that had never stood down, including every one
         # with no timer at all; and the spex start the process themselves, so
         # they proved the loop and not the wiring.
-        {Registry, keys: :unique, name: CodeMySpec.MainAgent.CadenceRegistry},
-        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.MainAgent.CadenceSupervisor},
+        {Registry, keys: :unique, name: CodeMySpec.Agents.Main.CadenceRegistry},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
         # And re-establish them after a restart, for the reason the watcher's
         # seeding gives: timers are in memory and a deploy lands mid-run.
         # `:temporary` on the same grounds — failing to seed is not a reason to
         # refuse to boot.
         Supervisor.child_spec(
-          {Task, &CodeMySpec.MainAgent.wake_active_projects/0},
+          {Task, &MainAgent.wake_active_projects/0},
           id: :wake_active_projects,
           restart: :temporary
         ),
@@ -225,6 +231,9 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
+        Events.attach()
+        RunReconciled.attach()
+        AnalysisPush.attach()
         GraphWake.attach()
         ok
 

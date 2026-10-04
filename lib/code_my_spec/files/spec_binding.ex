@@ -15,8 +15,8 @@ defmodule CodeMySpec.Files.SpecBinding do
   covered by another file.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.ContentCheck
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -44,8 +44,11 @@ defmodule CodeMySpec.Files.SpecBinding do
       |> Enum.sort_by(&{recorded_at(&1), &1.path})
       |> Enum.reduce({%{}, %{}}, fn file, {problems, first} ->
         case problem(file, Map.get(criteria, file.criterion_number), first) do
-          nil -> {problems, Map.put_new(first, file.criterion_number, file.path)}
-          reason -> {Map.put(problems, file.path, ContentCheck.describe(reason, file.path)), first}
+          nil ->
+            {problems, Map.put_new(first, file.criterion_number, file.path)}
+
+          reason ->
+            {Map.put(problems, file.path, ContentCheck.describe(reason, file.path)), first}
         end
       end)
 
@@ -53,7 +56,9 @@ defmodule CodeMySpec.Files.SpecBinding do
   end
 
   defp problem(file, nil, _first), do: {:unknown_criterion, file.criterion_number}
-  defp problem(file, %{retired_at: %DateTime{}}, _first), do: {:retired_criterion, file.criterion_number}
+
+  defp problem(file, %{retired_at: %DateTime{}}, _first),
+    do: {:retired_criterion, file.criterion_number}
 
   defp problem(file, _criterion, first) do
     case Map.get(first, file.criterion_number) do

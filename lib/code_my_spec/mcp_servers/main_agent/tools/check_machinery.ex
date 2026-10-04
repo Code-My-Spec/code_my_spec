@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.MachineryMapper
   alias CodeMySpec.McpServers.Validators
 

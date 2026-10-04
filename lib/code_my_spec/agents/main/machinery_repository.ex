@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.MachineryRepository do
+defmodule CodeMySpec.Agents.Main.MachineryRepository do
   @moduledoc """
   Reads the state of everything this project's agents depend on.
 
@@ -20,10 +20,10 @@ defmodule CodeMySpec.MainAgent.MachineryRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.MainAgent.Machinery
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy

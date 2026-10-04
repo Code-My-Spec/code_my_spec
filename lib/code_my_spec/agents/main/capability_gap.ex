@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.CapabilityGap do
+defmodule CodeMySpec.Agents.Main.CapabilityGap do
   @moduledoc """
   Something a role should have been able to do, and how often the main agent
   covered for its absence.

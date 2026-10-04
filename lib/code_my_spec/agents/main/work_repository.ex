@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.WorkRepository do
+defmodule CodeMySpec.Agents.Main.WorkRepository do
   @moduledoc """
   Assembles what every agent on the project is doing.
 
@@ -29,13 +29,13 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Epics.Epic
-  alias CodeMySpec.MainAgent.AgentWork
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Problems.Problem

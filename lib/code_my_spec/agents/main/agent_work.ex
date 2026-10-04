@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AgentWork do
+defmodule CodeMySpec.Agents.Main.AgentWork do
   @moduledoc """
   What one agent is doing, as parts rather than as a verdict.
 
@@ -20,7 +20,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
   asked rather than summarising why it stopped.
   """
 
-  alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.Agents.Main.AgentWork
 
   @type t :: %__MODULE__{
           agent_id: Ecto.UUID.t(),

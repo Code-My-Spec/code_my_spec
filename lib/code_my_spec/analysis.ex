@@ -42,14 +42,12 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Files,
-      CodeMySpec.Notifications,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
       CodeMySpec.Users.Scope,
-      CodeMySpec.Validation
+      CodeMySpec.Validation.Blocking
     ],
     exports: :all
 

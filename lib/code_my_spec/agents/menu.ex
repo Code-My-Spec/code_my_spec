@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Validation.Menu do
+defmodule CodeMySpec.Agents.Menu do
   @moduledoc """
   What to do next, said in the refusal.
 
@@ -78,6 +78,7 @@ defmodule CodeMySpec.Validation.Menu do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.TaskOwner
+  alias CodeMySpec.Validation.Blocking
 
   @tools %{
     problems: "list_problems",
@@ -237,7 +238,7 @@ defmodule CodeMySpec.Validation.Menu do
     if holds_problems?(role) do
       scope
       |> ProblemRepository.list_project_problems(severity: :error)
-      |> then(&CodeMySpec.Validation.enforceable(scope, &1))
+      |> then(&Blocking.enforceable(scope, &1))
       |> length()
     else
       0

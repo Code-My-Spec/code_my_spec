@@ -2,7 +2,7 @@ defmodule CodeMySpec.TaskOwner do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Configurations,
       CodeMySpec.Issues,
       CodeMySpec.Repo,
@@ -50,7 +50,6 @@ defmodule CodeMySpec.TaskOwner do
   """
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
@@ -353,19 +352,24 @@ defmodule CodeMySpec.TaskOwner do
   defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
     detail = Keyword.get(opts, :detail)
 
-    case active_task(agent) do
-      nil ->
-        Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.wake_released(scope, agent, released, resolved_header(blocker), detail,
+    # Agents answers this (`Agents.Events`); TaskOwner sits below Agents.
+    meta =
+      case active_task(agent) do
+        nil ->
+          %{
+            scope: scope,
+            agent: agent,
+            released: released,
+            header: resolved_header(blocker),
+            detail: detail,
             subject: offer_subject(blocker)
-          )
-        end)
+          }
 
-      _active ->
-        Work.note_released(agent, deferred_notice(released, blocker, detail))
-    end
+        _active ->
+          %{agent: agent, deferred: deferred_notice(released, blocker, detail)}
+      end
 
-    :ok
+    :telemetry.execute([:code_my_spec, :tasks, :released], %{}, meta)
   end
 
   defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
