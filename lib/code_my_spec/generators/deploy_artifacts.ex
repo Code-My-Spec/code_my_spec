@@ -24,7 +24,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Provisioning.Repository
+  alias CodeMySpec.Projects.Project
 
   @type result :: {:ok, [String.t()]} | {:error, term()}
 
@@ -45,7 +45,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     do: Macro.underscore(name)
 
   def otp_app_name(project),
-    do: project |> Repository.default_name() |> String.replace("-", "_")
+    do: project |> Project.slug() |> String.replace("-", "_")
 
   @doc """
   Write every missing artifact, leaving anything already present alone.
