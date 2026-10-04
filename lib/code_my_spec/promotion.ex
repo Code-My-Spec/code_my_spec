@@ -56,7 +56,6 @@ defmodule CodeMySpec.Promotion do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
@@ -73,7 +72,6 @@ defmodule CodeMySpec.Promotion do
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.BootVersion
@@ -419,7 +417,13 @@ defmodule CodeMySpec.Promotion do
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
-  defp notify_team_free(scope, copy_id, story), do: Agents.notify_story_team_free(scope, copy_id, story)
+  defp notify_team_free(scope, copy_id, story),
+    do:
+      :telemetry.execute([:code_my_spec, :promotion, :team_free], %{}, %{
+        scope: scope,
+        working_copy_id: copy_id,
+        story: story
+      })
 
   defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
 
@@ -1271,17 +1275,14 @@ defmodule CodeMySpec.Promotion do
 
   # Logged rather than retried, matching `report_to/3`: the agent may already be
   # acting on the first message, and a delivery loop does not fix that.
+  # Agents delivers it (`Agents.Events`); Promotion sits below Agents.
   defp deliver(scope, agent_id, text, what) do
-    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
-
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] #{what} could not be delivered to agent #{agent_id}: " <>
-            inspect(deliver_error)
-        )
-    end
+    :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{
+      scope: scope,
+      agent_id: agent_id,
+      text: text,
+      what: what
+    })
   end
 
   # "not awaited" is what `restart_acknowledgement_lost?/1` reads; keep it.

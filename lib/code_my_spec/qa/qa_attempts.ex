@@ -11,7 +11,6 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
@@ -113,8 +112,19 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   defp wait_on_filed_issues(_scope, attempt, _agent_id), do: attempt
 
+  # A read on the `Agents.Agent` leaf; Qa sits below Agents.
+  defp agent_in_project(%Scope{active_project_id: project_id}, agent_id)
+       when is_binary(project_id) and is_binary(agent_id) do
+    case Ecto.UUID.cast(agent_id) do
+      {:ok, id} -> Repo.get_by(Agent, id: id, project_id: project_id)
+      :error -> nil
+    end
+  end
+
+  defp agent_in_project(_scope, _agent_id), do: nil
+
   defp block_on(scope, attempt, agent_id, issue) do
-    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+    with %Agent{} = agent <- agent_in_project(scope, agent_id),
          {:ok, _} <-
            TaskOwner.block_task(scope, agent, attempt.task_id, :issue, issue.id,
              reason: "waiting on issue #{issue.id}"

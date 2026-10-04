@@ -32,7 +32,6 @@ defmodule CodeMySpec.Qa do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Qa.Verdict,
