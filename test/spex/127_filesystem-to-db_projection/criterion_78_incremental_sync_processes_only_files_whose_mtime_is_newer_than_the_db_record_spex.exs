@@ -10,19 +10,17 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
 
   Drives the real public surface: POST `/api/hooks/stop` with no
   session_id triggers `Validation.validate`, which calls `sync_changed`
-  against the scope. The clean cassette (`clean.json`) + clean
-  `pipeline_clean_run/` fixtures let the pipeline complete without
-  blocking so we can observe the post-hook projection state directly.
+  against the scope. A stop starts no analysis, so the pipeline completes
+  without blocking and the post-hook projection state can be observed
+  directly.
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   alias CodeMySpec.Environments
 
   @impl_a "lib/alpha.ex"
   @impl_b "lib/bravo.ex"
-  @fixture_dir "test/fixtures/validation/pipeline_clean_run"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -62,21 +60,13 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
             context do
         :ok = Environments.write_file(context.environment, @impl_a, impl_a_v2())
 
+        # A stop starts no analysis, so there is nothing to cassette.
         response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> post(~p"/api/hooks/stop", %{})
+          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}
       end
@@ -121,8 +111,6 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
 
     extract_match(Regex.run(pattern, html))
   end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
   defp impl_a_v1 do
     """

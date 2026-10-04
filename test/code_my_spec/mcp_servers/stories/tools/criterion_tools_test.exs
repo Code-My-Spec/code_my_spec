@@ -5,8 +5,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, RetireCriterion, UpdateCriterion}
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do

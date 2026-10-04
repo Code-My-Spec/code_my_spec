@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.348",
+      version: "2.0.354",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :harness, :desktop],
@@ -97,10 +97,16 @@ defmodule CodeMySpec.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
+  #
+  # `:diagnostics` first. Mix runs after-compiler hooks last-registered first,
+  # so whichever registers first writes the diagnostics file last — after
+  # Boundary has added its findings. With `:boundary` first, every Boundary
+  # warning reached stdout and never the file the compiler analyzer reads, and
+  # 24 of them landed on main past a gate that saw zero.
   defp compilers(:test),
-    do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+    do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
 
-  defp compilers(_), do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
+  defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
 
   # Specifies your project dependencies.
   # mix archive.install hex phx_new 1.8.0-rc.4

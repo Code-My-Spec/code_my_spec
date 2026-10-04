@@ -188,26 +188,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     # checkout by design. Threaded as a single value because the two readings
     # cannot legitimately disagree.
     internal? = Keyword.get(opts, :internal_agent?, false)
-    # One value rather than three positional arguments threaded four levels
-    # down: they are only ever read together, and every question the footer asks
-    # is about the same thing — what analysis is doing right now.
-    #
-    # `since` may be missing a source that is in `sources`. Locally executed
-    # projects report names without start times, so "running, length unknown" is
-    # a real state and not a bug.
-    flight = %{
-      sources: Keyword.get(opts, :in_flight, []),
-      since: Keyword.get(opts, :in_flight_since, %{}),
-      # The harness whose `analysis/wait` will block until the sweep lands, when
-      # there is one to name. A scope with no harness gets the plain instruction
-      # rather than a URL that would 404 — same rule as `Hooks.Stop`.
-      working_copy_id: Keyword.get(opts, :working_copy_id),
-      # Whether somebody else is already waiting on this run. Defaults false,
-      # because every caller until story 988 was an agent that had to wait for
-      # itself.
-      orchestrator_waits?: internal?
-    }
-
     header = "Fix these problems before stopping:\n\n"
 
     advisory_section =
@@ -233,7 +213,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         advisory_section <>
         assignment_note(blocking, advisory, Keyword.get(opts, :story_assignment, %{})) <>
         specs_ready_note(blocking, Keyword.get(opts, :specs_ready_stamp, %{})) <>
-        in_flight_footer(blocking, runs, flight) <>
         attribution_note(session_paths, internal?)
 
     enforce_total_cap(raw, blocking, advisory)
@@ -702,10 +681,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     "\n\n    The analyzer could not run. It said:\n\n" <> body <> "\n"
   end
 
-  defp duration_text(seconds) when seconds < 60, do: "#{seconds}s"
-  defp duration_text(seconds) when rem(seconds, 60) == 0, do: "#{div(seconds, 60)}m"
-  defp duration_text(seconds), do: "#{div(seconds, 60)}m#{rem(seconds, 60)}s"
-
   defp ago(%DateTime{} = at) do
     case DateTime.diff(DateTime.utc_now(), at, :second) do
       s when s < 90 -> "#{s}s ago"
@@ -713,165 +688,6 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       s -> "#{div(s, 3600)}h ago"
     end
   end
-
-  # A rerun of a blocking source is running: say so, and how to wait for it.
-  #
-  # Not a judgement on the findings — they block either way. It answers the one
-  # question the age cannot: will something replace these on its own.
-  defp in_flight_footer(blocking, runs, flight) do
-    rerunning =
-      blocking
-      |> Enum.map(& &1.source)
-      |> Enum.uniq()
-      |> Enum.filter(&(&1 in flight.sources))
-
-    case rerunning do
-      [] ->
-        ""
-
-      running ->
-        "\n\nA rerun is in flight now (#{running_detail(running, run_durations(runs), flight)})." <>
-          wait_remedy(flight)
-    end
-  end
-
-  defp run_durations(%{answers: answers}),
-    do: Map.new(answers, fn {source, answer} -> {source, answer[:duration]} end)
-
-  # Waiting, as something the agent can actually do.
-  #
-  # "Stop again and let it replace these" was the whole remedy, and it is a race
-  # the agent loses: a stop is what it is being refused, so it re-stops
-  # immediately, lands inside the same run, and is told the same thing. Three
-  # consecutive stops on one set of findings while the run grew 0s → 4m42s →
-  # 5m15s (5e9fa939). The instruction was not wrong, it was just faster than the
-  # thing it was waiting for.
-  #
-  # `analysis/wait` blocks until the sweep lands, so following it once costs one
-  # wait instead of N stops. `Hooks.Stop` has handed this out for the *pending*
-  # case all along — the gap was that a blocking result returns before that
-  # check, so the case where waiting matters most never heard about it.
-  #
-  # Run in the background: a sweep is 200-590s here and the agent is notified
-  # when it returns, which is also why this is an HTTP endpoint rather than an
-  # MCP tool (MCP caps a request at 30s).
-  # An agent inside our own BEAM is not the one waiting.
-  #
-  # It stops, the analyzers run, and the orchestrator delivers the answer as a
-  # message — so telling it to block on `analysis/wait` and stop again buys
-  # nothing and costs a turn. QA of story 988 watched an agent take the advice
-  # literally: it curled the endpoint, was notified, curled it again, and spent
-  # the turn on it. Above the general clause because it is the narrower match.
-  defp wait_remedy(%{orchestrator_waits?: true}) do
-    " You do not need to wait for it, or end another turn to find out — when the" <>
-      " run lands you will be told what it found."
-  end
-
-  defp wait_remedy(%{working_copy_id: id}) when is_binary(id) do
-    " Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait`" <>
-      " — run that in the background and you will be notified when it returns — then" <>
-      " stop again. Stopping again immediately lands inside the same run and returns this."
-  end
-
-  defp wait_remedy(_flight), do: " Let it finish, then stop again and it will replace these."
-
-  #
-  # The elapsed figure is the whole point: it is the only part of this footer
-  # that changes between two stops inside one run's window, and without it
-  # taking the advice — stop again, promptly — returns a byte-identical block.
-  # Two identical blocks in a row is the signature of the livelock 1f60a145 was
-  # about, where the promised rerun never came, and the correct response to that
-  # is the opposite of the correct response here. Measured on the incident that
-  # produced this: stops 13 seconds apart, both answered from the run before,
-  # while the run they were told about finished clean 5 seconds later (020f573e).
-  #
-  # The typical duration comes from the last completed run of that source, so it
-  # is absent on a source that has never finished one — say the elapsed alone
-  # rather than guess a total.
-  #
-  # Only one source is ever executing. `CmsHarness.Project.AnalysisServer` runs
-  # "one at a time" by design, because `mix test` and `mix spex` share
-  # `_build/test` and two mix runs at once can corrupt the build. So among the
-  # in-flight set the earliest-started is the one running and the rest are
-  # waiting on it.
-  #
-  # That distinction is the whole of `0e4b35e8`. `started_at` is stamped at
-  # enqueue, not at execution, so a queued source rendered as "credo, running
-  # 20s of a typical 9s" — an analyzer at more than double its normal runtime,
-  # which is the signature of a stuck process. Nothing was stuck: credo was
-  # behind a 198-second spex sweep and took 8 seconds once it started. The
-  # number was doing the opposite of its job, and it is most wrong exactly when
-  # it matters most, because queue pressure is when stops block on findings
-  # in the first place.
-  #
-  # Naming what it waits behind answers "should I wait?" in a way no duration
-  # can. The executing source keeps its elapsed figure, which is what makes two
-  # stops inside one window differ — a byte-identical block twice is the
-  # livelock signature, and its advice is the opposite of this one's.
-  defp running_detail(rerunning, run_duration, flight) do
-    sorted = Enum.sort(rerunning)
-
-    case executing(flight.sources, flight.since) do
-      nil ->
-        Enum.map_join(sorted, ", ", fn source ->
-          source <> elapsed_clause(Map.get(flight.since, source), Map.get(run_duration, source))
-        end)
-
-      blocker ->
-        waiting = sorted -- [blocker]
-        progress = elapsed_clause(Map.get(flight.since, blocker), Map.get(run_duration, blocker))
-
-        detail(blocker in sorted, blocker, progress, waiting)
-    end
-  end
-
-  # The blocking source is the one running: report it, and say what is behind it.
-  defp detail(true, blocker, progress, waiting),
-    do: blocker <> progress <> queued_clause(waiting)
-
-  # The blocking source is waiting on something that is not itself blocking, so
-  # the blocker never appeared in this sentence at all — which is how "queued" came
-  # to read as "running". Naming it, with its progress, is what answers "should
-  # I wait?": 60s into a typical 198s says roughly two minutes, and no duration
-  # attached to the waiting source could say that.
-  defp detail(false, blocker, progress, waiting),
-    do:
-      "#{Enum.join(waiting, ", ")} #{has(waiting)} not started — queued behind #{blocker}#{progress}"
-
-  defp has([_one]), do: "has"
-  defp has(_many), do: "have"
-
-  defp queued_clause([]), do: ""
-
-  defp queued_clause([one]), do: "; #{one} is queued behind it and has not started"
-
-  defp queued_clause(many),
-    do: "; #{Enum.join(many, ", ")} are queued behind it and have not started"
-
-  # Nil when no in-flight source has a start time — a locally executed project
-  # reports names alone, and inventing an order from nothing would name a
-  # blocker that may not be one.
-  defp executing(sources, since) do
-    sources
-    |> Enum.filter(&Map.has_key?(since, &1))
-    |> Enum.min_by(&DateTime.to_unix(Map.fetch!(since, &1)), fn -> nil end)
-  end
-
-  defp elapsed_clause(%DateTime{} = started_at, typical) do
-    elapsed = max(DateTime.diff(DateTime.utc_now(), started_at, :second), 0)
-
-    case typical do
-      seconds when is_integer(seconds) and seconds > 0 ->
-        ", running #{duration_text(elapsed)} of a typical #{duration_text(seconds)}"
-
-      _ ->
-        ", running #{duration_text(elapsed)}"
-    end
-  end
-
-  # Locally executed projects report which sources are running but not since
-  # when, so there is nothing to say and the sentence stays as it was.
-  defp elapsed_clause(_started_at, _typical), do: ""
 
   defp render_blocking_line(%Problem{} = problem, session_paths) do
     message =

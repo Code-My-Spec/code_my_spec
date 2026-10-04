@@ -11,9 +11,9 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
-  alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Notifications
   alias CodeMySpec.Staffing
   alias CodeMySpecTest.RecordingAgentTransport

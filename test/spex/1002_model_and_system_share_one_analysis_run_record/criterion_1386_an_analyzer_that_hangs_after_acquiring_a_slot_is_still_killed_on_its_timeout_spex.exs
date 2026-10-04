@@ -14,7 +14,13 @@ defmodule CodeMySpecSpex.Story839.Criterion3447Spex do
   is about, not a test bug.
   """
 
-  use CodeMySpecSpex.Case
+  # Explicitly sync: `CmsHarness.AnalysisSlots` is a machine-wide semaphore
+  # by design (its own moduledoc: coordinating analyzer runs *across* every
+  # working copy one harness serves, not per-test state) -- two instances of
+  # this file running concurrently are two processes racing for the one real
+  # resource the criterion is about, which is correct production behavior
+  # and a guaranteed `{:already_started, pid}` collision as a test.
+  use CodeMySpecSpex.Case, async: false
 
   import CmsHarnessTest.Projects,
     only: [
@@ -33,7 +39,8 @@ defmodule CodeMySpecSpex.Story839.Criterion3447Spex do
   # is this scenario's expected outcome, not a defect, and both the kill and
   # the resulting "did not produce a result" are real `Logger.error` calls.
   spex "An analyzer that hangs after acquiring a slot is still killed on its timeout",
-    fail_on_error_logs: false, criterion: 1386 do
+    fail_on_error_logs: false,
+    criterion: 1386 do
     scenario "a compiler run never finishes once it starts" do
       given_ "a short kill timeout, so this scenario does not wait thirty minutes", context do
         Application.put_env(:code_my_spec, :harness_analysis_timeout, 300)

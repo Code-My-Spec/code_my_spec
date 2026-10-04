@@ -29,6 +29,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Validators
@@ -73,18 +75,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        # The read model, not a recompute. `project_graph/1` recomputes every
-        # node and edge on every call — 4.4s on a 3200-component project — and
-        # this tool is agent-facing, so it paid that per invocation to produce a
-        # graph the projection already holds. `cached_all/1` recomputes on a
-        # fingerprint miss, so it is never stale.
-        {nodes, _computed_at} = Requirements.cached_all(scope)
-
-        opts = parse_opts(params)
-        filtered = apply_filters(StoryRefs.number_nodes(scope, nodes), opts)
-
+    case filtered_nodes(params, frame) do
+      {:ok, filtered, opts} ->
         response =
           if opts.summary do
             RequirementsMapper.requirements_summary_response(filtered, opts)
@@ -102,6 +94,59 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    case filtered_nodes(params, frame) do
+      {:ok, filtered, %{summary: true}} ->
+        {:ok, filtered |> summary_groups() |> Enum.map(&summary_row/1)}
+
+      {:ok, filtered, opts} ->
+        {:ok, filtered |> Enum.take(opts.limit) |> Enum.map(&row/1)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The read model, not a recompute. `project_graph/1` recomputes every node
+  # and edge on every call — 4.4s on a 3200-component project — and this tool
+  # is agent-facing, so it paid that per invocation to produce a graph the
+  # projection already holds. `cached_all/1` recomputes on a fingerprint miss,
+  # so it is never stale.
+  #
+  # Lifted out of `execute/2` so the script path runs the same query rather
+  # than a second copy of it.
+  defp filtered_nodes(params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      {nodes, _computed_at} = Requirements.cached_all(scope)
+      opts = parse_opts(params)
+      {:ok, apply_filters(StoryRefs.number_nodes(scope, nodes), opts), opts}
+    end
+  end
+
+  defp summary_groups(nodes), do: Enum.group_by(nodes, & &1.name)
+
+  defp summary_row({name, group}) do
+    %{
+      "name" => name,
+      "count" => length(group),
+      "locally_failing" => Enum.count(group, &(not &1.satisfied))
+    }
+  end
+
+  # String keys and plain values: these cross into a Lua VM, where an atom
+  # key and a struct are not things that exist.
+  defp row(node) do
+    %{
+      "name" => node.name,
+      "entity_type" => node.entity_type,
+      "entity_id" => to_string(StoryRefs.entity_ref(node)),
+      "entity_name" => node.entity_name,
+      "satisfied" => node.satisfied,
+      "description" => node.description
+    }
   end
 
   defp parse_opts(params) do

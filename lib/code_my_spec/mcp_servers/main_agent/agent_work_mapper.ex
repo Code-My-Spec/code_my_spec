@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.Agents.Main.AgentWork
 
   @doc "Every agent on the project, with what it holds."
   @spec listing([AgentWork.t()], [Agent.t()]) :: Response.t()

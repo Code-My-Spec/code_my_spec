@@ -3,9 +3,16 @@ defmodule CmsHarness.Agents.Engine.UnknownToolMessageTest do
 
   alias CmsHarness.Agents.Engine.Impl
   alias CodeMySpec.Agents.{Agent, ToolIndex, ToolSets}
+  alias CodeMySpec.McpServers.ToolRegistry
 
   # A coding agent's real grant, as the launch request sends it.
-  defp reach, do: ToolIndex.reach(%Agent{role: :coding, tools: ToolSets.for_role(:coding)})
+  defp reach,
+    do:
+      ToolIndex.reach(
+        %Agent{role: :coding, tools: ToolSets.for_role(:coding)},
+        ToolRegistry.registry()
+      )
+
   defp direct_names, do: Enum.map(Impl.tools([]), & &1.name())
   defp answer(name), do: Impl.unknown_tool_message(name, reach(), direct_names())
 

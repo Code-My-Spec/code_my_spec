@@ -23,7 +23,6 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Deploys
   alias CodeMySpec.Deploys.Deploy
@@ -33,6 +32,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.{BddRulesChecker, Preloader}
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   setup do
     %{scope: full_scope_fixture()}

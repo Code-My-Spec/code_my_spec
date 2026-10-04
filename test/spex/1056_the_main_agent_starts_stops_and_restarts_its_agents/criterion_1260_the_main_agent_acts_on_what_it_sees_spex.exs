@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
   None of that belongs on `Agents`. That context owns one agent's lifecycle —
   start it, stop it, message it — and it is deliberately without an opinion
   about whether starting is a good idea. The opinion is the main agent's, and
-  `CodeMySpec.MainAgent` is where its opinions live. So
+  `CodeMySpec.Agents.Main` is where its opinions live. So
   `McpServers.MainAgent.Tools.RestartAgent`, taking the agent and the reason.
 
   A stop-then-start pair was the other option and is wrong for a reason already

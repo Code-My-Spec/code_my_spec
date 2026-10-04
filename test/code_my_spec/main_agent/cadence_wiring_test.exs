@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.CadenceWiringTest do
+defmodule CodeMySpec.Agents.Main.CadenceWiringTest do
   @moduledoc """
   That something actually starts the cadence.
 
@@ -19,16 +19,16 @@ defmodule CodeMySpec.MainAgent.CadenceWiringTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
 
   setup do
     scope = full_scope_fixture()
 
     on_exit(fn ->
-      CodeMySpec.MainAgent.CadenceRegistry
+      CodeMySpec.Agents.Main.CadenceRegistry
       |> Registry.lookup(scope.active_project_id)
       |> Enum.each(fn {pid, _} ->
-        DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+        DynamicSupervisor.terminate_child(CodeMySpec.Agents.Main.CadenceSupervisor, pid)
       end)
     end)
 
@@ -36,7 +36,7 @@ defmodule CodeMySpec.MainAgent.CadenceWiringTest do
   end
 
   test "the registry and supervisor the cadence needs are in the running tree" do
-    assert Process.whereis(CodeMySpec.MainAgent.CadenceRegistry),
+    assert Process.whereis(CodeMySpec.Agents.Main.CadenceRegistry),
            """
            CadenceRegistry is not started. `Cadence.start_link/1` names itself
            through `{:via, Registry, {CadenceRegistry, project_id}}`, so without
@@ -44,7 +44,7 @@ defmodule CodeMySpec.MainAgent.CadenceWiringTest do
            agent that is never woken.
            """
 
-    assert Process.whereis(CodeMySpec.MainAgent.CadenceSupervisor),
+    assert Process.whereis(CodeMySpec.Agents.Main.CadenceSupervisor),
            "CadenceSupervisor is not started, so nothing can start a project's cadence."
   end
 

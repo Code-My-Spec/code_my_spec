@@ -215,16 +215,47 @@ defmodule CodeMySpec.McpServers.Qa.Tools.CallMcpServer do
   end
 
   defp unreachable(url, params, reason) do
+    full = url <> path(params)
+
     """
-    Could not open an MCP session with #{url}#{path(params)}.
+    Could not open an MCP session with #{full}.
 
     #{truncate(inspect(reason))}
 
-    Worth telling apart before reporting it: nothing listening at all, a path
-    that is not an MCP mount, and a mount that refused this caller's headers all
-    arrive here. A `tools/list` against a URL you know is good is the cheapest
-    way to find out which.
+    #{diagnose(full, params)}
     """
+  end
+
+  # The client's supervisor has already given up and deregistered its name by
+  # the time this runs, so `reason` above is almost always `:noproc` —
+  # connection refused, a 404, and a mount that refuses these headers all
+  # collapse to the exact same tuple, because Anubis logs the real response
+  # and then discards it rather than returning it. A plain GET reads the
+  # three apart in the time it takes to make one request, where retrying the
+  # MCP handshake never would.
+  defp diagnose(full, params) do
+    case Req.get(full, headers: headers(params), receive_timeout: 3_000, retry: false) do
+      {:ok, %{status: status}} when status in 200..299 ->
+        "A plain GET to the same address answered #{status}: it is reachable, so the MCP handshake itself is what failed."
+
+      {:ok, %{status: 401}} ->
+        "A plain GET to the same address answered 401: it is reachable but refused this caller's headers."
+
+      {:ok, %{status: 403}} ->
+        "A plain GET to the same address answered 403: it is reachable but refused this caller."
+
+      {:ok, %{status: 404}} ->
+        "A plain GET to the same address answered 404: nothing is mounted at this path."
+
+      {:ok, %{status: status}} ->
+        "A plain GET to the same address answered #{status}."
+
+      {:error, %{reason: :econnrefused}} ->
+        "A plain GET to the same address found nothing listening at all."
+
+      {:error, reason} ->
+        "A plain GET to the same address also failed: #{truncate(inspect(reason))}"
+    end
   end
 
   defp needs_a_url do

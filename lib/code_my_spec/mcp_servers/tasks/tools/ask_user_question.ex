@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
   require Logger
 
   alias Anubis.Server.Response
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
 

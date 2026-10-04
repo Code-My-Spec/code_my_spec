@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.RestartAgent do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.RestartMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnAgentIsIdleWhenItsWorkIsHeldTest do
+defmodule CodeMySpec.Agents.Main.AnAgentIsIdleWhenItsWorkIsHeldTest do
   @moduledoc """
   The main agent's "this agent has work" is what that agent would be offered.
 
@@ -12,8 +12,8 @@ defmodule CodeMySpec.MainAgent.AnAgentIsIdleWhenItsWorkIsHeldTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.TaskOwner

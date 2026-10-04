@@ -15,7 +15,7 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Validation
 
   @dir "test/spex/agency-white-label-configuration-781a555e"

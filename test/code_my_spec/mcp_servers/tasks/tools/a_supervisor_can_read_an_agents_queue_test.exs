@@ -131,6 +131,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ASupervisorCanReadAnAgentsQueueTest 
            """
   end
 
+  # 8c1e192c: `run_script` handed every list tool's rendered text straight to
+  # Lua, so a script iterating it with `ipairs` got "table expected, got
+  # string" instead of rows.
+  test "script_result returns task rows as data rather than rendered text" do
+    {_scope, agent, frame} = a_project_with_an_agent_holding_a_task()
+
+    assert {:ok, [row]} = ListTasks.script_result(%{agent_id: agent.id}, frame)
+    assert row["requirement_name"] == "implementation_file"
+  end
+
   test "an agent asking with no argument still gets its own" do
     {scope, agent, _frame} = a_project_with_an_agent_holding_a_task()
     agent_frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}

@@ -25,12 +25,12 @@ defmodule CodeMySpec.Validation.TheCountAgreesWithTheListTest do
   import CodeMySpec.ComponentsFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Validation.Menu
 
   defp agent(role), do: %Agent{role: role, continuous: true, tasks: []}
 

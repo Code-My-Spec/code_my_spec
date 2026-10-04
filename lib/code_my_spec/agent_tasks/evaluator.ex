@@ -96,6 +96,16 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       # `FixBddSpecs` delegates to it, for the same reason.
       CodeMySpec.AgentTasks.ReadyForQa,
       CodeMySpec.AgentTasks.FixBddSpecs,
+      # Not a requirement in the graph either, same reason as `IssueFix` above:
+      # an issue is not a component/story/project entity the calculator has a
+      # template for. Without this, `resolve_entity/2` falls through to the
+      # `:project` branch (no `component_id`/`story_id` on the task) and
+      # `find_definition` fails looking up `qa_complete` in
+      # `project_requirements/0`, which is a story-level name, not a project
+      # one. `evaluate/2` already existed here and already answered correctly
+      # -- it just was never reached (issue 011b1418, surfaced through
+      # 92f5d6ee's own stuck QA task, 3f7138e5).
+      CodeMySpec.AgentTasks.IssueQa,
       # And Three Amigos, for exactly the reason above. Its gate SETS
       # `three_amigos_sealed` as a side effect of passing, and the requirement
       # reads the seal — so without this the calculator evaluates the latch,

@@ -28,7 +28,7 @@ defmodule CodeMySpec.Validation.SpexStoryAttributionTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @dir_number 999_111
   @path "test/spex/#{@dir_number}_a_directory_named_for_nothing/criterion_1_spex.exs"

@@ -231,17 +231,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     """)
   end
 
-  # Nothing here is about analyzer content — only whether the sync/task-eval
-  # side of the stop hook behaves. `compile` and `spex` always shell out
-  # for real otherwise: `spex_stale` is requested regardless of config, and
-  # a temp dir with no `mix.exs` makes both a doomed, real subprocess.
-  @test_output_files %{
-    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
-  }
-
   defp call_stop_hook!(scope, session_id) do
-    body_params = %{"session_id" => session_id, "test_output_files" => @test_output_files}
+    body_params = %{"session_id" => session_id}
 
     conn =
       Phoenix.ConnTest.build_conn(:post, "/api/hooks/stop", body_params)

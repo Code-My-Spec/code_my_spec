@@ -6,13 +6,13 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   spex across all stories.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Utils
 
   def dispatch(node) do

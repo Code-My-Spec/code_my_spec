@@ -1,0 +1,166 @@
+defmodule CodeMySpec.Agents.Main.MachineryRepository do
+  @moduledoc """
+  Reads the state of everything this project's agents depend on.
+
+  ## The one place a main agent sees past its project
+
+  Criterion 3325. Every other view here is project-scoped and right to be; the
+  harness and the box are shared, and a fault in them is a fault in this
+  project's agents whatever else is on them. Without that reach the main agent
+  can see its agents stuck, see nothing wrong with anything it owns, and have no
+  way to learn the machine is carrying two other projects as well — every fact
+  true and the available conclusion wrong.
+
+  The exception is bounded and the boundary is here: what crosses the project
+  line is a *count* of other checkouts on the same device and the device's own
+  load. Not their agents, not their work, not their names. Criterion 3326 is the
+  other half — seeing is not acting.
+  """
+
+  import Ecto.Query
+
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Main.Machinery
+  alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies.WorkingCopy
+
+  @sources ~w(compiler credo exunit spex)
+
+  @doc "Everything under this project's agents, as it stands."
+  @spec check(Scope.t()) :: Machinery.t()
+  def check(%Scope{} = scope) do
+    agents = Agents.list_running(scope)
+    copies = copies(scope, agents)
+
+    %Machinery{
+      copies: copies,
+      analyzers: analyzers(scope),
+      machines: machines(scope, copies),
+      tool_fault: Machinery.tool_fault(copies)
+    }
+  end
+
+  defp copies(%Scope{active_project_id: project_id}, agents) do
+    by_copy = Enum.group_by(agents, & &1.working_copy_id)
+
+    from(w in WorkingCopy, where: w.project_id == ^project_id)
+    |> Repo.all()
+    |> Enum.map(fn copy ->
+      %{
+        working_copy_id: copy.id,
+        root: copy.root,
+        device_id: copy.device_id,
+        # Live, never off the row. `status` is written on a clean start and a
+        # clean stop; a shared harness restart or a crashed machine leaves it
+        # claiming life indefinitely with nothing behind it.
+        connected?: connected?(copy.id),
+        machine_tools: copy.machine_tools,
+        preview_status: copy.preview_status,
+        preview_url: copy.preview_url,
+        agent_ids: by_copy |> Map.get(copy.id, []) |> Enum.map(& &1.id)
+      }
+    end)
+  end
+
+  defp connected?(working_copy_id) do
+    match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(working_copy_id))
+  end
+
+  # Whether each analyzer ran, and on what: the latest run's outcome, with the
+  # commit and the time it finished. Not whether that result is about the code
+  # here now — nothing in the system judges that any more except the promote
+  # gate, keyed on the commit (28d72f8a). The commit and the age are facts the
+  # main agent can check; "fresh" was an inference it could not.
+  defp analyzers(%Scope{} = scope) do
+    Enum.map(@sources, fn source ->
+      run = latest_run(scope, source)
+
+      %{
+        source: source,
+        state: state_of(run),
+        commit: run && run.completed_commit,
+        finished_at: run && run.finished_at
+      }
+    end)
+  end
+
+  defp state_of(nil), do: :never_run
+  defp state_of(%Run{status: :failed}), do: :failed
+  defp state_of(%Run{}), do: :completed
+
+  # A caller that named a project and no checkout has no analyzer state to
+  # report, and says so rather than crashing.
+  #
+  # Ecto refuses to compare a column with `nil` in a `where`, so without this
+  # `check_machinery` raised — "comparing `r.working_copy_id` with `nil` is
+  # forbidden as it is unsafe" — for any caller authenticating by project rather
+  # than by a specific harness. `Plugs.ProjectScopeOverride` documents
+  # `X-Project-ID` alone as a supported way in ("still accepted, for callers
+  # that only have one"), which is exactly what leaves `active_working_copy_id`
+  # nil. Issue `b27c54f1`.
+  #
+  # `:never_run` is the honest answer and the one `state_of/1` already gives for
+  # a missing run. The other sections of the report — harness, tools, preview,
+  # machine — do not depend on a checkout and still answer, which is the point:
+  # the tool whose job is "is it the agent or the machine" should degrade rather
+  # than take the whole answer down with one absent field.
+  defp latest_run(%Scope{active_working_copy_id: nil}, _source), do: nil
+
+  defp latest_run(%Scope{active_project_id: project_id} = scope, source) do
+    from(r in Run,
+      where: r.project_id == ^project_id and r.source == ^source and r.kind == :full,
+      where: r.status in [:completed, :failed],
+      where: r.working_copy_id == ^scope.active_working_copy_id,
+      order_by: [desc: r.started_at],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  # The boxes this project's checkouts sit on, and what else is on them.
+  #
+  # A count of other projects' checkouts rather than anything about them. It is
+  # the smallest fact that answers "am I alone on this machine", which is the
+  # question that makes a shared fault legible — and it names nobody.
+  defp machines(%Scope{active_project_id: project_id}, copies) do
+    device_ids = copies |> Enum.map(& &1.device_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    tenants = other_project_counts(device_ids, project_id)
+
+    from(d in Device, where: d.id in ^device_ids)
+    |> Repo.all()
+    |> Enum.map(fn device ->
+      %{
+        hostname: device.hostname,
+        load: device.load,
+        load_reported_at: device.load_reported_at,
+        saturated?: Machinery.saturated?(device.load, cpu_count(device.load)),
+        other_projects: Map.get(tenants, device.id, 0),
+        agent_ids: agents_on(copies, device.id)
+      }
+    end)
+  end
+
+  defp agents_on(copies, device_id) do
+    copies
+    |> Enum.filter(&(&1.device_id == device_id))
+    |> Enum.flat_map(& &1.agent_ids)
+  end
+
+  defp cpu_count(nil), do: nil
+  defp cpu_count(load), do: load["cpu_count"]
+
+  defp other_project_counts(device_ids, project_id) do
+    from(w in WorkingCopy,
+      where: w.device_id in ^device_ids and w.project_id != ^project_id,
+      group_by: w.device_id,
+      select: {w.device_id, count(w.project_id, :distinct)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+end

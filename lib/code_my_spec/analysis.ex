@@ -42,14 +42,12 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Files,
-      CodeMySpec.Notifications,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
       CodeMySpec.Users.Scope,
-      CodeMySpec.Validation
+      CodeMySpec.Validation.Blocking
     ],
     exports: :all
 
@@ -94,111 +92,62 @@ defmodule CodeMySpec.Analysis do
   }
 
   @doc """
-  Enqueue background runs for every requested source that needs one. Compile
-  is enqueued first — every other source skips itself while it lands errors.
+  Enqueue a background run for every requested source. Compile is enqueued
+  first — every other source skips itself while it lands errors.
+
+  Called by explicit analysis only: `start_analysis`, ready_for_qa
+  certification and promotion. A stop never calls this (John, 2026-10-04).
 
   Each request is a source string (canonical full run) or a
-  `{source, args}` tuple (e.g. credo scoped to the turn's changed files).
-  Requests with path-like args are `:partial`. A stop with changed files runs
-  every request; a quiet stop (`only_failed`) runs only what has nothing to
-  show — see `needs_run?/4`.
+  `{source, args}` tuple (e.g. credo scoped to some files). Requests with
+  path-like args are `:partial`.
 
-  Returns `%{enqueued: [source], memoized: [source]}` immediately; jobs run
-  in the background and reconcile Problems as they land.
+  Returns `%{enqueued: [source], memoized: []}` immediately; jobs run in the
+  background and reconcile Problems as they land. `memoized` stays in the shape
+  for callers that report it, and is always empty: an explicit request always
+  runs.
 
   ## Options
 
   - `:notify` (default `true`) — push a notification when a run lands
     blocking problems (the agent may have stopped by then).
-  - `:only_failed` (default `false`) — enqueue only sources with no completed
-    run, or whose latest run `:failed` (crash/timeout/superseded recovery).
-    Used by no-changed-files stops so they stay quiet unless there's something
-    to heal.
   - cassette escape hatches (`:compile_output_file`, `:exunit_output_file`,
     `:spex_output_file`, `:credo_output_file`) pass through to the runners.
   """
   @spec ensure_stale_runs(Scope.t(), [String.t() | {String.t(), [String.t()]}], keyword()) ::
           %{enqueued: [String.t()], memoized: [String.t()]}
   def ensure_stale_runs(%Scope{} = scope, requests, opts \\ []) do
-    latest = RunsRepository.latest_full_runs(scope)
-    only_failed = Keyword.get(opts, :only_failed, false)
+    runs = plan_runs(requests)
 
-    {stale, memoized} = plan_runs(requests, latest, only_failed)
-
-    Enum.each(stale, fn {source, args} ->
+    Enum.each(runs, fn {source, args} ->
       job = build_job(source, args, opts)
       dispatch(scope, job)
     end)
 
-    enqueued = Enum.map(stale, &elem(&1, 0))
-    memoized_sources = Enum.map(memoized, &elem(&1, 0))
+    enqueued = Enum.map(runs, &elem(&1, 0))
 
     if enqueued != [],
       do: Logger.info("[Analysis] enqueued: #{Enum.join(enqueued, ", ")}")
 
-    if memoized_sources != [],
-      do: Logger.info("[Analysis] skipped (quiet stop): #{Enum.join(memoized_sources, ", ")}")
-
-    %{enqueued: enqueued, memoized: memoized_sources}
+    %{enqueued: enqueued, memoized: []}
   end
 
   @doc """
-  Which of `requests` need running, split from those that do not.
+  The runs `requests` become, compile first.
 
-  Public so the property that matters can be asserted without dispatching.
-  `latest` is `RunsRepository.latest_full_runs/1`.
+  Public so the ordering can be asserted without dispatching.
   """
-  @spec plan_runs([term()], map(), boolean()) :: {list(), list()}
-  def plan_runs(requests, latest, only_failed) do
+  @spec plan_runs([term()]) :: list()
+  def plan_runs(requests) do
     requests
     |> Enum.map(&normalize_request/1)
     |> order_compile_first()
-    |> Enum.split_with(fn {source, _args} -> needs_run?(source, latest, only_failed) end)
   end
 
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
 
   defp normalize_request(source) when is_binary(source),
     do: {source, Map.fetch!(@full_args, source)}
-
-  # A stop with changed files re-runs everything. A skipped source would leave
-  # last run's Problems in place with no run to explain them.
-  #
-  # A stop with NO changed files (`only_failed`) stays quiet unless something
-  # has nothing to show: a source that has never completed a run (it could
-  # never bootstrap otherwise — compiler and credo sat runless on a real
-  # project and `tests_passing` never went green), or whose latest run failed.
-  #
-  # Not keyed on the tree. It used to compare input fingerprints, and that is
-  # gone with the rest of fingerprint freshness (28d72f8a). Nor on the commit:
-  # the server does not know a copy's HEAD at stop time — a commit is measured
-  # live when something needs one, and the promote gate starts its own runs at
-  # HEAD. A quiet stop has no edits for a rerun to see.
-  #
-  # Compiler also re-runs when another source was skipped *because of* compiler
-  # errors — only a compiler run can clear them. Without this the pipeline
-  # deadlocks: a compiler error makes exunit skip, a skipped run finishes
-  # `:failed`, `only_failed` re-enqueues exunit but not compiler, and nothing
-  # can clear the error. Scoped to the skip case on purpose: a quiet stop with
-  # nothing skipped must still block on an outstanding compile error without
-  # re-running anything (criterion 6077).
-  defp needs_run?("compiler", latest, true) do
-    nothing_to_show?(latest["compiler"]) or
-      Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
-  end
-
-  defp needs_run?(source, latest, true), do: nothing_to_show?(latest[source])
-  defp needs_run?(_source, _latest, _only_failed), do: true
-
-  defp nothing_to_show?(%Run{status: :completed}), do: false
-  defp nothing_to_show?(_run), do: true
-
-  # `Reconciler.fail/2` stamps the reason into `stats["error"]`.
-  defp skipped_for_compile_errors?(%Run{status: :failed, stats: %{"error" => err}})
-       when is_binary(err),
-       do: String.contains?(err, "skipped_compile_errors")
-
-  defp skipped_for_compile_errors?(_run), do: false
 
   @doc """
   Admit an analyzer run durably and return its id without waiting for execution.
@@ -574,42 +523,6 @@ defmodule CodeMySpec.Analysis do
     case in_flight_state(scope) do
       {:running, sources} -> sources
       _ -> []
-    end
-  end
-
-  @doc """
-  `in_flight/1`, each source marked when it is still waiting for a machine slot
-  rather than executing (bf627680). Only the ledger knows; a locally executed
-  project's sources are named plainly.
-  """
-  @spec in_flight_described(Scope.t()) :: [String.t()]
-  def in_flight_described(%Scope{} = scope) do
-    queued =
-      case remote_executor(scope) do
-        {:ok, _pid} -> RunsRepository.queued_sources(scope)
-        :none -> MapSet.new()
-      end
-
-    for source <- in_flight(scope),
-        do: if(MapSet.member?(queued, source), do: "#{source} (queued for a slot)", else: source)
-  end
-
-  @doc """
-  When each in-flight source started, where that is knowable.
-
-  Only the ledger records a start time, so this answers `%{}` for a locally
-  executed project — `ProjectServer.in_flight/1` reports names alone. Callers
-  treat a missing entry as "running, for an unknown length of time" rather than
-  as not running; `in_flight/1` remains the answer to *whether*.
-
-  The light harness is the case this exists for, and there the ledger is the
-  record by definition.
-  """
-  @spec in_flight_since(Scope.t()) :: %{String.t() => DateTime.t()}
-  def in_flight_since(%Scope{} = scope) do
-    case remote_executor(scope) do
-      {:ok, _pid} -> RunsRepository.running_since(scope)
-      :none -> %{}
     end
   end
 

@@ -10,7 +10,6 @@ defmodule CodeMySpec.Stories do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Accounts,
       CodeMySpec.Issues,
       CodeMySpec.Projects,

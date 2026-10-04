@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpec.McpServers.Validators
 

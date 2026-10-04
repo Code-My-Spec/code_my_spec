@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.TheCadenceCanBeTurnedBackOnTest do
+defmodule CodeMySpec.Agents.Main.TheCadenceCanBeTurnedBackOnTest do
   @moduledoc """
   Standing down had a door and resuming did not: `resume/1` was reachable only
   by starting a main agent, so anything that stood a project down could not put
@@ -9,8 +9,8 @@ defmodule CodeMySpec.MainAgent.TheCadenceCanBeTurnedBackOnTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.Cadence
 
   test "standing down and resuming both work, and resuming leaves a timer" do
     scope = full_scope_fixture()
