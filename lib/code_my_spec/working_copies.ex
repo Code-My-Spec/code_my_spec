@@ -27,12 +27,9 @@ defmodule CodeMySpec.WorkingCopies do
     deps: [
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis.HarnessRegistry,
-      CodeMySpec.Components,
       CodeMySpec.Devices,
       CodeMySpec.Encrypted.Binary,
       CodeMySpec.Environments,
-      CodeMySpec.Files,
-      CodeMySpec.Problems,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
@@ -1324,83 +1321,28 @@ defmodule CodeMySpec.WorkingCopies do
   def missing?(%WorkingCopy{}), do: true
 
   @doc """
-  Remove a working copy and everything derived from it.
-
-  Files and problems unconditionally; components only where they have no files
-  **and** no story link. Then the row itself.
-
-  ## Why this is an act and not a sweep
-
-  It used to happen on its own, to any copy quiet longer than a configured
-  window, riding on whichever agent next synced components. That model is gone.
-  It could not tell a checkout that had been deleted from an agent that was
-  simply busy, because the only thing it had to go on was elapsed time — and it
-  got that wrong in the expensive direction, reading two mid-session harnesses
-  as 2:21 and 2:25 idle against a two hour window.
-
-  What replaced it: the harness says whether the path is still there, that shows
-  up as a warning, and a person decides. The cost is that an orphan blocks until
-  somebody clears it. That is the better failure — a visible thing waiting for a
-  click, rather than an invisible one deleting a working agent's state.
-
-  ## Why the row goes too
-
-  The old rule kept it, on the argument that identity lives in
-  `.cms_harness.json` so a returning agent presents the id it always had. A
-  removed checkout took that file with it, so there is nothing left to present
-  and nothing to come back to. A copy that reappears at the same path is
-  onboarded, which mints a new id — see 891.
-
-  ## What it never does
-
-  Touch the checkout. The row is ours and the directory is not, and a server
-  that deletes somebody's files because they clicked a button in a list is not a
-  trade anyone asked for. Offboarding a copy whose checkout still exists leaves
-  it exactly where it is, config file and all — it will simply not be recognised
-  until it onboards again.
+  Delete a working copy's row. Its derived rows (files, problems, orphaned
+  components) are the caller's to remove first, in the same transaction —
+  `Staffing.offboard/2`, which sits above the contexts that own them.
   """
-  @spec offboard(Scope.t(), WorkingCopy.t()) ::
-          {:ok, %{files: integer(), problems: integer(), components: integer()}}
-          | {:error, :not_yours}
-  def offboard(%Scope{active_project_id: project_id}, %WorkingCopy{
-        project_id: project_id,
-        id: id
-      })
+  @spec delete(Scope.t(), WorkingCopy.t()) :: :ok | {:error, :not_yours}
+  def delete(%Scope{active_project_id: project_id}, %WorkingCopy{project_id: project_id, id: id})
       when is_binary(project_id) do
-    Repo.transaction(fn ->
-      {files, _} =
-        Repo.delete_all(
-          from f in CodeMySpec.Files.File,
-            where: f.project_id == ^project_id and f.working_copy_id == ^id
-        )
-
-      {problems, _} =
-        Repo.delete_all(
-          from p in CodeMySpec.Problems.Problem,
-            where: p.project_id == ^project_id and p.working_copy_id == ^id
-        )
-
-      components = reclaim_orphan_components(project_id)
-
-      Repo.delete_all(from w in WorkingCopy, where: w.id == ^id)
-
-      %{files: files, problems: problems, components: components}
-    end)
-    |> case do
-      {:ok, counts} ->
-        tell_the_machine(id)
-        {:ok, counts}
-
-      {:error, reason} ->
-        # Loud, never swallowed. An offboard that fails quietly leaves the orphan
-        # in place and reports success, which is indistinguishable from one that
-        # had nothing to remove — and that is the failure this story exists to
-        # remove, reproduced inside its own fix.
-        raise "offboard failed for working copy #{id}: #{inspect(reason)}"
-    end
+    Repo.delete_all(from w in WorkingCopy, where: w.id == ^id)
+    :ok
   end
 
-  def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+  def delete(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
+  @doc """
+  Tell the machine serving `working_copy_id` that the copy was offboarded, so
+  it drops the channel and watchers. Call after the delete commits.
+  """
+  @spec released(Ecto.UUID.t()) :: :ok
+  def released(working_copy_id) do
+    tell_the_machine(working_copy_id)
+    :ok
+  end
 
   # Offboarding is the one operation that should release the machine's channel
   # and watchers, and it was the one that did not.
@@ -1426,37 +1368,6 @@ defmodule CodeMySpec.WorkingCopies do
       {:ok, pid, _instance} -> send(pid, {:offboarded, working_copy_id})
       _ -> :ok
     end
-  end
-
-  # Two plain subqueries rather than correlated `exists`. The component set is
-  # small and this is legible: anything a file or a story points at is kept,
-  # everything else on the project goes.
-  #
-  # The story link is the one that matters. A component somebody wrote a story
-  # against is authored work, and spending it to clear derived rows would make
-  # this destructive in a way no warning covers.
-  defp reclaim_orphan_components(project_id) do
-    referenced_by_files =
-      from f in CodeMySpec.Files.File,
-        where: f.project_id == ^project_id and not is_nil(f.component_id),
-        select: f.component_id
-
-    referenced_by_stories =
-      from s in CodeMySpec.Stories.Story,
-        where: s.project_id == ^project_id and not is_nil(s.component_id),
-        select: s.component_id
-
-    keep =
-      (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
-      |> Enum.uniq()
-
-    {components, _} =
-      Repo.delete_all(
-        from c in CodeMySpec.Components.Component,
-          where: c.project_id == ^project_id and c.id not in ^keep
-      )
-
-    components
   end
 
   defp now, do: DateTime.utc_now()
