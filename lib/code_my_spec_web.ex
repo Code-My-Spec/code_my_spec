@@ -101,6 +101,8 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
+      # Attaches `Validation.RunReconciled` at app start.
+      CodeMySpec.Validation,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces,
       # The desktop user's scope, in place of a session (bb8bc042).

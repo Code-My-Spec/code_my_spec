@@ -225,6 +225,8 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
+        CodeMySpec.Validation.RunReconciled.attach()
+        CodeMySpec.Notifications.AnalysisPush.attach()
         GraphWake.attach()
         ok
 
