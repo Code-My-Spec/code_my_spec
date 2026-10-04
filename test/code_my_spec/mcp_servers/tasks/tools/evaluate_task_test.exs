@@ -2,6 +2,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.IssuesFixtures
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -72,6 +73,38 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
 
       refute response.isError
       assert response_text(response) =~ "already completed"
+    end
+  end
+
+  describe "execute/2 — IssueQa dispatches to its own evaluate/2" do
+    test "an issue-bound qa_complete task is skipped, not routed through the generic calculator" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      external_id = "ext-issue-qa-#{System.unique_integer([:positive])}"
+      {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
+
+      task_attrs = %{
+        session_type: CodeMySpec.AgentTasks.IssueQa,
+        requirement_name: "qa_complete",
+        project_id: scope.active_project_id,
+        issue_id: issue.id
+      }
+
+      {:ok, session_with_task} = Sessions.prepare_task(scope, ext_session, task_attrs)
+      task = Enum.find(session_with_task.tasks, &(&1.status == :prepared))
+      {:ok, _active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
+
+      assert {:reply, response, ^frame} =
+               EvaluateTask.execute(%{task_id: task.id, session_id: external_id}, frame)
+
+      refute response.isError,
+             "an issue-bound qa_complete task must dispatch to IssueQa.evaluate/2, not fall " <>
+               "through to the generic Evaluator and fail looking up qa_complete as a " <>
+               "project-level requirement"
+
+      assert response_text(response) =~ "submit_issue_qa_result"
     end
   end
 

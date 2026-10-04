@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.IssueWork do
   """
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.AgentTasks.IssueQa
   alias CodeMySpec.Issues
@@ -23,23 +24,33 @@ defmodule CodeMySpec.Agents.IssueWork do
   def execution(scope, %Agent{issue_id: id} = agent) when is_binary(id) do
     case Issues.get_issue(scope, id) do
       nil -> blocked("Your team's assigned issue (#{id}) no longer exists.")
-      issue -> stage(agent, issue)
+      issue -> stage(scope, agent, issue)
     end
   end
 
   def execution(_scope, %Agent{team_free_at: %DateTime{}}), do: blocked(@waiting_for_main)
 
-  defp stage(%Agent{role: :coding}, %{awaiting_role: :coding} = issue), do: ready(fix_node(issue))
+  # A resolution recorded outside this pairing's own close (`resolve_issue`
+  # directly, rather than a passing `Qa.IssueQaAttempts.submit/2`) leaves the
+  # team still bound and `awaiting_role` stale — settle it here instead of
+  # re-offering qa_complete/fix_issue for an issue that is already done.
+  defp stage(scope, _agent, %{status: status} = issue) when status in [:resolved, :dismissed] do
+    IssueAssignment.free(scope, issue)
+    blocked("Issue #{issue.id} is already #{status}; your team is free for new assignment.")
+  end
 
-  defp stage(%Agent{role: :coding}, issue),
+  defp stage(_scope, %Agent{role: :coding}, %{awaiting_role: :coding} = issue),
+    do: ready(fix_node(issue))
+
+  defp stage(_scope, %Agent{role: :coding}, issue),
     do: blocked("Your team's fix for issue #{issue.id} is submitted; waiting on QA.")
 
-  defp stage(%Agent{role: :qa}, %{awaiting_role: :qa} = issue), do: ready(qa_node(issue))
+  defp stage(_scope, %Agent{role: :qa}, %{awaiting_role: :qa} = issue), do: ready(qa_node(issue))
 
-  defp stage(%Agent{role: :qa}, issue),
+  defp stage(_scope, %Agent{role: :qa}, issue),
     do: blocked("Your team's assigned issue (#{issue.id}) is still being fixed; nothing for QA yet.")
 
-  defp stage(_agent, issue), do: blocked("No work is defined for this role on issue #{issue.id}.")
+  defp stage(_scope, _agent, issue), do: blocked("No work is defined for this role on issue #{issue.id}.")
 
   defp fix_node(issue) do
     issue_node("fix_issue", issue, IssueFix, :coding, "Fix issue #{issue.id}: #{issue.title}")

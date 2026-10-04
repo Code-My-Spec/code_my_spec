@@ -402,6 +402,69 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
+  describe "discovered components with no file on this checkout are not swept into a story" do
+    test "a discovered child of a dependency context, referenced only by that context, is excluded" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+
+      {:ok, surface} =
+        Components.create_component(scope, %{
+          name: "TodoListLive",
+          type: "live_context",
+          module_name: "MyApp.TodoListLive"
+        })
+
+      {:ok, context} =
+        Components.create_component(scope, %{
+          name: "Accounts",
+          type: "context",
+          module_name: "MyApp.Accounts"
+        })
+
+      {:ok, _dep} =
+        Components.create_dependency(scope, %{
+          source_component_id: surface.id,
+          target_component_id: context.id
+        })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          ready_for_dev: true,
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: surface.id
+        })
+
+      write_file(tmp_dir, "lib/my_app/todo_list_live.ex", impl_content("MyApp.TodoListLive"))
+      write_file(tmp_dir, "lib/my_app/accounts.ex", impl_content("MyApp.Accounts"))
+      sync!(scope, tmp_dir)
+
+      # Simulated the way the real defect arrives: a component row synced
+      # into existence by a *different* checkout's files, referenced only
+      # by its authored parent, with nothing on this project's own Files
+      # records. Created directly, after the real sync above, so this
+      # module's own pruning pass never runs against it.
+      ghost = create_child_component(scope, "MyApp.Accounts.Ghost", "module", context.id)
+      {:ok, ghost} = Components.update_component(scope, ghost, %{provenance: :discovered})
+
+      {_nodes, edges} = RequirementGraph.compute_graph(scope)
+
+      refute Enum.any?(edges, fn e ->
+               e.from == {"story", story.id, "bdd_specs_exist"} and
+                 e.to == {"component", ghost.id, "implementation_file"}
+             end),
+             "the story's kickoff must not reach a discovered component with no file on " <>
+               "this checkout"
+
+      assert Enum.any?(edges, fn e ->
+               e.from == {"story", story.id, "bdd_specs_exist"} and
+                 e.to == {"component", context.id, "implementation_file"}
+             end),
+             "the real, file-backed dependency context must still be reached"
+    end
+  end
+
   describe "implementation container edges" do
     test "a context implementation waits for its child implementation" do
       {scope, tmp_dir} = setup_project()

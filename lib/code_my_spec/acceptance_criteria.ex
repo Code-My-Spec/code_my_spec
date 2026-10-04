@@ -115,6 +115,23 @@ defmodule CodeMySpec.AcceptanceCriteria do
     end
   end
 
+  @doc """
+  Latches a criterion directly, as a certifying run would (story 983,
+  criteria 1895-1906). The criterion's own counterpart to
+  `Stories.set_specs_ready/4` — what certifies it and what reads the latch
+  back belong to the callers that do so.
+  """
+  def latch_criterion(%Scope{} = scope, %Criterion{} = criterion) do
+    case impl().latch_criterion(scope, criterion) do
+      {:ok, latched} = ok ->
+        broadcast(scope, {:updated, latched})
+        ok
+
+      other ->
+        other
+    end
+  end
+
   @doc "A story's criteria, retired ones included."
   def list_all_story_criteria(%Scope{} = scope, story_id),
     do: impl().list_all_story_criteria(scope, story_id)
