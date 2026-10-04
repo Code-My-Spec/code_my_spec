@@ -1311,6 +1311,39 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
+  Attach a working copy to the machine it is on.
+
+  Called on join, when the daemon says which device it is announcing from. A
+  copy that moves machines — a repository cloned to a new laptop under the same
+  id — re-attaches rather than being refused, because the copy's identity is its
+  own and does not belong to the box.
+  """
+  @spec attach_device(WorkingCopy.t(), Device.t() | nil) ::
+          {:ok, WorkingCopy.t()} | {:error, Ecto.Changeset.t()}
+  def attach_device(%WorkingCopy{} = working_copy, nil), do: {:ok, working_copy}
+
+  def attach_device(%WorkingCopy{device_id: id} = working_copy, %Device{id: id}),
+    do: {:ok, working_copy}
+
+  def attach_device(%WorkingCopy{} = working_copy, %Device{} = device) do
+    working_copy
+    |> WorkingCopy.changeset(%{device_id: device.id})
+    |> Repo.update()
+  end
+
+  @doc "The device a working copy sits on, or `nil`."
+  @spec device_of(Ecto.UUID.t() | nil) :: Ecto.UUID.t() | nil
+  def device_of(nil), do: nil
+
+  def device_of(working_copy_id) do
+    Repo.one(
+      from w in WorkingCopy,
+        where: w.id == type(^working_copy_id, :binary_id),
+        select: w.device_id
+    )
+  end
+
+  @doc """
   Whether this copy's checkout has been reported gone.
 
   A predicate rather than a field read at every call site, because the nil case

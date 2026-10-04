@@ -44,7 +44,7 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
       WorkingCopies.issue(scope, nil, label: "first join", device: laptop, root: @root)
 
     {:ok, first} = WorkingCopies.report_root(first, @root)
-    {:ok, first} = Devices.attach(first, laptop)
+    {:ok, first} = WorkingCopies.attach_device(first, laptop)
 
     # The same checkout joins again having lost its config file — which is what
     # every one of the 52 duplicates was.
@@ -64,7 +64,7 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
 
     {:ok, on_laptop} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
     {:ok, on_laptop} = WorkingCopies.report_root(on_laptop, @root)
-    {:ok, _} = Devices.attach(on_laptop, laptop)
+    {:ok, _} = WorkingCopies.attach_device(on_laptop, laptop)
 
     {:ok, on_sprite} = WorkingCopies.issue(scope, nil, device: sprite, root: @root)
 
@@ -95,7 +95,7 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
 
     {:ok, first} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
     {:ok, first} = WorkingCopies.report_root(first, @root)
-    {:ok, _} = Devices.attach(first, laptop)
+    {:ok, _} = WorkingCopies.attach_device(first, laptop)
 
     {:ok, presented} =
       WorkingCopies.issue(scope, first.id, device: laptop, root: "/somewhere/else")
@@ -112,7 +112,7 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
 
       {:ok, first} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
       {:ok, _} = WorkingCopies.report_root(first, @root)
-      {:ok, _} = Devices.attach(first, laptop)
+      {:ok, _} = WorkingCopies.attach_device(first, laptop)
 
       # A row minted around the lookup — which is what a regression in
       # `recognise_or_create/3` looks like, and what produced 52 rows for one
@@ -123,7 +123,7 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
           device: device_fixture(scope)
         )
 
-      {:ok, second} = Devices.attach(second, laptop)
+      {:ok, second} = WorkingCopies.attach_device(second, laptop)
 
       assert {:error, %Ecto.Changeset{} = changeset} = WorkingCopies.report_root(second, @root)
 
@@ -144,10 +144,10 @@ defmodule CodeMySpec.WorkingCopies.OneCheckoutIsOneWorkingCopyTest do
 
       {:ok, on_laptop} = WorkingCopies.issue(scope, nil, device: laptop, root: @root)
       {:ok, _} = WorkingCopies.report_root(on_laptop, @root)
-      {:ok, _} = Devices.attach(on_laptop, laptop)
+      {:ok, _} = WorkingCopies.attach_device(on_laptop, laptop)
 
       {:ok, on_sprite} = WorkingCopies.issue(scope, nil, device: sprite, root: @root)
-      {:ok, on_sprite} = Devices.attach(on_sprite, sprite)
+      {:ok, on_sprite} = WorkingCopies.attach_device(on_sprite, sprite)
 
       assert {:ok, _} = WorkingCopies.report_root(on_sprite, @root),
              "the index folded two machines into one checkout because they share a " <>
