@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1905Spex do
             passing_spex(context.second)
           )
 
-        context = context |> analyzers_are_current() |> a_held_ready_for_qa_task(context.story)
+        context = analyzers_are_current(context)
         {:ok, Map.put(context, :second_answer, complete_ready_for_qa(context))}
       end
 
