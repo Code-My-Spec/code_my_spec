@@ -35,13 +35,32 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
     {:ok, agent} = Agent.start_link(fn -> %{} end)
     working_dir = Keyword.get(opts, :working_dir, "/memfs")
 
-    {:ok,
-     %Environment{
-       type: :memory,
-       cwd: working_dir,
-       ref: %{agent: agent, recorded: %{}, shell: Keyword.get(opts, :shell)},
-       metadata: Keyword.get(opts, :metadata, %{})
-     }}
+    env = %Environment{
+      type: :memory,
+      cwd: working_dir,
+      ref: %{agent: agent, recorded: %{}, shell: Keyword.get(opts, :shell)},
+      metadata: Keyword.get(opts, :metadata, %{})
+    }
+
+    {:ok, maybe_wrap_shell_module(env, Keyword.get(opts, :shell_module))}
+  end
+
+  # `:shell_module` is `Fakes.Shell`'s shape -- `cmd(env, command, args, opts)`,
+  # needing the environment it is faking rather than being a bare 3-arity
+  # closure. `create/1` builds `env` first and wraps the module into exactly
+  # that closure shape afterward, closing over the now-complete struct; `shell/4`
+  # below only ever calls the closure with 3 args, so it does not need to know
+  # this one happens to carry a module behind it.
+  #
+  # The `:shell` option above is for a caller that already has a 3-arity
+  # function (an anonymous fake, or a spex's own stand-in); this is for one
+  # that has a *module*, which is what `Fakes.Shell` is.
+  defp maybe_wrap_shell_module(env, nil), do: env
+
+  defp maybe_wrap_shell_module(env, module) do
+    update_in(env.ref[:shell], fn _ ->
+      fn command, args, opts -> module.cmd(env, command, args, opts) end
+    end)
   end
 
   # Stop it, and be satisfied if it was already stopping.
@@ -206,13 +225,18 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   # read as missing. Without one, execution really is Local's and the
   # delegation is right — which is why this asks which shell is in play rather
   # than picking one.
+  #
+  # `env.ref[:shell]` rather than the global `:memory_shell` config: the same
+  # per-environment scoping `shell/4` already uses, for the same reason --
+  # two tests' environments disagreeing about whether a shell is modelled is
+  # ordinary concurrency, not a race, once nothing asks a global.
   @impl true
   def exec_file_exists?(%Environment{} = env, path) do
-    case Application.get_env(:code_my_spec, :memory_shell) do
+    case env.ref[:shell] do
       nil ->
         Local.exec_file_exists?(env, path)
 
-      _module ->
+      shell when is_function(shell, 3) ->
         key = normalize(path, env.cwd)
 
         Agent.get(
