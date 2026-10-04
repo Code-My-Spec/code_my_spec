@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewALoneFailureIsReRunOnceSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1969Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW — A lone failure in a batch is re-run once.
+  Criterion 1969 — A lone failure in a batch is re-run once.
 
   Rule: a batch red on exactly one finding re-runs that one analyzer before
   anything is taken out, because one failing test is as often a flake as a
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewALoneFailureIsReRunOnceSpex do
     :ok
   end
 
-  spex "A lone failure in a batch is re-run once" do
+  spex "A lone failure in a batch is re-run once", criterion: 1969 do
     scenario "one test fails in the gate, and passes when it is re-run" do
       given_ "a story branch main has moved past", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

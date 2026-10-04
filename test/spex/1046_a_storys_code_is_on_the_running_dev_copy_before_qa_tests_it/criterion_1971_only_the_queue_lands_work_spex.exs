@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewOnlyTheQueueLandsSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1971Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW — Only the queue lands work; agents enqueue.
+  Criterion 1971 — Only the queue lands work.
 
   Rule: an agent's `promote` records its copy and commit and moves nothing.
   Main moves only when the queue lands a gated batch.
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewOnlyTheQueueLandsSpex do
     :ok
   end
 
-  spex "Only the queue lands work; agents enqueue" do
+  spex "Only the queue lands work; agents enqueue", criterion: 1971 do
     scenario "an agent promotes, and the queue lands it" do
       given_ "a story branch main has moved past", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

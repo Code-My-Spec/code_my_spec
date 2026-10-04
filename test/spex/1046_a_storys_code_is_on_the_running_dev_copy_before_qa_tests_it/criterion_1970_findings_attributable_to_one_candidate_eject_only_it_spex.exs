@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewAttributeOrBisectSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1970Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW — Findings attributable to one candidate eject it; otherwise
-  the batch is bisected.
+  Criterion 1970 — Findings attributable to one candidate eject only it.
 
   Rule: when every finding against a red batch is in files only one candidate
   changed, that candidate is taken out and the rest are gated again without
@@ -29,7 +28,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewAttributeOrBisectSpex do
     :ok
   end
 
-  spex "Findings attributable to one candidate eject it" do
+  spex "Findings attributable to one candidate eject it", criterion: 1970 do
     scenario "both findings are in the file only the second candidate changed" do
       given_ "two candidates queued together behind a third", context do
         {:ok, two_queued_together(context)}
@@ -76,7 +75,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewAttributeOrBisectSpex do
     end
   end
 
-  spex "Findings that cannot be pinned on one candidate bisect the batch" do
+  spex "Findings that cannot be pinned on one candidate bisect the batch", criterion: 1970 do
     scenario "both findings are in a file neither candidate changed" do
       given_ "two candidates queued together behind a third", context do
         {:ok, two_queued_together(context)}

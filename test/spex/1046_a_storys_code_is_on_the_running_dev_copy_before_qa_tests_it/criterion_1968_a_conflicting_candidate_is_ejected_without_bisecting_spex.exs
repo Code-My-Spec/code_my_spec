@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewConflictEjectedWithoutBisectingSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1968Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW — A conflicting candidate is ejected without bisecting.
+  Criterion 1968 — A conflicting candidate is ejected without bisecting.
 
   Rule: a candidate that does not merge onto the queue head is taken out as
   soon as the merge fails, naming the files, and no analyzer is spent on it.
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewConflictEjectedWithoutBisectingSp
     :ok
   end
 
-  spex "A conflicting candidate is ejected without bisecting" do
+  spex "A conflicting candidate is ejected without bisecting", criterion: 1968 do
     scenario "a second agent changed the line the first agent's landed work changed" do
       given_ "two agents' branches that change the same line of War", context do
         context =

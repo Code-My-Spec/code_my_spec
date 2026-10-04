@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story1091.CriterionNewAnIssueFixLandsThroughTheQueueSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1972Spex do
   @moduledoc """
-  Story 1091 — Issues get a dedicated agent who sees them through.
-  Criterion NEW — An issue fix lands through the queue like a story.
+  Story 1046 — A story's code is on the running dev copy before QA tests it.
+  Criterion 1972 — An issue fix lands through the queue like a story.
 
   Rule: a team's fix for its issue reaches main the way a story's work does —
   queued from the team's copy, gated with main beneath it, landed by the queue
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1091.CriterionNewAnIssueFixLandsThroughTheQueueSpe
     :ok
   end
 
-  spex "An issue fix lands through the queue like a story" do
+  spex "An issue fix lands through the queue like a story", criterion: 1972 do
     scenario "a QA-passed fix, from a copy main has moved past" do
       given_ "a team's fix that QA has passed", context do
         context =

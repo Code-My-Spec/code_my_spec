@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewAnswersWithItsPlaceSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1964Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW (replaces 1372) — Promotion answers in seconds with its place in
-  the queue.
+  Criterion 1964 — Promotion answers in seconds with its place in the queue.
 
   Rule: `promote` queues the copy's HEAD and answers at once; the queue gates
   and lands it later.
@@ -29,7 +28,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewAnswersWithItsPlaceSpex do
     :ok
   end
 
-  spex "Promotion answers in seconds with its place in the queue" do
+  spex "Promotion answers in seconds with its place in the queue", criterion: 1964 do
     scenario "an agent promotes work main has moved past" do
       given_ "a story branch with work on it", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

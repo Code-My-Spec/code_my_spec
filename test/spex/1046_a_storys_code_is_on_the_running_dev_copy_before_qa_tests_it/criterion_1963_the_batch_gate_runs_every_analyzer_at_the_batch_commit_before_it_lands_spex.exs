@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewBatchGateRunsEveryAnalyzerSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1963Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW (replaces 1173) — The batch gate runs every analyzer at the
-  batch commit before it lands.
+  Criterion 1963 — The batch gate runs every analyzer at the batch commit before it lands.
 
   Rule: the commit that lands is the commit the gate analyzed — main with the
   candidate merged onto it, in the gate's own checkout — and it lands only once
@@ -25,7 +24,8 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewBatchGateRunsEveryAnalyzerSpex do
     :ok
   end
 
-  spex "The batch gate runs every analyzer at the batch commit before it lands" do
+  spex "The batch gate runs every analyzer at the batch commit before it lands",
+    criterion: 1963 do
     scenario "a candidate main has moved past is merged onto main and gated there" do
       given_ "a story branch, and main with a commit the branch does not have", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

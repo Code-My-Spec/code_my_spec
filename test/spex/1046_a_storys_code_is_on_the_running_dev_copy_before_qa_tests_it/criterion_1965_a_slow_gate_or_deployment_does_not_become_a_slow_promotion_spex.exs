@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewSlowGateOrDeploymentSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1965Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW (replaces 1373) — A slow gate or deployment does not become a
-  slow promotion.
+  Criterion 1965 — A slow gate or deployment does not become a slow promotion.
 
   Rule: neither the batch's analyzers nor the restart after a landing hold the
   agent's answer. `promote` answers on queueing; the landing message answers on
@@ -25,7 +24,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewSlowGateOrDeploymentSpex do
     :ok
   end
 
-  spex "A slow gate does not hold the promotion's answer" do
+  spex "A slow gate does not hold the promotion's answer", criterion: 1965 do
     scenario "the gate's analyzers have not answered" do
       given_ "a story branch main has moved past", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()
@@ -56,7 +55,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewSlowGateOrDeploymentSpex do
     end
   end
 
-  spex "A slow deployment does not hold the landing's answer" do
+  spex "A slow deployment does not hold the landing's answer", criterion: 1965 do
     scenario "the restart after the landing has not come back" do
       given_ "a story branch level with main, its analyzers current", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

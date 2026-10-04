@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewAnEjectionNamesWhatToFixSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1967Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW (replaces 1375) — An ejection names what to fix and that
-  nothing landed.
+  Criterion 1967 — An ejection names what to fix and that nothing landed.
 
   Rule: a candidate taken out of the queue is told, in one message, that none
   of its work reached main, each finding against it, and that the next step is
@@ -25,7 +24,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewAnEjectionNamesWhatToFixSpex do
     :ok
   end
 
-  spex "An ejection names what to fix and that nothing landed" do
+  spex "An ejection names what to fix and that nothing landed", criterion: 1967 do
     scenario "the gate's credo finds two IO.inspect calls in the story's new module" do
       given_ "a story branch main has moved past", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

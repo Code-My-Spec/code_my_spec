@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1091.CriterionNewResolvesOnlyWhenLandedAndPassedSpex do
+defmodule CodeMySpecSpex.Story1091.Criterion1975Spex do
   @moduledoc """
   Story 1091 — Issues get a dedicated agent who sees them through.
-  Criterion NEW — An issue resolves only when its fix has landed and its QA
-  passed.
+  Criterion 1975 — An issue resolves only when its fix has landed and its QA passed.
 
   Rule: neither fact alone resolves an issue. A fix QA has not passed is not
   promoted — the queue refuses it, naming what is missing — and a fix QA has
@@ -26,7 +25,7 @@ defmodule CodeMySpecSpex.Story1091.CriterionNewResolvesOnlyWhenLandedAndPassedSp
     :ok
   end
 
-  spex "A fix QA has not passed is not promoted" do
+  spex "A fix QA has not passed is not promoted", criterion: 1975 do
     scenario "the coder promotes before QA has tested the fix" do
       given_ "a team whose coder has fixed its assigned issue", context do
         context =
@@ -57,7 +56,7 @@ defmodule CodeMySpecSpex.Story1091.CriterionNewResolvesOnlyWhenLandedAndPassedSp
     end
   end
 
-  spex "A fix QA has passed is not resolved until it lands" do
+  spex "A fix QA has passed is not resolved until it lands", criterion: 1975 do
     scenario "the fix waits in the gate" do
       given_ "a team's fix that QA has passed, from a copy main has moved past", context do
         context =

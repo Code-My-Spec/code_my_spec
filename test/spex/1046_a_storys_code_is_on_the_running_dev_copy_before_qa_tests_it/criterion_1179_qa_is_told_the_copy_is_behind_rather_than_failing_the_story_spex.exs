@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
   end
 
   spex "A story ready for QA on its own checkout is offered testing, not a promotion",
-       criterion: 1179 do
+    criterion: 1179 do
     scenario "the checkout has work main has not seen" do
       given_ "a story with clean specs, no issues and no problems, on a checkout with unpromoted commits",
              context do

@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1046.CriterionNewCertifiedAgainstTheQueueHeadSpex do
+defmodule CodeMySpecSpex.Story1046.Criterion1966Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion NEW (replaces 1374) — A candidate is certified against the queue
-  head: main plus everything ahead of it.
+  Criterion 1966 — A candidate is certified against the queue head.
 
   Rule: a candidate does not have to merge main itself first. The gate merges
   it onto main as it will be when the candidates ahead of it have landed, and
@@ -25,7 +24,7 @@ defmodule CodeMySpecSpex.Story1046.CriterionNewCertifiedAgainstTheQueueHeadSpex 
     :ok
   end
 
-  spex "A candidate is certified against the queue head" do
+  spex "A candidate is certified against the queue head", criterion: 1966 do
     scenario "a second candidate is gated with the first one's work beneath it" do
       given_ "two agents' branches from the same main, which has since moved on", context do
         context =

@@ -1,8 +1,7 @@
-defmodule CodeMySpecSpex.Story1091.CriterionNewQaPassSendsTheTeamToPromoteSpex do
+defmodule CodeMySpecSpex.Story1091.Criterion1974Spex do
   @moduledoc """
   Story 1091 — Issues get a dedicated agent who sees them through.
-  Criterion NEW (replaces 1879) — A passing QA attempt sends the team to
-  promote; the landing resolves the issue and frees the team.
+  Criterion 1974 — A passing QA attempt sends the team to promote; the landing resolves the issue and frees the team.
 
   Rule: an issue resolves only when its fix is on main and QA has passed it.
   A pass hands the coder the promotion; the queue's landing resolves the
@@ -26,7 +25,8 @@ defmodule CodeMySpecSpex.Story1091.CriterionNewQaPassSendsTheTeamToPromoteSpex d
     :ok
   end
 
-  spex "A passing QA attempt sends the team to promote; the landing resolves the issue" do
+  spex "A passing QA attempt sends the team to promote; the landing resolves the issue",
+    criterion: 1974 do
     scenario "QA passes the fix, the coder promotes it, and it lands" do
       given_ "a team whose coder has fixed its assigned issue", context do
         context =
