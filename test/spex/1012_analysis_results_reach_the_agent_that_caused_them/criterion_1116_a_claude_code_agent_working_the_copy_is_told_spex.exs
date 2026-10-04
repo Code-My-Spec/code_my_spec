@@ -39,7 +39,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion3042Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project

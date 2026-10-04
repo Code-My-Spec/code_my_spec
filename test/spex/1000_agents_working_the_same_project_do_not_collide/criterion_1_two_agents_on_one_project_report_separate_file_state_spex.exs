@@ -38,8 +38,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
   @failing_test """
