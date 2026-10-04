@@ -1159,19 +1159,18 @@ defmodule CodeMySpec.Agents do
   after it: an agent could be started, listed and stopped, and never asked to do
   anything, so it idled until somebody stopped it.
 
-  Answers with whatever the agent said. An agent that is not running, or whose
-  machine cannot be reached, is an error rather than a silent nothing — an
-  instruction that went nowhere and reported success is worse than one that
-  failed.
+  Answers `:started` or `:queued` once the engine admits the message. The
+  agent's response arrives in its conversation. A queued instruction is
+  recorded as an Offer, but is not judged until delivery at a turn boundary.
+  An unreachable agent returns an error.
   """
   @spec message_agent(Scope.t(), Ecto.UUID.t(), String.t(), timeout()) ::
-          {:ok, String.t()} | {:error, term()}
+          {:ok, :started | :queued} | {:error, term()}
   def message_agent(%Scope{} = scope, id, text, timeout \\ @message_timeout_ms)
       when is_binary(text) do
-    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id) do
-      agent.working_copy_id
-      |> Transport.message_agent(agent, text, timeout)
-      |> delivered_or_working()
+    with {:ok, disposition, _message} <-
+           dispatch_message(scope, id, text, :operator_message, timeout) do
+      {:ok, disposition}
     end
   end
 
@@ -1325,65 +1324,12 @@ defmodule CodeMySpec.Agents do
       agent.stopped_reason == :reaped
   end
 
-  # Dispatched, so the caller's patience is not the agent's turn limit.
-  #
-  # `message_agent/4` runs the whole turn inside a `GenServer.call` with the
-  # caller's timeout — so a four-minute HTTP client made a four-minute turn, and
-  # the turn that outlived it was announced as a *failure* while it carried on
-  # working. Watched on 2026-09-07: a QA agent mid-scenario, 165 tool calls in
-  # three minutes, with `{:timeout, {GenServer, :call, …}}` sitting in its own
-  # transcript as though it had said it.
-  #
-  # A person at a terminal wants the reply, so waiting stays available — but it
-  # is the exception now, and the long QA runs this route exists to drive are
-  # exactly the ones that must not be capped by it.
-  defp send_to_any(%Agent{} = agent, text, :no_wait) do
-    record_operator_message(agent, text)
-    ref = "dev-" <> Ecto.UUID.generate()
-
-    Transport.dispatch_message(
-      agent.working_copy_id,
-      agent,
-      ref,
-      text,
-      @message_timeout_ms
-    )
-  end
+  # Operator delivery waits only for admission to the engine queue.
+  defp send_to_any(%Agent{} = agent, text, :no_wait),
+    do: send_to_any(agent, text, @message_timeout_ms)
 
   defp send_to_any(%Agent{} = agent, text, timeout) do
-    record_operator_message(agent, text)
-
-    agent.working_copy_id
-    |> Transport.message_agent(agent, text, timeout)
-    |> delivered_or_working()
-  end
-
-  # What was said to it, in the transcript, before it is said.
-  #
-  # `message_agent/4` never recorded the outgoing side — only `dispatch_message/3`
-  # does, through `record_sent/4` — so a conversation driven from this route
-  # showed the agent's answers with nothing above them. Watched on 2026-09-07:
-  # three replies in a row, each to a question that appeared nowhere, which
-  # reads as an agent talking to itself and gives a person no way to judge
-  # whether the answer was any good.
-  #
-  # Recorded first, and the same way a queued message is: the agent's reply is
-  # about to arrive and land after it, so writing afterwards would put the
-  # question below its own answer.
-  defp record_operator_message(%Agent{} = agent, text) do
-    case Conversations.find_or_create_agent_conversation(
-           agent.account_id,
-           agent.project_id,
-           agent.id
-         ) do
-      {:ok, conversation} ->
-        Conversations.add_message(conversation, :operator, text, "operator", [],
-          delivery: :delivered
-        )
-
-      _error ->
-        :ok
-    end
+    message_agent(agent_scope(agent), agent.id, text, timeout)
   end
 
   @doc """
@@ -1471,37 +1417,28 @@ defmodule CodeMySpec.Agents do
         {:error, :no_such_agent}
 
       agent ->
-        offered =
-          agent
-          |> Conversations.record_sent_to_agent(text)
-          |> record_offer(agent, opts[:offer])
+        ref = "answer-" <> Ecto.UUID.generate()
 
-        case Wake.allow?(agent_scope(agent), agent, event) do
-          :ok ->
-            agent.working_copy_id
-            |> Transport.dispatch_message(
-              agent,
-              "answer-" <> Ecto.UUID.generate(),
-              text,
-              timeout
-            )
-            |> undelivered_on_failure(offered)
+        with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
+             {:ok, message} <- record_sent(conversation, text, ref, :queued) do
+          offered = record_offer({:ok, message}, agent, opts[:offer])
 
-          hold ->
-            Offers.undelivered(offered)
-            Wake.to_error(hold)
+          result =
+            case Wake.allow?(agent_scope(agent), agent, event) do
+              :ok ->
+                Transport.dispatch_message(agent.working_copy_id, agent, ref, text, timeout)
+
+              hold ->
+                Wake.to_error(hold)
+            end
+
+          case record_dispatch_result(result, message, offered) do
+            {:ok, disposition, _message} -> {:ok, disposition}
+            error -> error
+          end
         end
     end
   end
-
-  # A timeout is the machine holding it, not a failure (`delivered_or_working/1`).
-  defp undelivered_on_failure({:error, reason} = result, offered)
-       when reason != :message_timed_out do
-    Offers.undelivered(offered)
-    result
-  end
-
-  defp undelivered_on_failure(result, _offered), do: result
 
   defp agent_scope(%Agent{} = agent) do
     %Scope{
@@ -1515,15 +1452,6 @@ defmodule CodeMySpec.Agents do
 
   defp record_offer(recorded, agent, {kind, subject}),
     do: Offers.record(recorded, agent, kind, subject)
-
-  # Running out of our own patience is not the message failing. The machine took
-  # it — it answers `harness_not_connected` immediately when it did not — so the
-  # honest report is that the agent has it and is still working.
-  #
-  # Telling an operator it failed is the expensive direction: they send it
-  # again, and two agents work the same checkout.
-  defp delivered_or_working({:error, :message_timed_out}), do: {:ok, :still_working}
-  defp delivered_or_working(result), do: result
 
   @doc """
   The project's own agent — the one in its main working copy.
@@ -1612,26 +1540,28 @@ defmodule CodeMySpec.Agents do
   end
 
   defp notify(scope, main, event, text, offer) do
-    offered = offer_notice(main, text, offer)
+    ref = Ecto.UUID.generate()
 
-    case Wake.allow?(scope, main, event) do
-      :ok ->
-        {:ok, _pid} =
-          Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-            scope |> message_agent(main.id, text) |> undelivered_on_failure(offered)
-          end)
+    with {:ok, conversation} <- open_conversation(scope, main),
+         {:ok, message} <- record_sent(conversation, text, ref, :queued) do
+      offered = record_offer({:ok, message}, main, offer)
 
-        :ok
+      case Wake.allow?(scope, main, event) do
+        :ok ->
+          {:ok, _pid} =
+            Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+              main.working_copy_id
+              |> Transport.dispatch_message(main, ref, text, @message_timeout_ms)
+              |> record_dispatch_result(message, offered)
+            end)
 
-      _held ->
-        Offers.undelivered(offered)
+        hold ->
+          record_dispatch_result(Wake.to_error(hold), message, offered)
+      end
     end
+
+    :ok
   end
-
-  defp offer_notice(_main, _text, nil), do: nil
-
-  defp offer_notice(main, text, offer),
-    do: main |> Conversations.record_sent_to_agent(text) |> record_offer(main, offer)
 
   # Role as well as copy. This matched on the working copy alone, so "the main
   # agent" was whichever agent happened to be running on the main checkout —
@@ -2202,17 +2132,13 @@ defmodule CodeMySpec.Agents do
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.
 
-  `message_agent/4` waits and answers with what the agent said, which is right
-  for an MCP caller and wrong for a person at a page: a turn is minutes. Here
-  the answer arrives the way everything else an agent does arrives — as turn
-  events, in the transcript they are already reading.
+  Like `message_agent/4`, this waits only for admission. It also returns the
+  conversation message so a page can display its delivery state.
 
-  ## Recorded after the machine answers, never before
-
-  The message goes on the conversation only once the machine has said what
-  became of it, and with that outcome on the row. Written first, a transcript
-  claims the agent was told every time the machine could not be reached — and
-  an operator reading it has no way to tell that from an agent ignoring them.
+  Record the message as pending and link its Offer before dispatch. Delivery
+  can be announced before the transport reply arrives; both must already
+  exist when that event lands. A definitive failure marks the message failed
+  and its Offer undelivered. A timeout leaves delivery unconfirmed.
 
   `{:ok, :started}` means the agent has it. `{:ok, :queued}` means it will when
   the turn ends, and until then it can be taken back.
@@ -2223,24 +2149,67 @@ defmodule CodeMySpec.Agents do
   """
   @spec dispatch_message(Scope.t(), Ecto.UUID.t(), String.t(), Wake.event()) ::
           {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
-  def dispatch_message(%Scope{} = scope, id, text, event) when is_binary(text) do
+  def dispatch_message(scope, id, text, event, timeout \\ @message_timeout_ms)
+
+  def dispatch_message(%Scope{} = scope, id, text, event, timeout) when is_binary(text) do
     ref = Ecto.UUID.generate()
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
-         {:ok, disposition} <-
-           Transport.dispatch_message(
-             agent.working_copy_id,
-             agent,
-             ref,
-             text,
-             @message_timeout_ms
-           ),
          {:ok, conversation} <- open_conversation(scope, agent),
-         {:ok, message} <- record_sent(conversation, text, ref, disposition) do
-      {:ok, disposition, message}
+         {:ok, message} <- record_sent(conversation, text, ref, :queued) do
+      subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
+      offered = Offers.record({:ok, message}, agent, :instruction, {"message", subject})
+
+      result =
+        agent.working_copy_id
+        |> Transport.dispatch_message(agent, ref, text, timeout)
+        |> record_dispatch_result(message, offered)
+
+      report_repeated_instruction(scope, agent, offered)
+      result
     end
+  end
+
+  defp report_repeated_instruction(scope, agent, offered) do
+    if Offers.take_instruction_attention(offered) do
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "An operator repeated an instruction to agent #{agent.id}. " <>
+          "Review Offer #{offered.id} and its delivery history. The message was submitted " <>
+          "unchanged; it was not withheld. Pending delivery is not evidence of refusal.",
+        offer: {:stalled, {"agent", agent.id}}
+      )
+    else
+      :ok
+    end
+  end
+
+  # The row and offer exist before the engine can announce delivery. A late
+  # queued acknowledgement must never overwrite an earlier delivery event.
+  defp record_dispatch_result({:ok, :started}, message, _offered) do
+    case Conversations.pending_message_by_ref(message.delivery_ref) do
+      nil -> :ok
+      pending -> Conversations.set_delivery(pending, :delivered)
+    end
+
+    {:ok, :started, Repo.get!(Conversations.Message, message.id)}
+  end
+
+  defp record_dispatch_result({:ok, :queued}, message, _offered),
+    do: {:ok, :queued, Repo.get!(Conversations.Message, message.id)}
+
+  # A missing acknowledgement does not prove delivery or failure. Keep the
+  # pending record so a later delivery event can establish what happened.
+  defp record_dispatch_result({:error, :message_timed_out} = error, _message, _offered),
+    do: error
+
+  defp record_dispatch_result({:error, _reason} = error, message, offered) do
+    Offers.undelivered(offered)
+    Conversations.set_delivery(message, :failed)
+    error
   end
 
   defp wake(scope, agent, event) do
@@ -2432,6 +2401,7 @@ defmodule CodeMySpec.Agents do
              work_requested_at: nil
            }),
          {:ok, conversation} <- open_conversation(scope, agent) do
+      :ok = Offers.observe_instruction_turn(agent)
       write_turn_event(conversation, agent, event)
     else
       _ -> :ok

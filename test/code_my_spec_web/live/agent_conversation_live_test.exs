@@ -71,6 +71,97 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "rendering recorded turns" do
+    test "a queued message enters the received transcript only on delivery", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, message} = Conversations.add_message(conversation, :user, "queued instruction")
+
+      message =
+        Repo.update!(
+          Ecto.Changeset.change(message, delivery: :pending, delivery_ref: Ecto.UUID.generate())
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      assert has_element?(view, "[data-test='agent-pending-message']", "queued instruction")
+      assert {:ok, _} = Conversations.set_delivery(message, :delivered)
+      assert has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      {:ok, reloaded, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               reloaded,
+               "[data-test='message'][data-role='user']",
+               "queued instruction"
+             )
+    end
+
+    test "a queued answer arriving on an open page appears once and can be withdrawn", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      {:ok, message} =
+        Conversations.add_message(conversation, :operator, "Keep existing", "operator", [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      assert has_element?(view, "[data-test='agent-pending-message']", "Keep existing")
+      send(view.pid, {:new_message, message})
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='agent-pending-message']")
+             |> length() == 1
+
+      refute has_element?(view, "[data-test='message'][data-role='operator']", "Keep existing")
+      assert {:ok, _} = Conversations.set_delivery(message, :withdrawn)
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      refute render(view) =~ "Keep existing"
+    end
+
+    test "failed delivery remains auditable without appearing received", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, message} = Conversations.add_message(conversation, :user, "undelivered instruction")
+
+      message =
+        Repo.update!(
+          Ecto.Changeset.change(message, delivery: :pending, delivery_ref: Ecto.UUID.generate())
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert {:ok, _} = Conversations.set_delivery(message, :failed)
+
+      refute has_element?(
+               view,
+               "[data-test='message'][data-role='user']",
+               "undelivered instruction"
+             )
+
+      assert Repo.reload!(message).delivery == :failed
+      {:ok, reloaded, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(
+               reloaded,
+               "[data-test='message'][data-role='user']",
+               "undelivered instruction"
+             )
+    end
+
     test "shows the request and the response with their roles", %{
       conn: conn,
       scope: scope,
@@ -469,9 +560,6 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   describe "the power button, on the team panel" do
     defp panel_power(agent_id),
       do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-power']"
-
-    defp panel_retired(agent_id),
-      do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-retired']"
 
     defp open_team_panel(view) do
       render_hook(view, "viewport", %{"width" => 1200})

@@ -103,7 +103,10 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       MessageAgent.execute(%{agent_id: ctx.conversation.id, message: "carry on"}, ctx.frame)
 
     refute response.isError, text(response)
-    assert_received {:agent_message, ^agent_id, "carry on"}
+    assert_received {:agent_dispatch, ^agent_id, ref, "carry on"}
+    assert is_binary(ref)
+    assert text(response) =~ "Queued"
+    refute_received {:agent_message, _, _}
   end
 
   test "a conversation from another account is not found", ctx do

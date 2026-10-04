@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Conversations.Reads
   alias CodeMySpec.Epics
   alias CodeMySpec.Notifications
@@ -1348,6 +1349,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The page holds one page of messages (50 by default), so re-folding the list
   # on each arrival costs nothing and the whole class of problem goes away.
   defp assign_turns(socket, messages) do
+    # Pending messages belong in the queue; failed and withdrawn attempts
+    # remain audit records, not things the agent has received.
+    messages = Enum.filter(messages, &(Map.get(&1, :delivery) in [nil, :delivered]))
+
     # A run of calls folds into one expandable item, and a pending question
     # anchored inside that run would render after the whole thing — below calls
     # the agent made *after* it asked. So the run breaks where the question is.
@@ -1381,8 +1386,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # twice.
   defp sent({:ok, :started, _message}, socket), do: {:noreply, socket}
 
-  defp sent({:ok, :queued, message}, socket),
-    do: {:noreply, assign(socket, :pending, socket.assigns.pending ++ [message])}
+  defp sent({:ok, :queued, _message}, socket),
+    do: {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
 
   # Named, not generic. "Could not be sent" over a machine that is not
   # reachable and over an agent that has stopped send a person to different
@@ -1461,7 +1466,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   def handle_info({:new_message, message}, socket) do
-    {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
+    {:noreply,
+     socket
+     |> assign(:pending, pending_for(socket.assigns.conversation))
+     |> assign_turns(socket.assigns.messages ++ [message])}
   end
 
   # What the agent is writing, before it is a message: the whole draft so far,
@@ -1478,7 +1486,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
   def handle_info({:message_updated, message}, socket) do
-    {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
+    messages = Enum.reject(socket.assigns.messages, &(&1.id == message.id)) ++ [message]
+
+    {:noreply,
+     socket
+     |> assign(:pending, drop_ref(socket, message.delivery_ref))
+     |> assign_turns(messages)}
   end
 
   # Above the catch-all deliberately. A clause added below it is dead code that
@@ -2042,11 +2055,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test="agent-pending-message"
         class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
       >
-        <%!-- The text is not repeated here. It is already in the transcript above,
-      as the message it is — printing it again put the same sentence on the
-      page twice and read as the message having been sent twice, which is a
-      thing that can genuinely happen and must not be imitated by a status
-      line. This says what is true of it and offers the one action. --%>
+        <%!-- Pending content appears here until delivery moves it into the transcript. --%>
+        <span class="min-w-0 whitespace-pre-wrap break-words">
+          {Message.text(message)}
+        </span>
         <span class="opacity-60">
           waiting for the agent to finish its turn
         </span>
