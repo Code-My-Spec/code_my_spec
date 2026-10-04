@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
