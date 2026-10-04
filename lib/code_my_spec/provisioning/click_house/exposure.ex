@@ -8,9 +8,8 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Exposure do
   def publish(run, host) do
     with :ok <- Schema.restrict_writer(run),
          :ok <- connect_proxy(run),
-         {:ok, address} <- database_address(run),
-         :ok <- route(run, host, address) do
-      :ok
+         {:ok, address} <- database_address(run) do
+      route(run, host, address)
     end
   end
 

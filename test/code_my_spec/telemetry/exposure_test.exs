@@ -3,15 +3,16 @@ defmodule CodeMySpec.Telemetry.ExposureTest do
 
   alias CodeMySpec.Provisioning.ClickHouse.Exposure
 
+  defp discovery_response(<<"docker network inspect --format", _::binary>>),
+    do: {"172.20.0.0/16\n", 0}
+
+  defp discovery_response(<<"docker inspect --format", _::binary>>), do: {"172.21.0.2\n", 0}
+  defp discovery_response(_command), do: {"", 0}
+
   test "writer access is restricted before the HTTPS route is registered" do
     run = fn [command] ->
       send(self(), {:command, command})
-
-      cond do
-        String.starts_with?(command, "docker network inspect --format") -> {"172.20.0.0/16\n", 0}
-        String.starts_with?(command, "docker inspect --format") -> {"172.21.0.2\n", 0}
-        true -> {"", 0}
-      end
+      discovery_response(command)
     end
 
     assert :ok = Exposure.publish(run, "telemetry.example.com")
@@ -43,15 +44,22 @@ defmodule CodeMySpec.Telemetry.ExposureTest do
     refute_received {:command, _}
   end
 
+  defp proxy_failure_response(<<"docker network inspect --format", _::binary>>),
+    do: {"172.20.0.0/16", 0}
+
+  defp proxy_failure_response(<<"printf %s", _::binary>>), do: {"", 0}
+
+  defp proxy_failure_response(command) do
+    network_connect_response(String.contains?(command, "docker network connect"), command)
+  end
+
+  defp network_connect_response(true, _command), do: {"sensitive remote output", 7}
+
+  defp network_connect_response(false, command),
+    do: flunk("unexpected command after proxy failure: #{command}")
+
   test "proxy connection failure stops route registration and hides remote output" do
-    run = fn [command] ->
-      cond do
-        String.starts_with?(command, "docker network inspect --format") -> {"172.20.0.0/16", 0}
-        String.starts_with?(command, "printf %s") -> {"", 0}
-        String.contains?(command, "docker network connect") -> {"sensitive remote output", 7}
-        true -> flunk("unexpected command after proxy failure")
-      end
-    end
+    run = fn [command] -> proxy_failure_response(command) end
 
     assert {:error, "telemetry HTTPS proxy network setup failed (exit 7)"} =
              Exposure.publish(run, "telemetry.example.com")

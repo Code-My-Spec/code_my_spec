@@ -25,9 +25,8 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
            ),
          :ok <- queue_storage(run),
          :ok <- collector(run, credentials.writer),
-         :ok <- await_collector(run),
-         :ok <- vector(run) do
-      :ok
+         :ok <- await_collector(run) do
+      vector(run)
     end
   end
 

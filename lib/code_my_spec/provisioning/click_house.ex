@@ -41,9 +41,8 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
 
     Steps.with_ssh_runner(scope, target.ip, opts, fn run ->
       with :ok <- CodeMySpec.Provisioning.HostBaseline.ensure(run),
-           :ok <- Stack.install(run, credentials, services),
-           :ok <- Exposure.publish(run, telemetry_host) do
-        :ok
+           :ok <- Stack.install(run, credentials, services) do
+        Exposure.publish(run, telemetry_host)
       end
     end)
   end

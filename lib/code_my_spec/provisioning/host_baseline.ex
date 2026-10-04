@@ -4,9 +4,8 @@ defmodule CodeMySpec.Provisioning.HostBaseline do
   alias CodeMySpec.Provisioning.ClickHouse.Runtime
 
   def ensure(run) do
-    with :ok <- execute(run, docker_command(), "Docker logging configuration"),
-         :ok <- execute(run, swap_command(), "small-server swap configuration") do
-      :ok
+    with :ok <- execute(run, docker_command(), "Docker logging configuration") do
+      execute(run, swap_command(), "small-server swap configuration")
     end
   end
 

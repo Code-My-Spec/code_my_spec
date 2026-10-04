@@ -26,9 +26,8 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Credentials do
   def publish(scope, environment, host, credentials) do
     url = "https://#{host}"
 
-    with :ok <- store_owner(scope, environment, url, credentials.owner),
-         :ok <- store_platform(scope, environment, url, credentials.reader) do
-      :ok
+    with :ok <- store_owner(scope, environment, url, credentials.owner) do
+      store_platform(scope, environment, url, credentials.reader)
     end
   end
 
