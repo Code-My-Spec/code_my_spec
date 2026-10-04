@@ -1,0 +1,118 @@
+defmodule CodeMySpec.Agents.IssueAssignmentTest do
+  @moduledoc """
+  Story 1091: an issue is bound to a working copy's coding and QA team the
+  same way a story is bound to it (a31f1cd6), on `Agent.issue_id`.
+  """
+
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.IssuesFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Repo
+  alias CodeMySpec.TaskOwner
+  alias CodeMySpec.WorkingCopies
+
+  setup do
+    scope = full_scope_fixture()
+    issue = issue_fixture(scope, %{status: :accepted})
+    %{scope: scope, issue: issue}
+  end
+
+  defp agent(scope, role, copy_id) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "zai",
+        working_copy: "/tmp/a-copy",
+        role: role,
+        status: :running,
+        working_copy_id: copy_id
+      })
+
+    agent
+  end
+
+  defp copy(scope) do
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil, device: CodeMySpec.DevicesFixtures.device_fixture(scope))
+
+    copy.id
+  end
+
+  defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
+
+  test "binds both the coding and qa agent on the destination copy", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+
+    assert {:ok, updated} =
+             Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    assert updated.assigned_working_copy_id == copy_id
+    assert reload(coding).issue_id == ctx.issue.id
+    assert reload(qa).issue_id == ctx.issue.id
+  end
+
+  test "a copy with no coding or qa agent has nobody to hold the issue", ctx do
+    copy_id = copy(ctx.scope)
+
+    assert {:error, :no_team} =
+             Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+  end
+
+  test "an issue that does not exist is refused", ctx do
+    copy_id = copy(ctx.scope)
+    agent(ctx.scope, :coding, copy_id)
+    agent(ctx.scope, :qa, copy_id)
+
+    assert {:error, :not_found} =
+             Agents.assign_issue_to_working_copy(ctx.scope, Ecto.UUID.generate(), copy_id)
+  end
+
+  test "a working copy outside the project is refused", ctx do
+    assert {:error, :not_found} =
+             Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, Ecto.UUID.generate())
+  end
+
+  test "moving an issue to another team frees the old team and carries its open task", ctx do
+    copy_a = copy(ctx.scope)
+    coding_a = agent(ctx.scope, :coding, copy_a)
+    qa_a = agent(ctx.scope, :qa, copy_a)
+
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_a)
+
+    {:ok, coding_a} =
+      TaskOwner.add_task(ctx.scope, coding_a, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "fix_issue",
+        issue_id: ctx.issue.id
+      })
+
+    task = TaskOwner.active_task(coding_a)
+
+    copy_b = copy(ctx.scope)
+    coding_b = agent(ctx.scope, :coding, copy_b)
+    qa_b = agent(ctx.scope, :qa, copy_b)
+
+    assert {:ok, updated} =
+             Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_b)
+
+    assert updated.assigned_working_copy_id == copy_b
+
+    assert reload(coding_a).issue_id == nil
+    assert reload(qa_a).issue_id == nil
+    assert TaskOwner.find_task(reload(coding_a), task.id) == nil
+
+    assert reload(coding_b).issue_id == ctx.issue.id
+    assert reload(qa_b).issue_id == ctx.issue.id
+    moved = TaskOwner.find_task(reload(coding_b), task.id)
+    assert moved.status == :active
+    assert moved.requirement_name == "fix_issue"
+    assert moved.issue_id == ctx.issue.id
+  end
+end

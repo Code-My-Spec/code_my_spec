@@ -355,6 +355,22 @@ defmodule CodeMySpec.Agents.Agent do
     Enum.find(tasks || [], &(&1.id == task_id))
   end
 
+  @doc """
+  Drop one of this agent's tasks by id.
+
+  Only for a task moving to another owner (`AssignIssueToWorkingCopy`
+  reassigning an issue): the task itself is re-added verbatim, under the
+  same id, on the new owner — this just stops the old owner holding it too.
+  """
+  @spec drop_task(t(), String.t()) :: Ecto.Changeset.t()
+  def drop_task(%__MODULE__{} = agent, task_id) do
+    remaining = Enum.reject(agent.tasks || [], &(&1.id == task_id))
+
+    agent
+    |> change()
+    |> put_embed(:tasks, remaining)
+  end
+
   @doc false
   def changeset(agent, attrs) do
     agent
