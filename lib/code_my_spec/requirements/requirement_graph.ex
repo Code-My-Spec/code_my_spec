@@ -2299,8 +2299,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # not implemented yet (issue 92f5d6ee and its cluster: 6bb47d00, 62a6bd5f,
   # 0555b8a3). An `:authored` component is never filtered — it is real
   # architecture regardless of whether its file has landed yet.
-  defp phantom?(%{provenance: :discovered} = component, ctx),
-    do: Map.get(ctx.files_by_component, component.id, []) == []
+  #
+  # Matched on the key's presence rather than defaulted in: `Preloader.topology_context/1`
+  # deliberately carries no file data ("enough for the shape, not enough for any
+  # verdict") and feeds this same code through `Edges.plan/3` on every
+  # `ShadowProjector` redraw. Reading `ctx.files_by_component` unconditionally
+  # raised `KeyError` there for any project with a `:discovered` component,
+  # which the drain's rescue swallowed — leaving every entity in that drain
+  # unwritten, not just the phantom check's own answer wrong.
+  defp phantom?(%{provenance: :discovered, id: id}, %{files_by_component: files_by_component}),
+    do: Map.get(files_by_component, id, []) == []
 
   defp phantom?(_component, _ctx), do: false
 
