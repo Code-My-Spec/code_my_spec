@@ -14,6 +14,8 @@ defmodule CodeMySpecSpex.Story983.Criterion1904Spex do
   import CodeMySpecSpex.PromotionHelpers
   import CodeMySpecSpex.ReadyForQaHelpers
 
+  alias CodeMySpec.Stories
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -24,6 +26,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1904Spex do
         story = a_promotable_story(context)
         context = a_held_ready_for_qa_task(context, story)
         {false, _} = complete_ready_for_qa(context)
+        story = Stories.get_story(context.scope, story.id)
         [criterion] = story.criteria
         {:ok, Map.merge(context, %{story: story, criterion: criterion})}
       end

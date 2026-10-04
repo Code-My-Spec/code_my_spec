@@ -126,7 +126,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
         {:ok, Map.put(context, :spex_path, path)}
       end
 
-      given_ :story_latched_by_promotion
+      given_ :criterion_latched_by_promotion
 
       when_ "the agent attempts to stop", context do
         HarnessHooks.land_analysis(context, "compiler", red_fixture("compile.jsonl"))
