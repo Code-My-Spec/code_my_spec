@@ -51,10 +51,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   }
 
   alias CodeMySpec.Generators.DeployBoilerplate
+  alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.Repo
   alias CodeMySpec.Servers
   alias CodeMySpec.Servers.Server
-  alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.TempFile
   alias CodeMySpec.Utils.MapAccess
 

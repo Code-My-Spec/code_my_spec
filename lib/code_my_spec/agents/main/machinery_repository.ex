@@ -20,10 +20,10 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy

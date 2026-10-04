@@ -12,11 +12,11 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.GherkinRenderer
   alias CodeMySpec.Questions
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @impl true
   def mount(_params, _session, socket) do
@@ -72,8 +72,13 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   def handle_info({:question_created, _}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:question_updated, _}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:question_deleted, _}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket),
+    do: {:noreply, refresh(socket)}
+
+  def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket),
+    do: {:noreply, refresh(socket)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp refresh(%{assigns: %{story: nil}} = socket), do: socket
@@ -96,50 +101,50 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   @impl true
   def render(assigns) do
     ~H"""
-      <.header>
-        Gherkin — {if @story, do: @story.title, else: "Story"}
-        <:subtitle :if={@story && @project}>
-          Rendered from
-          <.link
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
-            class="link link-primary"
-          >
-            Three Amigos
-          </.link>
-          artifacts. The DB is the source of truth; this view assembles the
-          <code>.feature</code> on demand.
-        </:subtitle>
-        <:actions>
-          <.button
-            :if={@story && @project}
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}")}
-          >
-            <.icon name="hero-arrow-left" /> Back to story
-          </.button>
-          <.button
-            :if={@story && @project}
-            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
-          >
-            <.icon name="hero-squares-2x2" /> Three Amigos wall
-          </.button>
-        </:actions>
-      </.header>
+    <.header>
+      Gherkin — {if @story, do: @story.title, else: "Story"}
+      <:subtitle :if={@story && @project}>
+        Rendered from
+        <.link
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
+          class="link link-primary"
+        >
+          Three Amigos
+        </.link>
+        artifacts. The DB is the source of truth; this view assembles the <code>.feature</code>
+        on demand.
+      </:subtitle>
+      <:actions>
+        <.button
+          :if={@story && @project}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}")}
+        >
+          <.icon name="hero-arrow-left" /> Back to story
+        </.button>
+        <.button
+          :if={@story && @project}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
+        >
+          <.icon name="hero-squares-2x2" /> Three Amigos wall
+        </.button>
+      </:actions>
+    </.header>
 
-      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-        <span>{@error || @scope_error}</span>
+    <div :if={@error || @scope_error} role="alert" class="alert alert-error">
+      <span>{@error || @scope_error}</span>
+    </div>
+
+    <div :if={!@error && @story}>
+      <div class="mockup-code w-full mb-4">
+        <pre><code id="gherkin-source" class="whitespace-pre">{@gherkin}</code></pre>
       </div>
 
-      <div :if={!@error && @story}>
-        <div class="mockup-code w-full mb-4">
-          <pre><code id="gherkin-source" class="whitespace-pre">{@gherkin}</code></pre>
-        </div>
-
-        <p class="text-sm text-base-content/60">
-          Updated live as the agent and PM mutate the wall. Copy the block above
-          into a <code>.feature</code> file or feed it to SexySpex generation
-          downstream.
-        </p>
-      </div>
+      <p class="text-sm text-base-content/60">
+        Updated live as the agent and PM mutate the wall. Copy the block above
+        into a <code>.feature</code> file or feed it to SexySpex generation
+        downstream.
+      </p>
+    </div>
     """
   end
 end

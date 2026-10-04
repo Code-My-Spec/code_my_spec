@@ -1,10 +1,10 @@
 defmodule CodeMySpecWeb.StoryLive.Show do
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Components
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Tags
   alias CodeMySpecWeb.StoryLive.QaHistoryComponent
 

@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.Main.MachineryAnswersWithoutACheckoutTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.Main, as: MainAgent
+
   test "a scope with a project and no checkout still gets a report" do
     scope = full_scope_fixture()
     without_a_checkout = %{scope | active_working_copy_id: nil}

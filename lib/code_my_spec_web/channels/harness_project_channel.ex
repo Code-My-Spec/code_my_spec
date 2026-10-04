@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -59,7 +60,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects
@@ -541,6 +541,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     socket.assigns.scope.active_working_copy_id
     |> WorkingCopies.device_of()
     |> Devices.record_load(load)
+
     {:reply, :ok, socket}
   end
 

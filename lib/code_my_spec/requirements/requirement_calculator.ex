@@ -18,7 +18,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   import Ecto.Query
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys
   alias CodeMySpec.Files
@@ -27,6 +26,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 

@@ -33,10 +33,6 @@ defmodule CodeMySpec.Agents.Main do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Conversations
-  alias CodeMySpec.Issues
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Main.CheckInReport
@@ -48,6 +44,10 @@ defmodule CodeMySpec.Agents.Main do
   alias CodeMySpec.Agents.Main.QuestionsRepository
   alias CodeMySpec.Agents.Main.RestartRepository
   alias CodeMySpec.Agents.Main.WorkRepository
+  alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope

@@ -20,13 +20,13 @@ defmodule CodeMySpec.Validation.Blocking do
     ],
     exports: :all
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
 
   # Spex enforcement is per-story, and it runs BEFORE the configured mode

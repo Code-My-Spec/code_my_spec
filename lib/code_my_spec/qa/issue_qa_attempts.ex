@@ -51,7 +51,11 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
            Issues.resolve_issue(scope, issue, "Verified by issue QA attempt #{attempt.id}."),
          {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
       # Agents frees the issue's team (`Agents.Events`); Qa sits below Agents.
-      :telemetry.execute([:code_my_spec, :qa, :issue_passed], %{}, %{scope: scope, issue: resolved})
+      :telemetry.execute([:code_my_spec, :qa, :issue_passed], %{}, %{
+        scope: scope,
+        issue: resolved
+      })
+
       attempt
     else
       nil -> Repo.rollback(:issue_not_found)

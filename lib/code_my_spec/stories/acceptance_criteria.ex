@@ -10,9 +10,9 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria do
   for test doubles.
   """
 
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 

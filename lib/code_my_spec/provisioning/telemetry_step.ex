@@ -7,6 +7,7 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
   Telemetry reads and checks what this sets up, and sits below Provisioning.
   """
 
+  alias CodeMySpec.Provisioning.ClickHouse
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Telemetry
   alias CodeMySpec.Users.Scope
@@ -62,6 +63,6 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
   end
 
   defp default_run_probe(opts) do
-    CodeMySpec.Provisioning.ClickHouse.run(Keyword.fetch!(opts, :scope), opts[:environment], opts)
+    ClickHouse.run(Keyword.fetch!(opts, :scope), opts[:environment], opts)
   end
 end

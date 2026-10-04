@@ -9,11 +9,11 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Agents.Main.AgentWork
-  alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Staffing
   alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.UnreachableMachine

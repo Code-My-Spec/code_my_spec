@@ -2,9 +2,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreStoryTest do
   use ExUnit.Case, async: true
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.Tools.RestoreStory
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

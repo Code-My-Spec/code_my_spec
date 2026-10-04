@@ -11,15 +11,15 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Wake
-  alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Main.CheckInReport
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.OpenQuestion
+  alias CodeMySpec.Agents.Wake
+  alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Staffing

@@ -9,9 +9,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RetireCriterion do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   schema do
     field :criterion_number, :integer,

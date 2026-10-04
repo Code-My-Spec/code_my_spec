@@ -17,6 +17,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
   require Logger
 
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Notifications.NotificationClient
@@ -24,7 +25,6 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
-  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Validation.TaskEvaluator
 
   @total_response_cap 4096

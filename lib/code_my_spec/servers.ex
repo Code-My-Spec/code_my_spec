@@ -587,7 +587,9 @@ defmodule CodeMySpec.Servers do
   all — a linked-but-not-yet-run environment is real and grantable, so it
   counts too.
   """
-  @spec environments_on(Ecto.UUID.t(), String.t()) :: [%{project: Project.t(), environment: String.t()}]
+  @spec environments_on(Ecto.UUID.t(), String.t()) :: [
+          %{project: Project.t(), environment: String.t()}
+        ]
   def environments_on(account_id, server_name) do
     Environment
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)

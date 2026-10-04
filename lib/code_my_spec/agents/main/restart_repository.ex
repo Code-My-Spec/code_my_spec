@@ -28,10 +28,10 @@ defmodule CodeMySpec.Agents.Main.RestartRepository do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents.Main.Restart
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Faults
-  alias CodeMySpec.Agents.Main.Restart
   alias CodeMySpec.Repo
 
   @doc """

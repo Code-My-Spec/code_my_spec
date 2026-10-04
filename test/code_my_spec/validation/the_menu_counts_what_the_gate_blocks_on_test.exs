@@ -21,10 +21,10 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
   alias CodeMySpec.Validation
-  alias CodeMySpec.Agents.Menu
 
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.StoriesFixtures

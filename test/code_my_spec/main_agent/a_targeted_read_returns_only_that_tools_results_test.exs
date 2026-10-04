@@ -29,9 +29,9 @@ defmodule CodeMySpec.Agents.Main.ATargetedReadReturnsOnlyThatToolsResultsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Repo
 
   defp put_message(conversation, attrs) do

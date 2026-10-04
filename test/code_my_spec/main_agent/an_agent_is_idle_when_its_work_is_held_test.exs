@@ -12,8 +12,8 @@ defmodule CodeMySpec.Agents.Main.AnAgentIsIdleWhenItsWorkIsHeldTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.TaskOwner

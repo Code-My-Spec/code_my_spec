@@ -32,11 +32,11 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
       enforced in real-time")
   """
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -140,7 +140,8 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
 
   @spec questions_answered?(Scope.t(), term()) :: {boolean(), map()}
   def questions_answered?(scope, %Story{} = story) do
-    case Questions.list_questions_for_story(scope, story.id) |> Enum.filter(&(&1.status == :open)) do
+    case Questions.list_questions_for_story(scope, story.id)
+         |> Enum.filter(&(&1.status == :open)) do
       [] ->
         {true, %{status: "No open questions"}}
 

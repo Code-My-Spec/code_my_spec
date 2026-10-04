@@ -53,7 +53,6 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
@@ -69,6 +68,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
@@ -1189,7 +1189,8 @@ defmodule CodeMySpec.Validation do
         mode = mode_for(config, field)
         problems = Map.get(problems_by_source, source, [])
 
-        {enforced, unenforced} = Blocking.split_by_story_enforcement(source, problems, scope_context)
+        {enforced, unenforced} =
+          Blocking.split_by_story_enforcement(source, problems, scope_context)
 
         {block, advisory} = apply_mode(enforced, mode, scope_fn, scope_context)
         {block_acc ++ block, advisory_acc ++ advisory ++ unenforced}

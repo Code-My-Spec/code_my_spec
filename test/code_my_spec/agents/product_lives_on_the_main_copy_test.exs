@@ -16,13 +16,13 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.Agents.Main.AgentWork
-  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementDefinitionData

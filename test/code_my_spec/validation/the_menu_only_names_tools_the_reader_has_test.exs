@@ -19,11 +19,11 @@ defmodule CodeMySpec.Validation.TheMenuOnlyNamesToolsTheReaderHasTest do
   import CodeMySpec.ProblemsFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
-  alias CodeMySpec.Agents.Menu
 
   @roles [:product, :coding, :qa]
 

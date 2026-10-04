@@ -20,11 +20,11 @@ defmodule CodeMySpec.BddSpecs do
 
   require Logger
 
-  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddSpecs.{Parser, Spec, SpecProjector, Spex}
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.Utf8

@@ -13,10 +13,10 @@ defmodule Mix.Tasks.Cms.StampSpex do
 
   use Mix.Task
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Stamp
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @shortdoc "Stamp criterion numbers into existing spex files"
 
@@ -41,7 +41,9 @@ defmodule Mix.Tasks.Cms.StampSpex do
   defp stamp(scope, root, apply?) do
     {:ok, stories} = Stories.list_project_stories(scope)
     stories = Map.new(stories, &{&1.id, &1})
-    criteria = Enum.flat_map(Map.keys(stories), &AcceptanceCriteria.list_all_story_criteria(scope, &1))
+
+    criteria =
+      Enum.flat_map(Map.keys(stories), &AcceptanceCriteria.list_all_story_criteria(scope, &1))
 
     files =
       root
@@ -57,7 +59,10 @@ defmodule Mix.Tasks.Cms.StampSpex do
 
   defp report(plan) do
     counts = Enum.frequencies_by(plan, & &1.action)
-    Mix.shell().info("stamp: #{counts[:stamp] || 0}, already named: #{counts[:skip] || 0}, unmatched: #{counts[:unmatched] || 0}")
+
+    Mix.shell().info(
+      "stamp: #{counts[:stamp] || 0}, already named: #{counts[:skip] || 0}, unmatched: #{counts[:unmatched] || 0}"
+    )
 
     for %{action: :unmatched, path: path, why: why} <- plan do
       Mix.shell().info("  unmatched #{path}: #{why}")
@@ -74,7 +79,8 @@ defmodule Mix.Tasks.Cms.StampSpex do
       remove_if_empty(Path.dirname(Path.join(root, action.path)))
     end
 
-    {:ok, _} = AcceptanceCriteria.update_criterion(scope, action.criterion, %{spec_path: action.to})
+    {:ok, _} =
+      AcceptanceCriteria.update_criterion(scope, action.criterion, %{spec_path: action.to})
   end
 
   defp carry_out(_action, _scope, _root), do: :ok

@@ -29,13 +29,13 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Epics.Epic
-  alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Problems.Problem

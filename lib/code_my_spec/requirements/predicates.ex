@@ -69,11 +69,11 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   import Ecto.Query
 
-  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
 
   @doc """

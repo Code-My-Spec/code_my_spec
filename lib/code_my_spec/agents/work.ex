@@ -7,13 +7,13 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.IssueWork
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData

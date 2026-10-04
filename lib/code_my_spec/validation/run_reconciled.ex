@@ -34,6 +34,8 @@ defmodule CodeMySpec.Validation.RunReconciled do
     end)
   catch
     kind, reason ->
-      Logger.warning("[Analysis] session evaluation failed: #{Exception.format_banner(kind, reason)}")
+      Logger.warning(
+        "[Analysis] session evaluation failed: #{Exception.format_banner(kind, reason)}"
+      )
   end
 end

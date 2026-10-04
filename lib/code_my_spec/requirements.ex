@@ -459,7 +459,8 @@ defmodule CodeMySpec.Requirements do
     story_id = if is_binary(id), do: String.to_integer(id), else: id
 
     with {:ok, %{stories: [story]} = ctx} <- Preloader.load_story(scope, story_id),
-         %{} = definition <- Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == name)) do
+         %{} = definition <-
+           Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == name)) do
       files = Map.get(ctx.files_by_story, story.id, [])
       RequirementCalculator.compute_one(scope, story, definition, files, ctx).satisfied == true
     else

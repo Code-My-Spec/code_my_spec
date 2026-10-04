@@ -156,8 +156,7 @@ defmodule CodeMySpec.Agents.StopDecision do
         # what to do next, and "next" is this agent's own work for the same
         # reason it is on every other path — a blocked coding agent pointed at
         # QA's queue is being told to do something it will not do.
-        {reason <> Menu.render(scope, agent.continuous == true, agent.role, agent),
-         key}
+        {reason <> Menu.render(scope, agent.continuous == true, agent.role, agent), key}
 
       {:ok, _result} ->
         keep_working(scope, agent)

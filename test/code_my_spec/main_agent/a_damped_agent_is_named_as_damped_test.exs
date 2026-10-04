@@ -13,8 +13,8 @@ defmodule CodeMySpec.Agents.Main.ADampedAgentIsNamedAsDampedTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Work
 
   @until ~U[2026-09-30 08:59:23Z]
 

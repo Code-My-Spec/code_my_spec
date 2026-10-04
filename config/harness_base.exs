@@ -9,7 +9,8 @@ config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.BddRulesRepo
 config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRepository
 
 config :code_my_spec,
-  acceptance_criteria_implementation: CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository
+  acceptance_criteria_implementation:
+    CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository
 
 # The harness serves its own endpoint; the main web endpoint stays off.
 config :code_my_spec, CodeMySpecWeb.Endpoint, server: false

@@ -12,11 +12,11 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   import CodeMySpec.IssuesFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
-  alias CodeMySpec.Agents.Menu
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account

@@ -128,7 +128,13 @@ defmodule CodeMySpec.Agents.Events do
   # In the turn when the agent can take one; recorded when it cannot. An agent
   # mid-turn, reserved, or holding a task still has to be told.
   def handle_event(@tap_out_denied, _measurements, meta, _config) do
-    case Work.offer_turn_with(meta.scope, meta.agent, meta.notice, :blocker_resolved, meta.subject) do
+    case Work.offer_turn_with(
+           meta.scope,
+           meta.agent,
+           meta.notice,
+           :blocker_resolved,
+           meta.subject
+         ) do
       {:ok, ref} when is_binary(ref) ->
         :ok
 

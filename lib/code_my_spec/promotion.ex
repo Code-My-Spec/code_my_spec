@@ -417,6 +417,7 @@ defmodule CodeMySpec.Promotion do
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
+
   defp notify_team_free(scope, copy_id, story),
     do:
       :telemetry.execute([:code_my_spec, :promotion, :team_free], %{}, %{

@@ -21,9 +21,9 @@ defmodule CodeMySpec.Agents.Main.ARestartThatChangedNothingTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.RestartRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Faults
-  alias CodeMySpec.Agents.Main.RestartRepository
 
   setup do
     scope = full_scope_fixture()

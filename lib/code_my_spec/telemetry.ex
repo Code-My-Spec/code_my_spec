@@ -23,6 +23,8 @@ defmodule CodeMySpec.Telemetry do
   address check `Steps.on_the_environments_box/3` makes before backups.
   """
 
+  alias CodeMySpec.Telemetry.HealthCheck
+  alias CodeMySpec.Telemetry.Reader
   alias CodeMySpec.Users.Scope
 
   @retention_days 14
@@ -61,7 +63,7 @@ defmodule CodeMySpec.Telemetry do
     attrs = Map.merge(result, %{project_id: scope.active_project_id, environment: environment})
 
     %CodeMySpec.Telemetry.HealthCheck{}
-    |> CodeMySpec.Telemetry.HealthCheck.changeset(attrs)
+    |> HealthCheck.changeset(attrs)
     |> CodeMySpec.Repo.insert!(
       on_conflict: {:replace, [:reachable, :reads, :writes, :checked_at]},
       conflict_target: [:project_id, :environment]
@@ -109,10 +111,10 @@ defmodule CodeMySpec.Telemetry do
   ## -- Private --
 
   defp default_check_probe(opts) do
-    CodeMySpec.Telemetry.Reader.check(Keyword.fetch!(opts, :scope), opts[:environment])
+    Reader.check(Keyword.fetch!(opts, :scope), opts[:environment])
   end
 
   defp default_query_probe(opts) do
-    CodeMySpec.Telemetry.Reader.query(Keyword.fetch!(opts, :scope), opts[:environment], opts)
+    Reader.query(Keyword.fetch!(opts, :scope), opts[:environment], opts)
   end
 end

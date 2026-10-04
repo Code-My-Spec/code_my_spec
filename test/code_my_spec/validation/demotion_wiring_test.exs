@@ -24,12 +24,12 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Validation
 
   @mine "lib/my_app/mine.ex"
@@ -100,7 +100,8 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
           spec_path: @spex_path
         })
 
-      {:ok, story} = Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
+      {:ok, story} =
+        Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
 
       Map.put(ctx, :story, story)
     end

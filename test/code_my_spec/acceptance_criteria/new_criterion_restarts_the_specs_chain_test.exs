@@ -32,8 +32,8 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.NewCriterionRestartsTheSpecsChai
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   setup do
     scope = full_scope_fixture()
@@ -112,7 +112,8 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.NewCriterionRestartsTheSpecsChai
       {:ok, criterion} = AcceptanceCriteria.create_criterion(scope, story, %{description: "One"})
       story = latch!(scope, story)
 
-      {:ok, _} = AcceptanceCriteria.update_criterion(scope, criterion, %{description: "One, but clearer"})
+      {:ok, _} =
+        AcceptanceCriteria.update_criterion(scope, criterion, %{description: "One, but clearer"})
 
       assert specs_ready?(scope, story),
              "a reworded criterion is the same criterion. Restarting on every edit " <>

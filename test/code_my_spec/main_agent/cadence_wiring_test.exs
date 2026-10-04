@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.Main.CadenceWiringTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.Main, as: MainAgent
+
   setup do
     scope = full_scope_fixture()
 

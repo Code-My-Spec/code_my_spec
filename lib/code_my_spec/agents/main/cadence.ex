@@ -41,11 +41,11 @@ defmodule CodeMySpec.Agents.Main.Cadence do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Configurations
-  alias CodeMySpec.Faults
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Configurations
+  alias CodeMySpec.Faults
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.Agents.Main.CadenceRegistry

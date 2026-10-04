@@ -19,11 +19,11 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Agents.Menu
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecTest.RecordingAgentTransport

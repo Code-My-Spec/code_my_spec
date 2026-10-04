@@ -8,7 +8,9 @@ defmodule CodeMySpecWeb.Application do
   require Logger
 
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Events
   alias CodeMySpec.Agents.GraphWake
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
   alias CodeMySpec.Notifications.AnalysisPush
@@ -70,7 +72,8 @@ defmodule CodeMySpecWeb.Application do
         # `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
-          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
+          {FLAME.Pool,
+           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
@@ -157,13 +160,14 @@ defmodule CodeMySpecWeb.Application do
         # with no timer at all; and the spex start the process themselves, so
         # they proved the loop and not the wiring.
         {Registry, keys: :unique, name: CodeMySpec.Agents.Main.CadenceRegistry},
-        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
         # And re-establish them after a restart, for the reason the watcher's
         # seeding gives: timers are in memory and a deploy lands mid-run.
         # `:temporary` on the same grounds — failing to seed is not a reason to
         # refuse to boot.
         Supervisor.child_spec(
-          {Task, &CodeMySpec.Agents.Main.wake_active_projects/0},
+          {Task, &MainAgent.wake_active_projects/0},
           id: :wake_active_projects,
           restart: :temporary
         ),
@@ -227,7 +231,7 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
-        CodeMySpec.Agents.Events.attach()
+        Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()
         GraphWake.attach()

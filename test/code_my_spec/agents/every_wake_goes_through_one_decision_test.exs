@@ -14,10 +14,10 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.Notifications

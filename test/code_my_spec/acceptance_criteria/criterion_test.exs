@@ -131,7 +131,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.CriterionTest do
       refute changeset.valid?
       assert "can't be blank" in errors_on(changeset).project_id
     end
-
   end
 
   # Fixture functions

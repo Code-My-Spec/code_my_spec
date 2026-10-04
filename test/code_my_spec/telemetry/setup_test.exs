@@ -5,6 +5,7 @@ defmodule CodeMySpec.Telemetry.SetupTest do
 
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository}
+  alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.Telemetry
 
   test "default setup reaches the installer and does not publish a failed installation" do
@@ -30,7 +31,7 @@ defmodule CodeMySpec.Telemetry.SetupTest do
     end
 
     assert {:error, "telemetry private network setup failed (exit 42)"} =
-             CodeMySpec.Provisioning.TelemetryStep.run(scope, "uat", run: run)
+             TelemetryStep.run(scope, "uat", run: run)
 
     assert_received {:installation_command, command}
     assert command =~ "docker network inspect db_net"

@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
@@ -166,7 +167,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       request = ask(ctx)
 
       {:ok, _} =
-        CodeMySpec.Agents.Main.escalate_question(ctx.scope, request.id, "a product call")
+        MainAgent.escalate_question(ctx.scope, request.id, "a product call")
 
       Map.merge(ctx, %{main: main, request: request})
     end

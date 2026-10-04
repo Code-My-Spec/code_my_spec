@@ -7,8 +7,8 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
   Used to give agents visibility into BDD coverage without consuming context on implementation code.
   """
 
-  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddSpecs.{Scenario, Spec, Step}
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
 
   @doc """

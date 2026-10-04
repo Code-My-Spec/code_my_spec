@@ -80,6 +80,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
@@ -96,7 +97,6 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope

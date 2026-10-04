@@ -32,8 +32,8 @@ defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Issues
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Issues
   alias CodeMySpec.WorkingCopies
 
   @fault "The machinery is serving no tools"
