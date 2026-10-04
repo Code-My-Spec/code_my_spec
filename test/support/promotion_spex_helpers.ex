@@ -111,6 +111,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     {_, 0} = git(context, running_root, ["add", "-A"])
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
+    # Released once, as a real project has been: promotions count from its tag.
+    {_, 0} = git(context, running_root, ["tag", "-a", "v0.1.0", "-m", "v0.1.0"])
 
     # `worktree add` requires the path not to exist yet.
     agent_root = CodeMySpec.TempFile.dir("spex-1046-agent")
