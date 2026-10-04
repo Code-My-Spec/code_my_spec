@@ -186,13 +186,13 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
                "both offers must be the same kind, team_free, regardless of what finished: " <>
                  "#{response_text(response)}"
 
-        story_number = Integer.to_string(context.story.number)
+        story_marker = "story #{context.story.number} ("
 
-        story_offer = Enum.find(offers, &Enum.any?(&1.messages, fn m -> m =~ story_number end))
+        story_offer = Enum.find(offers, &Enum.any?(&1.messages, fn m -> m =~ story_marker end))
         issue_offer = Enum.find(offers, &Enum.any?(&1.messages, fn m -> m =~ context.issue_id end))
 
         assert story_offer,
-               "no team-free offer named story #{story_number}: #{response_text(response)}"
+               "no team-free offer named story #{context.story.number}: #{response_text(response)}"
 
         assert issue_offer,
                "no team-free offer named issue #{context.issue_id}: #{response_text(response)}"
