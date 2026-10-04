@@ -71,7 +71,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
       "persona_research" => AgentTasks.PersonaResearch,
       "release" => AgentTasks.Release,
-      "init" => AgentTasks.Init
+      "init" => AgentTasks.Init,
+      "issue_fix" => AgentTasks.IssueFix
     }
   end
 

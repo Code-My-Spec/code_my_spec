@@ -46,7 +46,7 @@ defmodule CodeMySpec.Qa do
     ],
     exports: :all
 
-  alias CodeMySpec.Qa.{Invalidations, QaAttempts}
+  alias CodeMySpec.Qa.{Invalidations, IssueQaAttempts, QaAttempts}
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -60,6 +60,14 @@ defmodule CodeMySpec.Qa do
   See spex `CodeMySpecSpex.Story726.*` for the full contract.
   """
   defdelegate submit_qa_result(scope, params), to: QaAttempts, as: :submit
+
+  @doc """
+  Submit a QA outcome for an issue (story 1091), as the agent testing it.
+
+  A pass resolves the issue and frees the team bound to it; anything else
+  leaves the issue open and bound, and sends the fix back to the coder.
+  """
+  defdelegate submit_issue_qa_result(scope, owner, params), to: IssueQaAttempts, as: :submit
 
   @doc """
   List QA attempts for a story, most-recent first.

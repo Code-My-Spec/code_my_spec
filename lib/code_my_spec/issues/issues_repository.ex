@@ -668,6 +668,23 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.update()
   end
 
+  @doc "Set or clear which copy's team this issue is assigned to, and whose turn it is next."
+  def update_assignment(%Issue{} = issue, working_copy_id, awaiting_role) do
+    issue
+    |> Issue.assignment_changeset(%{
+      assigned_working_copy_id: working_copy_id,
+      awaiting_role: awaiting_role
+    })
+    |> Repo.update()
+  end
+
+  @doc "Flip whose turn it is on an already-assigned issue."
+  def update_awaiting_role(%Issue{} = issue, role) do
+    issue
+    |> Issue.assignment_changeset(%{awaiting_role: role})
+    |> Repo.update()
+  end
+
   def update_status(%Issue{} = issue, status, resolution \\ nil, opts \\ []) do
     attrs = %{status: status, resolution: resolution}
 

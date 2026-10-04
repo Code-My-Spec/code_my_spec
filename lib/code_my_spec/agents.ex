@@ -47,6 +47,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
+      CodeMySpec.Issues,
       CodeMySpec.MainAgent,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
@@ -68,6 +69,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
@@ -157,7 +159,14 @@ defmodule CodeMySpec.Agents do
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate assign_team(scope, copy_id, story_id), to: Assignment
   defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
+  defdelegate notify_story_team_free(scope, copy_id, story), to: Assignment, as: :notify_team_free
   defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim
+
+  defdelegate assign_issue_to_working_copy(scope, issue_id, working_copy_id, opts \\ []),
+    to: IssueAssignment,
+    as: :assign
+
+  defdelegate free_issue_team(scope, issue), to: IssueAssignment, as: :free
   defdelegate providers(), to: Providers, as: :names
 
   @doc """

@@ -41,7 +41,10 @@ defmodule CodeMySpec.Agents.Assignment do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -200,6 +203,55 @@ defmodule CodeMySpec.Agents.Assignment do
       limit: 1
     )
     |> Repo.one()
+  end
+
+  @doc """
+  Tell main a team finished a story by promoting it (criterion 1892).
+
+  The story-side half of the team-free notice `IssueAssignment.free/2` sends
+  for an issue, so main learns of both kinds of finish through the one offer
+  kind. `story_id` is left untouched — a team with another eligible story
+  still moves onto it through `advance/4` exactly as before — so this notifies
+  only when nothing else (an issue) is already holding a member of the team.
+  """
+  @spec notify_team_free(Scope.t(), Ecto.UUID.t(), Stories.Story.t()) :: :ok
+  def notify_team_free(%Scope{} = scope, copy_id, story) do
+    if Enum.any?(team_on_copy(scope, copy_id), &is_nil(&1.issue_id)) do
+      notify_main(scope, copy_id, story)
+    end
+
+    :ok
+  end
+
+  defp team_on_copy(scope, copy_id) do
+    from(a in Agent,
+      where:
+        a.project_id == ^scope.active_project_id and a.account_id == ^scope.active_account_id and
+          a.working_copy_id == ^copy_id and a.role in ^team_roles() and is_nil(a.retired_at)
+    )
+    |> Repo.all()
+  end
+
+  defp notify_main(scope, copy_id, story) do
+    case AgentsRepository.list_running_main(scope) do
+      [main | _] ->
+        text = team_free_message(copy_id, story)
+
+        main
+        |> Conversations.record_sent_to_agent(text)
+        |> Offers.record(main, :team_free, {"copy", copy_id})
+
+        :ok
+
+      [] ->
+        :ok
+    end
+  end
+
+  defp team_free_message(copy_id, story) do
+    "Working copy #{copy_id}'s team is free: story #{story.number} (\"#{story.title}\") is " <>
+      "promoted and nothing else is assigned to it. Assign it another issue with " <>
+      "assign_issue_to_working_copy, or a story with assign_team."
   end
 
   @doc """

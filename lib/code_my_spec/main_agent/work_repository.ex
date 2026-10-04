@@ -85,6 +85,8 @@ defmodule CodeMySpec.MainAgent.WorkRepository do
         agent_status: agent.status,
         working_copy_id: agent.working_copy_id,
         working_copy_root: copy && copy.root,
+        issue_id: agent.issue_id,
+        team_free?: not is_nil(agent.team_free_at),
         task_name: task && task.requirement_name,
         task_status: task && task.status,
         task_started_at: task && task.started_at,

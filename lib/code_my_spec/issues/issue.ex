@@ -20,6 +20,8 @@ defmodule CodeMySpec.Issues.Issue do
           source_path: String.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
+          assigned_working_copy_id: Ecto.UUID.t() | nil,
+          awaiting_role: :coding | :qa | nil,
           synced_from_server: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -88,6 +90,14 @@ defmodule CodeMySpec.Issues.Issue do
     # The working copy this was raised from. `nil` for issues raised before this
     # existed, and for anything filed through the web UI, which has no checkout.
     field :working_copy_id, :binary_id
+    # The copy whose team is currently bound to this issue (distinct from
+    # `working_copy_id`, which copy raised it). Set by `AssignIssueToWorkingCopy`.
+    field :assigned_working_copy_id, :binary_id
+    # Whose turn it is on an assigned issue (story 1091): the coder's until
+    # it submits a fix, QA's until it submits a non-passing attempt. Read by
+    # `Agents.IssueWork` rather than `Agents` reaching into `Qa`'s attempts,
+    # which would cycle back (`Qa` already depends on `Agents`).
+    field :awaiting_role, Ecto.Enum, values: [:coding, :qa]
     field :synced_from_server, :boolean, default: false
     # A list of attachment maps, e.g. a widget-reported screenshot copied into
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
@@ -117,6 +127,11 @@ defmodule CodeMySpec.Issues.Issue do
     |> cast(attrs, @castable_fields)
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
+  end
+
+  @doc "Changeset for setting or clearing which copy's team this issue is assigned to."
+  def assignment_changeset(issue, attrs) do
+    cast(issue, attrs, [:assigned_working_copy_id, :awaiting_role])
   end
 
   @doc "Validates a status transition, requiring a resolution/story link where the new status needs one."
