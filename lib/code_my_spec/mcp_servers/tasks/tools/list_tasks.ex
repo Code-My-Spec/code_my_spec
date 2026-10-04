@@ -12,6 +12,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
@@ -29,37 +31,65 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
 
   @impl true
   def execute(params, frame) do
+    case tasks(params, frame) do
+      {:ok, tasks} ->
+        {:reply, Response.tool() |> Response.text(format_tasks(tasks)), frame}
+
+      {:error, reason} ->
+        {:reply, Response.tool() |> Response.error("#{reason}"), frame}
+    end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, tasks} <- tasks(params, frame) do
+      {:ok, Enum.map(tasks, &row/1)}
+    end
+  end
+
+  # An explicit `agent_id` wins over the caller's own identity, and that is the
+  # whole of supervising: `resolve_owner/3` read only `frame.assigns`, so this
+  # answered about whoever called it and there was no way to ask about anyone
+  # else. The moduledoc has always said "so the main agent can track subagent
+  # progress" — it could not.
+  #
+  # Measured before the change: a QA agent's stop menu told it "you have 4 open
+  # tasks ... call `evaluate_task` with task_id 6735cdc7", while the main agent
+  # calling this tool got its own session's 277 and no `6735cdc7` among them.
+  # Supervisor and supervised disagreed about which tasks existed and neither
+  # could see the other's view, so "idle because finished" and "idle holding
+  # four unevaluated tasks" were indistinguishable from the outside.
+  #
+  # `Agents.fetch_agent/2` is scope-guarded, so this reaches only agents on the
+  # caller's own project — naming somebody else's agent finds nothing rather
+  # than crossing a boundary.
+  #
+  # Lifted out of `execute/2` so the script path runs the same query rather
+  # than a second copy of it.
+  defp tasks(params, frame) do
     session_id = Map.get(params, :session_id)
     status_filter = Map.get(params, :status)
-
-    # An explicit `agent_id` wins over the caller's own identity, and that is the
-    # whole of supervising: `resolve_owner/3` read only `frame.assigns`, so this
-    # answered about whoever called it and there was no way to ask about anyone
-    # else. The moduledoc has always said "so the main agent can track subagent
-    # progress" — it could not.
-    #
-    # Measured before the change: a QA agent's stop menu told it "you have 4 open
-    # tasks ... call `evaluate_task` with task_id 6735cdc7", while the main agent
-    # calling this tool got its own session's 277 and no `6735cdc7` among them.
-    # Supervisor and supervised disagreed about which tasks existed and neither
-    # could see the other's view, so "idle because finished" and "idle holding
-    # four unevaluated tasks" were indistinguishable from the outside.
-    #
-    # `Agents.fetch_agent/2` is scope-guarded, so this reaches only agents on the
-    # caller's own project — naming somebody else's agent finds nothing rather
-    # than crossing a boundary.
     agent_id = Map.get(params, :agent_id) || frame.assigns[:agent_id]
 
     with {:ok, status} <- parse_status(status_filter),
          {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, owner} <- resolve_owner(scope, session_id, agent_id) do
-      tasks = filter_tasks(owner.tasks || [], status)
-      response = Response.tool() |> Response.text(format_tasks(tasks))
-      {:reply, response, frame}
-    else
-      {:error, reason} ->
-        {:reply, Response.tool() |> Response.error("#{reason}"), frame}
+      {:ok, filter_tasks(owner.tasks || [], status)}
     end
+  end
+
+  # String keys and plain values: these cross into a Lua VM, where an atom
+  # key and a struct are not things that exist.
+  defp row(task) do
+    %{
+      "id" => task.id,
+      "requirement_name" => task.requirement_name,
+      "component_module_name" => task.component_module_name,
+      "status" => to_string(task.status),
+      "agent_id" => task.agent_id,
+      "blocker_type" => task.blocker_type && to_string(task.blocker_type),
+      "blocker_id" => task.blocker_id
+    }
   end
 
   defp filter_tasks(tasks, nil), do: tasks
