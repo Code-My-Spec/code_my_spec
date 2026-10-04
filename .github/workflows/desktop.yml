@@ -1,0 +1,94 @@
+name: Desktop installers
+
+# The desktop build (bb8bc042): the server and harness in one release, in a
+# native window (elixir-desktop on desktop_webview), packaged by
+# desktop_deployment. Builds the unsigned macOS .dmg as an artifact; nothing
+# is published.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  MIX_ENV: desktop
+  OTP_VERSION: "28.1"
+  ELIXIR_VERSION: "1.19.4"
+  # Must match desktop_webview's ref in mix.exs.
+  WEBVIEW_REF: 626b270cdcc133fb05f84c12ee98f1cfae009a8a
+
+jobs:
+  macos:
+    name: macOS .dmg
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # A stock OTP links dylibs the installer cannot relocate into the .app;
+      # scripts/desktop_otp_macos.sh says why. Cached on the recipe itself.
+      - name: Restore packaging OTP
+        id: otp-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/desktop-otp
+          key: desktop-otp-${{ runner.os }}-${{ runner.arch }}-${{ env.OTP_VERSION }}-${{ hashFiles('scripts/desktop_otp_macos.sh') }}
+
+      - name: Build packaging OTP
+        if: steps.otp-cache.outputs.cache-hit != 'true'
+        run: |
+          brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+          scripts/desktop_otp_macos.sh "$HOME/desktop-otp/$OTP_VERSION" "$OTP_VERSION"
+          rm -rf "$HOME/desktop-otp/kerl"
+
+      - name: Install Elixir on that OTP
+        run: |
+          curl -fsSL -o elixir.zip \
+            "https://github.com/elixir-lang/elixir/releases/download/v${ELIXIR_VERSION}/elixir-otp-28.zip"
+          mkdir -p "$HOME/elixir" && unzip -q elixir.zip -d "$HOME/elixir"
+          echo "$HOME/desktop-otp/$OTP_VERSION/bin" >> "$GITHUB_PATH"
+          echo "$HOME/elixir/bin" >> "$GITHUB_PATH"
+
+      - name: Restore webview host
+        id: host-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/webview-host
+          key: webview-host-${{ runner.arch }}-${{ env.WEBVIEW_REF }}
+
+      - name: Build webview host
+        if: steps.host-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/elixir-desktop/webview.git webview-src
+          git -C webview-src checkout "$WEBVIEW_REF"
+          webview-src/scripts/build_macos.sh
+          mkdir -p "$HOME/webview-host"
+          cp webview-src/priv/native/macos/DesktopWebView "$HOME/webview-host/"
+
+      - name: Restore deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ hashFiles('mix.lock') }}
+          restore-keys: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-
+
+      - name: Build the .dmg
+        run: |
+          export DESKTOP_HOST_BINARY="$HOME/webview-host/DesktopWebView"
+          erl -noshell -eval 'io:format("OTP ~s at ~s~n", [erlang:system_info(otp_release), code:root_dir()]), halt().'
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile
+          mix assets.deploy
+          mix release code_my_spec --overwrite
+          ls -la _build/desktop/*.dmg
+
+      - name: Upload .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: codemyspec-desktop-macos
+          path: _build/desktop/*.dmg
+          retention-days: 7
