@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1677Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -32,6 +33,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1677Spex do
       given_ "a coder holding a task was handed the menu and has started its next turn",
              context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         context = context |> start_session() |> put_to_work()
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

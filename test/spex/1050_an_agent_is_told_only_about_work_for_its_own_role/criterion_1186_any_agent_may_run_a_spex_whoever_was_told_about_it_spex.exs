@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
 
   alias CodeMySpec.McpServers.Tasks.Tools.StartAnalysis
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,6 +46,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
     scenario "Any agent may run a spex, whoever was told about it" do
       given_ "the project chain is past kickoff", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      end
+
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
       given_ :synced_context_component

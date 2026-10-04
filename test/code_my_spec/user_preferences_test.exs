@@ -60,6 +60,16 @@ defmodule CodeMySpec.UserPreferencesTest do
       assert user_preference.user_id == scope.user.id
     end
 
+    # Two first requests at once each found no row; the second insert raised
+    # on user_preferences_user_id_index and served a 500.
+    test "a second row for the same user is a changeset error, not a crash" do
+      scope = user_scope_fixture()
+      {:ok, _} = UserPreferences.create_user_preferences(scope, @invalid_attrs)
+
+      assert {:error, %Ecto.Changeset{errors: [user_id: _]}} =
+               UserPreferences.create_user_preferences(scope, @invalid_attrs)
+    end
+
     test "create_user_preferences/2 with invalid data succeeds with nil values" do
       scope = user_scope_fixture()
 

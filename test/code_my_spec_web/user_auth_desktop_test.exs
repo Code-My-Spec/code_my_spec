@@ -22,6 +22,10 @@ defmodule CodeMySpecWeb.UserAuthDesktopTest do
       on_exit(fn -> Application.put_env(:code_my_spec, :env, previous) end)
     end
 
+    test "the root is the app, not the public site", %{conn: conn} do
+      assert conn |> get(~p"/") |> redirected_to() == ~p"/app"
+    end
+
     test "an anonymous request is the desktop user", %{conn: conn, user: user} do
       conn = UserAuth.fetch_current_scope_for_user(conn, [])
       assert conn.assigns.current_scope.user.id == user.id

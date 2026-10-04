@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/billing.ex"
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
@@ -34,6 +35,10 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the code has an unplanned dependency", context do
         app = ComponentGraphHelpers.app(context)
         billing = ComponentGraphHelpers.design!(context, "#{app}.Billing")
@@ -44,6 +49,12 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
             @moduledoc false
           end
           """)
+
+        HarnessHooks.write_file(context, @impl_path, """
+        defmodule #{app}.Billing do
+          @moduledoc false
+        end
+        """)
 
         Fixtures.problem_fixture(context.scope, %{
           source: "architecture",
@@ -59,20 +70,16 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
       end
 
       when_ "an agent finishes a change", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

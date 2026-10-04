@@ -21,9 +21,19 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
+  @failing_test """
+  defmodule ExampleContextTest do
+    use ExUnit.Case
+
+    test "fails on purpose" do
+      assert 1 == 2, "exunit failure fixture"
+    end
+  end
+  """
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
   setup :register_log_in_setup_account
@@ -42,15 +52,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent has signalled session start and started an implementation_file task",
              context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -68,11 +78,10 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
-      given_ "the agent edits the impl file during the task", context do
-        # With microsecond-precision started_at, only files modified
-        # post-start_task count as "changed during the task." Re-write
-        # the impl file so the pipeline picks it up under the
-        # block_changed scope.
+      given_ "the agent writes the impl and its test during the task", context do
+        # A ComponentCode task writes both. The test is the agent's own edit, so
+        # a failure on it is this session's to fix — which is what lets the stop
+        # hold it, whether or not the task's requirement is met by then.
         :ok =
           Environments.write_file(
             context.environment,
@@ -80,26 +89,32 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
             "defmodule ExampleContext do\n  @moduledoc false\nend\n"
           )
 
+        :ok = record_edit(context, @impl_path)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @test_path,
+            @failing_test
+          )
+
+        :ok = record_edit(context, @test_path)
+
         {:ok, context}
       end
 
       when_ "the stop hook fires after the analyzer ran the test suite and a test failed",
             context do
-        response =
-          use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

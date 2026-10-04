@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -29,6 +30,10 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
 
   spex "Dispatch directive carries the role atom so the main agent can route", criterion: 662 do
     scenario "qa_complete requirement → directive surfaces role: :qa explicitly" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session exists with a pending qa_complete requirement on a story",
              context do
         # Advance project to qa_complete frontier: all prereqs satisfied through
@@ -37,14 +42,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

@@ -10,13 +10,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   """
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -30,23 +30,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   spex "Every caller sees only its own open questions", criterion: 911 do
     scenario "Durable-agent identity takes precedence over an external session on the same copy" do
       given_ "two external sessions and two internal agents share a user and project", context do
-        first = given_a_staffed_checkout(context, "spex_2418_first")
-        second = given_a_staffed_checkout(context, "spex_2418_second")
+        # Two checkouts of the project, each served by its own live harness.
+        first = HarnessHooks.ensure_live_harness(context)
+        second = HarnessHooks.given_a_live_harness(context, files: %{"mix.exs" => "# second\n"})
 
         external_callers =
           Enum.map([{first, "External first"}, {second, "External second"}], fn {copy, label} ->
             session_id = "spex-2418-#{System.unique_integer([:positive])}"
 
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", copy.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> Phoenix.ConnTest.dispatch(
-              CodeMySpecLocalWeb.Endpoint,
-              :post,
-              "/api/hooks/session-start",
-              %{"session_id" => session_id}
-            )
-            |> Phoenix.ConnTest.json_response(200)
+            HarnessHooks.post_hook(copy, "session-start", %{"session_id" => session_id})
 
             %{label: label, frame: %Frame{assigns: %{current_scope: copy.scope}}}
           end)

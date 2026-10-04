@@ -48,6 +48,7 @@ defmodule CodeMySpecSpex.Story895.Criterion2395Spex do
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.TempFile
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -112,25 +113,16 @@ defmodule CodeMySpecSpex.Story895.Criterion2395Spex do
         path = spex_path(context.story, criterion)
 
         :ok = Environments.write_file(context.environment, path, failing_spex(criterion.id))
+        HarnessHooks.write_file(context, path, failing_spex(criterion.id))
 
         {:ok, Map.put(context, :spex_path, path)}
       end
 
       when_ "the agent attempts to stop", context do
-        response =
-          use_cmd_cassette "pipeline_spex_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => red_fixture("compile.jsonl"),
-                "spex" => spex_jsonl(context.spex_path)
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", red_fixture("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "spex", spex_jsonl(context.spex_path))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

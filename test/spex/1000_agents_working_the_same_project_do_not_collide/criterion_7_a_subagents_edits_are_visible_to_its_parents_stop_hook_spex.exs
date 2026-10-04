@@ -25,12 +25,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
-  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
-  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @path "lib/written_by_the_subagent.ex"
 
   setup :register_log_in_setup_account
@@ -47,66 +45,31 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
         # Same working copy, same harness. Only `agent_id` distinguishes them,
         # which is the whole claim: the subagent is a lane inside this agent, not
         # a second one.
-        {:ok, _reply, socket} =
-          UserSocket
-          |> socket("harness_parent", %{scope: context.scope})
-          |> subscribe_and_join(
-            HarnessProjectChannel,
-            "harness_project:#{context.project.id}",
-            %{
-              "contract_version" => @contract_version,
-              "harness_id" => context.scope.active_working_copy_id,
-              "root" => context.scope.cwd,
-              "label" => "the harness the parent and its subagent share"
-            }
-          )
+        context = HarnessHooks.ensure_live_harness(context)
 
         {:ok,
          context
-         |> Map.put(:agent, socket)
          |> Map.put(:working_copies_before, working_copies(context))
          |> Map.put(:parent_session, "spex-parent-#{System.unique_integer([:positive])}")
          |> Map.put(:subagent_id, "a-sub-#{System.unique_integer([:positive])}")}
       end
 
       when_ "the subagent edits a file", context do
-        :ok =
-          Environments.write_file(
-            context.environment,
+        # On disk in the one checkout, where the harness serving it notices and
+        # reports the changed tree — the subagent did not get a harness of its own.
+        file_path =
+          HarnessHooks.write_file(
+            context,
             @path,
             "defmodule WrittenByTheSubagent do\n  @moduledoc false\nend\n"
           )
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> Phoenix.ConnTest.dispatch(
-          CodeMySpecLocalWeb.Endpoint,
-          :post,
-          "/api/hooks/post-tool-use",
-          %{
-            "session_id" => context.parent_session,
-            "agent_id" => context.subagent_id,
-            "tool_name" => "Write",
-            "tool_input" => %{"file_path" => Path.join(context.scope.cwd, @path)}
-          }
-        )
-
-        # The working copy reporting what it now contains. One harness sends it,
-        # because there is one checkout — the subagent did not get its own.
-        ref =
-          Phoenix.ChannelTest.push(context.agent, "observations", %{
-            "observations" => [
-              %{
-                "path" => @path,
-                "role" => "implementation",
-                "fingerprint" => "by-the-subagent",
-                "mtime" => DateTime.utc_now() |> DateTime.to_iso8601()
-              }
-            ]
-          })
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
+        HarnessHooks.post_hook(context, "post-tool-use", %{
+          "session_id" => context.parent_session,
+          "agent_id" => context.subagent_id,
+          "tool_name" => "Write",
+          "tool_input" => %{"file_path" => file_path}
+        })
 
         {:ok, context}
       end
@@ -129,16 +92,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion738Spex do
 
       then_ "the parent's stop hook evaluates that change as its own", context do
         stop =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(
-            CodeMySpecLocalWeb.Endpoint,
-            :post,
-            "/api/hooks/stop",
-            %{"session_id" => context.parent_session}
-          )
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.parent_session})
 
         # The regression this guards: attribution coming back unavailable, which
         # renders as a block on every finding in the project rather than on the

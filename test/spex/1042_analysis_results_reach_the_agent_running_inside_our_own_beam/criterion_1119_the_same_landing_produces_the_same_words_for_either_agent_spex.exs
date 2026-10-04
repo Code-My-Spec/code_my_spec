@@ -20,16 +20,21 @@ defmodule CodeMySpecSpex.Story1042.Criterion3045Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   import CodeMySpecSpex.AgentToolsHelpers
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The alert is the same one an external agent gets — same content, same silences", criterion: 1119 do
+  spex "The alert is the same one an external agent gets — same content, same silences",
+    criterion: 1119 do
     scenario "The same landing produces the same words for either agent" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "one analyzer run has landed with problems in a working copy", context do
         Fixtures.problem_fixture(context.scope, %{
           source: "compiler",
@@ -44,14 +49,10 @@ defmodule CodeMySpecSpex.Story1042.Criterion3045Spex do
         # The hook is the external agent's only way to be told, so it is the
         # honest surface for that half of the comparison.
         external =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/post-tool-use", %{
+          HarnessHooks.post_hook(context, "post-tool-use", %{
             "session_id" => "an-external-session",
             "tool_name" => "Read"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :external, external["systemMessage"])}
       end

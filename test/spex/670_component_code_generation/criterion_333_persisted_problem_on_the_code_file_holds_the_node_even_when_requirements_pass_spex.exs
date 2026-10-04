@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5588Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
 
   @code_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_compile_error"
@@ -33,15 +34,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5588Spex do
     scenario "Persisted problem on the code file holds the node even when requirements pass" do
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent has signalled session start and started an implementation_file task",
              context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -70,21 +71,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5588Spex do
             """
           )
 
+        :ok = record_edit(context, @code_path)
+
         {:ok, context}
       end
 
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "pipeline_compile_error", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{"compile" => fixture_path("compile.jsonl")}
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

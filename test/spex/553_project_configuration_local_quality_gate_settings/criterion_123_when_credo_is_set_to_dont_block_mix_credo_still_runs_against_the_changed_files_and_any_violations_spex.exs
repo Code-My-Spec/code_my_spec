@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6030Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_clean_credo"
@@ -49,23 +50,17 @@ defmodule CodeMySpecSpex.Story553.Criterion6030Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "credo_dont_block", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "credo" => fixture_path("credo_dont_block.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "credo", fixture_path("credo_dont_block.json"))
+        HarnessHooks.land_analysis(context, "spex", fixture_path("spex.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

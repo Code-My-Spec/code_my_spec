@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6090Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -21,16 +22,16 @@ defmodule CodeMySpecSpex.Story704.Criterion6090Spex do
 
   spex "Registration older than TTL is pruned on next read", criterion: 435 do
     scenario "sub-agent with heartbeat older than 10 min is absent from list_session_subagents" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session with a sub-agent whose heartbeat is older than the configured TTL",
              context do
         session_id = "spex-6090-#{System.unique_integer([:positive])}"
         agent_id = "stale-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         # Heartbeat 30 minutes ago — well past the 10-minute default TTL
         {:ok, _session} =

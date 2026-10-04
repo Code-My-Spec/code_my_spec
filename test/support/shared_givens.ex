@@ -109,6 +109,13 @@ defmodule CodeMySpecSpex.SharedGivens do
     `context.html`. Use this in any story-603/604/605 spec that needs
     to interact with the project-name form.
 
+  Every `*_task_started` given (and `:persona_research_prompt`) posts its
+  `session-start` through a live harness (`HarnessHooks.open_session/1`), the
+  path production takes, and leaves `context.harness` for the hooks that
+  follow. Its checkout starts with what `context.environment` held; a file the
+  scenario writes to the environment afterwards reaches the disk through
+  `record_edit/3`.
+
   Add new shared givens only after a third spec duplicates setup.
   """
 
@@ -127,6 +134,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -393,7 +401,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:ok, Map.put(context, :liveview_component, component)}
   end
 
-  # Drives the real POST /api/hooks/session-start hook and the
+  # Drives the real session-start hook, through a live harness, and the
   # start_task MCP tool to create an active implementation task with automatic validation
   # on `context.component`. Uses the context_graph's :parent-scoped
   # `implementation_file` requirement — already satisfied because
@@ -401,14 +409,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # TaskEvaluator passes via RequirementCalculator with no extra
   # artifacts needed.
   register_given :context_implementation_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -434,14 +435,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # Captures `session_id`, `task_id`, and `prompt` so specs can drive
   # `evaluate_task` directly or assert on prompt content.
   register_given :bdd_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -561,14 +555,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # Captures the active task id from the session so specs can call
   # `evaluate_task` against it (personas_complete is manual-validation).
   register_given :persona_research_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -591,14 +578,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # when a spec tests static prompt content (e.g., "the prompt tells the
   # agent to X") rather than pipeline side effects.
   register_given :persona_research_prompt, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -636,14 +616,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # handler runs `command/2`, which writes missing pre-made ADRs to the
   # env as a side effect and returns the prompt text.
   register_given :technical_strategy_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -674,14 +647,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # `CodeGeneration.command/2`, which returns the orchestration prompt
   # (no side effects on disk — code_generation is a pure prompt builder).
   register_given :code_generation_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -712,14 +678,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # the other *_task_started givens — drives the real hook + MCP call so
   # the pipeline sees a live `ThreeAmigos` task.
   register_given :three_amigos_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -743,14 +702,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # returns the fix-issues prompt. issues_resolved is manual-validation
   # so the task stays open for evaluate_task to drive in `when_` steps.
   register_given :fix_issues_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -783,14 +735,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # qa_setup is manual-validation so the task stays open for evaluate_task
   # to drive in `when_` steps.
   register_given :qa_setup_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -822,14 +767,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # prompt (no side effects on disk — qa_integration_plan is a pure
   # prompt builder).
   register_given :qa_integration_plan_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -861,14 +799,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # prompt (no side effects on disk). Manual-validation task: stays open
   # for evaluate_task to drive in `when_` steps.
   register_given :spex_boundary_ready_task_started, context do
-    session_id = "spex-#{System.unique_integer([:positive])}"
-
-    post(
-      hook_conn(context.scope),
-      "/api/hooks/session-start",
-      %{"session_id" => session_id}
-    )
-    |> Phoenix.ConnTest.json_response(200)
+    {context, session_id} = HarnessHooks.open_session(context)
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -1067,23 +998,6 @@ defmodule CodeMySpecSpex.SharedGivens do
     """
   end
 
-  # A hook posted the way a real one arrives: naming its working copy by id.
-  #
-  # These sent `x-working-dir` alone, so every one of them took `HarnessScope`'s
-  # walk-up fallback — "guesses the working copy by walking up to the nearest
-  # mix.exs and cannot tell two checkouts apart reliably". Fifteen of those
-  # warnings in a single spex slice, and none at all in production across every
-  # log rotation, because onboarded hooks carry the id.
-  #
-  # That asymmetry was the problem: the suite exercised the fallback rather than
-  # the mechanism that runs. A spex that drives "the real POST
-  # /api/hooks/session-start hook" should drive the real identity path with it,
-  # or it cannot notice the day that path breaks.
-  #
-  # The directory is gone now, here and on the wire. Sending both would let a
-  # wrong root ride along unnoticed, which is the failure mode itself: the server
-  # answers where the working copy is, from the harness record, so a spex that
-  # also announced one could not have caught them disagreeing.
   @doc """
   Record an edit the way an agent records one — through `PostToolUse`.
 
@@ -1101,22 +1015,42 @@ defmodule CodeMySpecSpex.SharedGivens do
   and a scenario that calls past it cannot notice the day that hook stops
   writing.
   """
-  def record_edit(context, path, tool \\ "Write") do
-    context.scope
-    |> hook_conn()
-    |> Phoenix.ConnTest.post("/api/hooks/post-tool-use", %{
+  def record_edit(context, path, tool \\ "Write")
+
+  def record_edit(%{harness: %{}} = context, path, tool) do
+    HarnessHooks.post_hook(context, "post-tool-use", %{
       "session_id" => context.session_id,
       "tool_name" => tool,
-      "tool_input" => %{"file_path" => path}
+      "tool_input" => %{"file_path" => on_disk(context, path)}
     })
-    |> Phoenix.ConnTest.json_response(200)
 
     :ok
   end
 
-  defp hook_conn(scope) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
+  def record_edit(_context, path, _tool) do
+    raise ArgumentError,
+          "record_edit(#{inspect(path)}) needs a live harness: start the session with a " <>
+            "`*_task_started` given or `HarnessHooks.open_session/1` first"
+  end
+
+  # The edit the hook records is one the checkout holds. A scenario still
+  # writes through `context.environment`, so its content is put on disk here --
+  # the harness reads the disk, and a stop judging this file judges what is
+  # there.
+  defp on_disk(%{harness: %{root: root}} = context, path) do
+    absolute = Path.expand(path, root)
+    relative = Path.relative_to(absolute, root)
+
+    case Environments.read_file(Map.get(context, :environment), relative) do
+      {:ok, content} -> write_if_changed(context, relative, absolute, content)
+      {:error, _} -> absolute
+    end
+  end
+
+  defp write_if_changed(context, relative, absolute, content) do
+    case File.read(absolute) do
+      {:ok, ^content} -> absolute
+      _ -> HarnessHooks.write_file(context, relative, content)
+    end
   end
 end

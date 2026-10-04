@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3200Spex do
   import CodeMySpecSpex.IdleAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,6 +42,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3200Spex do
     scenario "Devops work has no role yet, so the main agent takes it" do
       given_ "the project chain is past kickoff", context do
         {:ok, ProjectStateFixtures.apply_project_kickoff(context)}
+      end
+
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
       given_ "a main agent and a coding agent, and no devops agent", context do

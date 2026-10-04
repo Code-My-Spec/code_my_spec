@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6086Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -28,14 +29,14 @@ defmodule CodeMySpecSpex.Story704.Criterion6086Spex do
 
   spex "Main agent registers a freshly-spawned sub-agent", criterion: 431 do
     scenario "POST /subagent-start with a fresh agent_id appears in session state as idle" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a live session exists with no registered sub-agents", context do
         session_id = "spex-6086-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end
@@ -45,15 +46,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6086Spex do
         agent_id = "test-writer-#{System.unique_integer([:positive])}"
 
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/subagent-start", %{
+          HarnessHooks.post_hook(context, "subagent-start", %{
             "session_id" => context.session_id,
             "agent_id" => agent_id,
             "agent_name" => "@test-writer"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.merge(context, %{agent_id: agent_id, register_response: response})}
       end

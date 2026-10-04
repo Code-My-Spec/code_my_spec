@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Case do
   alias CodeMySpec.Content.S3Client
   alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
   alias ExUnit.Callbacks
   alias Phoenix.ConnTest
@@ -341,6 +342,16 @@ defmodule CodeMySpecSpex.Case do
     # degrading, which would read as a broken suite instead of a deliberate
     # configuration.
     unless real_pool?() do
+      # Manual, for an async spex. `mix spex` loads no test helper, so nothing
+      # else sets it, and the ambient mode is `:auto` (or the `{:shared, _}` a
+      # sync spex left). A process this test never allowed explicitly — a
+      # channel Phoenix spawned for a live harness — then falls back to that
+      # ambient mode instead of its `$callers`, and reads a connection of its
+      # own: the project it was asked to join is not in it, and the join is
+      # refused as unauthorized (638ae30e). Async modules run before sync ones,
+      # so this cannot pull the mode out from under a shared-mode spex.
+      if tags[:async], do: Sandbox.mode(CodeMySpec.Repo, :manual)
+
       pid =
         Sandbox.start_owner!(CodeMySpec.Repo,
           shared: not tags[:async],
@@ -1793,7 +1804,15 @@ defmodule CodeMySpecSpex.Case do
 
   The target is a context, a scope, or the id itself, because callers have all
   three.
+
+  A context with a live harness (`:harness`, from
+  `CodeMySpecSpex.HarnessHooks`) is posted through that harness instead — the
+  path production takes — and answers what it answers. The others still reach
+  `CodeMySpecLocalWeb.Endpoint`.
   """
+  def post_hook(%{harness: %{}} = context, "/api/hooks/" <> hook, params),
+    do: HarnessHooks.post_hook(context, hook, params)
+
   def post_hook(target, path, params) do
     ConnTest.build_conn()
     |> Conn.put_req_header("x-harness-id", working_copy_id(target))
@@ -4140,7 +4159,8 @@ defmodule CodeMySpecSpex.Case do
     # decision — absent (the default), `BurstBox.Lifecycle.check/3` reads
     # `:not_due` and never touches `:busy?`/`:destroy` at all, which is the
     # ordinary case for every criterion here that is not about release.
-    box = if box_release == :not_due, do: box, else: Map.put(box, "created", "2026-01-01T00:00:00Z")
+    box =
+      if box_release == :not_due, do: box, else: Map.put(box, "created", "2026-01-01T00:00:00Z")
 
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 

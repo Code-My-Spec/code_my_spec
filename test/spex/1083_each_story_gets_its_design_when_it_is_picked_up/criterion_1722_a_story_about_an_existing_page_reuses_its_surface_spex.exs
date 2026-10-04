@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -20,6 +21,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
 
   spex "A story about an existing page reuses its surface", criterion: 1722 do
     scenario "linking to the existing Billing page creates no new surface component" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "Sam's project already has a Billing page component", context do
         app = context.project.module_name || "MyApp"
 

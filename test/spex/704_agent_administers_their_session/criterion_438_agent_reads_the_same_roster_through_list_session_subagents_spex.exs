@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -28,31 +29,27 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
     scenario "list_session_subagents returns both idle and assigned sub-agents" do
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a session with two registered sub-agents (one idle, one assigned)",
              context do
         session_id = "spex-6093-#{System.unique_integer([:positive])}"
         idle_agent = "idle-#{System.unique_integer([:positive])}"
         assigned_agent = "assigned-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         for {agent_id, agent_name} <- [
               {idle_agent, "@idle-agent"},
               {assigned_agent, "@assigned-agent"}
             ] do
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/subagent-start", %{
+          HarnessHooks.post_hook(context, "subagent-start", %{
             "session_id" => session_id,
             "agent_id" => agent_id,
             "agent_name" => agent_name
           })
-          |> Phoenix.ConnTest.json_response(200)
         end
 
         # assigned_agent claims the implementation_file task

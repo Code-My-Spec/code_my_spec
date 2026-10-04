@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
 
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -36,6 +37,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
       given_ "coding work is waiting", context do
         # The 1184 premise: everything but the spex run, so coding holds work.
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         {:ok, context}
       end

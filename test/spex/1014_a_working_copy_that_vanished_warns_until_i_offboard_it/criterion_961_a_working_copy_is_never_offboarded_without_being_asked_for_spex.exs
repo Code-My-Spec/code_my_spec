@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
   import CodeMySpecSpex.PathReportHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.RealDisk
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,7 +45,16 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
 
   spex "Ordinary work by other agents never removes anybody's copy", criterion: 961 do
     scenario "A working copy is never offboarded without being asked for" do
-      given_ "a working copy that has been shown as missing for days", context do
+      given_ "another agent working on the project", context do
+        # Its own checkout, served by a live harness its hooks go through. First,
+        # because the missing copy's harness below puts its own deploy key on the
+        # project and in `:harness_token`, which every harness on this node
+        # connects with: started after, this one would present a key the project
+        # no longer has.
+        {:ok, Map.put(context, :live_agent, HarnessHooks.ensure_live_harness(context))}
+      end
+
+      given_ "and a working copy that has been shown as missing for days", context do
         device = device_id(context, hostname: "the-laptop")
 
         root = checkout("placeholder")
@@ -62,10 +71,6 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
         report(reporter)
 
         {:ok, Map.put(context, :working_copy_id, working_copy_id)}
-      end
-
-      given_ "and another agent still working on the project", context do
-        {:ok, Map.put(context, :live_agent, Fixtures.live_agent_scope(context.scope))}
       end
 
       when_ "other agents sync components and run their analyses", context do

@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -21,6 +22,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
 
   spex "A story for a new page gets a new surface", criterion: 1723 do
     scenario "the architect creates and links a new Reports surface" do
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "Sam's project has no Reports page", context do
         app = context.project.module_name || "MyApp"
 
@@ -94,7 +99,8 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
             frame
           )
 
-        {:ok, Map.merge(context, %{module_name: module_name, evaluate_response: evaluate_response})}
+        {:ok,
+         Map.merge(context, %{module_name: module_name, evaluate_response: evaluate_response})}
       end
 
       then_ "a new Reports surface component exists", context do

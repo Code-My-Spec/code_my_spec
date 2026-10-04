@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5087Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
 
@@ -36,9 +37,14 @@ defmodule CodeMySpecSpex.Story553.Criterion5087Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the implementation file has been mutated with credo violations",
              context do
         :ok = Environments.write_file(context.environment, @impl_path, messy_impl())
+        HarnessHooks.write_file(context, @impl_path, messy_impl())
         {:ok, context}
       end
 
@@ -46,22 +52,16 @@ defmodule CodeMySpecSpex.Story553.Criterion5087Spex do
         # No session_id — the stop controller skips TaskEvaluator when there
         # is no session, keeping this spec focused on the pipeline/config
         # interaction rather than requirement evaluation.
-        response =
-          use_cmd_cassette "credo_violation", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              # `spex_stale` runs whatever the `spex` config says — the config
-              # only decides whether a failure blocks. Declaring the suite
-              # green keeps it out of a spec about credo.
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        # `spex_stale` runs whatever the `spex` config says — the config only
+        # decides whether a failure blocks. A green suite keeps it out of a spec
+        # about credo.
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

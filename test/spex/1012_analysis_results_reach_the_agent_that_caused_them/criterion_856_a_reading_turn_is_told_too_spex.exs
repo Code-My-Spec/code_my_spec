@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.Story1012.Criterion2343Spex do
 
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpecSpex.HarnessHooks
+
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
   setup :register_log_in_setup_account
@@ -36,17 +38,32 @@ defmodule CodeMySpecSpex.Story1012.Criterion2343Spex do
         {:ok, Map.put(context, :session, "spex-reader-#{System.unique_integer([:positive])}")}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       when_ "an analyzer run completes", context do
-        use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          post_hook(context, "/api/hooks/stop", %{
-            "session_id" => "spex-other-#{System.unique_integer([:positive])}",
-            "test_output_files" => %{
-              "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-              "compile" => Path.expand(Path.join(@fixture_dir, "compile.jsonl")),
-              "exunit" => Path.expand(Path.join(@fixture_dir, "exunit.json"))
-            }
-          })
-        end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(
+          context,
+          "compiler",
+          Path.expand(Path.join(@fixture_dir, "compile.jsonl"))
+        )
+
+        HarnessHooks.land_analysis(
+          context,
+          "exunit",
+          Path.expand(Path.join(@fixture_dir, "exunit.json"))
+        )
+
+        HarnessHooks.post_hook(context, "stop", %{
+          "session_id" => "spex-other-#{System.unique_integer([:positive])}"
+        })
 
         {:ok, context}
       end

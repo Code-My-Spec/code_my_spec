@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -67,21 +68,19 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
         # hook: if the flag were still on with actionable work, stop
         # would block with a continuation directive. The empty allow
         # signal is the surface confirmation that continuous cleared.
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" =>
-                  Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(
+          context,
+          "compiler",
+          Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+        )
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         assert response == %{},
                "expected stop to allow after tap-out approval, got: #{inspect(response)}"

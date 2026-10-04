@@ -39,6 +39,26 @@ defmodule CodeMySpecSpex.HarnessHooks do
     * **The harness side** touches no database, and everything it holds is
       keyed on the checkout's root.
 
+  ## Two working copies
+
+  `setup_active_project` gives the scope a fixture working copy; onboarding
+  the live harness mints a second one, and the session a hook opens belongs to
+  that one. So the live helpers repoint `context.scope.active_working_copy_id`
+  at the harness's copy, and what a spex does with `context.scope` afterwards —
+  an MCP tool call, a hook of its own — speaks for the copy its session is on.
+
+  The harness's copy is the project's main copy: onboarding designates a
+  project's only checkout with a root as main, and the fixture copy has none.
+  A team member holds no story on main, so a scenario about a coder working a
+  story asks for `feature: true`, which designates the fixture copy main and
+  leaves the harness's a feature checkout beside it.
+
+  A known split: a frame or scope captured *before* the harness started still
+  names the fixture copy, and so does copy-scoped state a given recorded then —
+  analysis runs, agents, problems. A spex whose premise is that state starts
+  the harness first. Spex not yet live keep the fixture copy throughout.
+  B1c/B2 remove the fixture copy.
+
   ## Teardown
 
   One `on_exit`, registered before the harness starts so a join that fails is
@@ -52,14 +72,23 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   alias CmsHarnessTest.LiveHarness
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessReports
   alias Phoenix.ConnTest
   alias Phoenix.Ecto.SQL.Sandbox, as: SQLSandbox
   alias Plug.Conn
 
-  # A join, a read-model round trip, a scan and a reconcile. Generous because
-  # the machine running this is usually running other suites too.
-  @timeout 10_000
+  # Waits follow the harness rather than a clock. Each step is awaited in
+  # windows; after every quiet window the channel client is asked how it is
+  # doing, and only a client that is gone, or has no credential, fails the wait
+  # early. A client still dialling, joining or scanning is progressing on a
+  # loaded machine, and is waited for until the backstop (57aa576c).
+  @window 1_000
+  @backstop 60_000
+
+  @mix_exs "defmodule App.MixProject do\n  use Mix.Project\nend\n"
 
   @doc """
   A checkout of `context.project` on disk, onboarded, served by a real harness
@@ -67,13 +96,16 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   Needs `context.scope` and `context.project` (`setup :setup_active_project`).
   Adds `context.harness`: `root`, `working_copy_id`, `deploy_key`, `device_id`
-  and `server_url`.
+  and `server_url`, and points `context.scope.active_working_copy_id` at the
+  harness's copy (see "Two working copies" in the moduledoc).
 
   Options:
 
     * `:files` — `%{relative_path => content}` written into the checkout and
       left uncommitted on the template's commit. Give it at least one file the
       scanner tracks: a harness whose scan finds nothing refuses to send it.
+    * `:feature` — `true` makes this checkout a feature copy, with the scope's
+      fixture copy designated main (see "Two working copies").
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
   def given_a_live_harness(context, opts \\ []) do
@@ -113,9 +145,15 @@ defmodule CodeMySpecSpex.HarnessHooks do
     end)
 
     :ok = LiveHarness.serve(root, sandbox_user_agent())
-    await_joined(working_copy_id)
+    await_joined(working_copy_id, root, handler)
 
-    Map.put(context, :harness, %{
+    if Keyword.get(opts, :feature, false),
+      do: :ok = Fixtures.designate_main(scope, scope.active_working_copy_id)
+
+    scope = %{scope | active_working_copy_id: working_copy_id}
+
+    context
+    |> Map.put(:harness, %{
       root: root,
       working_copy_id: working_copy_id,
       topic: topic,
@@ -123,6 +161,57 @@ defmodule CodeMySpecSpex.HarnessHooks do
       device_id: device.id,
       server_url: url
     })
+    |> Map.put(:scope, scope)
+  end
+
+  @doc """
+  `context` with a live harness: the one it already has, or one started now.
+
+  A new checkout holds what `context.environment` holds, so the files earlier
+  givens seeded in memory (and synced) are on the disk the hook path reads, and
+  in the manifest its File rows come from. Files written to the environment
+  after this are the caller's to put on disk, with `write_file/3`.
+  """
+  @spec ensure_live_harness(map(), keyword()) :: map()
+  def ensure_live_harness(context, opts \\ [])
+  def ensure_live_harness(%{harness: %{}} = context, _opts), do: context
+
+  def ensure_live_harness(context, opts) do
+    files = checkout_files(Map.get(context, :environment))
+    given_a_live_harness(context, Keyword.put(opts, :files, files))
+  end
+
+  # A mix.exs, as every checkout has: the scan has to find something, and a
+  # project whose environment is still empty would otherwise give it nothing.
+  defp checkout_files(%Environment{type: :memory} = env) do
+    env
+    |> Environments.glob("**/*")
+    |> Enum.reject(&(String.starts_with?(&1, "/") or String.starts_with?(&1, "\0")))
+    |> Map.new(fn path -> {path, read!(env, path)} end)
+    |> Map.put_new("mix.exs", @mix_exs)
+  end
+
+  defp checkout_files(_environment), do: %{"mix.exs" => @mix_exs}
+
+  defp read!(env, path) do
+    {:ok, content} = Environments.read_file(env, path)
+    content
+  end
+
+  @doc """
+  A Claude Code session opened on the live harness: `session-start` for a fresh
+  session id, posted through the harness `ensure_live_harness/1` gives the
+  context. Answers `{context, session_id}`.
+  """
+  @spec open_session(map()) :: {map(), String.t()}
+  def open_session(context) do
+    context = ensure_live_harness(context)
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    case post_hook(context, "session-start", %{"session_id" => session_id}) do
+      %{"status" => "active"} -> {context, session_id}
+      refused -> flunk("session-start did not open the session: #{inspect(refused)}")
+    end
   end
 
   @doc """
@@ -148,6 +237,14 @@ defmodule CodeMySpecSpex.HarnessHooks do
   and a hook posted next sees it — the ordering a real agent gets from the
   seconds between its write and its stop.
 
+  The harness is asked to scan now — what its watcher does once its debounce
+  lapses — rather than waited on for the debounce. A client that is not joined
+  at that moment ignores the request and rescans everything when it rejoins,
+  which reports the file just the same.
+
+  A path the scanner does not classify is never in a manifest, so it is put on
+  disk and not waited for.
+
   Answers the absolute path, which is what an agent's `tool_input.file_path`
   carries.
   """
@@ -168,23 +265,153 @@ defmodule CodeMySpecSpex.HarnessHooks do
     File.mkdir_p!(Path.dirname(absolute))
     File.write!(absolute, content)
 
-    receive do
-      {:observed, ^ref} -> :ok
-    after
-      @timeout ->
+    if HarnessReports.scanned?(path) do
+      :ok = LiveHarness.sync_now(root)
+
+      try do
+        await_step(ref, :observed, root, "the harness never reported #{path} to the cloud")
+      after
         :telemetry.detach(ref)
-        flunk("the harness never reported #{path} to the cloud within #{@timeout}ms")
+      end
+    else
+      :telemetry.detach(ref)
     end
 
-    :telemetry.detach(ref)
     absolute
+  end
+
+  @doc """
+  An analyzer run on this copy that has finished, landed the way production
+  lands one: a run opened in the ledger, then its result reported by the
+  harness over its socket (`analysis_result`) and converted and reconciled by
+  the cloud on the harness's copy. Returns once the cloud has announced the
+  run finished, with its status.
+
+  `recording` is the tool's own output for the run — the fixtures the stop
+  hook's `test_output_files` used to name — or `nil` for a clean run. See
+  `CodeMySpecSpex.HarnessReports.result/3`.
+
+  This is what a spex uses to say "the compiler found this", now that the
+  stop hook refuses `test_output_files` for a copy a harness holds.
+  """
+  @spec land_analysis(map(), String.t(), String.t() | nil) :: atom()
+  def land_analysis(%{harness: %{root: root}, scope: scope} = context, source, recording \\ nil) do
+    run = Fixtures.start_analysis_run(scope, source)
+    topic = "analysis:#{context.project.id}"
+    :ok = Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
+
+    try do
+      :ok =
+        LiveHarness.deliver_analysis_result(
+          root,
+          run.id,
+          source,
+          HarnessReports.result(root, source, recording)
+        )
+
+      await_run(run.id, root, now() + @backstop)
+    after
+      Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, topic)
+    end
+  end
+
+  defp await_run(run_id, root, deadline) do
+    receive do
+      {:analysis, %{run_id: ^run_id, status: status}} -> status
+    after
+      @window ->
+        case {client_progress(root), now() < deadline} do
+          {:progressing, true} ->
+            await_run(run_id, root, deadline)
+
+          {:progressing, false} ->
+            flunk("run #{run_id}'s result never landed in #{@backstop}ms; #{client_state(root)}")
+
+          {{:stuck, why}, _in_time} ->
+            flunk("run #{run_id}'s result never landed: #{why}; #{client_state(root)}")
+        end
+    end
+  end
+
+  @doc """
+  The harness's analysis queue begins `run`: reported over its socket as
+  `analysis_started`, as the queue reports it when a run gets its slot.
+  Returns once the cloud's channel has recorded the start.
+  """
+  @spec start_analysis(map(), map()) :: :ok
+  def start_analysis(%{harness: %{root: root, working_copy_id: id}}, %{id: run_id, source: source}) do
+    ref = {__MODULE__, :started, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        ref,
+        [:phoenix, :channel_handled_in],
+        &__MODULE__.handle_started/4,
+        %{id: id, run_id: run_id, test: self(), ref: ref}
+      )
+
+    :ok = LiveHarness.deliver_analysis_started(root, run_id, source, String.duplicate("a", 40))
+
+    try do
+      await_step(ref, :handled, root, "the harness never reported run #{run_id} starting")
+    after
+      :telemetry.detach(ref)
+    end
+
+    :ok
+  end
+
+  @doc "Telemetry handler for `start_analysis/2`: the cloud recorded a run's start."
+  def handle_started([:phoenix, :channel_handled_in], _measure, meta, config) do
+    if meta.event == "analysis_started" and copy_id(meta) == config.id and
+         meta.params["run_id"] == config.run_id do
+      send(config.test, {:live_harness, config.ref, :handled, :ok})
+    end
+  end
+
+  @doc """
+  An agent the live harness runs ends its turn: the harness reports
+  `turn_ended` over its socket, and the cloud decides that agent's stop with
+  the harness's scope — the path an agent under Alloy takes, with no hook.
+  Returns once the cloud's channel has handled the event; what the agent is
+  sent arrives through the agent transport the scenario installed.
+  """
+  @spec end_turn(map(), String.t()) :: :ok
+  def end_turn(%{harness: %{root: root, working_copy_id: id}}, agent_id) do
+    ref = {__MODULE__, :turn_ended, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        ref,
+        [:phoenix, :channel_handled_in],
+        &__MODULE__.handle_turn_event/4,
+        %{id: id, agent_id: agent_id, test: self(), ref: ref}
+      )
+
+    :ok = LiveHarness.end_turn(root, agent_id)
+
+    try do
+      await_step(ref, :handled, root, "the harness never reported #{agent_id}'s turn ending")
+    after
+      :telemetry.detach(ref)
+    end
+
+    :ok
+  end
+
+  @doc "Telemetry handler for `end_turn/2`: the cloud handled the agent's turn event."
+  def handle_turn_event([:phoenix, :channel_handled_in], _measure, meta, config) do
+    if meta.event == "agent_turn_event" and copy_id(meta) == config.id and
+         meta.params["agent_id"] == config.agent_id do
+      send(config.test, {:live_harness, config.ref, :handled, :ok})
+    end
   end
 
   @doc "Telemetry handler for `write_file/3`: a manifest carrying the written file arrived."
   def handle_observations([:phoenix, :channel_handled_in], _measure, meta, config) do
     if meta.event == "observations" and copy_id(meta) == config.id and
          Enum.any?(meta.params["observations"] || [], &observed?(&1, config)) do
-      send(config.test, {:observed, config.ref})
+      send(config.test, {:live_harness, config.ref, :observed, :ok})
     end
   end
 
@@ -246,10 +473,13 @@ defmodule CodeMySpecSpex.HarnessHooks do
     {listener, "http://127.0.0.1:#{port}"}
   end
 
-  # The join and the read model, observed on the cloud side. The read model is
-  # the harness's first push after its join reply, so once the channel has
-  # handled it the client has marked itself joined — and a hook posted next is
-  # answered rather than refused as not connected.
+  # The join, the read model and the first manifest, observed on the cloud
+  # side. The read model is the harness's first push after its join reply, so
+  # once the channel has handled it the client has marked itself joined — and
+  # a hook posted next is answered rather than refused as not connected. Its
+  # reply starts the first scan, whose manifest is waited for too: reconciled
+  # after the givens that follow, it lands under them — on results a spex has
+  # just landed, among other things.
   defp watch_channel(topic, working_copy_id) do
     handler = {__MODULE__, :join, working_copy_id}
 
@@ -264,35 +494,104 @@ defmodule CodeMySpecSpex.HarnessHooks do
     handler
   end
 
-  @doc "Telemetry handler for the join: the channel joined, then served the read model."
+  @doc """
+  Telemetry handler for the join: the channel joined, served the read model,
+  then handled the manifest of the harness's first scan.
+  """
   def handle_join([:phoenix, :channel_joined], _measure, meta, config) do
     if meta.socket.topic == config.topic and meta.params["harness_id"] == config.id do
-      send(config.test, {:live_harness_joined, config.id, meta.result})
+      send(config.test, {:live_harness, config.id, :joined, meta.result})
     end
   end
 
   def handle_join([:phoenix, :channel_handled_in], _measure, meta, config) do
-    if meta.event == "read_model" and copy_id(meta) == config.id do
-      send(config.test, {:live_harness_ready, config.id})
+    if copy_id(meta) == config.id do
+      case meta.event do
+        "read_model" -> send(config.test, {:live_harness, config.id, :ready, :ok})
+        "observations" -> send(config.test, {:live_harness, config.id, :scanned, :ok})
+        _other -> :ok
+      end
     end
   end
 
-  defp await_joined(id) do
-    receive do
-      {:live_harness_joined, ^id, :ok} ->
+  defp await_joined(id, root, handler) do
+    case await_step(id, :joined, root, "the harness never joined the cloud") do
+      :ok ->
         :ok
 
-      {:live_harness_joined, ^id, refused} ->
-        flunk("the cloud refused the harness's join: #{inspect(refused)}")
-    after
-      @timeout -> flunk("the harness never joined the cloud within #{@timeout}ms")
+      refused ->
+        flunk("the cloud refused the harness's join: #{inspect(refused)}; #{client_state(root)}")
     end
 
+    await_step(id, :ready, root, "the harness joined but never asked for its read model")
+    await_step(id, :scanned, root, "the harness joined but never sent its first manifest")
+    :telemetry.detach(handler)
+    :ok
+  end
+
+  # One step of a live harness, awaited while its channel client is still
+  # getting there. `key` is the copy id or a write's ref.
+  defp await_step(key, step, root, what),
+    do: await_step(key, step, root, what, now() + @backstop)
+
+  defp await_step(key, step, root, what, deadline) do
     receive do
-      {:live_harness_ready, ^id} -> :ok
+      {:live_harness, ^key, ^step, result} -> result
     after
-      @timeout -> flunk("the harness joined but never asked for its read model")
+      @window ->
+        case {client_progress(root), now() < deadline} do
+          {:progressing, true} ->
+            await_step(key, step, root, what, deadline)
+
+          {:progressing, false} ->
+            flunk("#{what} in #{@backstop}ms, though it kept trying; #{client_state(root)}")
+
+          {{:stuck, why}, _in_time} ->
+            flunk("#{what}: #{why}; #{client_state(root)}")
+        end
     end
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  # Whether the client can still get there: alive, and holding a credential.
+  # A climbing reconnect or a lease still held by a channel on its way out is
+  # progress; a client that is gone or has nothing to connect with is not.
+  defp client_progress(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [] ->
+        {:stuck, "no channel client is running"}
+
+      [{pid, _}] ->
+        case :sys.get_state(pid, 2_000) do
+          %{assigns: %{no_credential?: true}} -> {:stuck, "the client has no credential"}
+          _state -> :progressing
+        end
+    end
+  catch
+    :exit, reason -> {:stuck, "the channel client did not answer (#{inspect(reason)})"}
+  end
+
+  # What the harness's own channel client says about itself, so a join that
+  # never happens names its cause — no process, a climbing reconnect, a refusal,
+  # no credential — instead of only the time it took (57aa576c).
+  defp client_state(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [] ->
+        "no channel client is running for #{root} (never started, or it crashed)"
+
+      [{pid, _}] ->
+        case :sys.get_state(pid, 2_000) do
+          %{assigns: assigns} ->
+            "channel client: " <>
+              inspect(Map.take(assigns, [:joined, :attempts, :refused, :no_credential?, :topic]))
+
+          other ->
+            "channel client state: #{inspect(other, limit: 20)}"
+        end
+    end
+  catch
+    :exit, reason -> "channel client did not answer (#{inspect(reason)})"
   end
 
   defp teardown(%{root: root, working_copy_id: id} = live) do

@@ -42,6 +42,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @spex_path "test/spex/example_context_spex.exs"
 
@@ -69,25 +70,15 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
 
       given_ "the agent writes a failing BDD spec file", context do
         :ok = Environments.write_file(context.environment, @spex_path, failing_spex())
+        :ok = record_edit(context, @spex_path)
         {:ok, context}
       end
 
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "pipeline_spex_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => fixture_path("spex.jsonl"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "spex", fixture_path("spex.jsonl"))
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

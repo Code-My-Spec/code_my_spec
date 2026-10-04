@@ -497,14 +497,18 @@ defmodule CodeMySpec.Files.ComponentSync do
   end
 
   # `cleanup_removed/2`'s incremental counterpart: only the removed files'
-  # module names are candidates.
+  # module names are candidates. A removed file whose module never had a
+  # component maps to nil and is no candidate — `nil and …` raised
+  # BadBooleanError inside a manifest reconcile and took the channel down
+  # (4070a52e).
   defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
     claimed = live_claimed_names(project_id)
 
     module_names
     |> Enum.map(&Map.get(existing_map, &1))
+    |> Enum.reject(&is_nil/1)
     |> Enum.filter(
-      &((&1 && &1.provenance == :discovered) and not MapSet.member?(claimed, &1.module_name))
+      &(&1.provenance == :discovered and not MapSet.member?(claimed, &1.module_name))
     )
     |> prune_unreferenced(scope)
   end

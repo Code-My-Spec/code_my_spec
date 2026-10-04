@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,27 +35,23 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
     scenario "active task claimed by a registered sub-agent → allow with no pipeline" do
       given_ :synced_liveview_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "a sub-agent has registered on a session and claimed a test_spec_alignment task",
              context do
         external_id = "spex-#{System.unique_integer([:positive])}"
         agent_id = "spex-5102-subagent-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => external_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => external_id})
 
         registration =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/hooks/subagent-start", %{
+          HarnessHooks.post_hook(context, "subagent-start", %{
             "session_id" => external_id,
             "agent_id" => agent_id,
             "agent_name" => "codemyspec:code-writer"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         # Without this guard, a silent registration failure (e.g. session
         # mismatch) would leave the scenario testing the wrong baseline —
@@ -81,11 +78,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
 
       when_ "the stop hook fires", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end
