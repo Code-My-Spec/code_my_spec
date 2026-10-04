@@ -31,6 +31,10 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
 config :paper_trail, strict_mode: true
 
+# Served over http://localhost. WebKit (the desktop window) drops a `secure`
+# cookie there, so LiveView never saw a session and reloaded ~50 times a second.
+config :code_my_spec, secure_session_cookie: false
+
 config :desktop, :backend, DesktopWebview.Backend
 config :desktop, :menu_adapter, DesktopWebview.Menu.Adapter
 
