@@ -31,9 +31,5 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 config :code_my_spec, adapter: Ecto.Adapters.Postgres
 config :paper_trail, strict_mode: true
 
-# Embeddings off unless runtime.exs turns them on (CMS_EMBEDDINGS); they need
-# pgvector, which a local Postgres may not have.
-config :code_my_spec, embeddings_backend: nil
-
 # Mail stays in memory (config.exs's Local adapter); prod.exs turned the store off.
 config :swoosh, local: true
