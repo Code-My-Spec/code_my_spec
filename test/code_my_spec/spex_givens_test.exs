@@ -247,7 +247,18 @@ defmodule CodeMySpec.SpexGivensTest do
   # into the log goes through — `Application.put_env` and `File.write`'s own
   # precedent, a direct call rather than a Case helper, listed because it
   # genuinely persists the row a given_ names rather than describing one.
+  # The promotion queue's spex (stories 1046, 1091; `PromotionHelpers`,
+  # `IssuePromotionHelpers`): `promote(` and `promote_from(` call the `promote`
+  # tool an agent calls; `commit_work(` writes and commits in a real checkout;
+  # `another_candidate` and `an_agent_on_the_copy` join a real worktree and
+  # create its agent; `the_gate_answers` answers the gate copy's dispatched
+  # runs over its real channel; the issue helpers drive the issue tools a
+  # team's agents call. `two_queued_together` is a spex-local builder made of
+  # the above.
   @establishes ~w(
+    promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
+    the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it
+    qa_passes_it the_coder_promotes_it two_queued_together
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
     Fixtures. live( render_click render_submit render_change element(
