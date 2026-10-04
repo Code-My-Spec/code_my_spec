@@ -41,12 +41,13 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
 
     story = story_fixture(scope)
 
-    {:ok, _} =
+    {:ok, criterion} =
       AcceptanceCriteria.create_criterion(scope, story, %{
         description: "a step reports its provider",
         spec_path: @spex_path
       })
 
+    {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
     {:ok, _} = Stories.set_specs_ready(scope, Stories.get_story(scope, story.id), true)
 
     problem_fixture(scope, %{source: "spex", severity: :error, file_path: @spex_path})

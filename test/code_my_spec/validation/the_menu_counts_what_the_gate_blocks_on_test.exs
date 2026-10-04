@@ -35,7 +35,8 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
   end
 
   defp red_spec_for(scope, story) do
-    path = "test/spex/#{story.id}_a_feature/criterion_1_spex.exs"
+    [criterion | _] = story.criteria
+    path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
 
     {_n, _} =
       CodeMySpec.Files.upsert_files(scope, [
@@ -77,6 +78,8 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
     story = story_fixture(scope, %{title: "Was Green Once"})
     red_spec_for(scope, story)
     {:ok, _} = Stories.set_specs_ready(scope, story, true)
+    [criterion | _] = story.criteria
+    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problems = Problems.list_project_problems(scope, severity: :error)
 

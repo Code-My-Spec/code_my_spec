@@ -469,23 +469,34 @@ defmodule CodeMySpec.Promotion do
     # A criterion's own path counts even before any file naming it has been
     # synced -- otherwise a brand-new criterion's red spex has nowhere to be
     # "failing" and certifies by omission.
-    paths =
+    file_paths =
       scope
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
-      |> MapSet.union(MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
+
+    paths = MapSet.union(file_paths, MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
 
     failing =
       scope
       |> ProblemRepository.list_project_problems(source: "spex")
       |> Enum.filter(&MapSet.member?(paths, &1.file_path))
 
-    if failing != [] and not Enum.any?(live_criteria, & &1.latched_at) do
+    # Tolerance is per finding, not per story: a failing path only earns it
+    # when that path is itself a live criterion's own, never-yet-latched
+    # path -- a red finding with no criterion to its name, or on a criterion
+    # that already proved itself once, is a real regression and refuses like
+    # today (`a_promote_latches_only_the_story_it_names_test.exs`).
+    unlatched_criterion_paths =
+      live_criteria
+      |> Enum.filter(&is_nil(&1.latched_at))
+      |> MapSet.new(&BddSpecs.spec_file_path(story, &1))
+
+    if failing != [] and Enum.all?(failing, &MapSet.member?(unlatched_criterion_paths, &1.file_path)) do
       latch_green_criteria(scope, story, live_criteria, failing)
       :ok
     else
-      with :ok <- spex_verdict(story, paths, failing, named) do
+      with :ok <- spex_verdict(story, file_paths, failing, named) do
         latch_green_criteria(scope, story, live_criteria, failing)
       end
     end

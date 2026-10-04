@@ -37,12 +37,15 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     %{scope: scope}
   end
 
-  defp red_spec(scope, story) do
-    path = "test/spex/#{story.id}_a_feature/criterion_1_spex.exs"
+  defp red_spec(scope, story, latched? \\ false) do
+    [criterion | _] = story.criteria
+    path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
 
     CodeMySpec.Files.upsert_files(scope, [
       %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
     ])
+
+    maybe_latch(latched?, scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",
@@ -52,6 +55,15 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
       severity: :error,
       category: "spex"
     })
+
+    path
+  end
+
+  defp maybe_latch(false, _scope, _criterion), do: :ok
+
+  defp maybe_latch(true, scope, criterion) do
+    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
+    :ok
   end
 
   test "an open exunit failure refuses, naming the count and the failure", %{scope: scope} do
@@ -112,10 +124,10 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   test "a red spex of a latched story refuses", %{scope: scope} do
     story = story_fixture(scope, %{title: "Proven Behaviour"})
     {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
-    red_spec(scope, story)
+    path = red_spec(scope, story, true)
 
     assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 spex"
-    assert reason =~ "criterion_1_spex.exs"
+    assert reason =~ path
   end
 end

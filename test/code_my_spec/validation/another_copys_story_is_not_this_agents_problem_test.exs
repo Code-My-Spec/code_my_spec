@@ -38,7 +38,8 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
   end
 
   defp red_spec(scope, story) do
-    path = "test/spex/#{story.id}_a_feature/criterion_1_spex.exs"
+    [criterion | _] = story.criteria
+    path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
 
     {_n, _} =
       CodeMySpec.Files.upsert_files(scope, [
@@ -58,6 +59,8 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
   defp ready_story(scope, attrs) do
     story = story_fixture(scope, attrs)
     {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
+    [criterion | _] = story.criteria
+    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
     story
   end
 

@@ -94,12 +94,13 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       # story unlatched and this whole describe block testing nothing.
       story = story_fixture(ctx.scope)
 
-      {:ok, _criterion} =
+      {:ok, criterion} =
         AcceptanceCriteria.create_criterion(ctx.scope, story, %{
           description: "a step reports its provider",
           spec_path: @spex_path
         })
 
+      {:ok, _criterion} = AcceptanceCriteria.latch_criterion(ctx.scope, criterion)
       {:ok, story} = Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
 
       Map.put(ctx, :story, story)
