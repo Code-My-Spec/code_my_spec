@@ -50,16 +50,13 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   @doc """
   Evaluate whether the test file was written correctly.
 
-  Called by the stop hook after Claude writes tests. Checks that:
-  1. The test file exists
-  2. No blocking problems (compilation errors, credo, file validation)
-
-  Test failures are filtered out — failing tests are expected in TDD mode
-  when the implementation doesn't exist yet.
+  Passes when the test artifact requirements are met. Persisted problems on
+  the test file never hold it (see `ProblemFeedback.combine/2`); they are
+  context in the feedback when a requirement is unmet.
 
   Returns:
-  - {:ok, :valid} if the test file exists with no blocking problems
-  - {:ok, :invalid, feedback} if the test file is missing or has blocking problems
+  - {:ok, :valid} if the test artifact requirements are met
+  - {:ok, :invalid, feedback} if one is not
   """
   def evaluate(scope, task) do
     component = Components.get_component!(scope, task.component_id)

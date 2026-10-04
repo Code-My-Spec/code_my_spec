@@ -41,10 +41,9 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
 
   ## Surface
 
-  `POST /api/hooks/stop`, routed by `x-harness-id`. No cassette and no
-  `test_output_files`: with no changed files there is nothing for an analyzer to
-  run, and staging output would be staging the very state the criterion says is
-  absent.
+  `POST /api/hooks/stop`, routed by `x-harness-id`. No cassette: a stop starts
+  no analysis, and staging output would be staging the very state the criterion
+  says is absent.
   """
 
   use CodeMySpecSpex.Case

@@ -97,7 +97,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     # and blocks on its own merits. Without this the rest asserts against
     # nothing, which is the failure mode every criterion on story 988 hit.
     assert {:error, seeded, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
              )
@@ -113,7 +113,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
 
     assert {:error, reason, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     {scope, compile_jsonl} = seeded_scope()
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-idle-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -150,7 +150,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("the-editor", @broken_qa_brief_path)
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "the-bystander",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     {:ok, _} = Configurations.update(scope, %{qa_validation: :block_all})
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-idle-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -192,7 +192,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
 
     assert {:error, reason, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -206,7 +206,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     {scope, compile_jsonl} = seeded_scope()
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                session_id: "a-session",
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
@@ -219,4 +219,9 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
            than beside it.
            """
   end
+
+  # A stop never starts or ingests analysis (John, 2026-10-04): the recorded
+  # outputs land as completed runs first, and the stop reads what they found.
+  defp stop(scope, opts),
+    do: Validation.validate_stop(scope, nil, CodeMySpecSpex.Fixtures.land_outputs(scope, opts))
 end

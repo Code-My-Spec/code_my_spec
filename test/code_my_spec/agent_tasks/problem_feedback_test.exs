@@ -261,9 +261,9 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedbackTest do
                ProblemFeedback.combine("Requirements not met", nil)
     end
 
-    test "returns {:ok, :invalid, feedback} with problem feedback only" do
-      assert {:ok, :invalid, "Compilation errors found"} =
-               ProblemFeedback.combine(nil, "Compilation errors found")
+    # Met requirements pass whatever is persisted (John, 2026-10-04).
+    test "passes on met requirements even with problem feedback" do
+      assert {:ok, :valid} = ProblemFeedback.combine(nil, "Compilation errors found")
     end
 
     test "combines both when requirements fail and problems exist" do

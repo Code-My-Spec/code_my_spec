@@ -101,19 +101,4 @@ defmodule CodeMySpec.Analysis.BusySourceRequeueTest do
         select: r.id
     )
   end
-
-  # `only_failed: true` is the quiet-stop path and has its own rules — it
-  # re-enqueues what broke, and a source that has never completed counts as
-  # stale. A running row is not a completed one, so it stays eligible.
-  test "a quiet stop still opens a run for a running source", %{scope: scope} do
-    first = open_run(scope, "spex")
-
-    Analysis.ensure_stale_runs(
-      scope,
-      ["spex"],
-      Keyword.put(@analysis_test_output_files, :only_failed, true)
-    )
-
-    assert spex_runs(scope) -- [first.id] != []
-  end
 end

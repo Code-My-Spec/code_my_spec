@@ -61,7 +61,7 @@ Read `.code_my_spec/` for project structure, where rules live, and available fra
 Your implementation must:
 
 - **Do what the component describes** - Its description, type, and dependencies
-- **Pass all tests** - The evaluation hook runs tests and blocks on failures
+- **Pass all tests** - Run them (`mix test`); failures are persisted as problems that refuse your stop and block promotion
 - **Follow project patterns** - Look at similar components for conventions
 - **Handle errors gracefully** - Return tagged tuples `{:ok, result}` or `{:error, reason}`
 

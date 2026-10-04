@@ -96,33 +96,17 @@ defmodule CodeMySpec.Validation do
 
   ## Options
 
-  - `:compile_output_file` - pre-recorded diagnostics JSONL (test-only)
-  - `:credo_output_file` - pre-recorded credo JSON (test-only)
-  - `:exunit_output_file` - pre-recorded ExUnit JSON (test-only)
-  - `:spex_output_file` - pre-recorded spex JSONL (test-only)
   - `:session_id` - external session id; when present, the changed-file
     set is intersected with PostToolUse-attributed edits for this
     `(session_id, agent_id)`. Problems on files attributed elsewhere
     are excluded from the block decision.
   - `:agent_id` - sub-agent id; nil means the main agent. Combined with
     `:session_id` for the FileEdits attribution lookup.
-  - `:await` - test-only; block until enqueued background runs finish before
-    the blocking check, restoring synchronous semantics for deterministic
-    specs. The stop hook never passes this.
 
-  Set by `StopController` from the `test_output_files` request param so
-  cassette-backed specs can drive the pipeline with known outputs without
-  relying on `System.cmd` side effects.
+  A stop never starts, ingests or waits on analysis (John, 2026-10-04); it
+  reads what runs already persisted. A spec that needs findings lands them as
+  an analysis run first, and only then stops.
   """
-  # The pre-recorded output options, named once so the refusal below and the
-  # doc above cannot drift apart.
-  @test_output_file_opts [
-    :compile_output_file,
-    :credo_output_file,
-    :exunit_output_file,
-    :spex_output_file
-  ]
-
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
           | {:error, String.t(), String.t() | nil}
@@ -202,8 +186,6 @@ defmodule CodeMySpec.Validation do
 
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
-    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
-
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
@@ -220,61 +202,15 @@ defmodule CodeMySpec.Validation do
   # the wire.
   #
   # Everything that is left is database work and runs unchanged: the same
-  # changed-file scoping, the same configuration modes, the same
-  # `Analysis.ensure_stale_runs/3` (dispatched to the harness rather than to a
-  # local queue), and the same blocking check. The point is that the *decision*
-  # is identical; only where the tools ran differs.
-  # Pre-recorded outputs cannot cross the channel, and saying so is the fix.
-  #
-  # `:compile_output_file` and friends name a file on *this* machine, and on
-  # this path the analyzers run on the harness's. Ignoring them and carrying on
-  # is what QA hit: a `test_output_files` post came back with the ordinary
-  # "analysis running: compiler, credo, exunit, spex -- results apply next
-  # stop", dispatched a real run against the sandbox checkout, and still showed
-  # no spex problems ninety seconds and several re-posts later. The parameter
-  # was read, accepted, and dropped, and every symptom pointed at a slow
-  # analyzer instead.
-  #
-  # Refused rather than made to work. These fixtures exist so cassette-backed
-  # specs can drive the pipeline without depending on `System.cmd` side effects;
-  # shipping host-local paths to another machine is not a smaller version of
-  # that, it is a different feature. Issue `5151df37`, story 895 -- where the
-  # report's own guess was a build-environment gate, which is not what this is:
-  # the param is extracted in every environment and honoured on the local path.
+  # changed-file scoping, the same configuration modes and the same blocking
+  # check. The point is that the *decision* is identical; only where the files
+  # were read differs.
   defp remote_validate_stop(scope, task, opts) do
-    case Keyword.take(opts, @test_output_file_opts) do
-      [] -> do_remote_validate_stop(scope, task, opts)
-      supplied -> {:error, fixtures_not_honored(supplied), nil}
-    end
-  end
-
-  defp fixtures_not_honored(supplied) do
-    names = supplied |> Keyword.keys() |> Enum.map_join(", ", &inspect/1)
-
-    """
-    `test_output_files` was supplied (#{names}) but this project's analyzers run \
-    on a harness, not here -- so those paths name files on the wrong machine \
-    and nothing would have read them.
-
-    Nothing was run and nothing was recorded. Had this been ignored, the stop \
-    would have dispatched a real analyzer run and answered "results apply next \
-    stop", which is indistinguishable from a slow analyzer.
-
-    Pre-recorded outputs are for specs driving the pipeline in-process, where \
-    the fixture and the analyzer are on the same disk. To exercise the blocking \
-    side against a harness-held copy, let the real analyzers run and assert on \
-    what they find.\
-    """
-  end
-
-  defp do_remote_validate_stop(scope, task, opts) do
     {changed_files, consume_ledger} = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
 
     analysis = run_pipeline(scope, task, changed_files, config, opts)
-
-    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
@@ -924,22 +860,14 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  # A stop never starts an analyzer. Analysis is explicit — `start_analysis`, or
-  # required by promote (`.code_my_spec/rules/analysis_is_explicit.md`). Starting
-  # runs here queued compiler and credo on every stop and subagent_stop, and
-  # every leg once a scan marked them stale, which is how one project's 25-minute
-  # spex sweep held the machine's only analyzer slot in a loop (`38d87eb5`).
-  #
-  # The exception is output a caller hands over explicitly: `test_output_files`
-  # names a finished result to ingest, not a run to start. Only specs send it.
+  # A stop never starts, ingests or waits on an analyzer (John, 2026-10-04;
+  # `.code_my_spec/rules/analysis_is_explicit.md`): runs come from
+  # `start_analysis`, ready_for_qa certification and promotion. Starting runs
+  # here once queued compiler and credo on every stop, which is how one
+  # project's 25-minute spex sweep held the machine's only analyzer slot in a
+  # loop (`38d87eb5`). What is left is the in-process validators, which read
+  # the changed files and start nothing.
   @nothing_enqueued %{enqueued: [], memoized: []}
-
-  @output_file_sources %{
-    compile_output_file: "compiler",
-    credo_output_file: "credo",
-    exunit_output_file: "exunit",
-    spex_output_file: "spex"
-  }
 
   defp run_pipeline(scope, task, changed_files, config, opts) do
     if changed_files != [] do
@@ -953,14 +881,7 @@ defmodule CodeMySpec.Validation do
       StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
     end
 
-    ingest_supplied_output(scope, opts)
-  end
-
-  defp ingest_supplied_output(scope, opts) do
-    case for({opt, source} <- @output_file_sources, Keyword.has_key?(opts, opt), do: source) do
-      [] -> @nothing_enqueued
-      supplied -> Analysis.ensure_stale_runs(scope, supplied, opts)
-    end
+    @nothing_enqueued
   end
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
@@ -1008,7 +929,6 @@ defmodule CodeMySpec.Validation do
     # validator re-run in this request, with no ledger row to describe.
     sources_with_problems = Map.keys(problems_by_source)
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
-    in_flight = Analysis.in_flight(scope)
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
     setting = advisory_findings(config)
@@ -1030,10 +950,8 @@ defmodule CodeMySpec.Validation do
       # option straight to the renderer, which is exactly the instrument error
       # of checking a probe only where it cannot fail.
       internal_agent?: internal_agent?(opts),
-      # The run each source's findings came from: commit, age and duration —
-      # and for a source being rerun, the typical duration the in-flight note
-      # compares its progress against.
-      answers: answers(scope, Enum.uniq(ledger_sources ++ in_flight)),
+      # The run each source's findings came from: commit, age and duration.
+      answers: answers(scope, ledger_sources),
       # Why a source that has never answered could not run. The analyzer's own
       # words are in `Run.output` and nothing read them back — `6f89b278` is
       # three days of blocked stops with the fix sitting in that column.
@@ -1059,14 +977,6 @@ defmodule CodeMySpec.Validation do
       # How many moved to advisory, and why, so the advisory pile does not
       # absorb them silently. A gate that stops blocking has to say so.
       unattributed_count: length(unattributed),
-      # Whether a rerun of a blocking source is running — what decides whether
-      # waiting can help.
-      in_flight: in_flight,
-      # And how long it has been running. "A rerun is in flight" is the same
-      # sentence on every stop inside one run's window, so taking the advice
-      # promptly returns a byte-identical block — which is what a livelock looks
-      # like from the outside, and the opposite response is correct for each.
-      in_flight_since: Analysis.in_flight_since(scope),
       # Whose story each spex finding belongs to.
       #
       # Rule 3 of story 895: a working copy surfaces every finding about it,
@@ -1082,18 +992,10 @@ defmodule CodeMySpec.Validation do
       # still a real regression by design (story 895's rule 4); this only
       # gives a reader on a checkout that never made the fix a fact to check
       # ("does my HEAD have this commit yet?") before assuming they broke it.
-      specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context),
+      specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context)
       # Which harness to wait on, so "a rerun is in flight" can name a way to
       # wait for it rather than only telling the agent to stop again.
       #
-      # `Hooks.Stop` already has this remedy: when analysis is pending it hands
-      # over `POST /api/harnesses/<id>/analysis/wait`, which blocks until the
-      # sweep lands. But that path is only reached when validation *passed* —
-      # a blocking result returns before it, so the case where waiting matters
-      # most is the one case that never heard about the endpoint (5e9fa939:
-      # three consecutive stops blocked on the same findings while a spex run
-      # grew from 0s to 5m15s, each told to stop again).
-      working_copy_id: scope.active_working_copy_id
     )
   end
 
