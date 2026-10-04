@@ -6,7 +6,7 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
   """
 
   alias CodeMySpec.Generators.DeployArtifacts
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps}
+  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps, Transport}
   alias CodeMySpec.Provisioning.ClickHouse.{Credentials, Exposure, Stack}
   alias CodeMySpec.Users.Scope
 
@@ -31,8 +31,8 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
       {:error, reason} when is_binary(reason) ->
         {:error, reason}
 
-      {:error, _} ->
-        {:error, "telemetry setup failed; check the environment and provider configuration"}
+      {:error, reason} ->
+        {:error, "telemetry setup failed: " <> Transport.describe(reason)}
     end
   end
 
