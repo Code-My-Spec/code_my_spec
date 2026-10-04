@@ -25,7 +25,7 @@ defmodule CodeMySpecDesktop.Application do
 
   def children(web_children) do
     Enum.flat_map(web_children, fn
-      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot]
+      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot, CodeMySpecDesktop.OAuthHandoff]
       child -> [child]
     end) ++
       [CmsHarness.Supervisor, view(Application.fetch_env!(:code_my_spec, :base_url) <> "/app")]
