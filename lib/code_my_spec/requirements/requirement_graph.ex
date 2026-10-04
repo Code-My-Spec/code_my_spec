@@ -2271,6 +2271,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         (closure ++ Enum.flat_map(closure, &context_children(&1, children_by_parent)))
         |> Enum.uniq_by(& &1.id)
+        |> Enum.reject(&phantom?(&1, ctx))
     end
   end
 
@@ -2284,6 +2285,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     do: Map.get(children_by_parent, id, [])
 
   defp context_children(_component, _children_by_parent), do: []
+
+  # `:discovered` means ComponentSync found this component by scanning a file;
+  # one with none on this project's own Files records cannot be a discovery
+  # here. `prune_unreferenced/2` (Files.ComponentSync) deliberately keeps a
+  # discovered component whose code vanished as long as something still
+  # references it — an authored parent, a dependency, a story — so that
+  # another working copy that still has the file does not lose it. That
+  # design means a component synced into existence by a *different*
+  # checkout's files can sit in this shared, project-wide table indefinitely,
+  # referenced only by its parent context, and `context_children/2` above
+  # has no way to tell that apart from a component this copy genuinely has
+  # not implemented yet (issue 92f5d6ee and its cluster: 6bb47d00, 62a6bd5f,
+  # 0555b8a3). An `:authored` component is never filtered — it is real
+  # architecture regardless of whether its file has landed yet.
+  defp phantom?(%{provenance: :discovered} = component, ctx),
+    do: Map.get(ctx.files_by_component, component.id, []) == []
+
+  defp phantom?(_component, _ctx), do: false
 
   defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
@@ -2465,7 +2484,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp direct_children(parent, ctx) do
-    Map.get(ctx.children_by_parent, parent.id, [])
+    ctx.children_by_parent
+    |> Map.get(parent.id, [])
+    |> Enum.reject(&phantom?(&1, ctx))
   end
 
   defp child_terminal_name(parent_type, child_type, config) do
