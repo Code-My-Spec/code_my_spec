@@ -18,9 +18,9 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   clean analyzer result reconciles a planted row away before the blocking check
   reads it.
 
-  "Otherwise identical" is carried by `@recorded` — every call is fed the same
-  committed analyzer output rather than compiling anything, so the two sides
-  differ in exactly one thing.
+  "Otherwise identical" holds because a stop never starts analysis (John,
+  2026-10-04): nothing runs between the two calls, so the two sides differ in
+  exactly one thing.
 
   Short-circuiting on a missing session is the change someone would plausibly
   make to "handle" a malformed payload, and it would turn every hook-payload
@@ -28,7 +28,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.{AnalysisFixtures, SessionsFixtures, UsersFixtures}
+  import CodeMySpec.{SessionsFixtures, UsersFixtures}
   import ExUnit.CaptureLog
   import Plug.Conn
   import Plug.Test
@@ -46,8 +46,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   setup do
     # A directory, because `do_validate_stop/3` returns early on its
     # `%Scope{cwd: nil}` clause and these tests would then pass without reaching
-    # the session-resolution path they are about. Nothing is compiled in it —
-    # see `@recorded` — so it can stay empty.
+    # the session-resolution path they are about. A stop compiles nothing, so
+    # it can stay empty.
     {:ok, tmp} = Briefly.create(directory: true)
 
     # `cwd` **and** `environment`, pointed at the same directory.
@@ -72,15 +72,6 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     # same trap.
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
-    # `@recorded`'s `test_output_files` controls compile/exunit/spex's
-    # *content* but not whether the subprocess runs — only spex has a full
-    # replay-skip, compile and exunit always shell out regardless. Nothing
-    # here has ever run for this scope, so every source is stale and every
-    # `post_stop` pays for a doomed `mix compile`/`mix test` in `tmp` on top
-    # of `@recorded`. Marking them fresh up front avoids the subprocess
-    # entirely, without needing `use_cmd_cassette`.
-    fresh_analysis_runs_fixture(scope)
-
     %{scope: scope}
   end
 
@@ -91,9 +82,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   #
   # The confound is real as *design* — the variable this isolates does sit on
   # top of call order — but the thing that could vary underneath it is gone.
-  # `@recorded` feeds every call the same committed analyzer output, so there is
-  # no run to land, no ledger state to differ, and nothing for the order to
-  # confound with.
+  # A stop starts no run, so there is no run to land, no ledger state to differ,
+  # and nothing for the order to confound with.
   #
   # It stopped reproducing before that: 61 consecutive runs of the issue's own
   # command, `--repeat-until-failure 30 --seed 7` twice, zero failures. The
@@ -187,37 +177,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     end
   end
 
-  # Recorded analyzer output, not a real compile.
-  #
-  # The pipeline reads `test_output_files` in place of producing its own, which
-  # is what the committed recordings under `test/fixtures/validation/` are for.
-  # The 555 spex drive the same pipeline the same way.
-  #
-  # This file used to build a Mix project in a temp directory and compile it
-  # inline on every call. That is the surface `998f4d93` was reported on: an
-  # analyzer outcome that depends on the machine, sitting underneath an
-  # assertion about session resolution. `compile.jsonl` is empty, which is what
-  # a clean compile records, so every call now gets the same compiler result by
-  # construction.
-  #
-  # Not every source. `exunit_output_file` moves where results are *read from*
-  # — it is a cassette seam for capturing a child's output, not a way to skip
-  # the child — so `mix test` still runs. In an empty directory it fails
-  # immediately and identically every time (`:test_suite_did_not_run`, "Could
-  # not find a Mix.Project") and contributes nothing to the decision, which
-  # makes it stable rather than absent. Suppressing it properly needs
-  # `use_cmd_cassette`, and that patches `System.cmd/3` through meck —
-  # process-global, so it cannot be used from an `async: true` file without
-  # killing whatever else is running.
-  @recorded %{
-    "compile" => "test/fixtures/validation/pipeline_clean_run/compile.jsonl",
-    "exunit" => "test/fixtures/validation/pipeline_clean_run/exunit.json",
-    "spex" => "test/fixtures/validation/spex_green.jsonl"
-  }
-
   defp post_stop(scope, params) do
-    params = Map.put_new(params, "test_output_files", recorded_outputs())
-
     conn(:post, "/api/hooks/stop", Jason.encode!(params))
     |> put_req_header("content-type", "application/json")
     |> assign(:current_scope, scope)
@@ -227,9 +187,5 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
       assert conn.status == 200
       Jason.decode!(conn.resp_body)
     end)
-  end
-
-  defp recorded_outputs do
-    Map.new(@recorded, fn {source, path} -> {source, Path.expand(path)} end)
   end
 end

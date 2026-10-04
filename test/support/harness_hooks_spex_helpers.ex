@@ -287,12 +287,11 @@ defmodule CodeMySpecSpex.HarnessHooks do
   the cloud on the harness's copy. Returns once the cloud has announced the
   run finished, with its status.
 
-  `recording` is the tool's own output for the run — the fixtures the stop
-  hook's `test_output_files` used to name — or `nil` for a clean run. See
-  `CodeMySpecSpex.HarnessReports.result/3`.
+  `recording` is the tool's own output for the run, or `nil` for a clean run.
+  See `CodeMySpecSpex.HarnessReports.result/3`.
 
-  This is what a spex uses to say "the compiler found this", now that the
-  stop hook refuses `test_output_files` for a copy a harness holds.
+  This is what a spex uses to say "the compiler found this": a stop never
+  starts or ingests analysis, so findings are landed as a run first.
   """
   @spec land_analysis(map(), String.t(), String.t() | nil) :: atom()
   def land_analysis(%{harness: %{root: root}, scope: scope} = context, source, recording \\ nil) do
