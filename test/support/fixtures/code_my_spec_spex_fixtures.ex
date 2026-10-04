@@ -1570,6 +1570,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Sync only what changed since the last sync -- the path a rewrite actually
+  goes through (`FileSync.sync_changed/2`), which is what clears a
+  criterion's own latch when its spex is rewritten. `sync_files/1`'s full
+  `FileSync.sync/2` does not carry that: it is the bulk reconciliation pass,
+  not the incremental one the watcher and the stop hook use.
+  """
+  @spec sync_changed(Scope.t()) :: :ok
+  def sync_changed(%Scope{} = scope) do
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
+    :ok
+  end
+
+  @doc """
   What the graph actually holds actionable for a role, right now.
 
   `CodeMySpec.Requirements` is not a spex dependency, same as `watch_graph/1`
@@ -4316,10 +4329,14 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is what `GetStory` shows the agent, which is the number.
+  # `criterion_id` is either a real criterion's own database id (a struct
+  # from `story.criteria`) or the number `GetStory` shows the agent under
+  # the same key — matching on both is what lets either caller through.
   def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
-    criterion = Enum.find(story.criteria, &(&1.number == criterion_id))
+
+    criterion =
+      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
 
     unless criterion do
       raise ArgumentError,

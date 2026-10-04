@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1903Spex do
         story = a_promotable_story(context)
         context = a_held_ready_for_qa_task(context, story)
         {false, _} = complete_ready_for_qa(context)
+        story = Stories.get_story(context.scope, story.id)
         [criterion] = story.criteria
         {:ok, Map.merge(context, %{story: story, criterion: criterion})}
       end

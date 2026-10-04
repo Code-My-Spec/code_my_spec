@@ -32,16 +32,14 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
   end
 
   defp red_spec_on_disk(scope, tmp, story) do
-    path = "test/spex/#{story.number}_a_feature/criterion_1_spex.exs"
+    [criterion | _] = story.criteria
+    path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
     full = Path.join(tmp, path)
     File.mkdir_p!(Path.dirname(full))
 
     # Minimal but real: the parser only scans the AST for defmodule / a spex
     # call / at least one scenario, never compiles or runs it — see
-    # BddSpecs.Parser.validate_structure/1. `story_id_for/4` resolves the
-    # story from the *path* (`Parser.derive_story_number/1` against
-    # `story.number`), not from this file's own DB row, so the row's own
-    # `story_id`/`valid` columns do not need to be set by hand.
+    # BddSpecs.Parser.validate_structure/1.
     File.write!(full, """
     defmodule Story#{story.number}Spex do
       spex "a feature" do
@@ -52,6 +50,10 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
     """)
 
     {:ok, _} = FileSync.sync(scope, base_dir: tmp)
+
+    # Enforcement is per-criterion now (story 983): the problem only blocks
+    # once the criterion whose path it is has itself latched.
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",
