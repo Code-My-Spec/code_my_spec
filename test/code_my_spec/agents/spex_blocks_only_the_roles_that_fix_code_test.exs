@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
   import CodeMySpec.{AnalysisFixtures, DevicesFixtures, ProblemsFixtures}
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Configurations

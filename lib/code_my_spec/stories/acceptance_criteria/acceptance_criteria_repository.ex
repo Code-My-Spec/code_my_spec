@@ -1,11 +1,11 @@
-defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
+defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @moduledoc """
   Direct-DB implementation of the AcceptanceCriteria interface.
   """
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story

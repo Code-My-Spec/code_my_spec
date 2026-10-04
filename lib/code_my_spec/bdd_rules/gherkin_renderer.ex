@@ -27,7 +27,7 @@ defmodule CodeMySpec.BddRules.GherkinRenderer do
   ordering for Three Amigos artifacts).
   """
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope

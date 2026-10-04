@@ -23,7 +23,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Deploys
   alias CodeMySpec.Deploys.Deploy

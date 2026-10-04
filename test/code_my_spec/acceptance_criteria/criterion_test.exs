@@ -1,7 +1,7 @@
-defmodule CodeMySpec.AcceptanceCriteria.CriterionTest do
+defmodule CodeMySpec.Stories.AcceptanceCriteria.CriterionTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
 
   describe "changeset/2" do
     test "accepts valid attributes with all required fields" do

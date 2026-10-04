@@ -128,7 +128,7 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
       story = story_fixture(scope)
 
       {:ok, criterion} =
-        CodeMySpec.AcceptanceCriteria.create_criterion(scope, story, %{
+        CodeMySpec.Stories.AcceptanceCriteria.create_criterion(scope, story, %{
           description: "a thing happens",
           spec_path: "test/spex/1_x/criterion_1_a_thing_happens_spex.exs"
         })

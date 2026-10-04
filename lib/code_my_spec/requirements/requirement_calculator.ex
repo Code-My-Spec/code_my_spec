@@ -18,7 +18,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   import Ecto.Query
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys
   alias CodeMySpec.Files

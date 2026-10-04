@@ -29,7 +29,7 @@ defmodule CodeMySpec.Migration do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Auth,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
@@ -41,7 +41,6 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Questions,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Repo,
-      CodeMySpec.Stories,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
@@ -50,7 +49,6 @@ defmodule CodeMySpec.Migration do
   import Ecto.Query, warn: false
 
   alias CodeMySpec.{
-    AcceptanceCriteria,
     BddRules,
     Epics,
     Issues,
@@ -59,6 +57,8 @@ defmodule CodeMySpec.Migration do
     Repo,
     Stories
   }
+
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component

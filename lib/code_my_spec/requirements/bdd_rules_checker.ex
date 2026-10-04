@@ -32,7 +32,7 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
       enforced in real-time")
   """
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions

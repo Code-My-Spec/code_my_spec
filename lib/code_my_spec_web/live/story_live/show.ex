@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.StoryLive.Show do
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Components
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
@@ -308,14 +308,14 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   end
 
   def handle_info(
-        {_type, %CodeMySpec.AcceptanceCriteria.Criterion{story_id: story_id}},
+        {_type, %CodeMySpec.Stories.AcceptanceCriteria.Criterion{story_id: story_id}},
         %{assigns: %{story: %{id: story_id}}} = socket
       ) do
     story = Stories.get_story!(socket.assigns.scope, story_id)
     {:noreply, assign(socket, :story, story)}
   end
 
-  def handle_info({_type, %CodeMySpec.AcceptanceCriteria.Criterion{}}, socket) do
+  def handle_info({_type, %CodeMySpec.Stories.AcceptanceCriteria.Criterion{}}, socket) do
     {:noreply, socket}
   end
 

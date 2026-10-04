@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.GherkinRenderer
   alias CodeMySpec.Questions

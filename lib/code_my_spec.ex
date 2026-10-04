@@ -10,7 +10,7 @@ defmodule CodeMySpec do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
       CodeMySpec.AgentHarness,
@@ -95,7 +95,6 @@ defmodule CodeMySpec do
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
       CodeMySpec.StaticAnalysis,
-      CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.TaskHelp,
       CodeMySpec.TaskOwner,

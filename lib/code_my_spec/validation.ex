@@ -29,7 +29,7 @@ defmodule CodeMySpec.Validation do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.AgentTasks,
       CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,
@@ -44,7 +44,6 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking,
@@ -54,7 +53,7 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository

@@ -24,7 +24,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.FileEdits

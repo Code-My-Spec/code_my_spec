@@ -36,7 +36,7 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   import Ecto.Query, only: [from: 2]
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component

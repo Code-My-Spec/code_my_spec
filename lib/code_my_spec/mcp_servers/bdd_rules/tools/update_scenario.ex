@@ -11,7 +11,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
   alias CodeMySpec.McpServers.Validators
 

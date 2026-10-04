@@ -4,7 +4,7 @@ defmodule CodeMySpec.Stories.Story do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Stories.Story do
           epic_id: Ecto.UUID.t() | nil,
           working_copy_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
-          criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
+          criteria: [CodeMySpec.Stories.AcceptanceCriteria.Criterion.t()],
           tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
           priority: integer() | nil,
           locked_at: DateTime.t() | nil,
@@ -190,7 +190,7 @@ defmodule CodeMySpec.Stories.Story do
     #
     # Active criteria only. A retired one keeps its row and number, and is
     # read by number rather than through the story.
-    has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion,
+    has_many :criteria, CodeMySpec.Stories.AcceptanceCriteria.Criterion,
       on_replace: :delete,
       preload_order: [asc: :id],
       where: [retired_at: nil]

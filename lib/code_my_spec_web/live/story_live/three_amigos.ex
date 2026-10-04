@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions

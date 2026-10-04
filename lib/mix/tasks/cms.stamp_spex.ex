@@ -13,7 +13,7 @@ defmodule Mix.Tasks.Cms.StampSpex do
 
   use Mix.Task
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Stamp
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories

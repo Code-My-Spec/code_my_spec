@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,
@@ -58,7 +58,6 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.TaskOwner,
       CodeMySpec.Telemetry,

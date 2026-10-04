@@ -10,7 +10,7 @@ defmodule CodeMySpec.Requirements do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
@@ -38,7 +38,6 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidation,
       CodeMySpec.Requirements.Invalidations,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies

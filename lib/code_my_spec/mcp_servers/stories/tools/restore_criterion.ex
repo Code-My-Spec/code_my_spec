@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreCriterion do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
 

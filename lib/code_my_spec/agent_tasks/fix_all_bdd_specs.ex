@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   spex across all stories.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Environments

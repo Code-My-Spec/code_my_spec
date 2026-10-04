@@ -210,7 +210,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
     test "AcceptanceCriteria reaches the event path", ctx do
       {:ok, _} =
-        CodeMySpec.AcceptanceCriteria.create_criterion(
+        CodeMySpec.Stories.AcceptanceCriteria.create_criterion(
           ctx.scope,
           CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id),
           %{description: "a criterion that moves the graph"}
@@ -396,7 +396,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       Invalidations.consume(Invalidations.pending(ctx.scope.active_project_id))
 
       {:ok, _} =
-        CodeMySpec.AcceptanceCriteria.create_criterion(
+        CodeMySpec.Stories.AcceptanceCriteria.create_criterion(
           ctx.scope,
           CodeMySpec.Stories.get_story!(ctx.scope, story.id),
           %{description: "a criterion that moves one story"}

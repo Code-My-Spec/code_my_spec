@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.StoryLive.Form do
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
 

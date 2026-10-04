@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
       CodeMySpec.BddSpecs,
@@ -29,7 +29,6 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Resources,
       CodeMySpec.Rules,
       CodeMySpec.Sessions,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies

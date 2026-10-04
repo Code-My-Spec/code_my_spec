@@ -1,7 +1,7 @@
 defmodule CodeMySpec.BddRulesTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Repo

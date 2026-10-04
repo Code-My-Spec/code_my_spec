@@ -21,7 +21,7 @@ defmodule CodeMySpecWeb do
     top_level?: true,
     deps: [
       CodeMySpec,
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Accounts,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
@@ -91,7 +91,6 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.Tags,
       # Closing an issue from the page or the API frees the tasks waiting on it.
       CodeMySpec.TaskOwner,

@@ -11,17 +11,16 @@ defmodule CodeMySpec.Validation.Blocking do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.BddSpecs,
       CodeMySpec.Configurations,
       CodeMySpec.Files,
       CodeMySpec.Problems,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope
     ],
     exports: :all
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration

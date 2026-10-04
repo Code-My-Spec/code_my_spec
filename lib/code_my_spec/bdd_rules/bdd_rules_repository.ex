@@ -12,7 +12,7 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Personas
   alias CodeMySpec.Repo

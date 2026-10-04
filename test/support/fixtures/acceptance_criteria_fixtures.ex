@@ -1,9 +1,9 @@
 defmodule CodeMySpec.AcceptanceCriteriaFixtures do
   @moduledoc """
-  Test data for `CodeMySpec.AcceptanceCriteria`.
+  Test data for `CodeMySpec.Stories.AcceptanceCriteria`.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @doc """
   Generate a criterion with valid attributes.

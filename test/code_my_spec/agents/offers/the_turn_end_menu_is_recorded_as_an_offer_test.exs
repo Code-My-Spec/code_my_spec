@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   import CodeMySpec.{AnalysisFixtures, DevicesFixtures, ProblemsFixtures}
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpec.Agents.Offers

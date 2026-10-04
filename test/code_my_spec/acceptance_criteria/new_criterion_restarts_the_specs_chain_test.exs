@@ -1,4 +1,4 @@
-defmodule CodeMySpec.AcceptanceCriteria.NewCriterionRestartsTheSpecsChainTest do
+defmodule CodeMySpec.Stories.AcceptanceCriteria.NewCriterionRestartsTheSpecsChainTest do
   @moduledoc """
   A criterion that did not exist has never been green.
 
@@ -32,7 +32,7 @@ defmodule CodeMySpec.AcceptanceCriteria.NewCriterionRestartsTheSpecsChainTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories
 
   setup do

@@ -10,7 +10,7 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy

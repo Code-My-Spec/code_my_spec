@@ -15,7 +15,7 @@ defmodule CodeMySpec.Files.SpecBinding do
   covered by another file.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.ContentCheck
   alias CodeMySpec.Users.Scope
 

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Fixtures do
     deps: [
       CmsHarness,
       CodeMySpec,
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
       CodeMySpec.AgentHarness,
@@ -63,7 +63,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
@@ -2356,7 +2355,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def cloud_criteria(%Scope{} = scope, story),
-    do: CodeMySpec.AcceptanceCriteria.list_story_criteria(scope, story.id)
+    do: CodeMySpec.Stories.AcceptanceCriteria.list_story_criteria(scope, story.id)
 
   defp stringify_all(records), do: Enum.map(records, &stringify/1)
 
