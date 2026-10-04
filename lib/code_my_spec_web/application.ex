@@ -11,8 +11,10 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Agents.GraphWake
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.RunReconciled
 
   @impl true
   def start(_type, args) do
@@ -225,8 +227,8 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
-        CodeMySpec.Validation.RunReconciled.attach()
-        CodeMySpec.Notifications.AnalysisPush.attach()
+        RunReconciled.attach()
+        AnalysisPush.attach()
         GraphWake.attach()
         ok
 
