@@ -76,6 +76,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation
 
   import Ecto.Query
 
@@ -133,12 +134,14 @@ defmodule CodeMySpec.Agents.AnalysisReport do
 
   def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
       when is_binary(copy_id) do
-    findings = digest(source, problems)
+    blocking = Validation.blockable(scope, problems)
+    advisory = length(problems) - length(blocking)
+    findings = digest(source, length(blocking), advisory)
     askers = agent_uuids(requester_id)
 
     scope
     |> internal_agents(copy_id)
-    |> Enum.each(&tell_one(scope, &1, findings, source, askers))
+    |> Enum.each(&tell_one(scope, &1, {findings, advisory}, source, askers))
   end
 
   def deliver(_scope, _source, _problems, _requester_id), do: :ok
@@ -204,19 +207,19 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # silence a clean tree earns them, and hears findings only if `Wake` says
   # its role does (`RoleProfile.wake` naming `:findings`).
   # Findings are a problems offer; a clean answer to the asker is not.
-  defp tell_one(scope, %{id: id} = agent, findings, source, askers) do
+  defp tell_one(scope, %{id: id} = agent, {findings, advisory}, source, askers) do
     offer = findings && {:problems, {"analysis", to_string(source)}}
 
     cond do
-      id in askers -> tell(scope, agent, :own_reply, findings || clean(source), offer)
+      id in askers -> tell(scope, agent, :own_reply, findings || clean(source, advisory), offer)
       findings -> tell(scope, agent, :findings, findings, offer)
       true -> :ok
     end
   end
 
-  defp clean(source) do
+  defp clean(source, advisory) do
     """
-    Your #{source} run finished: no problems in this working copy.
+    Your #{source} run finished: no blocking problems in this working copy#{advisory_note(advisory)}.
 
     This is the answer to the run you started, not a nudge — nothing here needs
     fixing. If a task was waiting on it, dispose of that task now rather than
@@ -308,22 +311,25 @@ defmodule CodeMySpec.Agents.AnalysisReport do
 
   # What landed, by source, and what to do about it. `nil` when there is nothing
   # worth waking anyone for.
-  defp digest(source, problems) do
-    case Enum.count(problems, &(&1.severity == :error)) do
-      0 ->
-        nil
+  #
+  # Counted by `Validation.blockable/2`, the gate's own definition: this used to
+  # count errors only, so a run whose warnings blocked certification reported
+  # "no problems" (4a4cb998).
+  defp digest(_source, 0, _advisory), do: nil
 
-      count ->
-        """
-        Your #{source} run finished: #{count} #{noun(count)} in this working copy.
+  defp digest(source, count, advisory) do
+    """
+    Your #{source} run finished: #{count} blocking #{noun(count)}#{advisory_note(advisory)} in this working copy.
 
-        Call `list_problems` for the detail. If they are yours, fix them and run
-        the analyzers again; if the run says something you have already fixed,
-        it measured the tree before your edit and the next one will disagree
-        with it.
-        """
-    end
+    Call `list_problems` for the detail. If they are yours, fix them and run
+    the analyzers again; if the run says something you have already fixed,
+    it measured the tree before your edit and the next one will disagree
+    with it.
+    """
   end
+
+  defp advisory_note(0), do: ""
+  defp advisory_note(count), do: " (#{count} advisory)"
 
   defp noun(1), do: "problem"
   defp noun(_), do: "problems"
