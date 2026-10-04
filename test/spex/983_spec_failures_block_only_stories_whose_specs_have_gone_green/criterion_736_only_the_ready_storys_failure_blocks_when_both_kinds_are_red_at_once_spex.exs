@@ -121,6 +121,22 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
       # The ready story regresses without its spec being edited — its
       # implementation broke. Editing the spec would be a rewrite, and a
       # rewrite un-readies the story (criterion 2193).
+      given_ "the agent's change to the shared implementation broke the ready story",
+             context do
+        # The regression this criterion sorts is the agent's own: it edited the
+        # implementation both stories sit on. Without an edit the session owns
+        # nothing and nothing it is shown can block it (story 894).
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "lib/example_context.ex",
+            "defmodule ExampleContext do\n  @moduledoc false\n  def broken, do: :changed\nend\n"
+          )
+
+        :ok = record_edit(context, "lib/example_context.ex")
+        {:ok, context}
+      end
+
       when_ "a run reports both stories red and the stop hook fires", context do
         jsonl =
           Fixtures.spex_run_report([

@@ -205,7 +205,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         question = ask(context, context.coder)
         :ok = user_answers(context, question, "Yes")
         id = context.coder
-        assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
+
+        # The answer releases the task and wakes its holder in a background
+        # task; that task finishing is when the turn has been asked for.
+        :ok = Fixtures.drain_background_work()
+        assert_received {:work_turn_requested, ^id, _ref, _prompt}
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)
         {:ok, context}
       end

@@ -42,6 +42,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
+  @failing_test """
+  defmodule ExampleContextTest do
+    use ExUnit.Case
+
+    test "fails on purpose" do
+      assert 1 == 2, "exunit failure fixture"
+    end
+  end
+  """
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
   setup :register_log_in_setup_account
@@ -118,8 +127,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
             %Frame{assigns: %{current_scope: context.scope}}
           )
 
-        # `started_at` has microsecond precision, so only a write after it counts
-        # as changed during the task.
+        # It writes the implementation and the test that is about to fail: the
+        # failure is on a file this agent edited, so it is this agent's.
+        context = Map.put(context, :session_id, session_id)
+
         :ok =
           Environments.write_file(
             context.environment,
@@ -127,13 +138,18 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
             "defmodule ExampleContext do\n  @moduledoc false\nend\n"
           )
 
-        HarnessHooks.write_file(
-          context,
-          @impl_path,
-          "defmodule ExampleContext do\n  @moduledoc false\nend\n"
-        )
+        :ok = record_edit(context, @impl_path)
 
-        {:ok, Map.put(context, :session_id, session_id)}
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @test_path,
+            @failing_test
+          )
+
+        :ok = record_edit(context, @test_path)
+
+        {:ok, context}
       end
 
       when_ "one agent's analyzer records a failing test", context do

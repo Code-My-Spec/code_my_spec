@@ -25,6 +25,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
+  @failing_test """
+  defmodule ExampleContextTest do
+    use ExUnit.Case
+
+    test "fails on purpose" do
+      assert 1 == 2, "exunit failure fixture"
+    end
+  end
+  """
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
   setup :register_log_in_setup_account
@@ -69,11 +78,10 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
-      given_ "the agent edits the impl file during the task", context do
-        # With microsecond-precision started_at, only files modified
-        # post-start_task count as "changed during the task." Re-write
-        # the impl file so the pipeline picks it up under the
-        # block_changed scope.
+      given_ "the agent writes the impl and its test during the task", context do
+        # A ComponentCode task writes both. The test is the agent's own edit, so
+        # a failure on it is this session's to fix — which is what lets the stop
+        # hold it, whether or not the task's requirement is met by then.
         :ok =
           Environments.write_file(
             context.environment,
@@ -82,6 +90,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
           )
 
         :ok = record_edit(context, @impl_path)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @test_path,
+            @failing_test
+          )
+
+        :ok = record_edit(context, @test_path)
 
         {:ok, context}
       end
