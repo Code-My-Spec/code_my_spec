@@ -42,4 +42,25 @@ defmodule CodeMySpecWeb.IntegrationsDesktopTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :error)
     assert OAuthHandoff.claim("s1") == :error
   end
+
+  test "the loopback /callback resolves its provider from the parked flow", %{conn: conn} do
+    :ok =
+      OAuthHandoff.park(%{
+        session_params: %{state: "s2"},
+        provider: :cloudflare,
+        flow: :integration
+      })
+
+    conn = get(conn, ~p"/callback?state=s2&error=access_denied")
+
+    assert redirected_to(conn) == ~p"/app/users/settings"
+    assert OAuthHandoff.claim("s2") == :error
+  end
+
+  test "a /callback whose state was never parked says it expired", %{conn: conn} do
+    conn = get(conn, ~p"/callback?state=unknown&code=abc")
+
+    assert redirected_to(conn) == ~p"/app/users/settings"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "expired"
+  end
 end

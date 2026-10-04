@@ -759,3 +759,8 @@ config :code_my_spec, :eval_artifact_staleness, :warn
 
 # A test that runs a desktop OAuth connect must not open the machine's browser.
 config :code_my_spec, CodeMySpecDesktop.Browser, launch: false
+
+# Resend client registration (CodeMySpecDesktop.OAuthClients) never reaches
+# Resend from a test; tests stub it with Req.Test.
+config :code_my_spec, CodeMySpecDesktop.OAuthClients,
+  plug: {Req.Test, CodeMySpecDesktop.OAuthClients}

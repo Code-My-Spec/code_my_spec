@@ -20,6 +20,7 @@ defmodule CodeMySpecDesktop.Application do
   def start(type, _args) do
     CmsHarness.Application.prepare_host()
     FirstBoot.ensure_database()
+    CodeMySpecDesktop.OAuthClients.configure()
     CodeMySpecWeb.Application.start(type, children: &children/1)
   end
 
