@@ -93,6 +93,29 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       {:ok, _view, html} = live(conn, settings_path(project))
       assert html =~ ~s(data-test="console-settings")
       assert html =~ ~s(data-test="add-environment-form")
+      assert html =~ ~s(data-test="setup-options-form")
+      assert html =~ ~s(data-test="setup-option-telemetry")
+    end
+  end
+
+  describe "setup options" do
+    test "toggling one off persists it on the project", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, settings_path(project))
+
+      assert has_element?(view, "[data-test='setup-option-telemetry'] input:checked")
+
+      view
+      |> element("[data-test='setup-option-telemetry'] input")
+      |> render_click(%{"option" => "telemetry"})
+
+      refute has_element?(view, "[data-test='setup-option-telemetry'] input:checked")
+
+      project = CodeMySpec.Projects.get_project!(scope, project.id)
+      refute :telemetry in CodeMySpec.Provisioning.setup_options(project)
     end
   end
 
@@ -141,6 +164,73 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       |> render_click()
 
       assert Process.alive?(view.pid)
+    end
+  end
+
+  describe "telemetry health results" do
+    test "a completed check survives reload and stays with its environment", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      url = resource_path(project, :telemetry) <> "?env=uat&tab=checks"
+      {:ok, view, _html} = live(conn, url)
+      refute has_element?(view, "[data-test='telemetry-check-result']")
+
+      view
+      |> element("[data-test='run-check'][data-check='telemetry']")
+      |> render_click()
+
+      render_async(view, 5_000)
+      saved = CodeMySpec.Telemetry.last_check(scope, "uat")
+      assert saved != nil
+
+      {:ok, reloaded, _html} = live(conn, url)
+      assert has_element?(reloaded, "[data-test='telemetry-check-result']", "HTTPS reachability:")
+      assert has_element?(reloaded, "[data-test='diagnostics-checked-note']", "checked")
+      assert CodeMySpec.Telemetry.last_check(scope, "uat") == saved
+
+      render_patch(reloaded, resource_path(project, :telemetry) <> "?env=prod&tab=checks")
+      refute has_element?(reloaded, "[data-test='telemetry-check-result']")
+      assert has_element?(reloaded, "[data-test='telemetry-check-panel'][data-state='unchecked']")
+
+      render_patch(reloaded, url)
+      assert has_element?(reloaded, "[data-test='telemetry-check-result']", "HTTPS reachability:")
+      assert CodeMySpec.Telemetry.last_check(scope, "uat") == saved
+      assert CodeMySpec.Telemetry.last_check(scope, "prod") == nil
+    end
+
+    test "an unavailable environment shows visible outcomes and recovery guidance", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, view, _html} =
+        live(conn, resource_path(project, :telemetry) <> "?env=missing-telemetry&tab=checks")
+
+      refute has_element?(view, "[data-test='telemetry-check-result']")
+
+      view
+      |> element("[data-test='run-check'][data-check='telemetry']")
+      |> render_click()
+
+      render_async(view, 5_000)
+
+      result =
+        view
+        |> element("[data-test='telemetry-check-result']")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.text()
+        |> String.replace(~r/\s+/, " ")
+
+      assert result =~ "HTTPS reachability:"
+      assert result =~ "Unavailable"
+      assert result =~ "check telemetry setup, DNS, TLS, and server connectivity"
+      assert result =~ "Read access:"
+      assert result =~ "Could not verify while telemetry is unavailable"
+      assert result =~ "Write protection:"
+      assert result =~ "restore connectivity and read access, then check again"
+      assert has_element?(view, "[data-test='diagnostics-checked-note']", "checked")
     end
   end
 

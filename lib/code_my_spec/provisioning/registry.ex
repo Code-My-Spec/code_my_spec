@@ -50,6 +50,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   require Logger
 
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.HostBaseline
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
@@ -795,11 +796,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec trust_command(String.t()) :: String.t()
   def trust_command(host) do
-    config = ~s({"insecure-registries":["#{host}"]})
-
-    "mkdir -p /etc/docker && " <>
-      "(grep -qF #{shell_escape(host)} /etc/docker/daemon.json 2>/dev/null || " <>
-      "(echo #{shell_escape(config)} > /etc/docker/daemon.json && systemctl restart docker))"
+    HostBaseline.docker_command(host)
   end
 
   # `distribution` takes its backing store from the environment, and which
