@@ -2,7 +2,7 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   @moduledoc """
   Domain functions for the QA attempt lifecycle on an issue (story 1091).
 
-  A pass resolves the issue and frees its team (`Agents.free_issue_team/2`)
+  A pass resolves the issue and frees its team (`Agents.Events` answers it)
   directly — there is no `qa_complete` graph node to satisfy, because an
   issue is not in the requirement graph. `Agents.IssueWork` reads this
   store's `latest/2` to decide whose turn it is.
@@ -10,7 +10,6 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa.IssueQaAttempt
@@ -50,8 +49,13 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
     with issue when not is_nil(issue) <- Issues.get_issue(scope, attempt.issue_id),
          {:ok, resolved} <-
            Issues.resolve_issue(scope, issue, "Verified by issue QA attempt #{attempt.id}."),
-         {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed),
-         :ok <- Agents.free_issue_team(scope, resolved) do
+         {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
+      # Agents frees the issue's team (`Agents.Events`); Qa sits below Agents.
+      :telemetry.execute([:code_my_spec, :qa, :issue_passed], %{}, %{
+        scope: scope,
+        issue: resolved
+      })
+
       attempt
     else
       nil -> Repo.rollback(:issue_not_found)

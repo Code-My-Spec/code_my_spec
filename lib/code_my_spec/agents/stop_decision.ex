@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   `Hooks.Stop` answers an external agent's Stop hook. It produces the same
   thing this does — the problem summary from `Validation.validate_stop/3` and
-  the directive from `Validation.Menu.render/2` — and wraps it in the hook
+  the directive from `Agents.Menu.render/2` — and wraps it in the hook
   protocol's envelope. An agent running under Alloy fires no hooks, so none of
   it reached one: `validate_stop/3` had exactly two callers, both hooks, and
   the engine called neither. Issue `f0cc65ab`, now stories 1042 and 1043.
@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.StopDecision do
   require Logger
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
@@ -155,8 +156,7 @@ defmodule CodeMySpec.Agents.StopDecision do
         # what to do next, and "next" is this agent's own work for the same
         # reason it is on every other path — a blocked coding agent pointed at
         # QA's queue is being told to do something it will not do.
-        {reason <> Validation.Menu.render(scope, agent.continuous == true, agent.role, agent),
-         key}
+        {reason <> Menu.render(scope, agent.continuous == true, agent.role, agent), key}
 
       {:ok, _result} ->
         keep_working(scope, agent)
@@ -185,7 +185,7 @@ defmodule CodeMySpec.Agents.StopDecision do
     # which it can do anything about, and it would loop until somebody else
     # finished. Asked about its own, it goes home when its own runs out, which
     # is R6.
-    case Validation.Menu.render(scope, true, agent.role, agent) do
+    case Menu.render(scope, true, agent.role, agent) do
       "" -> {nil, nil}
       menu -> {"Your turn is done and the loop is still running." <> menu, :continuing}
     end

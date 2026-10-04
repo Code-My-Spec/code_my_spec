@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :id, :string, required: true
+    field :component_id, :string, required: true
     field :name, :string
 
     # Every authorable type (3aeb66cf): this offered context and
@@ -32,9 +32,9 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, component} <- find_component(scope, params.id),
+         {:ok, component} <- find_component(scope, params.component_id),
          {:ok, component} <-
-           Components.update_component(scope, component, Map.drop(params, [:id])) do
+           Components.update_component(scope, component, Map.drop(params, [:component_id])) do
       {:reply, ComponentsMapper.component_response(component), frame}
     else
       {:error, changeset = %Ecto.Changeset{}} ->

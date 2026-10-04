@@ -209,7 +209,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         role: :qa,
         node_scope: :self,
         check_type: :delegate,
-        config: %{module: CodeMySpec.Qa, function: :complete_check},
+        config: %{module: CodeMySpec.Qa.Verdict, function: :complete_check},
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA complete: the latest DB-backed attempt is a valid pass",

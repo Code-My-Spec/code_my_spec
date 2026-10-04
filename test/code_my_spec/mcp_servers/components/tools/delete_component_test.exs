@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponentTest do
     test "executes with valid params and scope" do
       scope = full_scope_fixture()
       component = component_fixture(scope)
-      params = %{id: component.id}
+      params = %{component_id: component.id}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponentTest do
 
     test "returns error for non-existent component" do
       scope = full_scope_fixture()
-      params = %{id: "00000000-0000-0000-0000-000000000000"}
+      params = %{component_id: "00000000-0000-0000-0000-000000000000"}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -41,7 +41,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponentTest do
 
     test "returns error for invalid scope" do
       component = component_fixture(full_scope_fixture())
-      params = %{id: component.id}
+      params = %{component_id: component.id}
 
       frame = %Frame{assigns: %{}}
 

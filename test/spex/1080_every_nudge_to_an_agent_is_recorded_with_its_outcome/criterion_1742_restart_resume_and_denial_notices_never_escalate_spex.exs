@@ -42,7 +42,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1742Spex do
       when_ "the request is denied, and the coder ends that turn doing nothing", context do
         {:reply, reply, _} =
           AnswerNotification.execute(
-            %{id: context.request, decision: "deny", answer: "There is work: take it."},
+            %{
+              notification_id: context.request,
+              decision: "deny",
+              answer: "There is work: take it."
+            },
             frame(context)
           )
 

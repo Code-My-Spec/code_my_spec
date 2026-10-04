@@ -10,7 +10,7 @@ defmodule CodeMySpec.McpServers.MainAgent.ALongProblemDoesNotHideOtherAgentsTest
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
 
   defp agent(id, role, problems) do

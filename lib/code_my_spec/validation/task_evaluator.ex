@@ -8,7 +8,6 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.Environments
   alias CodeMySpec.Sessions
@@ -300,12 +299,13 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       :ok
   end
 
+  # Agents answers this (`Agents.Events`); Validation sits below Agents.
   defp nudge(scope, copy_id, except_agent_id) do
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Agents.Work.consider_copy(scope, copy_id, :task_completed, except_agent_id)
-    end)
-
-    :ok
+    :telemetry.execute([:code_my_spec, :tasks, :completed], %{}, %{
+      scope: scope,
+      working_copy_id: copy_id,
+      except_agent_id: except_agent_id
+    })
   end
 
   defp dispatch_evaluate(module, scope, task, opts) do

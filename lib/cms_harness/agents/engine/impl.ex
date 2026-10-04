@@ -54,6 +54,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Mcp.Transport
   alias CodeMySpec.Agents.ToolIndex
+  alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
   @supervisor CmsHarness.AgentSupervisor
@@ -827,14 +828,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
   main alone.
 
   One list for the index and the engine: the direct tools are
-  `ToolIndex.carried/0`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
+  `ToolIndex.carried/1`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
   its MCP name. Two hand-kept lists drifted: the index named `health` and
   `promote_sync` and this answered `Unknown tool` (1a7b1e4c).
   """
   @spec tools(keyword()) :: [module()]
   def tools(_opts) do
     [Alloy.Tool.Core.Read, Alloy.Tool.Core.Write, Alloy.Tool.Core.Edit, Alloy.Tool.Core.Bash] ++
-      Enum.map(ToolIndex.carried(), &direct_tool/1)
+      Enum.map(ToolIndex.carried(ToolRegistry.registry()), &direct_tool/1)
   end
 
   @doc false
@@ -872,7 +873,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   What a direct call to a tool the engine does not carry is told.
 
-  `reach` is the launch request's `tool_reach` (`ToolIndex.reach/1`); `nil`
+  `reach` is the launch request's `tool_reach` (`ToolIndex.reach/2`); `nil`
   from an older server keeps the run_script hint. `direct_names` are the
   engine's own tools.
   """

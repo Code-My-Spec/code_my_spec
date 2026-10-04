@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnIdleAgentWithWorkIsNotQuietTest do
+defmodule CodeMySpec.Agents.Main.AnIdleAgentWithWorkIsNotQuietTest do
   @moduledoc """
   `Digest.quiet?/1` decides whether the cadence bothers the main agent, and it
   used to call a stalled fleet quiet.
@@ -18,7 +18,7 @@ defmodule CodeMySpec.MainAgent.AnIdleAgentWithWorkIsNotQuietTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.MainAgent.{AgentWork, CheckInReport, Digest}
+  alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest}
 
   defp entry(overrides) do
     struct!(

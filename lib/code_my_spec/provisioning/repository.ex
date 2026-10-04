@@ -90,12 +90,7 @@ defmodule CodeMySpec.Provisioning.Repository do
       "code-my-spec"
   """
   @spec default_name(map()) :: String.t()
-  def default_name(%{name: name}) when is_binary(name) do
-    name
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
+  defdelegate default_name(project), to: CodeMySpec.Projects.Project, as: :slug
 
   @doc """
   Create the repository, or adopt one Sam has chosen.

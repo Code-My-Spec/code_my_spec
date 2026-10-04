@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
@@ -48,16 +49,24 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.Issues,
-      CodeMySpec.MainAgent,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
+      CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.Validation.Blocking,
+      CodeMySpec.WorkingCopies,
+      CodeMySpec.Configurations,
+      CodeMySpec.Devices,
+      CodeMySpec.Epics,
+      CodeMySpec.Faults,
+      CodeMySpec.Notifications,
+      CodeMySpec.Problems
     ],
     exports: :all
 
@@ -71,6 +80,8 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.ProviderRefusal
@@ -86,13 +97,11 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.Utils.MapAccess
-  alias CodeMySpec.Validation
   alias CodeMySpec.WorkingCopies
 
   # How long we wait for a turn before reporting "still working" instead of
@@ -653,7 +662,7 @@ defmodule CodeMySpec.Agents do
     "The harness restarted. No turn of yours was interrupted — but if you had " <>
       "uncommitted changes on disk, check `git status`: a restart is not known " <>
       "to preserve them.\n" <>
-      Validation.Menu.render(scope, agent.continuous == true, agent.role, agent)
+      Menu.render(scope, agent.continuous == true, agent.role, agent)
   end
 
   # Starting a `main` agent is what the cadence exists to look after, so it is
@@ -2332,18 +2341,16 @@ defmodule CodeMySpec.Agents do
   # an external agent's Stop hook firing, which is the one thing this runtime
   # never had. Story 1043.
   #
-  # `opts` carries the same cassette escape hatches `Hooks.Stop` already
-  # threads through `Validation.validate_stop/3` (`:compile_output_file` and
-  # friends, test-only). The wire never sends them — `HarnessProjectChannel`
-  # always calls this at arity 3 — so a real turn event is unaffected; only a
-  # spex driving this path directly can supply them.
+  # A turn ending starts no analysis (John, 2026-10-04): the decision below
+  # reads the problems runs already persisted. `opts` reaches
+  # `StopDecision.deliver/3` for callers that drive this path directly.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}, opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} ->
         # The turn is over, so nothing is in flight. Cleared before the decision
-        # rather than after: `deliver/3` runs the whole stop menu — analysis,
-        # graph, problems — and an agent read during it would show a turn that
-        # ended as still running.
+        # rather than after: `deliver/3` runs the whole stop menu — graph and
+        # problems — and an agent read during it would show a turn that ended
+        # as still running.
         # Read before the clear: `Work.record_decline/3` needs it to tell a turn
         # that closed a task from one that did nothing, and the next line is
         # what destroys it.

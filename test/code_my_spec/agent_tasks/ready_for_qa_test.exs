@@ -100,6 +100,16 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
 
   defp stamp(scope, story), do: Stories.get_story(scope, story.id).qa_ready_commit
 
+  # bab9a2a5: the offer said "use when ... its implementation is ready to be
+  # tested", so a coder on a story with no implementation cancelled it.
+  test "the offer says this is where the story's specs are made to pass" do
+    description = ReadyForQa.dispatch(nil)
+
+    assert description =~ "Make this story's specs pass"
+    assert description =~ "implement"
+    refute description =~ "implementation is ready"
+  end
+
   test "a dirty tree is refused, and nothing is stamped" do
     %{scope: scope, story: story} = a_copy(" M lib/war.ex\n")
 

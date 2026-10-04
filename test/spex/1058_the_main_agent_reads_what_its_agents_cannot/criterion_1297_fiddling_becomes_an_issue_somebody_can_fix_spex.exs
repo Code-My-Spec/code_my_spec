@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
         {:reply, response, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: "Dunning emails go out",
               basis: "record",
               worked_around: "no tool exposes story-to-epic membership"

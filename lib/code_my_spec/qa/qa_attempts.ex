@@ -11,7 +11,6 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   require Logger
 
-  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
@@ -113,8 +112,19 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   defp wait_on_filed_issues(_scope, attempt, _agent_id), do: attempt
 
+  # A read on the `Agents.Agent` leaf; Qa sits below Agents.
+  defp agent_in_project(%Scope{active_project_id: project_id}, agent_id)
+       when is_binary(project_id) and is_binary(agent_id) do
+    case Ecto.UUID.cast(agent_id) do
+      {:ok, id} -> Repo.get_by(Agent, id: id, project_id: project_id)
+      :error -> nil
+    end
+  end
+
+  defp agent_in_project(_scope, _agent_id), do: nil
+
   defp block_on(scope, attempt, agent_id, issue) do
-    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+    with %Agent{} = agent <- agent_in_project(scope, agent_id),
          {:ok, _} <-
            TaskOwner.block_task(scope, agent, attempt.task_id, :issue, issue.id,
              reason: "waiting on issue #{issue.id}"
@@ -318,44 +328,11 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> Repo.one()
   end
 
-  @doc """
-  Is `qa_complete` satisfied for the story?
+  @doc "Whether the story's newest attempt is an uninvalidated pass; see `Qa.Verdict.complete?/2`."
+  defdelegate complete?(scope, story_id), to: CodeMySpec.Qa.Verdict
 
-  True iff the **most-recent attempt on the story** (regardless of
-  status) is `status: :pass` AND carries no invalidation. A later
-  `:partial` / `:fail` submission overrides an earlier `:pass`; an
-  invalidation on the latest pass also clears satisfaction.
-
-  Returns `false` when the scope has no active project (fails closed
-  to prevent cross-project reads).
-  """
-  @spec complete?(Scope.t(), integer()) :: boolean()
-  def complete?(%Scope{active_project_id: nil}, _story_id), do: false
-
-  def complete?(%Scope{} = scope, story_id) do
-    latest =
-      QaAttempt
-      |> by_story(story_id)
-      |> by_project(scope)
-      |> order_by([a], desc: a.inserted_at, desc: a.id)
-      |> limit(1)
-      |> preload(:invalidations)
-      |> Repo.one()
-
-    passed?(latest)
-  end
-
-  @doc """
-  Whether an attempt counts as a QA pass.
-
-  A pass that was later invalidated is not one — re-QA is required, which is why
-  `invalidations` must be empty as well as the status being `:pass`. Public so a
-  caller holding a preloaded attempt (the requirement graph does) decides with
-  this rather than re-stating the rule.
-  """
-  @spec passed?(QaAttempt.t() | nil) :: boolean()
-  def passed?(%QaAttempt{status: :pass, invalidations: []}), do: true
-  def passed?(_), do: false
+  @doc "Whether an attempt counts as a QA pass; see `Qa.Verdict.passed?/1`."
+  defdelegate passed?(attempt), to: CodeMySpec.Qa.Verdict
 
   defp by_story(query, story_id) do
     where(query, [a], a.story_id == ^story_id)

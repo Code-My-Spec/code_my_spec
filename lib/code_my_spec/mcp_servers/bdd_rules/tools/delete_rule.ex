@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.DeleteRule do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.BddRules
+  alias CodeMySpec.Files
   alias CodeMySpec.McpServers.BddRules.BddRulesMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -19,7 +20,8 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.DeleteRule do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, rule} <- fetch_rule(scope, get_param(params, :rule_id)),
-         {:ok, deleted} <- BddRules.delete_rule(scope, rule) do
+         tracked = Files.tracked_in_project(scope, BddRules.claimed_spec_paths(rule)),
+         {:ok, deleted} <- BddRules.delete_rule(scope, rule, tracked) do
       {:reply, BddRulesMapper.rule_deleted_response(deleted), frame}
     else
       {:error, reason} ->

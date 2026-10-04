@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.ADampedAgentIsNamedAsDampedTest do
+defmodule CodeMySpec.Agents.Main.ADampedAgentIsNamedAsDampedTest do
   @moduledoc """
   35e80d6d — a damped agent read as plain idle.
 
@@ -13,8 +13,8 @@ defmodule CodeMySpec.MainAgent.ADampedAgentIsNamedAsDampedTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.MainAgent.AgentWork
 
   @until ~U[2026-09-30 08:59:23Z]
 

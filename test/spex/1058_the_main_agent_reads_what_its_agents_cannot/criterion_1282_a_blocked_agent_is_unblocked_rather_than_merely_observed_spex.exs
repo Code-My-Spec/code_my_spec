@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
         {:reply, response, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: "Dunning emails go out — it is ready and belongs to no epic",
               basis: "record"
             },

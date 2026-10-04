@@ -36,6 +36,14 @@ defmodule CmsHarness.Project.Transport do
   @callback disconnect(socket()) :: socket()
 
   @doc """
+  Stop a connection attempt that never upgraded. Returns the socket.
+
+  `disconnect/1` cannot reach one: until the upgrade answers there is no
+  connection on the socket to close, and no `handle_disconnect/2` will come.
+  """
+  @callback abandon(socket()) :: socket()
+
+  @doc """
   The configured transport.
 
   Defaults to the real one; tests set `:transport` to a recorder. Read at call

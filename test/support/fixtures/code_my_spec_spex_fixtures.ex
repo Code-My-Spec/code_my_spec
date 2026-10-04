@@ -19,7 +19,11 @@ defmodule CodeMySpecSpex.Fixtures do
     deps: [
       CmsHarness,
       CodeMySpec,
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.Embeddings,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
       CodeMySpec.AgentHarness,
@@ -44,7 +48,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Files,
       CodeMySpec.Generators,
       CodeMySpec.Integrations,
-      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.Migration,
       CodeMySpec.Notifications,
@@ -63,7 +66,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
@@ -115,6 +117,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analysis.Reconciler
@@ -161,6 +164,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -1816,11 +1820,8 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   An analyzer run for this copy that finished badly.
 
-  For premises about what a stop does next: `validate_stop/3` enqueues with
-  `only_failed: true` on the no-changed-files path, so a *failed* run is the
-  state that makes a stop re-run something and a completed one is not. Without
-  it a spec asserting "the turn end enqueued the analyzers" passes on runs an
-  earlier step already caused, and proves nothing.
+  For premises about a run that did not finish well. A stop never re-runs it
+  (John, 2026-10-04); only an explicit request does.
   """
   def failed_analysis_run(%Scope{} = scope, source) do
     CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
@@ -1863,15 +1864,20 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  # Cassette opts (`:compile_output_file` and friends — see
-  # `CodeMySpec.Validation.validate_stop/3`) have no wire representation: a
-  # real harness never sends them, and the channel payload above has nowhere
-  # to carry them. Driven straight through `Agents.record_turn_event/4`
-  # instead of the socket when a spex supplies any, which is the same escape
-  # `Hooks.Stop` already gives the external path — the channel round-trip
-  # this skips is a two-line passthrough with nothing of its own to exercise.
+  # Recorded outputs (`:compile_output_file` and friends) are landed as a
+  # completed analysis run first (`land_outputs/2`); a turn end never starts
+  # or ingests one. Whatever opts remain go straight through
+  # `Agents.record_turn_event/4`, since the channel payload has nowhere to
+  # carry them; with none left, the turn ends over the socket like a real one.
   def end_turn(%Scope{} = scope, agent_id, opts) do
-    :ok = CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, opts)
+    case land_outputs(scope, opts) do
+      [] ->
+        end_turn(scope, agent_id, [])
+
+      rest ->
+        :ok =
+          CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, rest)
+    end
   end
 
   @doc """
@@ -2354,7 +2360,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def cloud_criteria(%Scope{} = scope, story),
-    do: CodeMySpec.AcceptanceCriteria.list_story_criteria(scope, story.id)
+    do: AcceptanceCriteria.list_story_criteria(scope, story.id)
 
   defp stringify_all(records), do: Enum.map(records, &stringify/1)
 
@@ -2550,16 +2556,49 @@ defmodule CodeMySpecSpex.Fixtures do
   # key is R8's repeat identity for the finding set, not something a spec has an
   # opinion about, and every one of these asserts on the reason.
   #
-  # `opts` is the same cassette escape hatch `end_turn/3` carries
-  # (`:compile_output_file` and friends, test-only) — passed straight through
-  # to `Validation.validate_stop/3`.
+  # A stop never starts or ingests analysis (John, 2026-10-04). Recorded outputs
+  # in `opts` (`:compile_output_file` and friends) are landed as a completed run
+  # first, by `land_outputs/2`, and the stop then reads what that run persisted.
   def validate_stop(scope, opts \\ [])
 
   def validate_stop(%Scope{} = scope, opts) do
-    case CodeMySpec.Validation.validate_stop(scope, nil, opts) do
+    case CodeMySpec.Validation.validate_stop(scope, nil, land_outputs(scope, opts)) do
       {:error, reason, _key} -> {:error, reason}
       other -> other
     end
+  end
+
+  @output_file_sources [
+    compile_output_file: "compiler",
+    credo_output_file: "credo",
+    exunit_output_file: "exunit",
+    spex_output_file: "spex"
+  ]
+
+  @doc """
+  Recorded analyzer outputs, landed as completed analysis runs — what
+  `start_analysis` would have produced — before anything stops.
+
+  Takes the opts a stop or turn end was given and returns them without the
+  output files and `:await` (which waits for the runs to land), neither of
+  which a stop accepts.
+  """
+  def land_outputs(%Scope{} = scope, opts) do
+    {files, rest} = Keyword.split(opts, Keyword.keys(@output_file_sources))
+
+    case for({opt, source} <- @output_file_sources, Keyword.has_key?(files, opt), do: source) do
+      [] ->
+        :ok
+
+      sources ->
+        CodeMySpec.Analysis.ensure_stale_runs(scope, sources, files)
+        # Waited for only when asked, as `validate_stop/3` used to: a scope
+        # that routes runs to a harness the spec never started would wait
+        # forever.
+        if Keyword.get(rest, :await, false), do: CodeMySpec.Analysis.await_all(scope)
+    end
+
+    Keyword.delete(rest, :await)
   end
 
   @doc "Files the harness scanned but could classify into no role."
@@ -2771,7 +2810,13 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec embedding_serving_is_recorded() :: :ok
   def embedding_serving_is_recorded do
     previous = Application.get_env(:code_my_spec, :embedding_serving)
-    Application.put_env(:code_my_spec, :embedding_serving, CodeMySpecTest.RecordingEmbeddingServing)
+
+    Application.put_env(
+      :code_my_spec,
+      :embedding_serving,
+      CodeMySpecTest.RecordingEmbeddingServing
+    )
+
     CodeMySpecTest.RecordingEmbeddingServing.listen(self())
 
     ExUnit.Callbacks.on_exit(fn ->
@@ -3856,7 +3901,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec give_up_on_question(Scope.t(), String.t()) :: :ok
   def give_up_on_question(%Scope{} = scope, question_id) do
-    {:ok, _question} = CodeMySpec.MainAgent.give_up_on_question(scope, question_id)
+    {:ok, _question} = MainAgent.give_up_on_question(scope, question_id)
     :ok
   end
 
@@ -3869,15 +3914,15 @@ defmodule CodeMySpecSpex.Fixtures do
   about the wake-up's *content and consequences*, and the tick is that wake-up.
   """
   @spec cadence_tick(Scope.t()) :: :ok
-  def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+  def cadence_tick(%Scope{} = scope), do: MainAgent.check_in(scope)
 
   @doc "Start a real recovery timer for a scheduling spec and clean up its supervised child."
   @spec start_recovery_timer(Scope.t()) :: :ok
   def start_recovery_timer(%Scope{} = scope) do
-    {:ok, pid} = CodeMySpec.MainAgent.ensure_cadence(scope)
+    {:ok, pid} = MainAgent.ensure_cadence(scope)
 
     ExUnit.Callbacks.on_exit(fn ->
-      DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+      DynamicSupervisor.terminate_child(CodeMySpec.Agents.Main.CadenceSupervisor, pid)
     end)
 
     :ok
@@ -3929,7 +3974,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
-  def cadence_interval(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_interval(scope)
+  def cadence_interval(%Scope{} = scope), do: MainAgent.cadence_interval(scope)
 
   @doc """
   Set how often this project's main agent is woken.
@@ -3940,11 +3985,11 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
   def set_cadence_interval(%Scope{} = scope, seconds),
-    do: CodeMySpec.MainAgent.set_cadence_interval(scope, seconds)
+    do: MainAgent.set_cadence_interval(scope, seconds)
 
   @doc "Whether this project's cadence is still waking its main agent."
   @spec cadence_running?(Scope.t()) :: boolean()
-  def cadence_running?(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_running?(scope)
+  def cadence_running?(%Scope{} = scope), do: MainAgent.cadence_running?(scope)
 
   @doc """
   Make one of the things the digest reads unanswerable.

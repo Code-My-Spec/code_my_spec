@@ -29,7 +29,16 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   either.
   """
 
-  alias CodeMySpec.Agents.{Agent, Credential, OperatingRules, ProviderBrief, RoleBrief, ToolIndex}
+  alias CodeMySpec.Agents.{
+    Agent,
+    Credential,
+    Defaults,
+    OperatingRules,
+    ProviderBrief,
+    RoleBrief,
+    ToolIndex
+  }
+
   alias CodeMySpec.Conversations
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
@@ -59,13 +68,21 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   what the caller decided to send. An unhydrated agent produces a request with
   no credential and no history — a first start, which is exactly what it looks
   like.
+
+  `tools` is `McpServers.ToolRegistry.registry/0`, handed in because `Agents`
+  sits below the servers it would otherwise read. See `ToolIndex.registry/0`.
   """
-  @spec for(Agent.t()) :: map()
-  def for(%Agent{} = agent) do
+  @spec for(Agent.t(), ToolIndex.registry()) :: map()
+  def for(%Agent{} = agent, tools) do
     %{
       "agent_id" => agent.id,
       "engine" => to_string(agent.engine),
       "provider" => agent.provider,
+      # The harness reads it and nothing sent it, so every agent ran on its
+      # provider's own default — a Codex agent on whatever model the machine's
+      # ~/.codex config named. The agent's model, else its role's for this
+      # provider; nil leaves the choice to the provider.
+      "model" => model(agent),
       "working_copy" => agent.working_copy,
       "role" => agent.role,
       # What this agent is for, in words, so the model gets it and not only the
@@ -99,9 +116,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # concluding story 895's epic tools were unreachable on this box when they
       # were available through `run_script` the whole time. Both could see what
       # they held and not what they could reach. See `Agents.ToolIndex`.
-      "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
+      "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
-      "tool_reach" => ToolIndex.reach(agent),
+      "tool_reach" => ToolIndex.reach(agent, tools),
       # How a tool call physically happens on the engine running this agent.
       #
       # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and
@@ -300,4 +317,14 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   defp put_present(map, _key, nil), do: map
   defp put_present(map, _key, ""), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
+
+  defp model(%Agent{model: model}) when is_binary(model) and model != "", do: model
+
+  defp model(%Agent{role: role, provider: provider}) when is_atom(role) and not is_nil(role) do
+    Enum.find_value(Defaults.for_role(role), fn {candidate, model} ->
+      candidate == provider && model
+    end)
+  end
+
+  defp model(_agent), do: nil
 end

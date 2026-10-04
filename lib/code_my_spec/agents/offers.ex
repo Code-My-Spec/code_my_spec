@@ -26,6 +26,8 @@ defmodule CodeMySpec.Agents.Offers do
     * `:instruction` — delivered and a subsequent turn observed: `:n_a`,
       noting delivered/seen. Operator compliance is not inferred. Repetition
       is reported to main once; it never suppresses a human's message.
+    * `:team_free` — main re-assigning the named copy: `set_active_story` or
+      `assign_issue_to_working_copy` naming it (criteria 1881, 1892).
   """
 
   import Ecto.Query
@@ -63,6 +65,9 @@ defmodule CodeMySpec.Agents.Offers do
 
   # What main can do with a waiting question it was offered.
   @question_moves ~w(answer_notification escalate_question ask_user_question)
+
+  # What main can do to re-assign a team-free copy: a story, or an issue.
+  @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)
 
   # Three ignored offers of the same work and it is held back from that agent.
   @held_after 3
@@ -531,6 +536,12 @@ defmodule CodeMySpec.Agents.Offers do
   defp outcome(%Offer{kind: :denial}, _agent, calls),
     do: claimed_if(called?(calls, "start_task") or called?(calls, "answer_notification"))
 
+  # Claimed when main re-assigned this freed copy: a story with
+  # `set_active_story` or an issue with `assign_issue_to_working_copy`,
+  # both naming the copy with `working_copy_id`.
+  defp outcome(%Offer{kind: :team_free, subject_key: copy_id}, _agent, calls),
+    do: claimed_if(assigned_to_copy?(calls, copy_id))
+
   defp claimed_if(true), do: %{status: :claimed}
   defp claimed_if(false), do: %{status: :ignored}
 
@@ -566,6 +577,24 @@ defmodule CodeMySpec.Agents.Offers do
     do: is_nil(task.story_id) and is_nil(task.component_id)
 
   defp entity_type_matches?(_type, _task), do: false
+
+  defp assigned_to_copy?(calls, copy_id) do
+    Enum.any?(calls, fn %{name: name, arguments: arguments} ->
+      cond do
+        Enum.any?(@reassignment_tools, &String.ends_with?(name, &1)) ->
+          arguments["working_copy_id"] == copy_id
+
+        String.ends_with?(name, "run_script") ->
+          script = inspect(arguments)
+
+          Enum.any?(@reassignment_tools, &String.contains?(script, &1)) and
+            String.contains?(script, to_string(copy_id))
+
+        true ->
+          false
+      end
+    end)
+  end
 
   # Tools reached through `run_script` are named in its arguments.
   defp called?(calls, tool) do

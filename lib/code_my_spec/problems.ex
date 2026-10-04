@@ -9,7 +9,6 @@ defmodule CodeMySpec.Problems do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Analysis,
       CodeMySpec.Repo,
       CodeMySpec.Tests,
       CodeMySpec.Users.Scope,

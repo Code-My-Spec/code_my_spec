@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnAgentOutOfTheLoopIsNotReportedStalledTest do
+defmodule CodeMySpec.Agents.Main.AnAgentOutOfTheLoopIsNotReportedStalledTest do
   @moduledoc """
   An agent with continuous off is reported as out of the loop, not STALLED.
 
@@ -11,7 +11,7 @@ defmodule CodeMySpec.MainAgent.AnAgentOutOfTheLoopIsNotReportedStalledTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.MainAgent.AgentWork
+  alias CodeMySpec.Agents.Main.AgentWork
 
   defp unclaimed(continuous?) do
     AgentWork

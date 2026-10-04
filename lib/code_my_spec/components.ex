@@ -8,7 +8,6 @@ defmodule CodeMySpec.Components do
     deps: [
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
     ],
@@ -21,7 +20,6 @@ defmodule CodeMySpec.Components do
   }
 
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -254,54 +252,6 @@ defmodule CodeMySpec.Components do
   @spec resolve_dependency_order(CodeMySpec.Users.Scope.t()) ::
           {:ok, [CodeMySpec.Components.Component.t()]}
   defdelegate resolve_dependency_order(scope), to: DependencyRepository
-
-  defdelegate get_requirements_for_type(component_type), to: RequirementsRegistry
-
-  @doc """
-  Returns requirement definitions for a component based on its type, with optional filtering.
-
-  Retrieves static requirement definitions from the Registry and applies
-  filtering based on options.
-
-  ## Options
-
-    * `:include` - list of requirement names to include (if empty, includes all)
-    * `:exclude` - list of requirement names to exclude
-    * `:artifact_types` - list of artifact types to filter by (if empty, includes all)
-
-  ## Examples
-
-      iex> get_requirement_definitions(scope, %Component{type: "schema"}, [])
-      [%RequirementDefinition{name: "implementation_file", ...}]
-
-      iex> get_requirement_definitions(scope, component, include: ["implementation_file"])
-      [%RequirementDefinition{name: "implementation_file", ...}]
-
-      iex> get_requirement_definitions(scope, component, artifact_types: [:tests])
-      [%RequirementDefinition{artifact_type: :tests, ...}, ...]
-
-  """
-  @spec get_requirement_definitions(Scope.t(), Component.t(), keyword()) :: [
-          CodeMySpec.Requirements.RequirementDefinition.t()
-        ]
-  def get_requirement_definitions(_scope, %Component{type: type}, opts \\ []) do
-    include_types = Keyword.get(opts, :include, [])
-    exclude_types = Keyword.get(opts, :exclude, [])
-    artifact_types = Keyword.get(opts, :artifact_types, [])
-
-    RequirementsRegistry.get_requirements_for_type(type)
-    |> Enum.filter(fn %{name: name, artifact_type: artifact_type} ->
-      exclude = exclude_types != [] and name in exclude_types
-
-      include =
-        (include_types != [] and name in include_types) or include_types == []
-
-      artifact_match =
-        artifact_types == [] or artifact_type in artifact_types
-
-      include && !exclude && artifact_match
-    end)
-  end
 
   @doc """
   Determines if a component is a bounded context.

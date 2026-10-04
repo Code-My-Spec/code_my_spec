@@ -35,7 +35,7 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
       end
 
     %{extension_dir: out, plugin_dest: plugin} =
-      PackageExtension.package_plugin_files(source, extension_dir)
+      PackageExtension.package_plugin_files(source, extension_dir, Mix.Project.config()[:version])
 
     Mix.shell().info("")
     Mix.shell().info("Plugin laid out at: #{out}")
@@ -44,6 +44,7 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
     Mix.shell().info("Inspect:")
     Mix.shell().info("  diff -r CodeMySpec #{Path.relative_to(plugin, app_path)}")
     Mix.shell().info("  grep -rn 4004 #{Path.relative_to(out, app_path)}    # should be empty")
+
     Mix.shell().info(
       "  grep -rn dev.codemyspec.com #{Path.relative_to(out, app_path)}    # should be empty"
     )

@@ -52,6 +52,7 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
         Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
       probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving)),
+      probes: Keyword.get(opts, :probes, Map.get(base, :probes, [])),
       reload_result: Keyword.get(opts, :reload_result, Map.get(base, :reload_result, :ok)),
       start_tunnel_result:
         Keyword.get(opts, :start_tunnel_result, Map.get(base, :start_tunnel_result, :ok))
@@ -83,6 +84,12 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   @doc "Sets what `probe/1` answers: `:serving`, `:erroring` or `:down`."
   def put_probe(status) when status in [:serving, :erroring, :down],
     do: Agent.update(__MODULE__, &%{&1 | probe: status})
+
+  @doc """
+  Answers `probe/1` gives, in order, before it falls back to `put_probe/1`'s —
+  a boot that answers `:down` for a while and then serves.
+  """
+  def put_probes(statuses), do: Agent.update(__MODULE__, &%{&1 | probes: statuses})
 
   @doc "Every call this fake recorded, oldest first — `{function, args}` pairs."
   def calls, do: __MODULE__ |> Agent.get(& &1.calls) |> Enum.reverse()
@@ -195,7 +202,13 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
     # mismatch itself calls `put_process_root/1` afterward to override it.
     Agent.update(__MODULE__, &%{&1 | process_root: root})
 
-    Agent.get(__MODULE__, & &1.launch_result)
+    # A process just launched is alive until something stops it.
+    Agent.get_and_update(__MODULE__, fn state ->
+      case state.launch_result do
+        {:ok, _pid} = ok -> {ok, %{state | alive?: true}}
+        other -> {other, state}
+      end
+    end)
   end
 
   @doc "Sets what `reload/5` answers — `:ok` or `{:error, reason}`."
@@ -216,7 +229,11 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   @impl true
   def probe(port) do
     record(:probe, [port])
-    Agent.get(__MODULE__, & &1.probe)
+
+    Agent.get_and_update(__MODULE__, fn
+      %{probes: [next | rest]} = state -> {next, %{state | probes: rest}}
+      state -> {state.probe, state}
+    end)
   end
 
   @impl true

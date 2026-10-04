@@ -16,7 +16,13 @@ defmodule CodeMySpecSpex.Story839.Criterion3438Spex do
   second source's analyzer subprocess genuinely never started early.
   """
 
-  use CodeMySpecSpex.Case
+  # Explicitly sync: `CmsHarness.AnalysisSlots` is a machine-wide semaphore
+  # by design (its own moduledoc: coordinating analyzer runs *across* every
+  # working copy one harness serves, not per-test state) -- two instances of
+  # this file running concurrently are two processes racing for the one real
+  # resource the criterion is about, which is correct production behavior
+  # and a guaranteed `{:already_started, pid}` collision as a test.
+  use CodeMySpecSpex.Case, async: false
 
   import CmsHarnessTest.Projects,
     only: [
@@ -36,7 +42,8 @@ defmodule CodeMySpecSpex.Story839.Criterion3438Spex do
   # (no credo dependency declared) makes a real, expected
   # `Logger.error("credo is not installed")` when it finally does run.
   spex "A second source queues behind the first rather than running concurrently",
-    fail_on_error_logs: false, criterion: 1377 do
+    fail_on_error_logs: false,
+    criterion: 1377 do
     scenario "compiler is running when a credo request arrives" do
       given_ "a working copy whose compiler analyzer blocks until told to proceed", context do
         ensure_harness_supervisor_started()

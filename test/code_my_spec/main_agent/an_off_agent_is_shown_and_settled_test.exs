@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnOffAgentIsShownAndSettledTest do
+defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
   @moduledoc """
   Issue 39af5611. check_in and list_agent_work listed running agents only, so a
   seat somebody had stopped on purpose read as empty — a role to staff. An off
@@ -13,10 +13,10 @@ defmodule CodeMySpec.MainAgent.AnOffAgentIsShownAndSettledTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.CheckInReport
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.Machinery
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.CheckInReport
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpec.Notifications
 

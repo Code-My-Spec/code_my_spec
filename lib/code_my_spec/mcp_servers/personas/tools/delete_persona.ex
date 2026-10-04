@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
   @moduledoc """
   Deletes a project-scoped persona, including every row in `persona_stories`
-  that links it to a story. Identifies the persona by id or slug. Files under
+  that links it to a story. Identifies the persona by persona_id or slug. Files under
   `.code_my_spec/personas/<slug>/` are NOT removed — clean those up manually
   if needed.
   """
@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :id, :string, doc: "UUID of the persona to delete. Provide id or slug."
-    field :slug, :string, doc: "Slug of the persona to delete. Provide id or slug."
+    field :persona_id, :string, doc: "UUID of the persona to delete. Provide persona_id or slug."
+    field :slug, :string, doc: "Slug of the persona to delete. Provide persona_id or slug."
   end
 
   @impl true
@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
     end
   end
 
-  defp fetch_persona(scope, %{id: id}) when is_binary(id) and id != "" do
+  defp fetch_persona(scope, %{persona_id: id}) when is_binary(id) and id != "" do
     case Personas.get_persona(scope, id) do
       nil -> {:error, :not_found}
       persona -> {:ok, persona}
@@ -43,5 +43,5 @@ defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
     end
   end
 
-  defp fetch_persona(_scope, _params), do: {:error, "must provide id or slug"}
+  defp fetch_persona(_scope, _params), do: {:error, "must provide persona_id or slug"}
 end

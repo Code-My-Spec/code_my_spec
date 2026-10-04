@@ -8,7 +8,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   import CodeMySpec.{AnalysisFixtures, DevicesFixtures, ProblemsFixtures}
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpec.Agents.Offers
@@ -20,6 +19,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpecTest.RecordingAgentTransport
 
   @mine "lib/my_app/mine.ex"
@@ -167,7 +167,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     :ok = AnalysisReport.deliver(scope, "credo", [%{severity: :error}], agent.id)
 
     message = dispatched(agent.id)
-    assert message =~ "Your credo run finished: 1 problem"
+    assert message =~ "Your credo run finished: 1 blocking problem"
 
     assert [offer] = Offers.list_for_agent(agent.id)
     assert {offer.kind, offer.subject_type, offer.subject_key} == {:problems, "analysis", "credo"}
@@ -180,7 +180,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
     :ok = AnalysisReport.deliver(scope, "credo", [], agent.id)
 
-    assert dispatched(agent.id) =~ "no problems"
+    assert dispatched(agent.id) =~ "no blocking problems"
     assert Offers.list_for_agent(agent.id) == []
   end
 end

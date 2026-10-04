@@ -21,11 +21,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
   }
 
   alias CodeMySpec.Files
-  alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation.TaskEvaluator
 
   @doc """
   Persist a successful runner result for `run`.
@@ -83,10 +80,21 @@ defmodule CodeMySpec.Analysis.Reconciler do
           })
 
         RunsRepository.prune(scope, run.source)
-        evaluate_sessions(scope)
-        maybe_notify(scope, finished, problems, opts)
+        # Re-evaluating tasks and pushing to the user's phone answer this event
+        # (`Validation.RunReconciled`, `Notifications.AnalysisPush`); Analysis
+        # sits below both.
+        :telemetry.execute(
+          [:code_my_spec, :analysis, :run_reconciled],
+          %{},
+          %{
+            scope: scope,
+            source: finished.source,
+            problems: problems,
+            notify: Keyword.get(opts, :notify, false)
+          }
+        )
 
-        # The internal half of story 1042. `maybe_notify/4` above is the push to
+        # The internal half of story 1042. `Notifications.AnalysisPush` is the push to
         # the *person*; this is the push to the agents running in our own BEAM,
         # which have a process to reach and should not have to wait on one.
         #
@@ -397,47 +405,4 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # arg parsing was fragile besides (an extension-less token was treated as a
   # directory and expanded to every file beneath it).
   defp clear_scope(_scope, %Run{}), do: :all
-
-  # -- Post-persist hooks --
-
-  # Complete tasks whose analyzers just passed. Feedback recording is
-  # suppressed: a background re-evaluation repeating the same failure text
-  # must not advance the R8 stuck counter — only agent-facing stops do that.
-  # `sync: false` — the triggering stop already synced, and a second full
-  # sync's missing-files sweep would race the problems just reconciled.
-  defp evaluate_sessions(scope) do
-    scope
-    |> Sessions.list_active_sessions()
-    |> Enum.each(fn session ->
-      TaskEvaluator.evaluate_session(scope, session, record_feedback: false, sync: false)
-    end)
-  rescue
-    e ->
-      Logger.warning("[Analysis] session evaluation failed: #{Exception.message(e)}")
-  end
-
-  # Background runs (stop-hook enqueued) push the outcome to the user's
-  # phone when they land blocking-severity problems — the agent may already
-  # have stopped, and this is how the result reaches a user who walked away.
-  # Model-invoked API runs skip this: the caller sees the output directly.
-  defp maybe_notify(scope, run, problems, opts) do
-    errors = Enum.count(problems, &(&1.severity == :error))
-
-    if Keyword.get(opts, :notify, false) and errors > 0 do
-      NotificationClient.notify(%{
-        title: "Analysis: #{run.source} found #{errors} problem(s)",
-        body: notification_body(scope, problems)
-      })
-    end
-  end
-
-  defp notification_body(scope, problems) do
-    first = problems |> Enum.filter(&(&1.severity == :error)) |> List.first()
-    project = (scope.active_project && scope.active_project.name) || "project"
-
-    case first do
-      nil -> project
-      p -> "#{project} — #{p.file_path}:#{p.line || "?"}"
-    end
-  end
 end

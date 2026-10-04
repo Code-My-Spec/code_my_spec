@@ -7,9 +7,8 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   replays the stdout and leaves the world untouched, so the next step reads
   something the recording never created.
   """
-  # Not async. The shell fake is selected by `:memory_shell` in application
-  # env, which is global — every test here setting the same module was
-  # survivable, but the injection points below set *different* values
+  # Not async. The shell fake is scoped to each environment (`:shell_module`),
+  # but the injection points below still set global application env
   # (`:memory_shell_push`, `:memory_shell_migration`), and two of those
   # running concurrently would decide each other's outcome. Serialising 72
   # tests that finish in a tenth of a second is the cheap side of that trade.
@@ -21,14 +20,9 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   alias CodeMySpecSpex.Fakes
 
   setup do
-    {:ok, env} = InMemoryEnvironment.create(working_dir: "/memfs")
-    previous = Application.get_env(:code_my_spec, :memory_shell)
-    Application.put_env(:code_my_spec, :memory_shell, Fakes.Shell)
+    {:ok, env} = InMemoryEnvironment.create(working_dir: "/memfs", shell_module: Fakes.Shell)
 
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :memory_shell, previous)
-      InMemoryEnvironment.destroy(env)
-    end)
+    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
 
     %{env: env}
   end

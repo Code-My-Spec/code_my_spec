@@ -341,6 +341,17 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:ok, context}
   end
 
+  # The per-criterion counterpart (story 983, criteria 1895-1906): a
+  # criterion's own latch, set directly rather than through a certifying
+  # run, for scenarios about what the latch gates (1898-1901) rather than
+  # how it is earned (1896).
+  register_given :criterion_latched_by_promotion, context do
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+    [criterion | _] = story.criteria
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(context.scope, criterion)
+    {:ok, context}
+  end
+
   # The engineer has opened the project configuration page.
   register_given :on_configuration_page, context do
     {:ok, config_live, _html} =

@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
       then_ "and product's answer reaches the coder", context do
         {:reply, answered, _} =
           AnswerNotification.execute(
-            %{id: context.question_id, answer: "Yes, full refund within 30 days."},
+            %{notification_id: context.question_id, answer: "Yes, full refund within 30 days."},
             context.product_frame
           )
 

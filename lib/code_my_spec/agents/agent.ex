@@ -46,6 +46,9 @@ defmodule CodeMySpec.Agents.Agent do
   the group exists, or the agent is not ours to signal.
   """
 
+  # A schema leaf (John, 2026-10-04): contexts below Agents — TaskOwner,
+  # Notifications, Qa — read and match agent rows without depending on Agents.
+  use Boundary, top_level?: true, deps: [CodeMySpec.Agents.RoleProfile], exports: :all
   use Ecto.Schema
 
   import Ecto.Changeset
