@@ -39,6 +39,7 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Projects,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
+      CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users,

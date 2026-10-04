@@ -33,6 +33,8 @@ defmodule CodeMySpec.Qa do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Qa.QaAttempt,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
       CodeMySpec.Environments,
       CodeMySpec.Issues,
@@ -46,8 +48,7 @@ defmodule CodeMySpec.Qa do
     ],
     exports: :all
 
-  alias CodeMySpec.Qa.{Invalidations, IssueQaAttempts, QaAttempts}
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Qa.{Invalidations, IssueQaAttempts, QaAttempts, Verdict}
 
   @doc """
   Submit a QA outcome for an active qa_complete task.
@@ -112,52 +113,10 @@ defmodule CodeMySpec.Qa do
   """
   defdelegate qa_complete?(scope, story_id), to: QaAttempts, as: :complete?
 
-  @doc """
-  Requirement-checker adapter for the `qa_complete` requirement node.
+  @doc "The `qa_complete` check; see `CodeMySpec.Qa.Verdict`."
+  defdelegate complete_check(scope, story), to: Verdict
+  defdelegate complete_check(scope, story, ctx), to: Verdict
 
-  Called by `RequirementCalculator` via `check_type: :delegate`. Accepts
-  `(scope, story)` (the entity shape the calculator passes) and returns a
-  `{boolean(), details_map()}` pair suitable for `normalize_delegate_result/1`.
-  """
-  @spec complete_check(Scope.t(), map()) :: {boolean(), map()}
-  def complete_check(%Scope{} = scope, story),
-    do: scope |> QaAttempts.complete?(story.id) |> verdict()
-
-  @doc """
-  The same check, reading the graph context instead of querying per story.
-
-  `RequirementGraph` walks every ready story in one pass, so the two-argument
-  form above runs one query per story on every graph computation — and the graph
-  is recomputed on every stop hook. The context carries the newest attempt for
-  each story with its invalidations already loaded.
-
-  The verdict still comes from `QaAttempts.passed?/1`, so the preloaded and
-  querying paths cannot disagree about what makes an attempt count.
-  """
-  def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
-    case ctx[:qa_latest_by_story] do
-      latest when is_map(latest) ->
-        latest |> Map.get(story.id) |> QaAttempts.passed?() |> verdict()
-
-      _ ->
-        complete_check(scope, story)
-    end
-  end
-
-  def complete_check(scope, story, _ctx), do: complete_check(scope, story)
-
-  @doc """
-  The wording `qa_complete` carries, from the boolean the attempt decided.
-
-  Public because `Requirements.Handlers` settles this requirement across every
-  story from one read rather than through `complete_check/3`, and a row it
-  writes has to read like one a recompute wrote.
-
-  The reason used to name the story — "…in DB for story 9058" — which the row
-  already says, and which stopped a whole population from being settled with one
-  write, since a detail that differs per story cannot ride on a sweep's default.
-  """
-  @spec verdict(boolean()) :: {boolean(), map()}
-  def verdict(true), do: {true, %{status: "QA passed — valid DB attempt exists"}}
-  def verdict(false), do: {false, %{reason: "No valid QA pass attempt in DB for this story"}}
+  @doc "The wording `qa_complete` carries; see `CodeMySpec.Qa.Verdict.verdict/1`."
+  defdelegate verdict(passed?), to: Verdict
 end

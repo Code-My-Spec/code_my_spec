@@ -17,7 +17,7 @@ defmodule CodeMySpec.Deploys do
     top_level?: true,
     deps: [
       CodeMySpec.Provisioning,
-      CodeMySpec.Qa,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
@@ -157,7 +157,7 @@ defmodule CodeMySpec.Deploys do
     |> where([s], s.project_id == ^project_id)
     |> Repo.all()
     |> Enum.filter(fn story ->
-      match?({true, _}, CodeMySpec.Qa.complete_check(scope, story))
+      match?({true, _}, CodeMySpec.Qa.Verdict.complete_check(scope, story))
     end)
   end
 

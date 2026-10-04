@@ -50,8 +50,7 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   alias CodeMySpec.Deploys
   alias CodeMySpec.Promotion.RunningCopy
-  alias CodeMySpec.Qa
-  alias CodeMySpec.Qa.QaAttempts
+  alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Requirements.DevopsSetupChecker
@@ -590,7 +589,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The newest attempt decides, and `QaAttempts.passed?/1` decides what counts —
+  # The newest attempt decides, and `Verdict.passed?/1` decides what counts —
   # a later `:partial` overrides an earlier pass, and an invalidated pass is not
   # one. Default unsatisfied, because a story with no attempt at all is the
   # common state and reads identically to one whose latest attempt failed.
@@ -599,7 +598,7 @@ defmodule CodeMySpec.Requirements.Handlers do
       entity_type: "story",
       name: "qa_complete",
       default: false,
-      default_details: details(elem(Qa.verdict(false), 1)),
+      default_details: details(elem(Verdict.verdict(false), 1)),
       except: qa_passes(profile)
     }
 
@@ -876,8 +875,8 @@ defmodule CodeMySpec.Requirements.Handlers do
   # Only the passes. The default already says what every other story's latest
   # attempt amounts to, and says it identically.
   defp qa_passes(profile) do
-    for {story_id, attempt} <- profile.latest_by_story, QaAttempts.passed?(attempt) do
-      {true, detail} = Qa.verdict(true)
+    for {story_id, attempt} <- profile.latest_by_story, Verdict.passed?(attempt) do
+      {true, detail} = Verdict.verdict(true)
       change("story", story_id, "qa_complete", true, detail)
     end
   end
