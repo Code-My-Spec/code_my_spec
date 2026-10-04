@@ -69,6 +69,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Dns,
     EnvironmentRepository,
     Hetzner,
+    HostBaseline,
     Registry,
     Repository,
     Resend,
@@ -1076,7 +1077,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, opts} <- with_builder_ssh(scope, opts),
          run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts),
          :ok <- await_box(run, opts),
-         :ok <- CodeMySpec.Provisioning.HostBaseline.ensure(run),
+         :ok <- HostBaseline.ensure(run),
          box_opts = Keyword.put(opts, :run, run),
          {:ok, _registry} <- Registry.ensure_container(scope, box_opts),
          {:ok, _database} <- Database.ensure_container(scope, box_opts) do
@@ -2392,7 +2393,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # afterwards. It lives in `AccountSecrets` rather than on disk precisely so
   # it is not lying around, and `ssh` will refuse a key the whole machine can
   # read.
-  @doc false
+  @doc """
+  Run `callback` with something that can `ssh` into `ip`.
+
+  Manages the account's builder key for the length of the call unless the
+  caller already supplied a `:run`.
+  """
   def with_ssh_runner(scope, ip, opts, callback) do
     case Keyword.get(opts, :run) do
       run when is_function(run, 1) ->
@@ -2403,14 +2409,18 @@ defmodule CodeMySpec.Provisioning.Steps do
           try do
             callback.(Remote.ssh_runner(%{"ip" => ip}, ssh_opts))
           after
-            if is_nil(Keyword.get(opts, :ssh_key_path)) do
-              case Keyword.get(ssh_opts, :builder_key_dir) do
-                dir when is_binary(dir) -> File.rm_rf(dir)
-                _ -> :ok
-              end
-            end
+            cleanup_builder_key(opts, ssh_opts)
           end
         end
+    end
+  end
+
+  defp cleanup_builder_key(opts, ssh_opts) do
+    if is_nil(Keyword.get(opts, :ssh_key_path)) do
+      case Keyword.get(ssh_opts, :builder_key_dir) do
+        dir when is_binary(dir) -> File.rm_rf(dir)
+        _ -> :ok
+      end
     end
   end
 
@@ -4475,7 +4485,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # to, which is why a drill's outcome depended on how quickly Hetzner
          # happened to boot that day.
          :ok <- await_box(run, opts),
-         :ok <- CodeMySpec.Provisioning.HostBaseline.ensure(run),
+         :ok <- HostBaseline.ensure(run),
          {:ok, registry_bucket} <- Registry.ensure(scope, registry_opts),
          {:ok, served} <- Registry.serve(scope, registry_opts),
          {:ok, database} <- serve_database(scope, environment, run, opts) do
@@ -5524,11 +5534,14 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # `@doc false`: exposed so the survivor check can be proven directly — a
-  # live race between `clear_competing_mx/3`'s own listing and the one
-  # `confirm_cleared/5` takes afterward is not reproducible against the fake,
-  # which has no concurrent writer.
-  @doc false
+  @doc """
+  MX records in `existing` that still disagree with what `records` wants.
+
+  Public so the survivor check can be proven directly — a live race between
+  `clear_competing_mx/3`'s own listing and the one `confirm_cleared/5` takes
+  afterward is not reproducible against the fake, which has no concurrent
+  writer.
+  """
   def competing_records(zone, records, existing) do
     records
     |> Enum.flat_map(fn record ->

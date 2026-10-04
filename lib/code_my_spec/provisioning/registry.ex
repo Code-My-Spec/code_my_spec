@@ -50,6 +50,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   require Logger
 
   alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.HostBaseline
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
@@ -795,7 +796,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec trust_command(String.t()) :: String.t()
   def trust_command(host) do
-    CodeMySpec.Provisioning.HostBaseline.docker_command(host)
+    HostBaseline.docker_command(host)
   end
 
   # `distribution` takes its backing store from the environment, and which
