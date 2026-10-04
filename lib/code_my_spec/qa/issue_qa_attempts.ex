@@ -38,9 +38,8 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   def submit(%Scope{} = scope, %Agent{} = owner, params) do
     with :ok <- validate_findings_path(params) do
       Repo.transaction(fn ->
-        with {:ok, attempt} <- insert_attempt(build_attrs(owner, params)) do
-          handle_outcome(scope, owner, attempt)
-        else
+        case insert_attempt(build_attrs(owner, params)) do
+          {:ok, attempt} -> handle_outcome(scope, owner, attempt)
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
