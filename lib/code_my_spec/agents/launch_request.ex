@@ -59,9 +59,12 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   what the caller decided to send. An unhydrated agent produces a request with
   no credential and no history — a first start, which is exactly what it looks
   like.
+
+  `tools` is `McpServers.ToolRegistry.registry/0`, handed in because `Agents`
+  sits below the servers it would otherwise read. See `ToolIndex.registry/0`.
   """
-  @spec for(Agent.t()) :: map()
-  def for(%Agent{} = agent) do
+  @spec for(Agent.t(), ToolIndex.registry()) :: map()
+  def for(%Agent{} = agent, tools) do
     %{
       "agent_id" => agent.id,
       "engine" => to_string(agent.engine),
@@ -99,9 +102,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # concluding story 895's epic tools were unreachable on this box when they
       # were available through `run_script` the whole time. Both could see what
       # they held and not what they could reach. See `Agents.ToolIndex`.
-      "tool_index" => ToolIndex.for(agent, machine_tools(agent)),
+      "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
-      "tool_reach" => ToolIndex.reach(agent),
+      "tool_reach" => ToolIndex.reach(agent, tools),
       # How a tool call physically happens on the engine running this agent.
       #
       # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and

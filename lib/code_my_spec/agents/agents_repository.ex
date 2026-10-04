@@ -88,7 +88,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Point every live agent of one working copy at its current root.
 
-  `working_copy` is a snapshot taken once, at start — `LaunchRequest.for/1`
+  `working_copy` is a snapshot taken once, at start — `LaunchRequest.for/2`
   sends it verbatim rather than resolving it fresh, so it is the only place a
   restore actually reads the path from. `report_root/2` can correct
   `working_copies.root` on any later rejoin (a checkout that moved, or one

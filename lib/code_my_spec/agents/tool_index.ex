@@ -43,8 +43,16 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
   alias CodeMySpec.Agents.{Agent, RoleProfile}
   alias CodeMySpec.CodeMode.Catalog
-  alias CodeMySpec.McpServers.LocalServer
-  alias CodeMySpec.McpServers.ScriptableTools
+
+  @typedoc """
+  The components the MCP layer registers: `direct` from `LocalServer`,
+  `scriptable` from `ScriptableTools`.
+
+  Handed in, for the reason `CodeMode.Catalog` gives: `McpServers` depends on
+  `Agents`, so reading the servers from here points the arrow up.
+  `McpServers.ToolRegistry.registry/0` builds it.
+  """
+  @type registry :: %{direct: [map()], scriptable: [map()]}
 
   @doc """
   The index for this agent, or `nil` when there is nothing to say.
@@ -56,11 +64,11 @@ defmodule CodeMySpec.Agents.ToolIndex do
   with no browser contributes no section rather than an empty one — those are
   different states and only one of them is a fault. See `CmsHarness.Browser`.
   """
-  @spec for(Agent.t(), [String.t()]) :: String.t() | nil
-  def for(%Agent{} = agent, machine_tools \\ []) do
+  @spec for(Agent.t(), registry(), [String.t()]) :: String.t() | nil
+  def for(%Agent{} = agent, registry, machine_tools \\ []) do
     [
-      section(direct_heading(), carried(agent)),
-      section(scriptable_heading(), reach(agent)["scriptable"]),
+      section(direct_heading(), carried(registry)),
+      section(scriptable_heading(), reach(agent, registry)["scriptable"]),
       section(browser_heading(), Enum.sort(machine_tools || []))
     ]
     |> Enum.reject(&is_nil/1)
@@ -121,8 +129,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   # The direct surface is the loop: `get_next_requirement`, `start_task`,
   # `evaluate_task`, `tap_out`, `run_script`, `tool_docs` and their neighbours.
   # It is not scoped by role, so neither is this.
-  defp carried(%Agent{}), do: carried()
-
+  #
   # Direct tools an in-BEAM agent does not carry. `promote_sync` holds a call
   # open for a build where `promote` messages the result back; `health` was
   # never given a harness module.
@@ -133,9 +140,9 @@ defmodule CodeMySpec.Agents.ToolIndex do
   `@not_carried`. `CmsHarness.Agents.Engine.tools/1` builds from this, so the
   index cannot name a tool the engine answers `Unknown tool` for (1a7b1e4c).
   """
-  @spec carried() :: [String.t()]
-  def carried do
-    LocalServer.__components__()
+  @spec carried(registry()) :: [String.t()]
+  def carried(%{direct: direct}) do
+    direct
     |> Enum.map(& &1.name)
     |> Enum.reject(&(&1 in @not_carried))
     |> Enum.sort()
@@ -148,9 +155,8 @@ defmodule CodeMySpec.Agents.ToolIndex do
   wrong call is answered from the same grant. `holders` names roles that carry
   each ungranted tool; `main` carries every one.
   """
-  @spec reach(Agent.t()) :: %{String.t() => term()}
-  def reach(%Agent{tools: allowed}) do
-    registered = ScriptableTools.__components__()
+  @spec reach(Agent.t(), registry()) :: %{String.t() => term()}
+  def reach(%Agent{tools: allowed}, %{scriptable: registered}) do
     not_granted = Catalog.out_of_scope(registered, allowed)
 
     %{

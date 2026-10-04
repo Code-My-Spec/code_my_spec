@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
   import CodeMySpec.UsersFixtures
 
   alias CmsHarness.Project.ChannelClient
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpecWeb.HarnessProjectChannel
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -90,13 +91,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
 
         GenServer.call(
           socket.channel_pid,
-          {:start_agent,
-           %{
-             "agent_id" => "agent-1",
-             "engine" => "alloy",
-             "config_dir" => "/tmp/cfg",
-             "working_copy" => "/tmp/copy"
-           }},
+          {:start_agent, %Agent{id: "agent-1", engine: :alloy, working_copy: "/tmp/copy"}},
           5_000
         )
       end)
@@ -133,7 +128,7 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     task =
       Task.async(fn ->
         send(caller, :asking)
-        GenServer.call(socket.channel_pid, {:start_agent, %{"engine" => "alloy"}}, 5_000)
+        GenServer.call(socket.channel_pid, {:start_agent, %Agent{engine: :alloy}}, 5_000)
       end)
 
     assert_receive :asking, 1_000
