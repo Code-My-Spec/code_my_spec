@@ -858,6 +858,12 @@ defmodule CodeMySpec.Files do
     component_id = Keyword.get(opts, :component_id)
     story_id = Keyword.get(opts, :story_id)
 
+    # A file's mtime comes from `stat`, which resolves whole seconds, while
+    # `since` (a task's start) keeps microseconds — so an edit in the same
+    # second the task started compared as before it (da2af26). Floored to the
+    # second, that edit counts.
+    since = floor_to_second(since)
+
     File
     |> where([f], f.project_id == ^project_id and f.mtime >= ^since)
     |> scope_to_harness(scope)
@@ -870,6 +876,10 @@ defmodule CodeMySpec.Files do
     |> order_by([f], asc: f.path)
     |> Repo.all()
   end
+
+  defp floor_to_second(%DateTime{} = at), do: DateTime.truncate(at, :second)
+  defp floor_to_second(%NaiveDateTime{} = at), do: NaiveDateTime.truncate(at, :second)
+  defp floor_to_second(at), do: at
 
   @doc "List files that need validation (valid is nil)."
   @spec files_needing_validation(Scope.t()) :: [File.t()]
