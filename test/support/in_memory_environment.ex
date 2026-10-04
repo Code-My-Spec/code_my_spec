@@ -59,7 +59,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
 
   defp maybe_wrap_shell_module(env, module) do
     update_in(env.ref[:shell], fn _ ->
-      fn command, args, opts -> module.cmd(env, command, args, opts) end
+      fn command, args, opts -> memory_cmd(env, command, args, opts, module) end
     end)
   end
 
@@ -120,7 +120,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   underneath this delegation exactly as it did when callers invoked System.cmd
   directly.
 
-  The `:memory_shell` escape exists because a cassette cannot model a command's
+  The `:shell_module` option exists because a cassette cannot model a command's
   *effect*. `ssh-keygen -f path` writes a key, and on replay the recorded
   stdout comes back while no file appears — so a later step reading that path
   diverges from the run that was recorded, which is why 963/7965 records green
@@ -188,12 +188,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
        when is_function(shell, 3),
        do: shell.(command, args, Keyword.put_new(opts, :cd, env.cwd))
 
-  defp shell(env, command, args, opts) do
-    case Application.get_env(:code_my_spec, :memory_shell) do
-      nil -> Local.cmd(env, command, args, opts)
-      module -> memory_cmd(env, command, args, opts, module)
-    end
-  end
+  defp shell(env, command, args, opts), do: Local.cmd(env, command, args, opts)
 
   # `chmod` is handled here rather than in the shell, because the executable
   # bit is this filesystem's property and nothing else can see it. The
@@ -226,10 +221,8 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   # delegation is right — which is why this asks which shell is in play rather
   # than picking one.
   #
-  # `env.ref[:shell]` rather than the global `:memory_shell` config: the same
-  # per-environment scoping `shell/4` already uses, for the same reason --
-  # two tests' environments disagreeing about whether a shell is modelled is
-  # ordinary concurrency, not a race, once nothing asks a global.
+  # Asks this environment's own shell, not a global: two tests' environments
+  # disagreeing about whether a shell is modelled is ordinary concurrency.
   @impl true
   def exec_file_exists?(%Environment{} = env, path) do
     case env.ref[:shell] do
