@@ -31,6 +31,7 @@ defmodule CodeMySpecTest do
       CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents,
+      CodeMySpec.Embeddings,
       CodeMySpec.McpServers,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
@@ -55,6 +56,7 @@ defmodule CodeMySpecTest do
     # a criterion's behalf — story 1087's embeddings-airtight work.
     exports: [
       FakeWorkspaceRunner,
+      HexTarballFixtures,
       RecordingAgentTransport,
       RecordingEmbeddingServing,
       TurnEventRelay,

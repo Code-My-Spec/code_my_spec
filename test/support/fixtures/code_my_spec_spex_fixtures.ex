@@ -19,6 +19,10 @@ defmodule CodeMySpecSpex.Fixtures do
     deps: [
       CmsHarness,
       CodeMySpec,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.Embeddings,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,

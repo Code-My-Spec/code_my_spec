@@ -11,6 +11,7 @@ defmodule CodeMySpec do
     top_level?: true,
     deps: [
       CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
