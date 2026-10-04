@@ -31,6 +31,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -817,6 +818,7 @@ defmodule CodeMySpec.Files.FileSync do
     maybe_reconcile_lockfile(scope, fingerprint_changed_entries)
 
     clear_specs_ready_for_rewritten_specs(scope, fingerprint_changed_entries, removed_records)
+    clear_criterion_latches_for_rewritten_specs(scope, fingerprint_changed_entries, removed_records)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -865,6 +867,28 @@ defmodule CodeMySpec.Files.FileSync do
     :ok
   end
 
+  # Per-criterion counterpart (story 983, criterion 1897): a rewrite restarts
+  # the one criterion whose contract changed, not its siblings' latches. Same
+  # fingerprint-changed keying as the story-wide clear above, for the same
+  # reason -- a byte-identical rewrite is not a contract change.
+  defp clear_criterion_latches_for_rewritten_specs(scope, changed_entries, removed_records) do
+    for entry <- changed_entries ++ removed_records,
+        Map.get(entry, :role) == :bdd_spec,
+        story_id = Map.get(entry, :story_id),
+        not is_nil(story_id),
+        number = Map.get(entry, :criterion_number),
+        not is_nil(number),
+        criterion <- AcceptanceCriteria.list_all_story_criteria(scope, story_id),
+        criterion.number == number,
+        not is_nil(criterion.latched_at) do
+      {:ok, _criterion} = AcceptanceCriteria.unlatch_criterion(scope, criterion)
+
+      Logger.info("[FileSync] Criterion #{criterion.id} spex rewritten — cleared its own latch")
+    end
+
+    :ok
+  end
+
   @doc """
   Sync a single file path from the filesystem into the DB.
 
@@ -900,6 +924,7 @@ defmodule CodeMySpec.Files.FileSync do
         Files.delete_by_paths(scope, [path])
         removed_records = if existing, do: [existing], else: []
         clear_specs_ready_for_rewritten_specs(scope, [], removed_records)
+        clear_criterion_latches_for_rewritten_specs(scope, [], removed_records)
         announce_watched_change(scope, existing != nil)
         {:ok, %{changed_path: path}}
 
@@ -975,6 +1000,7 @@ defmodule CodeMySpec.Files.FileSync do
         # one enforced red stopped every other story promoting from that
         # checkout, and nothing an agent could call would clear it.
         clear_specs_ready_for_rewritten_specs(scope, fingerprint_changed_entries, [])
+        clear_criterion_latches_for_rewritten_specs(scope, fingerprint_changed_entries, [])
 
         announce_watched_change(scope, fingerprint_changed_entries != [])
         {:ok, %{changed_path: path}}
