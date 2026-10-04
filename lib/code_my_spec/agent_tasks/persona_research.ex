@@ -99,7 +99,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
     ## MCP tools you'll use
 
     - `list_personas` — check for reuse before researching.
-    - `get_persona` — fetch full persona detail by slug or id.
+    - `get_persona` — fetch full persona detail by slug or persona_id.
     - `create_persona` — write the DB record.
     - `evaluate_task` — manual validation trigger.
 

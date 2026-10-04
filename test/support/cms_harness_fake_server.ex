@@ -49,6 +49,7 @@ defmodule CmsHarnessTest.FakeServer do
     :persistent_term.put({__MODULE__, :reject_analysis}, nil)
     :persistent_term.put({__MODULE__, :channel}, nil)
     refuse_joins(Keyword.get(opts, :refuse, nil))
+    hold_joins(Keyword.get(opts, :hold_joins, false))
 
     pubsub = ensure_pubsub()
 
@@ -173,6 +174,11 @@ defmodule CmsHarnessTest.FakeServer do
   def refuse_joins(holder), do: :persistent_term.put({__MODULE__, :refuse}, holder)
   def refusal, do: :persistent_term.get({__MODULE__, :refuse}, nil)
 
+  # Lets a test make the server take a join and never answer it, the way an
+  # overloaded one did (57aa576c). The socket stays up; only the reply is held.
+  def hold_joins(hold?), do: :persistent_term.put({__MODULE__, :hold_joins}, hold?)
+  def holding_joins?, do: :persistent_term.get({__MODULE__, :hold_joins}, false)
+
   # Lets a test make the server refuse a result, the way an already-closed run
   # or a payload it cannot read would.
   def reject_analysis(reason), do: :persistent_term.put({__MODULE__, :reject_analysis}, reason)
@@ -262,6 +268,8 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
 
   @impl true
   def join("harness_project:" <> project_id, payload, socket) do
+    if FakeServer.holding_joins?(), do: hold(project_id)
+
     case FakeServer.refusal() do
       nil ->
         # Registered before the notify, not after: `notify/1` wakes whatever
@@ -280,6 +288,16 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
       holder ->
         FakeServer.notify({:join_refused, project_id})
         {:error, %{reason: "project_in_use", held_by: holder}}
+    end
+  end
+
+  # Never answers. The harness is waiting on the join reply, and the endpoint's
+  # teardown is what ends this process.
+  defp hold(project_id) do
+    FakeServer.notify({:join_held, project_id})
+
+    receive do
+      :never_sent -> :ok
     end
   end
 

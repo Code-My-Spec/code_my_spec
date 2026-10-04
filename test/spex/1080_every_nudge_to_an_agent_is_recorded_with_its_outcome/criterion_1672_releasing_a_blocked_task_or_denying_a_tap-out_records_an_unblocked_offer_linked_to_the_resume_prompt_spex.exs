@@ -83,7 +83,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
       when_ "main denies it", context do
         {:reply, reply, _} =
           AnswerNotification.execute(
-            %{id: context.blocker, decision: "deny", answer: "It is yours: carry on."},
+            %{
+              notification_id: context.blocker,
+              decision: "deny",
+              answer: "It is yours: carry on."
+            },
             frame(context)
           )
 

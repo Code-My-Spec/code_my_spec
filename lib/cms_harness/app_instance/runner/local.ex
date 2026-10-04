@@ -189,7 +189,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
       |> Enum.reject(&is_nil/1)
       |> Enum.join(" ")
 
-    cmd = "#{env_prefix} just serve > #{log_path} 2>&1 < /dev/null"
+    cmd = serve_command(env_prefix, log_path)
 
     shell =
       if System.find_executable("setsid") do
@@ -209,6 +209,19 @@ defmodule CmsHarness.AppInstance.Runner.Local do
         {:error, "launch exited #{status}: #{String.trim(out)}"}
     end
   end
+
+  @doc """
+  The `just serve` line `launch/8` backgrounds, output appended to `log_path`.
+
+  Appended, never truncated (c531da1e): a restart launches before the old
+  process has exited, and that process still holds the log open without
+  `O_APPEND`. Truncating under it left its last write at its old offset — a
+  file of NULs with the dying process's "Interrupted by SIGTERM" at the end,
+  which read as the new app being killed (181d5fdd).
+  """
+  @spec serve_command(String.t(), String.t()) :: String.t()
+  def serve_command(env_prefix, log_path),
+    do: "#{env_prefix} just serve >> #{log_path} 2>&1 < /dev/null"
 
   # In the foreground, unlike `launch/8`: the recipe ends once the running app
   # has migrated, compiled and answered, and its exit status is the verdict.

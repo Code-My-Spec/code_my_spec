@@ -79,6 +79,12 @@ defmodule CodeMySpecWeb.ConfigurationLive do
               modes={@compile_modes}
             />
             <.select_field
+              name="advisory_findings"
+              label="Advisory Findings (low-priority credo)"
+              value={@configuration.advisory_findings || :dont_block}
+              modes={@compile_modes}
+            />
+            <.select_field
               name="credo"
               label="Credo"
               value={@configuration.credo}

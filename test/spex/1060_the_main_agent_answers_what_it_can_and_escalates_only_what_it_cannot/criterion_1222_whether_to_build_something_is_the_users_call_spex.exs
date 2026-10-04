@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
         {:reply, response, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: "Later — nothing in the roadmap puts it before the exporter",
               basis: "record"
             },

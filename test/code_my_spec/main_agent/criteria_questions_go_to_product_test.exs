@@ -119,7 +119,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
 
       {:reply, response, _} =
         AnswerNotification.execute(
-          %{id: request.id, answer: "Criterion 944 is rewritten; keep the fix."},
+          %{notification_id: request.id, answer: "Criterion 944 is rewritten; keep the fix."},
           frame(ctx, product)
         )
 
@@ -142,7 +142,10 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       request = ask(ctx)
 
       {:reply, response, _} =
-        AnswerNotification.execute(%{id: request.id, answer: "do it"}, frame(ctx, product))
+        AnswerNotification.execute(
+          %{notification_id: request.id, answer: "do it"},
+          frame(ctx, product)
+        )
 
       assert response.isError
       assert Notifications.get_question_request(request.id).status == "pending"
@@ -174,7 +177,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       {:reply, response, _} =
         AnswerNotification.execute(
           %{
-            id: ctx.request.id,
+            notification_id: ctx.request.id,
             answer: "Moot: #{issue.title} — keep the fix.",
             basis: "record"
           },
@@ -191,7 +194,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
     test "an answer that does not stand up leaves the user's question as it was", ctx do
       {:reply, response, _} =
         AnswerNotification.execute(
-          %{id: ctx.request.id, answer: "just guess", basis: "record"},
+          %{notification_id: ctx.request.id, answer: "just guess", basis: "record"},
           frame(ctx, ctx.main)
         )
 

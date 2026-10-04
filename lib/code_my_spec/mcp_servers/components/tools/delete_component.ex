@@ -13,13 +13,13 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponent do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :id, :string, required: true
+    field :component_id, :string, required: true
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         component <- Components.get_component!(scope, params.id),
+         component <- Components.get_component!(scope, params.component_id),
          kept = owned_paths(scope, component),
          {:ok, component} <- Components.delete_component(scope, component) do
       {:reply, reply(component, kept), frame}

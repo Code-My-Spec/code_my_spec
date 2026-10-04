@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
   @moduledoc """
-  Fetches a single persona by slug or id from the active project.
+  Fetches a single persona by slug or persona_id from the active project.
 
   Use this to pull a full persona record when you need its DB metadata
   (headline, persona_type, timestamps) during the intake conversation.
@@ -15,10 +15,11 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :slug, :string, doc: "Persona slug (e.g., 'founder'). Provide either slug or id."
+    field :slug, :string,
+      doc: "Persona slug (e.g., 'founder'). Provide either slug or persona_id."
 
-    field :id, :string,
-      doc: "Persona UUID. Provide either slug or id. Slug wins if both are given."
+    field :persona_id, :string,
+      doc: "Persona UUID. Provide either slug or persona_id. Slug wins if both are given."
   end
 
   @impl true
@@ -31,7 +32,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
         {:reply, PersonasMapper.error(:not_found), frame}
 
       {:error, :missing_identifier} ->
-        {:reply, PersonasMapper.error("must provide either 'slug' or 'id'"), frame}
+        {:reply, PersonasMapper.error("must provide either 'slug' or 'persona_id'"), frame}
 
       {:error, reason} ->
         {:reply, PersonasMapper.error(reason), frame}
@@ -45,7 +46,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
     end
   end
 
-  defp resolve_persona(scope, %{id: id}) when is_binary(id) and id != "" do
+  defp resolve_persona(scope, %{persona_id: id}) when is_binary(id) and id != "" do
     case Personas.get_persona(scope, id) do
       nil -> {:error, :not_found}
       persona -> {:ok, persona}

@@ -71,12 +71,14 @@ defmodule CodeMySpec.Problems.ReproduceCommandTest do
   test "the credo group says why the obvious command disagreed" do
     out =
       render("credo",
-        reproduce_commands: %{"credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}}
+        reproduce_commands: %{
+          "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
+        }
       )
 
     assert out =~ "mix credo suggest"
     assert out =~ "plain `mix credo`"
-    assert out =~ "your session edited the file"
+    assert out =~ "this run includes ↓ ↘"
   end
 
   # The pair is what `Validation` actually passes, so the shape is asserted

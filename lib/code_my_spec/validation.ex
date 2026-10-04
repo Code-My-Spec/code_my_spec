@@ -952,6 +952,9 @@ defmodule CodeMySpec.Validation do
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
+    setting = advisory_findings(config)
+    {blocking, never_blocks} = Enum.split_with(blocking, &can_block?(&1, setting))
+    advisory = advisory ++ never_blocks
     session_paths = session_paths(scope, opts, project_changed?)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     {blocking, not_this_role} = split_by_role(blocking, Keyword.get(opts, :agent_role))
@@ -981,9 +984,9 @@ defmodule CodeMySpec.Validation do
       # A rerun that failed behind an older answer; those findings were not re-checked.
       failed_reruns: failed_reruns(scope, sources_with_problems),
       # How to see these findings without stopping again. Only credo has one:
-      # its plain invocation hides the low-priority band that `block_changed`
-      # promotes, so `mix credo` answers "found no issues" on the very findings
-      # that block. `mix test` and `mix spex` reproduce themselves.
+      # its plain invocation hides the low-priority band, so `mix credo` can
+      # answer "found no issues" on findings this gate reports. `mix test` and
+      # `mix spex` reproduce themselves.
       reproduce_commands: %{
         "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
       },
@@ -1267,6 +1270,39 @@ defmodule CodeMySpec.Validation do
   # keys — the comparison above, made from the wrong end. Going through
   # `story_ids_by_number` means an unmatched number answers `nil` and lands in
   # the loud branch instead of quietly naming whichever story holds that id.
+  @doc """
+  Whether `problem` may block anything: promotion, task evaluation, the stop
+  hook, the digest an analyzer run sends. The one definition, so those cannot
+  disagree about the same finding again (b5fa5856, 4a4cb998).
+
+  An advisory finding (`:info` — low-priority credo, low sobelow) blocks only
+  when the project's `advisory_findings` setting is `:block`; it is
+  `:dont_block` by default (John, 2026-10-04). Everything else may block, and
+  whether it does is then the caller's rule (mode, latch, attribution).
+  """
+  @spec can_block?(Problems.Problem.t() | map(), :block | :dont_block | nil) :: boolean()
+  def can_block?(%{severity: :info}, advisory_findings), do: advisory_findings == :block
+  def can_block?(_problem, _advisory_findings), do: true
+
+  @doc "The project's `advisory_findings` setting, `:dont_block` when unset."
+  @spec advisory_findings(Scope.t() | ProjectConfiguration.t() | nil) :: :block | :dont_block
+  def advisory_findings(%ProjectConfiguration{advisory_findings: setting})
+      when not is_nil(setting),
+      do: setting
+
+  def advisory_findings(%Scope{active_project_id: project_id} = scope)
+      when is_binary(project_id),
+      do: scope |> Configurations.get_or_create() |> advisory_findings()
+
+  def advisory_findings(_scope_or_config), do: :dont_block
+
+  @doc "`problems` that may block under this project's settings — `can_block?/2` over a list."
+  @spec blockable(Scope.t() | nil, [Problems.Problem.t()]) :: [Problems.Problem.t()]
+  def blockable(scope, problems) do
+    setting = advisory_findings(scope)
+    Enum.filter(problems, &can_block?(&1, setting))
+  end
+
   @doc """
   The subset of `problems` this gate would actually enforce.
 
