@@ -15,6 +15,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper
   alias CodeMySpec.McpServers.StoryRefs
@@ -78,6 +80,30 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   @impl true
   def execute(params, frame) do
+    case matching(params, frame) do
+      {:ok, matching, shown} ->
+        issues = Enum.take(matching, limit(params[:limit]))
+        {:reply, IssuesMapper.issues_list_response(issues, shown, length(matching)), frame}
+
+      {:error, reason} ->
+        {:reply, IssuesMapper.error(error_message(reason)), frame}
+    end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    case matching(params, frame) do
+      {:ok, matching, _shown} ->
+        {:ok, matching |> Enum.take(limit(params[:limit])) |> Enum.map(&row/1)}
+
+      {:error, reason} ->
+        {:error, error_message(reason)}
+    end
+  end
+
+  # Lifted out of `execute/2` so the script path runs the same query rather
+  # than a second copy of it.
+  defp matching(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, filters} <- build_filters(params),
          {:ok, story_id} <- StoryRefs.story_id(scope, params[:story_number]) do
@@ -100,19 +126,28 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
         |> maybe_put(:story_number, params[:story_number])
         |> maybe_put(:query, params[:query])
 
-      issues = Enum.take(matching, limit(params[:limit]))
-
-      {:reply, IssuesMapper.issues_list_response(issues, shown, length(matching)), frame}
-    else
-      {:error, {:invalid_value, field, value, allowed}} ->
-        {:reply,
-         IssuesMapper.error(
-           "Invalid #{field}: #{inspect(value)}. Allowed: #{Enum.join(allowed, ", ")}."
-         ), frame}
-
-      {:error, reason} ->
-        {:reply, IssuesMapper.error(reason), frame}
+      {:ok, matching, shown}
     end
+  end
+
+  defp error_message({:invalid_value, field, value, allowed}),
+    do: "Invalid #{field}: #{inspect(value)}. Allowed: #{Enum.join(allowed, ", ")}."
+
+  defp error_message(reason), do: reason
+
+  # String keys and plain values: these cross into a Lua VM, where an atom
+  # key and a struct are not things that exist.
+  defp row(issue) do
+    %{
+      "id" => issue.id,
+      "title" => issue.title,
+      "severity" => to_string(issue.severity),
+      "scope" => to_string(issue.scope),
+      "status" => to_string(issue.status),
+      "description" => issue.description,
+      "story_id" => issue.story_id,
+      "inserted_at" => issue.inserted_at && DateTime.to_iso8601(issue.inserted_at)
+    }
   end
 
   # `scope: framework` asked from CodeMySpec's own project is the vendor's

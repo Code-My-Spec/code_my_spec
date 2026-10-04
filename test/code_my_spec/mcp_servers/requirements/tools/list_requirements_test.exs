@@ -77,6 +77,21 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
     end
   end
 
+  # 8c1e192c: `run_script` handed every list tool's rendered text straight to
+  # Lua, so a script iterating it with `ipairs` got "table expected, got
+  # string" instead of rows.
+  describe "script_result/2" do
+    test "returns requirement rows as data rather than rendered text" do
+      scope = full_scope_fixture()
+      CodeMySpec.Requirements.recompute(scope)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:ok, rows} = ListRequirements.script_result(%{}, frame)
+      assert Enum.any?(rows, &(&1["name"] == "personas_complete"))
+    end
+  end
+
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]

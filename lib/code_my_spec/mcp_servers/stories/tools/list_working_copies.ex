@@ -25,6 +25,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
@@ -42,6 +44,29 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
       {:error, atom} ->
         {:reply, Response.error(Response.tool(), inspect(atom)), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      running = running_by_copy(scope)
+      {:ok, Enum.map(WorkingCopies.list_harnesses(scope), &row(&1, Map.get(running, &1.id, [])))}
+    end
+  end
+
+  # String keys and plain values: these cross into a Lua VM, where an atom
+  # key and a struct are not things that exist.
+  defp row(copy, agents) do
+    %{
+      "id" => copy.id,
+      "root" => copy.root,
+      "main" => copy.main,
+      "agents" => Enum.map(agents, &agent_row/1)
+    }
+  end
+
+  defp agent_row(agent) do
+    %{"role" => to_string(agent.role), "status" => to_string(agent.status)}
   end
 
   defp render(scope) do
