@@ -2361,6 +2361,8 @@ defmodule CodeMySpec.Agents do
             Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, turn_started_at))
           )
 
+        broadcast(scope, {:agent_turn, agent})
+
         # Before the stop menu, because `deliver/3` is what produces the
         # observation that fires `Work.consider_project/2` — recording the
         # decline afterwards would lose the race with the wake it is meant to
@@ -2400,6 +2402,7 @@ defmodule CodeMySpec.Agents do
              work_request_id: nil,
              work_requested_at: nil
            }),
+         _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
       write_turn_event(conversation, agent, event)

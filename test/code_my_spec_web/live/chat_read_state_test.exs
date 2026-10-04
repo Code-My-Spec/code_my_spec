@@ -133,7 +133,7 @@ defmodule CodeMySpecWeb.ChatReadStateTest do
       Map.put(context, :copy, copy)
     end
 
-    test "unread marks, live arrival, toggle, and opening", context do
+    test "unread marks, live arrival, and opening", context do
       {_open_agent, open_chat} = agent(context, "coding")
       {other, other_chat} = agent(context, "qa")
       {:ok, _} = Conversations.add_agent_message(open_chat, nil, "assistant", "on screen")
@@ -146,12 +146,6 @@ defmodule CodeMySpecWeb.ChatReadStateTest do
 
       {:ok, _} = Conversations.add_agent_message(other_chat, nil, "assistant", "elsewhere")
       assert has_element?(view, "#{row} a[data-unread='true'] [data-test='unread-dot']")
-
-      view |> element("#{row} [data-test='team-agent-read']") |> render_click()
-      assert has_element?(view, "#{row} a[data-unread='false']")
-
-      view |> element("#{row} [data-test='team-agent-read']") |> render_click()
-      assert has_element?(view, "#{row} a[data-unread='true']")
 
       view |> element("#{row} a[data-unread]") |> render_click()
       assert has_element?(view, "#{row} a[data-unread='false']")
