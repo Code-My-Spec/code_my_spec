@@ -128,6 +128,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # which is the argument for checking every role's set against the
   # requirements that name it rather than against the last agent that
   # complained.
+  # The copy's own app runs the branch under test; QA starts it to test there
+  # rather than through its own connection, which is the shared harness on main.
   @qa_tools ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -136,6 +138,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
     withdraw_question
     call_mcp_server
+    ensure_app_running restart_app stop_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
