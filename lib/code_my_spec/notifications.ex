@@ -6,7 +6,6 @@ defmodule CodeMySpec.Notifications do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
@@ -24,9 +23,6 @@ defmodule CodeMySpec.Notifications do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Offers
-  alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
@@ -503,8 +499,7 @@ defmodule CodeMySpec.Notifications do
   defp clear_decline_on_deny(%{decision: "deny", agent_id: agent_id}) when is_binary(agent_id) do
     case Repo.get(Agent, agent_id) do
       %Agent{} = agent ->
-        {:ok, _cleared} = Work.clear_decline(owner_scope(agent), agent)
-        :ok
+        announce(:decline_cleared, %{scope: owner_scope(agent), agent: agent})
 
       nil ->
         :ok
@@ -610,17 +605,13 @@ defmodule CodeMySpec.Notifications do
   # still has to be told — so that case falls back to the old shape rather than
   # dropping the notice.
   defp deliver_denial(scope, agent, copy_id, notice, subject) do
-    case Work.offer_turn_with(scope, agent, notice, :blocker_resolved, subject) do
-      {:ok, ref} when is_binary(ref) ->
-        :ok
-
-      _not_admissible ->
-        agent
-        |> Conversations.record_sent_to_agent(notice)
-        |> Offers.record(agent, :denial, subject)
-
-        Work.consider_copy(scope, copy_id, :tap_out_denied)
-    end
+    announce(:tap_out_denied, %{
+      scope: scope,
+      agent: agent,
+      working_copy_id: copy_id,
+      notice: notice,
+      subject: subject
+    })
   end
 
   # The reason carries, when the decider gave one.
@@ -857,8 +848,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
   defp deliver_decision_to_agent(%{agent_id: agent_id} = request) do
-    _ = CodeMySpec.Agents.send_to_agent(agent_id, decision_message(request), :own_reply)
-    :ok
+    announce(:decision_reached, %{agent_id: agent_id, text: decision_message(request)})
   end
 
   defp decision_message(%{tool_name: tool, decision: "allow"}),
@@ -1224,28 +1214,20 @@ defmodule CodeMySpec.Notifications do
   defp deliver_answer_content(request, released?) do
     case Repo.get(Agent, request.agent_id) do
       %Agent{turn_started_at: %DateTime{}} = agent ->
-        _ =
-          CodeMySpec.Agents.send_to_agent(
-            agent.id,
-            answer_message(request, agent),
-            :question_answered,
-            offer: {:answer, {"question", request.id}}
-          )
-
-        :ok
+        announce(:answer_reached, %{
+          agent: agent,
+          scope: nil,
+          text: answer_message(request, agent),
+          question_id: request.id
+        })
 
       %Agent{} = agent when not released? ->
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.offer_turn_with(
-            owner_scope(agent),
-            agent,
-            answer_message(request, agent),
-            :question_answered,
-            {"question", request.id}
-          )
-        end)
-
-        :ok
+        announce(:answer_reached, %{
+          agent: agent,
+          scope: owner_scope(agent),
+          text: answer_message(request, agent),
+          question_id: request.id
+        })
 
       _released_or_gone ->
         :ok
@@ -1644,5 +1626,11 @@ defmodule CodeMySpec.Notifications do
           "[Notifications] Failed to send push to #{subscription.endpoint}: #{inspect(reason)}"
         )
     end
+  end
+
+  # What reaches an agent is Agents' to deliver (`Agents.Events`); Notifications
+  # sits below Agents and announces instead of calling up (John, 2026-10-04).
+  defp announce(event, meta) do
+    :telemetry.execute([:code_my_spec, :notifications, event], %{}, meta)
   end
 end

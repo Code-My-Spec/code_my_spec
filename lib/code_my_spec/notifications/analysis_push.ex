@@ -32,9 +32,9 @@ defmodule CodeMySpec.Notifications.AnalysisPush do
         body: body(meta.scope, List.first(errors))
       })
     end
-  rescue
-    e ->
-      Logger.warning("[Analysis] notification failed: #{Exception.message(e)}")
+  catch
+    kind, reason ->
+      Logger.warning("[Analysis] notification failed: #{Exception.format_banner(kind, reason)}")
   end
 
   def handle_event(@event, _measurements, _meta, _config), do: :ok

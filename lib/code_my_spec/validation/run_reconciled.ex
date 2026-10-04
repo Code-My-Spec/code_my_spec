@@ -32,8 +32,8 @@ defmodule CodeMySpec.Validation.RunReconciled do
     |> Enum.each(fn session ->
       TaskEvaluator.evaluate_session(scope, session, record_feedback: false, sync: false)
     end)
-  rescue
-    e ->
-      Logger.warning("[Analysis] session evaluation failed: #{Exception.message(e)}")
+  catch
+    kind, reason ->
+      Logger.warning("[Analysis] session evaluation failed: #{Exception.format_banner(kind, reason)}")
   end
 end
