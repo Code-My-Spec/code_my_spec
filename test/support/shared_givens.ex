@@ -348,7 +348,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   register_given :criterion_latched_by_promotion, context do
     story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
     [criterion | _] = story.criteria
-    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(context.scope, criterion)
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(context.scope, criterion)
     {:ok, context}
   end
 
