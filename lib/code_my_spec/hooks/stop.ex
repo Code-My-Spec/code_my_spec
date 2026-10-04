@@ -6,25 +6,18 @@ defmodule CodeMySpec.Hooks.Stop do
   block/allow **immediately** — never waiting on a subprocess, so the answer
   always beats the hook's timeout.
 
-  While background analysis is in flight the stop is a distinct *pending*
-  outcome: task evaluation is skipped (a repeat "analysis running" must not
-  advance the stuck counter) and the "all work complete" terminus never fires
-  (freshness-gated requirements would read as unsatisfied mid-run). In
-  continuous mode a pending stop blocks with a directive to wait on
-  `POST /api/harnesses/<id>/analysis/wait` (HTTP, not MCP — a sweep outlives
-  MCP's 30s request cap, so the tool this replaced could never return);
-  otherwise it allows with a one-line system message. Results landing after an
+  A stop never starts, waits on, or reports analysis (John, 2026-10-04): runs
+  come from `start_analysis`, ready_for_qa certification and promotion. Analysis
+  in flight changes nothing here; the stop answers from the problems already
+  persisted, and may still refuse over blocking ones. Results landing after an
   allowed stop reach the user via push notification and block the next stop.
 
-  Lifted out of the local controller so every harness decides identically. The
-  controller that calls this owns running the analyzers; this owns reading what
-  they produced.
+  Lifted out of the local controller so every harness decides identically.
   """
 
   require Logger
 
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -46,7 +39,6 @@ defmodule CodeMySpec.Hooks.Stop do
   @spec decide(CodeMySpec.Users.Scope.t(), map()) :: map()
   def decide(scope, params) do
     session_id = Map.get(params, "session_id")
-    validation_opts = extract_test_output_files(params)
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
 
@@ -63,7 +55,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
     active_task = session && Session.active_task(session)
 
-    do_decide(scope, session_id, session, active_task, validation_opts, req_id)
+    do_decide(scope, session_id, session, active_task, [], req_id)
   end
 
   # The stop hook used to warn about config edits, in two halves, and both are
@@ -186,12 +178,9 @@ defmodule CodeMySpec.Hooks.Stop do
         maybe_terminate_stuck(scope, session_id, reason, req_id, key)
 
       {:ok, result} ->
-        response =
-          if pending_analysis?(scope),
-            do: pending_response(scope, session, req_id),
-            else: evaluate_and_decide(scope, session_id, session, req_id)
-
-        note_assignment(response, result)
+        scope
+        |> evaluate_and_decide(session_id, session, req_id)
+        |> note_assignment(result)
     end
   end
 
@@ -223,47 +212,6 @@ defmodule CodeMySpec.Hooks.Stop do
       # half the intended threshold.
       {:error, reason} ->
         maybe_terminate_stuck(scope, session_id, reason, req_id, nil)
-    end
-  end
-
-  # Analysis in flight → a distinct pending outcome. Evaluation is skipped
-  # entirely: a freshness-gated "tests not run yet" failure repeated across
-  # stops must not advance the R8 stuck counter, and R6's "all work complete"
-  # must not fire off requirements that are only unsatisfied because their
-  # analyzer hasn't landed. The scope's cwd being nil (no project bound)
-  # never reaches here pending — ensure_stale_runs enqueues nothing.
-  defp pending_analysis?(%{active_project_id: nil}), do: false
-  defp pending_analysis?(scope), do: Analysis.runs_in_flight?(scope)
-
-  # The address carries the harness id, because the wait endpoint is on the
-  # harness and every harness route names the working copy it is about. A scope
-  # with no harness has no local address to offer, so it gets the plain
-  # instruction rather than a URL that would 404.
-  defp wait_directive(%{active_working_copy_id: id}) when not is_nil(id) do
-    "Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` " <>
-      "— run that in the background and you will be notified when it returns — then stop again."
-  end
-
-  defp wait_directive(_scope) do
-    "Wait for the analyzers to finish, then stop again."
-  end
-
-  defp pending_response(scope, session, req_id) do
-    sources = scope |> Analysis.in_flight_described() |> Enum.join(", ")
-
-    if continuous_mode?(session) do
-      Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — directing await")
-
-      %{
-        "decision" => "block",
-        "reason" => "Background analysis is still running: #{sources}. " <> wait_directive(scope)
-      }
-    else
-      Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")
-
-      %{
-        "systemMessage" => "analysis running: #{sources} — results apply next stop"
-      }
     end
   end
 
@@ -611,23 +559,6 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp continuous_mode?(%{continuous: true}), do: true
   defp continuous_mode?(_), do: false
-
-  # Test-only: specs back pipeline outputs with pre-recorded JSON fixtures
-  # so cassette replays can observe failures (`System.cmd` side effects —
-  # the JSON output files — can't be captured by ExCliVcr alone).
-  # Real Claude Code clients never send this param; the map is ignored
-  # when absent.
-  defp extract_test_output_files(%{"test_output_files" => files}) when is_map(files) do
-    [
-      compile_output_file: Map.get(files, "compile"),
-      credo_output_file: Map.get(files, "credo"),
-      exunit_output_file: Map.get(files, "exunit"),
-      spex_output_file: Map.get(files, "spex")
-    ]
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-  end
-
-  defp extract_test_output_files(_params), do: []
 
   defp notify_complete do
     NotificationClient.notify(%{
