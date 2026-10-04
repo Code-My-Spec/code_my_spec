@@ -47,6 +47,7 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -218,6 +219,23 @@ defmodule CodeMySpec.Agents.Assignment do
   def notify_team_free(%Scope{} = scope, copy_id, story) do
     if Enum.any?(team_on_copy(scope, copy_id), &is_nil(&1.issue_id)) do
       notify_main(scope, copy_id, story)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Close the `story_promoted` tasks the copy's team still holds on `story`, once
+  its promotion has landed. The queue settled it; leaving the task open would
+  cost the agent a turn to complete it again.
+  """
+  @spec close_promotion_tasks(Scope.t(), Ecto.UUID.t(), Stories.Story.t()) :: :ok
+  def close_promotion_tasks(%Scope{} = scope, copy_id, %{id: story_id}) do
+    for agent <- team_on_copy(scope, copy_id),
+        %{requirement_name: "story_promoted", story_id: ^story_id, status: status, id: task_id} <-
+          TaskOwner.tasks(agent),
+        status in [:active, :prepared, :blocked] do
+      {:ok, _} = TaskOwner.complete_task(scope, agent, task_id, :completed)
     end
 
     :ok

@@ -93,6 +93,7 @@ defmodule CodeMySpec.Agents.Events do
   # A story finished by promotion offers main the same team-free kind an issue
   # finishing through QA does (criterion 1892).
   def handle_event(@promotion_team_free, _measurements, meta, _config) do
+    Assignment.close_promotion_tasks(meta.scope, meta.working_copy_id, meta.story)
     Assignment.notify_team_free(meta.scope, meta.working_copy_id, meta.story)
   catch
     kind, reason -> log(:promotion_team_free, kind, reason)
