@@ -708,6 +708,99 @@ defmodule CodeMySpec.Promotion.Steps do
   # (or a transient git failure) must not take the merge down over a value
   # that only ever feeds an optimization, never a correctness check.
   @doc """
+  Build a promotion batch in the queue's gate checkout at `root`: reset it to
+  `base` (main's HEAD) and merge `commits` onto it in order.
+
+  A candidate HEAD is already an ancestor of is fast-forwarded to, so a lone
+  candidate that is level with main is gated and landed as its own commit.
+  Anything else is a `--no-ff` merge. A candidate that conflicts is aborted
+  and reported with the conflicting files; the rest go on without it.
+
+  `{:ok, %{head:, merged: [commit], conflicted: [%{commit:, files:}]}}`.
+  """
+  @spec build_batch(Environments.Environment.t(), String.t(), String.t(), [String.t()]) ::
+          result()
+  def build_batch(env, root, base, commits) do
+    with {_, 0} <- git(env, root, ["merge", "--abort"]) |> ok_or_not_merging(),
+         {_, 0} <- git(env, root, ["checkout", "--quiet", "--detach", "--force", base]),
+         {_, 0} <- git(env, root, ["reset", "--quiet", "--hard", base]) do
+      {merged, conflicted} =
+        Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
+          case add_to_batch(env, root, commit) do
+            :ok -> {[commit | merged], conflicted}
+            {:conflict, files} -> {merged, [%{commit: commit, files: files} | conflicted]}
+          end
+        end)
+
+      {:ok,
+       %{head: head(env, root), merged: Enum.reverse(merged), conflicted: Enum.reverse(conflicted)}}
+    else
+      {out, _} ->
+        {:error, %{reason: "could not reset the gate checkout #{root} to #{base}: #{String.trim(out)}"}}
+    end
+  end
+
+  # No merge in progress is the ordinary case, not a failure.
+  defp ok_or_not_merging({_out, 0} = ok), do: ok
+  defp ok_or_not_merging({_out, _}), do: {"", 0}
+
+  defp add_to_batch(env, root, commit) do
+    if ancestor?(env, root, "HEAD", commit) do
+      case git(env, root, ["merge", "--quiet", "--ff-only", commit]) do
+        {_, 0} -> :ok
+        {_, _} -> merge_no_ff(env, root, commit)
+      end
+    else
+      merge_no_ff(env, root, commit)
+    end
+  end
+
+  defp merge_no_ff(env, root, commit) do
+    message = "Promotion batch: merge #{String.slice(commit, 0, 12)}"
+
+    case git(env, root, identity(env, root) ++ ["merge", "--no-ff", "--no-edit", "-m", message, commit]) do
+      {_, 0} ->
+        :ok
+
+      {_, _} ->
+        files =
+          case git(env, root, ["diff", "--name-only", "--diff-filter=U"]) do
+            {out, 0} -> String.split(out, "\n", trim: true)
+            _ -> []
+          end
+
+        git(env, root, ["merge", "--abort"])
+        {:conflict, files}
+    end
+  end
+
+  # A batch merge needs an author. The checkout's own identity when it has one;
+  # a gate checkout minted on a machine with none still has to commit.
+  defp identity(env, root) do
+    case git(env, root, ["config", "user.email"]) do
+      {email, 0} when email != "" -> []
+      _ -> ["-c", "user.name=CodeMySpec promotion", "-c", "user.email=promotion@codemyspec.local"]
+    end
+  end
+
+  defp ancestor?(env, root, maybe_ancestor, descendant) do
+    match?({_, 0}, git(env, root, ["merge-base", "--is-ancestor", maybe_ancestor, descendant]))
+  end
+
+  @doc """
+  The paths `commit` changed relative to where it left `base` — what the queue
+  attributes a red batch's findings by. Three-dot, so a candidate behind main
+  is not blamed for main's own changes.
+  """
+  @spec changed_files(Environments.Environment.t(), String.t(), String.t(), String.t()) :: result()
+  def changed_files(env, root, base, commit) do
+    case git(env, root, ["diff", "--name-only", "#{base}...#{commit}"]) do
+      {out, 0} -> {:ok, %{files: String.split(out, "\n", trim: true)}}
+      {out, _} -> {:error, %{reason: "could not diff #{base}...#{commit}: #{String.trim(out)}"}}
+    end
+  end
+
+  @doc """
   The checkout's HEAD and its version — the nearest `vX.Y.Z` tag, else the
   literal in `mix.exs` — moving nothing.
 

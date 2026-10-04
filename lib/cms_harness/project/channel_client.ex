@@ -1712,6 +1712,23 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
+  defp apply_promotion(
+         "promotion_build_batch",
+         %{"root" => root, "base" => base, "commits" => commits}
+       )
+       when is_list(commits),
+       do:
+         with_served_root(
+           root,
+           &Steps.build_batch(Environment.new(:local, &1), &1, base, commits)
+         )
+
+  defp apply_promotion(
+         "promotion_changed_files",
+         %{"root" => root, "base" => base, "commit" => commit}
+       ),
+       do: with_served_root(root, &Steps.changed_files(Environment.new(:local, &1), &1, base, commit))
+
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
     merge = %{
       before: payload["before"],
