@@ -31,9 +31,12 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   import Phoenix.ChannelTest, only: [push: 3, assert_reply: 4]
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
+  alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -176,7 +179,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} = git(context, running_root, ["worktree", "add", "--detach", gate_root, "main"])
 
     {gate, socket} =
-      join_working_copy_socket(context, gate_root, CodeMySpec.PromotionQueue.Worker.gate_label())
+      join_working_copy_socket(context, gate_root, Worker.gate_label())
 
     context
     |> Map.put(:gate_root, gate_root)
@@ -195,7 +198,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   a re-run. Runs for other sources stay pending, for a later call to answer.
   """
   def the_gate_answers(context, findings \\ %{}, opts \\ []) do
-    sources = Keyword.get(opts, :sources, CodeMySpec.Analysis.Run.sources())
+    sources = Keyword.get(opts, :sources, Run.sources())
     runs = gate_runs(context.gate_socket, sources)
     # Read once the runs are here: the batch is built before they are sent.
     head = head_of(context, context.gate_root)
@@ -223,7 +226,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   The sources the gate has been asked to run and has not been answered on,
   once it has been asked for `sources`. Leaves them pending.
   """
-  def the_gate_is_running(context, sources \\ CodeMySpec.Analysis.Run.sources()) do
+  def the_gate_is_running(context, sources \\ Run.sources()) do
     runs = gate_runs(context.gate_socket, sources)
     pending(context.gate_socket, runs)
     runs |> Enum.map(& &1["source"]) |> Enum.sort()
@@ -286,7 +289,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   @doc "An agent on the coding agent's copy, which `promote/2` then promotes as."
   def an_agent_on_the_copy(context) do
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(context.scope, %{
+      AgentsRepository.create_agent(context.scope, %{
         provider: "anthropic",
         engine: :alloy,
         role: "coding",
@@ -326,7 +329,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
 
     {:ok, agent} =
-      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+      AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: :alloy,
         role: "coding",
@@ -352,9 +355,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   @doc "A candidate's own analyzers current at its HEAD."
   def its_analyzers_are_current(context, %{scope: scope}) do
-    CodeMySpecSpex.Fixtures.fresh_analysis_runs(scope, CodeMySpec.Analysis.Run.sources(),
-      at_head: true
-    )
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(scope, Run.sources(), at_head: true)
 
     context
   end
