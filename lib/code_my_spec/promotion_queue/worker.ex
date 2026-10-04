@@ -82,11 +82,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # re-run source itself is done).
   def handle_info({:analysis, %{status: :running}}, state), do: {:noreply, state}
 
+  # Gated again only once nothing is still open on the gate copy: the gate
+  # starts any source without an answer, and one dispatched but not yet begun
+  # has none, so re-gating on every result would start it twice.
   def handle_info({:analysis, %{working_copy_id: id} = run}, %{batch: %{gate: %{id: id}}} = state) do
-    case state.phase do
-      :gating -> gate(state)
-      {:rerun, source} when source == run.source -> gate(%{state | phase: :gating})
-      _ -> {:noreply, state}
+    cond do
+      Analysis.running_on?(state.batch.scope) -> {:noreply, state}
+      state.phase == :gating -> gate(state)
+      state.phase == {:rerun, run.source} -> gate(%{state | phase: :gating})
+      true -> {:noreply, state}
     end
   end
 

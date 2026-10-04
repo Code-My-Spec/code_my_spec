@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   # `live/2` expands to `get/2`, which lives in ConnTest rather than LiveViewTest.
   import Phoenix.ConnTest, except: [delete: 2]
   import Phoenix.LiveViewTest
+  import Phoenix.ChannelTest, only: [push: 3, assert_reply: 4]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -119,6 +120,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     running = join_working_copy(context, running_root, "the checkout the dev app runs in")
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    context = a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation. Asserted,
     # because a promotion aimed at a copy that is not main is a promotion to
@@ -135,6 +137,114 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     |> Map.put(:running, running)
     |> Map.put(:agent, agent)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
+  end
+
+  @doc """
+  The project's promotion gate: a detached worktree of main that the queue
+  builds and gates batches in. A real project's is minted on first need; here
+  it is joined beside the running checkout, because the suite's minting host is
+  a different repository.
+  """
+  def a_gate_copy(context, running_root) do
+    gate_root = CodeMySpec.TempFile.dir("spex-1046-gate")
+    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", gate_root])
+    {_, 0} = git(context, running_root, ["worktree", "add", "--detach", gate_root, "main"])
+
+    {gate, socket} =
+      join_working_copy_socket(context, gate_root, CodeMySpec.PromotionQueue.Worker.gate_label())
+
+    context
+    |> Map.put(:gate_root, gate_root)
+    |> Map.put(:gate, gate)
+    |> Map.put(:gate_socket, socket)
+  end
+
+  @doc """
+  The gate copy's harness, played by the scenario: each analyzer run the queue
+  dispatched to the gate is answered at the gate checkout's HEAD, the way a
+  harness reports one — clean, or with the diagnostics in `findings` for the
+  sources it names (`%{"compiler" => [%{"file" => ..., "line" => ...,
+  "severity" => "error", "message" => ...}]}`).
+
+  `sources:` is which runs to wait for: every analyzer by default, one source
+  for a re-run.
+  """
+  def the_gate_answers(context, findings \\ %{}, opts \\ []) do
+    sources = Keyword.get(opts, :sources, CodeMySpec.Analysis.Run.sources())
+    runs = gate_runs(context.gate_socket, sources, [])
+    # Read once the runs are here: the batch is built before they are sent.
+    head = head_of(context, context.gate_root)
+
+    for %{"run_id" => id, "source" => source} <- runs do
+      started = %{"run_id" => id, "start_commit" => head, "start_tree_dirty" => false}
+      push(context.gate_socket, "analysis_started", started)
+
+      ref =
+        push(context.gate_socket, "analysis_result", %{
+          "run_id" => id,
+          "source" => source,
+          "status" => "ok",
+          "completed_commit" => head,
+          "result" => raw_result(source, Map.get(findings, source, []))
+        })
+
+      assert_reply(ref, :ok, _, 10_000)
+    end
+
+    context
+  end
+
+  # The runs pushed to the gate's own channel, until every source in `wanted`
+  # has one. Other copies' channels share the topic; the join ref tells them apart.
+  defp gate_runs(_socket, [], runs), do: runs
+
+  defp gate_runs(%Phoenix.Socket{join_ref: join_ref} = socket, wanted, runs) do
+    receive do
+      %Phoenix.Socket.Message{
+        event: "run_analysis",
+        join_ref: ^join_ref,
+        payload: %{"runs" => new}
+      } ->
+        gate_runs(socket, wanted -- Enum.map(new, & &1["source"]), runs ++ new)
+    after
+      30_000 -> flunk("the gate was never asked to run #{Enum.join(wanted, ", ")}")
+    end
+  end
+
+  defp raw_result("exunit", diagnostics),
+    do: %{
+      "execution_status" => if(diagnostics == [], do: "success", else: "failure"),
+      "exit_status" => if(diagnostics == [], do: 0, else: 2),
+      "stats" => %{"tests" => 1 + length(diagnostics), "failures" => length(diagnostics)},
+      "diagnostics" => diagnostics
+    }
+
+  defp raw_result(_source, diagnostics),
+    do: %{"exit_status" => if(diagnostics == [], do: 0, else: 1), "diagnostics" => diagnostics}
+
+  @doc "An agent on the coding agent's copy, which `promote/2` then promotes as."
+  def an_agent_on_the_copy(context) do
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(context.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: context.agent_root,
+        working_copy_id: context.agent.working_copy_id
+      })
+
+    Map.put(context, :agent_id, agent.id)
+  end
+
+  @doc "What the queue told the promoting agent, once it had decided."
+  def what_the_agent_was_told(context, timeout \\ 30_000) do
+    agent_id = context.agent_id
+
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, message} -> message
+    after
+      timeout -> flunk("the promoting agent was never told what became of its promotion")
+    end
   end
 
   @doc """
@@ -175,7 +285,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   detached — so it answers, and these criteria cover the door that is used.
   """
   def promote(context, story_number) do
-    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+    frame = %Anubis.Server.Frame{
+      assigns: %{current_scope: context.scope, agent_id: Map.get(context, :agent_id)}
+    }
+
     {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
     response
   end

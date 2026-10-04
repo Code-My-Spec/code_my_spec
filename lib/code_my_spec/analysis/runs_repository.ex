@@ -314,6 +314,17 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.all()
   end
 
+  @doc "Whether the scope's working copy has a run still `:running`."
+  @spec running_on?(Scope.t()) :: boolean()
+  def running_on?(%Scope{active_working_copy_id: nil}), do: false
+
+  def running_on?(%Scope{active_project_id: project_id, active_working_copy_id: copy_id}) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^copy_id)
+    |> where([r], r.status == :running)
+    |> Repo.exists?()
+  end
+
   defp except_copy(query, nil), do: query
   defp except_copy(query, copy_id), do: where(query, [r], r.working_copy_id != ^copy_id)
 

@@ -530,6 +530,10 @@ defmodule CodeMySpec.Analysis do
   @spec running_elsewhere(Scope.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
   defdelegate running_elsewhere(scope, except_copy_id), to: RunsRepository
 
+  @doc "Whether the scope's working copy has a run still open."
+  @spec running_on?(Scope.t()) :: boolean()
+  defdelegate running_on?(scope), to: RunsRepository
+
   @doc "Whether an agent has a run it requested still in flight on a working copy."
   @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
   defdelegate awaiting_runs?(scope, working_copy_id, agent_id), to: RunsRepository

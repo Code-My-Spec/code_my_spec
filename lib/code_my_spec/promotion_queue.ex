@@ -168,8 +168,9 @@ defmodule CodeMySpec.PromotionQueue do
       {:promotion_queue_landed, ^id, report} ->
         {:landed, report}
 
+      # A landing is answered by its report, which follows the row's broadcast.
       {:promotion_queue, %Entry{id: ^id, status: status} = done}
-      when status in [:landed, :ejected, :cancelled] ->
+      when status in [:ejected, :cancelled] ->
         {:ok, done}
     after
       remaining -> {:error, :timeout}
