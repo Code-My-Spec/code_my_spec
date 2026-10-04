@@ -45,7 +45,7 @@ defmodule CmsHarness do
     top_level?: true,
     deps: [
       CodeMySpec,
-      # `ToolIndex.carried/0`, the one list of direct tools an agent carries.
+      # `ToolIndex.carried/1`, the one list of direct tools an agent carries.
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
@@ -57,6 +57,8 @@ defmodule CmsHarness do
       CodeMySpec.Generators,
       # `CmsHarness.Application` installs the harness's log handler.
       CodeMySpec.Logging,
+      # `ToolRegistry.registry/0`, what `ToolIndex.carried/1` reads.
+      CodeMySpec.McpServers,
       # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not
       # the harness.
       CodeMySpec.Migration,

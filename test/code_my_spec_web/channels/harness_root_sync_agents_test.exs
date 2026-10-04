@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
   the container path (`/workspace/<app>`) because `Workspaces.instance_root/1`
   had not yet been taught to ask `Runner.Local.root/2` for it.
 
-  That correction alone was not enough. `LaunchRequest.for/1` sends
+  That correction alone was not enough. `LaunchRequest.for/2` sends
   `agent.working_copy` verbatim on a restore — a snapshot taken once, when the
   agent's row was created — so an agent started against the wrong root kept
   offering the harness that same wrong root on every later rejoin, and restore

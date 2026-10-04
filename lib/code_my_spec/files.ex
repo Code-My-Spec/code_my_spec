@@ -539,6 +539,21 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Which of `paths` any checkout of the project still tracks.
+
+  Project-wide on purpose, unlike `get_by_paths/2`: a spec held by one
+  checkout is work on disk whichever checkout asks.
+  """
+  @spec tracked_in_project(Scope.t(), [String.t()]) :: MapSet.t(String.t())
+  def tracked_in_project(%Scope{active_project_id: project_id}, paths) when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  @doc """
   Bulk upsert files. Inserts new files or updates mtime/size/role/owner for existing ones.
 
   Returns `{inserted_count, updated_files}`.

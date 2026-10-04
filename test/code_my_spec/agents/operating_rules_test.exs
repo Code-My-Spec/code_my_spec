@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.{Agent, LaunchRequest, OperatingRules, RoleBrief, ToolSets}
+  alias CodeMySpec.McpServers.ToolRegistry
 
   describe "every role carries them" do
     test "the rules travel once, ahead of every role's own brief" do
@@ -22,7 +23,11 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
       # as their own field and `SystemPrompt.compose/1` puts them first, so the
       # check is that they are on the wire for every role rather than inside it.
       for role <- RoleBrief.roles() do
-        request = LaunchRequest.for(%Agent{role: to_string(role), id: Ecto.UUID.generate()})
+        request =
+          LaunchRequest.for(
+            %Agent{role: to_string(role), id: Ecto.UUID.generate()},
+            ToolRegistry.registry()
+          )
 
         assert request["universal"] =~ "How this system works",
                "#{role} was left to infer the machinery. Every role runs against the " <>
@@ -44,7 +49,8 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
       assert :binary.match(rules, "get_next_requirement") < :binary.match(rules, "start_task"),
              "asking has to be named before claiming — that is the order the eval asserts"
 
-      assert :binary.match(rules, "## The loop") < :binary.match(rules, "## How this system works"),
+      assert :binary.match(rules, "## The loop") <
+               :binary.match(rules, "## How this system works"),
              "the loop is the first thing an agent needs and belongs at the top"
     end
 
