@@ -72,7 +72,10 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
         seen =
           for type <- @types do
             {:reply, reply, _frame} =
-              UpdateComponent.execute(%{id: context.component.id, type: type}, frame(context))
+              UpdateComponent.execute(
+                %{component_id: context.component.id, type: type},
+                frame(context)
+              )
 
             {type, reply.isError, type_of(context, context.component.id)}
           end

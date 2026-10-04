@@ -147,7 +147,11 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   @doc "The main agent answers from what the project records."
   @spec main_answers(map(), String.t(), String.t()) :: struct()
   def main_answers(context, question_id, answer) do
-    call(AnswerNotification, %{id: question_id, answer: answer, basis: "record"}, context)
+    call(
+      AnswerNotification,
+      %{notification_id: question_id, answer: answer, basis: "record"},
+      context
+    )
   end
 
   @doc "The main agent hands one up, saying why it is the user's call."

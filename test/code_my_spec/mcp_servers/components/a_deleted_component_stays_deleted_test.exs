@@ -50,7 +50,7 @@ defmodule CodeMySpec.McpServers.Components.ADeletedComponentStaysDeletedTest do
 
   defp delete(scope, component) do
     frame = %Frame{assigns: %{current_scope: scope}}
-    {:reply, response, ^frame} = DeleteComponent.execute(%{id: component.id}, frame)
+    {:reply, response, ^frame} = DeleteComponent.execute(%{component_id: component.id}, frame)
     refute response.isError
     Enum.map_join(response.content, "\n", & &1["text"])
   end

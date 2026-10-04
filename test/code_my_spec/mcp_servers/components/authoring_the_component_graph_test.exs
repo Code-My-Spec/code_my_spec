@@ -96,7 +96,11 @@ defmodule CodeMySpec.McpServers.Components.AuthoringTheComponentGraphTest do
     test "update sets any type and a parent", ctx do
       assert {:reply, reply, _} =
                UpdateComponent.execute(
-                 %{id: ctx.web.id, type: "infrastructure", parent_component_id: ctx.accounts.id},
+                 %{
+                   component_id: ctx.web.id,
+                   type: "infrastructure",
+                   parent_component_id: ctx.accounts.id
+                 },
                  ctx.frame
                )
 

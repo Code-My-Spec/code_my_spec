@@ -918,7 +918,8 @@ defmodule CodeMySpec.Promotion do
   # Exunit and spex go through `Validation.enforceable/2`, which drops the red
   # spex of unlatched stories — the same latch the stop hook uses.
   #
-  # `:info` (low-priority credo) is advisory and never blocks (30fd997f).
+  # Whether an advisory finding can block at all is `Validation.blockable/2`'s
+  # answer, shared with task evaluation and the analysis digest.
   @always_block ~w(credo compiler)
 
   defp blocking_problems(%Scope{} = scope, sources) do
@@ -928,7 +929,7 @@ defmodule CodeMySpec.Promotion do
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
     |> then(&Validation.enforceable(scope, &1))
     |> Kernel.++(strict)
-    |> Enum.reject(&(&1.severity == :info))
+    |> then(&Validation.blockable(scope, &1))
   end
 
   defp problems_of(_scope, []), do: []

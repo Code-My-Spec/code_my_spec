@@ -1396,7 +1396,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # least these keys," so a stricter-looking clause added below this one
   # would never be reached.
   defp decode_app_result(%{"status" => "ok", "app_status" => status} = msg)
-       when status in ~w(serving erroring down) do
+       when status in ~w(serving erroring down starting) do
     {:ok,
      %{
        status: status,

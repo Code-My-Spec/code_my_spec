@@ -43,6 +43,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
             head_note(serving, Map.get(info, :head))
         )
 
+      # A first start that outlasted its inline window: booting, not failed.
+      {:ok, %{status: "starting", url: url, commit: commit}} ->
+        Response.tool()
+        |> Response.text(
+          "#{copy_name(id)} app is starting #{commit || "unknown commit"} at #{url}. " <>
+            "Its first boot is still compiling; call ensure_app_running again to see it serving."
+        )
+
       {:ok, %{status: status, commit: commit}} ->
         Response.tool()
         |> Response.error("The app is #{status} (commit #{commit || "unknown"}). Not serving.")

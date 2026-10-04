@@ -309,7 +309,7 @@ defmodule CmsHarness.AppInstance do
         start_first_run(state, main?, tunnel)
 
       true ->
-        case start_app(state, tunnel) do
+        case start_app(state, tunnel, settle_by(op_timeout())) do
           {:ok, new_state} ->
             new_state = ensure_tunnel(new_state, main?, tunnel)
             {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
@@ -324,7 +324,7 @@ defmodule CmsHarness.AppInstance do
   @impl true
   def handle_call({:restart, main?, tunnel}, from, state) do
     state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
-    restart_and_reply(state, from, main?, tunnel, %{})
+    restart_and_reply(state, from, main?, tunnel, %{}, settle_by(op_timeout()))
   end
 
   def handle_call({:reload, main?, tunnel}, from, state) do
@@ -420,10 +420,10 @@ defmodule CmsHarness.AppInstance do
 
   # `extra` rides on the success reply: empty for a plain restart, the
   # `action`/`action_reason` pair for a reload that restarted instead.
-  defp restart_and_reply(state, from, main?, tunnel, extra) do
+  defp restart_and_reply(state, from, main?, tunnel, extra, deadline) do
     stopped = if running?(state), do: stop_process(state), else: state
 
-    case start_app(stopped, tunnel) do
+    case start_app(stopped, tunnel, deadline) do
       {:ok, new_state} ->
         new_state = ensure_tunnel(new_state, main?, tunnel)
         reply_then_hook(from, {:ok, Map.merge(result(new_state), extra)}, new_state, main?)
@@ -436,7 +436,15 @@ defmodule CmsHarness.AppInstance do
 
   defp restart_instead(state, from, main?, tunnel, why) do
     Logger.info("[CmsHarness] reload of #{state.root}: restarting instead, #{why}")
-    restart_and_reply(state, from, main?, tunnel, %{action: "restarted", action_reason: why})
+
+    restart_and_reply(
+      state,
+      from,
+      main?,
+      tunnel,
+      %{action: "restarted", action_reason: why},
+      settle_by(reload_timeout())
+    )
   end
 
   # The app stays up: migrations and the code reloader's compile run against
@@ -576,9 +584,9 @@ defmodule CmsHarness.AppInstance do
 
   # --- Internals: start/stop ---
 
-  defp start_app(state, tunnel) do
+  defp start_app(state, tunnel, deadline) do
     with {:ok, launched_state} <- launch_process(state, tunnel) do
-      {:ok, wait_for_health(launched_state)}
+      {:ok, wait_for_health(launched_state, deadline)}
     end
   end
 
@@ -636,7 +644,9 @@ defmodule CmsHarness.AppInstance do
   defp start_first_run(state, main?, tunnel) do
     case launch_process(state, tunnel) do
       {:ok, launched_state} ->
-        settled_state = wait_for_health(launched_state, first_start_probe_attempts())
+        window = first_start_probe_attempts() * health_wait_interval_ms()
+        deadline = System.monotonic_time(:millisecond) + window
+        settled_state = wait_for_health(launched_state, deadline)
 
         if settled_state.status == "serving" do
           new_state = ensure_tunnel(settled_state, main?, tunnel)
@@ -915,32 +925,34 @@ defmodule CmsHarness.AppInstance do
   defp tunnel_host(%{hostname: hostname}), do: hostname
   defp tunnel_host(_), do: nil
 
-  # A short, bounded wait so the common case can report "serving" rather than
-  # "started, ask again" — not a long one, since the caller (a QA session
-  # starting) is already holding a call for this. Attempts and interval are
-  # both configurable, same reasoning as the idle timeout: a spex proving "an
-  # app that fails to boot is reported, not waited on" should not spend 15
-  # real seconds finding that out against a scripted `Runner` that already
-  # knows the answer on attempt one.
-  defp wait_for_health(state, attempts \\ nil)
+  # Until the app serves, its process exits, or `deadline` passes, whichever
+  # comes first; the reply is the last probe. A fixed 15×1s used to end it, and
+  # a boot that compiles takes longer: restart_app answered "down" for an app
+  # that served 30s later, and the agent restarted it again (181d5fdd).
+  # `erroring` does not end the wait — mid-boot, before the JS bundle is
+  # built, a healthy app answers it.
+  defp wait_for_health(state, deadline) do
+    probed = probe(state)
 
-  defp wait_for_health(state, nil), do: wait_for_health(state, health_wait_attempts())
+    cond do
+      probed.status == "serving" ->
+        probed
 
-  defp wait_for_health(state, 0), do: probe(state)
+      not Runner.alive?(state.os_pid) ->
+        probed
 
-  defp wait_for_health(state, attempts) do
-    case probe(state) do
-      %{status: "serving"} = new_state ->
-        new_state
+      System.monotonic_time(:millisecond) >= deadline ->
+        probed
 
-      _ ->
+      true ->
         Process.sleep(health_wait_interval_ms())
-        wait_for_health(state, attempts - 1)
+        wait_for_health(state, deadline)
     end
   end
 
-  defp health_wait_attempts,
-    do: Application.get_env(:code_my_spec, :app_instance_health_wait_attempts, 15)
+  # A start replies inside the call that asked for it, so it settles by three
+  # quarters of that call's timeout: the rest covers the stop and the launch.
+  defp settle_by(call_timeout), do: System.monotonic_time(:millisecond) + div(call_timeout * 3, 4)
 
   defp health_wait_interval_ms,
     do: Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)

@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :id, :string, required: true, doc: "From `list_notifications`."
+    field :notification_id, :string, required: true, doc: "From `list_notifications`."
 
     field :answer, :string,
       doc:
@@ -85,7 +85,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   defp answer(scope, params, frame) do
     case MainAgent.answer_question(
            scope,
-           MapAccess.get(params, :id),
+           MapAccess.get(params, :notification_id),
            MapAccess.get(params, :answer),
            basis: MapAccess.get(params, :basis),
            precedent_id: MapAccess.get(params, :precedent_id),
@@ -113,7 +113,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   # Permissions (tap-outs) stay main's: product carries this tool to answer the
   # questions routed to it, not to staff the fleet.
   defp decide(scope, params, decision, frame) do
-    id = MapAccess.get(params, :id)
+    id = MapAccess.get(params, :notification_id)
 
     case decide_as(caller_role(scope, frame), scope, id, decision, params) do
       {:ok, _resolved} -> {:reply, AnswerMapper.decided(id, decision), frame}

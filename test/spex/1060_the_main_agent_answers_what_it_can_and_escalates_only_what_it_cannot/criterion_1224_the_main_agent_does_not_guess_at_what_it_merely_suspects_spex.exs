@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3254Spex do
         {:reply, response, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: "7 years — that is the usual figure for financial records",
               basis: "record"
             },

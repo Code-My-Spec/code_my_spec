@@ -167,7 +167,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     :ok = AnalysisReport.deliver(scope, "credo", [%{severity: :error}], agent.id)
 
     message = dispatched(agent.id)
-    assert message =~ "Your credo run finished: 1 problem"
+    assert message =~ "Your credo run finished: 1 blocking problem"
 
     assert [offer] = Offers.list_for_agent(agent.id)
     assert {offer.kind, offer.subject_type, offer.subject_key} == {:problems, "analysis", "credo"}
@@ -180,7 +180,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
     :ok = AnalysisReport.deliver(scope, "credo", [], agent.id)
 
-    assert dispatched(agent.id) =~ "no problems"
+    assert dispatched(agent.id) =~ "no blocking problems"
     assert Offers.list_for_agent(agent.id) == []
   end
 end

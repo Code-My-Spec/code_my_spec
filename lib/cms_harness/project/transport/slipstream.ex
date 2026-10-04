@@ -17,4 +17,29 @@ defmodule CmsHarness.Project.Transport.Slipstream do
 
   @impl true
   def disconnect(socket), do: Slipstream.disconnect(socket)
+
+  # Slipstream returns no handle to a connection before it upgrades, but every
+  # connection monitors its client, so the caller's monitors name it.
+  @impl true
+  def abandon(socket) do
+    {:monitored_by, monitors} = Process.info(self(), :monitored_by)
+
+    monitors
+    |> Enum.filter(&connection?/1)
+    |> Enum.each(&DynamicSupervisor.terminate_child(Slipstream.ConnectionSupervisor, &1))
+
+    socket
+  end
+
+  defp connection?(pid) when is_pid(pid) do
+    case Process.info(pid, :dictionary) do
+      {:dictionary, dictionary} ->
+        dictionary[:"$initial_call"] == {Slipstream.Connection, :init, 1}
+
+      nil ->
+        false
+    end
+  end
+
+  defp connection?(_port_or_resource), do: false
 end
