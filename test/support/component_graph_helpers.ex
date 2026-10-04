@@ -275,7 +275,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   @doc "`update_component` to `type` for the component named `module`."
   def retype!(context, module, type) do
     id = Fixtures.get_component_by_module_name(context.scope, module).id
-    {:reply, reply, _} = UpdateComponent.execute(%{id: id, type: type}, frame(context))
+    {:reply, reply, _} = UpdateComponent.execute(%{component_id: id, type: type}, frame(context))
     ok!(reply, "update_component #{module} -> #{type}")
   end
 

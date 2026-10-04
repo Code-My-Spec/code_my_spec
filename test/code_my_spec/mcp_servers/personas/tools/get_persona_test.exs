@@ -31,10 +31,10 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersonaTest do
       assert text =~ persona.id
     end
 
-    test "fetches by id when slug not given", %{frame: frame, project_id: project_id} do
+    test "fetches by persona_id when slug not given", %{frame: frame, project_id: project_id} do
       persona = insert_persona(project_id, "agency_pm", "Agency PM", nil)
 
-      {:reply, response, ^frame} = GetPersona.execute(%{id: persona.id}, frame)
+      {:reply, response, ^frame} = GetPersona.execute(%{persona_id: persona.id}, frame)
 
       assert response.isError == false
       text = response_text(response)
@@ -42,13 +42,13 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersonaTest do
       assert text =~ "agency_pm"
     end
 
-    test "slug wins when both slug and id are given",
+    test "slug wins when both slug and persona_id are given",
          %{frame: frame, project_id: project_id} do
       founder = insert_persona(project_id, "founder", "Founder", nil)
       _agency_pm = insert_persona(project_id, "agency_pm", "Agency PM", nil)
 
       {:reply, response, ^frame} =
-        GetPersona.execute(%{slug: "founder", id: Ecto.UUID.generate()}, frame)
+        GetPersona.execute(%{slug: "founder", persona_id: Ecto.UUID.generate()}, frame)
 
       assert response.isError == false
       text = response_text(response)
@@ -56,12 +56,12 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersonaTest do
       assert text =~ founder.id
     end
 
-    test "returns error when neither slug nor id is provided", %{frame: frame} do
+    test "returns error when neither slug nor persona_id is provided", %{frame: frame} do
       {:reply, response, ^frame} = GetPersona.execute(%{}, frame)
 
       assert response.isError == true
       text = error_text(response)
-      assert text =~ ~r/provide either.*slug.*or.*id/i
+      assert text =~ ~r/provide either.*slug.*or.*persona_id/i
     end
 
     test "returns not_found when slug doesn't exist on the project", %{frame: frame} do
@@ -72,9 +72,9 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersonaTest do
       assert text =~ ~r/not found/i
     end
 
-    test "returns not_found when id doesn't exist on the project", %{frame: frame} do
+    test "returns not_found when persona_id doesn't exist on the project", %{frame: frame} do
       {:reply, response, ^frame} =
-        GetPersona.execute(%{id: Ecto.UUID.generate()}, frame)
+        GetPersona.execute(%{persona_id: Ecto.UUID.generate()}, frame)
 
       assert response.isError == true
       text = error_text(response)

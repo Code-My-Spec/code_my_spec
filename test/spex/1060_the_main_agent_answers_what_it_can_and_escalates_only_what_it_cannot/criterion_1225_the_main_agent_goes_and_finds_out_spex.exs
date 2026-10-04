@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3255Spex do
         {:reply, answered, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: response_text(found),
               basis: "record"
             },
