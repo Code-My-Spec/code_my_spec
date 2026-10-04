@@ -16,8 +16,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
 
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   @work_prompt "Eligible work is available. Call get_next_requirement to see it, " <>

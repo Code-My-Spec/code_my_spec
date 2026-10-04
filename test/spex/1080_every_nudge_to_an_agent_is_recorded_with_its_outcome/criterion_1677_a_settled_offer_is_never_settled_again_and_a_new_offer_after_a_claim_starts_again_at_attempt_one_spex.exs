@@ -15,8 +15,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1677Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account

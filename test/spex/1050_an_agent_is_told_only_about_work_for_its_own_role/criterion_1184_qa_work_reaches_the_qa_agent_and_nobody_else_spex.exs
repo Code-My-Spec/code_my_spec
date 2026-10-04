@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.Story1050.Criterion3199Spex do
   import CodeMySpecSpex.IdleAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
