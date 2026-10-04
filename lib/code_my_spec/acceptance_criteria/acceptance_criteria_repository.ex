@@ -180,6 +180,13 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   def retire_criterion(_scope, _criterion), do: {:error, :cross_project}
 
+  @spec latch_criterion(Scope.t(), Criterion.t()) ::
+          {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
+  def latch_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
+    do: criterion |> Criterion.latch_changeset() |> Repo.update()
+
+  def latch_criterion(_scope, _criterion), do: {:error, :cross_project}
+
   # Coming back is a criterion arriving on its story, so the story restarts
   # the same way it does for a new one.
   @spec restore_criterion(Scope.t(), Criterion.t()) ::
