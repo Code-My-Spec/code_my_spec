@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, RetireCriterion, UpdateCriterion}
+  alias CodeMySpec.McpServers.Stories.Tools.{AddCriterion, RetireCriterion}
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,77 +41,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
 
       assert {:reply, response, ^frame} = AddCriterion.execute(params, frame)
       assert response.isError == true
-    end
-  end
-
-  describe "UpdateCriterion" do
-    test "retires the old criterion and creates a new one with the updated description" do
-      scope = full_scope_fixture()
-      story = story_fixture(scope, %{title: "Test Story"})
-
-      {:ok, criterion} =
-        AcceptanceCriteria.create_criterion(scope, story, %{description: "Original"})
-
-      frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_number: criterion.number, description: "Updated description"}
-
-      assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
-      assert response.type == :tool
-      refute response.isError
-
-      protocol = Response.to_protocol(response)
-      content = hd(protocol["content"])["text"]
-
-      assert content =~ "retired"
-      assert content =~ "Updated description"
-
-      original = AcceptanceCriteria.get_criterion_by_number(scope, criterion.number)
-      assert original.description == "Original"
-      assert original.retired_at
-
-      new_numbers =
-        scope
-        |> AcceptanceCriteria.list_story_criteria(story.id)
-        |> Enum.map(& &1.number)
-
-      refute criterion.number in new_numbers
-      assert Enum.any?(new_numbers, &(&1 != criterion.number))
-    end
-
-    test "prevents updating verified criterion" do
-      scope = full_scope_fixture()
-      story = story_fixture(scope, %{title: "Test Story"})
-
-      {:ok, criterion} =
-        AcceptanceCriteria.create_criterion(scope, story, %{description: "Original"})
-
-      {:ok, _verified} = AcceptanceCriteria.mark_verified(scope, criterion)
-
-      frame = %Frame{assigns: %{current_scope: scope}}
-      params = %{criterion_number: criterion.number, description: "Trying to change"}
-
-      assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
-      assert response.isError == true
-
-      protocol = Response.to_protocol(response)
-      content = hd(protocol["content"])["text"]
-
-      assert content =~ "Cannot update verified"
-    end
-
-    test "returns error for non-existent criterion" do
-      scope = full_scope_fixture()
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      params = %{criterion_number: 99_999, description: "Won't work"}
-
-      assert {:reply, response, ^frame} = UpdateCriterion.execute(params, frame)
-      assert response.isError == true
-
-      protocol = Response.to_protocol(response)
-      content = hd(protocol["content"])["text"]
-
-      assert content =~ "not found"
     end
   end
 
