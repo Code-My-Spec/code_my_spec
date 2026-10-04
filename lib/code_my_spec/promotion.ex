@@ -56,8 +56,6 @@ defmodule CodeMySpec.Promotion do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
@@ -68,15 +66,13 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
-      CodeMySpec.Validation,
+      CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria
-  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.BddSpecs
@@ -86,8 +82,9 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.AppTransport
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -320,15 +317,23 @@ defmodule CodeMySpec.Promotion do
           "certified by #{describe_certifications(swept)}, dispatching deployment"
       )
 
+      version_error = Map.get(merge_result, :version_error)
+
+      if version_error,
+        do:
+          Logger.error(
+            "[Promotion] merged, but the version tag was NOT created: #{version_error}"
+          )
+
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
       stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
       notify_team_free(scope, from.id, story)
 
-      # `head` is past the version bump, which is what the app will serve;
-      # `after` is the merge alone. A harness older than `head` sends only the
-      # latter.
+      # `head` and `after` are the same commit now that a promotion tags rather
+      # than commits a version bump; both are read so a result from either
+      # shape works.
       expect = %{
         from: Map.get(merge_result, :before),
         to: Map.get(merge_result, :head) || Map.get(merge_result, :after)
@@ -343,6 +348,7 @@ defmodule CodeMySpec.Promotion do
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
       |> with_deployment(plan)
       |> with_story(story, stamp_version)
+      |> with_version_error(version_error)
     else
       {:pending, pending} ->
         Logger.info(
@@ -409,10 +415,15 @@ defmodule CodeMySpec.Promotion do
 
   defp with_story(error, _story, _version), do: error
 
+  defp with_version_error({:ok, report}, reason) when is_binary(reason),
+    do: {:ok, Map.put(report, :version_error, reason)}
+
+  defp with_version_error(result, _reason), do: result
+
   # The promoted story alone, latched and stamped in one write with the
   # promote's commit (e1174640). No other story is touched: a project-wide
   # sweep stamped stories whose code sat unmerged on a different copy. `nil`
-  # (no `mix.exs` to read a version from) latches without stamping.
+  # (no tag and no `mix.exs` version to count from) latches without stamping.
   #
   # A write failure is logged and swallowed rather than turned into a
   # promotion failure: the merge is real and already on disk by the time this
@@ -423,7 +434,14 @@ defmodule CodeMySpec.Promotion do
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
-  defp notify_team_free(scope, copy_id, story), do: Agents.notify_story_team_free(scope, copy_id, story)
+
+  defp notify_team_free(scope, copy_id, story),
+    do:
+      :telemetry.execute([:code_my_spec, :promotion, :team_free], %{}, %{
+        scope: scope,
+        working_copy_id: copy_id,
+        story: story
+      })
 
   defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
 
@@ -677,7 +695,18 @@ defmodule CodeMySpec.Promotion do
   without one.
   """
   @spec outcome_text(term()) :: String.t()
-  def outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
+  def outcome_text(result), do: base_outcome_text(result) <> version_note(result)
+
+  # A merge whose tag failed is still a merge, so the note rides on whatever
+  # the outcome says rather than replacing it.
+  defp version_note({:ok, %{version_error: reason}}) when is_binary(reason) do
+    "\n\nThe version tag was NOT created: #{reason}. The merge landed and nothing " <>
+      "else is affected; tag the promoted commit by hand once the cause is fixed."
+  end
+
+  defp version_note(_result), do: ""
+
+  defp base_outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
     {action, why} = deployment_words(report)
 
     "Your promotion merged #{branch} onto the running dev copy. The application " <>
@@ -695,19 +724,19 @@ defmodule CodeMySpec.Promotion do
   # Promoting from the running copy is a restart and nothing else, so it has
   # no branch to name — the same "dispatched, not awaited" outcome as a
   # merge, worded for the case where nothing was merged.
-  def outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
+  defp base_outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
     "Your promotion finished. There was nothing to merge — you are working on " <>
       "the running copy — so the application at #{root} is restarting now in " <>
       "the background, not waited on. Do not promote again just to check; ask " <>
       "what is serving instead."
   end
 
-  def outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
+  defp base_outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
 
-  def outcome_text({:error, %{reason: reason}}),
+  defp base_outcome_text({:error, %{reason: reason}}),
     do: "Your promotion did not go through. #{reason}"
 
-  def outcome_text(other),
+  defp base_outcome_text(other),
     do: "Your promotion returned something unexpected: #{inspect(other)}"
 
   @doc "Whether a promote reloads or restarts, and why, in words."
@@ -787,7 +816,7 @@ defmodule CodeMySpec.Promotion do
   **zero problems, except the red spex of stories that are not latched.**
   Compiler, credo and exunit findings refuse at `:error` or `:warning`; `:info`
   (low-priority credo) is advisory. A red spex refuses only when its story is
-  latched (`specs_ready`), through `Validation.enforceable/2`.
+  latched (`specs_ready`), through `Blocking.enforceable/2`.
 
   A source with no run at `head` has one started (`requested_by` the agent in
   `opts[:notify]`) unless one is already running there, and the answer is
@@ -966,7 +995,7 @@ defmodule CodeMySpec.Promotion do
   # Credo and compiler findings block whatever the stop hook's mode says: a
   # warning let through here lands on main and blocks every other copy's
   # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
-  # Exunit and spex go through `Validation.enforceable/2`, which drops the red
+  # Exunit and spex go through `Blocking.enforceable/2`, which drops the red
   # spex of unlatched stories — the same latch the stop hook uses.
   #
   # Whether an advisory finding can block at all is `Validation.blockable/2`'s
@@ -978,9 +1007,9 @@ defmodule CodeMySpec.Promotion do
 
     scope
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
-    |> then(&Validation.enforceable(scope, &1))
+    |> then(&Blocking.enforceable(scope, &1))
     |> Kernel.++(strict)
-    |> then(&Validation.blockable(scope, &1))
+    |> then(&Blocking.blockable(scope, &1))
   end
 
   defp problems_of(_scope, []), do: []
@@ -1322,17 +1351,14 @@ defmodule CodeMySpec.Promotion do
 
   # Logged rather than retried, matching `report_to/3`: the agent may already be
   # acting on the first message, and a delivery loop does not fix that.
+  # Agents delivers it (`Agents.Events`); Promotion sits below Agents.
   defp deliver(scope, agent_id, text, what) do
-    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] #{what} #{disposition} to agent #{agent_id}")
-
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] #{what} could not be delivered to agent #{agent_id}: " <>
-            inspect(deliver_error)
-        )
-    end
+    :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{
+      scope: scope,
+      agent_id: agent_id,
+      text: text,
+      what: what
+    })
   end
 
   # "not awaited" is what `restart_acknowledgement_lost?/1` reads; keep it.

@@ -16,8 +16,8 @@ defmodule CodeMySpec.McpServers.MainAgent.MainAgentMapper do
   """
 
   alias Anubis.Server.Response
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.OpenQuestion
 
   @doc """
   Everything waiting, grouped by who is holding it. `mine` is the caller's own

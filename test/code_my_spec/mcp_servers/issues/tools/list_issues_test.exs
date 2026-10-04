@@ -100,6 +100,22 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
     end
   end
 
+  # 8c1e192c: `run_script` handed every list tool's rendered text straight to
+  # Lua, so a script iterating it with `ipairs` got "table expected, got
+  # string" instead of rows.
+  describe "script_result/2" do
+    test "returns issue rows as data rather than rendered text" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Issue A", severity: :high})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:ok, [row]} = ListIssues.script_result(%{}, frame)
+      assert row["title"] == "Issue A"
+      assert row["severity"] == "high"
+    end
+  end
+
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]

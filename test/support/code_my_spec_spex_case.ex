@@ -2866,15 +2866,23 @@ defmodule CodeMySpecSpex.Case do
   step reading what an earlier step wrote finds it, which is the one thing a
   cassette cannot arrange (`c635d90e`).
 
-  The memfs was already the virtual filesystem; `:memory_shell` connects the
-  shell to it, and is unset again on exit so nothing else sees a modelled
-  shell.
+  The memfs was already the virtual filesystem; `:shell_module` connects the
+  shell to it, scoped to this one environment -- not the global
+  `Application.put_env(:code_my_spec, :memory_shell, ...)` this used to be.
+  That slipped through the same race `GraphWatcher` already named for this
+  whole suite: whichever test's `on_exit` happened to run put the global back
+  to `nil` (or to whatever it had before) while a *different*, still-running
+  test's commands kept asking it who their shell was -- invisible under the
+  old serial-only default, reachable the moment two of these run at once. A
+  test's own `env` carries this now, same as it already carries its own
+  Agent.
   """
   def fake_working_directory(%{scope: scope, project: project} = context) do
-    env = Fixtures.memory_environment_fixture(working_dir: project.local_path)
-
-    previous = Application.get_env(:code_my_spec, :memory_shell)
-    Application.put_env(:code_my_spec, :memory_shell, Fakes.Shell)
+    env =
+      Fixtures.memory_environment_fixture(
+        working_dir: project.local_path,
+        shell_module: Fakes.Shell
+      )
 
     # And put the push back. `stage_local_only_push/0` skips it for every spex
     # because `git` is a subprocess no cassette intercepts, so a replay pushed
@@ -2895,7 +2903,6 @@ defmodule CodeMySpecSpex.Case do
     Fixtures.register_environment(project.id, env)
 
     Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :memory_shell, previous)
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
       Fixtures.unregister_environment(project.id)
     end)

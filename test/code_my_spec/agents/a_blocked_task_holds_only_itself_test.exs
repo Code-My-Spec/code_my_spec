@@ -13,12 +13,12 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.Digest
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask

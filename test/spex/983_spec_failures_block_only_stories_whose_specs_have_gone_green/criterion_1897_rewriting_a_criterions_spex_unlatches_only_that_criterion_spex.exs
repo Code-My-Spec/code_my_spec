@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
   import CodeMySpecSpex.ReadyForQaHelpers
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
@@ -41,7 +40,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
 
         :ok = write(context.agent_root, second_path, passing_spex(second))
         :ok = Environments.write_file(context.environment, second_path, passing_spex(second))
-        {:ok, _} = FileSync.sync_changed(context.scope)
+        :ok = Fixtures.sync_changed(context.scope)
 
         context = analyzers_are_current(context)
 
@@ -61,7 +60,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
         path = Fixtures.spec_file_path(context.story, context.second)
         :ok = write(context.agent_root, path, rewritten_spex(context.second))
         :ok = Environments.write_file(context.environment, path, rewritten_spex(context.second))
-        {:ok, _} = FileSync.sync_changed(context.scope)
+        :ok = Fixtures.sync_changed(context.scope)
         context = analyzers_are_current(context)
         {:ok, context}
       end

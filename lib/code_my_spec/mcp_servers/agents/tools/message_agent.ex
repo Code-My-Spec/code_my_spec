@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess

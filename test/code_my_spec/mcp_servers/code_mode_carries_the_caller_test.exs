@@ -58,12 +58,12 @@ defmodule CodeMySpec.McpServers.CodeModeCarriesTheCallerTest do
       #{answer}
       """
 
-      # "No tasks." rather than "No tasks on this session.": `list_tasks` now
-      # takes an `agent_id`, so the empty answer is no longer always a
-      # session's. What this test is about is unchanged — the session id
-      # reached the tool, so it resolved an owner and answered emptily instead
-      # of refusing for want of one.
-      assert answer =~ "No tasks."
+      # An empty table, not the prose "No tasks.": 8c1e192c gave `list_tasks`
+      # a `script_result/2`, so a script sees the same data `ipairs` can walk
+      # rather than a rendered listing. What this test is about is unchanged
+      # — the session id reached the tool, so it resolved an owner and
+      # answered emptily instead of refusing for want of one.
+      assert answer =~ "Returned:\n[]"
     end
 
     test "and is refused, still, when nothing said who is asking", %{frame: frame} do

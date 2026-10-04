@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.ATargetedReadReturnsOnlyThatToolsResultsTest do
+defmodule CodeMySpec.Agents.Main.ATargetedReadReturnsOnlyThatToolsResultsTest do
   @moduledoc """
   Issue `ec56b436`, criterion 3282 — "answered without reading it all".
 
@@ -29,9 +29,9 @@ defmodule CodeMySpec.MainAgent.ATargetedReadReturnsOnlyThatToolsResultsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
 
   defp put_message(conversation, attrs) do

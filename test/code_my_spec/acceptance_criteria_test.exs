@@ -1,7 +1,7 @@
 defmodule CodeMySpec.AcceptanceCriteriaTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures

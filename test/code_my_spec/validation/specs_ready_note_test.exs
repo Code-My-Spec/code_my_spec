@@ -53,7 +53,7 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
 
     # Enforcement is per-criterion now (story 983): the problem only blocks
     # once the criterion whose path it is has itself latched.
-    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",

@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.MainAgent.MachineryMapper do
   """
 
   alias Anubis.Server.Response
-  alias CodeMySpec.MainAgent.Machinery
+  alias CodeMySpec.Agents.Main.Machinery
 
   @doc "The whole report."
   @spec report(Machinery.t()) :: Response.t()

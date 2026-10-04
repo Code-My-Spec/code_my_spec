@@ -62,7 +62,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
   defp maybe_latch(false, _scope, _criterion), do: :ok
 
   defp maybe_latch(true, scope, criterion) do
-    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
     :ok
   end
 

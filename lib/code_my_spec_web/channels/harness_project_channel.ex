@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -59,8 +60,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
@@ -91,7 +92,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            ),
          {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
-         {:ok, harness} <- Devices.attach(harness, device),
+         {:ok, harness} <- WorkingCopies.attach_device(harness, device),
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
          :ok <- record_browser_status(harness, payload["browser_status"]),
@@ -537,7 +538,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # saturated, two checkouts on one machine share its processors, and a figure
   # per copy would report the same saturation twice and let the two disagree.
   def handle_in("machine_load", load, socket) when is_map(load) do
-    Devices.record_load(socket.assigns.scope.active_working_copy_id, load)
+    socket.assigns.scope.active_working_copy_id
+    |> WorkingCopies.device_of()
+    |> Devices.record_load(load)
+
     {:reply, :ok, socket}
   end
 
@@ -790,7 +794,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     interrupted = Agents.interrupted_turns(running)
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
-    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
+    tools = ToolRegistry.registry()
+    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
     {:reply, {:ok, %{"agents" => agents}},
      assign(
@@ -1073,9 +1078,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `Agents.record_started/3` writes together. Until this existed that function
   # had no callers at all: `start_agent/2` minted a config directory and left a
   # row at `:starting` that no machine was ever told about.
+  #
+  # The request is built here rather than by `Agents.Transport.Harness`: its
+  # tool index reads the MCP servers, which `Agents` sits below.
   @impl true
-  def handle_call({:start_agent, request}, from, socket) do
+  def handle_call({:start_agent, %Agents.Agent{} = agent}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
+    request = LaunchRequest.for(agent, ToolRegistry.registry())
 
     push(socket, "start_agent", Map.put(request, "ref", ref))
 
@@ -2451,7 +2460,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # find it.
   #
   # Corrects any agent's stale `working_copy` snapshot in the same beat as
-  # the working copy's own root, not just at read time — `LaunchRequest.for/1`
+  # the working copy's own root, not just at read time — `LaunchRequest.for/2`
   # sends `agent.working_copy` verbatim on a restore, so a row started against
   # the old path would otherwise keep offering it forever, and restore fails
   # with `:working_copy_missing` against a checkout that just joined correctly.

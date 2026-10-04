@@ -8,7 +8,6 @@ defmodule CodeMySpec.Hooks.SubagentStop do
 
   require Logger
 
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -72,37 +71,25 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     end
   end
 
-  # Analysis pending → skip evaluation (freshness-gated "not run yet"
-  # feedback must not bump R8 counters) and allow — the parent's next stop
-  # blocks on any problems that land.
+  # A stop never waits on analysis (John, 2026-10-04): in-flight runs change
+  # nothing, and the parent's next stop blocks on any problems that land.
   defp decide_after_validation(scope, session, task, req_id) do
-    if scope.active_project_id && Analysis.runs_in_flight?(scope) do
-      sources = scope |> Analysis.in_flight_described() |> Enum.join(", ")
+    case maybe_evaluate(scope, session, task) do
+      {:error, reason} ->
+        Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
+          cms_decision: "block",
+          cms_blocking: Stop.blocking_summary(reason)
+        )
 
-      Logger.info("[SubagentStopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop",
-        cms_decision: "allow",
-        cms_why: "analysis pending"
-      )
+        %{"decision" => "block", "reason" => reason}
 
-      %{"systemMessage" => "analysis running: #{sources} — results apply next stop"}
-    else
-      case maybe_evaluate(scope, session, task) do
-        {:error, reason} ->
-          Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
-            cms_decision: "block",
-            cms_blocking: Stop.blocking_summary(reason)
-          )
+      {:ok, :valid} ->
+        Logger.info("[SubagentStopHook] [#{req_id}] Allowing stop",
+          cms_decision: "allow",
+          cms_why: "task evaluated clean"
+        )
 
-          %{"decision" => "block", "reason" => reason}
-
-        {:ok, :valid} ->
-          Logger.info("[SubagentStopHook] [#{req_id}] Allowing stop",
-            cms_decision: "allow",
-            cms_why: "task evaluated clean"
-          )
-
-          %{}
-      end
+        %{}
     end
   end
 

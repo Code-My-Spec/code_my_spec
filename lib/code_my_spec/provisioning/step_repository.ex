@@ -13,7 +13,6 @@ defmodule CodeMySpec.Provisioning.StepRepository do
 
   alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   @doc "Every step for the active project, in sequence order."
@@ -100,10 +99,7 @@ defmodule CodeMySpec.Provisioning.StepRepository do
   can change it announces, or a deploy stays unoffered after setup completes.
   """
   @spec setup_changed(Scope.t()) :: :ok
-  def setup_changed(%Scope{active_project_id: project_id} = scope) when is_binary(project_id),
-    do: GraphInputs.event(scope, "Provisioning", "devops_setup_changed", %{}, [], :project_wide)
-
-  def setup_changed(_scope), do: :ok
+  defdelegate setup_changed(scope), to: CodeMySpec.Provisioning.EnvironmentRepository
 
   @doc "Delete one environment's row for a step, if it exists. A no-op otherwise."
   @spec delete(Scope.t(), atom(), String.t()) :: :ok

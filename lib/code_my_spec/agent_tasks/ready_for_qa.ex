@@ -23,9 +23,9 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   only and starts nothing.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Promotion
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   # The step that makes the story's specs pass, not one that waits for them:
   # a story on an existing surface has no other implementation node, so an

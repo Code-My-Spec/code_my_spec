@@ -58,6 +58,7 @@ defmodule CodeMySpecSpex do
       # test (does the evidence persist, not just appear in the one-time
       # tool response), same reasoning as `CodeMySpec.AgentTasks` and
       # `CodeMySpec.Promotion` above.
+      CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       # Story 1116's `ClickHouseCassetteHelpers.configure!/2` writes real
       # `ProjectSecrets` rows and `stub_rows_by_username/1` stubs

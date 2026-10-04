@@ -24,12 +24,12 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Validation
 
   @mine "lib/my_app/mine.ex"

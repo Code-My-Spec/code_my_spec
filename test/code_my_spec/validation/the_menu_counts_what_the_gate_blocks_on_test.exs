@@ -21,10 +21,10 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
   alias CodeMySpec.Validation
-  alias CodeMySpec.Validation.Menu
 
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.StoriesFixtures
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
     red_spec_for(scope, story)
     {:ok, _} = Stories.set_specs_ready(scope, story, true)
     [criterion | _] = story.criteria
-    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problems = Problems.list_project_problems(scope, severity: :error)
 

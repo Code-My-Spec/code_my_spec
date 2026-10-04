@@ -60,7 +60,7 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
     story = story_fixture(scope, attrs)
     {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
     [criterion | _] = story.criteria
-    {:ok, _} = CodeMySpec.AcceptanceCriteria.latch_criterion(scope, criterion)
+    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
     story
   end
 

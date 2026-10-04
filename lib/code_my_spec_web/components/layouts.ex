@@ -285,6 +285,7 @@ defmodule CodeMySpecWeb.Layouts do
                 </.link>
               </li>
             <% end %>
+            <li class="px-4 pt-1 text-xs opacity-40" data-test="app-version">v{app_version()}</li>
           </ul>
         </aside>
       </div>
@@ -326,6 +327,10 @@ defmodule CodeMySpecWeb.Layouts do
     do: ~p"/app/projects/#{id}/agent-conversation"
 
   defp workspace_path(_scope), do: ~p"/app"
+
+  # Derived from git at build time: the nearest `vX.Y.Z` tag, or
+  # `X.Y.Z+N.gSHA` between tags.
+  defp app_version, do: Application.spec(:code_my_spec, :vsn)
 
   defp nav_active(nil, _section), do: nil
 

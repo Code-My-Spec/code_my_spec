@@ -19,6 +19,7 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
 
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   defp entry(path), do: %{path: path, role: :bdd_spec}
 
@@ -128,7 +129,7 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
       story = story_fixture(scope)
 
       {:ok, criterion} =
-        CodeMySpec.AcceptanceCriteria.create_criterion(scope, story, %{
+        AcceptanceCriteria.create_criterion(scope, story, %{
           description: "a thing happens",
           spec_path: "test/spex/1_x/criterion_1_a_thing_happens_spex.exs"
         })

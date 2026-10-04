@@ -17,6 +17,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
   alias CodeMySpec.Agents.OperatingRules
   alias CodeMySpec.Agents.ProviderBrief
   alias CodeMySpec.Agents.RoleBrief
+  alias CodeMySpec.McpServers.ToolRegistry
 
   describe "role briefs" do
     test "every role the tool sets scope has something to say about itself" do
@@ -68,7 +69,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
         working_copy: "/tmp/a-copy"
       }
 
-      request = LaunchRequest.for(agent)
+      request = LaunchRequest.for(agent, ToolRegistry.registry())
 
       assert request["role_brief"] == RoleBrief.for(:product), """
       The launch request does not carry the role brief, so the harness has
@@ -86,7 +87,7 @@ defmodule CmsHarness.Agents.SystemPromptTest do
         working_copy: "/tmp/a-copy"
       }
 
-      request = LaunchRequest.for(agent)
+      request = LaunchRequest.for(agent, ToolRegistry.registry())
 
       assert Map.has_key?(request, "role_brief")
       assert request["role_brief"] == nil

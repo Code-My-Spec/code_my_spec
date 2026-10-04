@@ -13,7 +13,6 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.LaunchRequest
 
   alias CodeMySpec.Analysis.HarnessRegistry
   @impl true
@@ -41,10 +40,12 @@ defmodule CodeMySpec.Agents.Transport.Harness do
     end
   end
 
+  # The agent, not its `LaunchRequest`: the channel builds the request, because
+  # the tool index it carries reads the MCP servers, which sit above `Agents`.
   @impl true
   def start_agent(working_copy_id, %Agent{} = agent, timeout) do
     case holder(working_copy_id) do
-      {:ok, pid} -> call(pid, {:start_agent, LaunchRequest.for(agent)}, timeout, :start_timed_out)
+      {:ok, pid} -> call(pid, {:start_agent, agent}, timeout, :start_timed_out)
       :none -> unreachable(working_copy_id, agent, "start")
     end
   end

@@ -38,7 +38,7 @@ defmodule CodeMySpec.Generators do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.Files,
-      CodeMySpec.Provisioning,
+      CodeMySpec.Projects,
       CodeMySpec.Users.Scope
     ],
     exports: :all

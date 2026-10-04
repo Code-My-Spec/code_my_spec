@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.MainAgent.QuestionsRepository
+  alias CodeMySpec.Agents.Main.QuestionsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.Notifications
   alias Ecto.Adapters.SQL.Sandbox

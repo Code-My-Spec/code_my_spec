@@ -18,9 +18,14 @@ defmodule CodeMySpec.Agents.AnAgentLaunchesHavingAlreadyCalledAToolTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.{Agent, LaunchRequest}
-  alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
+  alias CodeMySpec.McpServers.{LocalServer, ScriptableTools, ToolRegistry}
 
-  defp request, do: LaunchRequest.for(%Agent{id: "a", provider: "claude-code", role: :coding})
+  defp request,
+    do:
+      LaunchRequest.for(
+        %Agent{id: "a", provider: "claude-code", role: :coding},
+        ToolRegistry.registry()
+      )
 
   test "it opens with a direct call and a nested one, both answered" do
     [direct, direct_result, nested, nested_result | _] = request()["messages"]
@@ -46,7 +51,10 @@ defmodule CodeMySpec.Agents.AnAgentLaunchesHavingAlreadyCalledAToolTest do
     said = %{"role" => "user", "content" => "what the operator wants"}
 
     messages =
-      LaunchRequest.for(%Agent{id: "a", provider: "claude-code", history: [said]})["messages"]
+      LaunchRequest.for(
+        %Agent{id: "a", provider: "claude-code", history: [said]},
+        ToolRegistry.registry()
+      )["messages"]
 
     assert List.last(messages) == said,
            "a demonstration after the request is a distraction; before it, it is the format"

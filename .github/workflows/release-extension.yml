@@ -1,13 +1,19 @@
 name: Release Extension
 
+# Run by hand only (John, 2026-10-04). Every promote tags vX.Y.Z, so a tag
+# push no longer means "release the plugin"; `just release` releases the web app,
+# and plugin/harness releases are deliberate. `publish: false` builds the
+# artifacts (tarballs + MSI) for testing without cutting a release.
 on:
-  push:
-    tags:
-      - 'v*'
-  # Manual build of the artifacts (tarballs + MSI) for testing, WITHOUT
-  # publishing to the marketplace or cutting a release. The publish job is
-  # gated to tag pushes only.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build, e.g. v2.0.355 (must already be pushed)"
+        required: true
+      publish:
+        description: "Publish to the marketplace and cut the GitHub release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -53,6 +59,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       # windows-latest's image reports ImageOS=win25-vs2026, which setup-beam
       # can't map. Pin it to the base label so it resolves the Windows build.
@@ -136,9 +145,10 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         run: |
-          # Read from mix.exs (robust for both tag pushes and workflow_dispatch,
+          # The version is git's (robust for both tag pushes and workflow_dispatch,
           # where GITHUB_REF is a branch and would inject slashes into sed).
-          VERSION=$(grep -m1 'version:' mix.exs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          # MSI ProductVersion takes X.Y.Z only, so build metadata is dropped.
+          VERSION=$(scripts/version.sh | sed -E 's/\+.*//')
           REL="$GITHUB_WORKSPACE/_build/harness/rel/cms_harness"
           # GITHUB_WORKSPACE is D:\a\... on Windows; backslashes in a sed
           # replacement get escape-interpreted (\a -> BEL 0x07) and corrupt the
@@ -174,12 +184,14 @@ jobs:
   publish-extension:
     name: Publish Extension & Release
     needs: build
-    # Tag pushes only — a manual workflow_dispatch just builds artifacts.
-    if: github.event_name == 'push'
+    # Only when asked to publish; otherwise the run just builds artifacts.
+    if: inputs.publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -188,7 +200,7 @@ jobs:
 
       - name: Get version from tag
         id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare release assets
         run: |

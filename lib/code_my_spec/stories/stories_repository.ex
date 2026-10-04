@@ -468,7 +468,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     now = DateTime.utc_now()
 
     Repo.transaction(fn ->
-      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+      from(c in CodeMySpec.Stories.AcceptanceCriteria.Criterion,
         where: c.story_id == ^story.id and is_nil(c.retired_at)
       )
       |> Repo.update_all(set: [retired_at: now])
@@ -489,7 +489,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   # again is its own decision.
   def restore_story(%Scope{} = scope, %Story{retired_at: %DateTime{} = retired_at} = story) do
     Repo.transaction(fn ->
-      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+      from(c in CodeMySpec.Stories.AcceptanceCriteria.Criterion,
         where: c.story_id == ^story.id and c.retired_at == ^retired_at
       )
       |> Repo.update_all(set: [retired_at: nil])

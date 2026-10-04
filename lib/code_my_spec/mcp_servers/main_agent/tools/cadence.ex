@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.Cadence do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Validators
 
   schema do

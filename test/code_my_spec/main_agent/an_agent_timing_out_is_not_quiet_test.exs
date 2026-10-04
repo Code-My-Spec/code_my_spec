@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnAgentTimingOutIsNotQuietTest do
+defmodule CodeMySpec.Agents.Main.AnAgentTimingOutIsNotQuietTest do
   @moduledoc """
   eb09b076 — metric_flow's coder lost turn after turn to "claude exec timed out
   after 180000ms", and `check_in` and `list_agent_work` showed it as holding its
@@ -10,8 +10,8 @@ defmodule CodeMySpec.MainAgent.AnAgentTimingOutIsNotQuietTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.{AgentWork, CheckInReport, Digest, Machinery}
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery}
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
 
   @timeout "claude exec timed out after 180000ms"

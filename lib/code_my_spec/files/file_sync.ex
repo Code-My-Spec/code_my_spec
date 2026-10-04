@@ -15,7 +15,6 @@ defmodule CodeMySpec.Files.FileSync do
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
@@ -32,6 +31,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy

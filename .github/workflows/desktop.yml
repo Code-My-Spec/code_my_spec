@@ -4,11 +4,13 @@ name: Desktop installers
 # native window (elixir-desktop on desktop_webview), packaged by
 # desktop_deployment. Builds the unsigned macOS .dmg and Windows NSIS .exe as
 # artifacts, and smoke-installs the Windows one; nothing is published.
+# Run by hand only: every promote tags vX.Y.Z, and a tag is no longer a release.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build, e.g. v2.0.355 (empty builds the dispatched branch)"
+        required: false
 
 env:
   MIX_ENV: desktop
@@ -24,6 +26,9 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       # A stock OTP links dylibs the installer cannot relocate into the .app;
       # scripts/desktop_otp_macos.sh says why. Cached on the recipe itself.
@@ -106,6 +111,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
 
       # setup-beam can't map windows-latest's ImageOS (see release-extension.yml).
       - name: Pin ImageOS for setup-beam
