@@ -1,3 +1,28 @@
+defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest.PingTool do
+  @moduledoc false
+  use Anubis.Server.Component, type: :tool
+
+  alias Anubis.Server.Response
+
+  schema do
+  end
+
+  @impl true
+  def execute(_params, frame) do
+    {:reply, Response.tool() |> Response.text("pong"), frame}
+  end
+end
+
+defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest.PingServer do
+  @moduledoc false
+  use Anubis.Server,
+    name: "call-mcp-server-test",
+    version: "1.0.0",
+    capabilities: [:tools]
+
+  component(CodeMySpec.McpServers.Qa.CallMcpServerTest.PingTool)
+end
+
 defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest do
   @moduledoc """
   The instrument QA tests a tool surface with.
@@ -15,6 +40,7 @@ defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.McpServers.Qa.Tools.CallMcpServer
+  alias CodeMySpec.McpServers.Qa.CallMcpServerTest.PingServer
 
   setup do
     scope = full_scope_fixture()
@@ -80,6 +106,46 @@ defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest do
 
              #{text}
              """
+    end
+  end
+
+  describe "a server that is actually running" do
+    @describetag :capture_log
+
+    setup do
+      start_supervised!({PingServer, transport: {:streamable_http, start: true}})
+
+      bandit =
+        start_supervised!(
+          {Bandit,
+           plug: {Anubis.Server.Transport.StreamableHTTP.Plug, server: PingServer},
+           port: 0,
+           startup_log: false}
+        )
+
+      {:ok, {_address, port}} = ThousandIsland.listener_info(bandit)
+
+      %{url: "http://127.0.0.1:#{port}"}
+    end
+
+    test "lists the tools it offers", %{frame: frame, url: url} do
+      {:reply, reply, _frame} =
+        CallMcpServer.execute(%{url: url, path: "/mcp", timeout: 5_000}, frame)
+
+      text = response_text(reply)
+
+      assert text =~ "ping_tool",
+             "a server that answered was not read as one offering a tool named ping_tool:\n#{text}"
+    end
+
+    test "calls the tool it offers", %{frame: frame, url: url} do
+      {:reply, reply, _frame} =
+        CallMcpServer.execute(%{url: url, path: "/mcp", tool: "ping_tool", timeout: 5_000}, frame)
+
+      text = response_text(reply)
+
+      assert text =~ "pong",
+             "calling the one tool this server offers did not return its answer:\n#{text}"
     end
   end
 end
