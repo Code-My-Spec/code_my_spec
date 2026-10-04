@@ -146,6 +146,155 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     refute_received {:event, %{event: :turn_failed}}
   end
 
+  test "a caller timeout leaves the running turn and its queue intact", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+
+    caller =
+      Task.async(fn ->
+        catch_exit(GenServer.call(engine, {:chat, "first", 1}, 1))
+      end)
+
+    assert_receive {:holding_turn, execution}, 5_000
+    assert {:timeout, _} = Task.await(caller)
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+    assert {:ok, %{busy?: true, queued: 1}} = Engine.status(agent)
+    assert Process.alive?(execution)
+    refute_received {:event, %{event: :message_delivered, ref: "waiting"}}
+
+    send(execution, :release)
+    assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    refute_received {:event, %{event: :turn_failed}}
+  end
+
+  test "the finite ceiling stops execution before delivering queued work", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    original = :sys.get_state(engine).alloy
+
+    :sys.replace_state(original, fn state ->
+      %{state | provider_state: %{session_marker: "preserve-this-session"}}
+    end)
+
+    assert {:ok, :started} = Machine.send_message(agent, "running", "original instruction")
+    assert_receive {:holding_turn, execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "queued instruction")
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    state = :sys.get_state(engine)
+    remaining = Process.read_timer(state.turn.timer)
+    assert is_integer(remaining) and remaining > 0 and remaining <= :timer.minutes(30)
+    assert state.alloy == execution
+    monitor = Process.monitor(execution)
+
+    # Deliver the real timer's message without making the test wait 30 minutes.
+    send(engine, {:turn_ceiling, state.turn.task.ref})
+    assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
+    refute Process.alive?(execution)
+    assert_receive {:DOWN, ^monitor, :process, ^execution, :killed}
+    assert_receive {:event, %{event: :turn_failed}}, 5_000
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+    assert {:ok, history} = Engine.history(agent)
+    assert inspect(history) =~ "original instruction"
+    assert inspect(history) =~ "queued instruction"
+    assert inspect(history) =~ "interrupted"
+    replacement = :sys.get_state(engine).alloy
+    assert :sys.get_state(replacement).provider_state.session_marker == "preserve-this-session"
+
+    send(engine, {:turn_ceiling, state.turn.task.ref})
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+    assert Engine.running?(agent)
+    refute_received {:event, %{event: :turn_failed}}
+  end
+
+  test "a crashed waiter cannot release queued work into the old execution", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    state = :sys.get_state(engine)
+
+    Process.exit(state.turn.task.pid, :kill)
+
+    assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
+    refute Process.alive?(execution)
+    assert_receive {:event, %{event: :turn_failed}}, 5_000
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+  end
+
+  for mode <- [:direct, :supervised] do
+    @tag ownership_mode: mode
+    test "ceiling stops the #{mode} subprocess before queued delivery", %{
+      root: root,
+      ownership_mode: mode
+    } do
+      test_pid = self()
+      counter = :counters.new(1, [])
+      gated = gated_plug(test_pid)
+
+      plug = fn conn ->
+        start_first_subprocess(counter, test_pid, mode, :counters.get(counter, 1))
+
+        gated.(conn)
+      end
+
+      agent = start_agent(root, plug, self())
+      assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+      assert_receive {:owned_subprocess, os_pid}, 5_000
+
+      on_exit(fn ->
+        System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+      end)
+
+      assert_receive {:holding_turn, _execution}, 5_000
+      assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+      [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+      state = :sys.get_state(engine)
+
+      send(engine, {:turn_ceiling, state.turn.task.ref})
+
+      assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
+
+      {_output, status} =
+        System.cmd("/bin/kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
+      assert status != 0, "queued delivery began while the old subprocess was still alive"
+      assert_receive {:event, %{event: :turn_ended}}, 5_000
+    end
+  end
+
+  defp start_first_subprocess(counter, test_pid, mode, 0) do
+    :counters.add(counter, 1, 1)
+    start_owned_subprocess(test_pid, mode)
+  end
+
+  defp start_first_subprocess(_counter, _test_pid, _mode, _count), do: :ok
+
+  defp start_owned_subprocess(test_pid, :direct) do
+    port =
+      Port.open({:spawn_executable, System.find_executable("sleep")}, [
+        :binary,
+        :exit_status,
+        {:args, ["30"]}
+      ])
+
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+    send(test_pid, {:owned_subprocess, os_pid})
+  end
+
+  defp start_owned_subprocess(test_pid, :supervised) do
+    Task.Supervisor.async_nolink(Alloy.TaskSupervisor, fn ->
+      start_owned_subprocess(test_pid, :direct)
+
+      receive do
+        :release -> :ok
+      end
+    end)
+  end
+
   # The other half: an agent that finishes with nothing waiting is done, and
   # that is exactly when the analyzers should run.
   test "a settle with an empty queue announces", %{root: root} do
