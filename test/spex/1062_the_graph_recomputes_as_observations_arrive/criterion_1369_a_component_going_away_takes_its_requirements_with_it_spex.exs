@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
 
         {:reply, reply, _} =
           DeleteComponent.execute(
-            %{id: context.sibling_a.id},
+            %{component_id: context.sibling_a.id},
             frame
           )
 

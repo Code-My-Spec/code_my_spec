@@ -116,7 +116,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
   end
 
   def error(:missing_id) do
-    refuse("`id` is required — from `list_notifications`.")
+    refuse("`notification_id` is required — from `list_notifications`.")
   end
 
   def error(:not_found) do

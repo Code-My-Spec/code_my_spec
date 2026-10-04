@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story682.Criterion1653Spex do
       when_ "the architect deletes Accounts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _} = DeleteComponent.execute(%{id: context.accounts.id}, frame)
+        {:reply, reply, _} = DeleteComponent.execute(%{component_id: context.accounts.id}, frame)
 
         refute reply.isError, response_text(reply)
         {:ok, Map.put(context, :said, response_text(reply))}
