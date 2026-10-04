@@ -764,3 +764,6 @@ config :code_my_spec, CodeMySpecDesktop.Browser, launch: false
 # Resend from a test; tests stub it with Req.Test.
 config :code_my_spec, CodeMySpecDesktop.OAuthClients,
   plug: {Req.Test, CodeMySpecDesktop.OAuthClients}
+
+config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
+  plug: {Req.Test, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth}

@@ -42,7 +42,9 @@ config :code_my_spec, secure_session_cookie: false
 config :code_my_spec, :desktop_oauth_clients,
   google_client_id: System.get_env("GOOGLE_DESKTOP_CLIENT_ID", ""),
   google_client_secret: System.get_env("GOOGLE_DESKTOP_CLIENT_SECRET", ""),
-  cloudflare_client_id: "2fa2730e477ff5f0bbb13d013400ee46"
+  cloudflare_client_id: "2fa2730e477ff5f0bbb13d013400ee46",
+  # The dev GitHub OAuth app, device flow enabled. Public: device flow uses no secret.
+  github_client_id: "Ov23liFpnT7j3bK5OC1L"
 
 config :desktop, :backend, DesktopWebview.Backend
 config :desktop, :menu_adapter, DesktopWebview.Menu.Adapter
