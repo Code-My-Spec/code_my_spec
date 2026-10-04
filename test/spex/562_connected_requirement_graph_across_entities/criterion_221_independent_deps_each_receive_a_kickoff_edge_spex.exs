@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.StoryHelpers
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

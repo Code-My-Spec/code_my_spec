@@ -17,6 +17,14 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
 
   use CodeMySpecSpex.Case
 
+  # Pinned to the local endpoint: this drives CodeMySpecLocalWeb's own hooks
+  # route directly, not the harness's live-socket path (CmsHarness.Web's
+  # equivalent round-trips through a real channel to a server, which this
+  # spex's fixture does not stand up). Needs the `HarnessHooks` live-harness
+  # migration before CodeMySpecLocalWeb goes away.
+  @endpoint CodeMySpecLocalWeb.Endpoint
+  use CodeMySpecLocalWeb, :verified_routes
+
   alias CodeMySpec.Environments
 
   @impl_a "lib/alpha.ex"

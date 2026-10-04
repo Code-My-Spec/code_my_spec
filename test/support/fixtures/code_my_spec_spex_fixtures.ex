@@ -4546,6 +4546,12 @@ defmodule CodeMySpecSpex.Fixtures do
     project
   end
 
+  @doc "A project's deploy key, minting one if it has none yet."
+  def ensure_project_deploy_key(scope, project) do
+    {:ok, project} = CodeMySpec.Projects.ensure_deploy_key(scope, project)
+    project
+  end
+
   @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)

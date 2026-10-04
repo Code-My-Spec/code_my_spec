@@ -153,7 +153,7 @@ defmodule CodeMySpecSpex.Case do
     async = Keyword.get(case_opts, :async, false)
 
     quote do
-      @endpoint CodeMySpecLocalWeb.Endpoint
+      @endpoint CodeMySpecWeb.Endpoint
 
       # `ownership_timeout` was already raised for recording; ExUnit's own test
       # timeout never was, and it is the shorter of the two. Registering a
@@ -169,7 +169,7 @@ defmodule CodeMySpecSpex.Case do
       # that runs long there is hung rather than patient.
       @moduletag timeout: CodeMySpecSpex.Case.spex_timeout()
 
-      use CodeMySpecLocalWeb, :verified_routes
+      use CodeMySpecWeb, :verified_routes
       use SexySpex, async: unquote(async)
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs

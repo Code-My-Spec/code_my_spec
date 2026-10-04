@@ -58,8 +58,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
