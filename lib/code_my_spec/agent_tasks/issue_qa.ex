@@ -2,9 +2,9 @@ defmodule CodeMySpec.AgentTasks.IssueQa do
   @moduledoc """
   Test the fix for the issue a working copy's team is bound to (story 1091).
 
-  Closed through `submit_issue_qa_result`, not `evaluate_task`: a pass
-  resolves the issue and frees the team, a fail sends the fix back to the
-  coder and keeps the team bound to it.
+  Closed through `submit_issue_qa_result`, not `evaluate_task`: a pass sends
+  the coder to land the fix (the landing resolves the issue and frees the
+  team), a fail sends the fix back to the coder and keeps the team bound to it.
   """
 
   alias CodeMySpec.{Issues, Paths}
@@ -43,9 +43,10 @@ defmodule CodeMySpec.AgentTasks.IssueQa do
     this working copy's own code versus main's shared one).
 
     Verify the fix, then call `submit_issue_qa_result` with issue_id "#{issue.id}" \
-    and task_id "#{task.id}". A passing attempt resolves the issue and frees your \
-    team; a failing attempt (with findings filed via `create_issue`) sends the fix \
-    back to the coder and keeps your team bound to this issue.
+    and task_id "#{task.id}". A passing attempt sends the fix to be landed on main \
+    (the landing resolves the issue and frees your team); a failing attempt (with \
+    findings filed via `create_issue`) sends the fix back to the coder and keeps \
+    your team bound to this issue.
     """
   end
 end

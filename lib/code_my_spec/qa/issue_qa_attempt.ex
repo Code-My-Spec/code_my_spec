@@ -4,8 +4,8 @@ defmodule CodeMySpec.Qa.IssueQaAttempt do
 
   The issue counterpart to `QaAttempt`, kept separate rather than widening
   that schema: a story attempt satisfies `qa_complete` through the
-  requirement graph, an issue attempt resolves the issue and frees its
-  team directly (`CodeMySpec.Qa.IssueQaAttempts.submit/2`) — different
+  requirement graph, an issue's passing attempt — with its fix landed —
+  resolves it and frees its team (`CodeMySpec.Qa.IssueQaAttempts`) — different
   enough machinery downstream that sharing the table would mean every
   story-side query guarding against a nil `story_id` it used to be able to
   assume.
