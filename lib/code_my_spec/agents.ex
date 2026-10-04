@@ -164,6 +164,8 @@ defmodule CodeMySpec.Agents do
   defdelegate assign_issue_to_working_copy(scope, issue_id, working_copy_id, opts \\ []),
     to: IssueAssignment,
     as: :assign
+
+  defdelegate free_issue_team(scope, issue), to: IssueAssignment, as: :free
   defdelegate providers(), to: Providers, as: :names
 
   @doc """

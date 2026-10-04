@@ -337,11 +337,37 @@ defmodule CodeMySpec.Issues do
     end
   end
 
-  @doc "Set or clear which copy's team this issue is assigned to."
+  @doc """
+  Set or clear which copy's team this issue is assigned to.
+
+  A fresh assignment (the issue held none before) starts the coder's turn.
+  Moving an already-assigned issue to another copy carries whose turn it
+  currently is along with it, unchanged.
+  """
   @spec set_assigned_working_copy(Scope.t(), Issue.t(), Ecto.UUID.t() | nil) ::
           {:ok, Issue.t()} | {:error, term()}
   def set_assigned_working_copy(%Scope{} = scope, %Issue{} = issue, working_copy_id) do
-    with {:ok, updated} <- IssuesRepository.update_assignment(issue, working_copy_id) do
+    awaiting_role = next_awaiting_role(issue, working_copy_id)
+
+    with {:ok, updated} <-
+           IssuesRepository.update_assignment(issue, working_copy_id, awaiting_role) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
+  defp next_awaiting_role(_issue, nil), do: nil
+  defp next_awaiting_role(%Issue{assigned_working_copy_id: nil}, _new_copy_id), do: :coding
+  defp next_awaiting_role(%Issue{awaiting_role: role}, _new_copy_id), do: role
+
+  @doc """
+  Flip whose turn it is on an issue already assigned to a copy: the coder's
+  until it submits a fix, QA's until it submits a non-passing attempt.
+  """
+  @spec set_awaiting_role(Scope.t(), Issue.t(), :coding | :qa) ::
+          {:ok, Issue.t()} | {:error, term()}
+  def set_awaiting_role(%Scope{} = scope, %Issue{} = issue, role) when role in [:coding, :qa] do
+    with {:ok, updated} <- IssuesRepository.update_awaiting_role(issue, role) do
       broadcast(scope, {:updated, updated})
       {:ok, updated}
     end

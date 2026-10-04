@@ -19,8 +19,11 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -112,5 +115,59 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   defp bind(new_team, issue_id) do
     from(a in Agent, where: a.id in ^Enum.map(new_team, & &1.id))
     |> Repo.update_all(set: [issue_id: issue_id, team_free_at: nil])
+  end
+
+  @doc """
+  Clear `issue.id` from every agent bound to it — a passing `IssueQaAttempts.submit/2`
+  calls this once the issue is resolved.
+
+  A member left with no story to fall back to is marked `team_free_at`
+  (`Agents.Work` then answers it "waiting for main assignment" instead of
+  project-level work); one left with a story falls back to that normally.
+  If anyone was, main is sent exactly one `:team_free` offer naming this
+  copy and the issue that finished.
+  """
+  @spec free(Scope.t(), Issues.Issue.t()) :: :ok
+  def free(%Scope{} = _scope, %{assigned_working_copy_id: nil}), do: :ok
+
+  def free(%Scope{} = scope, %{assigned_working_copy_id: copy_id, id: issue_id} = issue) do
+    now = DateTime.utc_now()
+
+    team =
+      from(a in Agent,
+        where: a.project_id == ^scope.active_project_id and a.issue_id == ^issue_id,
+        lock: "FOR UPDATE"
+      )
+      |> Repo.all()
+
+    Enum.each(team, fn agent ->
+      from(a in Agent, where: a.id == ^agent.id)
+      |> Repo.update_all(set: [issue_id: nil, team_free_at: free_at(agent, now)])
+    end)
+
+    if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
+
+    :ok
+  end
+
+  defp free_at(%Agent{story_id: nil}, now), do: now
+  defp free_at(%Agent{}, _now), do: nil
+
+  defp notify_main(scope, copy_id, issue) do
+    case AgentsRepository.list_running_main(scope) do
+      [main | _] ->
+        text = team_free_message(copy_id, issue)
+        main |> Conversations.record_sent_to_agent(text) |> Offers.record(main, :team_free, {"copy", copy_id})
+        :ok
+
+      [] ->
+        :ok
+    end
+  end
+
+  defp team_free_message(copy_id, issue) do
+    "Working copy #{copy_id}'s team is free: issue #{issue.id} (\"#{issue.title}\") is " <>
+      "resolved and nothing else is assigned to it. Assign it another issue with " <>
+      "assign_issue_to_working_copy, or a story with assign_team."
   end
 end

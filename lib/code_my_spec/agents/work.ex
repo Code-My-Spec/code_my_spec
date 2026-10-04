@@ -6,13 +6,13 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Issues
   alias CodeMySpec.MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -1108,7 +1108,22 @@ defmodule CodeMySpec.Agents.Work do
   fleet read lists them once.
   """
   @spec work_for(Scope.t(), atom() | nil, term(), keyword()) :: map()
-  def work_for(%Scope{} = scope, role, owner \\ nil, opts \\ []) do
+  def work_for(scope, role, owner \\ nil, opts \\ [])
+
+  # An agent bound to an issue, or just freed of one with nothing to fall
+  # back on, bypasses the graph entirely — an issue is not in it
+  # (`Agents.IssueWork`, story 1091). Checked ahead of everything else, the
+  # same standing as `bound_story_id/1`: offered that and nothing else.
+  def work_for(%Scope{} = scope, _role, %Agent{issue_id: id} = owner, _opts)
+      when is_binary(id) do
+    IssueWork.execution(at_copy(scope, owner), owner)
+  end
+
+  def work_for(%Scope{} = scope, _role, %Agent{team_free_at: %DateTime{}} = owner, _opts) do
+    IssueWork.execution(at_copy(scope, owner), owner)
+  end
+
+  def work_for(%Scope{} = scope, role, owner, opts) do
     scope = at_copy(scope, owner)
     number = Keyword.get(opts, :story_number)
     withheld? = withholding(scope, owner, opts)
