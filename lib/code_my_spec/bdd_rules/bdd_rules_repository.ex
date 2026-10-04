@@ -111,22 +111,31 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   def update_rule(%Scope{}, _rule, _attrs), do: {:error, :missing_active_account}
 
-  @spec delete_rule(Scope.t(), Rule.t()) ::
+  @spec claimed_spec_paths(Rule.t()) :: [String.t()]
+  def claimed_spec_paths(%Rule{id: rule_id}) do
+    from(c in Criterion,
+      where: c.rule_id == ^rule_id and is_nil(c.retired_at) and not is_nil(c.spec_path),
+      select: c.spec_path
+    )
+    |> Repo.all()
+  end
+
+  @spec delete_rule(Scope.t(), Rule.t(), Enumerable.t()) ::
           {:ok, Rule.t()}
           | {:error,
              :missing_active_account
              | :cross_account
              | {:criteria_verified_or_specced, [String.t()]}}
-  def delete_rule(%Scope{active_account_id: account_id}, %Rule{} = rule)
+  def delete_rule(%Scope{active_account_id: account_id}, %Rule{} = rule, tracked_spec_paths)
       when not is_nil(account_id) do
     if rule.account_id == account_id do
-      cascade_delete_rule(rule)
+      cascade_delete_rule(rule, Enum.to_list(tracked_spec_paths))
     else
       {:error, :cross_account}
     end
   end
 
-  def delete_rule(%Scope{}, _rule), do: {:error, :missing_active_account}
+  def delete_rule(%Scope{}, _rule, _tracked_spec_paths), do: {:error, :missing_active_account}
 
   # Scenarios are Criteria linked via `rule_id`. The criteria→rule FK is
   # `on_delete: :nilify_all`, so a bare `Repo.delete(rule)` orphans them —
@@ -146,8 +155,8 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   # that already proved its scenarios is not what "PM-side cleanup of bogus
   # or superseded rules" (this tool's own doc) means; a rule that still has
   # verified work belongs to `update_rule`, not this.
-  defp cascade_delete_rule(%Rule{id: rule_id} = rule) do
-    case verified_or_specced(rule_id) do
+  defp cascade_delete_rule(%Rule{id: rule_id} = rule, tracked_spec_paths) do
+    case verified_or_specced(rule_id, tracked_spec_paths) do
       [] -> do_cascade_delete_rule(rule, rule_id)
       criteria -> {:error, {:criteria_verified_or_specced, Enum.map(criteria, & &1.description)}}
     end
@@ -174,21 +183,13 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   # Live criteria only, and a spec only when its file is still tracked
   # (0b23ac19): a retired criterion has no work to protect, and a `spec_path`
   # whose file is gone protects nothing — both refused a cleanup with no reason.
-  defp verified_or_specced(rule_id) do
-    spec_on_file =
-      from(f in CodeMySpec.Files.File,
-        where: f.project_id == parent_as(:story).project_id,
-        where: f.path == parent_as(:criterion).spec_path,
-        select: 1
-      )
-
+  #
+  # Which paths are tracked is handed in: the `files` table is `Files`', and
+  # `Files` sits above this context.
+  defp verified_or_specced(rule_id, tracked_spec_paths) do
     from(c in Criterion,
-      as: :criterion,
-      join: s in Story,
-      as: :story,
-      on: s.id == c.story_id,
       where: c.rule_id == ^rule_id and is_nil(c.retired_at),
-      where: c.verified == true or exists(spec_on_file)
+      where: c.verified == true or c.spec_path in ^tracked_spec_paths
     )
     |> Repo.all()
   end

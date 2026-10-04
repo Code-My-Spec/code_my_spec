@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
+  alias CodeMySpec.Files
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.BddRulesChecker
@@ -133,10 +134,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_rule", %{"id" => id}, socket) do
-    rule = BddRules.get_rule(socket.assigns.scope, id)
+    scope = socket.assigns.scope
+    rule = BddRules.get_rule(scope, id)
 
     if rule do
-      case BddRules.delete_rule(socket.assigns.scope, rule) do
+      tracked = Files.tracked_in_project(scope, BddRules.claimed_spec_paths(rule))
+
+      case BddRules.delete_rule(scope, rule, tracked) do
         {:ok, _deleted} ->
           {:noreply,
            socket
