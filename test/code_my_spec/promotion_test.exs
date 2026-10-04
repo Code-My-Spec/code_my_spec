@@ -333,6 +333,28 @@ defmodule CodeMySpec.PromotionTest do
       assert {:ok, %{version: "1.2.5"}} = Steps.merge(env, root, "later")
     end
 
+    test "a tag it cannot create is an error, not a silent nil",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+      # The tag this promote would make is already taken, on a commit main
+      # cannot reach, so the nearest tag is still mix.exs's 1.2.3.
+      {_, 0} = git.(["checkout", "-b", "elsewhere"])
+      {_, 0} = git.(["commit", "--allow-empty", "-m", "elsewhere"])
+      {_, 0} = git.(["tag", "v1.2.4"])
+      {_, 0} = git.(["checkout", "main"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, version_error: reason}} = Steps.merge(env, root, "side")
+      assert reason =~ "v1.2.4"
+    end
+
     # The target's submodule checkout is not moved by `git merge`, so a bump
     # committed with `-a` staged that stale checkout and reverted the pointer
     # the branch brought. Every promote dropped `.code_my_spec` bumps this way.

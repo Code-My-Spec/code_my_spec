@@ -27,6 +27,8 @@ defmodule CodeMySpec.Promotion.Steps do
   way to run a command there would drift from it.
   """
 
+  require Logger
+
   alias CodeMySpec.Environments
 
   @submodule ".code_my_spec"
@@ -469,7 +471,13 @@ defmodule CodeMySpec.Promotion.Steps do
     case git(env, root, ["merge", "--ff-only", branch]) do
       {out, 0} ->
         after_sha = head(env, root)
-        originated = version_if_moved(env, root, before, after_sha)
+
+        {originated, version_error} =
+          case version_if_moved(env, root, before, after_sha) do
+            {:ok, version} -> {version, nil}
+            {:error, reason} -> {nil, reason}
+            :none -> {nil, nil}
+          end
 
         {:ok,
          %{
@@ -480,6 +488,9 @@ defmodule CodeMySpec.Promotion.Steps do
            # The certified commit itself: a promotion tags it and commits nothing.
            head: after_sha,
            version: originated,
+           # Set when the merge landed and its version tag did not. Never
+           # silent: `Promotion` logs it as an error and says so in the outcome.
+           version_error: version_error,
            stamp_version: originated || current_version(env, root)
          }}
 
@@ -560,7 +571,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # that question about nothing. Confirmed empirically before this guard
   # existed: a repeated or racing `promote` call minted a fresh tag and
   # patch bump on every call, with no corresponding change to anything.
-  defp version_if_moved(_env, _root, same, same), do: nil
+  defp version_if_moved(_env, _root, same, same), do: :none
   defp version_if_moved(env, root, _before, _after), do: tag_version(env, root)
 
   # The version a story carried onto main should be stamped with, which is not
@@ -610,13 +621,32 @@ defmodule CodeMySpec.Promotion.Steps do
   # before this bumped. nil says "this promotion minted no version", not "it
   # failed": `Promotion` then stamps nothing, as before. Local only — a tag
   # leaves the machine when someone pushes it.
+  #
+  # A tag that should have been made and was not is `{:error, reason}`, never
+  # nil. The switch-over promote (8d02c068b) ran the code before this, whose
+  # bump found no literal in the new `mix.exs` and minted nothing without a
+  # word; "version none" in an info line was the only trace.
   defp tag_version(env, root) do
-    with base when is_binary(base) <- current_version(env, root),
-         {:ok, next} <- next_patch(base),
-         {_, 0} <- git(env, root, ["tag", "-a", "v#{next}", "-m", "Promote v#{next}"]) do
-      next
-    else
-      _ -> nil
+    case current_version(env, root) do
+      nil ->
+        Logger.warning(
+          "[Promotion] #{root} has no vX.Y.Z tag and no mix.exs version to count from; " <>
+            "this promotion minted no version"
+        )
+
+        :none
+
+      base ->
+        with {:ok, next} <- next_patch(base) do
+          create_tag(env, root, next)
+        end
+    end
+  end
+
+  defp create_tag(env, root, version) do
+    case git(env, root, ["tag", "-a", "v#{version}", "-m", "Promote v#{version}"]) do
+      {_, 0} -> {:ok, version}
+      {out, _} -> {:error, "`git tag -a v#{version}` failed in #{root}: #{String.trim(out)}"}
     end
   end
 
@@ -644,7 +674,7 @@ defmodule CodeMySpec.Promotion.Steps do
         {:ok, "#{major}.#{minor}.#{patch + 1}"}
 
       :error ->
-        :error
+        {:error, "the version to count from, #{inspect(version)}, is not X.Y.Z"}
     end
   end
 

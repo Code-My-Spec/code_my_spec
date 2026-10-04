@@ -314,6 +314,14 @@ defmodule CodeMySpec.Promotion do
           "certified by #{describe_certifications(swept)}, dispatching deployment"
       )
 
+      version_error = Map.get(merge_result, :version_error)
+
+      if version_error,
+        do:
+          Logger.error(
+            "[Promotion] merged, but the version tag was NOT created: #{version_error}"
+          )
+
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
@@ -337,6 +345,7 @@ defmodule CodeMySpec.Promotion do
       |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
       |> with_deployment(plan)
       |> with_story(story, stamp_version)
+      |> with_version_error(version_error)
     else
       {:pending, pending} ->
         Logger.info(
@@ -402,6 +411,11 @@ defmodule CodeMySpec.Promotion do
     do: {:ok, Map.put(report, :story, %{number: story.number, version: version})}
 
   defp with_story(error, _story, _version), do: error
+
+  defp with_version_error({:ok, report}, reason) when is_binary(reason),
+    do: {:ok, Map.put(report, :version_error, reason)}
+
+  defp with_version_error(result, _reason), do: result
 
   # The promoted story alone, latched and stamped in one write with the
   # promote's commit (e1174640). No other story is touched: a project-wide
@@ -631,7 +645,18 @@ defmodule CodeMySpec.Promotion do
   without one.
   """
   @spec outcome_text(term()) :: String.t()
-  def outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
+  def outcome_text(result), do: base_outcome_text(result) <> version_note(result)
+
+  # A merge whose tag failed is still a merge, so the note rides on whatever
+  # the outcome says rather than replacing it.
+  defp version_note({:ok, %{version_error: reason}}) when is_binary(reason) do
+    "\n\nThe version tag was NOT created: #{reason}. The merge landed and nothing " <>
+      "else is affected; tag the promoted commit by hand once the cause is fixed."
+  end
+
+  defp version_note(_result), do: ""
+
+  defp base_outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
     {action, why} = deployment_words(report)
 
     "Your promotion merged #{branch} onto the running dev copy. The application " <>
@@ -649,19 +674,19 @@ defmodule CodeMySpec.Promotion do
   # Promoting from the running copy is a restart and nothing else, so it has
   # no branch to name — the same "dispatched, not awaited" outcome as a
   # merge, worded for the case where nothing was merged.
-  def outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
+  defp base_outcome_text({:ok, %{restarted: root, serving: %{unconfirmed: _}}}) do
     "Your promotion finished. There was nothing to merge — you are working on " <>
       "the running copy — so the application at #{root} is restarting now in " <>
       "the background, not waited on. Do not promote again just to check; ask " <>
       "what is serving instead."
   end
 
-  def outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
+  defp base_outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
 
-  def outcome_text({:error, %{reason: reason}}),
+  defp base_outcome_text({:error, %{reason: reason}}),
     do: "Your promotion did not go through. #{reason}"
 
-  def outcome_text(other),
+  defp base_outcome_text(other),
     do: "Your promotion returned something unexpected: #{inspect(other)}"
 
   @doc "Whether a promote reloads or restarts, and why, in words."
