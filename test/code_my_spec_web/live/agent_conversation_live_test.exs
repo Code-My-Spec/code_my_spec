@@ -87,8 +87,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       refute has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      assert has_element?(view, "[data-test='agent-pending-message']", "queued instruction")
       assert {:ok, _} = Conversations.set_delivery(message, :delivered)
       assert has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      refute has_element?(view, "[data-test='agent-pending-message']")
       {:ok, reloaded, _html} = live(conn, show_path(project, conversation))
 
       assert has_element?(
@@ -96,6 +98,35 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
                "[data-test='message'][data-role='user']",
                "queued instruction"
              )
+    end
+
+    test "a queued answer arriving on an open page appears once and can be withdrawn", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      {:ok, message} =
+        Conversations.add_message(conversation, :operator, "Keep existing", "operator", [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      assert has_element?(view, "[data-test='agent-pending-message']", "Keep existing")
+      send(view.pid, {:new_message, message})
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='agent-pending-message']")
+             |> length() == 1
+
+      refute has_element?(view, "[data-test='message'][data-role='operator']", "Keep existing")
+      assert {:ok, _} = Conversations.set_delivery(message, :withdrawn)
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      refute render(view) =~ "Keep existing"
     end
 
     test "failed delivery remains auditable without appearing received", %{
