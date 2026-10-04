@@ -78,6 +78,13 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
 
+  # How long one dial has to end in a join. Slipstream times neither the
+  # websocket upgrade nor the join reply, so an attempt the server never
+  # answers sits forever with no disconnect to retry from (57aa576c). A healthy
+  # join is milliseconds; this is well past a loaded one and short of
+  # Slipstream's own heartbeat timeout (~60s), which only starts after upgrade.
+  @default_join_timeout 20_000
+
   # The channel contract this harness speaks. Kept in step with
   # `CodeMySpecWeb.HarnessProjectChannel`'s copy of the same number — the two
   # are the contract, so they are the two places that have to agree.
@@ -129,6 +136,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp decision_timeout,
     do: Application.get_env(:code_my_spec, :harness_decision_timeout, @default_decision_timeout)
+
+  defp join_timeout,
+    do: Application.get_env(:code_my_spec, :harness_join_timeout, @default_join_timeout)
 
   # A whole suite, not a decision. Longer than the server's own wait, so a run
   # the server gives up on comes back as its answer rather than as this timing
@@ -521,7 +531,9 @@ defmodule CmsHarness.Project.ChannelClient do
         # to one dialing the right one and getting refused, and the two need
         # opposite fixes. Token redacted: it is a credential, not a diagnostic.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-        {:noreply, connect!(socket, uri: uri, headers: connect_headers(socket))}
+
+        {:noreply,
+         socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop. Nothing about waiting produces a credential, and a
@@ -905,7 +917,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # another harness holds; anything else is reported as it arrived.
   @impl Slipstream
   def handle_topic_close(topic, reason, socket) do
-    socket = socket |> assign(:joined, false) |> pause_watcher()
+    socket = socket |> assign(:joined, false) |> assign(:join_attempt, nil) |> pause_watcher()
 
     # Slipstream reports a refused join as `:failed_to_join` and a channel that
     # closed after joining as `:error`; the refusal we know how to explain can
@@ -2143,6 +2155,7 @@ defmodule CmsHarness.Project.ChannelClient do
     socket =
       socket
       |> assign(:joined, false)
+      |> assign(:join_attempt, nil)
       |> pause_watcher()
       |> fail_pending(:not_connected)
 
@@ -2281,12 +2294,28 @@ defmodule CmsHarness.Project.ChannelClient do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
         {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
-        {:noreply, socket}
+        {:noreply, arm_join_deadline(socket)}
 
       {:error, _} ->
         {:noreply, socket}
     end
   end
+
+  # A dial that has not joined by now never will: neither the upgrade nor the
+  # join reply has a timeout of its own. Only the current attempt's deadline
+  # counts; one from an attempt that already ended is stale.
+  def handle_info({:join_deadline, ref}, %{assigns: %{joined: false, join_attempt: ref}} = socket)
+      when is_reference(ref) do
+    Logger.warning(
+      "[CmsHarness] #{socket.assigns.project.root} did not join #{socket.assigns.topic} " <>
+        "within #{join_timeout()}ms of dialing (#{dial_stage(socket)}); dropping the " <>
+        "attempt and reconnecting."
+    )
+
+    {:noreply, abandon_dial(socket)}
+  end
+
+  def handle_info({:join_deadline, _ref}, socket), do: {:noreply, socket}
 
   def handle_info({:reply_timeout, ref}, socket) do
     case pop_in(socket.assigns.pending, [ref]) do
@@ -2859,6 +2888,31 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # Quiet from here. It is retrying at the capped backoff and has already said so.
   defp log_refusal(_socket, _holder, _attempt), do: :ok
+
+  # Each dial gets its own ref, so a deadline outliving its attempt is ignored.
+  defp arm_join_deadline(socket) do
+    ref = make_ref()
+    Process.send_after(self(), {:join_deadline, ref}, join_timeout())
+    assign(socket, :join_attempt, ref)
+  end
+
+  # Upgraded: drop the socket, and `handle_disconnect/2` retries as for any
+  # drop. Not upgraded: Slipstream holds no handle to drop and will send no
+  # disconnect, so the stalled connection is abandoned and the same retry runs.
+  defp abandon_dial(socket) do
+    if Slipstream.Socket.connected?(socket) do
+      transport().disconnect(socket)
+    else
+      {:ok, socket} = handle_disconnect(:join_timeout, transport().abandon(socket))
+      socket
+    end
+  end
+
+  defp dial_stage(socket) do
+    if Slipstream.Socket.connected?(socket),
+      do: "the socket upgraded, the join was never answered",
+      else: "the websocket upgrade was never answered"
+  end
 
   defp schedule_rejoin(socket) do
     Process.send_after(self(), :reconnect, backoff(socket.assigns.attempts))

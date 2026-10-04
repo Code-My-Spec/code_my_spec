@@ -619,4 +619,77 @@ defmodule CmsHarness.ChannelClientTransportTest do
       refute again =~ "[error]"
     end
   end
+
+  # 57aa576c. Slipstream times neither the upgrade nor the join reply, so a dial
+  # the server never answers left the client alive, unjoined and never
+  # disconnected — and the backoff only runs from a disconnect.
+  describe "a dial that never joins" do
+    defp dialing(assigns) do
+      socket(Map.merge(%{joined: false, attempts: 0, pending: %{}}, assigns))
+    end
+
+    test "an upgraded socket whose join is never answered is dropped" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: ref}) | channel_pid: self()}
+
+      {{:noreply, _out}, log} =
+        with_log(fn -> ChannelClient.handle_info({:join_deadline, ref}, sock) end)
+
+      assert_receive {:transport_disconnect, "harness_project:p1"},
+                     1_000,
+                     "dropping the socket is what hands the retry to `handle_disconnect/2`"
+
+      assert log =~ "the join was never answered"
+    end
+
+    test "an upgrade that never answers is abandoned and dialed again" do
+      ref = make_ref()
+
+      {{:noreply, out}, log} =
+        with_log(fn ->
+          ChannelClient.handle_info({:join_deadline, ref}, dialing(%{join_attempt: ref}))
+        end)
+
+      assert_receive {:transport_abandon, "harness_project:p1"}, 1_000
+
+      assert_receive :reconnect,
+                     2_000,
+                     "no disconnect follows an upgrade that never answered, so nothing " <>
+                       "else will ever schedule the next dial"
+
+      assert out.assigns.attempts == 1
+      assert log =~ "the websocket upgrade was never answered"
+    end
+
+    test "a deadline from an attempt that already ended does nothing" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: make_ref()}) | channel_pid: self()}
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, sock)
+      refute_receive {:transport_disconnect, _}, 100
+    end
+
+    test "a deadline after the join landed does nothing" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: ref, joined: true}) | channel_pid: self()}
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, sock)
+      refute_receive {:transport_disconnect, _}, 100
+    end
+
+    test "a disconnect retires the attempt's deadline" do
+      ref = make_ref()
+
+      {:ok, out} =
+        capture_log_result(fn ->
+          ChannelClient.handle_disconnect(:closed, dialing(%{join_attempt: ref}))
+        end)
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, out)
+
+      refute_receive {:transport_abandon, _},
+                     100,
+                     "a stale deadline after a disconnect would schedule a second reconnect"
+    end
+  end
 end
