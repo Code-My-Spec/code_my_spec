@@ -332,12 +332,24 @@ defmodule CodeMySpec.Promotion do
   every story in the batch. `stories` pairs each story (or nil, for work that
   is not a story's) with the working copy it came from.
   """
-  @spec land(Scope.t(), WorkingCopy.t(), String.t(), [{Stories.Story.t() | nil, Ecto.UUID.t()}], [map()], keyword()) ::
+  @spec land(
+          Scope.t(),
+          WorkingCopy.t(),
+          String.t(),
+          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          [map()],
+          keyword()
+        ) ::
           {:ok, map()} | {:error, map()}
   def land(%Scope{} = scope, %WorkingCopy{} = from, head, stories, swept, opts \\ []) do
     result =
       with {:ok, running} <- running_copy(scope) do
-        candidate = %{head: head, branch: "the promotion batch at #{head}", swept: swept, untracked: []}
+        candidate = %{
+          head: head,
+          branch: "the promotion batch at #{head}",
+          swept: swept,
+          untracked: []
+        }
 
         Lock.with_lock(running.project_id, fn ->
           land_into(scope, running, from, candidate, stories, opts)
@@ -413,7 +425,10 @@ defmodule CodeMySpec.Promotion do
   # unreported checkout).
   defp refused(running, reason) do
     named = Map.get(reason, :working_copy, running.root)
-    Logger.warning("[Promotion] refused for #{named}: #{Map.get(reason, :reason, inspect(reason))}")
+
+    Logger.warning(
+      "[Promotion] refused for #{named}: #{Map.get(reason, :reason, inspect(reason))}"
+    )
   end
 
   # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
@@ -866,6 +881,21 @@ defmodule CodeMySpec.Promotion do
     case blocking_problems(scope, Map.keys(answered)) do
       [] -> certify(scope, answered, missing, head, named, opts)
       problems -> gate_result(problems, named)
+    end
+  end
+
+  @doc """
+  What the scope's copy's own analysis at `head` already says blocks it: `:ok`,
+  or the gate's refusal. A read — it starts nothing, and a source with no answer
+  at `head` is not a refusal.
+  """
+  @spec red_at(Scope.t(), String.t()) :: :ok | {:error, map()}
+  def red_at(%Scope{active_working_copy_id: id} = scope, head) do
+    {answered, _missing} = answers_at(scope, Run.sources(), head)
+
+    case blocking_problems(scope, Map.keys(answered)) do
+      [] -> :ok
+      problems -> gate_result(problems, named_copy(id))
     end
   end
 

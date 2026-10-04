@@ -733,10 +733,15 @@ defmodule CodeMySpec.Promotion.Steps do
         end)
 
       {:ok,
-       %{head: head(env, root), merged: Enum.reverse(merged), conflicted: Enum.reverse(conflicted)}}
+       %{
+         head: head(env, root),
+         merged: Enum.reverse(merged),
+         conflicted: Enum.reverse(conflicted)
+       }}
     else
       {out, _} ->
-        {:error, %{reason: "could not reset the gate checkout #{root} to #{base}: #{String.trim(out)}"}}
+        {:error,
+         %{reason: "could not reset the gate checkout #{root} to #{base}: #{String.trim(out)}"}}
     end
   end
 
@@ -758,7 +763,11 @@ defmodule CodeMySpec.Promotion.Steps do
   defp merge_no_ff(env, root, commit) do
     message = "Promotion batch: merge #{String.slice(commit, 0, 12)}"
 
-    case git(env, root, identity(env, root) ++ ["merge", "--no-ff", "--no-edit", "-m", message, commit]) do
+    case git(
+           env,
+           root,
+           identity(env, root) ++ ["merge", "--no-ff", "--no-edit", "-m", message, commit]
+         ) do
       {_, 0} ->
         :ok
 
@@ -792,7 +801,8 @@ defmodule CodeMySpec.Promotion.Steps do
   attributes a red batch's findings by. Three-dot, so a candidate behind main
   is not blamed for main's own changes.
   """
-  @spec changed_files(Environments.Environment.t(), String.t(), String.t(), String.t()) :: result()
+  @spec changed_files(Environments.Environment.t(), String.t(), String.t(), String.t()) ::
+          result()
   def changed_files(env, root, base, commit) do
     case git(env, root, ["diff", "--name-only", "#{base}...#{commit}"]) do
       {out, 0} -> {:ok, %{files: String.split(out, "\n", trim: true)}}

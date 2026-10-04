@@ -33,6 +33,7 @@ defmodule CodeMySpecTest do
       CodeMySpec.Agents,
       CodeMySpec.Embeddings,
       CodeMySpec.McpServers,
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TempFile,

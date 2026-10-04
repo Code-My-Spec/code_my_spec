@@ -106,7 +106,12 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   def topic(project_id), do: "promotion_queue:#{project_id}"
 
   defp broadcast({:ok, %Entry{} = entry} = ok) do
-    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(entry.project_id), {:promotion_queue, entry})
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      topic(entry.project_id),
+      {:promotion_queue, entry}
+    )
+
     ok
   end
 

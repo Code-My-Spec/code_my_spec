@@ -63,19 +63,24 @@ defmodule CodeMySpec.PromotionQueue do
   """
   @spec promote_and_wait(Scope.t(), integer() | nil, keyword(), timeout()) ::
           {:ok, map()} | {:error, map()}
-  def promote_and_wait(%Scope{} = scope, story_number, opts, timeout) do
-    case promote(scope, story_number, opts) do
-      {:ok, %{queued: entry} = queued} ->
-        case await(entry, timeout) do
-          {:ok, %Entry{status: :landed} = done} -> {:ok, %{queue_outcome: done}}
-          {:ok, done} -> {:error, %{reason: outcome_text(done), queue_outcome: done}}
-          {:error, :timeout} -> {:ok, Map.put(queued, :timed_out, true)}
-        end
-
-      other ->
-        other
-    end
+  def promote_and_wait(%Scope{active_project_id: project_id} = scope, story_number, opts, timeout) do
+    # Subscribed before enqueueing: a lone candidate can land before a later
+    # subscription would hear it.
+    subscribed(project_id, fn ->
+      case promote(scope, story_number, opts) do
+        {:ok, %{queued: entry} = queued} -> waited(queued, settle(entry, timeout))
+        other -> other
+      end
+    end)
   end
+
+  defp waited(_queued, {:landed, report}), do: report
+  defp waited(_queued, {:ok, %Entry{status: :landed} = done}), do: {:ok, %{queue_outcome: done}}
+
+  defp waited(_queued, {:ok, done}),
+    do: {:error, %{reason: outcome_text(done), queue_outcome: done}}
+
+  defp waited(queued, {:error, :timeout}), do: {:ok, Map.put(queued, :timed_out, true)}
 
   @doc "The answer to a `promote/3`, whichever way it went."
   @spec text({:ok, map()} | {:error, map()}) :: String.t()
@@ -85,7 +90,8 @@ defmodule CodeMySpec.PromotionQueue do
   @doc """
   Queue the scope's working copy at its HEAD for promotion.
 
-  The cheap checks happen now — a known story, a committed, clean checkout —
+  The cheap checks happen now — a known story, a committed, clean checkout, and
+  no blocking problem the copy's own analysis already found at that commit —
   so a refusal still comes back at once. Everything that takes analysis
   happens in the batch.
 
@@ -96,6 +102,7 @@ defmodule CodeMySpec.PromotionQueue do
     with {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
          {:ok, head} <- clean_head(scope, copy),
+         :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
          {:ok, entry} <-
            Repository.enqueue(%{
              project_id: scope.active_project_id,
@@ -118,19 +125,39 @@ defmodule CodeMySpec.PromotionQueue do
 
   @doc """
   Wait for `entry` to land or be ejected, for callers with nobody to message
-  (`promote_sync`). `{:ok, entry}` with its final status, or `{:error, :timeout}`.
+  (`promote_sync`). `{:ok, entry}` with its final status — or, for a landing
+  this caller saw happen, `{:landed, report}` with the promotion's own report —
+  or `{:error, :timeout}`.
   """
-  @spec await(Entry.t(), timeout()) :: {:ok, Entry.t()} | {:error, :timeout}
-  def await(%Entry{id: id, project_id: project_id}, timeout) do
+  @spec await(Entry.t(), timeout()) ::
+          {:ok, Entry.t()} | {:landed, {:ok, map()}} | {:error, :timeout}
+  def await(%Entry{project_id: project_id} = entry, timeout),
+    do: subscribed(project_id, fn -> settle(entry, timeout) end)
+
+  defp subscribed(project_id, fun) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Repository.topic(project_id))
 
     try do
-      case Repository.get(id) do
-        %Entry{status: status} = done when status in [:landed, :ejected, :cancelled] -> {:ok, done}
-        _ -> wait(id, System.monotonic_time(:millisecond) + timeout)
-      end
+      fun.()
     after
       Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, Repository.topic(project_id))
+    end
+  end
+
+  # A landing report already in the mailbox wins over the row, which says only
+  # that it landed.
+  defp settle(%Entry{id: id}, timeout) do
+    receive do
+      {:promotion_queue_landed, ^id, report} -> {:landed, report}
+    after
+      0 -> settle_from_row(id, timeout)
+    end
+  end
+
+  defp settle_from_row(id, timeout) do
+    case Repository.get(id) do
+      %Entry{status: status} = done when status in [:landed, :ejected, :cancelled] -> {:ok, done}
+      _ -> wait(id, System.monotonic_time(:millisecond) + timeout)
     end
   end
 
@@ -138,6 +165,9 @@ defmodule CodeMySpec.PromotionQueue do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
     receive do
+      {:promotion_queue_landed, ^id, report} ->
+        {:landed, report}
+
       {:promotion_queue, %Entry{id: ^id, status: status} = done}
       when status in [:landed, :ejected, :cancelled] ->
         {:ok, done}
@@ -145,6 +175,10 @@ defmodule CodeMySpec.PromotionQueue do
       remaining -> {:error, :timeout}
     end
   end
+
+  @doc "A queue entry by id, or nil."
+  @spec get(Ecto.UUID.t()) :: Entry.t() | nil
+  def get(id), do: Repository.get(id)
 
   @doc "What to tell the caller that enqueued."
   @spec queued_text({:ok, map()} | {:error, map()}) :: String.t()
@@ -168,15 +202,15 @@ defmodule CodeMySpec.PromotionQueue do
     do: "#{describe(entry)} landed on main#{version(result)}."
 
   def outcome_text(%Entry{status: :ejected, result: result} = entry),
-    do: "#{describe(entry)} was taken out of the queue: #{result["reason"] || result[:reason]}"
+    do: "#{describe(entry)} was taken out of the queue: #{result["reason"]}"
 
   def outcome_text(%Entry{status: status} = entry), do: "#{describe(entry)} is #{status}."
 
   defp version(%{"version" => v}) when is_binary(v), do: " as v#{v}"
-  defp version(%{version: v}) when is_binary(v), do: " as v#{v}"
   defp version(_), do: ""
 
-  defp describe(%Entry{story_number: nil, commit: commit}), do: "commit #{String.slice(commit, 0, 12)}"
+  defp describe(%Entry{story_number: nil, commit: commit}),
+    do: "commit #{String.slice(commit, 0, 12)}"
 
   defp describe(%Entry{story_number: number, commit: commit}),
     do: "story #{number} at #{String.slice(commit, 0, 12)}"

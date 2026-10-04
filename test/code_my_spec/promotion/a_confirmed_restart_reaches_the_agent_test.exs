@@ -12,6 +12,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpecTest.PromotionQueueHelpers
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -22,6 +23,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
+  alias CodeMySpec.TempFile
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
@@ -45,7 +47,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   end
 
   defp a_project_whose_restart_succeeds do
-    running_root = CodeMySpec.TempFile.dir("confirmed-restart-running")
+    running_root = TempFile.dir("confirmed-restart-running")
     File.mkdir_p!(running_root)
     git!(running_root, ["init", "-q", "-b", "main"])
     git!(running_root, ["config", "user.email", "spex@example.com"])
@@ -60,12 +62,12 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
 
-    agent_root = CodeMySpec.TempFile.dir("confirmed-restart-agent")
+    agent_root = TempFile.dir("confirmed-restart-agent")
     File.rm_rf!(agent_root)
     git!(running_root, ["worktree", "add", "-b", "story/x", agent_root, "main"])
 
     # The promotion queue's gate copy: the batch is built and gated here.
-    gate_root = CodeMySpec.TempFile.dir("confirmed-restart-gate")
+    gate_root = TempFile.dir("confirmed-restart-gate")
     File.rm_rf!(gate_root)
     git!(running_root, ["worktree", "add", "--detach", gate_root, "main"])
 
@@ -91,7 +93,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     a_copy(scope, running_root, "the checkout the dev app runs in")
     agent_copy = a_copy(scope, agent_root, "the coding agent's copy")
     gate_copy = a_copy(scope, gate_root, Worker.gate_label())
-    on_exit(fn -> stop_queue(scope.active_project_id) end)
+    on_exit(fn -> stop_worker(scope.active_project_id) end)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
@@ -172,20 +174,21 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   defp confirmation(agent_id, running_root) do
     receive do
       {:agent_dispatch, ^agent_id, _ref, message} ->
-        if message =~ running_root and message =~ "confirmed",
-          do: message,
-          else: confirmation(agent_id, running_root)
+        confirmation(
+          message,
+          message =~ running_root and message =~ "confirmed",
+          agent_id,
+          running_root
+        )
     after
       30_000 -> nil
     end
   end
 
-  defp stop_queue(project_id) do
-    case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
-      [] -> :ok
-    end
-  end
+  defp confirmation(message, true, _agent_id, _running_root), do: message
+
+  defp confirmation(_message, false, agent_id, running_root),
+    do: confirmation(agent_id, running_root)
 
   defp settled?(remaining \\ 100)
   defp settled?(0), do: false

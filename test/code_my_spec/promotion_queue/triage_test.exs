@@ -12,7 +12,10 @@ defmodule CodeMySpec.PromotionQueue.TriageTest do
 
     test "more than one is not" do
       assert :no =
-               Triage.lone_failure([finding("exunit", "test/a_test.exs"), finding("credo", "lib/a.ex")])
+               Triage.lone_failure([
+                 finding("exunit", "test/a_test.exs"),
+                 finding("credo", "lib/a.ex")
+               ])
     end
   end
 
@@ -31,7 +34,10 @@ defmodule CodeMySpec.PromotionQueue.TriageTest do
       changed = %{a: ["lib/a.ex"], b: ["lib/b.ex"]}
 
       assert :unknown =
-               Triage.culprit([finding("compiler", "lib/a.ex"), finding("compiler", "lib/b.ex")], changed)
+               Triage.culprit(
+                 [finding("compiler", "lib/a.ex"), finding("compiler", "lib/b.ex")],
+                 changed
+               )
     end
 
     test "a file both candidates changed is not attributable" do
@@ -40,7 +46,8 @@ defmodule CodeMySpec.PromotionQueue.TriageTest do
     end
 
     test "a finding in a file no candidate changed is not attributable" do
-      assert :unknown = Triage.culprit([finding("exunit", "test/other_test.exs")], %{a: ["lib/a.ex"]})
+      assert :unknown =
+               Triage.culprit([finding("exunit", "test/other_test.exs")], %{a: ["lib/a.ex"]})
     end
 
     test "a finding with no file is not attributable" do

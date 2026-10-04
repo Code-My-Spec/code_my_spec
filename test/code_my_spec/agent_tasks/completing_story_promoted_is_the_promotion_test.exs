@@ -18,6 +18,8 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import Ecto.Query
+  import CodeMySpecTest.PromotionQueueHelpers
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -143,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
         working_copy_id: copy.id
       })
 
-    on_exit(fn -> stop_queue(scope.active_project_id) end)
+    on_exit(fn -> stop_worker(scope.active_project_id) end)
 
     story = story_fixture(scope, %{title: "The war is declared"})
     spex = "test/spex/#{story.number}_feature/criterion_1_spex.exs"
@@ -156,16 +158,10 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
   end
 
-  defp stop_queue(project_id) do
-    case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
-      [] -> :ok
-    end
-  end
-
   defp queued(scope) do
-    CodeMySpec.Repo.all(CodeMySpec.PromotionQueue.Entry)
-    |> Enum.filter(&(&1.project_id == scope.active_project_id))
+    Repo.all(
+      from e in CodeMySpec.PromotionQueue.Entry, where: e.project_id == ^scope.active_project_id
+    )
   end
 
   defp certified(scope, sources \\ Run.sources()),

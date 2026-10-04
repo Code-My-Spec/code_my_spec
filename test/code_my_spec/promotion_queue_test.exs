@@ -12,6 +12,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpecTest.PromotionQueueHelpers
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -94,13 +95,6 @@ defmodule CodeMySpec.PromotionQueueTest do
     end
   end
 
-  defp stop_worker(project_id) do
-    case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
-      [] -> :ok
-    end
-  end
-
   # A candidate: a worktree on its own branch, from `from`, with one commit.
   defp candidate(ctx, name, from, file, content) do
     root = CodeMySpec.TempFile.dir("queue-#{name}")
@@ -111,7 +105,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     git!(root, ["commit", "-q", "-m", name])
     on_exit(fn -> File.rm_rf(root) end)
 
-    {:ok, copy} = WorkingCopies.issue(ctx.scope, nil, label: name, device: device_fixture(ctx.scope))
+    {:ok, copy} =
+      WorkingCopies.issue(ctx.scope, nil, label: name, device: device_fixture(ctx.scope))
+
     {:ok, copy} = WorkingCopies.report_root(copy, root)
     %{copy: copy, commit: git!(root, ["rev-parse", "HEAD"])}
   end
@@ -131,9 +127,8 @@ defmodule CodeMySpec.PromotionQueueTest do
   defp gate_scope(ctx), do: %{ctx.scope | active_working_copy_id: ctx.gate.id}
 
   defp clean_runs_at(ctx, commit),
-    do: AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
-
-  defp settle(entry), do: PromotionQueue.await(entry, 15_000)
+    do:
+      AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
 
   test "a batch lands on main as its exact commit, every candidate in it landed", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
@@ -160,23 +155,25 @@ defmodule CodeMySpec.PromotionQueueTest do
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry_b)
-    assert (result["reason"] || result[:reason]) =~ "app.ex"
+    assert result["reason"] =~ "app.ex"
     assert {:ok, %{status: :landed}} = settle(entry_a)
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
   end
 
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
+    # A lone candidate level with main is gated on its own copy.
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
-    clean_runs_at(ctx, a.commit)
-    problem_fixture(gate_scope(ctx), %{source: "compiler", severity: :error, file_path: "a.ex"})
-    problem_fixture(gate_scope(ctx), %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
+    own = %{ctx.scope | active_working_copy_id: a.copy.id}
+    AnalysisFixtures.fresh_analysis_runs_fixture(own, Run.sources(), commit: a.commit)
+    problem_fixture(own, %{source: "compiler", severity: :error, file_path: "a.ex"})
+    problem_fixture(own, %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
 
     entry = queue(ctx, a)
     before = git!(ctx.main_root, ["rev-parse", "HEAD"])
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
-    assert (result["reason"] || result[:reason]) =~ "a.ex"
+    assert result["reason"] =~ "a.ex"
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 end

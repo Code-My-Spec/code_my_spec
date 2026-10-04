@@ -56,7 +56,12 @@ defmodule CodeMySpec.Staffing do
   it, and nobody works there.
   """
   def attach do
-    :telemetry.attach({__MODULE__, :gate_copy}, @gate_copy_needed, &__MODULE__.handle_event/4, nil)
+    :telemetry.attach(
+      {__MODULE__, :gate_copy},
+      @gate_copy_needed,
+      &__MODULE__.handle_event/4,
+      nil
+    )
   end
 
   @doc false

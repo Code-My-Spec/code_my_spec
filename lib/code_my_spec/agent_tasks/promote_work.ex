@@ -161,15 +161,14 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     #{problems_section(Promotion.blocking_problems(scope))}
 
     Fix them all, commit, then complete this task (evaluate_task). Completing
-    it is the promotion. In order, it checks that this copy contains main
-    (merge main in if not), that its tree is clean, that every analyzer has a
-    clean run at your HEAD, and that nothing like the above blocks; then it
-    merges exactly that commit onto the running copy, stamps this story and
-    restarts the application.
+    it queues your HEAD for promotion: the tree must be clean, and the queue
+    then gates it on top of main, with any candidates ahead of it, by a clean
+    run of every analyzer. When that batch is green it lands on main, this
+    story is stamped and the application is reloaded.
 
-    If a run at your HEAD is missing or still running, completing starts it and
-    the task stays open. End your turn: you are told when each run lands, and
-    you complete again then.
+    The task stays open while it is queued. End your turn: you are told when it
+    lands — complete again then and it is done — or why it was taken out of the
+    queue, with the findings to fix.
     """
     |> String.trim()
   end

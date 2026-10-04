@@ -108,12 +108,45 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp build(state, entries) do
+    case main_head(state.scope) do
+      {:ok, base} -> build(state, entries, base, level_with_main(state.scope, entries, base))
+      {:error, reason} -> could_not_build(state, reason)
+    end
+  end
+
+  defp build(state, entries, base, {:ok, copy}),
+    do: gating(state, entries, copy, base, hd(entries).commit)
+
+  defp build(state, entries, base, :no), do: build_in_gate_copy(state, entries, base)
+
+  # A lone candidate that already contains main is its own batch commit, so it
+  # is gated on its own copy, where the runs at that commit usually already
+  # are — the same certification a direct promotion makes, and no second
+  # sweep of the same tree in the gate copy.
+  defp level_with_main(scope, [entry], base) do
+    with {:ok, %WorkingCopy{root: root} = copy} when is_binary(root) <-
+           WorkingCopies.fetch(entry.working_copy_id),
+         {:ok, %{head: head}} <- Runner.precheck(scope_for(scope, copy), root, copy.id, base),
+         true <- head == entry.commit do
+      {:ok, copy}
+    else
+      _ -> :no
+    end
+  end
+
+  defp level_with_main(_scope, _entries, _base), do: :no
+
+  defp build_in_gate_copy(state, entries, base) do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
-         {:ok, base} <- main_head(gate_scope, gate),
          {:ok, built} <-
-           Runner.build_batch(gate_scope, gate.root, base, Enum.map(entries, & &1.commit), gate.id) do
-      batch_id = Ecto.UUID.generate()
+           Runner.build_batch(
+             gate_scope,
+             gate.root,
+             base,
+             Enum.map(entries, & &1.commit),
+             gate.id
+           ) do
       merged = MapSet.new(built.merged)
 
       for %{commit: commit, files: files} <- built.conflicted,
@@ -121,36 +154,42 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           do: eject(state.scope, entry, conflict_reason(files))
 
       case Enum.filter(entries, &MapSet.member?(merged, &1.commit)) do
-        [] ->
-          next(state)
-
-        in_batch ->
-          in_batch = Enum.map(in_batch, &moved(&1, :gating, %{batch_id: batch_id}))
-
-          batch = %{
-            id: batch_id,
-            entries: in_batch,
-            gate: gate,
-            scope: gate_scope,
-            base: base,
-            head: built.head,
-            reran?: false,
-            green_since: nil
-          }
-
-          Logger.info(
-            "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{built.head} " <>
-              "on #{base} in #{gate.root}"
-          )
-
-          send(self(), :gate)
-          {:noreply, %{state | phase: :gating, batch: batch}}
+        [] -> next(state)
+        in_batch -> gating(state, in_batch, gate, base, built.head)
       end
     else
-      {:error, reason} ->
-        Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
-        {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+      {:error, reason} -> could_not_build(state, reason)
     end
+  end
+
+  # `gate` is the copy the batch commit is checked out in and certified on:
+  # the gate copy, or a lone level candidate's own copy.
+  defp gating(state, entries, gate, base, head) do
+    batch_id = Ecto.UUID.generate()
+    in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
+
+    batch = %{
+      id: batch_id,
+      entries: in_batch,
+      gate: gate,
+      scope: scope_for(state.scope, gate),
+      base: base,
+      head: head,
+      reran?: false,
+      green_since: nil
+    }
+
+    Logger.info(
+      "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
+    )
+
+    send(self(), :gate)
+    {:noreply, %{state | phase: :gating, batch: batch}}
+  end
+
+  defp could_not_build(state, reason) do
+    Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
+    {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
   end
 
   defp conflict_reason(files) do
@@ -207,8 +246,19 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       match?({:rerun, _}, Triage.lone_failure(problems)) and not batch.reran? ->
         {:rerun, source} = Triage.lone_failure(problems)
         Logger.info("[PromotionQueue] one #{source} finding at #{batch.head}; re-running it once")
-        Analysis.start_run(batch.scope, source, [], requested_by: %{kind: "promotion"})
-        {:noreply, %{state | phase: {:rerun, source}, batch: %{batch | reran?: true}}}
+        batch = %{batch | reran?: true}
+
+        case Analysis.start_run(batch.scope, source, [], requested_by: %{kind: "promotion"}) do
+          {:error, why} ->
+            Logger.info(
+              "[PromotionQueue] the re-run did not start (#{inspect(why)}); triaging as found"
+            )
+
+            triage(%{state | batch: batch}, problems)
+
+          _started ->
+            {:noreply, %{state | phase: {:rerun, source}, batch: batch}}
+        end
 
       true ->
         triage(state, problems)
@@ -232,7 +282,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp attribute(batch, problems) do
     changed =
       Map.new(batch.entries, fn entry ->
-        case Runner.changed_files(batch.scope, batch.gate.root, batch.base, entry.commit, batch.gate.id) do
+        case Runner.changed_files(
+               batch.scope,
+               batch.gate.root,
+               batch.base,
+               entry.commit,
+               batch.gate.id
+             ) do
           {:ok, %{files: files}} -> {entry.id, files}
           _ -> {entry.id, []}
         end
@@ -296,7 +352,17 @@ defmodule CodeMySpec.PromotionQueue.Worker do
          ) do
       {:ok, report} = result ->
         for entry <- batch.entries do
-          moved(entry, :landed, %{result: %{version: report[:version], head: batch.head}})
+          moved(entry, :landed, %{result: %{"version" => report[:version], "head" => batch.head}})
+
+          # The landing report itself, in memory, for a caller waiting on this
+          # entry (`PromotionQueue.await/2`): it answers with what a direct
+          # promotion would have. Sent after the entry is recorded landed.
+          Phoenix.PubSub.broadcast(
+            CodeMySpec.PubSub,
+            Repository.topic(state.project_id),
+            {:promotion_queue_landed, entry.id, result}
+          )
+
           tell(state.scope, entry, landed_text(entry, batch, result))
         end
 
@@ -324,7 +390,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp eject(scope, %Entry{} = entry, reason) do
     entry = Repository.get(entry.id) || entry
-    moved(entry, :ejected, %{batch_id: nil, result: %{reason: reason}})
+    moved(entry, :ejected, %{batch_id: nil, result: %{"reason" => reason}})
     Logger.info("[PromotionQueue] ejected #{subject(entry)}: #{reason}")
 
     tell(
@@ -336,7 +402,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp requeue(entries) do
-    for entry <- entries, %Entry{status: :gating} = fresh <- [Repository.get(entry.id)],
+    for entry <- entries,
+        %Entry{status: :gating} = fresh <- [Repository.get(entry.id)],
         do: moved(fresh, :queued, %{batch_id: nil})
 
     :ok
@@ -362,16 +429,20 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp findings(problems) do
-    "the batch's analysis found problems in your changes:\n" <> Promotion.describe_problems(problems) <>
+    "the batch's analysis found problems in your changes:\n" <>
+      Promotion.describe_problems(problems) <>
       "\n\nFix them and promote again."
   end
 
   defp subject(%Entry{story_number: nil, commit: commit}), do: String.slice(commit, 0, 12)
+
   defp subject(%Entry{story_number: number, commit: commit}),
     do: "story #{number} (#{String.slice(commit, 0, 12)})"
 
   defp story_of(_scope, %Entry{story_number: nil}), do: nil
-  defp story_of(scope, %Entry{story_number: number}), do: Stories.get_story_by_number(scope, number)
+
+  defp story_of(scope, %Entry{story_number: number}),
+    do: Stories.get_story_by_number(scope, number)
 
   # The project's gate copy, asked for when there is none. Creating one is a
   # checkout and a harness, which sit above this queue, so it is requested as
@@ -400,10 +471,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     |> Enum.find(&(&1.label == @gate_label and is_binary(&1.root) and &1.root != ""))
   end
 
-  defp main_head(gate_scope, gate) do
-    case WorkingCopies.main(gate_scope) do
-      %WorkingCopy{root: root} when is_binary(root) ->
-        case Runner.current(gate_scope, root, gate.id) do
+  # Main's HEAD, read through main's own copy.
+  defp main_head(scope) do
+    case WorkingCopies.main(scope) do
+      %WorkingCopy{root: root} = main when is_binary(root) ->
+        case Runner.current(scope_for(scope, main), root, main.id) do
           {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
           other -> {:error, %{reason: "could not read main's HEAD: #{inspect(other)}"}}
         end
@@ -413,9 +485,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # A scope addressing `copy`: over its harness, or — when the template is a
-  # local environment (the suite) — on this machine.
-  defp scope_for(%Scope{environment: %{type: :local}} = scope, copy),
+  # A scope addressing `copy`: over its harness, or — when the template runs
+  # on this machine (the suite) — here.
+  defp scope_for(%Scope{environment: %{type: type}} = scope, copy) when type != :harness,
     do: %{scope | active_working_copy_id: copy.id, cwd: copy.root}
 
   defp scope_for(%Scope{} = scope, copy), do: WorkingCopies.put_scope(scope, copy)
