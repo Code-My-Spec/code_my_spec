@@ -196,27 +196,72 @@ jobs:
           sc config "postgresql-x64-17" start= demand
           net start "postgresql-x64-17"
 
-      - name: Silent install and launch
+
+      - name: Silent install
         shell: pwsh
         run: |
           $installer = Get-ChildItem _build/desktop/*.exe | Select-Object -First 1
           $dir = "$env:RUNNER_TEMP\CodeMySpec"
           Start-Process $installer.FullName -ArgumentList "/S", "/D=$dir" -Wait
           Get-ChildItem $dir | Select-Object Name
-          $env:DATABASE_URL = "ecto://postgres:root@localhost/cms_desktop_ci"
-          $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch "uninst|vcredist|Webview2" } | Select-Object -First 1
-          $proc = Start-Process $app.FullName -WorkingDirectory $dir -PassThru
+          "DESKTOP_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # The release on its own, with no window (CMS_BROWSER), its output kept:
+      # the server, Postgres + pgvector and the harness, apart from the host.
+      - name: Boot the release
+        shell: pwsh
+        env:
+          DATABASE_URL: ecto://postgres:root@localhost/cms_desktop_ci
+          CMS_BROWSER: "1"
+        run: |
+          $bat = Join-Path $env:DESKTOP_DIR "beam\bin\code_my_spec.bat"
+          $proc = Start-Process $bat -ArgumentList "start" -WorkingDirectory "$env:DESKTOP_DIR\beam" `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\release.out" -RedirectStandardError "$env:RUNNER_TEMP\release.err" -PassThru
           $ok = $false
           for ($i = 0; $i -lt 90; $i++) {
             Start-Sleep -Seconds 2
             try {
-              $app200 = (Invoke-WebRequest -UseBasicParsing http://localhost:4000/app).StatusCode
-              $health = (Invoke-WebRequest -UseBasicParsing http://localhost:4004/health).Content
-              if ($app200 -eq 200) { $ok = $true; break }
+              if ((Invoke-WebRequest -UseBasicParsing http://localhost:4000/app).StatusCode -eq 200) { $ok = $true; break }
             } catch {}
+            if ($proc.HasExited) { break }
           }
-          Write-Output "app 200: $ok"
-          Write-Output "health: $health"
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-          Get-Process | Where-Object { $_.Path -like "$dir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Write-Output "app 200: $ok (release exited: $($proc.HasExited))"
+          try { Write-Output "health: $((Invoke-WebRequest -UseBasicParsing http://localhost:4004/health).Content)" } catch { Write-Output "health: none" }
+          Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$env:DESKTOP_DIR*" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
           if (-not $ok) { exit 1 }
+
+      - name: Launch the installed app
+        shell: pwsh
+        env:
+          DATABASE_URL: ecto://postgres:root@localhost/cms_desktop_ci
+        run: |
+          $app = Join-Path $env:DESKTOP_DIR "CodeMySpec.exe"
+          $proc = Start-Process $app -WorkingDirectory $env:DESKTOP_DIR -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\app.out" -RedirectStandardError "$env:RUNNER_TEMP\app.err"
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              if ((Invoke-WebRequest -UseBasicParsing http://localhost:4000/app).StatusCode -eq 200) { $ok = $true; break }
+            } catch {}
+            if ($proc.HasExited) { break }
+          }
+          Write-Output "app 200: $ok (host exited: $($proc.HasExited))"
+          try { Write-Output "health: $((Invoke-WebRequest -UseBasicParsing http://localhost:4004/health).Content)" } catch { Write-Output "health: none" }
+          Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$env:DESKTOP_DIR*" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          if (-not $ok) { exit 1 }
+
+      - name: Diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in "release.out", "release.err", "app.out", "app.err") {
+            $p = Join-Path $env:RUNNER_TEMP $f
+            if (Test-Path $p) { Write-Output "==== $f"; Get-Content $p -Tail 80 }
+          }
+          Get-ChildItem "$env:USERPROFILE\.codemyspec" -Filter *.log -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Output "==== $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+          Get-ChildItem $env:DESKTOP_DIR -Recurse -Filter erl_crash.dump -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Output "==== $($_.FullName)"; Get-Content $_.FullName -TotalCount 40 }
