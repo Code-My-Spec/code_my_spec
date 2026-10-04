@@ -756,3 +756,14 @@ config :code_my_spec, :agent_eval_settle_timeout, 300_000
 # far it moved; it just does not veto. Set `:fail` for a run that means to hold
 # the artifacts to the shipped prompt, and `:ignore` to say nothing at all.
 config :code_my_spec, :eval_artifact_staleness, :warn
+
+# A test that runs a desktop OAuth connect must not open the machine's browser.
+config :code_my_spec, CodeMySpecDesktop.Browser, launch: false
+
+# Resend client registration (CodeMySpecDesktop.OAuthClients) never reaches
+# Resend from a test; tests stub it with Req.Test.
+config :code_my_spec, CodeMySpecDesktop.OAuthClients,
+  plug: {Req.Test, CodeMySpecDesktop.OAuthClients}
+
+config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
+  plug: {Req.Test, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth}

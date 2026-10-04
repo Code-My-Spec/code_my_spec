@@ -7,6 +7,8 @@ defmodule CodeMySpecWeb.UserLive.Settings do
 
   alias CodeMySpec.Integrations
   alias CodeMySpec.Integrations.Providers.ApiKey
+  alias CodeMySpec.Integrations.Providers.GitHub
+  alias CodeMySpec.Integrations.Providers.GitHub.DeviceAuth, as: GitHubDeviceAuth
   alias CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth
   alias CodeMySpec.Users
 
@@ -151,7 +153,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
             :if={@service.device_flow}
             phx-click="start_device_auth"
             phx-value-provider={@service.provider}
-            phx-disable-with="Asking OpenAI..."
+            phx-disable-with="Starting..."
             class="btn btn-sm btn-primary"
           >
             Connect {@service.label}
@@ -221,7 +223,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
       aria-live="polite"
       class="border border-primary rounded-lg p-4 space-y-3"
     >
-      <div class="font-medium">Finish connecting ChatGPT</div>
+      <div class="font-medium">Finish connecting {device_label(@device)}</div>
 
       <ol class="text-sm space-y-2 list-decimal list-inside">
         <li>
@@ -372,6 +374,9 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         provider: :github,
         label: "GitHub",
         note: nil,
+        # The desktop keeps no client secret, which GitHub's web flow needs at
+        # the exchange; its device flow needs only the client id.
+        device_flow: CodeMySpecDesktop.Identity.active?(),
         disconnect_warning: "You'll need to reconnect to use GitHub features."
       },
       %{
@@ -482,6 +487,24 @@ defmodule CodeMySpecWeb.UserLive.Settings do
     end
   end
 
+  def handle_event("start_device_auth", %{"provider" => "github"}, socket) do
+    case GitHubDeviceAuth.request_device_code() do
+      {:ok, device} ->
+        schedule_poll(device)
+        {:noreply, assign(socket, :device_auth, device)}
+
+      {:error, reason} ->
+        Logger.warning("[Settings] could not start a GitHub device login: #{inspect(reason)}")
+
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Could not reach GitHub to start the login. Try again in a moment."
+         )}
+    end
+  end
+
   def handle_event("start_device_auth", %{"provider" => "openai"}, socket) do
     case DeviceAuth.request_device_code() do
       {:ok, device} ->
@@ -567,6 +590,32 @@ defmodule CodeMySpecWeb.UserLive.Settings do
   def handle_info(:poll_device_auth, %{assigns: %{device_auth: nil}} = socket),
     do: {:noreply, socket}
 
+  def handle_info(:poll_device_auth, %{assigns: %{device_auth: %{provider: :github}}} = socket) do
+    device = socket.assigns.device_auth
+
+    case GitHubDeviceAuth.poll(device) do
+      {:ok, %{token: token, user: user}} ->
+        {:noreply, complete_github_device_auth(socket, token, user)}
+
+      {:error, :pending} ->
+        schedule_poll(device)
+        {:noreply, socket}
+
+      {:error, {:slow_down, seconds}} ->
+        device = %{device | interval_seconds: seconds}
+        schedule_poll(device)
+        {:noreply, assign(socket, :device_auth, device)}
+
+      {:error, reason} ->
+        Logger.warning("[Settings] GitHub device login failed: #{inspect(reason)}")
+
+        {:noreply,
+         socket
+         |> assign(:device_auth, nil)
+         |> put_flash(:error, "That login did not complete. Start it again to get a new code.")}
+    end
+  end
+
   def handle_info(:poll_device_auth, socket) do
     device = socket.assigns.device_auth
 
@@ -587,6 +636,31 @@ defmodule CodeMySpecWeb.UserLive.Settings do
          |> put_flash(:error, "That login did not complete. Start it again to get a new code.")}
     end
   end
+
+  defp complete_github_device_auth(socket, token, user) do
+    scope = socket.assigns.current_scope
+
+    with {:ok, normalized} <- GitHub.normalize_user(user),
+         {:ok, _integration} <- Integrations.save_integration(scope, :github, token, normalized) do
+      socket
+      |> assign(:device_auth, nil)
+      |> assign(:services, services(scope))
+      |> put_flash(:info, "GitHub connected.")
+    else
+      {:error, reason} ->
+        Logger.warning("[Settings] saving the GitHub device login failed: #{inspect(reason)}")
+
+        socket
+        |> assign(:device_auth, nil)
+        |> put_flash(
+          :error,
+          "GitHub accepted the code but saving the connection failed. Try again."
+        )
+    end
+  end
+
+  defp device_label(%{provider: :github}), do: "GitHub"
+  defp device_label(_openai), do: "ChatGPT"
 
   defp complete_device_auth(socket, grant) do
     scope = socket.assigns.current_scope

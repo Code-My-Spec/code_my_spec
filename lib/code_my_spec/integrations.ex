@@ -87,7 +87,7 @@ defmodule CodeMySpec.Integrations do
           {:ok, %{url: String.t(), session_params: map()}} | {:error, term()}
   def authorize_url(provider) do
     with {:ok, provider_module} <- get_provider_module(provider),
-         config <- provider_module.config(),
+         config <- client_config(provider_module),
          strategy <- provider_module.strategy() do
       strategy.authorize_url(config)
     end
@@ -220,7 +220,7 @@ defmodule CodeMySpec.Integrations do
   def authorize_login_url(provider) do
     with {:ok, provider_module} <- get_provider_module(provider) do
       config =
-        provider_module.config()
+        client_config(provider_module)
         |> Keyword.update(:authorization_params, [], fn params ->
           params
           |> Keyword.put(:scope, @login_scopes[provider])
@@ -242,7 +242,7 @@ defmodule CodeMySpec.Integrations do
   def handle_login_callback(provider, callback_params, session_params) do
     with {:ok, provider_module} <- get_provider_module(provider) do
       config =
-        provider_module.config()
+        client_config(provider_module)
         |> Keyword.put(:session_params, session_params)
 
       case provider_module.strategy().callback(config, callback_params) do
@@ -422,7 +422,7 @@ defmodule CodeMySpec.Integrations do
     # This was written against Google, the only strategy that has one, so
     # refreshing either of the others crashed rather than failing: found the
     # first time a Resend token actually needed renewing.
-    user_config = provider_module.config()
+    user_config = client_config(provider_module)
     strategy = provider_module.strategy()
 
     config =
@@ -483,6 +483,19 @@ defmodule CodeMySpec.Integrations do
 
   # Private Helpers
 
+  # A build can swap a provider's client without the provider knowing: the
+  # desktop app has no server secret, so it uses public or desktop-type clients
+  # and a loopback redirect (bb8bc042). Keyed by provider module, merged over
+  # its own config.
+  defp client_config(provider_module) do
+    overrides =
+      :code_my_spec
+      |> Application.get_env(:integration_client_overrides, %{})
+      |> Map.get(provider_module, [])
+
+    Keyword.merge(provider_module.config(), overrides)
+  end
+
   defp get_provider_module(provider) do
     case Map.get(@providers, provider) do
       nil -> {:error, :unsupported_provider}
@@ -492,7 +505,7 @@ defmodule CodeMySpec.Integrations do
 
   defp exchange_code_for_token(provider_module, callback_params, session_params) do
     config =
-      provider_module.config()
+      client_config(provider_module)
       |> Keyword.put(:session_params, session_params)
 
     strategy = provider_module.strategy()

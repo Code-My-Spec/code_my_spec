@@ -21,8 +21,8 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpec.McpServers.Problems.Tools.ListProblems
+  alias CodeMySpecSpex.HarnessHooks
 
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
