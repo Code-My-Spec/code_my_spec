@@ -27,7 +27,24 @@ defmodule CodeMySpec.MixProject do
         plt_add_deps: :app_tree,
         ignore_warnings: ".dialyzer_ignore.exs"
       ],
-      releases: releases()
+      releases: releases(),
+      desktop_package: desktop_package()
+    ]
+  end
+
+  # desktop_deployment's installer metadata (bb8bc042).
+  defp desktop_package do
+    [
+      name: "CodeMySpec",
+      name_long: "CodeMySpec",
+      company: "CodeMySpec",
+      description: "CodeMySpec desktop",
+      description_long:
+        "Requirements-driven development harness, with its server on this machine",
+      icon: "priv/static/images/logo-300.png",
+      category_macos: "public.app-category.developer-tools",
+      identifier: "com.codemyspec.desktop",
+      beam_app_name: "code_my_spec"
     ]
   end
 
@@ -221,12 +238,16 @@ defmodule CodeMySpec.MixProject do
        github: "elixir-desktop/webview",
        ref: "626b270cdcc133fb05f84c12ee98f1cfae009a8a",
        only: :desktop},
+      {:desktop_deployment,
+       github: "elixir-desktop/deployment",
+       ref: "9d4305715259c0be2e421022c3deba29fe7117dc",
+       only: :desktop,
+       runtime: false},
       {:yaml_elixir, "~> 2.11"},
       {:dir_walker, "~> 0.0.8"},
       {:assent, "~> 0.3.1"},
       {:cloak_ecto, "~> 1.3.0"},
       {:dotenvy, "~> 1.1.0"},
-      {:google_api_analytics_admin, "~> 0.26.0"},
       {:recase, "~> 0.8"},
       {:uuid, "~> 1.1.8"},
       {:inflex, "~> 2.1.0"},
@@ -264,8 +285,13 @@ defmodule CodeMySpec.MixProject do
     [
       code_my_spec: [
         overlays: "rel/overlays",
-        # The desktop build ships as a tarball (installers/macos/codemyspec-desktop.rb).
-        steps: if(Mix.env() == :desktop, do: [:assemble, :tar], else: [:assemble])
+        # The desktop build ships as a .dmg / NSIS installer around the native
+        # webview host (CodeMySpecDesktop.Installer).
+        steps:
+          if(Mix.env() == :desktop,
+            do: [:assemble, &CodeMySpecDesktop.Installer.step/1],
+            else: [:assemble]
+          )
       ]
     ] ++ harness_release()
   end
