@@ -75,6 +75,29 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # context re-established every 25 calls.
   @max_turns 150
 
+  # Spilled tool results older than this are pruned when an agent starts. Not
+  # cleared outright: the server restarts an agent with its history, and the
+  # notices in it name these files.
+  @spill_max_age_seconds 24 * 60 * 60
+
+  # How long a turn may run, regardless of who sent the message.
+  #
+  # This used to be the *sender's* timeout, threaded from `{:send, ref, message,
+  # timeout}` through `start_turn/5` into `stream_chat`. So whoever spoke to the
+  # agent decided how long it was allowed to think: a four-minute HTTP client
+  # made a four-minute turn, and the turn that outlived it was killed and
+  # announced as the agent's own failure — `{:timeout, {GenServer, :call, …}}`
+  # sitting in its transcript in its own voice, while a QA scenario it had spent
+  # 165 calls on went unfinished.
+  #
+  # A turn's duration is a property of the turn. A caller's patience is a
+  # property of the caller, and it governs how long *it* waits — `awaiting` —
+  # not how long the agent works.
+  #
+  # Thirty minutes because a browser QA pass is minutes of real waiting: pages
+  # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
+  # ceiling on a runaway, not a budget.
+  #
   # A ceiling on a runaway, not a budget. The engine owns this deadline:
   # a GenServer call timeout alone does not stop Alloy's running turn.
   # Queue advancement requires a result or confirmed execution shutdown.
@@ -346,6 +369,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
     {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
+    prune_spilled(spill_dir(Keyword.fetch!(opts, :agent_id)))
 
     case Server.start_link(alloy_opts) do
       {:ok, alloy} ->
@@ -1032,9 +1056,15 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
        |> Keyword.put(:unknown_tool, unknown_tool_hook(opts))
+       # A result over 10k characters goes to a file, and the agent is shown
+       # its head and tail and where the rest is. Truncating instead dropped
+       # whatever ran past the cap with no way back to it: a `cat a b c` lost
+       # `c`. Outside the checkout, so it never dirties the tree a promotion
+       # needs clean.
+       |> Keyword.put(:tool_result_spill, dir: spill_dir(Keyword.fetch!(opts, :agent_id)))
        |> Keyword.put(:context, %{
          working_directory: working_copy,
-         allowed_paths: [working_copy],
+         allowed_paths: [working_copy, spill_dir(Keyword.fetch!(opts, :agent_id))],
          bash_restricted: true,
          bash_executor: &Shell.run/2,
          # Which agent this is, and it has to be here rather than only in
@@ -1061,6 +1091,30 @@ defmodule CmsHarness.Agents.Engine.Impl do
          on_compaction: compaction_reporter(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
+    end
+  end
+
+  @doc "Where an agent's tool results too long to deliver are saved."
+  @spec spill_dir(String.t()) :: String.t()
+  def spill_dir(agent_id),
+    do: Path.join([CmsHarness.Config.local_state_dir(), "agent_output", agent_id])
+
+  defp prune_spilled(dir) do
+    cutoff = System.os_time(:second) - @spill_max_age_seconds
+
+    for name <- ls(dir),
+        path = Path.join(dir, name),
+        match?({:ok, %{mtime: mtime}} when mtime < cutoff, File.stat(path, time: :posix)) do
+      File.rm(path)
+    end
+
+    :ok
+  end
+
+  defp ls(dir) do
+    case File.ls(dir) do
+      {:ok, names} -> names
+      {:error, _} -> []
     end
   end
 
