@@ -103,6 +103,8 @@ defmodule CodeMySpec.Agents.Agent do
           working_copy_id: Ecto.UUID.t() | nil,
           story_id: integer() | nil,
           epic_id: Ecto.UUID.t() | nil,
+          issue_id: Ecto.UUID.t() | nil,
+          team_free_at: DateTime.t() | nil,
           turn_started_at: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -183,6 +185,15 @@ defmodule CodeMySpec.Agents.Agent do
     # checkout reservation.
     field :story_id, :id
     field :epic_id, Ecto.UUID
+
+    # The issue this agent's team is bound to (story 1091), mirroring
+    # `story_id` (a31f1cd6). Held by every team member on the copy an issue
+    # is assigned to; takes priority over `story_id` in dispatch.
+    field :issue_id, Ecto.UUID
+    # When this team last became free of its last issue with no story to
+    # fall back to. Set, the team is told it is waiting for main's next
+    # assignment rather than offered project-level work.
+    field :team_free_at, :utc_datetime_usec
 
     # When the turn currently running started, and nil when none is.
     #
@@ -378,6 +389,8 @@ defmodule CodeMySpec.Agents.Agent do
       :working_copy_id,
       :story_id,
       :epic_id,
+      :issue_id,
+      :team_free_at,
       :project_id,
       :account_id
     ])
@@ -394,6 +407,7 @@ defmodule CodeMySpec.Agents.Agent do
     |> foreign_key_constraint(:story_id)
     |> validate_story_holder()
     |> foreign_key_constraint(:epic_id)
+    |> foreign_key_constraint(:issue_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
   end

@@ -28,6 +28,8 @@ defmodule CodeMySpec.MainAgent.AgentWork do
           agent_status: atom(),
           working_copy_id: Ecto.UUID.t() | nil,
           working_copy_root: String.t() | nil,
+          issue_id: Ecto.UUID.t() | nil,
+          team_free?: boolean(),
           task_name: String.t() | nil,
           task_status: atom() | nil,
           task_started_at: DateTime.t() | nil,
@@ -54,6 +56,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     :agent_status,
     :working_copy_id,
     :working_copy_root,
+    :issue_id,
     :task_name,
     :task_status,
     :task_started_at,
@@ -70,6 +73,7 @@ defmodule CodeMySpec.MainAgent.AgentWork do
     blocked_reasons: [],
     tapped_out?: false,
     idle?: false,
+    team_free?: false,
     problems: []
   ]
 

@@ -668,6 +668,13 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.update()
   end
 
+  @doc "Set or clear which copy's team this issue is assigned to."
+  def update_assignment(%Issue{} = issue, working_copy_id) do
+    issue
+    |> Issue.assignment_changeset(%{assigned_working_copy_id: working_copy_id})
+    |> Repo.update()
+  end
+
   def update_status(%Issue{} = issue, status, resolution \\ nil, opts \\ []) do
     attrs = %{status: status, resolution: resolution}
 

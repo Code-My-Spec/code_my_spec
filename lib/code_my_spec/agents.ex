@@ -47,6 +47,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Conversations,
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
+      CodeMySpec.Issues,
       CodeMySpec.MainAgent,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,

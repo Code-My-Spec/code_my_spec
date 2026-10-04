@@ -88,6 +88,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
     Agent: #{work.agent_id}
       role: #{work.role}
       working copy: #{work.working_copy_id}#{root(work)}#{designing(work)}
+      Assignment: #{assignment(work)}
       #{holding(work)}
       last said: #{moment(work.last_said_at)}
       in flight: #{in_flight(work)}
@@ -104,6 +105,12 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
   defp designing(%AgentWork{designing: nil}), do: ""
   defp designing(%AgentWork{designing: name}), do: "\n  designing: #{name}"
 
+  # Story 1091: which issue, if any, the team on this copy is bound to.
+  # Printed unconditionally, same reasoning as every other line here
+  # (criterion 3300) — "none" and "not an issue team" both read as this.
+  defp assignment(%AgentWork{issue_id: nil}), do: "none"
+  defp assignment(%AgentWork{issue_id: id}), do: id
+
   # What the agent has in hand, and the two kinds of nothing.
   #
   # "Cannot work" is checked before "nothing to do" because a machine that can
@@ -114,6 +121,9 @@ defmodule CodeMySpec.McpServers.MainAgent.AgentWorkMapper do
     cond do
       AgentWork.toolless?(work) ->
         "cannot work: its machine reports no tools, so every tool call it makes will fail"
+
+      work.team_free? ->
+        "waiting for main assignment: the team is free and nothing is assigned yet"
 
       work.idle? ->
         "nothing to do: the graph holds no work for its role"

@@ -337,6 +337,16 @@ defmodule CodeMySpec.Issues do
     end
   end
 
+  @doc "Set or clear which copy's team this issue is assigned to."
+  @spec set_assigned_working_copy(Scope.t(), Issue.t(), Ecto.UUID.t() | nil) ::
+          {:ok, Issue.t()} | {:error, term()}
+  def set_assigned_working_copy(%Scope{} = scope, %Issue{} = issue, working_copy_id) do
+    with {:ok, updated} <- IssuesRepository.update_assignment(issue, working_copy_id) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
   @doc """
   Update non-status fields on an existing issue (severity, story_id,
   category, source_path). Status transitions go through

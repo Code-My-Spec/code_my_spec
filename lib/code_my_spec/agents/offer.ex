@@ -24,7 +24,8 @@ defmodule CodeMySpec.Agents.Offer do
     :unblocked,
     :denial,
     :check_in,
-    :stalled
+    :stalled,
+    :team_free
   ]
   @statuses [:open, :claimed, :declined, :ignored, :superseded, :expired, :n_a, :undelivered]
 
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Agents.Offer do
           | :denial
           | :check_in
           | :stalled
+          | :team_free
   @type status ::
           :open
           | :claimed
