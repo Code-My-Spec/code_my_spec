@@ -407,6 +407,48 @@ defmodule CodeMySpecSpex.HarnessHooks do
     end
   end
 
+  @doc """
+  Run `trigger`, which asks this copy's harness to rescan, and return once the
+  manifest it sends has been handled by the cloud.
+
+  Switching a copy on asks for a rescan (`Agents.set_working_copy_loop`), and
+  the manifest lands later over the socket and wakes the copy's agents through
+  the graph. A scenario that goes on before it has landed has a wake from its
+  own setup arriving in the middle of the step it is measuring (74870eb6).
+
+  Reconciled inline under test, so the handled event means the rows are
+  written; settle the graph after this to run the wake it causes.
+  """
+  @spec await_manifest(map(), (-> any())) :: :ok
+  def await_manifest(%{harness: %{root: root, working_copy_id: id}}, trigger)
+      when is_function(trigger, 0) do
+    ref = {__MODULE__, :manifest, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        ref,
+        [:phoenix, :channel_handled_in],
+        &__MODULE__.handle_manifest/4,
+        %{id: id, test: self(), ref: ref}
+      )
+
+    try do
+      trigger.()
+      await_step(ref, :manifest, root, "the harness never sent the manifest its rescan asked for")
+    after
+      :telemetry.detach(ref)
+    end
+
+    :ok
+  end
+
+  @doc "Telemetry handler for `await_manifest/2`: any manifest from this copy arrived."
+  def handle_manifest([:phoenix, :channel_handled_in], _measure, meta, config) do
+    if meta.event == "observations" and copy_id(meta) == config.id do
+      send(config.test, {:live_harness, config.ref, :manifest, :ok})
+    end
+  end
+
   @doc "Telemetry handler for `write_file/3`: a manifest carrying the written file arrived."
   def handle_observations([:phoenix, :channel_handled_in], _measure, meta, config) do
     if meta.event == "observations" and copy_id(meta) == config.id and
