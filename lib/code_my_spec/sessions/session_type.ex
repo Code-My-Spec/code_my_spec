@@ -24,6 +24,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.FixIssues,
     AgentTasks.FixStoryIssues,
     AgentTasks.IssueFix,
+    AgentTasks.IssuePromote,
     AgentTasks.IssueQa,
     AgentTasks.LinkStoryComponent,
     AgentTasks.PersonaResearch,

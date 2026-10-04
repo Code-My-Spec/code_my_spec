@@ -29,7 +29,8 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         waiting
         |> Ecto.Changeset.change(
           commit: attrs.commit,
-          story_number: attrs[:story_number],
+          subject_type: attrs[:subject_type],
+          subject_id: attrs[:subject_id],
           requested_by_agent_id: attrs[:requested_by_agent_id],
           restart: attrs.restart
         )

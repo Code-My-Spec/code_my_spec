@@ -12,6 +12,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpecTest.PromotionQueueHelpers
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -113,6 +114,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
     scope = %{scope | active_working_copy_id: agent_copy.id}
     story = story_fixture(scope)
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     {_n, _} =
       Files.upsert_files(scope, [

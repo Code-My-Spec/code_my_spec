@@ -19,8 +19,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import CodeMySpecSpex.PromotionHelpers
 
   alias CodeMySpecSpex.Fixtures

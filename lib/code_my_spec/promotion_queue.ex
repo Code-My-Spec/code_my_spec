@@ -15,6 +15,10 @@ defmodule CodeMySpec.PromotionQueue do
   of it — which is what the gate copy's batch is, so it does not have to merge
   main itself first.
 
+  A candidate promotes a story, an issue's fix, or neither: the story named, or
+  else the issue assigned to the copy's team. Either must have passed QA first.
+  A landed issue fix resolves the issue once its QA has passed.
+
   Generic: nothing here knows about any project's own release or tooling.
   """
 
@@ -22,8 +26,10 @@ defmodule CodeMySpec.PromotionQueue do
     top_level?: true,
     deps: [
       CodeMySpec.Analysis,
+      CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
+      CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
@@ -31,11 +37,13 @@ defmodule CodeMySpec.PromotionQueue do
     ],
     exports: [Entry, Worker]
 
+  alias CodeMySpec.Issues
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
+  alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -90,10 +98,10 @@ defmodule CodeMySpec.PromotionQueue do
   @doc """
   Queue the scope's working copy at its HEAD for promotion.
 
-  The cheap checks happen now — a known story, a committed, clean checkout, and
-  no blocking problem the copy's own analysis already found at that commit —
-  so a refusal still comes back at once. Everything that takes analysis
-  happens in the batch.
+  The cheap checks happen now — a known story, QA passed on the story or issue
+  it promotes, a committed, clean checkout, and no blocking problem the copy's
+  own analysis already found at that commit — so a refusal still comes back at
+  once. Everything that takes analysis happens in the batch.
 
   `{:ok, %{queued: entry, position: n}}` or `{:error, %{reason: ...}}`.
   """
@@ -101,17 +109,20 @@ defmodule CodeMySpec.PromotionQueue do
   def enqueue(%Scope{} = scope, story_number, opts \\ []) do
     with {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
+         subject = subject(scope, story, copy),
+         :ok <- qa_passed(scope, subject),
          {:ok, head} <- clean_head(scope, copy),
          :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
          {:ok, entry} <-
-           Repository.enqueue(%{
-             project_id: scope.active_project_id,
-             working_copy_id: copy.id,
-             commit: head,
-             story_number: story && story.number,
-             requested_by_agent_id: Keyword.get(opts, :notify),
-             restart: Keyword.get(opts, :restart, false)
-           }) do
+           Repository.enqueue(
+             Map.merge(subject_attrs(subject), %{
+               project_id: scope.active_project_id,
+               working_copy_id: copy.id,
+               commit: head,
+               requested_by_agent_id: Keyword.get(opts, :notify),
+               restart: Keyword.get(opts, :restart, false)
+             })
+           ) do
       ensure_worker(scope)
       {:ok, %{queued: entry, position: Repository.position(entry)}}
     else
@@ -210,11 +221,10 @@ defmodule CodeMySpec.PromotionQueue do
   defp version(%{"version" => v}) when is_binary(v), do: " as v#{v}"
   defp version(_), do: ""
 
-  defp describe(%Entry{story_number: nil, commit: commit}),
+  defp describe(%Entry{subject_type: nil, commit: commit}),
     do: "commit #{String.slice(commit, 0, 12)}"
 
-  defp describe(%Entry{story_number: number, commit: commit}),
-    do: "story #{number} at #{String.slice(commit, 0, 12)}"
+  defp describe(%Entry{} = entry), do: Entry.describe(entry)
 
   @doc """
   Start the project's worker, or hand a running one the newest scope. Called on
@@ -256,6 +266,43 @@ defmodule CodeMySpec.PromotionQueue do
       story -> {:ok, story}
     end
   end
+
+  # The story named, or else the issue assigned to the copy's team, or nothing.
+  defp subject(_scope, %{} = story, _copy), do: {:story, story}
+
+  defp subject(scope, nil, copy) do
+    case Issues.assigned_to_copy(scope, copy.id) do
+      nil -> nil
+      issue -> {:issue, issue}
+    end
+  end
+
+  defp subject_attrs({:story, story}),
+    do: %{subject_type: :story, subject_id: Integer.to_string(story.number)}
+
+  defp subject_attrs({:issue, issue}), do: %{subject_type: :issue, subject_id: issue.id}
+  defp subject_attrs(nil), do: %{}
+
+  # Promotion comes after QA. With QA passing first, a promotion before it is a
+  # mistake; this is the backstop that names what is missing.
+  defp qa_passed(scope, {:story, story}),
+    do: qa_verdict(Qa.qa_complete?(scope, story.id), "story #{story.number}")
+
+  defp qa_passed(scope, {:issue, issue}),
+    do: qa_verdict(Qa.issue_qa_passed?(scope, issue.id), "the fix for issue #{issue.id}")
+
+  defp qa_passed(_scope, nil), do: :ok
+
+  defp qa_verdict(true, _what), do: :ok
+
+  defp qa_verdict(false, what),
+    do:
+      {:error,
+       %{
+         reason:
+           "#{what} has not passed QA, so it is not promoted. QA tests it on this " <>
+             "copy first; promote once its QA attempt passes."
+       }}
 
   defp promoting_copy(%Scope{active_working_copy_id: id}) when is_binary(id) do
     case WorkingCopies.fetch(id) do

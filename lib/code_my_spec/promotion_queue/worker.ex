@@ -31,6 +31,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Triage
+  alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -357,6 +358,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       {:ok, report} = result ->
         for entry <- batch.entries do
           moved(entry, :landed, %{result: %{"version" => report[:version], "head" => batch.head}})
+          issue_landed(state.scope, entry, batch.head)
 
           # The landing report itself, in memory, for a caller waiting on this
           # entry (`PromotionQueue.await/2`): it answers with what a direct
@@ -438,15 +440,24 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       "\n\nFix them and promote again."
   end
 
-  defp subject(%Entry{story_number: nil, commit: commit}), do: String.slice(commit, 0, 12)
+  defp subject(%Entry{} = entry), do: Entry.describe(entry)
 
-  defp subject(%Entry{story_number: number, commit: commit}),
-    do: "story #{number} (#{String.slice(commit, 0, 12)})"
+  defp story_of(scope, %Entry{} = entry) do
+    case Entry.story_number(entry) do
+      nil -> nil
+      number -> Stories.get_story_by_number(scope, number)
+    end
+  end
 
-  defp story_of(_scope, %Entry{story_number: nil}), do: nil
+  # An issue's fix on main resolves the issue once its QA has passed.
+  defp issue_landed(scope, %Entry{} = entry, head) do
+    with id when is_binary(id) <- Entry.issue_id(entry),
+         {:error, reason} <- Qa.issue_fix_landed(scope, id, head) do
+      Logger.error("[PromotionQueue] issue #{id}'s fix landed at #{head}: #{inspect(reason)}")
+    end
 
-  defp story_of(scope, %Entry{story_number: number}),
-    do: Stories.get_story_by_number(scope, number)
+    :ok
+  end
 
   # The project's gate copy, asked for when there is none. Creating one is a
   # checkout and a harness, which sit above this queue, so it is requested as

@@ -21,6 +21,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   import Ecto.Query
   import CodeMySpecTest.PromotionQueueHelpers
   import CodeMySpec.ProblemsFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -121,7 +122,8 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     :ok
   end
 
-  defp a_project(git \\ []) do
+  defp a_project(opts \\ []) do
+    {qa, git} = Keyword.pop(opts, :qa, :passed)
     git = Map.merge(%{contains_main: true, status: ""}, Map.new(git))
     scope = full_scope_fixture()
 
@@ -148,6 +150,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     on_exit(fn -> stop_worker(scope.active_project_id) end)
 
     story = story_fixture(scope, %{title: "The war is declared"})
+    qa(scope, story, qa)
     spex = "test/spex/#{story.number}_feature/criterion_1_spex.exs"
 
     {_n, _} =
@@ -157,6 +160,10 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
 
     %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
   end
+
+  # Promotion comes after QA; a story QA has not passed is refused.
+  defp qa(scope, story, :passed), do: {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
+  defp qa(_scope, _story, :not_passed), do: :ok
 
   defp queued(scope) do
     Repo.all(
@@ -239,6 +246,14 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
       assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
       assert text =~ "Queued for promotion"
       assert [%{commit: @head}] = queued(scope)
+    end
+
+    test "a story QA has not passed is refused, naming what is missing" do
+      %{scope: scope, coder: coder, task: task} = a_project(qa: :not_passed)
+
+      assert {:ok, :invalid, feedback} = PromoteWork.evaluate(scope, task, coder)
+      assert feedback =~ "has not passed QA"
+      assert queued(scope) == []
     end
 
     test "a dirty tree is refused, naming the files" do
