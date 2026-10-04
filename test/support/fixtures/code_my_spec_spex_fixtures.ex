@@ -1830,6 +1830,25 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Deliver a queued message and begin its turn through the harness channel."
+  def deliver_agent_message(%Scope{} = scope, agent_id, ref) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
+      case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+             "agent_turn_event",
+             %{
+               "agent_id" => agent_id,
+               "event" => ChannelClient.encode_turn_event(event)
+             },
+             socket
+           ) do
+        {:noreply, _socket} -> :ok
+        {:reply, _reply, _socket} -> :ok
+      end
+    end)
+  end
+
   @doc """
   An agent's turn ending, as it arrives on the channel.
 

@@ -1348,6 +1348,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The page holds one page of messages (50 by default), so re-folding the list
   # on each arrival costs nothing and the whole class of problem goes away.
   defp assign_turns(socket, messages) do
+    # Pending messages belong in the queue; failed and withdrawn attempts
+    # remain audit records, not things the agent has received.
+    messages = Enum.filter(messages, &(Map.get(&1, :delivery) in [nil, :delivered]))
+
     # A run of calls folds into one expandable item, and a pending question
     # anchored inside that run would render after the whole thing — below calls
     # the agent made *after* it asked. So the run breaks where the question is.
@@ -1478,7 +1482,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
   def handle_info({:message_updated, message}, socket) do
-    {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
+    messages = Enum.reject(socket.assigns.messages, &(&1.id == message.id)) ++ [message]
+
+    {:noreply,
+     socket
+     |> assign(:pending, drop_ref(socket, message.delivery_ref))
+     |> assign_turns(messages)}
   end
 
   # Above the catch-all deliberately. A clause added below it is dead code that
