@@ -127,6 +127,18 @@ defmodule CodeMySpec.MixProject do
     end
   end
 
+  defp drop_stale_app(_args) do
+    app = Path.join(Mix.Project.compile_path(), "code_my_spec.app")
+
+    with {:ok, [{:application, _app, properties}]} <- :file.consult(app),
+         vsn when is_list(vsn) <- properties[:vsn],
+         true <- List.to_string(vsn) != version() do
+      File.rm(app)
+    end
+
+    :ok
+  end
+
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
   #
   # `:diagnostics` first. Mix runs after-compiler hooks last-registered first,
@@ -399,6 +411,11 @@ defmodule CodeMySpec.MixProject do
 
   defp aliases do
     [
+      # The version comes from git, and `compile.app` rewrites the `.app` only
+      # when an mtime moves — a new tag moves none, so the running app would
+      # report the version it was first compiled at. A stale `.app` is dropped
+      # first so it is regenerated with the current one.
+      compile: [&drop_stale_app/1, "compile"],
       # The migration check first, because `mix spex` loads no test helper and
       # therefore never ran it. A stale worktree database surfaced as
       # `ERROR 42703 (undefined_column)` inside a `given_` step, naming no
