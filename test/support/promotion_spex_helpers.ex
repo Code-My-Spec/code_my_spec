@@ -88,6 +88,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   agent actually holds.
   """
   def a_promotable_project(context) do
+    stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 
@@ -139,6 +140,18 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
 
+  # The queue's worker outlives the scenario under the application's
+  # supervisor; stopped so a batch left gating does not reach for a sandbox
+  # that is gone.
+  defp stop_the_queue_on_exit(project_id) do
+    ExUnit.Callbacks.on_exit(fn ->
+      case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
+        [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
+        [] -> :ok
+      end
+    end)
+  end
+
   @doc """
   The project's promotion gate: a detached worktree of main that the queue
   builds and gates batches in. A real project's is minted on first need; here
@@ -166,12 +179,12 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   sources it names (`%{"compiler" => [%{"file" => ..., "line" => ...,
   "severity" => "error", "message" => ...}]}`).
 
-  `sources:` is which runs to wait for: every analyzer by default, one source
-  for a re-run.
+  `sources:` is which runs to answer: every analyzer by default, one source for
+  a re-run. Runs for other sources stay pending, for a later call to answer.
   """
   def the_gate_answers(context, findings \\ %{}, opts \\ []) do
     sources = Keyword.get(opts, :sources, CodeMySpec.Analysis.Run.sources())
-    runs = gate_runs(context.gate_socket, sources, [])
+    runs = gate_runs(context.gate_socket, sources)
     # Read once the runs are here: the batch is built before they are sent.
     head = head_of(context, context.gate_root)
 
@@ -194,21 +207,57 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     context
   end
 
-  # The runs pushed to the gate's own channel, until every source in `wanted`
-  # has one. Other copies' channels share the topic; the join ref tells them apart.
-  defp gate_runs(_socket, [], runs), do: runs
+  @doc """
+  The sources the gate has been asked to run and has not been answered on,
+  once it has been asked for `sources`. Leaves them pending.
+  """
+  def the_gate_is_running(context, sources \\ CodeMySpec.Analysis.Run.sources()) do
+    runs = gate_runs(context.gate_socket, sources)
+    pending(context.gate_socket, runs)
+    runs |> Enum.map(& &1["source"]) |> Enum.sort()
+  end
 
-  defp gate_runs(%Phoenix.Socket{join_ref: join_ref} = socket, wanted, runs) do
+  # The runs pushed to the gate's own channel for `wanted`. Other copies'
+  # channels share the topic; the join ref tells them apart. Runs for other
+  # sources are put back for a later call.
+  defp gate_runs(socket, wanted), do: gate_runs(socket, wanted, [], [])
+
+  defp gate_runs(socket, [], runs, others) do
+    pending(socket, others)
+    runs
+  end
+
+  defp gate_runs(%Phoenix.Socket{join_ref: join_ref} = socket, wanted, runs, others) do
     receive do
       %Phoenix.Socket.Message{
         event: "run_analysis",
         join_ref: ^join_ref,
         payload: %{"runs" => new}
       } ->
-        gate_runs(socket, wanted -- Enum.map(new, & &1["source"]), runs ++ new)
+        {mine, theirs} = Enum.split_with(new, &(&1["source"] in wanted))
+
+        gate_runs(
+          socket,
+          wanted -- Enum.map(mine, & &1["source"]),
+          runs ++ mine,
+          others ++ theirs
+        )
     after
       30_000 -> flunk("the gate was never asked to run #{Enum.join(wanted, ", ")}")
     end
+  end
+
+  defp pending(_socket, []), do: :ok
+
+  defp pending(%Phoenix.Socket{join_ref: join_ref, topic: topic}, runs) do
+    send(self(), %Phoenix.Socket.Message{
+      event: "run_analysis",
+      join_ref: join_ref,
+      topic: topic,
+      payload: %{"runs" => runs}
+    })
+
+    :ok
   end
 
   defp raw_result("exunit", diagnostics),
@@ -237,14 +286,72 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   end
 
   @doc "What the queue told the promoting agent, once it had decided."
-  def what_the_agent_was_told(context, timeout \\ 30_000) do
-    agent_id = context.agent_id
+  def what_the_agent_was_told(context, timeout \\ 30_000),
+    do: what_was_told(context.agent_id, timeout)
 
+  @doc "What the queue told `agent_id`, once it had decided."
+  def what_was_told(agent_id, timeout \\ 30_000) do
     receive do
       {:agent_dispatch, ^agent_id, _ref, message} -> message
     after
       timeout -> flunk("the promoting agent was never told what became of its promotion")
     end
+  end
+
+  @doc """
+  Another agent's copy: a worktree of the running checkout on its own branch
+  from `from`, joined, with an agent on it. Put in `context` under `key` as
+  `%{root:, scope:, agent_id:, working_copy_id:}`.
+  """
+  def another_candidate(context, key, from \\ "main") do
+    root = CodeMySpec.TempFile.dir("spex-1046-#{key}")
+    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", root])
+
+    {_, 0} =
+      git(context, context.running_root, ["worktree", "add", "-b", "story/#{key}", root, from])
+
+    copy = join_working_copy(context, root, "#{key}'s copy")
+    scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
+
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: root,
+        working_copy_id: copy.working_copy_id
+      })
+
+    Map.put(context, key, %{
+      root: root,
+      scope: scope,
+      agent_id: agent.id,
+      working_copy_id: copy.working_copy_id
+    })
+  end
+
+  @doc "Write `path` in the checkout at `root` and commit it."
+  def commit_work(context, root, path, content) do
+    write(root, path, content)
+    {_, 0} = git(context, root, ["add", "-A"])
+    {_, 0} = git(context, root, ["commit", "-q", "-m", "work on #{path}"])
+    context
+  end
+
+  @doc "A candidate's own analyzers current at its HEAD."
+  def its_analyzers_are_current(context, %{scope: scope}) do
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(scope, CodeMySpec.Analysis.Run.sources(),
+      at_head: true
+    )
+
+    context
+  end
+
+  @doc "Promote from `candidate`'s copy, as its agent."
+  def promote_from(%{scope: scope, agent_id: agent_id}, story_number) do
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: scope, agent_id: agent_id}}
+    {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
+    response
   end
 
   @doc """
