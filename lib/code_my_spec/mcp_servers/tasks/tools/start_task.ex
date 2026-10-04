@@ -84,6 +84,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
+  # An issue is not in the requirement graph (story 1091): the offer
+  # `get_next_requirement` gave is read the same way here, through
+  # `Agents.Work`, rather than looked up in `RequirementGraph`.
+  defp resolve_requirement(scope, %{requirement_name: name, entity_type: "issue", entity_id: id}, owner)
+       when is_binary(name) and is_binary(id) do
+    role = if match?(%Agent{}, owner), do: owner.role, else: nil
+
+    case Enum.find(
+           Work.actionable(scope, role, owner),
+           &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == id)
+         ) do
+      nil -> {:error, "Requirement #{name} not found for issue #{id}"}
+      node -> {:ok, node}
+    end
+  end
+
   defp resolve_requirement(
          scope,
          %{requirement_name: name, entity_type: type, entity_id: ref},
@@ -295,6 +311,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # A session has no role and claims as before. An agent holding an active task
   # is told that first, by `TaskOwner`: it is the refusal it must act on before
   # any other claim (story 1047).
+  # Not in `Requirements.Registry` to be offered_to? anyone — the node already
+  # named this agent's own role (`Agents.IssueWork`), which is the check.
+  defp role_may_claim(%Agent{role: role}, %{entity_type: "issue", role: role}), do: :ok
+
   defp role_may_claim(%Agent{role: role} = agent, requirement) when not is_nil(role) do
     if RoleProfile.claims_any?(role) or Requirements.offered_to?(role, requirement.name) or
          Agent.active_task(agent),
@@ -319,6 +339,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # offered that (4292518a). Another story's story-level work is
   # `team_may_claim/3`'s refusal; this one covers everything else — every
   # project-level requirement, and other stories' components.
+  # An issue takes priority over a bound story (story 1091, `Agent.issue_id`'s
+  # doc comment): refusing it for the story the agent also still holds would
+  # contradict the offer `get_next_requirement` just made.
+  defp story_may_claim(_scope, _owner, %{entity_type: "issue"}), do: :ok
+
   defp story_may_claim(scope, %Agent{} = agent, requirement) do
     case Work.bound_story_id(agent) do
       nil ->
@@ -348,6 +373,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # Work the graph still offers but that is already done (67e6b5cb): the 1118
   # `story_promoted` repeats, and the eval's silently certified `ready_for_qa`.
   # Refused rather than started, and the graph is told so the offer clears.
+  # Not a graph node, so there is nothing for `Requirements.satisfied_now?/2`
+  # to ask: `Agents.IssueWork` only ever offers the stage that is still open.
+  defp not_already_done(_scope, _owner, %{entity_type: "issue"}), do: :ok
+
   defp not_already_done(scope, owner, requirement) do
     if Requirements.satisfied_now?(scope, requirement) do
       :ok = Requirements.refresh_entity(scope, {requirement.entity_type, requirement.entity_id})
@@ -463,6 +492,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       component_id: component_id,
       component_module_name: component_module_name,
       story_id: story_id,
+      issue_id: issue_ref(requirement),
       execution_type: requirement.execution_type || :main_agent,
       validation_type: requirement.validation_type || :automatic,
       status: :active,
@@ -482,6 +512,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp build_entity_refs(_scope, %{entity_type: "story", entity_id: id}), do: {nil, nil, id}
   defp build_entity_refs(_scope, _req), do: {nil, nil, nil}
+
+  defp issue_ref(%{entity_type: "issue", entity_id: id}), do: to_string(id)
+  defp issue_ref(_req), do: nil
 
   # Session-only, and it has to be: `init_session/2` exists so
   # `StartImplementation` can set `continuous` on a Session, and an agent we run
@@ -509,6 +542,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp matches_entity?(task, "project", entity_id) do
     to_string(task.project_id) == entity_id
+  end
+
+  defp matches_entity?(task, "issue", entity_id) do
+    to_string(task.issue_id) == entity_id
   end
 
   defp matches_entity?(_task, _type, _id), do: true

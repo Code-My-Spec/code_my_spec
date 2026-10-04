@@ -1,9 +1,11 @@
 defmodule CodeMySpecWeb.IssuesLive.Show do
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def render(assigns) do
@@ -85,6 +87,23 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       </div>
 
       <form
+        :if={:assign in available_actions(@issue)}
+        phx-submit="assign_to_working_copy"
+        data-test="issue-assignment-form"
+        class="mt-4 flex items-end gap-2"
+      >
+        <.input
+          type="select"
+          name="working_copy_id"
+          label="Assign to working copy"
+          prompt="Choose a working copy"
+          value=""
+          options={Enum.map(@working_copies, &{WorkingCopies.display_name(&1), &1.id})}
+        />
+        <button type="submit" class="btn btn-sm btn-primary">Assign</button>
+      </form>
+
+      <form
         :if={@show_form == :dismiss}
         phx-submit="dismiss"
         class="mt-4 space-y-3"
@@ -136,6 +155,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
      |> assign(:section, :issues)
      |> assign(:page_title, issue.title)
      |> assign_issue(issue)
+     |> assign(:working_copies, WorkingCopies.list_harnesses(socket.assigns.current_scope))
      |> assign(:show_form, nil)}
   end
 
@@ -152,6 +172,38 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
         {:noreply, put_flash(socket, :error, "Failed to accept issue.")}
     end
   end
+
+  @impl true
+  def handle_event("assign_to_working_copy", %{"working_copy_id" => working_copy_id}, socket)
+      when working_copy_id != "" do
+    case Agents.assign_issue_to_working_copy(
+           socket.assigns.current_scope,
+           socket.assigns.issue.id,
+           working_copy_id
+         ) do
+      {:ok, issue} ->
+        {:noreply,
+         socket
+         |> assign_issue(issue)
+         |> put_flash(:info, "Issue assigned.")}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "That working copy is not on this project.")}
+
+      {:error, :no_team} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That working copy has no coding or QA agent to hold the issue."
+         )}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to assign issue.")}
+    end
+  end
+
+  def handle_event("assign_to_working_copy", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("show_dismiss_form", _params, socket) do
@@ -230,7 +282,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   defp has_screenshot?(_issue), do: false
 
   defp available_actions(%{status: :incoming}), do: [:accept, :dismiss]
-  defp available_actions(%{status: :accepted}), do: [:resolve]
+  defp available_actions(%{status: :accepted}), do: [:assign, :resolve]
   defp available_actions(_), do: []
 
   defp severity_color(:critical), do: "error"

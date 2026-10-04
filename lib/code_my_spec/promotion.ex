@@ -252,6 +252,7 @@ defmodule CodeMySpec.Promotion do
          :ok <- runs_at(scope, ["spex"], head, named, opts),
          :ok <- story_spex_pass(scope, story, named) do
       stamp_promoted_story(scope, story, version, head)
+      notify_team_free(scope, id, story)
 
       # Always a restart: nothing was merged, so there is no diff to judge a
       # reload by, and this path exists for an app that is down.
@@ -319,6 +320,7 @@ defmodule CodeMySpec.Promotion do
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
       stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
+      notify_team_free(scope, from.id, story)
 
       # `head` is past the version bump, which is what the app will serve;
       # `after` is the merge alone. A harness older than `head` sends only the
@@ -413,6 +415,12 @@ defmodule CodeMySpec.Promotion do
   # runs, and reporting it as a failed promotion would send an agent to
   # promote again, restarting the shared dev server every other working copy
   # on the box is using, over a write that touched no code at all.
+  # The story-side half of criterion 1892's team-free parity with
+  # `IssueAssignment.free/2`: a story finishing by promotion sends main the
+  # same offer kind an issue finishing through QA already does.
+  defp notify_team_free(_scope, _copy_id, nil), do: :ok
+  defp notify_team_free(scope, copy_id, story), do: Agents.notify_story_team_free(scope, copy_id, story)
+
   defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
 
   defp stamp_promoted_story(scope, story, version, commit) do
