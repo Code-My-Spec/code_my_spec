@@ -289,7 +289,7 @@ defmodule CodeMySpec.MixProject do
         # webview host (CodeMySpecDesktop.Installer).
         steps:
           if(Mix.env() == :desktop,
-            do: [:assemble, &CodeMySpecDesktop.Installer.step/1],
+            do: [:assemble, &copy_bcrypt_nif_dll/1, &CodeMySpecDesktop.Installer.step/1],
             else: [:assemble]
           )
       ]

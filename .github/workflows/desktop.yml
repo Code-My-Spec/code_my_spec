@@ -2,8 +2,8 @@ name: Desktop installers
 
 # The desktop build (bb8bc042): the server and harness in one release, in a
 # native window (elixir-desktop on desktop_webview), packaged by
-# desktop_deployment. Builds the unsigned macOS .dmg as an artifact; nothing
-# is published.
+# desktop_deployment. Builds the unsigned macOS .dmg and Windows NSIS .exe as
+# artifacts, and smoke-installs the Windows one; nothing is published.
 on:
   push:
     tags:
@@ -92,3 +92,114 @@ jobs:
           name: codemyspec-desktop-macos
           path: _build/desktop/*.dmg
           retention-days: 7
+
+  windows:
+    name: Windows NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-beam can't map windows-latest's ImageOS (see release-extension.yml).
+      - name: Pin ImageOS for setup-beam
+        run: echo "ImageOS=win25" >> "$GITHUB_ENV"
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      # desktop_deployment's Windows packager: ImageMagick for the .ico, NSIS
+      # for the installer, wget for the WebView2 bootstrapper and vcredist.
+      - name: Packaging tools
+        shell: pwsh
+        run: |
+          choco install -y --no-progress imagemagick nsis wget
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+          Get-ChildItem "C:\Program Files\ImageMagick*" -Directory |
+            Select-Object -First 1 -ExpandProperty FullName |
+            Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Restore webview host
+        id: host-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/webview-host
+          key: webview-host-windows-${{ env.WEBVIEW_REF }}
+
+      - name: Build webview host
+        if: steps.host-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          git clone https://github.com/elixir-desktop/webview.git webview-src
+          git -C webview-src checkout $env:WEBVIEW_REF
+          ./webview-src/scripts/build_windows.ps1
+          New-Item -ItemType Directory -Force -Path "$HOME/webview-host" | Out-Null
+          Copy-Item webview-src/priv/native/windows/DesktopWebView.exe "$HOME/webview-host/"
+
+      - name: Restore deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ hashFiles('mix.lock') }}
+          restore-keys: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-
+
+      - name: Build the installer
+        run: |
+          export DESKTOP_HOST_BINARY="$HOME/webview-host/DesktopWebView.exe"
+          mix deps.get
+          mix compile
+          mix assets.deploy
+          mix release code_my_spec --overwrite
+          ls -la _build/desktop/*.exe
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: codemyspec-desktop-windows
+          path: _build/desktop/*.exe
+          retention-days: 7
+
+      # The smoke: a real Postgres with pgvector (FirstBoot refuses without
+      # it), a silent install, and a launch on 4000/4004 until both answer.
+      - name: Postgres with pgvector
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do set VS=%%i
+          call "%VS%\VC\Auxiliary\Build\vcvars64.bat"
+          git clone --depth 1 --branch v0.8.0 https://github.com/pgvector/pgvector.git
+          cd pgvector
+          nmake /NOLOGO /F Makefile.win || exit /b 1
+          nmake /NOLOGO /F Makefile.win install || exit /b 1
+          sc config "postgresql-x64-17" start= demand
+          net start "postgresql-x64-17"
+
+      - name: Silent install and launch
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem _build/desktop/*.exe | Select-Object -First 1
+          $dir = "$env:RUNNER_TEMP\CodeMySpec"
+          Start-Process $installer.FullName -ArgumentList "/S", "/D=$dir" -Wait
+          Get-ChildItem $dir | Select-Object Name
+          $env:DATABASE_URL = "ecto://postgres:root@localhost/cms_desktop_ci"
+          $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch "uninst|vcredist|Webview2" } | Select-Object -First 1
+          $proc = Start-Process $app.FullName -WorkingDirectory $dir -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $app200 = (Invoke-WebRequest -UseBasicParsing http://localhost:4000/app).StatusCode
+              $health = (Invoke-WebRequest -UseBasicParsing http://localhost:4004/health).Content
+              if ($app200 -eq 200) { $ok = $true; break }
+            } catch {}
+          }
+          Write-Output "app 200: $ok"
+          Write-Output "health: $health"
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Get-Process | Where-Object { $_.Path -like "$dir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { exit 1 }
