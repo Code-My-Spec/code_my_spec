@@ -14,6 +14,7 @@ defmodule CodeMySpecDesktop.Installer do
   @spec step(Mix.Release.t()) :: Mix.Release.t()
   def step(%Mix.Release{options: options} = release) do
     drop_debug_symbols(release.path)
+    if match?({:win32, _}, :os.type()), do: put_onnxruntime_beside_erl(release.path)
     templates = Path.join(Mix.Project.deps_paths()[:desktop_deployment], "rel")
     options = options |> Keyword.put(:rel_templates_path, templates) |> Keyword.put(:quiet, true)
 
@@ -32,5 +33,19 @@ defmodule CodeMySpecDesktop.Installer do
   # inside that bundle. Debug symbols have no place in an installer anyway.
   defp drop_debug_symbols(release_path) do
     release_path |> Path.join("**/*.dSYM") |> Path.wildcard() |> Enum.each(&File.rm_rf!/1)
+  end
+
+  # Windows ships its own onnxruntime.dll (1.17) in System32, and the standard
+  # DLL search tries System32 before the ortex NIF's own folder, so the NIF,
+  # built against 1.19, loaded 1.17 and panicked ("requested API version [19]
+  # is not available"). The executable's folder comes before System32: put the
+  # bundled ONNX Runtime beside erl.exe.
+  defp put_onnxruntime_beside_erl(release_path) do
+    [bin] = Path.wildcard(Path.join(release_path, "erts-*/bin"))
+
+    case Path.wildcard(Path.join(release_path, "lib/ortex-*/priv/native/onnxruntime*.dll")) do
+      [] -> Mix.raise("No onnxruntime*.dll beside the ortex NIF; the build must put one there")
+      dlls -> Enum.each(dlls, &File.cp!(&1, Path.join(bin, Path.basename(&1))))
+    end
   end
 end
