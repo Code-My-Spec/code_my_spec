@@ -22,8 +22,6 @@ defmodule CodeMySpec.GoogleAuthHelper do
 
   """
 
-  alias GoogleApi.AnalyticsAdmin.V1beta.Connection
-
   def get_token do
     cond do
       access_token = System.get_env("GOOGLE_ACCESS_TOKEN") ->
@@ -97,13 +95,5 @@ defmodule CodeMySpec.GoogleAuthHelper do
         #{inspect(reason)}
         """
     end
-  end
-
-  @doc """
-  Creates a Google Analytics Admin API connection using OAuth token.
-  """
-  def get_connection do
-    token = get_token()
-    Connection.new(token)
   end
 end

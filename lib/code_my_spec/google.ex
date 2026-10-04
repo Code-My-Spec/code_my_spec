@@ -10,7 +10,6 @@ defmodule CodeMySpec.Google do
   - `Google.Ads` — Google Ads (campaigns, ad groups, keywords, bids)
   - `Google.Gsc` — Search Console (sites, search analytics, sitemaps, URL inspection)
   - `Google.Ga4` — GA4 Data API (reports, funnels, realtime)
-  - `Google.Analytics` — GA Admin API (accounts and properties)
 
   ## Why this delegates one function and not sixty-six
 

@@ -63,6 +63,7 @@ end
         #
         included: [
           "lib/",
+          "lib_desktop/",
           "src/",
           "test/",
           "web/",

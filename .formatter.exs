@@ -2,7 +2,7 @@
   import_deps: [:ecto, :ecto_sql, :phoenix],
   subdirectories: ["priv/*/migrations"],
   plugins: [Phoenix.LiveView.HTMLFormatter],
-  inputs: ["*.{heex,ex,exs}", "{config,lib,test}/**/*.{heex,ex,exs}", "priv/*/seeds.exs"],
+  inputs: ["*.{heex,ex,exs}", "{config,lib,lib_desktop,test}/**/*.{heex,ex,exs}", "priv/*/seeds.exs"],
   # The spex DSL reads as prose — `given_ :synced_context_component`, not
   # `given_(:synced_context_component)`. sexy_spex exports no formatter config,
   # so without this every `mix format` rewrites the whole spex tree and someone
