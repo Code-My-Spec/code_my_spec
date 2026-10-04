@@ -393,9 +393,9 @@ defmodule CodeMySpec.Promotion.Steps do
   HEAD on either side of it, which `Promotion` logs — and `changed`, the paths
   between them, which `Promotion` reads to choose a reload or a restart.
 
-  It also carries `version` — the version this promotion originated by
-  bumping and tagging `root`'s own `mix.exs`, or `nil` for a checkout that has
-  none. `Promotion` uses it to stamp every story on the promoting copy with a
+  It also carries `version` — the version this promotion originated by tagging
+  the certified commit `vX.Y.Z` (the nearest tag's patch, plus one), or `nil`
+  for a merge that moved nothing. `Promotion` uses it to stamp every story on the promoting copy with a
   permanent record that its code reached main, in place of asking the
   promoting copy's live git state the same question again later and getting a
   different answer once that copy has moved on to something else.
@@ -477,8 +477,8 @@ defmodule CodeMySpec.Promotion.Steps do
            before: before,
            after: after_sha,
            changed: changed_between(env, root, before, after_sha),
-           # HEAD once the version bump is committed: what the app serves next.
-           head: head(env, root),
+           # The certified commit itself: a promotion tags it and commits nothing.
+           head: after_sha,
            version: originated,
            stamp_version: originated || current_version(env, root)
          }}
@@ -489,9 +489,7 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   # What the merge brought in, which `Promotion` reads to choose a reload or a
-  # restart. `before..after` is the merge alone: the version bump this merge
-  # then commits touches `mix.exs` every time, and counting it would make
-  # every promote a restart. `nil` when it cannot be read, which restarts.
+  # restart. `nil` when it cannot be read, which restarts.
   defp changed_between(_env, _root, same, same), do: []
   defp changed_between(_env, _root, nil, _after_sha), do: nil
 
@@ -563,7 +561,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # existed: a repeated or racing `promote` call minted a fresh tag and
   # patch bump on every call, with no corresponding change to anything.
   defp version_if_moved(_env, _root, same, same), do: nil
-  defp version_if_moved(env, root, _before, _after), do: bump_version(env, root)
+  defp version_if_moved(env, root, _before, _after), do: tag_version(env, root)
 
   # The version a story carried onto main should be stamped with, which is not
   # the same question as the version this promotion originated.
@@ -599,84 +597,57 @@ defmodule CodeMySpec.Promotion.Steps do
   # e1174640 closed the exposure this used to widen: a promote now stamps only
   # the story it names (`Stories.mark_story_promoted/4`), not every specs-ready
   # story in the project.
-  defp current_version(env, root) do
-    with {contents, 0} <- git(env, root, ["show", "HEAD:mix.exs"]),
-         {:ok, current, _next} <- next_version(contents) do
-      current
-    else
-      _ -> nil
-    end
-  end
+  defp current_version(env, root), do: tagged_version(env, root) || mix_version(env, root)
 
   # The version this promotion originates, or nil.
   #
-  # A merge that just landed does not fail because the checkout it landed on
-  # has no `mix.exs` to bump — nil says "this promotion minted no version,"
-  # not "this promotion failed." `Promotion` treats nil exactly that way: no
-  # stories get stamped, same as before this existed.
+  # An annotated tag on the commit the gate certified, which is main's HEAD the
+  # instant the ff-only merge lands. Nothing is committed: main is byte-identical
+  # to the certified commit, so a branch already level with it stays level and
+  # the next promotion does not have to merge main again (John, 2026-10-04).
   #
-  # Patch only. Every promotion on a shared box bumps this — many a day,
-  # across every working copy on the machine — and a fast-moving patch digit
-  # is what semver's patch digit is for. Committed and tagged straight onto
-  # `root`'s own HEAD, which is `main`'s HEAD the instant the ff-only merge
-  # above lands: no branch, no further merge, one more commit main already
-  # contains.
-  #
-  # Read and written through `git`/a shell, not `Environments.read_file` —
-  # unlike `marked?/3` below, which reads a rare conflict-marker file and
-  # deliberately goes through the environment so a remote harness answers
-  # from its own disk. This does too, on a real environment: `cmd` and
-  # `read_file`/`write_file` agree there. They do not agree on the
-  # `:memory` scope story 1046's own spex build to run promotion's other
-  # steps for real without touching real disk (`cmd` delegates to a real
-  # shell there; `read_file` answers from an in-memory store `git` never
-  # wrote to and never reads from). `git show HEAD:mix.exs` and a shell
-  # redirect stay on `cmd`'s side of that split, which is the side already
-  # proven to agree with what `git commit` is about to see.
-  defp bump_version(env, root) do
-    case git(env, root, ["show", "HEAD:mix.exs"]) do
-      {contents, 0} -> commit_bumped_version(env, root, contents)
-      _ -> nil
-    end
-  end
-
-  defp commit_bumped_version(env, root, contents) do
-    with {:ok, current, next} <- next_version(contents),
-         {_, 0} <- write_file(env, root, "mix.exs", replace_version(contents, current, next)),
-         # Only mix.exs: `-a` also staged the submodule's checkout, which the
-         # merge never moves, and reverted the pointer the branch brought.
-         {_, 0} <- git(env, root, ["commit", "-m", "chore: promote to v#{next}", "--", "mix.exs"]),
-         {_, 0} <- git(env, root, ["tag", "v#{next}"]) do
+  # Patch only, from the nearest `vX.Y.Z` tag. A checkout with no tag yet starts
+  # from the literal version in its `mix.exs`, which is what every promotion
+  # before this bumped. nil says "this promotion minted no version", not "it
+  # failed": `Promotion` then stamps nothing, as before. Local only — a tag
+  # leaves the machine when someone pushes it.
+  defp tag_version(env, root) do
+    with base when is_binary(base) <- current_version(env, root),
+         {:ok, next} <- next_patch(base),
+         {_, 0} <- git(env, root, ["tag", "-a", "v#{next}", "-m", "Promote v#{next}"]) do
       next
     else
       _ -> nil
     end
   end
 
-  # `content` travels as a shell positional parameter (`$1`), never
-  # interpolated into the script string — arbitrary file content (quotes,
-  # `$`, backticks) is data to the shell this way, never a fragment of the
-  # command it runs.
-  defp write_file(env, root, filename, content) do
-    Environments.cmd(env, "sh", ["-c", "printf '%s' \"$1\" > #{filename}", "sh", content],
-      cd: root,
-      stderr_to_stdout: true
-    )
-  end
-
-  defp next_version(contents) do
-    case Regex.run(~r/version:\s*"(\d+\.\d+\.\d+)"/, contents) do
-      [_, current] ->
-        [major, minor, patch] = current |> String.split(".") |> Enum.map(&String.to_integer/1)
-        {:ok, current, "#{major}.#{minor}.#{patch + 1}"}
-
-      nil ->
-        :error
+  # The nearest `vX.Y.Z` tag reachable from HEAD, without the `v`.
+  defp tagged_version(env, root) do
+    case git(env, root, ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*.[0-9]*"]) do
+      {"v" <> version, 0} -> String.trim(version)
+      _ -> nil
     end
   end
 
-  defp replace_version(contents, current, next),
-    do: String.replace(contents, ~s(version: "#{current}"), ~s(version: "#{next}"))
+  # A literal `version: "X.Y.Z"` in HEAD's `mix.exs`, for a project not yet tagged.
+  defp mix_version(env, root) do
+    with {contents, 0} <- git(env, root, ["show", "HEAD:mix.exs"]),
+         [_, version] <- Regex.run(~r/version:\s*"(\d+\.\d+\.\d+)"/, contents) do
+      version
+    else
+      _ -> nil
+    end
+  end
+
+  defp next_patch(version) do
+    case Version.parse(version) do
+      {:ok, %Version{major: major, minor: minor, patch: patch}} ->
+        {:ok, "#{major}.#{minor}.#{patch + 1}"}
+
+      :error ->
+        :error
+    end
+  end
 
   # `--ff-only` refuses before touching the tree — no three-way merge is
   # attempted, so there is nothing to abort and no conflicted file to name.

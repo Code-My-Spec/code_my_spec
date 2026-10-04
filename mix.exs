@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.354",
+      version: version(),
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :harness, :desktop],
@@ -95,6 +95,37 @@ defmodule CodeMySpec.MixProject do
   # Modules that `use` the desktop-only `desktop` dependency.
   defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The version is git's (John, 2026-10-04): a promotion tags the commit the gate
+  # certified and commits nothing, so there is no literal to bump here.
+  #
+  #   * on a `vX.Y.Z` tag: "X.Y.Z"
+  #   * N commits past it: "X.Y.Z+N.gSHA" — build metadata, so it still parses
+  #     and sorts with the release it came from
+  #   * `CMS_VERSION` overrides both, for builds with no `.git` (the Docker image)
+  #   * no git, or no tag reachable: "0.0.0-dev"
+  defp version do
+    System.get_env("CMS_VERSION") || git_version() || "0.0.0-dev"
+  end
+
+  defp git_version do
+    args = ["describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*.[0-9]*"]
+
+    case System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true) do
+      {out, 0} -> out |> String.trim() |> from_describe()
+      _ -> nil
+    end
+  rescue
+    ErlangError -> nil
+  end
+
+  defp from_describe(described) do
+    case Regex.run(~r/^v(\d+\.\d+\.\d+)-(\d+)-(g[0-9a-f]+)$/, described) do
+      [_, version, "0", _sha] -> version
+      [_, version, count, sha] -> "#{version}+#{count}.#{sha}"
+      nil -> nil
+    end
+  end
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
   #
