@@ -7,7 +7,6 @@ defmodule CodeMySpec.AgentTasks do
     top_level?: true,
     deps: [
       CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.Analysis,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
       CodeMySpec.BddSpecs,
@@ -20,7 +19,6 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
-      CodeMySpec.ProjectSync,
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
       CodeMySpec.PublicUrl,
