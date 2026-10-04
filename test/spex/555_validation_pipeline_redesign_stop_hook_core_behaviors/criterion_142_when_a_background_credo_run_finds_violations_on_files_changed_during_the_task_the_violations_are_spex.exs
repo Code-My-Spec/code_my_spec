@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @spec_path ".code_my_spec/spec/example_context.spec.md"
   @impl_path "lib/example_context.ex"
@@ -57,6 +58,8 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
             "# ExampleContext\n\n## Type\n\ncontext\n\nA placeholder.\n\n## Functions\n\n### noop/0\n\nReturns ok.\n\n```elixir\n@spec noop() :: :ok\n```\n\n## Dependencies\n\n- None\n\n## Components\n\nNone.\n"
           )
 
+        :ok = record_edit(context, @spec_path)
+
         :ok =
           Environments.write_file(
             context.environment,
@@ -64,26 +67,24 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
             "defmodule ExampleContext do\n  def noop, do: :ok\nend\n"
           )
 
+        :ok = record_edit(context, @impl_path)
+
         {:ok, context}
       end
 
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "pipeline_credo_blocks", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "credo" => fixture_path("credo.json")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        # No exunit: this recording ran zero tests, which a harness reports and
+        # the cloud rejects as a suite that never ran. It says nothing here.
+        HarnessHooks.land_analysis(context, "credo", fixture_path("credo.json"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   @fixture_dir "test/fixtures/validation/pipeline_clean_credo"
@@ -64,6 +65,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
         # a story mid-build, not a regression.
         {path, content} = story_spec(context.scope, context.story.id)
         :ok = Environments.write_file(context.environment, path, content)
+        HarnessHooks.write_file(context, path, content)
         {:ok, Map.put(context, :spec_path, path)}
       end
 
@@ -71,22 +73,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
         jsonl =
           Fixtures.spex_run_report([{context.spec_path, "implementation not written yet"}])
 
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => jsonl
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "spex", jsonl)
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

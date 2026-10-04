@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpec.McpServers.Problems.Tools.ListProblems
 
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
@@ -32,19 +33,34 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
     scenario "A clean run says nothing" do
       given_ :synced_context_component
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "an agent has been told about a failing analyzer", context do
         session = "spex-fixer-#{System.unique_integer([:positive])}"
 
-        use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          post_hook(context, "/api/hooks/stop", %{
-            "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
-            "test_output_files" => %{
-              "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-              "compile" => Path.expand(Path.join(@fixture_dir, "compile.jsonl")),
-              "exunit" => Path.expand(Path.join(@fixture_dir, "exunit.json"))
-            }
-          })
-        end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(
+          context,
+          "compiler",
+          Path.expand(Path.join(@fixture_dir, "compile.jsonl"))
+        )
+
+        HarnessHooks.land_analysis(
+          context,
+          "exunit",
+          Path.expand(Path.join(@fixture_dir, "exunit.json"))
+        )
+
+        HarnessHooks.post_hook(context, "stop", %{
+          "session_id" => "spex-seed-#{System.unique_integer([:positive])}"
+        })
 
         told = post_hook(context, "/api/hooks/post-tool-use", tool_call(session))
 
@@ -56,14 +72,16 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
       end
 
       when_ "it fixes the cause and the next run lands clean", context do
-        use_cmd_cassette "clean", record: :none do
-          post_hook(context, "/api/hooks/stop", %{
-            "session_id" => context.session,
-            "test_output_files" => %{
-              "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-            }
-          })
-        end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        # The suite that failed, run again and passing.
+        HarnessHooks.land_analysis(context, "exunit")
+
+        HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session})
 
         {:ok, context}
       end

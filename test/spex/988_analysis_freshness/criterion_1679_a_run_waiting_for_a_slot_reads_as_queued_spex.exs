@@ -13,9 +13,8 @@ defmodule CodeMySpecSpex.Story988.Criterion1679Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 4]
-
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,39 +23,22 @@ defmodule CodeMySpecSpex.Story988.Criterion1679Spex do
     criterion: 1679 do
     scenario "the harness has begun spex, and compiler waits behind it" do
       given_ "a harness serving this checkout, asked for compiler and spex", context do
-        {:ok, root} = Briefly.create(directory: true)
-
-        {_reply, socket} =
-          join_working_copy_socket(context, root, "this checkout",
-            working_copy_id: context.scope.active_working_copy_id
-          )
+        context = HarnessHooks.ensure_live_harness(context)
 
         {:ok,
          Map.merge(context, %{
-           socket: socket,
            compiler: Fixtures.start_analysis_run(context.scope, "compiler"),
            spex: Fixtures.start_analysis_run(context.scope, "spex")
          })}
       end
 
       when_ "the harness reports spex has begun, and the agent stops", context do
-        ref =
-          Phoenix.ChannelTest.push(context.socket, "analysis_started", %{
-            "run_id" => context.spex.id,
-            "start_commit" => String.duplicate("a", 40),
-            "start_tree_dirty" => false
-          })
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = HarnessHooks.start_analysis(context, context.spex)
 
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{
+          HarnessHooks.post_hook(context, "stop", %{
             "session_id" => "spex-#{System.unique_integer([:positive])}"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :said, response["systemMessage"] || response["reason"] || "")}
       end

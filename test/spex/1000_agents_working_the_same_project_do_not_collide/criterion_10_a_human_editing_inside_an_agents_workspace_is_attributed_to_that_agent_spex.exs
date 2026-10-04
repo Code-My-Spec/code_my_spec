@@ -61,7 +61,12 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
 
       when_ "the operator edits a file in it by hand", context do
         # Straight into the working copy. No tool call, so no PostToolUse — that
-        # absence is the premise, not an omission. What a hand edit does produce:
+        # absence is the premise, not an omission.
+        #
+        # Red until da2af26: a local stat reports whole-second mtimes, so an edit
+        # made in the same second the task started is not "changed since" it.
+        #
+        # What a hand edit does produce:
         # the harness notices the tree changed and says so. That is the only
         # report the operator's edit generates.
         HarnessHooks.write_file(

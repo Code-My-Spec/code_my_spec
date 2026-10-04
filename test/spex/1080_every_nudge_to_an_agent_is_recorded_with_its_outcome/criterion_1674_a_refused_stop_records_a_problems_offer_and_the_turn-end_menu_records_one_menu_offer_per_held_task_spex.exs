@@ -14,12 +14,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1674Spex do
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
-  @broken_build [
-    compile_output_file:
-      Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
-  ]
+  @broken_build Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,7 +37,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1674Spex do
       end
 
       when_ "its turn ends", context do
-        :ok = Fixtures.end_turn(context.scope, context.coder)
+        :ok = HarnessHooks.end_turn(context, context.coder)
         {:ok, Map.put(context, :sent, dispatched(context))}
       end
 
@@ -59,12 +57,20 @@ defmodule CodeMySpecSpex.Story1080.Criterion1674Spex do
       given_ "a continuous coder holding a task, mid-turn, that edited a file", context do
         context = coder_holding_a_task(context)
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.coder)
+
+        HarnessHooks.write_file(
+          context,
+          "lib/example_context.ex",
+          "defmodule ExampleContext do\n"
+        )
+
         Fixtures.record_agent_edit(context.coder, "lib/example_context.ex")
         {:ok, context}
       end
 
       when_ "its turn ends with that file not compiling", context do
-        :ok = Fixtures.end_turn(context.scope, context.coder, @broken_build)
+        HarnessHooks.land_analysis(context, "compiler", @broken_build)
+        :ok = HarnessHooks.end_turn(context, context.coder)
 
         id = context.coder
 

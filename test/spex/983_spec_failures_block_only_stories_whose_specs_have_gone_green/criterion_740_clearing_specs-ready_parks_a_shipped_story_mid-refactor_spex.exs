@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
   @fixture_dir "test/fixtures/validation/pipeline_clean_credo"
@@ -48,17 +49,14 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
         {:ok, Map.put(context, :spec_path, path)}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent's session has started", context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        post(
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json"),
-          "/api/hooks/session-start",
-          %{"session_id" => session_id}
-        )
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end
@@ -83,24 +81,15 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
       then_ "failing specs on that story no longer block the agent's stop", context do
         {_path, failing} = story_spec(context.scope, context.story.id, :failing)
         :ok = Environments.write_file(context.environment, context.spec_path, failing)
+        :ok = record_edit(context, context.spec_path)
 
         jsonl = Fixtures.spex_run_report([{context.spec_path, "mid-refactor, expected red"}])
 
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => jsonl
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "spex", jsonl)
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         assert response == %{},
                "a hand-parked story must not block on its failing specs, got: #{inspect(response)}"

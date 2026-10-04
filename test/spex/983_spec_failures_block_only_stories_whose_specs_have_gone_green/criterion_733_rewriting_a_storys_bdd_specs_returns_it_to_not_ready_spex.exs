@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
+  alias CodeMySpecSpex.HarnessHooks
 
   @spex_path "test/spex/example_context_spex.exs"
   @fixture_dir "test/fixtures/validation/pipeline_clean_credo"
@@ -39,31 +40,23 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
 
       given_ "the agent writes the story's BDD spec file", context do
         :ok = Environments.write_file(context.environment, @spex_path, passing_spex())
+        :ok = record_edit(context, @spex_path)
         {:ok, context}
       end
 
       given_ "a fresh green run has flipped the story to specs-ready", context do
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "spex", fixture_path("spex.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :green_response, response)}
       end
 
       when_ "the story is reopened and its BDD specs are rewritten", context do
         :ok = Environments.write_file(context.environment, @spex_path, rewritten_spex())
+        HarnessHooks.write_file(context, @spex_path, rewritten_spex())
 
         {:ok, sync_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

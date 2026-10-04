@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   @billing_path "lib/billing.ex"
   @reports_path "lib/reports.ex"
@@ -41,6 +42,10 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "drift exists on Billing and on Reports", context do
         app = ComponentGraphHelpers.app(context)
 
@@ -54,12 +59,24 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
           end
           """)
 
+        HarnessHooks.write_file(context, @billing_path, """
+        defmodule #{app}.Billing do
+          @moduledoc false
+        end
+        """)
+
         :ok =
           Environments.write_file(context.environment, @reports_path, """
           defmodule #{app}.Reports do
             @moduledoc false
           end
           """)
+
+        HarnessHooks.write_file(context, @reports_path, """
+        defmodule #{app}.Reports do
+          @moduledoc false
+        end
+        """)
 
         Fixtures.problem_fixture(context.scope, %{
           source: "architecture",
@@ -87,11 +104,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
       given_ "a session starts work on the project", context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end
@@ -107,31 +120,24 @@ defmodule CodeMySpecSpex.Story1085.Criterion1734Spex do
           end
           """)
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post(~p"/api/hooks/post-tool-use", %{
+        :ok = record_edit(context, @billing_path)
+
+        HarnessHooks.post_hook(context, "post-tool-use", %{
           "session_id" => context.session_id,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => @billing_path}
         })
-        |> Phoenix.ConnTest.json_response(200)
 
-        response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "compile" => fixture_path("compile.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

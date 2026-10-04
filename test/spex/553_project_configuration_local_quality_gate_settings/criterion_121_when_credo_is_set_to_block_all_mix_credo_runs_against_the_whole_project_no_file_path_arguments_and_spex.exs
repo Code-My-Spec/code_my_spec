@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @legacy_path "lib/legacy_module.ex"
   @clean_path "lib/clean_module.ex"
@@ -53,26 +54,22 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "turn 1: legacy and clean files are seeded into the project",
              context do
         :ok = Environments.write_file(context.environment, @legacy_path, legacy_with_violation())
+        HarnessHooks.write_file(context, @legacy_path, legacy_with_violation())
         :ok = Environments.write_file(context.environment, @clean_path, clean_module())
+        HarnessHooks.write_file(context, @clean_path, clean_module())
 
-        _seed_response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "spex", fixture_path("spex.jsonl"))
+
+        _seed_response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, context}
       end
@@ -87,26 +84,17 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
 
       given_ "turn 2: only the clean file is edited", context do
         :ok = Environments.write_file(context.environment, @clean_path, clean_module_v2())
+        HarnessHooks.write_file(context, @clean_path, clean_module_v2())
         {:ok, context}
       end
 
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "credo_block_all_project_scan", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "credo" => fixture_path("credo_block_all.json"),
-                "spex" => fixture_path("spex.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+        HarnessHooks.land_analysis(context, "credo", fixture_path("credo_block_all.json"))
+        HarnessHooks.land_analysis(context, "spex", fixture_path("spex.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end

@@ -131,6 +131,25 @@ defmodule CodeMySpecSpex.OfferHelpers do
   end
 
   @doc """
+  What a harness that has just come back reports about the agents it is
+  running, on the channel it reports it on — a fresh connection, so the cloud's
+  once-per-connection sweep runs.
+  """
+  @spec report_agents_running(map(), [String.t()]) :: :ok
+  def report_agents_running(context, agent_ids) do
+    socket = %Phoenix.Socket{assigns: %{scope: context.scope}}
+
+    {:reply, :ok, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "agents_running",
+        %{"agent_ids" => agent_ids},
+        socket
+      )
+
+    :ok
+  end
+
+  @doc """
   Coding work waiting on a switched-on copy: everything but the spex run, the
   premise criterion 1184 settled on.
 

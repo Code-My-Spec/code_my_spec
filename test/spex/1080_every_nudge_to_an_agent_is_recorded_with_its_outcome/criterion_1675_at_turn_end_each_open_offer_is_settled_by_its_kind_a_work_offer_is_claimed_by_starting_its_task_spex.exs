@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
@@ -25,6 +24,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -237,16 +237,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
              context do
         :ok = Fixtures.install_recording_agent_transport()
 
-        {reply, socket} =
-          join_working_copy_socket(context, "/tmp/spex-1675-#{System.unique_integer()}", "c1675")
-
-        scope = %{context.scope | active_working_copy_id: reply[:working_copy_id]}
-        context = coder_holding_a_task(Map.merge(context, %{scope: scope}))
-
-        ref =
-          Phoenix.ChannelTest.push(socket, "agents_running", %{"agent_ids" => [context.coder]})
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        context = coder_holding_a_task(context)
+        :ok = report_agents_running(context, [context.coder])
         id = context.coder
         assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)
@@ -254,7 +246,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
       end
 
       when_ "it ends the turn", context do
-        :ok = Fixtures.end_turn(context.scope, context.coder)
+        :ok = HarnessHooks.end_turn(context, context.coder)
         {:ok, context}
       end
 

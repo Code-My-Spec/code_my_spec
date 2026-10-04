@@ -28,8 +28,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpecSpex.Fixtures
-
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
@@ -37,12 +35,11 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
@@ -75,55 +72,32 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
       given_ "two agents are serving the same project from different working copies",
              context do
-        # A real second checkout on disk. Its emptiness is the point, and an
-        # emptiness the analyzers can actually walk beats a path that only exists
-        # in a string.
-        {:ok, second_root} = Briefly.create(directory: true)
+        # Each checkout served by its own live harness. The first holds what
+        # `:synced_context_component` put in place; the second is a real checkout
+        # of its own, which has neither the implementation nor the test that is
+        # about to fail.
+        context = HarnessHooks.ensure_live_harness(context)
 
-        {:ok, second_reply, second} =
-          UserSocket
-          |> socket("harness_test_b", %{scope: context.scope})
-          |> subscribe_and_join(
-            HarnessProjectChannel,
-            "harness_project:#{context.project.id}",
-            %{
-              "contract_version" => @contract_version,
-              "harness_id" => nil,
-              "root" => second_root,
-              "label" => "the harness at #{second_root}",
-              "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
-            }
+        second =
+          HarnessHooks.given_a_live_harness(context,
+            files: %{"lib/second_only.ex" => "defmodule SecondOnly do\nend\n"}
           )
 
-        second_id = second_reply["harness_id"] || second_reply[:working_copy_id]
-
-        refute second_id == context.scope.active_working_copy_id,
+        refute second.harness.working_copy_id == context.harness.working_copy_id,
                "two working copies must be two agents; the server issued one id for both"
 
-        {:ok,
-         context
-         |> Map.put(:second_socket, second)
-         |> Map.put(:second_root, second_root)
-         |> Map.put(:second_working_copy_id, second_id)}
+        {:ok, Map.put(context, :second, second)}
       end
 
       given_ "each has synced its own files", context do
-        # The first agent's are already in place from `:synced_context_component`.
-        # The second reports a tree of its own, which has neither the
-        # implementation nor the test that is about to fail.
-        ref =
-          Phoenix.ChannelTest.push(context.second_socket, "observations", %{
-            "observations" => [
-              %{
-                "path" => "lib/second_only.ex",
-                "role" => "implementation",
-                "fingerprint" => "b",
-                "mtime" => "2026-08-12T00:00:00.000000Z"
-              }
-            ]
-          })
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
+        # What each harness's scan reported when it joined: the first agent's
+        # implementation and test, and the second's own file. The second
+        # reporting a change of its own is the same channel, observed.
+        HarnessHooks.write_file(
+          context.second,
+          "lib/second_only.ex",
+          "defmodule SecondOnly do\n  @moduledoc false\nend\n"
+        )
 
         {:ok, context}
       end
@@ -131,9 +105,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       given_ "the first agent is working an implementation task", context do
         session_id = "spex-first-agent-#{System.unique_integer([:positive])}"
 
-        post_hook(context.scope.active_working_copy_id, "/api/hooks/session-start", %{
-          "session_id" => session_id
-        })
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         {:reply, _response, _frame} =
           StartTask.execute(
@@ -155,21 +127,26 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
             "defmodule ExampleContext do\n  @moduledoc false\nend\n"
           )
 
+        HarnessHooks.write_file(
+          context,
+          @impl_path,
+          "defmodule ExampleContext do\n  @moduledoc false\nend\n"
+        )
+
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
       when_ "one agent's analyzer records a failing test", context do
-        response =
-          use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            post_hook(context.scope.active_working_copy_id, "/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json")
-              }
-            })
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :first_agent_stop, response)}
       end
@@ -191,17 +168,23 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
         # real pipeline (a real `mix compile` plus a real recursive `mix spex`,
         # see criterion 3059's note) unless driven the same way the first
         # agent's stop above is.
+        # The second checkout's own analyzers, clean, as they report from there.
+        HarnessHooks.land_analysis(
+          context.second,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(
+          context.second,
+          "compiler",
+          Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
+        )
+
         other =
-          use_cmd_cassette "clean", record: :none do
-            post_hook(context.second_working_copy_id, "/api/hooks/stop", %{
-              "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}",
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" =>
-                  Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
-              }
-            })
-          end
+          HarnessHooks.post_hook(context.second, "stop", %{
+            "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}"
+          })
 
         refute other["decision"] == "block",
                "the second agent was held by a failure from a checkout it does not have. " <>
@@ -220,11 +203,5 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
     end
   end
 
-  # Hooks are served by `CodeMySpecLocalWeb`, and `@endpoint` above points at
-  # `CodeMySpecWeb` so the channel works — so these dispatch explicitly rather
-  # than through `~p`, which would resolve against the wrong router.
-  #
-  # No `x-working-dir`: the harness id names the working copy, and the server
-  # answers where it is. Sending both would let a wrong root pass unnoticed.
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 end

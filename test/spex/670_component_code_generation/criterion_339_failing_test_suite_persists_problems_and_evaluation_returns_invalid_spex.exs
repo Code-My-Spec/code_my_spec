@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
@@ -42,15 +43,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
         {:ok, context}
       end
 
+      given_ "a live harness serves the checkout", context do
+        {:ok, HarnessHooks.ensure_live_harness(context)}
+      end
+
       given_ "the agent has signalled session start and started an implementation_file task",
              context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -80,26 +81,23 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
             "defmodule ExampleContext do\n  @moduledoc false\nend\n"
           )
 
+        :ok = record_edit(context, @impl_path)
+
         {:ok, context}
       end
 
       when_ "the stop hook fires after the analyzer ran the test suite and a test failed",
             context do
-        response =
-          use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(
+          context,
+          "spex",
+          Path.expand("test/fixtures/validation/spex_green.jsonl")
+        )
+
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+        HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end

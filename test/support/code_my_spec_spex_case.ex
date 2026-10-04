@@ -342,6 +342,16 @@ defmodule CodeMySpecSpex.Case do
     # degrading, which would read as a broken suite instead of a deliberate
     # configuration.
     unless real_pool?() do
+      # Manual, for an async spex. `mix spex` loads no test helper, so nothing
+      # else sets it, and the ambient mode is `:auto` (or the `{:shared, _}` a
+      # sync spex left). A process this test never allowed explicitly — a
+      # channel Phoenix spawned for a live harness — then falls back to that
+      # ambient mode instead of its `$callers`, and reads a connection of its
+      # own: the project it was asked to join is not in it, and the join is
+      # refused as unauthorized (638ae30e). Async modules run before sync ones,
+      # so this cannot pull the mode out from under a shared-mode spex.
+      if tags[:async], do: Sandbox.mode(CodeMySpec.Repo, :manual)
+
       pid =
         Sandbox.start_owner!(CodeMySpec.Repo,
           shared: not tags[:async],

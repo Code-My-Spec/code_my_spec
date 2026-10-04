@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_compile_error"
@@ -43,21 +44,14 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
       given_ "the agent writes an implementation that does not compile",
              context do
         :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        :ok = record_edit(context, @impl_path)
         {:ok, context}
       end
 
       when_ "the stop hook fires", context do
-        response =
-          use_cmd_cassette "pipeline_compile_error", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{"compile" => fixture_path("compile.jsonl")}
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
+
+        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end
