@@ -73,24 +73,11 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # context re-established every 25 calls.
   @max_turns 150
 
-  # How long a turn may run, regardless of who sent the message.
-  #
-  # This used to be the *sender's* timeout, threaded from `{:send, ref, message,
-  # timeout}` through `start_turn/5` into `stream_chat`. So whoever spoke to the
-  # agent decided how long it was allowed to think: a four-minute HTTP client
-  # made a four-minute turn, and the turn that outlived it was killed and
-  # announced as the agent's own failure — `{:timeout, {GenServer, :call, …}}`
-  # sitting in its transcript in its own voice, while a QA scenario it had spent
-  # 165 calls on went unfinished.
-  #
-  # A turn's duration is a property of the turn. A caller's patience is a
-  # property of the caller, and it governs how long *it* waits — `awaiting` —
-  # not how long the agent works.
-  #
-  # Thirty minutes because a browser QA pass is minutes of real waiting: pages
-  # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
-  # ceiling on a runaway, not a budget.
-  @turn_timeout :timer.minutes(30)
+  # A GenServer call timeout does not stop Alloy's running turn. Releasing
+  # our queue on that timeout would submit the next message while the old
+  # turn still owns Alloy. Wait for its actual result; provider timeouts and
+  # the step limit govern execution, independently of message admission.
+  @turn_timeout :infinity
 
   @type start_opts :: [
           agent_id: String.t(),

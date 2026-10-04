@@ -23,6 +23,9 @@ defmodule CodeMySpec.Agents.Offers do
       `answer_notification` after it (criterion 1672).
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
+    * `:instruction` — delivered and a subsequent turn observed: `:n_a`,
+      noting delivered/seen. Operator compliance is not inferred. Repetition
+      is reported to main once; it never suppresses a human's message.
   """
 
   import Ecto.Query
@@ -54,7 +57,8 @@ defmodule CodeMySpec.Agents.Offers do
     denial: "denial/1",
     check_in: "check_in/1",
     stalled: "stalled/1",
-    team_free: "team_free/1"
+    team_free: "team_free/1",
+    instruction: "instruction/1"
   }
 
   # What main can do with a waiting question it was offered.
@@ -248,12 +252,63 @@ defmodule CodeMySpec.Agents.Offers do
       Offer
       |> where([o], o.agent_id == ^agent_id and o.status == :open)
       |> order_by([o], asc: o.inserted_at)
+      |> preload(messages: :message)
       |> Repo.all()
+      |> Enum.flat_map(&delivered_offer/1)
+      |> Enum.sort_by(& &1.inserted_at, DateTime)
 
     settle(open, agent)
   end
 
   def settle_turn(_agent), do: :ok
+
+  @doc "A turn beginning acknowledges delivered operator instructions, without judging compliance."
+  def observe_instruction_turn(%Agent{id: agent_id} = agent) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.kind == :instruction and o.status == :open)
+    |> preload(messages: :message)
+    |> Repo.all()
+    |> Enum.flat_map(&delivered_offer/1)
+    |> Enum.sort_by(& &1.inserted_at, DateTime)
+    |> settle(agent)
+  end
+
+  # Queuing is not delivery. Calls in the preceding turn cannot claim a
+  # message the agent has not picked up, nor can that turn ignore it.
+  defp delivered_offer(%Offer{messages: []} = offer), do: [offer]
+
+  defp delivered_offer(%Offer{} = offer) do
+    messages = Enum.map(offer.messages, & &1.message)
+
+    delivered =
+      Enum.filter(messages, &(&1.delivery in [nil, :delivered]))
+
+    delivery_window(offer, delivered, messages)
+  end
+
+  defp delivery_window(offer, [], messages) do
+    case Enum.any?(messages, &(&1.delivery == :pending)) do
+      true ->
+        []
+
+      false ->
+        undelivered(offer)
+        []
+    end
+  end
+
+  defp delivery_window(offer, delivered, _messages) do
+    since =
+      delivered
+      |> Enum.map(&delivery_time/1)
+      |> Enum.min(DateTime)
+
+    # Only the observation window changes; the persisted creation time stays.
+    [%{offer | inserted_at: Enum.max([offer.inserted_at, since], DateTime)}]
+  end
+
+  defp delivery_time(%Message{delivery: :delivered, updated_at: at}), do: at
+  defp delivery_time(%Message{inserted_at: at}), do: at
 
   @doc """
   Where each piece of work stands with this agent, for the escalation ladder
@@ -286,6 +341,29 @@ defmodule CodeMySpec.Agents.Offers do
     ignored = Enum.count(recent, &(&1 == :ignored))
     %{ignored: ignored, held?: ignored >= @held_after or :declined in recent}
   end
+
+  @doc "Record one escalation for a repeated operator instruction; never withhold delivery."
+  def take_instruction_attention(%Offer{kind: :instruction} = offer) do
+    serialized(offer.agent_id, fn ->
+      same = same_subject(offer.agent_id, :instruction, offer.subject_type, offer.subject_key)
+      repeated? = Repo.aggregate(same, :count) > 1
+      reported? = Repo.exists?(where(same, [o], o.next_step == "told_main"))
+
+      case {repeated?, reported?} do
+        {true, false} ->
+          Repo.update_all(where(Offer, [o], o.id == ^offer.id),
+            set: [next_step: "told_main", updated_at: DateTime.utc_now()]
+          )
+
+          true
+
+        _ ->
+          false
+      end
+    end)
+  end
+
+  def take_instruction_attention(_offer), do: false
 
   @doc "How many ignored offers hold work back from an agent (criterion 1741)."
   def held_after, do: @held_after
@@ -407,6 +485,9 @@ defmodule CodeMySpec.Agents.Offers do
 
   defp outcome(%Offer{kind: :check_in}, _agent, calls),
     do: %{status: :n_a, note: tools_note(calls)}
+
+  defp outcome(%Offer{kind: :instruction}, _agent, _calls),
+    do: %{status: :n_a, note: "delivered/seen; instruction compliance is not inferred"}
 
   defp outcome(%Offer{kind: kind}, _agent, calls)
        when kind in [:problems, :menu, :retry, :answer, :stalled],

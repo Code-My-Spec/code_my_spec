@@ -125,6 +125,27 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     """
   end
 
+  test "three instructions wait for the running turn and are delivered in order", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, plug_pid}, 5_000
+    assert_receive {:event, %{event: :message_delivered, ref: "running"}}
+
+    assert {:ok, :queued} = Engine.send_message(agent, "one", "instruction one", 1)
+    assert {:ok, :queued} = Engine.send_message(agent, "two", "instruction two", 1)
+    assert {:ok, :queued} = Engine.send_message(agent, "three", "instruction three", 1)
+    assert {:ok, %{busy?: true, queued: 3}} = Engine.status(agent)
+    refute_received {:event, %{event: :message_delivered}}
+
+    send(plug_pid, :release)
+    assert_receive {:event, %{event: :message_delivered, ref: "one"}}, 5_000
+    assert_receive {:event, %{event: :message_delivered, ref: "two"}}, 5_000
+    assert_receive {:event, %{event: :message_delivered, ref: "three"}}, 5_000
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+    refute_received {:event, %{event: :turn_failed}}
+  end
+
   # The other half: an agent that finishes with nothing waiting is done, and
   # that is exactly when the analyzers should run.
   test "a settle with an empty queue announces", %{root: root} do

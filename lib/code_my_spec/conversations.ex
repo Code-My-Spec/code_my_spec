@@ -558,10 +558,10 @@ defmodule CodeMySpec.Conversations do
   back something the agent is already acting on is the failure the ref exists
   to prevent, and it cannot know without being told.
   """
-  @spec set_delivery(Message.t(), :delivered | :withdrawn) ::
+  @spec set_delivery(Message.t(), :delivered | :withdrawn | :failed) ::
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
   def set_delivery(%Message{} = message, delivery)
-      when delivery in [:delivered, :withdrawn] do
+      when delivery in [:delivered, :withdrawn, :failed] do
     message
     |> Ecto.Changeset.change(delivery: delivery)
     |> Repo.update()

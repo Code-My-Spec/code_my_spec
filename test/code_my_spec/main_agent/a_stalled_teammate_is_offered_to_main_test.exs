@@ -93,6 +93,17 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
     ctx.main.id |> Offers.list_for_agent() |> Enum.filter(&(&1.kind == :stalled))
   end
 
+  defp deliver_notice(ctx) do
+    id = ctx.main.id
+    assert_received {:agent_dispatch, ^id, ref, _text}
+
+    assert :ok =
+             Agents.record_turn_event(ctx.scope, id, %{
+               "kind" => "message_delivered",
+               "ref" => ref
+             })
+  end
+
   defp called(ctx, name) do
     {:ok, _} =
       Conversations.add_tool_call(ctx.conversation, Ecto.UUID.generate(), name, %{}, "main")
@@ -115,7 +126,8 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
     announce(ctx, "a1b2c3d4")
 
     main_id = ctx.main.id
-    assert_received {:agent_message, ^main_id, text}
+    assert_received {:agent_dispatch, ^main_id, ref, text}
+    assert is_binary(ref)
 
     assert [offer] = stalled_offers(ctx)
 
@@ -128,6 +140,7 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
   test "main's tool call after it claims it at turn end", ctx do
     ctx = main(ctx)
     announce(ctx, "a1b2c3d4")
+    deliver_notice(ctx)
     called(ctx, "list_agent_work")
     end_turn(ctx)
 
@@ -138,6 +151,7 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
     ctx = main(ctx)
     called(ctx, "list_agent_work")
     announce(ctx, "a1b2c3d4")
+    deliver_notice(ctx)
     end_turn(ctx)
 
     assert [%{status: :ignored}] = stalled_offers(ctx)
@@ -157,6 +171,7 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
 
     main_id = ctx.main.id
     refute_received {:agent_message, ^main_id, _}
+    refute_received {:agent_dispatch, ^main_id, _, _}
     assert [%{status: :undelivered}] = stalled_offers(ctx)
   end
 

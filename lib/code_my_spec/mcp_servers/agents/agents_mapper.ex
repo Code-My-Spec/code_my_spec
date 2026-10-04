@@ -117,6 +117,18 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  def replied(agent_id, :queued) do
+    Response.tool()
+    |> Response.text(
+      "Agent: #{agent_id}\n\nQueued. The agent will receive this at its next turn boundary."
+    )
+  end
+
+  def replied(agent_id, :started) do
+    Response.tool()
+    |> Response.text("Agent: #{agent_id}\n\nDelivered. The agent has started its turn.")
+  end
+
   def replied(agent_id, reply) do
     Response.tool()
     |> Response.text("""
