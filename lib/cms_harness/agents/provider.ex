@@ -104,6 +104,12 @@ defmodule CmsHarness.Agents.Provider do
   #
   # `workdir: working_copy`, as for claude-code: left unset, `codex exec` runs
   # in Alloy's temp dir holding only `prompt.txt` (5001c099).
+  #
+  # `ignore_user_config`: the home lends its login, not its owner's setup. Its
+  # `config.toml` carried plugins and MCP servers (~2.5k input tokens on every
+  # call), an auto-review approver (203 reviewer threads on two agents in a
+  # day) and a default model. The model is ours to set, from the agent's own
+  # settings above; without one, Codex's default.
   def options("openai-codex", credential, opts) do
     {:ok,
      [
@@ -113,6 +119,7 @@ defmodule CmsHarness.Agents.Provider do
             model: Keyword.get(opts, :model),
             workdir: Keyword.get(opts, :working_copy),
             codex_home: codex_home(credential),
+            ignore_user_config: true,
             timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
           }}
      ]}
