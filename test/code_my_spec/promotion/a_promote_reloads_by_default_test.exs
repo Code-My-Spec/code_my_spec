@@ -144,7 +144,10 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
 
       assert {:ok, %{version: "0.1.1", deployment: %{action: :reload}}} = result
       {_root, files} = head_commit_files()
-      assert files == ["app.ex"], "main's HEAD is the promoted commit; nothing is committed on top"
+
+      assert files == ["app.ex"],
+             "main's HEAD is the promoted commit; nothing is committed on top"
+
       assert_receive {:app_verb, :reload_app}, 2_000
     end
   end
