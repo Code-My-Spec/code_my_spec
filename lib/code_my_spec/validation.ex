@@ -107,31 +107,10 @@ defmodule CodeMySpec.Validation do
   reads what runs already persisted. A spec that needs findings lands them as
   an analysis run first, and only then stops.
   """
-  # Recorded analyzer output used to ride along on a stop, which made the stop
-  # create runs. Named here so a caller still passing them fails loudly instead
-  # of quietly asserting a block that no longer comes.
-  @analysis_opts [
-    :compile_output_file,
-    :credo_output_file,
-    :exunit_output_file,
-    :spex_output_file,
-    :await
-  ]
-
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
           | {:error, String.t(), String.t() | nil}
   def validate_stop(%Scope{} = scope, task, opts \\ []) do
-    case Keyword.take(opts, @analysis_opts) do
-      [] ->
-        :ok
-
-      supplied ->
-        raise ArgumentError,
-              "a stop does not take analysis options (#{inspect(Keyword.keys(supplied))}); " <>
-                "land the run first, then stop"
-    end
-
     start = System.monotonic_time(:millisecond)
 
     result = do_validate_stop(scope, task, opts)
