@@ -56,8 +56,10 @@ defmodule CodeMySpec.Promotion do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.AcceptanceCriteria,
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Files,
@@ -73,9 +75,11 @@ defmodule CodeMySpec.Promotion do
 
   require Logger
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.BddSpecs
   alias CodeMySpec.BootVersion
   alias CodeMySpec.Files
   alias CodeMySpec.Problems.ProblemRepository
@@ -448,19 +452,55 @@ defmodule CodeMySpec.Promotion do
   # it refuses rather than latching on an empty list.
   defp story_spex_pass(_scope, nil, _named), do: :ok
 
+  # Story 983, criteria 1895/1896/1905: a story's own first-ever certifying
+  # run tolerates a red, never-latched criterion -- it is unfinished work,
+  # not a regression, and there is nothing yet to protect. The moment any
+  # criterion on the story HAS been latched by an earlier certifying run,
+  # that tolerance is gone: a red criterion, new or regressed, refuses like
+  # today. Either way, a clean run latches every criterion that just went
+  # green (1896) -- the counterpart to the story-wide `specs_ready` latch,
+  # now earned one criterion at a time.
   defp story_spex_pass(scope, story, named) do
+    live_criteria =
+      scope
+      |> AcceptanceCriteria.list_all_story_criteria(story.id)
+      |> Enum.reject(& &1.retired_at)
+
+    # A criterion's own path counts even before any file naming it has been
+    # synced -- otherwise a brand-new criterion's red spex has nowhere to be
+    # "failing" and certifies by omission.
     paths =
       scope
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
+      |> MapSet.union(MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
 
     failing =
       scope
       |> ProblemRepository.list_project_problems(source: "spex")
       |> Enum.filter(&MapSet.member?(paths, &1.file_path))
 
-    spex_verdict(story, paths, failing, named)
+    if failing != [] and not Enum.any?(live_criteria, & &1.latched_at) do
+      latch_green_criteria(scope, story, live_criteria, failing)
+      :ok
+    else
+      with :ok <- spex_verdict(story, paths, failing, named) do
+        latch_green_criteria(scope, story, live_criteria, failing)
+      end
+    end
+  end
+
+  defp latch_green_criteria(scope, story, live_criteria, failing) do
+    failing_paths = MapSet.new(failing, & &1.file_path)
+
+    live_criteria
+    |> Enum.each(fn criterion ->
+      if is_nil(criterion.latched_at) and
+           not MapSet.member?(failing_paths, BddSpecs.spec_file_path(story, criterion)) do
+        AcceptanceCriteria.latch_criterion(scope, criterion)
+      end
+    end)
   end
 
   # The running copy's HEAD, which its spex run has to answer for, and the

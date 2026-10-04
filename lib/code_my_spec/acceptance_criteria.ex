@@ -132,6 +132,25 @@ defmodule CodeMySpec.AcceptanceCriteria do
     end
   end
 
+  @doc """
+  Unlatches a criterion directly, as a rewritten spex would (story 983,
+  criterion 1897). The counterpart to `latch_criterion/2`.
+  """
+  def unlatch_criterion(%Scope{} = scope, %Criterion{} = criterion) do
+    case impl().unlatch_criterion(scope, criterion) do
+      {:ok, unlatched} = ok ->
+        broadcast(scope, {:updated, unlatched})
+        ok
+
+      other ->
+        other
+    end
+  end
+
+  @doc "Every latched, live criterion, project-wide, with its story preloaded."
+  @spec list_latched_criteria(Scope.t()) :: [Criterion.t()]
+  def list_latched_criteria(%Scope{} = scope), do: impl().list_latched_criteria(scope)
+
   @doc "A story's criteria, retired ones included."
   def list_all_story_criteria(%Scope{} = scope, story_id),
     do: impl().list_all_story_criteria(scope, story_id)

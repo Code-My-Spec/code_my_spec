@@ -173,10 +173,18 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
 
   defp restart_specs_chain_on_move(other, _scope, _criterion), do: other
 
+  # Retiring drops the criterion's own latch (`Criterion.retire_changeset/1`)
+  # and, same as adding or restoring one, restarts the story's `specs_ready`
+  # chain -- a certified stamp said "every live criterion is latched", and
+  # that stopped being true the moment this one left coverage latched or not.
   @spec retire_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def retire_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
-    do: criterion |> Criterion.retire_changeset() |> Repo.update()
+  def retire_criterion(%Scope{active_project: %{id: project_id}} = scope, %Criterion{project_id: project_id} = criterion) do
+    criterion
+    |> Criterion.retire_changeset()
+    |> Repo.update()
+    |> restart_specs_chain(scope, Repo.get!(Story, criterion.story_id))
+  end
 
   def retire_criterion(_scope, _criterion), do: {:error, :cross_project}
 
@@ -186,6 +194,32 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     do: criterion |> Criterion.latch_changeset() |> Repo.update()
 
   def latch_criterion(_scope, _criterion), do: {:error, :cross_project}
+
+  @spec unlatch_criterion(Scope.t(), Criterion.t()) ::
+          {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
+  def unlatch_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
+    do: criterion |> Criterion.unlatch_changeset() |> Repo.update()
+
+  def unlatch_criterion(_scope, _criterion), do: {:error, :cross_project}
+
+  @doc """
+  Every latched, live criterion, project-wide, with its story preloaded
+  (story 983, criteria 1898-1901, 1906). What the stop hook and the gate
+  read instead of a story-wide `specs_ready` latch: a red spex blocks only
+  where the criterion whose spec it is has itself gone green on a
+  certifying run before. The caller derives each one's path
+  (`BddSpecs.spec_file_path/2`) rather than reading `spec_path` directly --
+  that column is often unset until a real sync binds it.
+  """
+  @spec list_latched_criteria(Scope.t()) :: [Criterion.t()]
+  def list_latched_criteria(%Scope{active_project_id: project_id}) do
+    from(c in Criterion,
+      where: c.project_id == ^project_id,
+      where: not is_nil(c.latched_at) and is_nil(c.retired_at)
+    )
+    |> Repo.all()
+    |> Repo.preload(:story)
+  end
 
   # Coming back is a criterion arriving on its story, so the story restarts
   # the same way it does for a new one.

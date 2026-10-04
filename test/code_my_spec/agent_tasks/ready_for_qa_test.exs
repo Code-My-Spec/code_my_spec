@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
@@ -149,10 +150,16 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     assert dispatched_sources() == [], "a certified commit's runs are reused, not restarted"
   end
 
-  test "the story's own red spex refuse it" do
+  # Story 983, criterion 1896: a never-latched criterion's red spex is
+  # tolerated on a story's first certifying run, so this now needs a
+  # criterion already latched before a red spex refuses again.
+  test "the story's own red spex refuse it, once a criterion is already latched" do
     %{scope: scope, story: story} = a_copy()
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     path = spec(scope, story)
+
+    [criterion | _] = AcceptanceCriteria.list_all_story_criteria(scope, story.id)
+    {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",

@@ -4271,10 +4271,14 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is what `GetStory` shows the agent, which is the number.
+  # `criterion_id` is either a real criterion's own database id (a struct
+  # from `story.criteria`) or the number `GetStory` shows the agent under
+  # the same key — matching on both is what lets either caller through.
   def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
-    criterion = Enum.find(story.criteria, &(&1.number == criterion_id))
+
+    criterion =
+      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
 
     unless criterion do
       raise ArgumentError,
