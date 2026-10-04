@@ -97,6 +97,7 @@ defmodule CodeMySpec do
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
       CodeMySpec.StaticAnalysis,
+      CodeMySpec.StoryReconcile,
       CodeMySpec.Tags,
       CodeMySpec.TaskHelp,
       CodeMySpec.TaskOwner,
