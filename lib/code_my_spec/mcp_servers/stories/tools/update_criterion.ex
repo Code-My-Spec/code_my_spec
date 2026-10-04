@@ -1,6 +1,10 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   @moduledoc """
-  Updates the description of an existing acceptance criterion.
+  Rewords an acceptance criterion.
+
+  A criterion's wording is fixed once created: this retires the existing
+  criterion under its own number and creates a new one on the same story
+  carrying the new wording, rather than changing the old one in place.
 
   Cannot update verified (locked) criteria - they are protected from changes.
   Use get_story to see criterion numbers and their verification status.
@@ -11,6 +15,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :criterion_number, :integer,
@@ -26,11 +31,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
          criterion when not is_nil(criterion) <-
            AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          :ok <- check_not_verified(criterion),
-         {:ok, updated} <-
-           AcceptanceCriteria.update_criterion(scope, criterion, %{
+         story when not is_nil(story) <-
+           Stories.get_story(scope, criterion.story_id),
+         {:ok, _retired} <- AcceptanceCriteria.retire_criterion(scope, criterion),
+         {:ok, reworded} <-
+           AcceptanceCriteria.create_criterion(scope, story, %{
              description: params.description
            }) do
-      {:reply, StoriesMapper.criterion_updated_response(updated), frame}
+      {:reply, StoriesMapper.criterion_reworded_response(reworded, criterion, story), frame}
     else
       nil ->
         {:reply, StoriesMapper.criterion_not_found_error(), frame}

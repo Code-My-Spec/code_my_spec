@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
   end
 
   describe "UpdateCriterion" do
-    test "updates criterion description" do
+    test "retires the old criterion and creates a new one with the updated description" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{title: "Test Story"})
 
@@ -62,8 +62,20 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CriterionToolsTest do
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
 
-      assert content =~ "Criterion updated"
+      assert content =~ "retired"
       assert content =~ "Updated description"
+
+      original = AcceptanceCriteria.get_criterion_by_number(scope, criterion.number)
+      assert original.description == "Original"
+      assert original.retired_at
+
+      new_numbers =
+        scope
+        |> AcceptanceCriteria.list_story_criteria(story.id)
+        |> Enum.map(& &1.number)
+
+      refute criterion.number in new_numbers
+      assert Enum.any?(new_numbers, &(&1 != criterion.number))
     end
 
     test "prevents updating verified criterion" do
