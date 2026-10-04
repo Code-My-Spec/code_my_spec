@@ -528,42 +528,6 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  @doc """
-  `in_flight/1`, each source marked when it is still waiting for a machine slot
-  rather than executing (bf627680). Only the ledger knows; a locally executed
-  project's sources are named plainly.
-  """
-  @spec in_flight_described(Scope.t()) :: [String.t()]
-  def in_flight_described(%Scope{} = scope) do
-    queued =
-      case remote_executor(scope) do
-        {:ok, _pid} -> RunsRepository.queued_sources(scope)
-        :none -> MapSet.new()
-      end
-
-    for source <- in_flight(scope),
-        do: if(MapSet.member?(queued, source), do: "#{source} (queued for a slot)", else: source)
-  end
-
-  @doc """
-  When each in-flight source started, where that is knowable.
-
-  Only the ledger records a start time, so this answers `%{}` for a locally
-  executed project — `ProjectServer.in_flight/1` reports names alone. Callers
-  treat a missing entry as "running, for an unknown length of time" rather than
-  as not running; `in_flight/1` remains the answer to *whether*.
-
-  The light harness is the case this exists for, and there the ledger is the
-  record by definition.
-  """
-  @spec in_flight_since(Scope.t()) :: %{String.t() => DateTime.t()}
-  def in_flight_since(%Scope{} = scope) do
-    case remote_executor(scope) do
-      {:ok, _pid} -> RunsRepository.running_since(scope)
-      :none -> %{}
-    end
-  end
-
   @doc "Whether an agent has a run it requested still in flight on a working copy."
   @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
   defdelegate awaiting_runs?(scope, working_copy_id, agent_id), to: RunsRepository

@@ -43,6 +43,19 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
     scenario "A failing spec is counted in the coder's turn-end menu and not in main's" do
       given_ :synced_context_component
 
+      # The failing spec the recorded run names. A finding on a file that is
+      # not on disk is cleared by the next sync, which every stop runs.
+      given_ "the failing spec is in the working copy", context do
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            "test/spex/example_context_spex.exs",
+            "defmodule ExampleContextSpex do\nend\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "a continuous coding agent and a continuous main agent on a working copy", context do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
