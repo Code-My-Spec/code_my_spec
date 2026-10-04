@@ -1054,11 +1054,12 @@ package-plugin:
     @echo "Diff vs source: diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec"
     @echo "Sanity check:   grep -rn 4004 release/codemyspec-extension   # should be empty"
 
-# Push the version tag a promotion put on HEAD — triggers the marketplace release CI.
+# Release the web app: deploy the promoted commit HEAD is on to production.
 #
-# The version is git's (John, 2026-10-04): a promotion tags the certified commit
-# `vX.Y.Z` and commits nothing, and mix.exs and plugin.json read the tag at
-# build time. So a release is pushing a tag that already exists, from main.
+# Our own release, not CodeMySpec's: promotion tags the certified commit
+# vX.Y.Z and stops there (John, 2026-10-04). This releases the web app only.
+# Plugin and harness releases are run by hand (release-extension.yml, dispatch).
+# Pushing the tag stays a separate, manual step.
 release:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1071,9 +1072,7 @@ release:
 
     # `origin/main` by name, not `@{u}`. The upstream of the current branch is
     # whatever that branch tracks — on a worktree branch that is often itself —
-    # so the check could pass against a branch main has never seen. A tag is
-    # permanent and points at one commit; the check that guards it names the
-    # same ref the message does.
+    # so the check could pass against a branch main has never seen.
     # `-c fetch.recurseSubmodules=no`: from a worktree a plain fetch also tries
     # `.code_my_spec` and fails even when `origin` itself would succeed.
     git -c fetch.recurseSubmodules=no fetch origin main --quiet
@@ -1083,27 +1082,29 @@ release:
       exit 1
     fi
 
-    git push origin "$tag"
+    command -v flyctl >/dev/null || { echo "flyctl is not installed" >&2; exit 1; }
+
+    # The image has no .git, so the version goes in as a build arg.
+    version=$(scripts/version.sh)
+    echo "→ deploying $tag (version $version) to production"
+    flyctl deploy --remote-only -c fly.prod.toml --build-arg CMS_VERSION="$version"
     echo
-    echo "Pushed $tag. CI:"
-    echo "  https://github.com/Code-My-Spec/code_my_spec/actions/workflows/release-extension.yml"
-    echo "Marketplace:"
-    echo "  https://github.com/Code-My-Spec/plugins"
+    echo "Released $tag. The tag is still local; push it yourself if you want it on origin:"
+    echo "  git push origin $tag"
 
 # The CI pipeline's macOS-only half, run by hand — for when release-extension.yml
 # itself cannot run (found live: an org Actions spending cap failed every build
 # job in 7s, on both v2.0.4 and v2.0.5, silently — the run "completed" and
 # looked like nothing had gone wrong until someone read the annotation).
 #
-# This does not replace `just release`: no Windows/Linux tarballs, no MSI, no
+# This does not replace the dispatched workflow: no Windows/Linux tarballs, no MSI, no
 # Antigravity/Codex catalogs beyond what packaging already produces. It exists
 # to unblock exactly the two things that were actually load-bearing that night —
 # a client stuck on a stale plugin version could not talk to a server already
 # moved forward, and Homebrew had nothing newer to offer either — without
 # waiting on a billing fix.
 #
-# Requires `HEAD` at the tag `just release` already pushed (run that first),
-# and admin access to both
+# Requires `HEAD` at a pushed vX.Y.Z tag, and admin access to both
 # Code-My-Spec/plugins and Code-My-Spec/homebrew-tap — the same access the
 # CI's repo-scoped tokens have, here standing in as whoever runs this.
 # Manual macOS-only substitute for release-extension.yml when its CI can't run.
