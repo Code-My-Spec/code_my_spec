@@ -7,7 +7,7 @@ defmodule CodeMySpec.AgentTasks.IssueQa do
   coder and keeps the team bound to it.
   """
 
-  alias CodeMySpec.Issues
+  alias CodeMySpec.{Issues, Paths}
 
   def dispatch(_node) do
     "Test the fix for the issue your team is bound to, then call " <>
@@ -36,6 +36,11 @@ defmodule CodeMySpec.AgentTasks.IssueQa do
     **#{issue.title}** [#{issue.severity}]
 
     #{issue.description}
+
+    Read `#{Paths.qa_plan()}` first -- it has this project's testing procedure \
+    (app overview, tools registry, seed strategy), including anything specific \
+    to how a fix here needs to be verified (for example, which address serves \
+    this working copy's own code versus main's shared one).
 
     Verify the fix, then call `submit_issue_qa_result` with issue_id "#{issue.id}" \
     and task_id "#{task.id}". A passing attempt resolves the issue and frees your \

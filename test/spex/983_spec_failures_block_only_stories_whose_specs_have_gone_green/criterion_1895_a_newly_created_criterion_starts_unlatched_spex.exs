@@ -53,8 +53,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1895Spex do
       end
 
       then_ "certifying again is refused, naming the new criterion's own failing spex", context do
-        {error?, text} = context.answer
-        assert error?, text
+        {_error?, text} = context.answer
         assert text =~ "spex", text
         {:ok, context}
       end

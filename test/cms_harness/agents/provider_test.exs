@@ -78,6 +78,17 @@ defmodule CmsHarness.Agents.ProviderTest do
                "first turn on a model that account does not serve."
     end
 
+    test "a codex agent borrows the home's login, not its config" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+
+      assert config.codex_home == Path.expand("~/.codex")
+
+      assert config.ignore_user_config,
+             "the home's config.toml brings its owner's plugins, MCP servers, approval " <>
+               "reviewer and default model to every call"
+    end
+
     test "a codex agent uses the model it was given" do
       {:ok, opts} = Provider.options("openai-codex", %{}, model: "gpt-5.6-terra")
       {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)

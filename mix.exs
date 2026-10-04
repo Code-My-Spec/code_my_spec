@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "2.0.354",
+      version: version(),
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :harness, :desktop],
@@ -95,6 +95,52 @@ defmodule CodeMySpec.MixProject do
   # Modules that `use` the desktop-only `desktop` dependency.
   defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # The version is git's (John, 2026-10-04): a promotion tags the commit the gate
+  # certified and commits nothing, so there is no literal to bump here.
+  #
+  #   * on a `vX.Y.Z` tag: "X.Y.Z"
+  #   * N commits past it: "X.Y.Z+N.gSHA" — build metadata, so it still parses
+  #     and sorts with the release it came from
+  #   * `CMS_VERSION` overrides both, for builds with no `.git` (the Docker image)
+  #   * no git, or no tag reachable: "0.0.0-dev"
+  defp version do
+    case System.get_env("CMS_VERSION") do
+      blank when blank in [nil, ""] -> git_version() || "0.0.0-dev"
+      version -> version
+    end
+  end
+
+  defp git_version do
+    args = ["describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*.[0-9]*"]
+
+    case System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true) do
+      {out, 0} -> out |> String.trim() |> from_describe()
+      _ -> nil
+    end
+  rescue
+    ErlangError -> nil
+  end
+
+  defp from_describe(described) do
+    case Regex.run(~r/^v(\d+\.\d+\.\d+)-(\d+)-(g[0-9a-f]+)$/, described) do
+      [_, version, "0", _sha] -> version
+      [_, version, count, sha] -> "#{version}+#{count}.#{sha}"
+      nil -> nil
+    end
+  end
+
+  defp drop_stale_app(_args) do
+    app = Path.join(Mix.Project.compile_path(), "code_my_spec.app")
+
+    with {:ok, [{:application, _app, properties}]} <- :file.consult(app),
+         vsn when is_list(vsn) <- properties[:vsn],
+         true <- List.to_string(vsn) != version() do
+      File.rm(app)
+    end
+
+    :ok
+  end
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
   #
@@ -368,6 +414,11 @@ defmodule CodeMySpec.MixProject do
 
   defp aliases do
     [
+      # The version comes from git, and `compile.app` rewrites the `.app` only
+      # when an mtime moves — a new tag moves none, so the running app would
+      # report the version it was first compiled at. A stale `.app` is dropped
+      # first so it is regenerated with the current one.
+      compile: [&drop_stale_app/1, "compile"],
       # The migration check first, because `mix spex` loads no test helper and
       # therefore never ran it. A stale worktree database surfaced as
       # `ERROR 42703 (undefined_column)` inside a `given_` step, naming no

@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
   import CodeMySpecSpex.PromotionHelpers
   import CodeMySpecSpex.ReadyForQaHelpers
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
@@ -35,12 +36,11 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
         [first] = Enum.filter(story.criteria, &(&1.description == "It works"))
         [second] = Enum.reject(story.criteria, &(&1.description == "It works"))
 
-        :ok =
-          write(
-            context.agent_root,
-            Fixtures.spec_file_path(story, second),
-            passing_spex(second)
-          )
+        second_path = Fixtures.spec_file_path(story, second)
+
+        :ok = write(context.agent_root, second_path, passing_spex(second))
+        :ok = Environments.write_file(context.environment, second_path, passing_spex(second))
+        :ok = Fixtures.sync_changed(context.scope)
 
         context = analyzers_are_current(context)
 
@@ -59,6 +59,8 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
       when_ "the second criterion's own spex file is rewritten", context do
         path = Fixtures.spec_file_path(context.story, context.second)
         :ok = write(context.agent_root, path, rewritten_spex(context.second))
+        :ok = Environments.write_file(context.environment, path, rewritten_spex(context.second))
+        :ok = Fixtures.sync_changed(context.scope)
         context = analyzers_are_current(context)
         {:ok, context}
       end
@@ -80,7 +82,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
     defmodule CodeMySpecSpex.Story983.SecondCriterion#{criterion.id}Spex do
       use CodeMySpecSpex.Case
 
-      spex \"it also works on Tuesdays\", criterion: #{criterion.id} do
+      spex \"it also works on Tuesdays\", criterion: #{criterion.number} do
         scenario \"the criterion holds\" do
           then_ \"it succeeds\" do
             assert 1 == 1
@@ -97,7 +99,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
     defmodule CodeMySpecSpex.Story983.SecondCriterion#{criterion.id}Spex do
       use CodeMySpecSpex.Case
 
-      spex \"it also works on Tuesdays, under a revised contract\", criterion: #{criterion.id} do
+      spex \"it also works on Tuesdays, under a revised contract\", criterion: #{criterion.number} do
         scenario \"the revised rule holds\" do
           then_ \"it succeeds under the new expectation\" do
             assert 2 == 2

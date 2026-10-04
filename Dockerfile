@@ -64,6 +64,11 @@ RUN mix local.hex --force \
 # set build ENV
 ENV MIX_ENV="prod"
 
+# The version is git's, and the image carries no history (.dockerignore keeps
+# .git out): CI computes it and passes it in. Empty means "0.0.0-dev".
+ARG CMS_VERSION=""
+ENV CMS_VERSION=${CMS_VERSION}
+
 # install mix dependencies
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only $MIX_ENV
