@@ -75,6 +75,10 @@ jobs:
           restore-keys: desktop-mix-${{ runner.os }}-${{ env.OTP_VERSION }}-
 
       - name: Build the .dmg
+        env:
+          # Baked into config/desktop.exs at build time (CodeMySpecDesktop.OAuthClients).
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           export DESKTOP_HOST_BINARY="$HOME/webview-host/DesktopWebView"
           erl -noshell -eval 'io:format("OTP ~s at ~s~n", [erlang:system_info(otp_release), code:root_dir()]), halt().'
@@ -164,6 +168,10 @@ jobs:
           ORT_VERSION: "1.19.2"
 
       - name: Build the installer
+        env:
+          # Baked into config/desktop.exs at build time (CodeMySpecDesktop.OAuthClients).
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           export DESKTOP_HOST_BINARY="$HOME/webview-host/DesktopWebView.exe"
           mix deps.get
