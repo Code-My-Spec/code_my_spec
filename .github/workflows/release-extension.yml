@@ -53,6 +53,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # windows-latest's image reports ImageOS=win25-vs2026, which setup-beam
       # can't map. Pin it to the base label so it resolves the Windows build.
@@ -136,9 +138,10 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         run: |
-          # Read from mix.exs (robust for both tag pushes and workflow_dispatch,
+          # The version is git's (robust for both tag pushes and workflow_dispatch,
           # where GITHUB_REF is a branch and would inject slashes into sed).
-          VERSION=$(grep -m1 'version:' mix.exs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          # MSI ProductVersion takes X.Y.Z only, so build metadata is dropped.
+          VERSION=$(scripts/version.sh | sed -E 's/\+.*//')
           REL="$GITHUB_WORKSPACE/_build/harness/rel/cms_harness"
           # GITHUB_WORKSPACE is D:\a\... on Windows; backslashes in a sed
           # replacement get escape-interpreted (\a -> BEL 0x07) and corrupt the

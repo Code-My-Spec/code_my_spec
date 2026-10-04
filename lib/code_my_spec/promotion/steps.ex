@@ -590,9 +590,8 @@ defmodule CodeMySpec.Promotion.Steps do
   #
   # So a no-op stamps with the version main already carries, which is the
   # honest answer to "which promotion put this on main" — for 937 that is
-  # 0.3.3, the merge that did carry it. Nothing is minted and nothing is
-  # committed: `mix.exs` is not rewritten, no tag moves, `version` stays nil,
-  # and the log line still reads "version none".
+  # 0.3.3, the merge that did carry it. Nothing is minted: no tag is added,
+  # `version` stays nil, and the log line still reads "version none".
   #
   # e1174640 closed the exposure this used to widen: a promote now stamps only
   # the story it names (`Stories.mark_story_promoted/4`), not every specs-ready
@@ -679,7 +678,8 @@ defmodule CodeMySpec.Promotion.Steps do
   # (or a transient git failure) must not take the merge down over a value
   # that only ever feeds an optimization, never a correctness check.
   @doc """
-  The checkout's HEAD and the version its `mix.exs` carries, moving nothing.
+  The checkout's HEAD and its version — the nearest `vX.Y.Z` tag, else the
+  literal in `mix.exs` — moving nothing.
 
   What a promote from the running copy stamps a story with: the merge path's
   rule for a no-op merge, without the merge (e1174640).

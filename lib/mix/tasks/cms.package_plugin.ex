@@ -35,7 +35,7 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
       end
 
     %{extension_dir: out, plugin_dest: plugin} =
-      PackageExtension.package_plugin_files(source, extension_dir)
+      PackageExtension.package_plugin_files(source, extension_dir, Mix.Project.config()[:version])
 
     Mix.shell().info("")
     Mix.shell().info("Plugin laid out at: #{out}")

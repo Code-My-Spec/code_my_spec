@@ -320,9 +320,9 @@ defmodule CodeMySpec.Promotion do
       stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
       notify_team_free(scope, from.id, story)
 
-      # `head` is past the version bump, which is what the app will serve;
-      # `after` is the merge alone. A harness older than `head` sends only the
-      # latter.
+      # `head` and `after` are the same commit now that a promotion tags rather
+      # than commits a version bump; both are read so a result from either
+      # shape works.
       expect = %{
         from: Map.get(merge_result, :before),
         to: Map.get(merge_result, :head) || Map.get(merge_result, :after)
@@ -406,7 +406,7 @@ defmodule CodeMySpec.Promotion do
   # The promoted story alone, latched and stamped in one write with the
   # promote's commit (e1174640). No other story is touched: a project-wide
   # sweep stamped stories whose code sat unmerged on a different copy. `nil`
-  # (no `mix.exs` to read a version from) latches without stamping.
+  # (no tag and no `mix.exs` version to count from) latches without stamping.
   #
   # A write failure is logged and swallowed rather than turned into a
   # promotion failure: the merge is real and already on disk by the time this

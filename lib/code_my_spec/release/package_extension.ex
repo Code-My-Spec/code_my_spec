@@ -21,10 +21,13 @@ defmodule CodeMySpec.Release.PackageExtension do
   Pure file I/O — no binary, no GitHub. `mix cms.package_plugin` runs it, in
   CI and locally to inspect what will ship.
 
+  `version` is stamped into each packaged `plugin.json`: the version is git's,
+  so the source manifests carry none worth shipping (John, 2026-10-04).
+
   Returns `%{extension_dir: ..., plugin_dest: ...}`.
   """
   # sobelow_skip ["Traversal"]
-  def package_plugin_files(source_extension, extension_dir) do
+  def package_plugin_files(source_extension, extension_dir, version) do
     plugin_dest = Path.join([extension_dir, "plugins", @plugin_slug])
 
     File.rm_rf!(extension_dir)
@@ -35,6 +38,9 @@ defmodule CodeMySpec.Release.PackageExtension do
 
     rewrite_dev_port(plugin_dest)
     log("Rewrote dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
+
+    stamp_version(Path.join([plugin_dest, ".claude-plugin", "plugin.json"]), version)
+    log("Stamped plugin.json with v#{version}")
 
     create_marketplace_json(extension_dir, plugin_dest)
     log("Created marketplace.json")
@@ -58,9 +64,17 @@ defmodule CodeMySpec.Release.PackageExtension do
     package_antigravity_files(source_antigravity, extension_dir)
 
     source_codex = Path.join(Path.dirname(source_extension), "codex")
-    package_codex_files(source_codex, extension_dir)
+    package_codex_files(source_codex, extension_dir, version)
 
     %{extension_dir: extension_dir, plugin_dest: plugin_dest}
+  end
+
+  # sobelow_skip ["Traversal"]
+  defp stamp_version(manifest_path, version) do
+    with {:ok, content} <- File.read(manifest_path),
+         {:ok, %{} = json} <- Jason.decode(content) do
+      File.write!(manifest_path, Jason.encode!(Map.put(json, "version", version), pretty: true))
+    end
   end
 
   @doc """
@@ -177,7 +191,7 @@ defmodule CodeMySpec.Release.PackageExtension do
   `codex plugin marketplace add #{@github_repo}`.
   """
   # sobelow_skip ["Traversal"]
-  def package_codex_files(source_codex, extension_dir) do
+  def package_codex_files(source_codex, extension_dir, version) do
     if File.dir?(source_codex) do
       codex_dest = Path.join([extension_dir, "codex", @plugin_slug])
 
@@ -189,6 +203,8 @@ defmodule CodeMySpec.Release.PackageExtension do
 
       rewrite_dev_port(codex_dest)
       log("Rewrote Codex dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
+
+      stamp_version(Path.join([codex_dest, ".codex-plugin", "plugin.json"]), version)
 
       hook_script = Path.join([codex_dest, "bin", "hook"])
       if File.exists?(hook_script), do: File.chmod!(hook_script, 0o755)

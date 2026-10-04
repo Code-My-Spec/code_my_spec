@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # A stock OTP links dylibs the installer cannot relocate into the .app;
       # scripts/desktop_otp_macos.sh says why. Cached on the recipe itself.
@@ -106,6 +108,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # setup-beam can't map windows-latest's ImageOS (see release-extension.yml).
       - name: Pin ImageOS for setup-beam

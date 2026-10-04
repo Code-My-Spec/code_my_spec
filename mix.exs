@@ -105,7 +105,10 @@ defmodule CodeMySpec.MixProject do
   #   * `CMS_VERSION` overrides both, for builds with no `.git` (the Docker image)
   #   * no git, or no tag reachable: "0.0.0-dev"
   defp version do
-    System.get_env("CMS_VERSION") || git_version() || "0.0.0-dev"
+    case System.get_env("CMS_VERSION") do
+      blank when blank in [nil, ""] -> git_version() || "0.0.0-dev"
+      version -> version
+    end
   end
 
   defp git_version do

@@ -105,7 +105,7 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     result
   end
 
-  defp bump_commit_files do
+  defp head_commit_files do
     assert_received {:running_root, root}
     {root, root |> git!(["show", "--name-only", "--format=", "HEAD"]) |> String.split()}
   end
@@ -131,8 +131,8 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     refute_receive {:app_verb, :restart_app}, 200
   end
 
-  describe "the version bump every promote commits" do
-    test "in mix.exs is not itself a reason to restart" do
+  describe "the version a promote originates" do
+    test "is a tag, not a mix.exs commit, so it is no reason to restart" do
       result =
         promote_a_change("app.ex",
           files: %{
@@ -143,8 +143,8 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
         )
 
       assert {:ok, %{version: "0.1.1", deployment: %{action: :reload}}} = result
-      {_root, files} = bump_commit_files()
-      assert files == ["mix.exs"]
+      {_root, files} = head_commit_files()
+      assert files == ["app.ex"], "main's HEAD is the promoted commit; nothing is committed on top"
       assert_receive {:app_verb, :reload_app}, 2_000
     end
   end
