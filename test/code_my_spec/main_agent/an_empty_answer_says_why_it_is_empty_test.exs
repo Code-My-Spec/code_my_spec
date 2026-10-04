@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnEmptyAnswerSaysWhyItIsEmptyTest do
+defmodule CodeMySpec.Agents.Main.AnEmptyAnswerSaysWhyItIsEmptyTest do
   @moduledoc """
   Issue `2a809b93`. A narrowed read that matches nothing and a conversation that
   is genuinely empty both arrive at the mapper as `turns: []`, and they mean

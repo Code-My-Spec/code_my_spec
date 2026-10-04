@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.Digest do
+defmodule CodeMySpec.Agents.Main.Digest do
   @moduledoc """
   What the main agent is handed when the cadence wakes it.
 
@@ -22,10 +22,10 @@ defmodule CodeMySpec.MainAgent.Digest do
   """
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.Machinery
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.Machinery
+  alias CodeMySpec.Agents.Main.OpenQuestion
 
   # `off` is agents somebody turned off. Shown so the main agent leaves them
   # off; never part of `quiet?/1`, because an off agent is settled (39af5611).

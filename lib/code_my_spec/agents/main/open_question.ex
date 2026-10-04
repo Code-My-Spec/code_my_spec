@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.OpenQuestion do
+defmodule CodeMySpec.Agents.Main.OpenQuestion do
   @moduledoc """
   One question waiting, with who asked it and from where.
 
@@ -15,7 +15,7 @@ defmodule CodeMySpec.MainAgent.OpenQuestion do
   without the agent being wrong.
   """
 
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.Utils.MapAccess
 
   @type t :: %__MODULE__{

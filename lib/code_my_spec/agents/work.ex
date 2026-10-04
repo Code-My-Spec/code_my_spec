@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData

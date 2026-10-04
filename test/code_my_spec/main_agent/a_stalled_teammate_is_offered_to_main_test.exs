@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
+defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
   @moduledoc """
   Criterion 1756: a teammate-stalled notice to main is recorded as an offer,
   claimed when main acts on it with any tool call before its turn ends.
@@ -12,8 +12,8 @@ defmodule CodeMySpec.MainAgent.AStalledTeammateIsOfferedToMainTest do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Staffing
   alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.UnreachableMachine

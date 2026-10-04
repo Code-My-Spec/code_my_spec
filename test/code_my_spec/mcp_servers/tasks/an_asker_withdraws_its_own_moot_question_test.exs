@@ -104,7 +104,7 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
     {false, _} = call(%{question_id: ctx.request.id, reason: "moot"}, ctx.scope, ctx.coder.id)
 
     refute Enum.any?(
-             CodeMySpec.MainAgent.list_open_questions(ctx.scope),
+             CodeMySpec.Agents.Main.list_open_questions(ctx.scope),
              &(&1.id == ctx.request.id)
            )
 

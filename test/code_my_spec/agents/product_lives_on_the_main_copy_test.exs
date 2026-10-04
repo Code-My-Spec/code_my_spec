@@ -21,8 +21,8 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementDefinitionData

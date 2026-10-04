@@ -25,7 +25,7 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent.RestartRepository
+  alias CodeMySpec.Agents.Main.RestartRepository
   alias CodeMySpec.Repo
   alias CodeMySpecTest.RecordingAgentTransport
 

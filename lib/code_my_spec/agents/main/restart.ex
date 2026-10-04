@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.Restart do
+defmodule CodeMySpec.Agents.Main.Restart do
   @moduledoc """
   One restart the main agent performed, and what it was for.
 

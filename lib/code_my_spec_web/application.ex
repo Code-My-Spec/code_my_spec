@@ -156,14 +156,14 @@ defmodule CodeMySpecWeb.Application do
         # true for every project that had never stood down, including every one
         # with no timer at all; and the spex start the process themselves, so
         # they proved the loop and not the wiring.
-        {Registry, keys: :unique, name: CodeMySpec.MainAgent.CadenceRegistry},
-        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.MainAgent.CadenceSupervisor},
+        {Registry, keys: :unique, name: CodeMySpec.Agents.Main.CadenceRegistry},
+        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
         # And re-establish them after a restart, for the reason the watcher's
         # seeding gives: timers are in memory and a deploy lands mid-run.
         # `:temporary` on the same grounds — failing to seed is not a reason to
         # refuse to boot.
         Supervisor.child_spec(
-          {Task, &CodeMySpec.MainAgent.wake_active_projects/0},
+          {Task, &CodeMySpec.Agents.Main.wake_active_projects/0},
           id: :wake_active_projects,
           restart: :temporary
         ),

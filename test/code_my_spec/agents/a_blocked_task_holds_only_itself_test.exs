@@ -17,8 +17,8 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask

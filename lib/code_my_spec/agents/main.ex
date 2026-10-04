@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent do
+defmodule CodeMySpec.Agents.Main do
   @moduledoc """
   The agent that owns a project, and the view across everything working in it.
 
@@ -29,30 +29,6 @@ defmodule CodeMySpec.MainAgent do
   it here would put the judgement in two places.
   """
 
-  use Boundary,
-    top_level?: true,
-    deps: [
-      CodeMySpec.Agents,
-      CodeMySpec.Agents.RoleProfile,
-      CodeMySpec.Analysis,
-      CodeMySpec.Analysis.HarnessRegistry,
-      CodeMySpec.Configurations,
-      CodeMySpec.Conversations,
-      CodeMySpec.Devices,
-      CodeMySpec.Epics,
-      CodeMySpec.Faults,
-      CodeMySpec.Issues,
-      CodeMySpec.Notifications,
-      CodeMySpec.Problems,
-      CodeMySpec.Repo,
-      CodeMySpec.Requirements,
-      CodeMySpec.Stories,
-      CodeMySpec.Users.Scope,
-      CodeMySpec.Utils,
-      CodeMySpec.WorkingCopies
-    ],
-    exports: :all
-
   require Logger
 
   alias CodeMySpec.Agents
@@ -61,17 +37,17 @@ defmodule CodeMySpec.MainAgent do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
-  alias CodeMySpec.MainAgent.CheckInReport
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.GapRepository
-  alias CodeMySpec.MainAgent.Machinery
-  alias CodeMySpec.MainAgent.MachineryRepository
-  alias CodeMySpec.MainAgent.OpenQuestion
-  alias CodeMySpec.MainAgent.QuestionsRepository
-  alias CodeMySpec.MainAgent.RestartRepository
-  alias CodeMySpec.MainAgent.WorkRepository
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
+  alias CodeMySpec.Agents.Main.CheckInReport
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.GapRepository
+  alias CodeMySpec.Agents.Main.Machinery
+  alias CodeMySpec.Agents.Main.MachineryRepository
+  alias CodeMySpec.Agents.Main.OpenQuestion
+  alias CodeMySpec.Agents.Main.QuestionsRepository
+  alias CodeMySpec.Agents.Main.RestartRepository
+  alias CodeMySpec.Agents.Main.WorkRepository
   alias CodeMySpec.Notifications
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope

@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.Fixtures

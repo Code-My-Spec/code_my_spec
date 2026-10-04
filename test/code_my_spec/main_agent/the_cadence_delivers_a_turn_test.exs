@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
+defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
   @moduledoc """
   The cadence is for a continuous main only (John): each tick gives it exactly
   one turn, work or no work, carrying the check-in and its own work offer.
@@ -14,12 +14,12 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
-  alias CodeMySpec.MainAgent.CheckInReport
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.OpenQuestion
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
+  alias CodeMySpec.Agents.Main.CheckInReport
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Staffing

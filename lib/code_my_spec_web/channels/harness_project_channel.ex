@@ -59,7 +59,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project

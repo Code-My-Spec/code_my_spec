@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.GapRepository do
+defmodule CodeMySpec.Agents.Main.GapRepository do
   @moduledoc """
   Records what the main agent had to cover for, once per gap.
 
@@ -21,7 +21,7 @@ defmodule CodeMySpec.MainAgent.GapRepository do
 
   import Ecto.Query
 
-  alias CodeMySpec.MainAgent.CapabilityGap
+  alias CodeMySpec.Agents.Main.CapabilityGap
   alias CodeMySpec.Repo
 
   @doc """

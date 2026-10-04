@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
+defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
   @moduledoc """
   A fault that persists is reported once, not once per call that notices it.
 
@@ -33,7 +33,7 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.WorkingCopies
 
   @fault "The machinery is serving no tools"

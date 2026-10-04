@@ -48,7 +48,6 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.Issues,
-      CodeMySpec.MainAgent,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
@@ -57,7 +56,13 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.WorkingCopies,
+      CodeMySpec.Configurations,
+      CodeMySpec.Devices,
+      CodeMySpec.Epics,
+      CodeMySpec.Faults,
+      CodeMySpec.Notifications,
+      CodeMySpec.Problems
     ],
     exports: :all
 
@@ -86,7 +91,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Users.Scope

@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.Repo

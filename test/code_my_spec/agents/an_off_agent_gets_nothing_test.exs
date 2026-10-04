@@ -19,7 +19,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent

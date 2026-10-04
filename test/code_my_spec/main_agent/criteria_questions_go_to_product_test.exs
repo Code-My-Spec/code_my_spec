@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
+defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   @moduledoc """
   8c91d5bc. A coder's question about criterion 944 sat in the customer's queue.
 
@@ -166,7 +166,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       request = ask(ctx)
 
       {:ok, _} =
-        CodeMySpec.MainAgent.escalate_question(ctx.scope, request.id, "a product call")
+        CodeMySpec.Agents.Main.escalate_question(ctx.scope, request.id, "a product call")
 
       Map.merge(ctx, %{main: main, request: request})
     end

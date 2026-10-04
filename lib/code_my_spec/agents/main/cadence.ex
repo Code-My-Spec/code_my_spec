@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.Cadence do
+defmodule CodeMySpec.Agents.Main.Cadence do
   @moduledoc """
   Wakes a project's main agent on an interval, with the digest in hand.
 
@@ -43,12 +43,12 @@ defmodule CodeMySpec.MainAgent.Cadence do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Users.Scope
 
-  @registry CodeMySpec.MainAgent.CadenceRegistry
+  @registry CodeMySpec.Agents.Main.CadenceRegistry
 
   # -- the interval -----------------------------------------------------------
 
@@ -190,7 +190,7 @@ defmodule CodeMySpec.MainAgent.Cadence do
 
   def ensure_running(%Scope{} = scope) do
     case DynamicSupervisor.start_child(
-           CodeMySpec.MainAgent.CadenceSupervisor,
+           CodeMySpec.Agents.Main.CadenceSupervisor,
            {__MODULE__, cadence_scope(scope)}
          ) do
       {:ok, pid} -> {:ok, pid}
