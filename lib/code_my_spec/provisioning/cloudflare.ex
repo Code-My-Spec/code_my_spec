@@ -440,7 +440,11 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
         # Already there and already right. Marked as adopted so teardown leaves
         # it alone — a record that predates setup is the user's, not ours.
         %{"content" => ^content} = existing ->
-          if priority_matches?(existing, Keyword.get(opts, :priority)) do
+          proxy_matches =
+            not Keyword.has_key?(opts, :proxied) or
+              existing["proxied"] == Keyword.get(opts, :proxied)
+
+          if priority_matches?(existing, Keyword.get(opts, :priority)) and proxy_matches do
             {:ok, %{"result" => Map.put(existing, "__adopted__", true)}}
           else
             update_dns_record(scope, zone_id, existing["id"], name, content, opts)

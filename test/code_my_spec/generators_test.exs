@@ -386,8 +386,8 @@ defmodule CodeMySpec.GeneratorsTest do
       prod = File.read!(Path.join(dir, "config/deploy.yml"))
       uat = File.read!(Path.join(dir, "config/deploy.uat.yml"))
 
-      assert prod =~ ~r/servers:\s*\n\s*web:\s*\n\s*- example\.com/
-      assert uat =~ ~r/servers:\s*\n\s*web:\s*\n\s*- uat\.example\.com/
+      assert prod =~ ~r/servers:\s*\n\s*web:\s*\n\s*hosts:\s*\n\s*- example\.com/
+      assert uat =~ ~r/servers:\s*\n\s*web:\s*\n\s*hosts:\s*\n\s*- uat\.example\.com/
 
       # And the two are genuinely different deploys, not one file twice.
       assert prod =~ "service: my-app\n"

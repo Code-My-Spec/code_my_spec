@@ -29,7 +29,8 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
   defp fail(message),
     do: %{"success" => false, "errors" => [%{"message" => message}], "result" => nil}
 
-  defp zones_payload, do: ok([%{"id" => "z1", "name" => "example.com", "account" => %{"id" => @account}}])
+  defp zones_payload,
+    do: ok([%{"id" => "z1", "name" => "example.com", "account" => %{"id" => @account}}])
 
   describe "the confirmation gate" do
     # Criterion 7990. Registrations are non-refundable, so this must hold even
@@ -42,6 +43,7 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
       end)
 
       assert {:error, :confirmation_required} = Cloudflare.register_domain(@scope, "sams.com")
+
       assert {:error, :confirmation_required} =
                Cloudflare.register_domain(@scope, "sams.com", confirmed: false)
     end
@@ -148,10 +150,53 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
       assert {:ok, _} = Cloudflare.create_dns_record(@scope, "z1", "app.example.com", "1.2.3.4")
     end
 
+    test "ensure_dns_record disables proxying even when the address already matches" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(
+            conn,
+            200,
+            ok([
+              %{
+                "id" => "r1",
+                "name" => "telemetry.example.com",
+                "type" => "A",
+                "content" => "1.2.3.4",
+                "proxied" => true
+              }
+            ])
+          )
+
+        %{method: "PUT", request_path: path} = conn ->
+          assert path =~ "/dns_records/r1"
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          assert Jason.decode!(body)["proxied"] == false
+          json(conn, 200, ok(%{"id" => "r1", "proxied" => false}))
+
+        conn ->
+          flunk("unexpected request: #{conn.method}")
+      end)
+
+      assert {:ok, _} =
+               Cloudflare.ensure_dns_record(
+                 @scope,
+                 "z1",
+                 "telemetry.example.com",
+                 "1.2.3.4",
+                 proxied: false
+               )
+    end
+
     test "ensure_dns_record leaves an already-correct record alone" do
       stub(fn
         %{method: "GET"} = conn ->
-          json(conn, 200, ok([%{"id" => "r1", "name" => "app.example.com", "type" => "A", "content" => "1.2.3.4"}]))
+          json(
+            conn,
+            200,
+            ok([
+              %{"id" => "r1", "name" => "app.example.com", "type" => "A", "content" => "1.2.3.4"}
+            ])
+          )
 
         conn ->
           flunk("ensure_dns_record wrote when the record was already correct")
@@ -167,7 +212,11 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
     test "ensure_dns_record updates in place when the content differs" do
       stub(fn
         %{method: "GET"} = conn ->
-          json(conn, 200, ok([%{"id" => "r1", "name" => "example.com", "type" => "A", "content" => "9.9.9.9"}]))
+          json(
+            conn,
+            200,
+            ok([%{"id" => "r1", "name" => "example.com", "type" => "A", "content" => "9.9.9.9"}])
+          )
 
         %{method: "PUT", request_path: path} = conn ->
           assert path =~ "/dns_records/r1"

@@ -795,11 +795,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec trust_command(String.t()) :: String.t()
   def trust_command(host) do
-    config = ~s({"insecure-registries":["#{host}"]})
-
-    "mkdir -p /etc/docker && " <>
-      "(grep -qF #{shell_escape(host)} /etc/docker/daemon.json 2>/dev/null || " <>
-      "(echo #{shell_escape(config)} > /etc/docker/daemon.json && systemctl restart docker))"
+    CodeMySpec.Provisioning.HostBaseline.docker_command(host)
   end
 
   # `distribution` takes its backing store from the environment, and which
