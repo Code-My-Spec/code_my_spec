@@ -267,7 +267,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
             context do
         {:reply, answered, _} =
           AnswerNotification.execute(
-            %{id: context.original.question_id, answer: context.answer, basis: "record"},
+            %{
+              notification_id: context.original.question_id,
+              answer: context.answer,
+              basis: "record"
+            },
             context.main_frame
           )
 

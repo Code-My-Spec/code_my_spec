@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
 
         {:reply, answered, _} =
           AnswerNotification.execute(
-            %{id: old_id, answer: earlier_answer, basis: "record"},
+            %{notification_id: old_id, answer: earlier_answer, basis: "record"},
             main_frame
           )
 

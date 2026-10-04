@@ -170,7 +170,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
     {:reply, _answered, _frame} =
       AnswerNotification.execute(
         %{
-          id: Fixtures.question_id_from(response_text(asked)),
+          notification_id: Fixtures.question_id_from(response_text(asked)),
           answer: "Dunning emails go out",
           basis: "record",
           worked_around: @gap

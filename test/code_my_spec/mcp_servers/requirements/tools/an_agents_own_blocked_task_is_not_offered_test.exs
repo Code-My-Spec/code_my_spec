@@ -102,7 +102,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
     {:reply, listed, _} = ListNotifications.execute(%{}, main)
     assert text(listed) =~ request.id
 
-    {:reply, decided, _} = AnswerNotification.execute(%{id: request.id, decision: "allow"}, main)
+    {:reply, decided, _} =
+      AnswerNotification.execute(%{notification_id: request.id, decision: "allow"}, main)
+
     refute decided.isError, text(decided)
     {:reply, after_, _} = ListNotifications.execute(%{}, main)
     refute text(after_) =~ request.id

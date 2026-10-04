@@ -168,7 +168,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
         {:reply, answered, _} =
           AnswerNotification.execute(
             %{
-              id: context.original.question_id,
+              notification_id: context.original.question_id,
               answer: "Use the existing deployment policy",
               basis: "precedent",
               precedent_id: context.nested_id

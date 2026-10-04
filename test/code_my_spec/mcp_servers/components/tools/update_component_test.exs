@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponentTest do
       component = component_fixture(scope)
 
       params = %{
-        id: component.id,
+        component_id: component.id,
         name: "Updated Component Name",
         description: "Updated description"
       }
