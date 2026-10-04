@@ -114,6 +114,45 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       assert text =~ "not restarted when HEAD moves"
     end
 
+    # A first start that has not come up within its inline window answers
+    # `starting`; the server read that as an unexpected reply and failed the call.
+    test "a first start still booting comes back as starting, not an error", %{socket: socket} do
+      task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
+
+      assert_push "ensure_app_running", %{"ref" => ref}
+
+      answer(socket, "ensure_app_running_result", ref, %{
+        "status" => "ok",
+        "app_status" => "starting",
+        "app_url" => "http://127.0.0.1:51234",
+        "app_commit" => "abc123"
+      })
+
+      assert {:ok, %{status: "starting", url: "http://127.0.0.1:51234"}} = Task.await(task)
+    end
+
+    test "the tool reports a first start still booting as starting, not as a failure" do
+      scope = full_scope_fixture()
+      {:ok, _reply, socket} = join_as(scope)
+
+      frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
+      task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+
+      assert_push "ensure_app_running", %{"ref" => ref}
+
+      answer(socket, "ensure_app_running_result", ref, %{
+        "status" => "ok",
+        "app_status" => "starting",
+        "app_url" => "http://127.0.0.1:59303",
+        "app_commit" => "e6d1d8fc"
+      })
+
+      {:reply, response, _frame} = Task.await(task)
+
+      refute response.isError, response_text(response)
+      assert response_text(response) =~ "starting e6d1d8fc at http://127.0.0.1:59303"
+    end
+
     test "an error on the far side comes back as an error, not a crash", %{socket: socket} do
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 

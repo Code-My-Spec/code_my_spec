@@ -129,7 +129,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     assert_receive {:agent_dispatch, _id, _ref, message}, 2_000
 
-    assert message =~ "2 problems",
+    assert message =~ "2 blocking problems",
            """
            A run that found something new said nothing.
 
@@ -204,7 +204,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     assert id == agent.id, "the answer goes to the agent that started the run"
 
-    assert message =~ "no problems",
+    assert message =~ "no blocking problems",
            """
            A run the agent started came back green and said nothing.
 

@@ -212,6 +212,8 @@ defmodule CodeMySpec.Analysis.Alert do
     do: at |> DateTime.from_naive!("Etc/UTC") |> age()
 
   defp enforceable_problems(scope) do
-    Validation.enforceable(scope, Problems.list_project_problems(scope, []))
+    scope
+    |> Validation.enforceable(Problems.list_project_problems(scope, []))
+    |> then(&Validation.blockable(scope, &1))
   end
 end

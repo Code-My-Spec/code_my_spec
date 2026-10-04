@@ -31,7 +31,8 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
     test "reports starting immediately, then serving once the background watch catches up" do
       %{root: root} = app_instance_rig(probe: :down)
 
-      assert %{"status" => "ok", "app_status" => "starting"} = push_app_event("ensure_app_running")
+      assert %{"status" => "ok", "app_status" => "starting"} =
+               push_app_event("ensure_app_running")
 
       # The copy is genuinely still coming up — `probe: :down` above is the
       # scripted stand-in for "the port doesn't answer yet," not a crash. Once
@@ -56,8 +57,27 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
     end
   end
 
-  describe "an ordinary restart is unchanged" do
-    test "a copy that has already started once, and now never answers, still reports down within the old bounded wait" do
+  describe "an ordinary restart" do
+    # 181d5fdd: restart_app answered "down" after a fixed 15×1s for an app that
+    # served 30s later, and the agent restarted it again.
+    test "waits for a boot that outlasts the old fixed wait, and replies serving" do
+      %{root: root} = app_instance_rig(database_exists?: true)
+      assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("ensure_app_running")
+
+      # Longer than the old 15 attempts, then up.
+      FakeAppInstanceRunner.put_probes(List.duplicate(:down, 20))
+
+      assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("restart_app"),
+             "a booting app was reported down before it came up"
+
+      state = :sys.get_state(GenServer.whereis(AppInstance.via(root)))
+
+      assert state.first_start_deadline == nil,
+             "an ordinary restart must never enter the first-start ceiling path"
+    end
+
+    test "a copy that has already started once, and now never answers, reports down once its deadline passes" do
+      set_op_timeout(1_000)
       %{root: root} = app_instance_rig(database_exists?: true)
 
       # Establishes a real prior success — `commit` is only ever set once
@@ -70,7 +90,9 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
       assert %{"status" => "ok", "app_status" => "down"} = push_app_event("restart_app")
 
       state = :sys.get_state(GenServer.whereis(AppInstance.via(root)))
-      assert state.first_start_deadline == nil, "an ordinary restart must never enter the first-start ceiling path"
+
+      assert state.first_start_deadline == nil,
+             "an ordinary restart must never enter the first-start ceiling path"
     end
   end
 end
