@@ -36,6 +36,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   """
 
   alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Stories
 
   def dispatch(_node) do
@@ -92,8 +93,15 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
   defp complete({false, _details}, scope, story, owner) do
     scope
-    |> Promotion.promote(story.number, notify: agent_id(owner))
+    |> PromotionQueue.promote(story.number, notify: agent_id(owner))
     |> promotion_verdict(story)
+  end
+
+  # Queued: the task stays open until the candidate lands (the agent is told
+  # when it does, and evaluating again then completes it) or is taken out
+  # (the agent is told why, and the task is still its to finish).
+  defp promotion_verdict({:ok, %{queued: _}} = result, _story) do
+    {:ok, :pending, PromotionQueue.queued_text(result)}
   end
 
   defp promotion_verdict({:ok, %{pending: pending}}, story) do

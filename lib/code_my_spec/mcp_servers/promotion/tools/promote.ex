@@ -47,7 +47,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Promotion.Responses
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
 
   schema do
     field :story_number, :integer,
@@ -65,7 +65,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
         result =
-          Promotion.promote(scope, params[:story_number],
+          PromotionQueue.promote(scope, params[:story_number],
             notify: frame.assigns[:agent_id],
             restart: params[:restart] == true
           )

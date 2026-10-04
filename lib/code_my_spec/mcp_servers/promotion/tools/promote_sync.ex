@@ -21,7 +21,9 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Promotion.Responses
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
+
+  @wait_ms 4 * 60 * 60 * 1000
 
   schema do
     field :story_number, :integer,
@@ -38,10 +40,14 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
       {:ok, scope} ->
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
+        # Queued like every promotion; this door waits for the candidate to
+        # land or be taken out, because its caller has nowhere to be told.
         result =
-          Promotion.promote(scope, params[:story_number],
-            notify: frame.assigns[:agent_id],
-            restart: params[:restart] == true
+          PromotionQueue.promote_and_wait(
+            scope,
+            params[:story_number],
+            [notify: frame.assigns[:agent_id], restart: params[:restart] == true],
+            @wait_ms
           )
 
         {:reply, Responses.respond(result), frame}

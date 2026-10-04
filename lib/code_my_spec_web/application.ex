@@ -121,6 +121,9 @@ defmodule CodeMySpecWeb.Application do
         #
         # Started on demand by `GraphWatcher.ensure_watching/1` rather than one
         # per project at boot: a project nobody is working on needs no watcher.
+        # One worker per project with a promotion queue (`PromotionQueue`).
+        {Registry, keys: :unique, name: CodeMySpec.PromotionQueue.Registry},
+        {DynamicSupervisor, name: CodeMySpec.PromotionQueue.Supervisor, strategy: :one_for_one},
         {Registry, keys: :unique, name: CodeMySpec.Requirements.Registry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Requirements.WatcherSupervisor},
@@ -234,6 +237,8 @@ defmodule CodeMySpecWeb.Application do
         Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()
+        CodeMySpec.Staffing.attach()
+        CodeMySpec.PromotionQueue.resume_all()
         GraphWake.attach()
         ok
 
