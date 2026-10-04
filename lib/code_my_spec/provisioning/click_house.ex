@@ -6,8 +6,9 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
   """
 
   alias CodeMySpec.Generators.DeployArtifacts
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps, Transport}
   alias CodeMySpec.Provisioning.ClickHouse.{Credentials, Exposure, Stack}
+  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps, Transport}
+  alias CodeMySpec.Provisioning.HostBaseline
   alias CodeMySpec.Users.Scope
 
   def host, do: "cms-clickhouse"
@@ -40,7 +41,7 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
     services = service_names(scope, environment)
 
     Steps.with_ssh_runner(scope, target.ip, opts, fn run ->
-      with :ok <- CodeMySpec.Provisioning.HostBaseline.ensure(run),
+      with :ok <- HostBaseline.ensure(run),
            :ok <- Stack.install(run, credentials, services) do
         Exposure.publish(run, telemetry_host)
       end
