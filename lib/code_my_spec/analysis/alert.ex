@@ -50,7 +50,7 @@ defmodule CodeMySpec.Analysis.Alert do
 
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
 
   @doc """
   A one-line alert for this session, or `nil` when there is nothing new to say.
@@ -213,7 +213,7 @@ defmodule CodeMySpec.Analysis.Alert do
 
   defp enforceable_problems(scope) do
     scope
-    |> Validation.enforceable(Problems.list_project_problems(scope, []))
-    |> then(&Validation.blockable(scope, &1))
+    |> Blocking.enforceable(Problems.list_project_problems(scope, []))
+    |> then(&Blocking.blockable(scope, &1))
   end
 end

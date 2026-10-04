@@ -47,7 +47,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
       CodeMySpec.Users.Scope,
-      CodeMySpec.Validation
+      CodeMySpec.Validation.Blocking
     ],
     exports: :all
 

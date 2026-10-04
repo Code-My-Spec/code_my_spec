@@ -66,7 +66,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
-      CodeMySpec.Validation,
+      CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
@@ -83,7 +83,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.AppTransport
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -736,7 +736,7 @@ defmodule CodeMySpec.Promotion do
   **zero problems, except the red spex of stories that are not latched.**
   Compiler, credo and exunit findings refuse at `:error` or `:warning`; `:info`
   (low-priority credo) is advisory. A red spex refuses only when its story is
-  latched (`specs_ready`), through `Validation.enforceable/2`.
+  latched (`specs_ready`), through `Blocking.enforceable/2`.
 
   A source with no run at `head` has one started (`requested_by` the agent in
   `opts[:notify]`) unless one is already running there, and the answer is
@@ -915,7 +915,7 @@ defmodule CodeMySpec.Promotion do
   # Credo and compiler findings block whatever the stop hook's mode says: a
   # warning let through here lands on main and blocks every other copy's
   # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
-  # Exunit and spex go through `Validation.enforceable/2`, which drops the red
+  # Exunit and spex go through `Blocking.enforceable/2`, which drops the red
   # spex of unlatched stories — the same latch the stop hook uses.
   #
   # Whether an advisory finding can block at all is `Validation.blockable/2`'s
@@ -927,9 +927,9 @@ defmodule CodeMySpec.Promotion do
 
     scope
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
-    |> then(&Validation.enforceable(scope, &1))
+    |> then(&Blocking.enforceable(scope, &1))
     |> Kernel.++(strict)
-    |> then(&Validation.blockable(scope, &1))
+    |> then(&Blocking.blockable(scope, &1))
   end
 
   defp problems_of(_scope, []), do: []
