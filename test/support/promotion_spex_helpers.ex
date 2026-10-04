@@ -53,6 +53,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   `red?: true` records a failing spex problem against the story's own
   first criterion's file instead, for a scenario proving the refusal
   rather than the happy path — same file `story_spex_pass/3` would name.
+
+  Promotable means QA has passed it: promotion comes after QA, and the queue
+  refuses a story without a passing attempt. `qa: :not_passed` leaves it
+  untested, for a scenario about that refusal.
   """
   @spec a_promotable_story(map(), keyword()) :: map()
   def a_promotable_story(context, opts \\ []) do
@@ -64,6 +68,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       )
 
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+    qa(context, story, Keyword.get(opts, :qa, :passed))
 
     if Keyword.get(opts, :red?, false) do
       [criterion | _] = story.criteria
@@ -79,6 +84,11 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     story
   end
+
+  defp qa(context, story, :passed),
+    do: {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
+
+  defp qa(_context, _story, :not_passed), do: :ok
 
   @doc """
   A running checkout on `main` and an agent's worktree on `story/war`.
