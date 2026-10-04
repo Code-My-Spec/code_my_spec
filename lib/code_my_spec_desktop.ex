@@ -11,6 +11,7 @@ defmodule CodeMySpecDesktop do
     deps: [
       CmsHarness,
       CodeMySpec.Accounts,
+      CodeMySpec.Integrations,
       CodeMySpec.Oauth,
       CodeMySpec.Release,
       CodeMySpec.Repo,
