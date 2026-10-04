@@ -692,4 +692,93 @@ defmodule CmsHarness.ChannelClientTransportTest do
                      "a stale deadline after a disconnect would schedule a second reconnect"
     end
   end
+
+  # 8c04a700. The restore launched inline, ~20s per agent, and every
+  # `stop_agent` push queued behind it until the server's stop timed out. It
+  # runs in a task now; this process owns the queue and the task asks it for
+  # each agent. Here the test process plays this client to the real task.
+  describe "a restore in progress" do
+    defp restoring(assigns), do: socket(Map.merge(%{joined: true, pending: %{}}, assigns))
+
+    defp agent(id), do: %{"agent_id" => id, "working_copy" => "/nonexistent/#{id}"}
+
+    defp stop(socket, agent_id, ref) do
+      {:ok, out} =
+        ChannelClient.handle_message(
+          "harness_project:p1",
+          "stop_agent",
+          %{"ref" => ref, "agent_id" => agent_id},
+          socket
+        )
+
+      out
+    end
+
+    defp next_restore(socket) do
+      assert_receive {:"$gen_call", from, :next_restore}, 5_000
+      {:reply, reply, out} = ChannelClient.handle_call(:next_restore, from, socket)
+      {from, reply, out}
+    end
+
+    test "a stop for an agent queued behind a slow launch answers at once, and it never starts" do
+      {_, log} =
+        with_log(fn ->
+          {:ok, sock} =
+            ChannelClient.handle_reply(
+              :restore,
+              {:ok, %{"agents" => [agent("a"), agent("b")]}},
+              restoring(%{restore_ref: :restore})
+            )
+
+          # The task has been handed `a` and is launching it; the reply is held
+          # here, so that launch has not returned.
+          {from, {:launch, %{"agent_id" => "a"}} = launch, sock} = next_restore(sock)
+
+          sock = stop(sock, "b", "r1")
+
+          assert_receive {:transport_push, _, "agent_stop_result",
+                          %{"status" => "ok", "ref" => "r1"}, _},
+                         100,
+                         "a queued agent's stop waited for the launch ahead of it"
+
+          GenServer.reply(from, launch)
+          {from, reply, _sock} = next_restore(sock)
+          GenServer.reply(from, reply)
+
+          assert reply == :done, "the stopped agent was still handed to the restore"
+        end)
+
+      refute log =~ "agent b", "b was launched after it was stopped"
+    end
+
+    test "a stop for the agent being launched waits for the launch, then stops it" do
+      sock = restoring(%{restore_queue: [], restoring: "a"})
+
+      sock = stop(sock, "a", "r1")
+
+      refute_receive {:transport_push, _, "agent_stop_result", _, _},
+                     100,
+                     "stopped before its launch returned, the launch would start it again"
+
+      {:reply, :done, _} = ChannelClient.handle_call(:next_restore, {self(), make_ref()}, sock)
+
+      assert_receive {:transport_push, _, "agent_stop_result", %{"ref" => "r1"}, _}, 1_000
+    end
+
+    test "the agents_running report waits for the restore" do
+      sock = restoring(%{restore_queue: [], restoring: "a"})
+
+      {:noreply, sock} = ChannelClient.handle_info(:report_agents_running, sock)
+
+      refute_receive {:transport_push, _, "agents_running", _, _},
+                     100,
+                     "mid-restore the report names queued agents absent, and the server reaps them"
+
+      {:reply, :done, _} = ChannelClient.handle_call(:next_restore, {self(), make_ref()}, sock)
+
+      assert_receive {:transport_push, _, "agents_running", _, _},
+                     1_000,
+                     "the deferred report was never sent"
+    end
+  end
 end

@@ -906,9 +906,13 @@ defmodule CmsHarness.Project.ChannelClient do
   # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
   # this cannot disagree with the process table the way a maintained record can.
   defp report_agents_running(socket) do
-    push(socket, socket.assigns.topic, "agents_running", %{
-      "agent_ids" => Engine.running()
-    })
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agents_running",
+      %{"agent_ids" => Engine.running()},
+      5_000
+    )
 
     socket
   end
@@ -1059,8 +1063,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
     case reply do
       {:ok, %{"agents" => agents}} when is_list(agents) ->
-        restore(agents)
-        {:ok, assign(socket, :restored, true)}
+        {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       other ->
         # Not fatal: nothing is running yet, so the worst case is a harness that
@@ -1568,18 +1571,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.halt(msg["agent_id"])
-
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_stop_result",
-      Map.put(encode_stop_result(result), "ref", ref)
-    )
-
-    {:ok, socket}
-  end
+  def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket),
+    do: {:ok, stop_or_hold(socket, msg["agent_id"], ref)}
 
   # Story 1108: bring this copy's own app up, restart it, or stop it.
   #
@@ -1843,20 +1836,99 @@ defmodule CmsHarness.Project.ChannelClient do
   # starting at once against one plan and one box — how to pace it properly is
   # an open question, and sequential is the answer that cannot stampede while it
   # is being decided.
-  defp restore(agents) do
-    Enum.each(agents, fn agent ->
-      case CmsHarness.Agents.launch(agent) do
-        {:ok, _} ->
-          Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
+  #
+  # Off this process (8c04a700): a launch waits on the agent's MCP session,
+  # ~20s each under load, and inline it held every `stop_agent` push behind the
+  # whole restore. This process owns the queue; the task asks it for the next
+  # agent, so a stop can take one out before it is launched.
+  defp start_restore(socket, []), do: socket
 
-        {:error, reason} ->
-          Logger.warning(
-            "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
-              "#{agent["working_copy"]}: #{inspect(reason)}"
-          )
-      end
-    end)
+  defp start_restore(socket, agents) do
+    client = self()
+    {:ok, _task} = Task.start_link(fn -> run_restore(client) end)
+    assign(socket, :restore_queue, agents)
   end
+
+  defp run_restore(client) do
+    case GenServer.call(client, :next_restore, :infinity) do
+      {:launch, agent} ->
+        restore_one(agent)
+        run_restore(client)
+
+      :done ->
+        :ok
+    end
+  end
+
+  defp restore_one(agent) do
+    case CmsHarness.Agents.launch(agent) do
+      {:ok, _} ->
+        Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
+            "#{agent["working_copy"]}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp restoring?(socket), do: socket.assigns[:restore_queue] != nil
+
+  # A stop for the agent being launched waits for that launch, then stops it.
+  # One still queued is dropped and answered stopped: it never runs.
+  defp stop_or_hold(%{assigns: %{restoring: id}} = socket, id, ref) when is_binary(id),
+    do: assign(socket, :held_stops, [ref | socket.assigns[:held_stops] || []])
+
+  defp stop_or_hold(socket, agent_id, ref) do
+    queue = socket.assigns[:restore_queue] || []
+
+    case Enum.split_with(queue, &(&1["agent_id"] == agent_id)) do
+      {[_queued | _], rest} ->
+        socket |> assign(:restore_queue, rest) |> push_stop_result(ref, :ok)
+
+      {[], _queue} ->
+        push_stop_result(socket, ref, CmsHarness.Agents.halt(agent_id))
+    end
+  end
+
+  # The task asking again means the last launch returned.
+  defp stop_held(%{assigns: %{restoring: id}} = socket) when is_binary(id) do
+    socket =
+      case socket.assigns[:held_stops] || [] do
+        [] ->
+          socket
+
+        refs ->
+          result = CmsHarness.Agents.halt(id)
+          Enum.reduce(refs, socket, &push_stop_result(&2, &1, result))
+      end
+
+    assign(socket, restoring: nil, held_stops: [])
+  end
+
+  defp stop_held(socket), do: socket
+
+  defp push_stop_result(socket, ref, result) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agent_stop_result",
+      Map.put(encode_stop_result(result), "ref", ref),
+      5_000
+    )
+
+    socket
+  end
+
+  # The report deferred while restoring, sent now that it can be true.
+  defp pay_owed_report(%{assigns: %{report_owed: true}} = socket) do
+    schedule_agents_running()
+    socket = assign(socket, :report_owed, false)
+    if socket.assigns.joined, do: report_agents_running(socket), else: socket
+  end
+
+  defp pay_owed_report(socket), do: socket
 
   # Whatever the far side called the failure, rendered without assuming it is a
   # word. Atoms and strings keep their shape; a provider's struct is inspected
@@ -2280,8 +2352,14 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @impl Slipstream
   def handle_info(:report_agents_running, %{assigns: %{joined: true}} = socket) do
-    schedule_agents_running()
-    {:noreply, report_agents_running(socket)}
+    # Mid-restore the report would list the agents still queued as absent, and
+    # the server reaps those. Owed instead, and sent when the restore ends.
+    if restoring?(socket) do
+      {:noreply, assign(socket, :report_owed, true)}
+    else
+      schedule_agents_running()
+      {:noreply, report_agents_running(socket)}
+    end
   end
 
   def handle_info(:report_agents_running, socket) do
@@ -2378,6 +2456,19 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
+  def handle_call(:next_restore, _from, socket) do
+    socket = stop_held(socket)
+
+    case socket.assigns[:restore_queue] do
+      [agent | rest] ->
+        {:reply, {:launch, agent},
+         assign(socket, restore_queue: rest, restoring: agent["agent_id"])}
+
+      _done ->
+        {:reply, :done, socket |> assign(:restore_queue, nil) |> pay_owed_report()}
+    end
+  end
+
   def handle_call(:connected?, _from, socket) do
     {:reply, socket.assigns.joined, socket}
   end
@@ -2897,8 +2988,10 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # Upgraded: drop the socket, and `handle_disconnect/2` retries as for any
-  # drop. Not upgraded: Slipstream holds no handle to drop and will send no
-  # disconnect, so the stalled connection is abandoned and the same retry runs.
+  # drop. (A rejoin after a refusal dials with the old socket still up, so this
+  # may drop that one instead; the next dial still recovers.) Not upgraded:
+  # Slipstream holds no handle to drop and will send no disconnect, so the
+  # stalled connection is abandoned and the same retry runs.
   defp abandon_dial(socket) do
     if Slipstream.Socket.connected?(socket) do
       transport().disconnect(socket)
