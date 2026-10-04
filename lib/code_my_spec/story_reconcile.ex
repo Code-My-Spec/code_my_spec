@@ -32,10 +32,20 @@ defmodule CodeMySpec.StoryReconcile do
   ## 3. Un-park (opt-in)
 
   A parked story (`ready_for_dev: false`) whose live criteria are all latched
-  (counting step 1's) and whose newest QA attempt passed is released. While
-  releasing a story clears its latch and stamps (`Story.changeset/2`'s
-  readiness-change handling, removed by story 983) this step refuses rather
-  than wipe what steps 1 and 2 just set.
+  (counting step 1's) and whose newest QA attempt passed is released.
+  Eligibility reads latches and `Qa.Verdict`, never the stamp.
+
+  ## Order
+
+  Releasing a story clears its ready-for-QA stamp and its story-level
+  `specs_ready` latch (`Story.changeset/2`'s readiness-change handling, kept by
+  story 983; criterion latches survive). So the steps run 1, 3, 2: latch,
+  release, then stamp. A released story that already had a stamp is stamped
+  again with the commit and time it had. A released story that was
+  `specs_ready` gets that latch back, with its `specs_ready_at` and
+  `specs_ready_commit`, straight after the release: gating reads it
+  (`Validation.Blocking`), so losing it would quietly stop the story's red
+  spex from blocking. The release loses nothing.
   """
 
   use Boundary,
@@ -58,7 +68,6 @@ defmodule CodeMySpec.StoryReconcile do
   alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
-  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -104,23 +113,47 @@ defmodule CodeMySpec.StoryReconcile do
     qa_passed = stories |> Enum.filter(&Verdict.complete?(scope, &1.id)) |> MapSet.new(& &1.id)
 
     latch = plan_latch(scope, head, head_paths, stories, criteria)
-    qa_ready = plan_qa_ready(head, stories, qa_passed)
 
     unpark =
       if Keyword.get(opts, :unpark, false),
         do: plan_unpark(stories, criteria, qa_passed, latched_ids(latch)),
         else: :skipped
 
+    qa_ready = plan_qa_ready(head, stories, qa_passed, released_ids(unpark))
+
     %{head: head, latch: latch, qa_ready: qa_ready, unpark: unpark}
   end
 
-  @doc "Carries out a plan's changes, in step order. Refused and skipped steps write nothing."
+  @doc """
+  Carries out a plan's changes: latch, release, then stamp (see Order above).
+  Refused and skipped steps write nothing.
+  """
   @spec carry_out(Scope.t(), plan()) :: :ok | {:error, term()}
   def carry_out(%Scope{} = scope, plan) do
     with :ok <- each(plan.latch, &AcceptanceCriteria.latch_criterion(scope, &1.criterion)),
-         :ok <- each(plan.qa_ready, &Stories.set_qa_ready(scope, &1.story, &1.after)) do
-      each(plan.unpark, &Stories.update_story(scope, &1.story, %{ready_for_dev: true}))
+         :ok <- each(plan.unpark, &release(scope, &1)) do
+      each(plan.qa_ready, &stamp(scope, &1))
     end
+  end
+
+  # The release clears `specs_ready`; a story that had it gets it back as it was.
+  defp release(scope, %{story: story}) do
+    with {:ok, released} <- Stories.update_story(scope, story, %{ready_for_dev: true}) do
+      if story.specs_ready,
+        do:
+          Stories.set_specs_ready(scope, released, true,
+            at: story.specs_ready_at,
+            commit: story.specs_ready_commit
+          ),
+        else: {:ok, released}
+    end
+  end
+
+  # Re-read, because a release just cleared the stamp the planned struct still
+  # carries, and a changeset against that struct would see no change to write.
+  defp stamp(scope, item) do
+    story = Stories.get_story!(scope, item.story.id)
+    Stories.set_qa_ready(scope, story, item.after, item.at || DateTime.utc_now())
   end
 
   defp each({:ok, items, _counts}, fun) do
@@ -133,26 +166,6 @@ defmodule CodeMySpec.StoryReconcile do
   end
 
   defp each(_step, _fun), do: :ok
-
-  @doc """
-  Whether releasing a parked story still clears its latch and ready-for-QA
-  stamp. Asked of `Story.changeset/2` itself, so this answers false the moment
-  story 983 removes the clearing, with no change here.
-  """
-  @spec release_clears_stamps?() :: boolean()
-  def release_clears_stamps? do
-    stamped = %Story{
-      ready_for_dev: false,
-      specs_ready: true,
-      qa_ready_commit: String.duplicate("0", 40),
-      qa_ready_at: DateTime.utc_now()
-    }
-
-    changeset = Story.changeset(stamped, %{ready_for_dev: true})
-
-    Ecto.Changeset.get_field(changeset, :qa_ready_commit) == nil or
-      Ecto.Changeset.get_field(changeset, :specs_ready) == false
-  end
 
   # -- 1. latch --
 
@@ -244,16 +257,33 @@ defmodule CodeMySpec.StoryReconcile do
 
   # -- 2. ready-for-QA stamp --
 
-  defp plan_qa_ready(head, stories, qa_passed) do
-    {stamped, missing} =
-      stories
-      |> Enum.filter(&MapSet.member?(qa_passed, &1.id))
-      |> Enum.split_with(& &1.qa_ready_commit)
+  defp plan_qa_ready(head, stories, qa_passed, released) do
+    passed = Enum.filter(stories, &MapSet.member?(qa_passed, &1.id))
 
     items =
-      Enum.map(missing, &%{story: &1, before: "unstamped", after: head, source: :head})
+      Enum.flat_map(passed, fn story ->
+        case {story.qa_ready_commit, MapSet.member?(released, story.id)} do
+          {nil, _} ->
+            [%{story: story, before: "unstamped", after: head, at: nil, source: :head}]
 
-    {:ok, items, %{already: length(stamped), stamp: length(missing)}}
+          {commit, true} ->
+            [
+              %{
+                story: story,
+                before: "cleared by un-park",
+                after: commit,
+                at: story.qa_ready_at,
+                source: :kept
+              }
+            ]
+
+          {_commit, false} ->
+            []
+        end
+      end)
+
+    already = Enum.count(passed, &(&1.qa_ready_commit && not MapSet.member?(released, &1.id)))
+    {:ok, items, %{already: already}}
   end
 
   # -- 3. un-park --
@@ -268,13 +298,9 @@ defmodule CodeMySpec.StoryReconcile do
           Enum.all?(live, &(&1.latched_at || MapSet.member?(newly_latched, &1.id))),
           do: %{story: story, before: "parked", after: "ready_for_dev"}
 
-    if release_clears_stamps?() do
-      {:refused,
-       "Releasing a story still clears its latch and ready-for-QA stamp " <>
-         "(Story.changeset/2's readiness-change handling), which would undo steps 1 and 2. " <>
-         "Un-parking needs story 983, which removes that; nothing was released.", items}
-    else
-      {:ok, items, %{}}
-    end
+    {:ok, items, %{}}
   end
+
+  defp released_ids({:ok, items, _counts}), do: MapSet.new(items, & &1.story.id)
+  defp released_ids(_step), do: MapSet.new()
 end

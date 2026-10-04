@@ -11,7 +11,8 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   Latches criteria whose spex passed on the checkout's spex run at HEAD, stamps
   stories whose latest QA attempt passed ready for QA, and with `--unpark`
   releases parked stories that are fully latched and QA-passed. Never unlatches
-  or clears anything. The project comes from the checkout's
+  a criterion or leaves a stamp or latch cleared: what a release clears is put
+  back. The project comes from the checkout's
   `.code_my_spec/config.yml`; see `CodeMySpec.StoryReconcile` for the rules.
   """
 
@@ -92,9 +93,11 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
 
   defp report(plan) do
     Mix.shell().info("HEAD #{plan.head}\n")
+    # In the order `StoryReconcile.carry_out/2` writes: a release clears the
+    # ready-for-QA stamp, so stamping comes after it.
     step("1. latch passing criteria", plan.latch, &latch_line/1, &latch_counts/1)
-    step("2. ready-for-QA stamp", plan.qa_ready, &qa_line/1, &qa_counts/1)
     step("3. un-park", plan.unpark, &unpark_line/1, fn _ -> "" end)
+    step("2. ready-for-QA stamp", plan.qa_ready, &qa_line/1, &qa_counts/1)
   end
 
   defp step(title, :skipped, _line, _counts),
@@ -122,9 +125,20 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     do:
       "story #{item.story.number} criterion #{item.criterion.number}: #{item.before} -> #{item.after}"
 
-  defp qa_line(item),
+  defp qa_line(%{source: :head} = item),
     do:
       "story #{item.story.number}: #{item.before} -> #{item.after} (HEAD; QA attempts record no commit)"
 
-  defp unpark_line(item), do: "story #{item.story.number}: #{item.before} -> #{item.after}"
+  defp qa_line(item),
+    do:
+      "story #{item.story.number}: #{item.before} -> #{item.after} (its stamp before the un-park)"
+
+  defp unpark_line(item) do
+    "story #{item.story.number}: #{item.before} -> #{item.after}" <>
+      if(item.story.specs_ready,
+        do:
+          " (specs_ready at #{item.story.specs_ready_commit || "no recorded commit"} restored after the un-park)",
+        else: ""
+      )
+  end
 end

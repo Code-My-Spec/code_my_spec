@@ -174,9 +174,7 @@ defmodule CodeMySpec.StoryReconcileTest do
       assert plan(scope, []).unpark == :skipped
     end
 
-    test "refuses while releasing a story clears its stamps", %{scope: scope} do
-      assert StoryReconcile.release_clears_stamps?()
-
+    test "un-parks a fully latched, QA-passed story and its stamp survives", %{scope: scope} do
       parked = story_fixture(scope, %{criteria: [], ready_for_dev: false})
       criterion = criterion_fixture(scope, parked)
       path = spec!(scope, parked, criterion, "test/spex/2/c_spex.exs")
@@ -184,15 +182,79 @@ defmodule CodeMySpec.StoryReconcileTest do
       {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: parked.id)
 
       plan = plan(scope, [path], unpark: true)
-      assert {:refused, message, [candidate]} = plan.unpark
+      assert {:ok, [candidate], _} = plan.unpark
       assert candidate.story.id == parked.id
-      assert message =~ "983"
 
       assert :ok = StoryReconcile.carry_out(scope, plan)
       parked = Stories.get_story!(scope, parked.id)
-      refute parked.ready_for_dev
+      assert parked.ready_for_dev
       assert parked.qa_ready_commit == @head
       assert latched?(scope, criterion)
+    end
+
+    test "re-stamps a released story with the stamp it had", %{scope: scope} do
+      parked = story_fixture(scope, %{criteria: [], ready_for_dev: false})
+      criterion = criterion_fixture(scope, parked)
+      {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: parked.id)
+      {:ok, parked} = Stories.set_qa_ready(scope, parked, @other)
+
+      plan = plan(scope, [], unpark: true)
+      assert {:ok, [_], _} = plan.unpark
+      assert {:ok, [%{after: @other, source: :kept}], %{already: 0}} = plan.qa_ready
+
+      assert :ok = StoryReconcile.carry_out(scope, plan)
+      released = Stories.get_story!(scope, parked.id)
+      assert released.ready_for_dev
+      assert released.qa_ready_commit == @other
+      assert DateTime.compare(released.qa_ready_at, parked.qa_ready_at) == :eq
+    end
+
+    test "a specs_ready story un-parked by --unpark keeps its latch and commit", %{scope: scope} do
+      parked = story_fixture(scope, %{criteria: [], ready_for_dev: false})
+      criterion = criterion_fixture(scope, parked)
+      {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: parked.id)
+      at = ~U[2026-10-01 12:00:00.000000Z]
+      {:ok, _} = Stories.set_specs_ready(scope, parked, true, at: at, commit: @other)
+
+      plan = plan(scope, [], unpark: true)
+      assert {:ok, [_], _} = plan.unpark
+      assert :ok = StoryReconcile.carry_out(scope, plan)
+
+      released = Stories.get_story!(scope, parked.id)
+      assert released.ready_for_dev
+      assert released.specs_ready
+      assert released.specs_ready_commit == @other
+      assert DateTime.compare(released.specs_ready_at, at) == :eq
+    end
+
+    test "leaves a story parked when a criterion is unlatched or QA has not passed",
+         %{scope: scope} do
+      unlatched = story_fixture(scope, %{criteria: [], ready_for_dev: false})
+      criterion_fixture(scope, unlatched)
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: unlatched.id)
+
+      unqa = story_fixture(scope, %{criteria: [], ready_for_dev: false})
+      {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion_fixture(scope, unqa))
+
+      assert {:ok, [], _} = plan(scope, [], unpark: true).unpark
+    end
+
+    test "a dry run with --unpark writes nothing", %{scope: scope} do
+      parked = story_fixture(scope, %{criteria: [], ready_for_dev: false})
+      criterion = criterion_fixture(scope, parked)
+      path = spec!(scope, parked, criterion, "test/spex/2/c_spex.exs")
+      fresh_analysis_runs_fixture(scope, ["spex"], commit: @head)
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: parked.id)
+
+      plan = plan(scope, [path], unpark: true)
+      assert {:ok, [_], _} = plan.unpark
+
+      parked = Stories.get_story!(scope, parked.id)
+      refute parked.ready_for_dev
+      assert parked.qa_ready_commit == nil
+      refute latched?(scope, criterion)
     end
   end
 
