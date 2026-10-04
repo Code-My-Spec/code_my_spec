@@ -71,7 +71,14 @@ defmodule CodeMySpecWeb.PageController do
     }
   ]
 
+  # The desktop app has no public site: its root is the app.
   def home(conn, _params) do
+    if CodeMySpecDesktop.Identity.active?(),
+      do: redirect(conn, to: ~p"/app"),
+      else: render_home(conn)
+  end
+
+  defp render_home(conn) do
     meta = %{
       page_title: "CodeMySpec — One Person, a Whole Software Company",
       meta_description:
@@ -927,8 +934,7 @@ defmodule CodeMySpecWeb.PageController do
       meta_description: meta.meta_description,
       og_title: meta.og_title,
       og_description: meta.og_description,
-      og_image:
-        CodeMySpecWeb.ImageUrl.image_url("og-landing-vibe-coding-rebuild.png", base_url),
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-landing-vibe-coding-rebuild.png", base_url),
       canonical_url: canonical,
       json_ld_list: json_ld_list,
       faqs: @rebuild_faqs

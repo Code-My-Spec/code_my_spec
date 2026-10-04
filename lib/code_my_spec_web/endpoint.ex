@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.Endpoint do
     key: "_code_my_spec_key",
     signing_salt: "raJaHDhc",
     same_site: "Lax",
-    secure: true
+    secure: Application.compile_env(:code_my_spec, :secure_session_cookie, true)
   ]
 
   socket("/live", Phoenix.LiveView.Socket,
