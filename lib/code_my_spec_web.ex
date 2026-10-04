@@ -22,6 +22,8 @@ defmodule CodeMySpecWeb do
     deps: [
       CodeMySpec,
       CodeMySpec.Agents.Agent,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.Accounts,
       CodeMySpec.Activity,

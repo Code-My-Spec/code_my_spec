@@ -36,6 +36,7 @@ defmodule CodeMySpec.Resources do
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
+      CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,

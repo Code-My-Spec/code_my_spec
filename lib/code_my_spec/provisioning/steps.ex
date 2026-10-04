@@ -54,7 +54,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Repo
   alias CodeMySpec.Servers
   alias CodeMySpec.Servers.Server
-  alias CodeMySpec.Telemetry
+  alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.TempFile
   alias CodeMySpec.Utils.MapAccess
 
@@ -1011,7 +1011,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # and `:dns` already read `opts[:environment]`.
   def run(:telemetry, %Scope{} = scope, opts) do
     case Keyword.fetch(opts, :environment) do
-      {:ok, environment} -> Telemetry.run(scope, environment, opts)
+      {:ok, environment} -> TelemetryStep.run(scope, environment, opts)
       :error -> telemetry_for_environments(scope, environments(scope, opts), opts)
     end
   end
@@ -3973,7 +3973,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp telemetry_for_environments(scope, environments, opts) do
     Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
-      case Telemetry.run(scope, environment, opts) do
+      case TelemetryStep.run(scope, environment, opts) do
         {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
         {:error, reason} -> {:halt, {:error, reason, acc}}
       end

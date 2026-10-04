@@ -30,7 +30,7 @@ defmodule CodeMySpec.Telemetry.SetupTest do
     end
 
     assert {:error, "telemetry private network setup failed (exit 42)"} =
-             Telemetry.run(scope, "uat", run: run)
+             CodeMySpec.Provisioning.TelemetryStep.run(scope, "uat", run: run)
 
     assert_received {:installation_command, command}
     assert command =~ "docker network inspect db_net"

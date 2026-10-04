@@ -34,6 +34,9 @@ defmodule CodeMySpec.Provisioning.Environment do
     cannot answer, since it writes a side effect on every boot attempt,
     successful or not. Set once and never touched again after.
   """
+  # A leaf: Deploys, Servers and Telemetry read environments without
+  # depending on Provisioning (John, 2026-10-04).
+  use Boundary, top_level?: true, deps: [], exports: :all
   use Ecto.Schema
   import Ecto.Changeset
 

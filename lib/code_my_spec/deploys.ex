@@ -16,7 +16,7 @@ defmodule CodeMySpec.Deploys do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Provisioning,
+      CodeMySpec.Provisioning.EnvironmentRepository,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,

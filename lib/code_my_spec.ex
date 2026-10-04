@@ -10,6 +10,7 @@ defmodule CodeMySpec do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,

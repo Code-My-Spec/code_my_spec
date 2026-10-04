@@ -37,7 +37,9 @@ defmodule CodeMySpec.Servers do
     deps: [
       CodeMySpec.AccountSecrets,
       CodeMySpec.Projects,
-      CodeMySpec.Provisioning,
+      CodeMySpec.Provisioning.Environment,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
       CodeMySpec.Users.Scope,
@@ -45,10 +47,13 @@ defmodule CodeMySpec.Servers do
     ],
     exports: :all
 
+  import Ecto.Query
+
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Hetzner, Repository, ServerView}
+  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository, Hetzner}
+  alias CodeMySpec.Repo
   alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
@@ -200,7 +205,7 @@ defmodule CodeMySpec.Servers do
   end
 
   defp app_names(project) do
-    [Repository.default_name(project) | module_app_name(project)] |> Enum.uniq()
+    [Project.slug(project) | module_app_name(project)] |> Enum.uniq()
   end
 
   defp module_app_name(%{module_name: module_name}) when is_binary(module_name) do
@@ -217,7 +222,7 @@ defmodule CodeMySpec.Servers do
   defp environment_names(%Scope{} = scope, project) do
     Utils.rescued("Servers.environment_names", @suggested_environments, fn ->
       %Scope{scope | active_project: project, active_project_id: project.id}
-      |> Provisioning.environment_names()
+      |> EnvironmentRepository.names()
     end)
   end
 
@@ -255,7 +260,7 @@ defmodule CodeMySpec.Servers do
   @spec retire(Scope.t(), String.t()) ::
           :ok | {:error, {:in_use, [String.t()]}} | {:error, :not_found}
   def retire(%Scope{} = scope, name) when is_binary(name) do
-    case ServerView.projects_using(scope, name) do
+    case projects_using(scope, name) do
       [] ->
         case Server.get_linked(scope, name) do
           nil -> {:error, :not_found}
@@ -552,5 +557,62 @@ defmodule CodeMySpec.Servers do
       |> Enum.map(fn {name, environment} -> Server.placeholder(name, environment) end)
 
     Enum.sort_by(present ++ gone, &{not &1.linked, &1.name})
+  end
+
+  @doc """
+  Names of the projects currently pointed at a server, deduplicated.
+
+  What retiring a server refuses against.
+  """
+  @spec projects_using(Scope.t(), String.t()) :: [String.t()]
+  def projects_using(%Scope{active_account_id: account_id}, server_name)
+      when is_binary(account_id) and is_binary(server_name) do
+    account_id
+    |> environments_on(server_name)
+    |> Enum.map(& &1.project.name)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  def projects_using(_scope, _server_name), do: []
+
+  @doc """
+  Every `%{project, environment}` of the account pointed at a named server.
+
+  Two ways an environment ends up pointed at a box, and both have to match.
+  `e.server_name` is what a project's own successful run writes back
+  (`record_environment_server/5`) — the truth once setup has actually reached
+  the provider. `e.server_id` is what linking writes immediately
+  (`LinkServer`/`EnvironmentRepository.put`), before any run has happened at
+  all — a linked-but-not-yet-run environment is real and grantable, so it
+  counts too.
+  """
+  @spec environments_on(Ecto.UUID.t(), String.t()) :: [%{project: Project.t(), environment: String.t()}]
+  def environments_on(account_id, server_name) do
+    Environment
+    |> join(:inner, [e], p in Project, on: p.id == e.project_id)
+    |> select([e, p], %{project: p, environment: e.name})
+    |> by_name_or_id(account_id, server_name, server_id_for(account_id, server_name))
+    |> Repo.all()
+  end
+
+  defp by_name_or_id(query, account_id, server_name, nil) do
+    where(query, [e, p], p.account_id == ^account_id and e.server_name == ^server_name)
+  end
+
+  defp by_name_or_id(query, account_id, server_name, server_id) do
+    where(
+      query,
+      [e, p],
+      p.account_id == ^account_id and
+        (e.server_name == ^server_name or e.server_id == ^server_id)
+    )
+  end
+
+  defp server_id_for(account_id, server_name) do
+    Server
+    |> where([s], s.account_id == ^account_id and s.name == ^server_name)
+    |> select([s], s.id)
+    |> Repo.one()
   end
 end

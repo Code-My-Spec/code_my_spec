@@ -51,6 +51,18 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   require Logger
 
+  # A leaf: the provider client Servers and Provisioning both call
+  # (John, 2026-10-04).
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AccountSecrets,
+      CodeMySpec.ProjectSecrets,
+      CodeMySpec.Users.Scope,
+      CodeMySpec.Utils
+    ],
+    exports: :all
+
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope

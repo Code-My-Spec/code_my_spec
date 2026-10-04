@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers do
     top_level?: true,
     deps: [
       CodeMySpec.Agents.Agent,
+      CodeMySpec.Provisioning.EnvironmentRepository,
       CodeMySpec.Stories,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
