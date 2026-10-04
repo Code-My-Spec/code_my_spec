@@ -50,8 +50,8 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
 
   defp handle_outcome(scope, owner, %{status: :pass} = attempt) do
     with issue when not is_nil(issue) <- Issues.get_issue(scope, attempt.issue_id),
-         :ok <- passed(scope, issue, "Verified by issue QA attempt #{attempt.id}."),
-         {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
+         {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed),
+         :ok <- passed(scope, issue, "Verified by issue QA attempt #{attempt.id}.") do
       attempt
     else
       nil -> Repo.rollback(:issue_not_found)

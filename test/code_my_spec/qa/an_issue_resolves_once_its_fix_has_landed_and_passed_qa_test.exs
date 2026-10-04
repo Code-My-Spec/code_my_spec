@@ -96,6 +96,22 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
     assert reload(ctx.qa).issue_id == nil
   end
 
+  test "the landing closes the promotion task the coder held while it waited", ctx do
+    :ok = qa_passes(ctx)
+
+    {:ok, coder} =
+      TaskOwner.add_task(ctx.scope, reload(ctx.coding), %{
+        status: :active,
+        requirement_name: "promote_issue",
+        issue_id: ctx.issue.id
+      })
+
+    %{id: task_id} = Enum.find(coder.tasks, &(&1.requirement_name == "promote_issue"))
+
+    assert :ok = Qa.issue_fix_landed(ctx.scope, ctx.issue.id, "abc123")
+    assert %{status: :completed} = TaskOwner.find_task(reload(ctx.coding), task_id)
+  end
+
   test "a fix that landed before QA passed waits for QA, and the pass resolves it", ctx do
     assert :ok = Qa.issue_fix_landed(ctx.scope, ctx.issue.id, "abc123")
     assert %{status: :accepted, awaiting_role: :qa, landed_commit: "abc123"} = issue(ctx)
