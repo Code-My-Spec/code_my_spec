@@ -2576,7 +2576,8 @@ defmodule CodeMySpecSpex.Fixtures do
   `start_analysis` would have produced — before anything stops.
 
   Takes the opts a stop or turn end was given and returns them without the
-  output files (and `:await`), which a stop no longer accepts.
+  output files and `:await` (which waits for the runs to land), neither of
+  which a stop accepts.
   """
   def land_outputs(%Scope{} = scope, opts) do
     {files, rest} = Keyword.split(opts, Keyword.keys(@output_file_sources))
@@ -2587,7 +2588,10 @@ defmodule CodeMySpecSpex.Fixtures do
 
       sources ->
         CodeMySpec.Analysis.ensure_stale_runs(scope, sources, files)
-        CodeMySpec.Analysis.await_all(scope)
+        # Waited for only when asked, as `validate_stop/3` used to: a scope
+        # that routes runs to a harness the spec never started would wait
+        # forever.
+        if Keyword.get(rest, :await, false), do: CodeMySpec.Analysis.await_all(scope)
     end
 
     Keyword.delete(rest, :await)

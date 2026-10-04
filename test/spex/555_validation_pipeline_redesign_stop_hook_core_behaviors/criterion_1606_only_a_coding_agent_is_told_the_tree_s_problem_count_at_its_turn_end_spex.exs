@@ -25,7 +25,9 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   @end_turn_opts [
     compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
     exunit_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/exunit.json"),
-    spex_output_file: Path.expand("test/fixtures/validation/pipeline_spex_failure/spex.jsonl")
+    spex_output_file: Path.expand("test/fixtures/validation/pipeline_spex_failure/spex.jsonl"),
+    # The run lands before the turn ends: a turn end starts no analysis.
+    await: true
   ]
 
   setup :register_log_in_setup_account
