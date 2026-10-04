@@ -292,13 +292,11 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp delivery_window(offer, [], messages) do
-    case Enum.any?(messages, &(&1.delivery == :pending)) do
-      true ->
-        []
-
-      false ->
-        undelivered(offer)
-        []
+    if Enum.any?(messages, &(&1.delivery == :pending)) do
+      []
+    else
+      undelivered(offer)
+      []
     end
   end
 

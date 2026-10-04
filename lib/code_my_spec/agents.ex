@@ -2173,19 +2173,17 @@ defmodule CodeMySpec.Agents do
   end
 
   defp report_repeated_instruction(scope, agent, offered) do
-    case Offers.take_instruction_attention(offered) do
-      true ->
-        notify_main(
-          scope,
-          :teammate_stalled,
-          "An operator repeated an instruction to agent #{agent.id}. " <>
-            "Review Offer #{offered.id} and its delivery history. The message was submitted " <>
-            "unchanged; it was not withheld. Pending delivery is not evidence of refusal.",
-          offer: {:stalled, {"agent", agent.id}}
-        )
-
-      false ->
-        :ok
+    if Offers.take_instruction_attention(offered) do
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "An operator repeated an instruction to agent #{agent.id}. " <>
+          "Review Offer #{offered.id} and its delivery history. The message was submitted " <>
+          "unchanged; it was not withheld. Pending delivery is not evidence of refusal.",
+        offer: {:stalled, {"agent", agent.id}}
+      )
+    else
+      :ok
     end
   end
 

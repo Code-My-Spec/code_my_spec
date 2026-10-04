@@ -12,6 +12,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
   alias CodeMySpecTest.RecordingAgentTransport
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     previous = Application.get_env(:code_my_spec, :agent_transport)
@@ -80,7 +81,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   end
 
   test "repeated instructions reach the agent verbatim and notify main once", ctx do
-    Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+    Sandbox.mode(Repo, {:shared, self()})
     {:ok, _} = CodeMySpec.Staffing.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 
     {:ok, main} =
