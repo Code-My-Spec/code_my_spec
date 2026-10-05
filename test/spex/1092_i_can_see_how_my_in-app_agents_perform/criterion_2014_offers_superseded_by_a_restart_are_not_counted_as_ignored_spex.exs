@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
+    Fixtures.use_recording_transport()
   end
 
   spex "A queued offer a restart overtakes before delivery is superseded, not ignored",
@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
       given_ "a busy agent with a message queued for its next turn", context do
         reply = join_working_copy(context, "/tmp/spex-2014", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+        {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2014")
 
         Fixtures.put_agent_mid_turn(scope, agent.id)

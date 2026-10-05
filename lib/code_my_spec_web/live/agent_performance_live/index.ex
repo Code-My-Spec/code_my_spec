@@ -81,6 +81,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
           {qa_rounds_block(Map.fetch!(@reports, story.id).qa_rounds)}
           {blocked_block(Map.fetch!(@reports, story.id).cycle_time)}
           {interventions_block(Map.fetch!(@reports, story.id).interventions)}
+          {tokens_block(Map.fetch!(@reports, story.id).tokens)}
         </div>
       </div>
     </section>
@@ -177,6 +178,21 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp kind_label(:nudge), do: "nudge"
   defp kind_label(:restart), do: "restart"
+
+  defp tokens_block(%{total: :unknown}), do: nil
+
+  defp tokens_block(tokens) do
+    assigns = %{tokens: tokens}
+
+    ~H"""
+    <div data-test="story-tokens">
+      <span>{@tokens.total} tokens</span>
+      <span :for={{provider, total} <- @tokens.by_provider} data-test="story-tokens-by-provider">
+        {provider}: {total}
+      </span>
+    </div>
+    """
+  end
 
   defp hours(nil), do: "unknown"
   defp hours(seconds), do: "#{div(seconds, 3600)}h"

@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
+    Fixtures.use_recording_transport()
   end
 
   spex "Restarting the agent working a story counts the restart against that story",
@@ -52,6 +52,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
         frame = %Frame{assigns: %{current_scope: scope}}
         {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
 
+        {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2008")
 
         {:ok,

@@ -1,14 +1,15 @@
 defmodule CodeMySpec.AgentPerformance do
   @moduledoc """
   Aggregates agent throughput, QA pass rate, question/tap-out time, offer
-  health, reliability and cost into a performance report.
+  health, reliability, token cost and tool/turn reliability into a
+  performance report.
 
-  Token use per turn, per agent and per provider (story 1092 criteria
-  1976-1979) is not here yet: nothing persists a turn's token usage, and
-  that needs a schema of its own rather than a read of one that already
-  exists. Everything else in this module reads data that already exists
-  elsewhere -- `Sessions.Task`, `Qa.QaAttempt`, `Agents.Offer`,
-  `Conversations.Message` -- and does not write anything.
+  Everything but token use reads data that already exists elsewhere --
+  `Sessions.Task`, `Qa.QaAttempt`, `Agents.Offer`, `Conversations.Message`
+  -- and writes nothing. Token use (`TokenUsage`, story 1092 criteria
+  1976-1979) is the one exception: nothing else persisted a turn's cost,
+  so it owns both the write, from `HarnessProjectChannel`'s `record_turn`,
+  and the read.
   """
 
   alias CodeMySpec.AgentPerformance.CycleTime
@@ -17,6 +18,7 @@ defmodule CodeMySpec.AgentPerformance do
   alias CodeMySpec.AgentPerformance.QaRounds
   alias CodeMySpec.AgentPerformance.Reliability
   alias CodeMySpec.AgentPerformance.Throughput
+  alias CodeMySpec.AgentPerformance.TokenUsage
   alias CodeMySpec.AgentPerformance.ToolFailures
   alias CodeMySpec.Agents
   alias CodeMySpec.Stories
@@ -67,7 +69,8 @@ defmodule CodeMySpec.AgentPerformance do
           agent: Agents.Agent.t(),
           tool_failures: ToolFailures.report(),
           reliability: [Reliability.failure()],
-          interventions: [Interventions.intervention()]
+          interventions: [Interventions.intervention()],
+          tokens: TokenUsage.agent_totals()
         }
 
   @doc "One agent in detail, for the show page. `nil` if no such agent exists."
@@ -79,7 +82,8 @@ defmodule CodeMySpec.AgentPerformance do
           agent: agent,
           tool_failures: ToolFailures.for_agent(scope, agent_id),
           reliability: Reliability.for_agent(scope, agent_id),
-          interventions: Interventions.for_agent(scope, agent_id)
+          interventions: Interventions.for_agent(scope, agent_id),
+          tokens: TokenUsage.for_agent(scope, agent_id)
         }
 
       _ ->
@@ -90,16 +94,18 @@ defmodule CodeMySpec.AgentPerformance do
   @type story_report :: %{
           cycle_time: CycleTime.t(),
           qa_rounds: QaRounds.story_rounds(),
-          interventions: [Interventions.intervention()]
+          interventions: [Interventions.intervention()],
+          tokens: TokenUsage.story_totals()
         }
 
-  @doc "A story's cycle time, QA rounds and interventions."
+  @doc "A story's cycle time, QA rounds, interventions and token use."
   @spec story_report(Scope.t(), Story.t()) :: story_report()
   def story_report(%Scope{} = scope, %Story{} = story) do
     %{
       cycle_time: CycleTime.story(scope, story),
       qa_rounds: QaRounds.story(scope, story),
-      interventions: Interventions.story(scope, story)
+      interventions: Interventions.story(scope, story),
+      tokens: TokenUsage.for_story(scope, story.id)
     }
   end
 

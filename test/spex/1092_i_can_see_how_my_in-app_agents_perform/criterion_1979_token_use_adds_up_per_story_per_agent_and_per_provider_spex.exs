@@ -13,6 +13,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -29,6 +30,18 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
     scenario "agents on two providers worked one story" do
       given_ "a released story with a coding agent on one provider and a QA agent on another",
              context do
+        # A lone checkout is the project's only one and auto-promotes itself to
+        # main (`report_root`'s `only_checkout?/2`) -- and `assign_team` refuses
+        # a story to the main copy's team. A main copy registered first, with no
+        # root of its own, keeps this join a genuine feature copy.
+        {:ok, main_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "the main checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
+
         reply = join_working_copy(context, "/tmp/spex-1979", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -38,9 +51,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
             description: "As a user, I want this story done.",
             acceptance_criteria: ["It works"]
           )
-
-        frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
 
         coder =
           Fixtures.running_agent(scope,
@@ -55,6 +65,12 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
             provider: "openai",
             working_copy: "/tmp/spex-1979"
           )
+
+        # The team must already be on the copy for `assign_team` to find and
+        # stamp it -- it refuses with no team to assign when none is there yet.
+        frame = %Frame{assigns: %{current_scope: scope}}
+        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+        refute resp.isError, inspect(resp)
 
         {:ok,
          context

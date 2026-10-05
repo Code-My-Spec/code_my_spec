@@ -35,15 +35,13 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
       given_ "one story that passed QA first time and one that took two rounds", context do
         reply = join_working_copy(context, "/tmp/spex-2005", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
-        qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2005")
-        asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
-        clean = qa_a_story(scope, asking, "Passed first time", [
+        clean = qa_a_story(scope, "Passed first time", [
           %{status: "pass", note: "all good"}
         ])
 
         reworked =
-          qa_a_story(scope, asking, "Took two rounds", [
+          qa_a_story(scope, "Took two rounds", [
             %{status: "fail", note: "broke on save"},
             %{status: "pass", note: "fixed"}
           ])
@@ -69,13 +67,16 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
     end
   end
 
-  defp qa_a_story(scope, asking, title, rounds) do
+  defp qa_a_story(scope, title, rounds) do
     story =
       StoryHelpers.create_story(scope,
         title: title,
         description: "As a user, I want this story done.",
         acceptance_criteria: ["It works"]
       )
+
+    qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2005")
+    asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
     {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, asking)
 

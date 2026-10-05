@@ -38,7 +38,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   """
   @spec story(Scope.t(), Story.t()) :: t()
   def story(%Scope{} = scope, %Story{} = story) do
-    tasks = all_tasks(scope, story.id)
+    tasks = all_tasks(scope, story.id, story.component_id)
 
     %{
       status: status(story, tasks),
@@ -56,8 +56,9 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   # Tasks live on whichever owner ran them: a session-backed agent (Claude
   # Code, hooks) or an agent run directly under Alloy, with no session at
   # all. A story's build moves through both over its life.
-  defp all_tasks(scope, story_id) do
-    Sessions.list_tasks_for_story(scope, story_id) ++ Agents.list_tasks_for_story(scope, story_id)
+  defp all_tasks(scope, story_id, component_id) do
+    Sessions.list_tasks_for_story(scope, story_id, component_id) ++
+      Agents.list_tasks_for_story(scope, story_id, component_id)
   end
 
   # The earliest task opened against the story, as a proxy for "released":

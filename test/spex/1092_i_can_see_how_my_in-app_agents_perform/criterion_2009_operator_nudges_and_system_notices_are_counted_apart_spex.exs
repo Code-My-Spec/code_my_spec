@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
+    Fixtures.use_recording_transport()
   end
 
   spex "One operator message counts as one intervention, whatever the harness also reported",
@@ -74,6 +74,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
       then_ "interventions are counted", context do
         {:ok, _index, html} = live(context.conn, index_path(context))
+        IO.puts("DEBUG_INTERVENTIONS: #{inspect(CodeMySpec.AgentPerformance.Interventions.story(context.scope, context.story))}")
         {:ok, Map.put(context, :html, html)}
       end
 
