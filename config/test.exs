@@ -356,6 +356,12 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 config :code_my_spec, CmsHarness.Device.Client.Http,
   plug: {Req.Test, CmsHarness.Device.Client.Http}
 
+# The CLI providers' answer to the pin above. A project that connected OpenAI
+# launches its agents on `codex exec`, and a spex that talked to one ran it for
+# real on every analysis. Replayed from a recording; an unrecorded call raises.
+config :code_my_spec, CmsHarness.Agents.Provider,
+  command_runner: {CmsHarnessTest.RecordedCli, :run}
+
 # Provisioning's pollers back off between reads — waiting for a server to boot,
 # a bucket to appear, a firewall to release. Against stubs and cassettes there
 # is nothing to wait for, so the sleeps are pure wall-clock: `apex_repoint_test`

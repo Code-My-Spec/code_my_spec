@@ -121,7 +121,8 @@ defmodule CmsHarness.Agents.Provider do
             codex_home: codex_home(credential),
             ignore_user_config: true,
             timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
-          }}
+          }
+          |> with_command_runner()}
      ]}
   end
 
@@ -195,11 +196,26 @@ defmodule CmsHarness.Agents.Provider do
             model: Keyword.get(opts, :model) || "claude-sonnet-5",
             workdir: Keyword.get(opts, :working_copy),
             timeout_ms: Keyword.get(opts, :timeout_ms) || @claude_exec_timeout_ms
-          }}
+          }
+          |> with_command_runner()}
      ]}
   end
 
   def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
+
+  # What runs `codex` and `claude` in place of the real CLI, from config. Unset
+  # everywhere but test, where it is pinned to a recording the way HTTP clients
+  # are pinned to `Req.Test`: a spex whose project connected OpenAI launched a
+  # real `codex exec` on every run, about four million uncached tokens a day.
+  defp with_command_runner(config) do
+    case Application.get_env(:code_my_spec, __MODULE__, [])[:command_runner] do
+      {module, function} ->
+        Map.put(config, :command_runner, &apply(module, function, [&1, &2, &3]))
+
+      nil ->
+        config
+    end
+  end
 
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
