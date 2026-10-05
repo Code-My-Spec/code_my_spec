@@ -40,7 +40,14 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
 
     {_n, _} =
       CodeMySpec.Files.upsert_files(scope, [
-        %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+        %{
+          path: path,
+          role: :bdd_spec,
+          story_id: story.id,
+          criterion_number: criterion.number,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
       ])
 
     problem_fixture(scope, %{

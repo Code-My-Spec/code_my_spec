@@ -1187,8 +1187,13 @@ defmodule CodeMySpec.Promotion do
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
     |> then(&Blocking.enforceable(scope, &1))
     |> Kernel.++(strict)
+    |> Kernel.++(unbound_latched(scope, sources))
     |> then(&Blocking.blockable(scope, &1))
   end
+
+  # Judged with spex: a latched criterion no spex file names guards nothing.
+  defp unbound_latched(scope, sources),
+    do: if("spex" in sources, do: Blocking.unbound_latched(scope), else: [])
 
   defp problems_of(_scope, []), do: []
 
