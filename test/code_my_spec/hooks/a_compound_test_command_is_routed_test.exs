@@ -81,4 +81,17 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
   test "mix compile still routes as a whole command" do
     assert routed(decide("mix compile")) =~ ~S("source":"compiler")
   end
+
+  test "a test from a subagent's worktree is not routed to the copy" do
+    params = %{
+      "tool_name" => "Bash",
+      "tool_input" => %{"command" => "mix test test/a_test.exs"},
+      "cwd" => "/w/copy/.claude/worktrees/agent-1",
+      "nested_checkout" => "/w/copy/.claude/worktrees/agent-1"
+    }
+
+    log = capture_log(fn -> assert PreToolUse.decide(@scope, params, 4004, :harness) == %{} end)
+
+    assert log =~ "not routed (shape: nested_checkout)"
+  end
 end

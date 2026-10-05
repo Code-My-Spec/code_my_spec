@@ -146,8 +146,16 @@ defmodule CmsHarness.Web.ResolveWorkingCopy do
   defp from_directory(dir) do
     case WorkingCopyWalk.root_for(dir) do
       {:ok, root} -> {:ok, root}
-      {:error, :not_onboarded, boundary} -> {:not_onboarded, boundary}
+      {:error, :not_onboarded, boundary} -> parent_or_not_onboarded(boundary)
       {:error, :outside_a_working_copy} -> :no_harness
+    end
+  end
+
+  # A subagent's worktree is answered for by the copy that spawned it.
+  defp parent_or_not_onboarded(boundary) do
+    case WorkingCopyWalk.parent_copy(boundary) do
+      {:ok, root} -> {:ok, root}
+      :error -> {:not_onboarded, boundary}
     end
   end
 end

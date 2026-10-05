@@ -93,6 +93,40 @@ defmodule CmsHarness.WorkingCopyWalk do
 
   def root_for(_), do: {:error, :outside_a_working_copy}
 
+  @doc """
+  The onboarded copy a subagent's worktree belongs to.
+
+  Claude Code puts a subagent's worktree at `<copy>/.claude/worktrees/<name>`.
+  It is its own git worktree, so `root_for/1` stops at it as an un-onboarded
+  boundary; the copy that spawned it is the one that holds it.
+  """
+  @spec parent_copy(String.t()) :: {:ok, String.t()} | :error
+  def parent_copy(boundary) do
+    worktrees = Path.dirname(boundary)
+    claude = Path.dirname(worktrees)
+
+    with "worktrees" <- Path.basename(worktrees),
+         ".claude" <- Path.basename(claude),
+         {:ok, root} <- root_for(Path.dirname(claude)) do
+      {:ok, root}
+    else
+      _ -> :error
+    end
+  end
+
+  @doc "The subagent worktree `dir` is in, when it belongs to the copy at `root`."
+  @spec nested_checkout(String.t() | nil, String.t()) :: String.t() | nil
+  def nested_checkout(dir, root) when is_binary(dir) do
+    with {:error, :not_onboarded, boundary} <- root_for(dir),
+         {:ok, ^root} <- parent_copy(boundary) do
+      boundary
+    else
+      _ -> nil
+    end
+  end
+
+  def nested_checkout(_dir, _root), do: nil
+
   defp climb(dir) do
     cond do
       File.regular?(Path.join(dir, @config)) ->
