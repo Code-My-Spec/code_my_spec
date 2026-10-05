@@ -1,0 +1,63 @@
+defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
+  @moduledoc """
+  Enqueueing is idempotent per copy and commit: a promote repeated after a
+  harness restart asks for what is already queued or being gated, and gets
+  that entry back rather than a second one (the queue's first live hours,
+  2026-10-05: one coder's commit sat in the queue twice).
+  """
+
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.DevicesFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.PromotionQueue.Repository
+  alias CodeMySpec.WorkingCopies
+
+  setup do
+    scope = full_scope_fixture()
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "coder", device: device_fixture(scope))
+    %{scope: scope, copy: copy}
+  end
+
+  defp enqueue(ctx, commit) do
+    Repository.enqueue(%{
+      project_id: ctx.scope.active_project_id,
+      working_copy_id: ctx.copy.id,
+      commit: commit,
+      restart: false
+    })
+  end
+
+  defp open(ctx), do: Repository.queued(ctx.scope.active_project_id, 10)
+
+  test "the same commit again while it waits is the same entry", ctx do
+    {:ok, first} = enqueue(ctx, "c1")
+    assert {:ok, %{id: id}} = enqueue(ctx, "c1")
+    assert id == first.id
+    assert [%{id: ^id}] = open(ctx)
+  end
+
+  test "the same commit again while it is being gated is the same entry", ctx do
+    {:ok, first} = enqueue(ctx, "c1")
+    {:ok, _} = Repository.move(first, :gating, %{batch_id: Ecto.UUID.generate()})
+
+    assert {:ok, %{id: id, status: :gating}} = enqueue(ctx, "c1")
+    assert id == first.id
+    assert open(ctx) == []
+  end
+
+  test "a new commit while one waits moves the waiting entry to it", ctx do
+    {:ok, first} = enqueue(ctx, "c1")
+    assert {:ok, %{id: id, commit: "c2"}} = enqueue(ctx, "c2")
+    assert id == first.id
+  end
+
+  test "a new commit while one is being gated is queued behind it", ctx do
+    {:ok, first} = enqueue(ctx, "c1")
+    {:ok, _} = Repository.move(first, :gating, %{batch_id: Ecto.UUID.generate()})
+
+    assert {:ok, %{id: id, status: :queued, commit: "c2"}} = enqueue(ctx, "c2")
+    refute id == first.id
+  end
+end
