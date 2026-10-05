@@ -338,6 +338,14 @@ defmodule CodeMySpec.Agents do
   def scope_for(%Scope{} = scope, _agent), do: scope
 
   @doc """
+  The Presence topic for a project's agents: one key per agent whose process
+  is alive on a harness, tracked by the channel of the copy it runs in
+  (`.code_my_spec/plans/agent-liveness-from-presence.md`).
+  """
+  @spec presence_topic(Ecto.UUID.t()) :: String.t()
+  def presence_topic(project_id), do: "agents_presence:#{project_id}"
+
+  @doc """
   Who is acting, as an off record names them: the calling agent when there is
   one, otherwise the scope's person.
   """

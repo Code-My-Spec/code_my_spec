@@ -55,6 +55,7 @@ defmodule CmsHarness.Project.ChannelClient do
   require Logger
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Config
   alias CmsHarness.Credentials
@@ -516,6 +517,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:refusals, 0)
       |> assign(:silences, 0)
 
+    :ok = Liveness.subscribe()
     {:ok, socket, {:continue, :connect}}
   end
 
@@ -718,6 +720,7 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_preview_check()
     schedule_machine_load_check()
     schedule_agents_running_after_join()
+    report_agents_present(socket)
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -901,6 +904,23 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp schedule_agents_running_after_join,
     do: Process.send_after(self(), :report_agents_running, @join_agents_running_delay_ms)
+
+  # Presence (`.code_my_spec/plans/agent-liveness-from-presence.md`): the
+  # server tracks an agent while this channel says it is up. A fresh join
+  # tracks nothing, so it is told the whole set at once — no delay, unlike
+  # `agents_running` above: an empty set here is true, and presence reaps
+  # nothing on absence.
+  defp report_agents_present(socket) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agents_present",
+      %{"agent_ids" => Liveness.present(socket.assigns.project.root)},
+      5_000
+    )
+
+    socket
+  end
 
   # What is actually alive here, read from the registry rather than from
   # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
@@ -1942,6 +1962,20 @@ defmodule CmsHarness.Project.ChannelClient do
     socket
   end
 
+  defp push_liveness(socket, :up, agent_id, _reason),
+    do:
+      transport().push(socket, socket.assigns.topic, "agent_up", %{"agent_id" => agent_id}, 5_000)
+
+  defp push_liveness(socket, :down, agent_id, reason) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agent_down",
+      %{"agent_id" => agent_id, "reason" => inspect(reason)},
+      5_000
+    )
+  end
+
   # The report deferred while restoring, sent now that it can be true.
   defp pay_owed_report(%{assigns: %{report_owed: true}} = socket) do
     schedule_agents_running()
@@ -2368,6 +2402,17 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_info(:measure_machine_load, socket) do
     schedule_machine_load_check()
+    {:noreply, socket}
+  end
+
+  # An agent in this copy came up or went down (`Liveness`). Another copy's
+  # agent is its own channel's to report; while not joined, the next join's
+  # `agents_present` carries the set.
+  @impl Slipstream
+  def handle_info({:agent_liveness, kind, agent_id, root, reason}, socket) do
+    if socket.assigns.joined and Path.expand(socket.assigns.project.root) == root,
+      do: push_liveness(socket, kind, agent_id, reason)
+
     {:noreply, socket}
   end
 
