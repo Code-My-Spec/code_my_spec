@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -30,7 +31,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok
+    Fixtures.use_recording_transport()
   end
 
   spex "A role's claim rate reflects the offers its agents actually claimed",
@@ -50,7 +51,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
         ComponentHelpers.create(scope,
           name: "Example2013",
-          type: :context,
+          type: "context",
           module_name: "CodeMySpecSpex.Example2013",
           description: "Fixture component for criterion 2013."
         )
@@ -61,6 +62,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             description: "As a user, I want this story done.",
             acceptance_criteria: ["It works"]
           )
+
+        fixture_context = %{scope: scope, environment: context.environment}
+        %{persona_id: persona_id} = ProjectStateFixtures.apply_persona(fixture_context)
+
+        :ok =
+          ProjectStateFixtures.apply_three_amigos_for_story(scope, story, persona_id: persona_id)
+
+        :ok = ProjectStateFixtures.apply_bdd_spec_for_story(fixture_context, story)
 
         first = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2013")
         first_frame = %Frame{assigns: %{current_scope: scope, agent_id: first.id}}
@@ -85,8 +94,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         {:reply, cancelled, _frame} = CancelTask.execute(%{task_id: task_id}, first_frame)
         refute cancelled.isError, inspect(cancelled)
 
-        second = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2013")
+        second =
+          Fixtures.running_agent(scope,
+            role: "coding",
+            working_copy: "/tmp/spex-2013",
+            continuous: true
+          )
         second_frame = %Frame{assigns: %{current_scope: scope, agent_id: second.id}}
+
+        {:reply, resp2, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+        refute resp2.isError, inspect(resp2)
+
+        {:ok, _ref} =
+          CodeMySpec.Agents.Work.request_turn_if_runnable(scope, second, "a teammate's task freed up")
 
         {:reply, claimed, _frame} =
           StartTask.execute(
