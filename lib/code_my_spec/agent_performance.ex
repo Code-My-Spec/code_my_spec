@@ -12,6 +12,7 @@ defmodule CodeMySpec.AgentPerformance do
   and the read.
   """
 
+  alias CodeMySpec.AgentPerformance.BlockedTime
   alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.AgentPerformance.Interventions
   alias CodeMySpec.AgentPerformance.OfferHealth
@@ -37,7 +38,8 @@ defmodule CodeMySpec.AgentPerformance do
           agents: [agent_row()],
           offer_health: [OfferHealth.role_health()],
           throughput_by_team: %{Ecto.UUID.t() => non_neg_integer()},
-          project_level_interventions: [Interventions.intervention()]
+          project_level_interventions: [Interventions.intervention()],
+          project_level_blocked: [BlockedTime.blocked_span()]
         }
 
   @doc """
@@ -51,7 +53,8 @@ defmodule CodeMySpec.AgentPerformance do
       agents: scope |> Agents.list_agents() |> Enum.map(&agent_row(scope, &1)),
       offer_health: OfferHealth.by_role(scope, since),
       throughput_by_team: Throughput.by_team(scope, since),
-      project_level_interventions: Interventions.project_level(scope)
+      project_level_interventions: Interventions.project_level(scope),
+      project_level_blocked: BlockedTime.project_level(scope)
     }
   end
 

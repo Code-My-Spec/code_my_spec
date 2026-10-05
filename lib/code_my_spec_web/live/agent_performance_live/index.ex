@@ -57,6 +57,19 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       </ul>
     </section>
 
+    <section data-test="project-blocked" class="mt-6">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+        Blocked time
+      </h2>
+      <p :if={@summary.project_level_blocked == []} class="text-base-content/60">
+        None -- nothing is waiting on a person right now.
+      </p>
+      <div :for={b <- @summary.project_level_blocked} data-test="blocked-time" data-cause={b.cause}>
+        waiting on {waiting_on_label(b.waiting_on)} ({cause_label(b.cause)}): {hours(b.seconds)}
+        <span :if={not b.resolved?}>-- lapsed, still unresolved</span>
+      </div>
+    </section>
+
     <section data-test="teams" class="mt-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Teams</h2>
       <div :for={{working_copy_id, rate} <- @teams} data-test="team" data-working-copy-id={working_copy_id}>
