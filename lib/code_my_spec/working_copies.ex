@@ -380,6 +380,48 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
+  @doc """
+  Move one story to another working copy, wherever it is now.
+
+  `EpicDispatch.place/3` moves every story in an epic at once; this is the
+  one-story counterpart `stories.working_copy_id` has never had (ae4e748f).
+  `reserve_story/3` only *claims* an unassigned story, and `offboard/2`
+  releases every story a copy holds, discarding the copy with it -- neither
+  takes one story from a copy that still has others.
+
+  Refuses onto a target with no checkout on disk, and refuses to take a
+  story out from under the copy whose team has it as the active story
+  (`team_story_id/1`) unless `force: true` is given -- that is the case
+  worth making loud rather than silent, since it would mean the team there
+  is mid-work on it.
+  """
+  @spec move_story(Scope.t(), term(), Ecto.UUID.t(), keyword()) ::
+          {:ok, Story.t()} | {:error, :not_found | :no_checkout | :story_active_elsewhere}
+  def move_story(%Scope{active_project_id: project_id}, story_id, target_copy_id, opts \\ [])
+      when is_binary(project_id) do
+    force? = Keyword.get(opts, :force, false)
+
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %Story{} = story <-
+           Story
+           |> where([s], s.id == ^id and s.project_id == ^project_id)
+           |> Repo.one(),
+         {:ok, %WorkingCopy{project_id: ^project_id} = target} <- fetch(target_copy_id) do
+      cond do
+        is_nil(target.root) or missing?(target) ->
+          {:error, :no_checkout}
+
+        not force? and team_story_id(story.working_copy_id) == story.id ->
+          {:error, :story_active_elsewhere}
+
+        true ->
+          story |> Story.changeset(%{working_copy_id: target.id}) |> Repo.update()
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
   @doc "Tell the graph a story selection on this project changed."
   @spec announce_selection(Scope.t()) :: term()
   def announce_selection(%Scope{} = scope),
