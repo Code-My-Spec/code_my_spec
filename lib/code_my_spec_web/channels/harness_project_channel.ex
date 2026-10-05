@@ -40,6 +40,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.AgentPerformance.TokenUsage
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.Main, as: MainAgent
@@ -342,6 +343,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         payload["response"] || %{},
         payload["agent_role"] || "main"
       )
+
+    record_turn_tokens(scope, payload)
 
     {:noreply, socket}
   end
@@ -2601,6 +2604,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # "sprite" stays as the last resort rather than the default it used to be.
   # Reached now only when a harness names no working copy and sends no id, it is
   # a real fallback instead of the label every Claude Code session got.
+  # A turn's own tokens, kept whether or not the proxy can also place it in a
+  # conversation -- `payload["agent_role"]` plus the copy already running on
+  # this socket is how `record_turn` finds "which agent", since the wire
+  # never names one directly.
+  defp record_turn_tokens(scope, payload) do
+    role = payload["agent_role"] || "main"
+
+    case Agents.find_by_working_copy_and_role(scope, scope.active_working_copy_id, role) do
+      nil ->
+        :ok
+
+      agent ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+    end
+  end
+
   defp session_external_id(scope, payload) do
     case payload["session_id"] do
       id when is_binary(id) and id != "" -> id

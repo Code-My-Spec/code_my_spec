@@ -176,6 +176,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
   alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.WorkspaceWatchers
   alias Phoenix.ConnTest
   alias Plug.Conn
@@ -911,6 +912,29 @@ defmodule CodeMySpecSpex.Fixtures do
     do: role |> String.to_existing_atom() |> tool_set()
 
   defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
+
+  @doc """
+  Swap in `RecordingAgentTransport` for a scenario that restarts or messages
+  a `running_agent/2` fixture.
+
+  `running_agent/2` creates only the row, with no live harness process behind
+  it, so the default `InProcessAgentTransport` refuses delivery to a machine
+  that was never actually started -- this is the same swap
+  `OperatorMessagesWaitForDeliveryTest` and its siblings use to exercise
+  `message_agent`/`restart_agent` without one.
+  """
+  @spec use_recording_transport() :: :ok
+  def use_recording_transport do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :agent_transport, previous)
+    end)
+
+    RecordingAgentTransport.listen()
+    :ok
+  end
 
   @doc """
   Put an agent mid-turn, the way a turn actually starts.

@@ -180,22 +180,49 @@ defmodule CodeMySpec.Agents do
 
   @doc """
   Every task embedded directly on an agent -- rather than on a session --
-  that was opened against a story.
+  that was opened against a story, including tasks opened against the
+  story's own linked component (see `Sessions.list_tasks_for_story/3` for
+  why `component_id` is matched too).
 
   An agent run under Alloy has no session and fires no hooks, so its tasks
-  live on its own `tasks` embed (`TaskOwner`); `Sessions.list_tasks_for_story/2`
+  live on its own `tasks` embed (`TaskOwner`); `Sessions.list_tasks_for_story/3`
   only ever sees the other kind. `AgentPerformance.CycleTime` reads both.
   """
-  @spec list_tasks_for_story(Scope.t(), integer()) :: [map()]
-  def list_tasks_for_story(%Scope{} = scope, story_id) when is_integer(story_id) do
+  @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
+      when is_integer(story_id) do
     scope
     |> list_agents()
     |> Enum.flat_map(fn agent ->
       agent.tasks
       |> List.wrap()
-      |> Enum.filter(&(&1.story_id == story_id))
+      |> Enum.filter(&(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id)))
       |> Enum.map(&Map.from_struct/1)
     end)
+  end
+
+  @doc """
+  The agent of this role currently on this working copy, if any.
+
+  A turn arrives on the wire naming a working copy and a role, never an
+  agent id (`HarnessProjectChannel`'s `record_turn`) -- one running agent
+  per `{working_copy, role}` is the standing assumption the rest of this
+  module already makes (`adopt/2`'s own lookup matches the same pair).
+  """
+  @spec find_by_working_copy_and_role(Scope.t(), Ecto.UUID.t() | nil, String.t() | atom()) ::
+          Agent.t() | nil
+  def find_by_working_copy_and_role(scope, working_copy_id, role)
+  def find_by_working_copy_and_role(_scope, nil, _role), do: nil
+
+  def find_by_working_copy_and_role(%Scope{} = scope, working_copy_id, role) do
+    role = to_string(role)
+
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.find(
+      &(&1.working_copy_id == working_copy_id and to_string(&1.role) == role and
+          is_nil(&1.retired_at))
+    )
   end
 
   @doc """

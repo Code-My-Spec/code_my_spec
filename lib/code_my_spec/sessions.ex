@@ -183,14 +183,21 @@ defmodule CodeMySpec.Sessions do
   `started_at`/`completed_at` and blocked span, rather than a second,
   separately-maintained clock.
   """
-  @spec list_tasks_for_story(Scope.t(), integer()) :: [map()]
-  def list_tasks_for_story(%Scope{} = scope, story_id) when is_integer(story_id) do
+  # A component-scoped task (entity_type "component" on start_task) never
+  # carries story_id -- component_id is the only ref it has -- so
+  # component_id is matched too, or a story's build-stage work (almost
+  # always component-scoped) would never be found at all.
+  @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
+      when is_integer(story_id) do
     scope
     |> list_sessions()
     |> Enum.flat_map(fn session ->
       session.tasks
       |> List.wrap()
-      |> Enum.filter(&(&1.story_id == story_id))
+      |> Enum.filter(
+        &(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id))
+      )
       |> Enum.map(&Map.from_struct/1)
     end)
   end

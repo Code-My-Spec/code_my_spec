@@ -648,6 +648,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
 
       live "/projects/:project_id/agent-performance", AgentPerformanceLive.Index, :index
+      live "/projects/:project_id/agent-performance/:agent_id", AgentPerformanceLive.Show, :show
 
       live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
