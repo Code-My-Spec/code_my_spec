@@ -95,10 +95,12 @@ defmodule CmsHarness.Copy.Supervisor do
     end
   end
 
+  # Registry drops a dead process's entry asynchronously, so a lookup just
+  # after `stop/1` can still return the terminated pid.
   @spec whereis(String.t()) :: {:ok, pid()} | {:error, :not_running}
   def whereis(root) do
     case Registry.lookup(CmsHarness.Registry, {:copy, Path.expand(root)}) do
-      [{pid, _}] -> {:ok, pid}
+      [{pid, _}] -> if Process.alive?(pid), do: {:ok, pid}, else: {:error, :not_running}
       [] -> {:error, :not_running}
     end
   end
