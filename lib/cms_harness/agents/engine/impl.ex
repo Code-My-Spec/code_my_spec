@@ -49,6 +49,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.State
+  alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
@@ -142,9 +143,11 @@ defmodule CmsHarness.Agents.Engine.Impl do
       case DynamicSupervisor.start_child(@supervisor, {CmsHarness.Agents.Engine.Server, opts}) do
         {:ok, pid} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
+          :ok = Liveness.watch(agent_id, pid, working_copy)
           {:ok, %{agent_id: agent_id, pid: pid}}
 
         {:error, {:already_started, pid}} ->
+          :ok = Liveness.watch(agent_id, pid, working_copy)
           {:ok, %{agent_id: agent_id, pid: pid}}
 
         {:error, reason} ->
