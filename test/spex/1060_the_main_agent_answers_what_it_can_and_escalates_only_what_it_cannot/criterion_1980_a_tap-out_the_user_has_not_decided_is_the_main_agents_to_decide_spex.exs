@@ -114,18 +114,25 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
       then_ "and the coding agent is told the decision and the reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(%{agent_id: context.agent.id}, frame)
+        # The denial is delivered off `CodeMySpec.TaskSupervisor`
+        # (`Notifications.wake_if_still_in_the_loop/2`), not written inline by
+        # `AnswerNotification` -- a loaded machine can observe this read before
+        # that task lands. `eventually/1` is the same wait every other
+        # out-of-band-arrival criterion already uses for exactly this shape.
+        eventually(fn ->
+          {:reply, response, _frame} =
+            ReadAgentConversation.execute(%{agent_id: context.agent.id}, frame)
 
-        text = response_text(response)
+          text = response_text(response)
 
-        assert text =~ "declined" and text =~ "already removed",
-               """
-               The agent that tapped out was never told what the main agent decided, or why.
+          assert text =~ "declined" and text =~ "already removed",
+                 """
+                 The agent that tapped out was never told what the main agent decided, or why.
 
-               reply:
-               #{text}
-               """
+                 reply:
+                 #{text}
+                 """
+        end)
 
         {:ok, context}
       end
