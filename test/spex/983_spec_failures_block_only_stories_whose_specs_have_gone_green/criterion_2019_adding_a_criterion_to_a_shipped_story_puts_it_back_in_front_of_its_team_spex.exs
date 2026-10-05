@@ -98,6 +98,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
         # shape — added after any Three Amigos artifact so this doesn't
         # itself leave the spec stale and the gate reopened.
         :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+        qa_ready_at = DateTime.utc_now()
         {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         refute set_active_story(context, story).isError
@@ -112,7 +113,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
         assert Enum.all?(story.criteria, &(criterion_latch(context, &1) != nil)),
                "every one of the story's criteria must be latched before this scenario starts"
 
-        {:ok, story} = Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40))
+        {:ok, story} = Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40), qa_ready_at)
 
         {:ok, Map.put(context, :story, story)}
       end
