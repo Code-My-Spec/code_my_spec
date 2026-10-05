@@ -20,9 +20,20 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
 
   @dir "test/spex/agency-white-label-configuration-781a555e"
 
+  # A spex file the story's criterion names (`Files.SpecBinding`).
   defp recorded(scope, story, path) do
-    {:ok, _} =
-      AcceptanceCriteria.create_criterion(scope, story, %{description: "owned", spec_path: path})
+    {:ok, criterion} = AcceptanceCriteria.create_criterion(scope, story, %{description: "owned"})
+
+    CodeMySpec.Files.upsert_files(scope, [
+      %{
+        path: path,
+        role: :bdd_spec,
+        story_id: story.id,
+        criterion_number: criterion.number,
+        valid: true,
+        mtime: DateTime.utc_now()
+      }
+    ])
   end
 
   defp red(scope, path) do

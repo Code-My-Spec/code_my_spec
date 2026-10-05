@@ -33,6 +33,20 @@ defmodule CmsHarness.Agents.Liveness do
   def watch_keeper(agent_id, keeper, root),
     do: cast({:watch_keeper, agent_id, keeper, Path.expand(root)})
 
+  @doc """
+  The agents in the working copy at `root` whose Keepers gave up on them, as a
+  join reports them: `%{"agent_id", "reason", "at"}`. Remembered until the agent
+  comes up again, so a reconnect does not turn a stuck agent back into one that
+  reads as starting.
+  """
+  @spec gave_up(String.t()) :: [map()]
+  def gave_up(root) do
+    case GenServer.whereis(__MODULE__) do
+      nil -> []
+      server -> GenServer.call(server, {:gave_up, Path.expand(root)})
+    end
+  end
+
   @doc "Be sent every up and down from now on."
   @spec subscribe(pid()) :: :ok
   def subscribe(pid \\ self()), do: cast({:subscribe, pid})
@@ -59,7 +73,9 @@ defmodule CmsHarness.Agents.Liveness do
   # reason, and `orphaned` the agents whose Keeper's `:DOWN` arrived before
   # their last process's — two monitors, two senders, no promised order.
   def init(:ok),
-    do: {:ok, %{agents: %{}, keepers: %{}, exits: %{}, orphaned: %{}, subscribers: %{}}}
+    do:
+      {:ok,
+       %{agents: %{}, keepers: %{}, exits: %{}, orphaned: %{}, gave_up: %{}, subscribers: %{}}}
 
   # A start that found the agent already running watches the same pid again;
   # one monitor and one `:up` are enough.
@@ -70,6 +86,7 @@ defmodule CmsHarness.Agents.Liveness do
     else
       ref = Process.monitor(pid)
       notify(state, :up, agent_id, root, nil)
+      state = %{state | gave_up: Map.delete(state.gave_up, agent_id)}
       {:noreply, put_in(state.agents[ref], %{id: agent_id, pid: pid, root: root})}
     end
   end
@@ -92,6 +109,13 @@ defmodule CmsHarness.Agents.Liveness do
   end
 
   @impl true
+  def handle_call({:gave_up, root}, _from, state) do
+    stuck =
+      for {id, %{root: ^root} = given} <- state.gave_up, do: Map.put(given.wire, "agent_id", id)
+
+    {:reply, stuck, state}
+  end
+
   def handle_call({:present, root}, _from, state) do
     ids = for {_ref, %{root: ^root, id: id}} <- state.agents, do: id
     {:reply, ids, state}
@@ -127,8 +151,19 @@ defmodule CmsHarness.Agents.Liveness do
 
   defp ended(state, id, root) do
     {reason, exits} = Map.pop(state.exits, id)
-    if crashed?(reason), do: notify(state, :gave_up, id, root, reason)
-    %{state | exits: exits, orphaned: Map.delete(state.orphaned, id)}
+    state = %{state | exits: exits, orphaned: Map.delete(state.orphaned, id)}
+    if crashed?(reason), do: gave_up(state, id, root, reason), else: state
+  end
+
+  defp gave_up(state, id, root, reason) do
+    notify(state, :gave_up, id, root, reason)
+
+    wire = %{
+      "reason" => inspect(reason),
+      "at" => DateTime.to_iso8601(DateTime.utc_now())
+    }
+
+    put_in(state.gave_up[id], %{root: root, wire: wire})
   end
 
   defp crashed?(reason) when reason in [nil, :normal, :shutdown], do: false

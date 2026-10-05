@@ -31,7 +31,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
   end
 
   defp build_context(context, true) do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     env = Environment.new(:local, tmp)
 
     {:ok, {uat_pub, uat_priv}} = Sops.generate_key()

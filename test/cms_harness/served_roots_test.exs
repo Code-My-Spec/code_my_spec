@@ -49,8 +49,8 @@ defmodule CmsHarness.ServedRootsTest do
     )
 
     ensure_child(
-      Process.whereis(CmsHarness.ProjectSupervisor),
-      {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one}
+      Process.whereis(CmsHarness.CopiesSupervisor),
+      {DynamicSupervisor, name: CmsHarness.CopiesSupervisor, strategy: :one_for_one}
     )
 
     on_exit(fn ->
@@ -137,9 +137,10 @@ defmodule CmsHarness.ServedRootsTest do
 
   defp serve_then_lose(root) do
     assert {:ok, project} = Projects.ensure_started(root)
-    [{pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
-    # Application shutdown, not deliberate offboarding.
-    assert :ok = DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+    [{_pid, _}] = Registry.lookup(CmsHarness.Registry, {:project, root})
+    # Application shutdown, not deliberate offboarding: the channel chain goes,
+    # and the root stays remembered.
+    assert :ok = CmsHarness.Copy.Supervisor.unserve(root)
     await_unregistered({:project, root})
     {project.working_copy_id, root}
   end

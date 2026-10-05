@@ -42,7 +42,14 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
 
     CodeMySpec.Files.upsert_files(scope, [
-      %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+      %{
+        path: path,
+        role: :bdd_spec,
+        story_id: story.id,
+        criterion_number: criterion.number,
+        valid: true,
+        mtime: DateTime.utc_now()
+      }
     ])
 
     maybe_latch(latched?, scope, criterion)

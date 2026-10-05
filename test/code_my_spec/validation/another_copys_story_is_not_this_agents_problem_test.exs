@@ -33,7 +33,9 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
   # Real rows: `stories.working_copy_id` is a foreign key, so a generated uuid
   # is not a copy this story could have been assigned to.
   defp a_copy(scope, label) do
-    {:ok, copy} = CodeMySpec.WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
+    {:ok, copy} =
+      CodeMySpec.WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
+
     copy.id
   end
 
@@ -43,7 +45,14 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
 
     {_n, _} =
       CodeMySpec.Files.upsert_files(scope, [
-        %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+        %{
+          path: path,
+          role: :bdd_spec,
+          story_id: story.id,
+          criterion_number: criterion.number,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
       ])
 
     problem_fixture(scope, %{

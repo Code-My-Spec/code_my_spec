@@ -20,7 +20,6 @@ defmodule CodeMySpec.Validation.Blocking do
     ],
     exports: :all
 
-  alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
@@ -124,7 +123,7 @@ defmodule CodeMySpec.Validation.Blocking do
     ctx = %{
       specs_ready_story_ids: specs_ready_story_ids(scope),
       latched_spec_paths: latched_spec_paths(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
@@ -237,24 +236,55 @@ defmodule CodeMySpec.Validation.Blocking do
     |> MapSet.new()
   end
 
-  # Every latched, live criterion's own spec path, derived the same way the
-  # harness looks one up (`BddSpecs.spec_file_path/2`: a recorded `spec_path`
-  # first, a convention-derived path otherwise) rather than read off the
-  # `spec_path` column directly -- that column is often unset until a real
-  # sync binds it, and reading it bare would under-enforce every criterion a
-  # test (or an agent) latched before that happened.
-  defp latched_spec_paths(scope) do
-    scope
-    |> AcceptanceCriteria.list_latched_criteria()
-    |> Enum.flat_map(fn criterion ->
-      case criterion.story do
-        %{number: number} = story when is_integer(number) ->
-          [BddSpecs.spec_file_path(story, criterion)]
+  @doc """
+  The spex files on the scope's copy that name a latched, live criterion: the
+  binding (`Files.SpecBinding`, the file's `spex "…", criterion: N` stamp joined
+  to `criteria.number`), never a path the criterion recorded or one derived from
+  its words.
 
-        _ ->
-          []
-      end
-    end)
-    |> MapSet.new()
+  2026-10-05: a rename (`mix cms.stamp_spex`, 66530d93d) left 1,319 of 1,550
+  latched criteria recording a `spec_path` no file was at, so their red spex
+  matched nothing latched, read as advisory, and 22 went red on main.
+  """
+  @spec latched_spec_paths(Scope.t()) :: MapSet.t(String.t())
+  def latched_spec_paths(scope) do
+    latched = scope |> AcceptanceCriteria.list_latched_criteria() |> MapSet.new(& &1.number)
+
+    for {path, number} <- Files.bdd_spec_criterion_numbers(scope),
+        MapSet.member?(latched, number),
+        into: MapSet.new(),
+        do: path
+  end
+
+  @doc """
+  A blocking spex problem for each latched, live criterion no spex file on the
+  scope's copy names. The latch says the criterion's spex went green; a latch
+  with no spex behind it guards nothing, and a binding that breaks has to be
+  loud rather than let every red through.
+  """
+  @spec unbound_latched(Scope.t()) :: [Problems.Problem.t()]
+  def unbound_latched(scope) do
+    bound = scope |> Files.bdd_spec_criterion_numbers() |> Map.values() |> MapSet.new()
+
+    for criterion <- AcceptanceCriteria.list_latched_criteria(scope),
+        not MapSet.member?(bound, criterion.number) do
+      unbound(criterion)
+    end
+  end
+
+  defp unbound(criterion) do
+    story = criterion.story
+
+    %Problems.Problem{
+      source: "spex",
+      source_type: :test,
+      severity: :error,
+      category: "unbound_latched_criterion",
+      file_path: "test/spex/#{story && story.number}_*",
+      message:
+        "criterion #{criterion.number} (story #{story && story.number}) is latched, and no " <>
+          "spex file on this copy names it (`spex \"…\", criterion: #{criterion.number}`). " <>
+          "Restore its spex, or retire the criterion."
+    }
   end
 end

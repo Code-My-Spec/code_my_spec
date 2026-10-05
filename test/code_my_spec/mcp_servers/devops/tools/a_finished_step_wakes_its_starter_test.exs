@@ -33,7 +33,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
     # The step runs in a detached task, which checks out its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
-    {:ok, working_dir} = Briefly.create(directory: true)
+    working_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     scope = %{scope | environment: Environment.new(:local, working_dir)}
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "example.com"})

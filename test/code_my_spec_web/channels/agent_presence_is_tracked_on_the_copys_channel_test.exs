@@ -81,6 +81,7 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
 
     say(ctx.channel, "agent_down", %{"agent_id" => ctx.agent.id, "reason" => ":normal"})
     assert present(ctx.topic) == []
+    settle_tasks()
   end
 
   test "an up for an agent already tracked changes nothing", ctx do
@@ -88,6 +89,7 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
 
     assert present(ctx.topic) == [ctx.agent.id]
+    settle_tasks()
   end
 
   test "another copy's agent is not this channel's to track", ctx do
@@ -95,6 +97,7 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
 
     assert present(ctx.topic) == []
     assert log =~ "is not an agent of copy"
+    settle_tasks()
   end
 
   test "the harness's set on join reconciles both ways", ctx do
@@ -102,6 +105,7 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     say(ctx.channel, "agents_present", %{"agent_ids" => [ctx.sibling.id]})
 
     assert present(ctx.topic) == [ctx.sibling.id]
+    settle_tasks()
   end
 
   # Only a diff with leaves in it is the close's: a join diff for the tracks
@@ -121,6 +125,7 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
 
     assert leaves |> Map.keys() |> Enum.sort() == Enum.sort([ctx.agent.id, ctx.sibling.id])
     assert present(ctx.topic) == []
+    settle_tasks()
   end
 
   test "a harness from before presence still has its 60-second report answered", ctx do
@@ -128,5 +133,65 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     say(ctx.channel, "agents_running", %{"agent_ids" => [ctx.sibling.id]})
 
     assert present(ctx.topic) == [ctx.agent.id]
+    settle_tasks()
+  end
+
+  describe "an agent its harness gave up on" do
+    test "stays tracked, marked, and is not running", ctx do
+      say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
+
+      say(ctx.channel, "agent_down", %{
+        "agent_id" => ctx.agent.id,
+        "reason" => "gave_up: :killed"
+      })
+
+      project = ctx.scope.active_project_id
+      refute Presence.present?(project, ctx.agent.id)
+      assert %{reason: ":killed", at: %DateTime{}} = Presence.gave_up(project, ctx.agent.id)
+      assert Agents.lifecycle(agent_row(ctx), Presence.ids(project)) == :gave_up
+      settle_tasks()
+    end
+
+    test "is running again once it comes up — main restarted it", ctx do
+      say(ctx.channel, "agent_down", %{"agent_id" => ctx.agent.id, "reason" => "gave_up: :boom"})
+      say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
+
+      project = ctx.scope.active_project_id
+      assert Presence.present?(project, ctx.agent.id)
+      assert Presence.gave_up(project, ctx.agent.id) == nil
+      settle_tasks()
+    end
+
+    test "stays marked across a reconnect, from the join's own report", ctx do
+      say(ctx.channel, "agents_present", %{
+        "agent_ids" => [ctx.sibling.id],
+        "gave_up" => [
+          %{"agent_id" => ctx.agent.id, "reason" => ":boom", "at" => "2026-10-05T08:00:00Z"}
+        ]
+      })
+
+      project = ctx.scope.active_project_id
+      assert Presence.ids(project) == MapSet.new([ctx.sibling.id])
+
+      assert %{reason: ":boom", at: ~U[2026-10-05 08:00:00Z]} =
+               Presence.gave_up(project, ctx.agent.id)
+
+      settle_tasks()
+    end
+  end
+
+  # A down and an up each start a task off the channel (`process_ended/3`,
+  # `came_up/2`) that reads the database: let them finish while this test still
+  # owns its sandbox connection, not after.
+  defp settle_tasks do
+    for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor) do
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
+    end
+  end
+
+  defp agent_row(ctx) do
+    {:ok, agent} = Agents.fetch_agent(ctx.scope, ctx.agent.id)
+    agent
   end
 end

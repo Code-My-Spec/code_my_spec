@@ -231,7 +231,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     defp write_and_resolve(body, assertion) do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       File.write!(path, body <> "\nbuilder:\n  arch: amd64\n")
 
@@ -268,7 +268,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     # (and caught a first draft that produced invalid YAML under `keys_only`'s
     # indentation) — this is that same proof, kept.
     test "kamal itself parses the ssh block into keys_only when the env var is set" do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       # Kamal validates the whole config; a fresh project's own generated
       # `files/1` output does not include `builder:`, so one is added here
@@ -288,7 +288,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     test "kamal falls back to its own default ssh behavior when the env var is unset" do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
 
@@ -370,7 +370,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
   # important is worth running for real, not just grepping.
   describe "bin/deploy" do
     setup do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       bin_dir = Path.join(tmp, "bin")
       File.mkdir_p!(bin_dir)
 
@@ -513,7 +513,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       # somewhere real to push to instead of failing on a remote that does
       # not exist — this test is about what the script does after that
       # succeeds, not about proving push itself works.
-      {:ok, bare} = Briefly.create(directory: true)
+      bare = CodeMySpec.TempFile.owned_dir("test")
       {_, 0} = System.cmd("git", ["init", "-q", "--bare"], cd: bare)
       {_, 0} = System.cmd("git", ["remote", "add", "origin", bare], cd: tmp)
 

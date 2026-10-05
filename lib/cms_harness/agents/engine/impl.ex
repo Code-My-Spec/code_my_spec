@@ -54,12 +54,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
-  alias CmsHarness.Mcp.Transport
+  alias CmsHarness.Copy.Supervisor, as: Copy
+  alias CmsHarness.Mcp.Session
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
-  @supervisor CmsHarness.AgentSupervisor
 
   # How many times round the agent loop before a turn is cut off.
   #
@@ -144,7 +144,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
       # crash loop. The engine watches itself into `Liveness` from `init/1`, so
       # every restart is an up; the Keeper is watched here, once, so its giving
       # up is a single final down.
-      case DynamicSupervisor.start_child(@supervisor, {Keeper, opts}) do
+      case start_keeper(working_copy, opts) do
         {:ok, keeper} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
           :ok = Liveness.watch_keeper(agent_id, keeper, working_copy)
@@ -157,6 +157,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
           Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
+    end
+  end
+
+  # Under its copy's agents supervisor (`Copy.Supervisor`), so the copy going
+  # takes its agents with it.
+  defp start_keeper(working_copy, opts) do
+    with {:ok, _copy} <- Copy.ensure(working_copy) do
+      DynamicSupervisor.start_child(Copy.agents(working_copy), {Keeper, opts})
     end
   end
 
@@ -334,7 +342,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @spec stop(String.t()) :: :ok | {:error, :not_running}
   def stop(agent_id) do
     case Keeper.whereis(agent_id) do
-      {:ok, keeper} -> DynamicSupervisor.terminate_child(@supervisor, keeper)
+      {:ok, keeper, root} -> DynamicSupervisor.terminate_child(Copy.agents(root), keeper)
       {:error, _} = error -> error
     end
   end
@@ -379,7 +387,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
     agent_id = Keyword.fetch!(opts, :agent_id)
-    {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
+    {:ok, alloy_opts} = alloy_options(opts, Session.client(agent_id))
     {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
     prune_spilled(spill_dir(agent_id))
 
@@ -467,18 +475,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # than being lost with the process.
   @impl true
   def terminate(reason, state) do
-    # The session goes with the agent that opened it.
-    #
-    # `connect/2` unlinks the client's supervisor deliberately, so nothing here
-    # took it down and a stopped agent left its client registered under a name
-    # the next launch needs — which is how a restart could leave an agent worse
-    # off than before it (`4078e7bf`, `dfa1ee9e`).
-    #
-    # The copy's browser session is not this and must not be stopped here:
-    # `CmsHarness.Browser.Owner` holds it for the copy, and it closes when the
-    # copy stops being served.
-    disconnect_mcp(state.mcp_client)
-
+    # The MCP session is not closed here: it is the Keeper's child
+    # (`Mcp.Session`) and closes itself when the Keeper stops it. Nor the copy's
+    # browser session, which `CmsHarness.Browser.Owner` holds for the copy.
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     announce_death(state, reason)
@@ -502,12 +501,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
     Logger.warning("[CmsHarness] agent #{state.agent_id} died: #{text}")
     state.on_event.(state.agent_id, %{event: :agent_died, text: text})
   end
-
-  # `nil` on every path where the session was never opened — a machine that
-  # could not authenticate gets one from `mcp_session/1`, and the agent still
-  # works without it.
-  defp disconnect_mcp(nil), do: :ok
-  defp disconnect_mcp(client), do: Transport.impl().disconnect(client)
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok
@@ -978,34 +971,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @spec direct_tool(String.t()) :: module()
   def direct_tool(name), do: Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
 
-  # One session per agent, started with it.
-  #
-  # `initialize` is a round trip, and paying it on every `run_script` would put
-  # back the latency that running the script beside the data took out.
-  #
-  # Failure is not fatal. A machine that cannot reach the server right now
-  # still has a checkout the agent can read and edit, and the two tools say so
-  # when called rather than the agent refusing to exist.
-  defp mcp_session(opts) do
-    agent_id = Keyword.get(opts, :agent_id)
-    working_copy_id = Keyword.get(opts, :working_copy_id)
-    root = Keyword.get(opts, :working_copy)
-
-    with true <- is_binary(agent_id),
-         {:ok, client} <- CmsHarness.Mcp.connect(agent_id, working_copy_id, root) do
-      client
-    else
-      other ->
-        Logger.warning(
-          "[CmsHarness] agent #{inspect(agent_id)} has no MCP session " <>
-            "(#{inspect(other)}); it can read and edit its checkout and cannot " <>
-            "reach the project's tools until it restarts"
-        )
-
-        nil
-    end
-  end
-
   @doc """
   What a direct call to a tool the engine does not carry is told.
 
@@ -1142,6 +1107,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # 33d707a2. It is also why the analyzer alert never reached a running
          # agent — `AgentAlert` appends only for a caller that named itself.
          agent_id: Keyword.fetch!(opts, :agent_id),
+         # The copy whose harness runs its `mix test` (`Tools.Bash`).
+         working_copy_id: Keyword.get(opts, :working_copy_id),
          # The agent's own MCP session, so a script it runs acts with exactly
          # its authority. Nil when the machine could not authenticate, which
          # the tools report rather than crashing on — an agent that can still

@@ -83,7 +83,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a merge already in progress" do
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -202,7 +202,7 @@ defmodule CodeMySpec.PromotionTest do
     # premises are superseded by the same change — divergence itself, not
     # just a conflict, is what gets refused now.
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -289,7 +289,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a promotion originates a version" do
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -360,7 +360,7 @@ defmodule CodeMySpec.PromotionTest do
     # the branch brought. Every promote dropped `.code_my_spec` bumps this way.
     test "the version bump does not revert a submodule pointer the branch moved",
          %{root: root, git: git, env: env} do
-      {:ok, sub} = Briefly.create(directory: true)
+      sub = CodeMySpec.TempFile.owned_dir("test")
       sub_git = fn args -> System.cmd("git", args, cd: sub, stderr_to_stdout: true) end
       {_, 0} = sub_git.(["init", "--initial-branch=main"])
 
@@ -594,7 +594,7 @@ defmodule CodeMySpec.PromotionTest do
     # the submodule as dirty in the superproject at all, and "regenerated on
     # every task" is a rewrite of a file the submodule already tracks.
     test "does not refuse a checkout whose only dirt is inside the submodule" do
-      {:ok, submodule_root} = Briefly.create(directory: true)
+      submodule_root = CodeMySpec.TempFile.owned_dir("test")
       sub_git = fn args -> System.cmd("git", args, cd: submodule_root, stderr_to_stdout: true) end
 
       {_, 0} = sub_git.(["init", "-q", "--initial-branch=main"])
@@ -604,7 +604,7 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = sub_git.(["add", "-A"])
       {_, 0} = sub_git.(["commit", "-q", "-m", "initial brief"])
 
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "-q", "--initial-branch=main"])
@@ -638,7 +638,7 @@ defmodule CodeMySpec.PromotionTest do
     end
 
     test "still refuses when the checkout itself has uncommitted work" do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "-q", "--initial-branch=main"])

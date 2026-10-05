@@ -124,9 +124,15 @@ defmodule CmsHarness.Web.AnalysisController do
     end
   end
 
+  # The tool's own exit status rides in `x-exit-status`, so the routed command
+  # exits with what `mix test` would have (2 for failures, 1 for a crash), not
+  # a generic 1.
   defp reply(conn, {:ok, %{"output" => output} = run}) do
+    status = exit_status(run)
+
     conn
-    |> put_status(if exit_status(run) == 0, do: 200, else: 422)
+    |> put_resp_header("x-exit-status", Integer.to_string(status))
+    |> put_status(if status == 0, do: 200, else: 422)
     |> text(output || "")
   end
 

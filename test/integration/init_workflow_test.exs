@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   end
 
   test "full init flow: init checklist → link project → computed graph returns the first requirement" do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     frame = %Frame{assigns: %{working_dir: tmp_dir}}
 
     # Step 1: no project — get_next_requirement returns init checklist

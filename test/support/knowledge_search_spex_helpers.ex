@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.KnowledgeSearchHelpers do
   @doc "A fresh, empty folder standing in for the release's `priv/knowledge`."
   @spec knowledge_folder() :: String.t()
   def knowledge_folder do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     dir
   end
 

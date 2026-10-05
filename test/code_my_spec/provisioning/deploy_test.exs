@@ -8,7 +8,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
   alias CodeMySpec.Provisioning.Deploy.Result
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     %{env: Environment.new(:local, tmp)}
   end
 
@@ -795,7 +795,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     test "attempts a real Net::SSH connection, bypassing kamal and SSHKit entirely",
          %{env: env} do
       test_pid = self()
-      {:ok, key_dir} = Briefly.create(directory: true)
+      key_dir = CodeMySpec.TempFile.owned_dir("test")
       key_path = Path.join(key_dir, "id_ed25519")
       File.write!(key_path, "fake key bytes")
 
@@ -831,7 +831,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # through to interactive password auth and died `Errno::ENOTTY`.
     test "delivers the ssh key's own bytes onto the box, not just its path", %{env: env} do
       test_pid = self()
-      {:ok, key_dir} = Briefly.create(directory: true)
+      key_dir = CodeMySpec.TempFile.owned_dir("test")
       key_path = Path.join(key_dir, "id_ed25519")
 
       File.write!(
@@ -881,7 +881,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     test "reports the delivered key's own permissions on the builder, before the script runs",
          %{env: env} do
       test_pid = self()
-      {:ok, key_dir} = Briefly.create(directory: true)
+      key_dir = CodeMySpec.TempFile.owned_dir("test")
       key_path = Path.join(key_dir, "id_ed25519")
       File.write!(key_path, "fake key bytes")
 

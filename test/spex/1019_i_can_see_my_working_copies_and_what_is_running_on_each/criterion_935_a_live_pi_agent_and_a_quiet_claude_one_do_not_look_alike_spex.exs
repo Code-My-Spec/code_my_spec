@@ -40,13 +40,16 @@ defmodule CodeMySpecSpex.Story1019.Criterion2830Spex do
   spex "Liveness is not one fact", criterion: 935 do
     scenario "A live Pi agent and a quiet Claude one do not look alike" do
       given_ "a Pi agent on one copy and a Claude Code agent on another", context do
-        pi = join_working_copy(context, "/tmp/spex-1019-pi", "pi checkout")
+        {pi, socket} = join_working_copy_socket(context, "/tmp/spex-1019-pi", "pi checkout")
         claude = join_working_copy(context, "/tmp/spex-1019-claude", "claude checkout")
 
-        report_agents(context, [
-          pi_agent(pi.working_copy_id, "/tmp/spex-1019-pi"),
-          claude_agent(claude.working_copy_id, "/tmp/spex-1019-claude")
-        ])
+        reply =
+          report_agents(context, [
+            pi_agent(pi.working_copy_id, "/tmp/spex-1019-pi"),
+            claude_agent(claude.working_copy_id, "/tmp/spex-1019-claude")
+          ])
+
+        :ok = agent_up(socket, reported_id(reply, "/tmp/spex-1019-pi"))
 
         {:ok, context}
       end
@@ -58,10 +61,10 @@ defmodule CodeMySpecSpex.Story1019.Criterion2830Spex do
         {:ok, Map.put(context, :live, live)}
       end
 
-      then_ "the Pi agent reads as present now", context do
+      then_ "the Pi agent reads as running now", context do
         pi = row(context, "/tmp/spex-1019-pi")
 
-        assert pi =~ ~r/present/i,
+        assert pi =~ ~r/running/i,
                "a Pi lane is joined for as long as it is alive, so its liveness is " <>
                  "a fact about now and should be stated as one. Got: #{pi}"
 
@@ -81,8 +84,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2830Spex do
       then_ "neither is described in the other's terms", context do
         claude = row(context, "/tmp/spex-1019-claude")
 
-        refute claude =~ ~r/\bpresent\b/i,
-               "the Claude Code agent is described as present, which is a fact " <>
+        refute claude =~ ~r/\brunning\b/i,
+               "the Claude Code agent is described as running, which is a fact " <>
                  "nothing establishes. An agent that died five minutes ago and one " <>
                  "mid-thought produce the same timestamp, and calling that presence " <>
                  "is inventing the difference. Got: #{claude}"
