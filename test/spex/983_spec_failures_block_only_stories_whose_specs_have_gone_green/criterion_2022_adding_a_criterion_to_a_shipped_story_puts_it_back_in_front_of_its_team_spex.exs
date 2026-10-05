@@ -1,6 +1,6 @@
-defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
+defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
   @moduledoc """
-  Story 983 — Criterion 2019: adding a criterion to a shipped story puts it
+  Story 983 — Criterion 2022: adding a criterion to a shipped story puts it
   back in front of its team.
 
   Rule: a story revised after it shipped is not finished — the revision
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
     :ok
   end
 
-  spex "A revision reopens a shipped story's gate in front of its team", criterion: 2019 do
+  spex "A revision reopens a shipped story's gate in front of its team", criterion: 2022 do
     scenario "adding a criterion to a shipped story puts it back in front of its team" do
       given_ "a story whose implementation, QA and promotion all completed, its one criterion latched",
              context do
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
             acceptance_criteria: ["It works"]
           )
 
-        module_name = "Story2019Surface"
+        module_name = "Story2022Surface"
         module_path = module_name |> String.split(".") |> Enum.map_join("/", &Macro.underscore/1)
 
         ComponentGraphHelpers.design!(context, module_name)
@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2019Spex do
         :ok =
           ProjectStateFixtures.apply_three_amigos_for_story(context.scope, story,
             persona_id: context.persona_id,
-            rule_statement: "Criterion 2019's surface works as the story says",
+            rule_statement: "Criterion 2022's surface works as the story says",
             happy_title: "The surface works",
             happy_body: "Given the surface exists\nWhen it is used\nThen it works",
             failure_title: "The surface rejects bad input",
