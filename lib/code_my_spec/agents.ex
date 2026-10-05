@@ -2133,14 +2133,24 @@ defmodule CodeMySpec.Agents do
           {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
   def dispatch_message(scope, id, text, event, timeout \\ @message_timeout_ms)
 
-  def dispatch_message(%Scope{} = scope, id, text, event, timeout) when is_binary(text) do
+  def dispatch_message(%Scope{} = scope, id, text, event, timeout) when is_binary(text),
+    do: dispatch_message(scope, id, text, event, timeout, [])
+
+  def dispatch_message(%Scope{} = scope, id, text, event, timeout, opts) when is_binary(text) do
     ref = Ecto.UUID.generate()
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, conversation} <- open_conversation(scope, agent),
-         {:ok, message} <- record_sent(conversation, text, ref, :queued) do
+         {:ok, message} <-
+           record_sent(
+             conversation,
+             text,
+             ref,
+             :queued,
+             Keyword.get(opts, :sender_id, "operator")
+           ) do
       subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
       offered = Offers.record({:ok, message}, agent, :instruction, {"message", subject})
 
@@ -2257,8 +2267,8 @@ defmodule CodeMySpec.Agents do
 
   # Started or queued, on the row. The difference is the only thing the sender
   # can still act on, so it is not something the view infers from a timestamp.
-  defp record_sent(conversation, text, ref, disposition) do
-    Conversations.add_message(conversation, :operator, text, "operator", [],
+  defp record_sent(conversation, text, ref, disposition, sender_id \\ "operator") do
+    Conversations.add_message(conversation, :operator, text, sender_id, [],
       delivery: delivery_of(disposition),
       delivery_ref: ref
     )
