@@ -64,7 +64,7 @@ defmodule CodeMySpec.AgentPerformance.QaRounds do
   def team_first_pass_rate(%Scope{} = scope, working_copy_id, since \\ nil) do
     first_attempts =
       scope
-      |> Qa.list_project_attempts(include_older: true)
+      |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
       |> Enum.filter(&(&1.story && &1.story.working_copy_id == working_copy_id))
       |> Enum.group_by(& &1.story_id)
       |> Enum.map(fn {_story_id, attempts} -> Enum.min_by(attempts, & &1.submitted_at, DateTime) end)

@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -35,6 +36,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
        criterion: 2009 do
     scenario "an agent received harness notices and one operator message during a story" do
       given_ "a released story with an agent that sent several harness turn events", context do
+        {:ok, main_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "the main checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
+
         reply = join_working_copy(context, "/tmp/spex-2009", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -45,10 +54,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
             acceptance_criteria: ["It works"]
           )
 
-        frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2009")
+
+        frame = %Frame{assigns: %{current_scope: scope}}
+        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+        refute resp.isError, inspect(resp)
 
         Fixtures.put_agent_mid_turn(scope, agent.id)
         :ok = Fixtures.end_turn(scope, agent.id)
@@ -74,19 +84,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
       then_ "interventions are counted", context do
         {:ok, _index, html} = live(context.conn, index_path(context))
-        IO.puts("DEBUG_INTERVENTIONS: #{inspect(CodeMySpec.AgentPerformance.Interventions.story(context.scope, context.story))}")
         {:ok, Map.put(context, :html, html)}
       end
 
       then_ "only the operator and user messages count as interventions", context do
-        assert context.html =~ context.story.title and context.html =~ "1",
+        assert context.html =~ context.story.title and
+                 Regex.match?(~r/data-test="story-interventions">\s*<span>1<\/span>/, context.html),
                "the story's intervention count is not exactly the one operator message that was sent"
 
         {:ok, context}
       end
 
       then_ "and harness notices are shown separately", context do
-        refute context.html =~ context.story.title and context.html =~ "3",
+        refute Regex.match?(~r/data-test="story-interventions">\s*<span>3<\/span>/, context.html),
                "the two harness turn-ended events were folded into the same count as the operator's own nudge"
 
         {:ok, context}

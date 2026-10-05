@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -33,6 +34,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
        criterion: 2005 do
     scenario "a team whose stories went to QA over a period" do
       given_ "one story that passed QA first time and one that took two rounds", context do
+        {:ok, main_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "the main checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
+
         reply = join_working_copy(context, "/tmp/spex-2005", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -78,7 +87,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
     qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2005")
     asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
-    {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, asking)
+    {:reply, sas_resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, asking)
+    refute sas_resp.isError, inspect(sas_resp)
 
     {:reply, started, _frame} =
       StartTask.execute(

@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -35,8 +37,23 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
        criterion: 2013 do
     scenario "agents in the coding role were offered work over a period" do
       given_ "one coding agent frees a task and a second coding agent claims it", context do
+        {:ok, main_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "the main checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
+
         reply = join_working_copy(context, "/tmp/spex-2013", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        ComponentHelpers.create(scope,
+          name: "Example2013",
+          type: :context,
+          module_name: "CodeMySpecSpex.Example2013",
+          description: "Fixture component for criterion 2013."
+        )
 
         story =
           StoryHelpers.create_and_link(scope, "CodeMySpecSpex.Example2013",
@@ -45,11 +62,12 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             acceptance_criteria: ["It works"]
           )
 
-        frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-
         first = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2013")
         first_frame = %Frame{assigns: %{current_scope: scope, agent_id: first.id}}
+
+        frame = %Frame{assigns: %{current_scope: scope}}
+        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+        refute resp.isError, inspect(resp)
 
         {:reply, started, _frame} =
           StartTask.execute(
