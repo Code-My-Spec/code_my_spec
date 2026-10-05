@@ -4,10 +4,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       idle ─▶ build ─▶ gate ─┬─ green ─▶ land ─▶ idle
                              ├─ pending (analysis running) ─▶ gate again when it lands
-                             └─ red ─▶ red on main too? excluded, gate again
-                                     ├▶ re-run a lone failure once
-                                     ├▶ eject the one candidate the findings belong to
-                                     └▶ bisect: gate the first half, the rest wait
+                             └─ red ─▶ bisect: a batch of one is ejected; otherwise
+                                        gate the first half, the rest wait
 
   A batch is built in the project's gate copy: reset to main's HEAD, the
   candidates merged on in queue order. A candidate that conflicts is ejected at
@@ -27,11 +25,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
-  alias CodeMySpec.PromotionQueue.Triage
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -42,10 +40,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @gate_label "promotion-gate"
   @recheck_ms 120_000
   @retry_ms 300_000
-  # Runs of one source that failed at one batch commit before the batch is held:
-  # the first, and one retry.
-  @max_starts 2
-  @hold_ms 900_000
   @inflight_limit_ms 30 * 60_000
 
   @doc false
@@ -81,16 +75,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_cast(:gate_copy_joined, state), do: handle_cast(:kick, state)
 
   def handle_cast(:kick, %{phase: :idle} = state), do: next(state)
-  def handle_cast(:kick, %{phase: :held} = state), do: retry_held(state)
   def handle_cast(:kick, state), do: {:noreply, state}
 
   @impl true
   def handle_info(:next, %{phase: :idle} = state), do: next(state)
 
-  # A held batch is built again from scratch: the gate copy may have been set
-  # up since, and its counts start over.
-  def handle_info(:retry_held, %{phase: :held} = state), do: retry_held(state)
-  def handle_info(:retry_held, state), do: {:noreply, state}
   def handle_info(:next, state), do: {:noreply, state}
 
   def handle_info(:gate, %{phase: :gating, batch: batch} = state) do
@@ -103,51 +92,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_info(:land, %{phase: :landing} = state), do: land(state)
   def handle_info(:land, state), do: {:noreply, state}
 
-  # The gate copy's run finished: gate again (or, during a re-run, once the
-  # re-run source itself is done).
+  # The gate copy's run finished: gate again.
   def handle_info({:analysis, %{status: :running}}, state), do: {:noreply, state}
-
-  # The gate copy answering a baseline re-run (`check_baseline/3`).
-  def handle_info(
-        {:analysis, %{working_copy_id: id, source: source}},
-        %{phase: :baseline, batch: %{gate: %{id: id}, baseline: {at, asked}}} = state
-      ) do
-    asked = %{asked | pending: MapSet.delete(asked.pending, source)}
-
-    cond do
-      MapSet.size(asked.pending) > 0 -> {:noreply, put_in(state.batch.baseline, {at, asked})}
-      at == :at_base -> back_to_head(state, asked)
-      true -> settle_baseline(state, asked)
-    end
-  end
-
-  # The re-run never answered: the gate copy is put back at the batch commit and
-  # the findings triaged as found.
-  def handle_info(:baseline_timeout, %{phase: :baseline, batch: batch} = state) do
-    Logger.warning(
-      "[PromotionQueue] the baseline re-run for #{batch.head} never answered; triaging as found"
-    )
-
-    batch = %{batch | baseline: :checked}
-
-    case restore_head(batch) do
-      :ok -> gate(%{state | phase: :gating, batch: batch})
-      {:error, reason} -> could_not_restore(state, reason)
-    end
-  end
-
-  def handle_info(:baseline_timeout, state), do: {:noreply, state}
 
   # Gated again only once nothing is still open on the gate copy: the gate
   # starts any source without an answer, and one dispatched but not yet begun
   # has none, so re-gating on every result would start it twice.
-  def handle_info({:analysis, %{working_copy_id: id} = run}, %{batch: %{gate: %{id: id}}} = state) do
-    cond do
-      Analysis.running_on?(state.batch.scope) -> {:noreply, state}
-      state.phase == :gating -> gate(state)
-      state.phase == {:rerun, run.source} -> gate(%{state | phase: :gating})
-      true -> {:noreply, state}
-    end
+  def handle_info({:analysis, %{working_copy_id: id}}, %{batch: %{gate: %{id: id}}} = state) do
+    if state.phase == :gating and not Analysis.running_on?(state.batch.scope),
+      do: gate(state),
+      else: {:noreply, state}
   end
 
   # Another copy's run finished while a green batch waits for in-flight runs.
@@ -278,11 +232,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       scope: scope_for(state.scope, gate),
       base: base,
       head: head,
-      reran?: false,
-      # Whether main's own red has been asked about (`check_baseline/3`), and
-      # the findings main is red on too, which refuse nothing.
-      baseline: :unchecked,
-      excluded: MapSet.new(),
       green_since: nil,
       # When gating began: a run that failed before it could say which commit
       # it started on counts against this batch only if it is this batch's.
@@ -317,52 +266,40 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp gate(%{batch: batch} = state) do
     state = cancel_timer(state)
 
-    case Promotion.gate(batch.scope, batch.head, excluding: batch.excluded) do
+    case failed_runs(batch) do
+      [] -> gate_runs(state)
+      failed -> could_not_run(state, failed)
+    end
+  end
+
+  defp gate_runs(%{batch: batch} = state) do
+    case Promotion.gate(batch.scope, batch.head) do
       {:ok, swept} -> stories_green(state, swept)
-      {:pending, pending} -> pending(state, Map.get(pending, :started, []))
+      {:pending, _pending} -> {:noreply, recheck_later(state)}
       {:error, reason} -> red(state, reason)
     end
   end
 
-  # The gate starts a source with no answer at the batch commit. A source whose
-  # runs there keep failing — an analyzer that cannot run on the gate copy (a
-  # missing env, a broken toolchain) — would be started again every recheck,
-  # forever, so after `@max_starts` failures at that commit the batch is held:
-  # not the candidates' fault, so nothing is ejected.
-  #
-  # Counted from the runs at that commit, not from starts: every landing
-  # restarts the harness, which orphans the next gate's first runs, and counting
-  # those held a batch whose analyzers ran fine (3c59be47, 2026-10-05).
-  defp pending(%{batch: batch} = state, started) do
-    case Enum.filter(
-           started,
-           &(Analysis.failed_at_commit(batch.scope, &1, batch.head, batch.since) >= @max_starts)
-         ) do
-      [] -> {:noreply, recheck_later(state)}
-      failing -> hold(state, failing)
-    end
-  end
-
-  defp hold(%{batch: batch} = state, sources) do
-    why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))
-
-    Logger.error(
-      "[PromotionQueue] holding the batch at #{batch.head}: the gate copy " <>
-        "#{batch.gate.root} cannot run #{Enum.join(sources, ", ")}.\n#{why}"
-    )
-
-    for entry <- batch.entries do
-      tell(
-        state.scope,
-        entry,
-        "Your promotion of #{subject(entry)} is waiting: the gate copy cannot run " <>
-          "#{Enum.join(sources, ", ")}, so nothing can be certified. This is not a " <>
-          "finding against your work and nothing was taken out; it is retried " <>
-          "when the gate copy is fixed. Do not promote again."
+  # A run that failed at the batch commit is red like a finding: the batch's own
+  # change may be what stops the analyzer running (a broken mix.exs, a config
+  # the suite cannot boot with), and a failure at main too is main's to fix.
+  # Not retried. Runs a harness going away orphaned are not failures here
+  # (3c59be47): every landing restarts the harness.
+  defp failed_runs(batch),
+    do:
+      Enum.filter(
+        Run.sources(),
+        &(Analysis.failed_at_commit(batch.scope, &1, batch.head, batch.since) > 0)
       )
-    end
 
-    {:noreply, cancel_timer(state) |> Map.put(:phase, :held) |> hold_later()}
+  defp could_not_run(%{batch: batch} = state, sources) do
+    why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))
+    Logger.error("[PromotionQueue] #{Enum.join(sources, ", ")} failed at #{batch.head}.\n#{why}")
+
+    bisect(
+      state,
+      "#{Enum.join(sources, ", ")} could not run at the batch commit #{batch.head}.\n\n#{why}"
+    )
   end
 
   defp cannot_run(scope, source) do
@@ -374,13 +311,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         "#{source}: its runs fail with no output"
     end
   end
-
-  defp retry_held(%{batch: batch} = state) do
-    requeue(batch.entries)
-    next(%{cancel_timer(state) | phase: :idle, batch: nil})
-  end
-
-  defp hold_later(state), do: %{state | timer: Process.send_after(self(), :retry_held, @hold_ms)}
 
   # The certifying run must also show each story's own spex green, as a direct
   # promotion requires before it latches a story.
@@ -405,220 +335,33 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp red(%{batch: batch} = state, reason) do
-    problems = Promotion.blocking_problems_at(batch.scope, batch.head, batch.excluded)
+    problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
-    cond do
-      problems == [] ->
-        # Not a finding about the code: the gate could not run (an analyzer
-        # would not start, the tree was dirty). Nothing to eject; try again.
-        Logger.error("[PromotionQueue] gate could not run: #{describe(reason)}; retrying")
-        requeue(batch.entries)
-        {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
-
-      ask_main?(batch, problems) ->
-        check_baseline(state, problems, reason)
-
-      match?({:rerun, _}, Triage.lone_failure(problems)) and not batch.reran? ->
-        {:rerun, source} = Triage.lone_failure(problems)
-        Logger.info("[PromotionQueue] one #{source} finding at #{batch.head}; re-running it once")
-        batch = %{batch | reran?: true}
-
-        case Analysis.start_run(batch.scope, source, [], requested_by: %{kind: "promotion"}) do
-          {:error, why} ->
-            Logger.info(
-              "[PromotionQueue] the re-run did not start (#{inspect(why)}); triaging as found"
-            )
-
-            triage(%{state | batch: batch}, problems)
-
-          _started ->
-            {:noreply, %{state | phase: {:rerun, source}, batch: batch}}
-        end
-
-      true ->
-        triage(state, problems)
-    end
-  end
-
-  # Is main red there too?
-  #
-  # 87bc9721, 2026-10-05: story 1060's criteria were latched on its own copy,
-  # where they pass, before its implementation landed — so main carried a red
-  # spex every batch inherited, and whichever candidate gated next was ejected
-  # for it. A finding main shares is no candidate's.
-  #
-  # Asked in the gate copy, which is the queue's own, clean, and idle while its
-  # batch is red: reset to `base`, the failing tests are run there; then reset
-  # to the batch commit and run again there — which puts the head's findings
-  # back, since problems are kept per copy, and is the batch's one re-run of a
-  # failure that might be a flake. What reproduced at `base` is excluded and the
-  # batch gated again. Once per batch; a step that fails or never answers
-  # leaves the findings as found.
-  defp check_baseline(%{batch: batch} = state, problems, reason) do
-    files = Triage.baseline_files(problems)
-
-    with {:ok, %{head: base}} when base == batch.base <- reset_gate(batch, batch.base),
-         asked = %{files: files, pending: MapSet.new(start_runs(batch.scope, files))},
-         true <- MapSet.size(asked.pending) > 0 do
-      Logger.info(
-        "[PromotionQueue] #{length(problems)} finding(s) at #{batch.head}; re-running " <>
-          "#{Enum.join(asked.pending, ", ")} at main (#{batch.base}) to see whether it is " <>
-          "red there too"
-      )
-
-      {:noreply,
-       %{
-         cancel_timer(state)
-         | phase: :baseline,
-           batch: %{batch | baseline: {:at_base, asked}},
-           timer: Process.send_after(self(), :baseline_timeout, @hold_ms)
-       }}
+    if problems == [] do
+      # Not a finding about the code: the gate could not run (an analyzer
+      # would not start, the tree was dirty). Nothing to eject; try again.
+      Logger.error("[PromotionQueue] gate could not run: #{describe(reason)}; retrying")
+      requeue(batch.entries)
+      {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
     else
-      _ -> unasked(state, reason)
+      bisect(state, findings(problems))
     end
   end
 
-  # Once per batch, for test findings — and only in the queue's own gate copy.
-  # The baseline resets the copy it runs in, so never a requester's copy a lone
-  # batch was gated on, where someone may still be working (phx-new-generator,
-  # 2026-10-05).
-  defp ask_main?(batch, problems),
-    do:
-      batch.baseline == :unchecked and batch.gate.label == @gate_label and
-        Triage.baseline_files(problems) != %{}
-
-  # Main could not be asked: back to the batch commit, and triaged as found.
-  defp unasked(%{batch: batch} = state, reason) do
-    batch = %{batch | baseline: :checked}
-
-    case restore_head(batch) do
-      :ok -> red(%{state | batch: batch}, reason)
-      {:error, why} -> could_not_restore(state, why)
-    end
-  end
-
-  defp back_to_head(%{batch: batch} = state, asked) do
-    asked = Map.put(asked, :mains, findings_in(batch.scope, asked.files))
-
-    with :ok <- restore_head(batch),
-         pending = MapSet.new(start_runs(batch.scope, asked.files)),
-         true <- MapSet.size(pending) > 0 do
-      {:noreply, put_in(state.batch.baseline, {:at_head, %{asked | pending: pending}})}
-    else
-      {:error, reason} -> could_not_restore(state, reason)
-      false -> settle_baseline(state, asked)
-    end
-  end
-
-  defp settle_baseline(%{batch: batch} = state, asked) do
-    if MapSet.size(asked.mains) > 0 do
-      Logger.info(
-        "[PromotionQueue] #{MapSet.size(asked.mains)} finding(s) at #{batch.head} are red " <>
-          "at main (#{batch.base}) too; not the batch's"
-      )
-    end
-
-    batch = %{
-      batch
-      | baseline: :checked,
-        reran?: true,
-        excluded: MapSet.union(batch.excluded, asked.mains)
-    }
-
-    gate(%{cancel_timer(state) | phase: :gating, batch: batch})
-  end
-
-  defp start_runs(scope, files) do
-    for {source, paths} <- files,
-        match?(
-          {:ok, _, _},
-          Analysis.start_run(scope, source, paths, requested_by: %{kind: "promotion"})
-        ),
-        do: source
-  end
-
-  # The gate copy's blocking findings in `files`, as `Promotion.finding_key/1`s.
-  defp findings_in(scope, files) do
-    paths = files |> Map.values() |> List.flatten() |> MapSet.new()
-
-    scope
-    |> Promotion.blocking_problems()
-    |> Enum.filter(&MapSet.member?(paths, &1.file_path))
-    |> MapSet.new(&Promotion.finding_key/1)
-  end
-
-  # The batch commit is in the gate copy's object store already: resetting to
-  # it with nothing to merge is a checkout of exactly that commit.
-  defp reset_gate(batch, commit),
-    do: Runner.build_batch(batch.scope, batch.gate.root, commit, [], batch.gate.id)
-
-  defp restore_head(batch) do
-    case reset_gate(batch, batch.head) do
-      {:ok, %{head: head}} when head == batch.head -> :ok
-      {:ok, %{head: other}} -> {:error, %{reason: "the gate copy came back at #{other}"}}
-      {:error, _} = error -> error
-    end
-  end
-
-  # The gate copy could not be put back at the batch commit: nothing about the
-  # candidates is known, so the batch is built again from scratch.
-  defp could_not_restore(%{batch: batch} = state, reason) do
-    Logger.error(
-      "[PromotionQueue] could not put the gate copy back at #{batch.head}: " <>
-        "#{describe(reason)}; rebuilding the batch"
-    )
-
-    requeue(batch.entries)
-    {:noreply, retry_later(%{cancel_timer(state) | phase: :idle, batch: nil})}
-  end
-
-  defp triage(%{batch: batch} = state, problems) do
-    case attribute(batch, problems) do
-      {:culprit, %Entry{} = culprit} ->
-        eject(state.scope, culprit, findings(problems))
-        requeue(batch.entries -- [culprit])
-        next(%{state | phase: :idle, batch: nil})
-
-      :unknown ->
-        bisect(state, problems)
-    end
-  end
-
-  defp attribute(%{entries: [_single]}, _problems), do: :unknown
-
-  defp attribute(batch, problems) do
-    changed =
-      Map.new(batch.entries, fn entry ->
-        case Runner.changed_files(
-               batch.scope,
-               batch.gate.root,
-               batch.base,
-               entry.commit,
-               batch.gate.id
-             ) do
-          {:ok, %{files: files}} -> {entry.id, files}
-          _ -> {entry.id, []}
-        end
-      end)
-
-    case Triage.culprit(problems, changed) do
-      {:culprit, id} -> {:culprit, Enum.find(batch.entries, &(&1.id == id))}
-      :unknown -> :unknown
-    end
-  end
-
-  defp bisect(%{batch: %{entries: [single]}} = state, problems) do
-    eject(state.scope, single, findings(problems))
+  # Whose change is red: a batch of one is ejected with `reason`; a larger one
+  # is split until it is.
+  defp bisect(%{batch: %{entries: [single]}} = state, reason) do
+    eject(state.scope, single, reason)
     next(%{state | phase: :idle, batch: nil})
   end
 
   # The rest go back to waiting, still ahead of anything enqueued since; the
   # first half is rebuilt and gated on its own.
-  defp bisect(%{batch: batch} = state, _problems) do
-    {first, _rest} = Triage.split(batch.entries)
+  defp bisect(%{batch: batch} = state, _reason) do
+    {first, _rest} = Enum.split(batch.entries, div(length(batch.entries) + 1, 2))
 
     Logger.info(
-      "[PromotionQueue] batch at #{batch.head} is red and not attributable; " <>
+      "[PromotionQueue] batch at #{batch.head} is red; " <>
         "gating the first #{length(first)} of #{length(batch.entries)}"
     )
 

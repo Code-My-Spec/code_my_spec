@@ -68,9 +68,4 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
 
     assert {"", 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.gate)
   end
-
-  test "changed_files is what the candidate changed since it left main", ctx do
-    a = ctx.branch.("a", "main", "a.ex", "a\n")
-    assert {:ok, %{files: ["a.ex"]}} = Steps.changed_files(ctx.env, ctx.gate, ctx.main, a)
-  end
 end
