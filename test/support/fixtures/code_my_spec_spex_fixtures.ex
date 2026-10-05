@@ -1913,6 +1913,31 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  An agent's turn failing, as it arrives on the channel.
+
+  Same reasoning as `end_turn/3`: the proxy that reports a failed turn lives
+  in `cms_harness`, so a spec drives the channel's own `agent_turn_event`
+  entry on a `turn_failed` kind rather than a second version of it. `text`
+  is read by `Agents.record_turn_event/4` through `ProviderRefusal.read/2`
+  and `TurnTimeout.exec/1` to classify the failure's cause.
+  """
+  @spec fail_turn(Scope.t(), String.t(), String.t()) :: :ok
+  def fail_turn(%Scope{} = scope, agent_id, text) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    event = ChannelClient.encode_turn_event(%{event: :turn_failed, text: text})
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{"agent_id" => agent_id, "event" => event},
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
+  end
+
+  @doc """
   The proxy that produces this lives in `cms_harness` and runs on the sprite,
   so a spec here cannot dispatch to it — and should not want to. What the
   server owns is what it does with a turn once it arrives, which is exactly
