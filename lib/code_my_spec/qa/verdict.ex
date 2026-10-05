@@ -26,8 +26,19 @@ defmodule CodeMySpec.Qa.Verdict do
   `{boolean(), details_map()}` pair suitable for `normalize_delegate_result/1`.
   """
   @spec complete_check(Scope.t(), map()) :: {boolean(), map()}
-  def complete_check(%Scope{} = scope, story),
-    do: scope |> complete?(story.id) |> verdict()
+  def complete_check(%Scope{active_project_id: nil}, _story), do: verdict(false)
+
+  def complete_check(%Scope{active_project_id: project_id}, story) do
+    QaAttempt
+    |> where([a], a.story_id == ^story.id)
+    |> join(:inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
+    |> limit(1)
+    |> preload(:invalidations)
+    |> Repo.one()
+    |> passed?(story.qa_ready_at)
+    |> verdict()
+  end
 
   @doc """
   The same check, reading the graph context instead of querying per story.
@@ -35,13 +46,13 @@ defmodule CodeMySpec.Qa.Verdict do
   `RequirementGraph` walks every ready story in one pass, so the two-argument
   form above runs one query per story on every graph computation. The context
   carries the newest attempt for each story with its invalidations already
-  loaded. The verdict still comes from `passed?/1`, so the preloaded and
+  loaded. The verdict still comes from `passed?/2`, so the preloaded and
   querying paths cannot disagree about what makes an attempt count.
   """
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
       latest when is_map(latest) ->
-        latest |> Map.get(story.id) |> passed?() |> verdict()
+        latest |> Map.get(story.id) |> passed?(story.qa_ready_at) |> verdict()
 
       _ ->
         complete_check(scope, story)
@@ -89,4 +100,20 @@ defmodule CodeMySpec.Qa.Verdict do
   @spec passed?(QaAttempt.t() | nil) :: boolean()
   def passed?(%QaAttempt{status: :pass, invalidations: []}), do: true
   def passed?(_), do: false
+
+  @doc """
+  Whether an attempt counts as a QA pass that is still live for `story`.
+
+  A revision clears and re-stamps the story's `qa_ready_at`
+  (criterion 1902); a pass from before that stamp answered a question the
+  story is no longer asking, so it must not keep `qa_complete` satisfied
+  (issue 2e7ed919). `qa_ready_at: nil` means the story has never been
+  certified ready for QA, so there is nothing to be stale against -- this
+  is not the check that should say no.
+  """
+  @spec passed?(QaAttempt.t() | nil, DateTime.t() | nil) :: boolean()
+  def passed?(attempt, qa_ready_at), do: passed?(attempt) and fresh?(attempt, qa_ready_at)
+
+  defp fresh?(_attempt, nil), do: true
+  defp fresh?(attempt, qa_ready_at), do: DateTime.compare(attempt.inserted_at, qa_ready_at) != :lt
 end

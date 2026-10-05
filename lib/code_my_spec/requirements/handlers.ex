@@ -593,13 +593,13 @@ defmodule CodeMySpec.Requirements.Handlers do
   # a later `:partial` overrides an earlier pass, and an invalidated pass is not
   # one. Default unsatisfied, because a story with no attempt at all is the
   # common state and reads identically to one whose latest attempt failed.
-  defp settle("qa_complete", %{qa: profile}, _scope),
+  defp settle("qa_complete", %{qa: profile, stories: stories}, _scope),
     do: %{
       entity_type: "story",
       name: "qa_complete",
       default: false,
       default_details: details(elem(Verdict.verdict(false), 1)),
-      except: qa_passes(profile)
+      except: qa_passes(profile, stories)
     }
 
   # The rollups. One call to the requirement's own checker, which is a narrowed
@@ -874,8 +874,15 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # Only the passes. The default already says what every other story's latest
   # attempt amounts to, and says it identically.
-  defp qa_passes(profile) do
-    for {story_id, attempt} <- profile.latest_by_story, Verdict.passed?(attempt) do
+  #
+  # `Verdict.passed?/2` also requires the attempt to postdate the story's
+  # current `qa_ready_at`, the same rule the per-entity read applies via
+  # `Verdict.complete_check/3` -- see its own doc for why.
+  defp qa_passes(profile, %{stories: stories}) do
+    qa_ready_at_by_story = Map.new(stories, &{&1.id, &1.qa_ready_at})
+
+    for {story_id, attempt} <- profile.latest_by_story,
+        Verdict.passed?(attempt, Map.get(qa_ready_at_by_story, story_id)) do
       {true, detail} = Verdict.verdict(true)
       change("story", story_id, "qa_complete", true, detail)
     end
