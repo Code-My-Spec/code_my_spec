@@ -153,7 +153,7 @@ defmodule CodeMySpecSpex.Case do
     async = Keyword.get(case_opts, :async, false)
 
     quote do
-      @endpoint CodeMySpecLocalWeb.Endpoint
+      @endpoint CodeMySpecWeb.Endpoint
 
       # `ownership_timeout` was already raised for recording; ExUnit's own test
       # timeout never was, and it is the shorter of the two. Registering a
@@ -169,7 +169,7 @@ defmodule CodeMySpecSpex.Case do
       # that runs long there is hung rather than patient.
       @moduletag timeout: CodeMySpecSpex.Case.spex_timeout()
 
-      use CodeMySpecLocalWeb, :verified_routes
+      use CodeMySpecWeb, :verified_routes
       use SexySpex, async: unquote(async)
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs
@@ -1795,30 +1795,39 @@ defmodule CodeMySpecSpex.Case do
   argument order wrong and one definition of "how you address a harness"
   repeated twenty-two times.
 
-  `CodeMySpecLocalWeb.Endpoint` explicitly, not `@endpoint`. Hooks are a
+  The shared helper that replaced them dispatched through
+  `CodeMySpecLocalWeb.Endpoint` explicitly, not `@endpoint`. Hooks were a
   harness-app surface, and every one of those copies dispatched there whatever
   the file's own `@endpoint` said — including one file that sets
   `CodeMySpecWeb.Endpoint` for its LiveView work and reached past it for its
   hooks. A macro reading `@endpoint` would have silently repointed that file at
   the cloud app, which is how this nearly went wrong.
 
-  The target is a context, a scope, or the id itself, because callers have all
-  three.
-
-  A context with a live harness (`:harness`, from
-  `CodeMySpecSpex.HarnessHooks`) is posted through that harness instead — the
-  path production takes — and answers what it answers. The others still reach
-  `CodeMySpecLocalWeb.Endpoint`.
+  The target is a context with a live harness (`:harness`) or a full spex
+  context (`:scope`) that can be upgraded to one — every caller has one or the
+  other. Either way the request goes through the live harness, the path
+  production takes, and answers what it answers. There is no third,
+  endpoint-addressed fallback: `CodeMySpecLocalWeb` is gone.
   """
   def post_hook(%{harness: %{}} = context, "/api/hooks/" <> hook, params),
     do: HarnessHooks.post_hook(context, hook, params)
 
-  def post_hook(target, path, params) do
-    ConnTest.build_conn()
-    |> Conn.put_req_header("x-harness-id", working_copy_id(target))
-    |> Conn.put_req_header("content-type", "application/json")
-    |> ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> ConnTest.json_response(200)
+  def post_hook(%{scope: %{}} = context, "/api/hooks/" <> hook, params) do
+    context
+    |> HarnessHooks.ensure_live_harness()
+    |> HarnessHooks.post_hook(hook, params)
+  end
+
+  def post_hook(target, path, _params) do
+    raise """
+    post_hook/3 has no route for this target/path combination:
+      target: #{inspect(target)}
+      path: #{inspect(path)}
+
+    Every caller is either a live-harness context (%{harness: %{}}) or a full
+    spex context (%{scope: %{}}) that can be upgraded to one. CodeMySpecLocalWeb
+    is gone; there is no third fallback to dispatch through.
+    """
   end
 
   @doc "The harness id out of a context, a scope, or itself."

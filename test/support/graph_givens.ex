@@ -112,7 +112,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StoryHelpers
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
+  @endpoint CodeMySpecWeb.Endpoint
 
   # -- Topology: one context, three children --
 

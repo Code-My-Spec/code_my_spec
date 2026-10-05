@@ -7,15 +7,20 @@ defmodule CodeMySpecSpex.Story842.Criterion1971Spex do
   walked through end to end. The rhythm the story asks for depends on that
   order holding: journeys first, then the release.
 
-  Surface: HTTP `POST /api/agent-tasks/start`. The requirement graph used to
-  hand the release out as a node and no longer does (d207ad38), so starting the
-  task is now an explicit request — and a request made too early is exactly
-  what this criterion is about refusing.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2`. The requirement graph used to hand the release
+  out as a node and no longer does (d207ad38), so starting the task is now an
+  explicit request — and a request made too early is exactly what this
+  criterion is about refusing. This used to go over HTTP to LocalWeb's
+  `POST /api/agent-tasks/start`; that route is gone with the retired CLI
+  (issue f532f990), and the criterion never promised the endpoint, only the
+  refusal.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
 
@@ -38,14 +43,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1971Spex do
 
       when_ "the agent asks to start the release", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{
+          Fixtures.start_agent_task(context.scope, %{
             "session_type" => @release_type,
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}
       end

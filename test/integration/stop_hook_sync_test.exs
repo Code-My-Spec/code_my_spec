@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Sessions
-  alias CodeMySpecLocalWeb.Hooks.StopController
+  alias CodeMySpec.Hooks.Stop
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -234,13 +234,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   defp call_stop_hook!(scope, session_id) do
     body_params = %{"session_id" => session_id}
 
-    conn =
-      Phoenix.ConnTest.build_conn(:post, "/api/hooks/stop", body_params)
-      |> Plug.Conn.assign(:current_scope, scope)
-      |> Plug.Conn.put_private(:phoenix_format, "json")
-      |> Map.put(:body_params, body_params)
-
-    conn = StopController.handle(conn, conn.body_params)
-    Jason.decode!(conn.resp_body)
+    scope
+    |> Stop.decide(body_params)
+    |> Jason.encode!()
+    |> Jason.decode!()
   end
 end

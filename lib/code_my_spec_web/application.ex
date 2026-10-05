@@ -366,14 +366,12 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, :test) do
-    # The local web endpoint is the door the spex suite drives hooks, MCP and
-    # portable LiveViews through; the Analysis run service backs the stop-hook
-    # paths those tests hit.
+    # The Analysis run service backs the stop-hook paths the integration
+    # suite hits.
     children ++
       [
         CodeMySpec.Analysis.Supervisor,
-        CodeMySpec.AgentHarness.WorkSource,
-        CodeMySpecLocalWeb.Endpoint
+        CodeMySpec.AgentHarness.WorkSource
       ]
   end
 
