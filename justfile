@@ -85,6 +85,10 @@ init-worktree name target:
 # above for the first-run version of the same miss). Both are one command, and
 # both cost a diagnosis first because they arrive in the middle of unrelated
 # work and read as the worktree being broken.
+# The promotion queue's gate copy, made by the harness when a batch first needs
+# one: set up like any worktree before anything is gated in it.
+gate-setup: worktree-setup
+
 worktree-setup:
     #!/usr/bin/env bash
     set -euo pipefail

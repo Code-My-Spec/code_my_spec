@@ -66,7 +66,7 @@ defmodule CodeMySpec.Staffing do
 
   @doc false
   def handle_event(@gate_copy_needed, _measurements, %{scope: scope, label: label}, _config) do
-    case mint(scope, label: label, roles: []) do
+    case mint(scope, label: label, roles: [], prepare: true) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
 
@@ -141,7 +141,10 @@ defmodule CodeMySpec.Staffing do
       # goes with it. `ensure_deploy_key/2` mints one if the project has none —
       # a new project does not get one at creation, and everything that must
       # authenticate as the project has to ask for it first.
-      "deploy_key" => opts[:deploy_key] || deploy_key(scope)
+      "deploy_key" => opts[:deploy_key] || deploy_key(scope),
+      # A copy that must build and test before anything uses it — the promotion
+      # gate — is prepared by the project's own recipe before it is served.
+      "prepare" => opts[:prepare] == true
     }
 
     with {:ok, %{root: root, working_copy_id: id} = made} <-

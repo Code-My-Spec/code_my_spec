@@ -75,12 +75,82 @@ defmodule CmsHarness.WorkingCopies.Create do
          {:ok, setup} <- add_worktree(root, target, name),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
+      prepare_later(target, request["prepare"] == true)
       Logger.info("[CmsHarness] made a working copy at #{target}")
       {:ok, %{root: target, working_copy_id: id, setup: setup}}
     end
   end
 
   def run(_root, _request), do: {:error, :no_repository}
+
+  @prepare_recipe "gate-setup"
+  @preparing ".cms_harness_preparing"
+
+  @doc """
+  Whether the copy at `root` is still being prepared, or failed to be: it is
+  not served until it is ready (`Projects.ensure_started/1`).
+  """
+  @spec preparing?(String.t()) :: boolean()
+  def preparing?(root), do: File.exists?(Path.join(root, @preparing))
+
+  # A copy that has to build and test before anything uses it — the promotion
+  # gate — gets the project's `gate-setup` recipe (deps, secrets, a test
+  # database: whatever the project needs), and is not served until it
+  # succeeds. Its harness joining is what tells the queue it is ready.
+  # In the background: it can take minutes, and the reply the server waits on
+  # cannot.
+  defp prepare_later(_target, false), do: :ok
+
+  defp prepare_later(target, true) do
+    File.write!(Path.join(target, @preparing), "preparing\n")
+    {:ok, _pid} = Task.start(fn -> prepare(target) end)
+    :ok
+  end
+
+  @doc """
+  Run the project's `gate-setup` recipe in `target`, then mark it ready. A
+  project without one has nothing to run. A recipe that fails leaves the copy
+  marked, with the recipe's output in the marker, and unserved.
+  """
+  @spec prepare(String.t(), (String.t(), String.t() -> {String.t(), non_neg_integer()})) ::
+          :ok | {:error, term()}
+  def prepare(target, run \\ &just/2) do
+    case run.(@prepare_recipe, target) do
+      {_out, 0} ->
+        ready(target)
+
+      {out, status} ->
+        if missing_recipe?(out) do
+          Logger.warning(
+            "[CmsHarness] #{target} declares no `#{@prepare_recipe}` recipe; serving it as made"
+          )
+
+          ready(target)
+        else
+          File.write!(Path.join(target, @preparing), out)
+
+          Logger.error(
+            "[CmsHarness] `just #{@prepare_recipe}` failed in #{target} (#{status}); not serving " <>
+              "it until it is fixed and #{@preparing} removed:\n#{String.slice(out, -1500, 1500)}"
+          )
+
+          {:error, {:prepare_failed, status}}
+        end
+    end
+  end
+
+  # `just` not on this machine answers as a project with no recipe would.
+  defp just(recipe, dir) do
+    System.cmd("just", [recipe], cd: dir, stderr_to_stdout: true)
+  rescue
+    ErlangError -> {"error: Justfile does not contain recipe `#{recipe}`", 1}
+  end
+
+  defp ready(target) do
+    File.rm(Path.join(target, @preparing))
+    Logger.info("[CmsHarness] #{target} is prepared")
+    :ok
+  end
 
   # The other half of making a working copy.
   #

@@ -1005,6 +1005,10 @@ defmodule CodeMySpec.Analysis do
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
 
+  @doc "The latest finished full run of `source` on this copy, a failure included, or nil."
+  @spec latest_run(Scope.t(), String.t()) :: Run.t() | nil
+  def latest_run(%Scope{} = scope, source), do: RunsRepository.latest_full_run(scope, source)
+
   @doc "Whether `source` has a completed full run on this copy — anything that answers for it."
   @spec answered?(Scope.t(), String.t()) :: boolean()
   defdelegate answered?(scope, source), to: RunsRepository
