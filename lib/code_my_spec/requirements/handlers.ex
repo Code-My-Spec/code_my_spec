@@ -219,7 +219,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     # Issues too: a fix resolved after the last promotion unsatisfies it
     # (1f8028a1), and resolving is an issue event.
     "story_promoted" => [:stories, :issues],
-    "qa_complete" => [:qa],
+    # Moved by :stories too, not just :qa: a revision that re-stamps
+    # qa_ready_at without a fresh attempt has to recompute this requirement
+    # even though no QaAttempt changed (2e7ed919).
+    "qa_complete" => [:qa, :stories],
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
     # `@delegate_requirements`.
