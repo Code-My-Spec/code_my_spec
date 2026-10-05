@@ -243,20 +243,6 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  Rebind `~p` to CodeMySpecLocalWeb's router, atomically with the `@endpoint`
-  override — the mirror of `cloud_endpoint/0` for a spex that still drives a
-  route only the local app serves (Gate B1c, 07602b37e: the base `using`
-  block's default moved to the cloud endpoint, so a spex that needs the local
-  one now has to say so).
-  """
-  defmacro local_endpoint do
-    quote do
-      @endpoint CodeMySpecLocalWeb.Endpoint
-      use CodeMySpecLocalWeb, :verified_routes
-    end
-  end
-
-  @doc """
   How long one criterion may take, given what it is actually waiting on.
 
   Recording waits on real DNS propagating and a provider re-checking it, which
