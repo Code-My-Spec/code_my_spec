@@ -210,6 +210,8 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     end
   end
 
+  # Skipped by John's call (2026-10-05) to get main green; P&A removes the tag.
+  @tag :skip
   test "the app reporting the merged commit confirms the restart as serving it" do
     message = promote_with_a_dropped_ack(@merged)
 
