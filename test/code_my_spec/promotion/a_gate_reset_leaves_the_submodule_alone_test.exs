@@ -16,9 +16,9 @@ defmodule CodeMySpec.Promotion.AGateResetLeavesTheSubmoduleAloneTest do
   alias CodeMySpec.Promotion.Steps
 
   setup do
-    {:ok, origin} = Briefly.create(directory: true)
-    {:ok, seed} = Briefly.create(directory: true)
-    {:ok, root} = Briefly.create(directory: true)
+    origin = CodeMySpec.TempFile.owned_dir("test")
+    seed = CodeMySpec.TempFile.owned_dir("test")
+    root = CodeMySpec.TempFile.owned_dir("test")
 
     {_, 0} = git(origin, ["init", "-q", "--bare", "--initial-branch=main"])
     {_, 0} = git(seed, ["init", "-q", "--initial-branch=main"])

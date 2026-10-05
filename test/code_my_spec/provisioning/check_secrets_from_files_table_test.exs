@@ -37,7 +37,7 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
   defp unreachable(scope), do: %{scope | environment: Environment.new(:local, nil)}
 
   defp sync_env_file(scope, content) do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     env = Environment.new(:local, tmp)
     Environments.write_file(env, "envs/prod.enc.env", content)
     {:ok, _} = FileSync.sync(%{scope | environment: env}, base_dir: tmp)

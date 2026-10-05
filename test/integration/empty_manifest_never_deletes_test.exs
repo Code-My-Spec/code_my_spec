@@ -172,7 +172,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
   end
 
   defp local_scope do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

@@ -44,7 +44,7 @@ defmodule CodeMySpec.Embeddings.FrameworkKnowledgeReconcilerTest do
   end
 
   setup do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     Application.put_env(:code_my_spec, :framework_knowledge_dir, dir)
     Application.put_env(:code_my_spec, :embedding_serving, RecordingServing)
     :persistent_term.put({RecordingServing, :pid}, self())

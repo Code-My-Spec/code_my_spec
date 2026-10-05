@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
   alias CodeMySpec.Provisioning.Steps
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     _ = github_integration_fixture(scope.user)
 

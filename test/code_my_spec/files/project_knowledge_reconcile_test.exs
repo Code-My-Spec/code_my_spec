@@ -159,7 +159,7 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
   # A project, one checkout of it, and a harness-addressed scope for that
   # checkout — what the channel and `main_copy_scopes/0` both hand FileSync.
   defp copy(opts) do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: dir})
     scope = %{scope | active_project: project}

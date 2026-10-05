@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story688.Criterion1694Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     :ok = Fixtures.embed_on_pgvector(dir)
     :ok
   end

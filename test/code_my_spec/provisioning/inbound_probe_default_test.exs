@@ -41,7 +41,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
   @domain "inbound-default-drill.example.com"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
 
     {:ok, project} =

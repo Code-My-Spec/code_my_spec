@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3501Spex do
       given_ :synced_context_component
 
       given_ "a checkout that is the project's main one", context do
-        {:ok, root} = Briefly.create(directory: true)
+        root = CodeMySpec.TempFile.owned_dir("test")
         {reply, socket} = join_working_copy_socket(context, root, "the main checkout")
         main_id = reply["harness_id"] || reply[:working_copy_id]
 
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3501Spex do
       end
 
       given_ "and another checkout on the same project", context do
-        {:ok, root} = Briefly.create(directory: true)
+        root = CodeMySpec.TempFile.owned_dir("test")
         {reply, socket} = join_working_copy_socket(context, root, "the other checkout")
         other_id = reply["harness_id"] || reply[:working_copy_id]
 

@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3506Spex do
 
       given_ "a second checkout on the same project, which has reported nothing",
              context do
-        {:ok, second_root} = Briefly.create(directory: true)
+        second_root = CodeMySpec.TempFile.owned_dir("test")
 
         {reply, socket} = join_working_copy_socket(context, second_root, "the second checkout")
         second_id = reply["harness_id"] || reply[:working_copy_id]

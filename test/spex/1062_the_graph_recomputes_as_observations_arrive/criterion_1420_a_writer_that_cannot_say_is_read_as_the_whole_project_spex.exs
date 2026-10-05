@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
       given_ :synced_context_component
 
       given_ "a second checkout of the same project", context do
-        {:ok, second_root} = Briefly.create(directory: true)
+        second_root = CodeMySpec.TempFile.owned_dir("test")
         {reply, _socket} = join_working_copy_socket(context, second_root, "the second checkout")
         second_id = reply["harness_id"] || reply[:working_copy_id]
 

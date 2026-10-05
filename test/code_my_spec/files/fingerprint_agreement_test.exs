@@ -25,7 +25,7 @@ defmodule CodeMySpec.Files.FingerprintAgreementTest do
   @path "lib/my_app/accounts.ex"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     File.mkdir_p!(Path.join(tmp, "lib/my_app"))

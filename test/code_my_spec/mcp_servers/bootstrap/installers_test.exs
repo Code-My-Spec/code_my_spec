@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.InstallersTest do
   alias CodeMySpec.Paths
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
 
     # AGENTS.md derives the app name from mix.exs; without one the installer
     # has nothing to name the project after.

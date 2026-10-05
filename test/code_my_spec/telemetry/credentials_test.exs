@@ -7,7 +7,7 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
   alias CodeMySpec.Provisioning.ClickHouse.Credentials
 
   test "publication encrypts owner credentials and preserves the scoped platform reader" do
-    {:ok, directory} = Briefly.create(directory: true)
+    directory = CodeMySpec.TempFile.owned_dir("test")
     environment = CodeMySpec.Environments.Environment.new(:local, directory)
     scope = %{full_scope_fixture() | environment: environment}
     {:ok, {public, private}} = CodeMySpec.Provisioning.Sops.generate_key()
