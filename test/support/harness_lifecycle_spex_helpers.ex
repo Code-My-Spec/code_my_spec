@@ -54,9 +54,15 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   """
   @spec given_a_staffed_checkout(map(), String.t()) :: map()
   def given_a_staffed_checkout(context, label) do
+    context =
+      context
+      |> given_a_main_checkout(label)
+      |> connected()
+
+    # Opening cockpit pages can start additional agents beside the one the
+    # scenario explicitly stops. Their entire temporary copy belongs to it.
+    on_exit(fn -> CmsHarnessTest.Machine.stop_copy(context.copy) end)
     context
-    |> given_a_main_checkout(label)
-    |> connected()
   end
 
   @doc """

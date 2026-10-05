@@ -134,7 +134,22 @@ defmodule CmsHarness.AppInstance do
     with {:ok, pid} <- find_or_start(root),
          {:ok, info} <-
            GenServer.call(pid, {:ensure_running, main?(opts), tunnel(opts)}, op_timeout()) do
-      {:ok, Map.put(info, :head, Runner.current_commit(root))}
+      info = Map.put(info, :head, Runner.current_commit(root))
+
+      info =
+        if info.status in ["down", "erroring"] do
+          Map.put(
+            info,
+            :action_reason,
+            "The health probe reports #{info.status}. Inspect the app log at #{log_path(root)} " <>
+              "for startup or request errors. After correcting the cause, use restart_app " <>
+              "to start this copy on its current HEAD."
+          )
+        else
+          info
+        end
+
+      {:ok, info}
     end
   end
 

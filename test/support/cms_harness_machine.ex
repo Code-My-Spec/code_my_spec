@@ -233,6 +233,19 @@ defmodule CmsHarnessTest.Machine do
     Agents.halt(agent_id)
   end
 
+  @doc "Stop only the harness tree owned by a scenario's temporary checkout."
+  @spec stop_copy(String.t()) :: :ok
+  def stop_copy(root) do
+    if Process.whereis(CmsHarness.Registry) do
+      case CmsHarness.Copy.Supervisor.stop(root) do
+        :ok -> :ok
+        {:error, :not_found} -> :ok
+      end
+    end
+
+    :ok
+  end
+
   @doc "Whether this machine is running that agent right now."
   @spec running?(String.t()) :: boolean()
   def running?(agent_id) do

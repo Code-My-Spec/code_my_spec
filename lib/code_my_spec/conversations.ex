@@ -813,6 +813,11 @@ defmodule CodeMySpec.Conversations do
   # becoming an empty turn: providers reject empty content, and an agent that
   # cannot be resumed because somebody sent a blank line is a failure with no
   # visible cause.
+  # A restart must not deliver queued messages through history or resurrect
+  # messages that were withdrawn or failed delivery. Legacy rows have nil.
+  defp as_turn(%Message{delivery: delivery}) when delivery in [:pending, :withdrawn, :failed],
+    do: []
+
   defp as_turn(%Message{} = message) do
     case {turn_role(message.role), Message.text(message)} do
       {nil, _text} -> []

@@ -133,6 +133,32 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
            """
   end
 
+  test "an agent coming up does not resume another task-holder on its copy", ctx do
+    held = holding_a_task(ctx.scope, ctx.agent, nil)
+
+    {:ok, newcomer} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "qa",
+        continuous: false,
+        status: :running,
+        working_copy: held.working_copy,
+        working_copy_id: held.working_copy_id
+      })
+
+    AgentPresence.present(newcomer)
+    :ok = CodeMySpec.Agents.came_up(ctx.scope, newcomer.id)
+
+    refute offered_a_turn?(held.id)
+    held_id = held.id
+    refute_received {:work_turn_requested, ^held_id, _, _}
+
+    :ok = CodeMySpec.Agents.came_up(ctx.scope, held.id)
+    assert_receive {:work_turn_requested, ^held_id, _, message}
+    assert message =~ Agent.active_task(held).id
+  end
+
   test "an agent genuinely mid-turn is left alone", ctx do
     held = holding_a_task(ctx.scope, ctx.agent, DateTime.utc_now())
 

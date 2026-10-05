@@ -27,11 +27,14 @@ defmodule CodeMySpecTest.AgentPresence do
 
     holder =
       spawn_link(fn ->
+        caller_ref = Process.monitor(caller)
         {:ok, _ref} = Presence.track(self(), Presence.topic(project_id), id, %{})
         send(caller, {:tracked, self()})
 
+        # Links do not terminate a holder when its caller exits normally.
         receive do
           :absent -> :ok
+          {:DOWN, ^caller_ref, :process, ^caller, _reason} -> :ok
         end
       end)
 

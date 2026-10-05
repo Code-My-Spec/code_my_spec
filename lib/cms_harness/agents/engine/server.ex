@@ -36,7 +36,9 @@ defmodule CmsHarness.Agents.Engine.Server do
     ref = Impl.new_ref()
 
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} -> {:reply, {:ok, {:queued, ref}}, state}
+      {:queued, state} ->
+        :ok = CmsHarness.Agents.Engine.Keeper.queued(state.agent_id, ref)
+        {:reply, {:ok, {:queued, ref}}, state}
     end
   end
 
@@ -52,7 +54,9 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   def handle_call({:send, ref, message, timeout}, _from, state) do
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} -> {:reply, {:ok, :queued}, state}
+      {:queued, state} ->
+        :ok = CmsHarness.Agents.Engine.Keeper.queued(state.agent_id, ref)
+        {:reply, {:ok, :queued}, state}
     end
   end
 
@@ -88,8 +92,19 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   def handle_call({:withdraw, ref}, _from, state) do
     case State.withdraw(state, ref) do
-      :already_delivered -> {:reply, {:error, :already_delivered}, state}
-      {:ok, state} -> {:reply, :ok, state}
+      :already_delivered ->
+        # A receipt survives an engine crash even when its queue does not.
+        # Only a known unconsumed ref can be safely withdrawn here.
+        result =
+          if CmsHarness.Agents.Engine.Keeper.take_queued(state.agent_id, ref),
+            do: :ok,
+            else: {:error, :already_delivered}
+
+        {:reply, result, state}
+
+      {:ok, state} ->
+        CmsHarness.Agents.Engine.Keeper.take_queued(state.agent_id, ref)
+        {:reply, :ok, state}
     end
   end
 
