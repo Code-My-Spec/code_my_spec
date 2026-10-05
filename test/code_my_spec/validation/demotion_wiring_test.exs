@@ -99,8 +99,8 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
           spec_path: @spex_path
         })
 
-      {:ok, _criterion} = AcceptanceCriteria.latch_criterion(ctx.scope, criterion)
-      {:ok, story} = Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
+      {:ok, story} =
+        Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
 
       Map.put(ctx, :story, story)
     end

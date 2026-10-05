@@ -116,7 +116,6 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
       # flip the latch — only the specs-passing evaluation and the UI do — and
       # this scenario is about what happens once one story is ready, not how
       # it got there.
-      given_ :criterion_latched_by_promotion
 
       # The ready story regresses without its spec being edited — its
       # implementation broke. Editing the spec would be a rewrite, and a

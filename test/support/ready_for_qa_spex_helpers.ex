@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
@@ -86,17 +85,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
 
     response
   end
-
-  @doc """
-  The commit a criterion's own latch was earned at, or nil.
-
-  One level down from `qa_stamp/2`: story 983's criteria 1895-1906 give each
-  criterion its own latch (`latched_at`), with the story's aggregate derived
-  from "every live criterion latched" (criterion 1905) rather than set
-  directly.
-  """
-  def criterion_latch(context, criterion),
-    do: AcceptanceCriteria.get_criterion(context.scope, criterion.id).latched_at
 
   @doc "Retire a criterion through `retire_criterion`, as product would."
   def retire_criterion(context, criterion) do

@@ -69,7 +69,6 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
     story = story_fixture(scope, attrs)
     {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
     [criterion | _] = story.criteria
-    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
     story
   end
 
@@ -99,9 +98,8 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
              "regression on proven behaviour, and it is broken here whoever owns it."
   end
 
-  # The half that does hold, and the one that actually answered the case the
-  # exemption was written for: a story nobody has finished cannot regress.
-  test "an unready story does not gate, whoever it belongs to", %{scope: scope} do
+  # Every red spex blocks (John, 2026-10-05), finished story or not.
+  test "an unready story gates too, whoever it belongs to", %{scope: scope} do
     elsewhere = a_copy(scope, "somebody else's checkout")
     here = %{scope | active_working_copy_id: a_copy(scope, "this checkout")}
 
@@ -114,9 +112,8 @@ defmodule CodeMySpec.Validation.AnotherCopysStoryIsNotThisAgentsProblemTest do
     red_spec(here, story)
     problems = CodeMySpec.Problems.list_project_problems(here, severity: :error)
 
-    assert Validation.enforceable(here, problems) == [],
-           "a story whose specs have never gone green is unwritten work, not a " <>
-             "regression, and blocking on it is the wall this check exists to avoid"
+    assert length(Validation.enforceable(here, problems)) == 1,
+           "a red spex blocks, whatever its story's state"
   end
 
   test "a story assigned to this copy still gates it", %{scope: scope} do
