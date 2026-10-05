@@ -63,30 +63,23 @@ defmodule CmsHarness.Supervisor do
       # about the machine rather than about a project.
       CmsHarness.AnalysisSlots,
 
-      # Projects arrive at runtime — from the environment on a sprite, from a
-      # hook's working directory on a laptop — so the tree cannot be static.
-      # This is also the fix for a real defect: the server's watcher is a
-      # singleton managing every project at once, so one project's crash stops
-      # watching for all of them. A subtree each means a wedged project
-      # restarts alone.
-      {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one},
-      # Agents, not projects. Separate because their lifetimes are unrelated:
-      # a project subtree follows a checkout being served, an agent follows
-      # somebody asking for one, and stopping either must not disturb the
-      # other.
       # Watches every agent the engine starts, so a death is reported the
-      # moment it happens (`CmsHarness.Agents.Liveness`). Before the agents,
-      # so it is up to watch the first one.
+      # moment it happens (`CmsHarness.Agents.Liveness`). Before the copies,
+      # so it is up to watch the first agent.
       CmsHarness.Agents.Liveness,
-      {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one},
 
-      # One per working copy running its own app (story 1108). A sibling
-      # here rather than a child of `Project.Supervisor`'s `rest_for_one`
-      # chain on purpose: that chain restarts everything together because
-      # each child answers to one join, and an app instance must survive a
-      # reconnect, a channel blip, a `mix test` run in the same copy —
-      # none of which the app it started should notice.
-      {DynamicSupervisor, name: CmsHarness.AppInstanceSupervisor, strategy: :one_for_one},
+      # One supervisor per working copy (`CmsHarness.Copy.Supervisor`), holding
+      # everything this harness runs for it: its channel chain once served, its
+      # agents, its app. Copies arrive at runtime — from the environment on a
+      # sprite, from a hook's working directory on a laptop — so the tree cannot
+      # be static, and a subtree each means a wedged copy restarts alone: the
+      # server's watcher was once a singleton managing every project at once,
+      # and one project's crash stopped watching for all of them.
+      #
+      # Agents and the app are siblings of the channel chain under the copy, not
+      # inside it: a reconnect restarts the chain, and an agent or an app must
+      # not notice (story 1108). Offboarding a copy stops all of it at once.
+      {DynamicSupervisor, name: CmsHarness.CopiesSupervisor, strategy: :one_for_one},
 
       # A copy's tunnel connector, for whichever copy holds one (see
       # `CmsHarness.AppInstance`'s own comment — a copy with no DB-backed

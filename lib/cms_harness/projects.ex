@@ -25,6 +25,7 @@ defmodule CmsHarness.Projects do
 
   require Logger
 
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.ServedRoots
@@ -44,11 +45,10 @@ defmodule CmsHarness.Projects do
   def ensure_started(dir) when is_binary(dir) do
     with :ok <- not_preparing(dir),
          {:ok, project} <- ProjectIdentity.resolve(dir) do
-      case DynamicSupervisor.start_child(
-             CmsHarness.ProjectSupervisor,
-             {CmsHarness.Project.Supervisor, project: project}
-           ) do
-        {:ok, _pid} ->
+      # Under the copy's own supervisor (`Copy.Supervisor`), beside its agents
+      # and its app rather than above them.
+      case Copy.serve(project.root, project) do
+        {:started, _pid} ->
           ServedRoots.remember(project.root)
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
           {:ok, project}
@@ -60,7 +60,7 @@ defmodule CmsHarness.Projects do
         # while the running subtree watched the first one — hooks answered, the
         # health endpoint said served, and every file event belonged to a tree
         # nobody asked about. Issue 8b83ba20.
-        {:error, {:already_started, _pid}} ->
+        {:already_started, _pid} ->
           ServedRoots.remember(project.root)
           {:ok, project}
 
@@ -177,12 +177,14 @@ defmodule CmsHarness.Projects do
   def stop_serving(root) when is_binary(root) do
     ServedRoots.forget(root)
 
-    case Registry.lookup(CmsHarness.Registry, {:project, Path.expand(root)}) do
-      [{pid, _}] ->
+    # The whole copy: its channel, its agents and its app go together, so an
+    # offboarded copy leaves nothing running behind it.
+    case Copy.stop(root) do
+      :ok ->
         Logger.info("[CmsHarness] no longer serving #{root} — offboarded on the server")
-        DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+        :ok
 
-      [] ->
+      {:error, :not_found} ->
         {:error, :not_serving}
     end
   end
@@ -213,7 +215,9 @@ defmodule CmsHarness.Projects do
   def rejoin(root) when is_binary(root) do
     Logger.info("[CmsHarness] rejoining #{root} — this copy's channel only")
 
-    _ = stop_serving(root)
+    # The channel chain only: the copy's agents and app are siblings of it
+    # and keep running, and the fresh join reports them.
+    _ = Copy.unserve(root)
     ensure_started(root)
   end
 

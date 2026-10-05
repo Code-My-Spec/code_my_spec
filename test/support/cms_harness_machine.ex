@@ -243,7 +243,8 @@ defmodule CmsHarnessTest.Machine do
   @doc """
   Make sure the tree an agent lives in exists — both halves of it.
 
-  An agent is supervised by `CmsHarness.AgentSupervisor` and registered in
+  An agent is supervised under its copy (`CmsHarness.CopiesSupervisor` →
+  `CmsHarness.Copy.Supervisor`) and registered in
   `CmsHarness.Registry`, and it needs both: without the registry, starting one
   raises `unknown registry` from inside the `:via` tuple. The harness starts
   both; a spex run starts neither.
@@ -257,8 +258,8 @@ defmodule CmsHarnessTest.Machine do
       Registry.start_link(keys: :unique, name: CmsHarness.Registry)
     end)
 
-    ensure(CmsHarness.AgentSupervisor, fn ->
-      DynamicSupervisor.start_link(name: CmsHarness.AgentSupervisor, strategy: :one_for_one)
+    ensure(CmsHarness.CopiesSupervisor, fn ->
+      DynamicSupervisor.start_link(name: CmsHarness.CopiesSupervisor, strategy: :one_for_one)
     end)
   end
 

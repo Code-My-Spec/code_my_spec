@@ -34,7 +34,8 @@ defmodule CmsHarness.Agents.Engine.Keeper do
 
   def start_link(opts) do
     agent_id = Keyword.fetch!(opts, :agent_id)
-    Supervisor.start_link(__MODULE__, opts, name: via(agent_id))
+    root = opts |> Keyword.fetch!(:working_copy) |> Path.expand()
+    Supervisor.start_link(__MODULE__, opts, name: via(agent_id, root))
   end
 
   @impl true
@@ -62,11 +63,11 @@ defmodule CmsHarness.Agents.Engine.Keeper do
     )
   end
 
-  @doc "The agent's Keeper, if it has one."
-  @spec whereis(String.t()) :: {:ok, pid()} | {:error, :not_running}
+  @doc "The agent's Keeper and the copy it runs in, if it has one."
+  @spec whereis(String.t()) :: {:ok, pid(), String.t()} | {:error, :not_running}
   def whereis(agent_id) do
     case Registry.lookup(CmsHarness.Registry, {:keeper, agent_id}) do
-      [{pid, _}] -> if(Process.alive?(pid), do: {:ok, pid}, else: {:error, :not_running})
+      [{pid, root}] -> if(Process.alive?(pid), do: {:ok, pid, root}, else: {:error, :not_running})
       _ -> {:error, :not_running}
     end
   rescue
@@ -96,6 +97,6 @@ defmodule CmsHarness.Agents.Engine.Keeper do
     end
   end
 
-  defp via(agent_id), do: {:via, Registry, {CmsHarness.Registry, {:keeper, agent_id}}}
+  defp via(agent_id, root), do: {:via, Registry, {CmsHarness.Registry, {:keeper, agent_id}, root}}
   defp transcript(agent_id), do: {:via, Registry, {CmsHarness.Registry, {:transcript, agent_id}}}
 end

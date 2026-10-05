@@ -55,12 +55,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Transport
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
-  @supervisor CmsHarness.AgentSupervisor
 
   # How many times round the agent loop before a turn is cut off.
   #
@@ -145,7 +145,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
       # crash loop. The engine watches itself into `Liveness` from `init/1`, so
       # every restart is an up; the Keeper is watched here, once, so its giving
       # up is a single final down.
-      case DynamicSupervisor.start_child(@supervisor, {Keeper, opts}) do
+      case start_keeper(working_copy, opts) do
         {:ok, keeper} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
           :ok = Liveness.watch_keeper(agent_id, keeper, working_copy)
@@ -158,6 +158,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
           Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
+    end
+  end
+
+  # Under its copy's agents supervisor (`Copy.Supervisor`), so the copy going
+  # takes its agents with it.
+  defp start_keeper(working_copy, opts) do
+    with {:ok, _copy} <- Copy.ensure(working_copy) do
+      DynamicSupervisor.start_child(Copy.agents(working_copy), {Keeper, opts})
     end
   end
 
@@ -335,7 +343,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @spec stop(String.t()) :: :ok | {:error, :not_running}
   def stop(agent_id) do
     case Keeper.whereis(agent_id) do
-      {:ok, keeper} -> DynamicSupervisor.terminate_child(@supervisor, keeper)
+      {:ok, keeper, root} -> DynamicSupervisor.terminate_child(Copy.agents(root), keeper)
       {:error, _} = error -> error
     end
   end

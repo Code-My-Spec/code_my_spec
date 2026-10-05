@@ -57,8 +57,8 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
       Registry.start_link(keys: :unique, name: CmsHarness.Registry)
     end)
 
-    ensure_started(CmsHarness.ProjectSupervisor, fn ->
-      DynamicSupervisor.start_link(name: CmsHarness.ProjectSupervisor, strategy: :one_for_one)
+    ensure_started(CmsHarness.CopiesSupervisor, fn ->
+      DynamicSupervisor.start_link(name: CmsHarness.CopiesSupervisor, strategy: :one_for_one)
     end)
 
     Application.put_env(:code_my_spec, :device_client, ServerSays)
