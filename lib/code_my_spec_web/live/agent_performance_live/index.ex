@@ -74,6 +74,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Teams</h2>
       <div :for={{working_copy_id, rate} <- @teams} data-test="team" data-working-copy-id={working_copy_id}>
         First-pass rate: {percent(rate)}
+        <span>Promoted: {Map.get(@summary.throughput_by_team, working_copy_id, 0)}</span>
       </div>
     </section>
 
