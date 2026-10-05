@@ -311,7 +311,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp red(%{batch: batch} = state, reason) do
-    problems = Promotion.blocking_problems(batch.scope)
+    problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
     cond do
       problems == [] ->

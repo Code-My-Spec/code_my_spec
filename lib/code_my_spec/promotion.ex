@@ -965,12 +965,24 @@ defmodule CodeMySpec.Promotion do
   """
   @spec red_at(Scope.t(), String.t()) :: :ok | {:error, map()}
   def red_at(%Scope{active_working_copy_id: id} = scope, head) do
-    {answered, _missing} = answers_at(scope, Run.sources(), head)
-
-    case blocking_problems(scope, Map.keys(answered)) do
+    case blocking_problems_at(scope, head) do
       [] -> :ok
       problems -> gate_result(problems, named_copy(id))
     end
+  end
+
+  @doc """
+  The problems `gate/3` judges at `head`: those of the sources whose latest
+  run on the scope's copy is at `head`.
+
+  Problems are kept per copy, not per commit, so a source not yet answered at
+  `head` still holds its previous run's problems — another commit's. A red
+  batch is triaged on exactly what refused it, never on those.
+  """
+  @spec blocking_problems_at(Scope.t(), String.t()) :: [struct()]
+  def blocking_problems_at(%Scope{} = scope, head) do
+    {answered, _missing} = answers_at(scope, Run.sources(), head)
+    blocking_problems(scope, Map.keys(answered))
   end
 
   defp certify(_scope, answered, [], _head, _named, _opts), do: {:ok, certified_by(answered)}

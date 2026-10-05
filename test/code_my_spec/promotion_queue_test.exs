@@ -189,6 +189,39 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
+  # 87bc9721, 2026-10-05: the gate refused on exunit while spex was still running
+  # at the head, and triage re-read the copy's problems for every source —
+  # spex's included, from its run at the commit before. A finding red on main
+  # was blamed on the candidate, and with two findings the lone re-run never
+  # fired. Problems are kept per copy, not per commit: triage reads the ones the
+  # gate judged.
+  test "a red batch is triaged on what the gate judged at its head, not older runs", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    own = %{ctx.scope | active_working_copy_id: a.copy.id}
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(own, ~w(compiler exunit spex), commit: a.commit)
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(own, ["credo"],
+      commit: String.duplicate("0", 40)
+    )
+
+    problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
+    problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
+
+    # This process is the candidate copy's harness, so the re-run is sent here
+    # rather than run on this machine.
+    :ok = HarnessRegistry.register_executor(a.copy.id, "test-harness", a.copy.root)
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert_receive {:run_analysis, [%{"source" => "exunit"}]},
+                   15_000,
+                   "one finding at the head is re-run once; a finding from another " <>
+                     "commit's run made it two, and the candidate was ejected instead"
+
+    assert %{status: :gating} = PromotionQueue.get(entry.id)
+  end
+
   @tag gate: :later
   test "a gate copy coming up wakes the batch waiting for it", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
