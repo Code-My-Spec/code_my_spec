@@ -5,20 +5,6 @@ defmodule CodeMySpec.PromotionQueue.TriageTest do
 
   defp finding(source, path), do: %{source: source, file_path: path}
 
-  describe "lone_failure/1" do
-    test "one finding is re-run once, as the flake it may be" do
-      assert {:rerun, "exunit"} = Triage.lone_failure([finding("exunit", "test/a_test.exs")])
-    end
-
-    test "more than one is not" do
-      assert :no =
-               Triage.lone_failure([
-                 finding("exunit", "test/a_test.exs"),
-                 finding("credo", "lib/a.ex")
-               ])
-    end
-  end
-
   describe "culprit/2" do
     test "findings all in one candidate's files name that candidate" do
       changed = %{a: ["lib/a.ex"], b: ["lib/b.ex", "test/b_test.exs"]}

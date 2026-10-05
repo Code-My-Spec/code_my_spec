@@ -7,9 +7,9 @@ defmodule CodeMySpec.PromotionQueue do
   commit it is at and answers with its place in the queue, in seconds. The
   project's worker (`Worker`) gates candidates in batches in the project's gate
   copy and lands each green batch on main as an exact, tagged commit
-  (`Promotion.land/6`). A red batch is triaged: a lone failure is re-run once,
-  findings that belong to one candidate eject it, and anything else is
-  bisected. Each candidate's requester is told what happened to it.
+  (`Promotion.land/6`). A red batch is triaged: findings that belong to one
+  candidate eject it, and anything else is bisected. A finding is red, flaky
+  or not; a flake is fixed as an issue, not re-run. Each candidate's requester is told what happened to it.
 
   A candidate is certified against the queue head — main plus everything ahead
   of it — which is what the gate copy's batch is, so it does not have to merge

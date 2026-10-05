@@ -931,9 +931,6 @@ defmodule CodeMySpec.Promotion do
   `{:pending, %{commit:, started:, running:}}`. A blocking problem from a run
   that is at `head` refuses regardless: no pending run can clear it.
 
-  `opts[:excluding]` is a set of `finding_key/1`s that refuse nothing: findings
-  already red on main (`PromotionQueue.Worker`), which no candidate caused.
-
   `{:ok, certified_by}`, `{:pending, map}` or `{:error, %{reason: ...}}`.
   """
   @spec gate(Scope.t(), String.t(), keyword()) ::
@@ -955,7 +952,7 @@ defmodule CodeMySpec.Promotion do
     # would let a project promote a commit `exunit` had never once run against.
     {answered, missing} = answers_at(scope, Run.sources(), head)
 
-    case scope |> blocking_problems(Map.keys(answered)) |> without(opts[:excluding]) do
+    case blocking_problems(scope, Map.keys(answered)) do
       [] -> certify(scope, answered, missing, head, named, opts)
       problems -> gate_result(problems, named)
     end
@@ -990,18 +987,6 @@ defmodule CodeMySpec.Promotion do
   end
 
   @doc """
-  What identifies a finding across copies: its source, file and line. Not the
-  message — a test failure's text carries run-specific detail.
-  """
-  @spec finding_key(struct()) :: {String.t(), String.t(), integer() | nil}
-  def finding_key(problem), do: {problem.source, problem.file_path, problem.line}
-
-  defp without(problems, nil), do: problems
-
-  defp without(problems, excluding),
-    do: Enum.reject(problems, &MapSet.member?(excluding, finding_key(&1)))
-
-  @doc """
   What the scope's copy's own analysis at `head` already says blocks it: `:ok`,
   or the gate's refusal. A read — it starts nothing, and a source with no answer
   at `head` is not a refusal.
@@ -1022,10 +1007,10 @@ defmodule CodeMySpec.Promotion do
   `head` still holds its previous run's problems — another commit's. A red
   batch is triaged on exactly what refused it, never on those.
   """
-  @spec blocking_problems_at(Scope.t(), String.t(), MapSet.t() | nil) :: [struct()]
-  def blocking_problems_at(%Scope{} = scope, head, excluding \\ nil) do
+  @spec blocking_problems_at(Scope.t(), String.t()) :: [struct()]
+  def blocking_problems_at(%Scope{} = scope, head) do
     {answered, _missing} = answers_at(scope, Run.sources(), head)
-    scope |> blocking_problems(Map.keys(answered)) |> without(excluding)
+    blocking_problems(scope, Map.keys(answered))
   end
 
   defp certify(_scope, answered, [], _head, _named, _opts), do: {:ok, certified_by(answered)}
