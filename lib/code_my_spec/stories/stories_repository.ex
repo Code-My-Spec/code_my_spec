@@ -392,6 +392,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     %Story{}
     |> Story.changeset(attrs_with_ownership)
+    |> Story.retire_dropped_criteria()
     |> Ecto.Changeset.put_change(:project_id, project_id)
     |> put_account_id(scope)
     |> put_number(project_id)
@@ -454,6 +455,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     story
     |> Story.changeset(attrs_with_ownership)
+    |> Story.retire_dropped_criteria()
     |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags], force: true)}

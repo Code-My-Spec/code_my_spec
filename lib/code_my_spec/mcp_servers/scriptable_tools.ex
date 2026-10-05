@@ -100,7 +100,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent)
   component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
   component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.RetireCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.RestoreCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.GetCriterion)

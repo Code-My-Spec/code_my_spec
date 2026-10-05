@@ -83,8 +83,16 @@ defmodule CodeMySpecWeb.StoryLive.Form do
                   name={criterion_form[:description].name}
                   id={criterion_form[:description].id}
                   value={criterion_form[:description].value}
+                  readonly={!is_nil(criterion_form.data.id)}
+                  title={
+                    if criterion_form.data.id,
+                      do: "Wording is fixed once saved — remove this criterion and add a new one to reword it"
+                  }
                   placeholder="Given <state>, when <action>, then <observable outcome>"
-                  class="flex-1 input"
+                  class={[
+                    "flex-1 input",
+                    criterion_form.data.id && "opacity-60 cursor-not-allowed"
+                  ]}
                 />
                 <label class="flex items-center gap-1 cursor-pointer">
                   <input type="hidden" name={criterion_form[:verified].name} value="false" />

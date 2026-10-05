@@ -2143,6 +2143,40 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Establish the age of a permission request already created through its
+  public surface (`tap_out`, or a tool permission).
+
+  Mirrors `age_question/3`. Changes only timestamps, never status or decision.
+  """
+  @spec age_permission(Scope.t(), String.t(), pos_integer()) :: :ok
+  def age_permission(%Scope{user: %{id: user_id}}, permission_id, seconds)
+      when is_integer(seconds) and seconds > 0 do
+    timestamp =
+      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+
+    {1, _} =
+      from(p in Notifications.PermissionRequest,
+        where: p.id == ^permission_id and p.user_id == ^user_id
+      )
+      |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
+
+    :ok
+  end
+
+  @doc """
+  Bind an already-created agent to a story and/or epic, as the agent row
+  records it.
+
+  Setup only: a scenario about an agent's own story or epic needs the row to
+  carry one without re-deriving the whole `start_agent` path.
+  """
+  @spec bind_agent(Scope.t(), map(), map()) :: map()
+  def bind_agent(%Scope{} = scope, agent, attrs) do
+    {:ok, agent} = AgentsRepository.update_agent(scope, agent, attrs)
+    agent
+  end
+
+  @doc """
   Request a tool permission the way the Claude Code hook does.
 
   The inbox lists questions and permission requests together, so a scenario

@@ -289,6 +289,15 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     hybrid_response(summary, data)
   end
 
+  def criterion_reworded_response(new_criterion, old_criterion, story) do
+    data = criterion_data(new_criterion)
+
+    summary =
+      "Criterion #{old_criterion.number} retired; criterion #{new_criterion.number} added to \"#{story.title}\" with the new wording: #{new_criterion.description}"
+
+    hybrid_response(summary, data)
+  end
+
   def criterion_retired_response(criterion) do
     Response.tool()
     |> Response.text(

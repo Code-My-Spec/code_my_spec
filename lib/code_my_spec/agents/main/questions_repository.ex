@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.QuestionRequest
@@ -42,8 +43,9 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   longest is the work that has been stopped longest.
   """
   @spec list_open_questions(Scope.t()) :: [OpenQuestion.t()]
-  def list_open_questions(%Scope{active_project_id: project_id}) when not is_nil(project_id) do
-    (pending_questions(project_id) ++ pending_permissions(project_id))
+  def list_open_questions(%Scope{active_project_id: project_id} = scope)
+      when not is_nil(project_id) do
+    (pending_questions(project_id) ++ pending_permissions(scope))
     |> Enum.sort_by(& &1.asked_at, DateTime)
   end
 
@@ -82,7 +84,10 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   # the reason the queue exists: the reader is asking "which of my agents are
   # stopped, and why", and that question has one answer. `kind` on the struct
   # is how a caller tells an answer from a decision.
-  defp pending_permissions(project_id) do
+  defp pending_permissions(%Scope{active_project_id: project_id} = scope) do
+    cutoff =
+      DateTime.add(DateTime.utc_now(), -Cadence.interval(scope), :second)
+
     from(p in PermissionRequest,
       join: a in Agent,
       on: a.id == p.agent_id,
@@ -94,7 +99,8 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
     )
     |> Repo.all()
     |> Enum.map(fn {request, agent, working_copy} ->
-      OpenQuestion.from_permission(request, agent, working_copy)
+      aged? = DateTime.compare(request.inserted_at, cutoff) != :gt
+      OpenQuestion.from_permission(request, agent, working_copy, aged?)
     end)
   end
 
@@ -107,7 +113,7 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   """
   @spec fetch_open_permission(Scope.t(), String.t()) ::
           {:ok, OpenQuestion.t()} | {:error, :not_found}
-  def fetch_open_permission(%Scope{active_project_id: project_id}, permission_id)
+  def fetch_open_permission(%Scope{active_project_id: project_id} = scope, permission_id)
       when not is_nil(project_id) do
     from(p in PermissionRequest,
       join: a in Agent,
@@ -119,8 +125,13 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
     )
     |> Repo.one()
     |> case do
-      nil -> {:error, :not_found}
-      {request, agent, copy} -> {:ok, OpenQuestion.from_permission(request, agent, copy)}
+      nil ->
+        {:error, :not_found}
+
+      {request, agent, copy} ->
+        cutoff = DateTime.add(DateTime.utc_now(), -Cadence.interval(scope), :second)
+        aged? = DateTime.compare(request.inserted_at, cutoff) != :gt
+        {:ok, OpenQuestion.from_permission(request, agent, copy, aged?)}
     end
   end
 
@@ -188,10 +199,15 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   3264: the question stays exactly where it was and changes who is holding it.
   """
   @spec hand_to_user(String.t(), String.t(), String.t() | nil) ::
-          {:ok, QuestionRequest.t()} | {:error, term()}
+          {:ok, QuestionRequest.t() | PermissionRequest.t()} | {:error, term()}
   def hand_to_user(question_id, reason, as \\ nil) do
-    request = Repo.get(QuestionRequest, question_id)
+    case Repo.get(QuestionRequest, question_id) do
+      nil -> hand_permission_to_user(question_id, reason, as)
+      request -> hand_question_to_user(request, reason, as)
+    end
+  end
 
+  defp hand_question_to_user(request, reason, as) do
     request
     |> QuestionRequest.changeset(%{
       "holder" => "user",
@@ -199,6 +215,21 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
       "questions" => framed(request.questions, as)
     })
     |> Repo.update()
+  end
+
+  # A permission has no `questions` to frame and no `holder` column at all —
+  # `OpenQuestion.from_permission/4` computes holder from this pair instead,
+  # and an escalated one reads "user" regardless of age.
+  defp hand_permission_to_user(permission_id, reason, as) do
+    case Repo.get(PermissionRequest, permission_id) do
+      nil ->
+        {:error, :not_found}
+
+      request ->
+        request
+        |> PermissionRequest.changeset(%{"escalation_reason" => reason, "escalated_as" => as})
+        |> Repo.update()
+    end
   end
 
   # The decision in the user's terms, with the agent's original kept.
