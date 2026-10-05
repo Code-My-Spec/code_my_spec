@@ -597,9 +597,13 @@ defmodule CodeMySpec.Agents.Main do
 
   defp answer_as(:product, _scope, _question, _answer, _opts), do: {:error, :not_yours}
 
-  # Routed straight to the user (criterion 1988): nothing short of the user
-  # answering it settles it, however well main's own answer would stand up.
-  defp answer_as(_role, _scope, %{holder: "user"}, _answer, _opts), do: {:error, :with_user}
+  # Routed straight to the user from the start (criterion 1988), not escalated
+  # there by main: nothing short of the user answering it settles it, however
+  # well main's own answer would stand up. One main escalated itself carries
+  # an `escalation_reason` and stays answerable (8c91d5bc, "main may answer a
+  # question already with the user").
+  defp answer_as(_role, _scope, %{holder: "user", escalation_reason: nil}, _answer, _opts),
+    do: {:error, :with_user}
 
   defp answer_as(_main, scope, question, answer, opts) do
     case within_scope(question, opts) do
