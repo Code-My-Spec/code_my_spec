@@ -1343,8 +1343,13 @@ defmodule CmsHarness.Project.ChannelClient do
     # distinction, and this is the one thing under this root that isn't the
     # user's. Best-effort and fire-and-forget, same as everything else this
     # event does: nothing here can hold up the offboard.
-    Task.start(fn -> CmsHarness.AppInstance.discard(root) end)
-    Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
+    #
+    # In that order, in one task: stopping the copy takes its app with it (phase
+    # 2b), and a discard that lost that race never dropped the database.
+    Task.start(fn ->
+      CmsHarness.AppInstance.discard(root)
+      CmsHarness.Projects.stop_serving(root)
+    end)
 
     {:ok, socket}
   end

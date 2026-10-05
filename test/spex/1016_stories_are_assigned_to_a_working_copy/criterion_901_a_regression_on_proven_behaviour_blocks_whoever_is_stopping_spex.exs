@@ -120,10 +120,10 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
           Environments.write_file(
             context.environment,
             path,
-            failing_spex(criterion.description)
+            failing_spex(criterion)
           )
 
-        HarnessHooks.write_file(context, path, failing_spex(criterion.description))
+        HarnessHooks.write_file(context, path, failing_spex(criterion))
 
         # Synced here rather than left for the stop hook. A spec file the
         # project has not seen yet lands a *new* criterion on the story at sync
@@ -143,6 +143,10 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
       when_ "the agent attempts to stop", context do
         HarnessHooks.land_analysis(context, "compiler", red_fixture("compile.jsonl"))
         HarnessHooks.land_analysis(context, "spex", spex_jsonl(context.spex_path))
+
+        # The stopping agent did work this session: one that edited nothing is
+        # blocked by nothing (story 894), whatever is red.
+        :ok = record_edit(context, context.spex_path)
 
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
@@ -245,13 +249,14 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
   # `use <App>Spex.Case` or has a scenario without Given/When/Then, and that
   # refusal is its own blocking finding — which would block this stop for a
   # reason that has nothing to do with assignment.
-  defp failing_spex(scenario) do
+  # Names its criterion, as a synced spex does (`Files.SpecBinding`).
+  defp failing_spex(criterion) do
     """
     defmodule ExampleContextSpex do
       use ExampleSpex.Case
 
-      spex "intentional failure" do
-        scenario "#{scenario}" do
+      spex "intentional failure", criterion: #{Map.get(criterion, :number) || criterion.id} do
+        scenario "#{criterion.description}" do
           given_ "a fixture that is set up", context do
             {:ok, context}
           end

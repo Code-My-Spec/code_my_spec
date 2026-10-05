@@ -345,6 +345,20 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     context
   end
 
+  @doc """
+  The agent's copy with a commit of its own, as a copy promoting a story has.
+  A copy still at main's commit is already on main, and the queue lands it
+  without a gate (2583cc8b0), so nothing would certify or latch it.
+  """
+  def with_work_on_the_copy(context),
+    do:
+      commit_work(
+        context,
+        context.agent_root,
+        "lib/story_work.ex",
+        "defmodule StoryWork do\nend\n"
+      )
+
   @doc "A candidate's own analyzers current at its HEAD."
   def its_analyzers_are_current(context, %{scope: scope}) do
     CodeMySpecSpex.Fixtures.fresh_analysis_runs(scope, Run.sources(), at_head: true)
