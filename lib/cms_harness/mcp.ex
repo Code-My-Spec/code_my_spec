@@ -102,7 +102,14 @@ defmodule CmsHarness.Mcp do
 
   @doc "The session for this agent against this server, or nil."
   @spec whereis(String.t(), String.t()) :: pid() | nil
-  def whereis(agent_id, base_url), do: GenServer.whereis(name(agent_id, base_url))
+  def whereis(agent_id, base_url) do
+    # Checked alive, as `Copy.Supervisor.whereis/1` is: the registry drops an
+    # exited owner's entry asynchronously (adb0a8530).
+    case GenServer.whereis(name(agent_id, base_url)) do
+      pid when is_pid(pid) -> if Process.alive?(pid), do: pid
+      _ -> nil
+    end
+  end
 
   # Named after the agent and the server, so two agents on one machine hold two
   # sessions and neither can read the other's. `:via` rather than an atom
