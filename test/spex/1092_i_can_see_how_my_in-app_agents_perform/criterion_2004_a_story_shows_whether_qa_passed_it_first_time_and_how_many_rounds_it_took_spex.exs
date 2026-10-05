@@ -14,7 +14,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
+  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -85,6 +87,27 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         refute round_1.isError, inspect(round_1)
 
+        {:reply, accepted_1, _frame} =
+          AcceptIssue.execute(%{issue_id: issue_1_id, category: "bug"}, asking)
+
+        refute accepted_1.isError, inspect(accepted_1)
+
+        {:reply, resolved_1, _frame} =
+          ResolveIssue.execute(
+            %{issue_id: issue_1_id, resolution: "Fixed the save button's no-op handler"},
+            asking
+          )
+
+        refute resolved_1.isError, inspect(resolved_1)
+
+        {:reply, resumed_1, _frame} =
+          StartTask.execute(
+            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+            asking
+          )
+
+        refute resumed_1.isError, inspect(resumed_1)
+
         {:reply, issue_2, _frame} =
           CreateIssue.execute(
             %{
@@ -110,6 +133,27 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
           )
 
         refute round_2.isError, inspect(round_2)
+
+        {:reply, accepted_2, _frame} =
+          AcceptIssue.execute(%{issue_id: issue_2_id, category: "bug"}, asking)
+
+        refute accepted_2.isError, inspect(accepted_2)
+
+        {:reply, resolved_2, _frame} =
+          ResolveIssue.execute(
+            %{issue_id: issue_2_id, resolution: "Fixed the save button's error handling"},
+            asking
+          )
+
+        refute resolved_2.isError, inspect(resolved_2)
+
+        {:reply, resumed_2, _frame} =
+          StartTask.execute(
+            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+            asking
+          )
+
+        refute resumed_2.isError, inspect(resumed_2)
 
         {:reply, round_3, _frame} =
           SubmitQaResult.execute(
