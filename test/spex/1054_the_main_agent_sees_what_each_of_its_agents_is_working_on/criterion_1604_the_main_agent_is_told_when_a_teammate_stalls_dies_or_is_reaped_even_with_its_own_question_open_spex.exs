@@ -81,7 +81,10 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
         main_id = context.main.id
         coder_id = context.coder.id
 
-        assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
+        # Main is idle (blocked on its own open question), not mid-turn, so
+        # waking it for this starts a new turn (`request_work_turn`) rather
+        # than dispatching into one already running (`dispatch_message`).
+        assert_receive {:work_turn_requested, ^main_id, ref, text}, 2_000
         assert is_binary(ref)
 
         assert text =~ coder_id or text =~ String.slice(coder_id, 0, 8),
