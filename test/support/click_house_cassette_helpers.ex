@@ -43,14 +43,17 @@ defmodule CodeMySpecSpex.ClickHouseCassetteHelpers do
   end
 
   def with_plug(plug, fun) do
-    module = CodeMySpec.Observability.ClickHouseClient
-    original = Application.get_env(:code_my_spec, module, [])
-    Application.put_env(:code_my_spec, module, Keyword.put(original, :plug, plug))
+    key = {CodeMySpec.Observability.ClickHouseClient, :plug}
+    original = Process.get(key, :unset)
+    Process.put(key, plug)
 
     try do
       fun.()
     after
-      Application.put_env(:code_my_spec, module, original)
+      case original do
+        :unset -> Process.delete(key)
+        previous -> Process.put(key, previous)
+      end
     end
   end
 
@@ -90,6 +93,7 @@ defmodule CodeMySpecSpex.ClickHouseCassetteHelpers do
   """
   def configure!(scope, opts \\ []) do
     env = Keyword.get(opts, :environment, "uat")
+
     conn = %{
       url: Keyword.get(opts, :url, "http://ch-#{scope.active_project_id}.test"),
       username: Keyword.get(opts, :username, "tel_#{scope.active_project_id}_#{env}"),
@@ -110,7 +114,10 @@ defmodule CodeMySpecSpex.ClickHouseCassetteHelpers do
   @doc "Stubs a flat JSON-lines response — every call gets the same rows."
   def stub_rows(rows) do
     body = Enum.map_join(rows, "\n", &Jason.encode!/1)
-    Req.Test.stub(CodeMySpec.Observability.ClickHouseClient, fn conn -> Conn.send_resp(conn, 200, body) end)
+
+    Req.Test.stub(CodeMySpec.Observability.ClickHouseClient, fn conn ->
+      Conn.send_resp(conn, 200, body)
+    end)
   end
 
   @doc """
@@ -142,9 +149,12 @@ defmodule CodeMySpecSpex.ClickHouseCassetteHelpers do
 
   defp body_for_username(rows_by_username, username) do
     case Map.fetch(rows_by_username, username) do
-      {:ok, rows} -> Enum.map_join(rows, "\n", &Jason.encode!/1)
-      :error -> raise "unexpected ClickHouse auth #{inspect(username)} — " <>
-                  "a query reached a connection no project configured for this stub"
+      {:ok, rows} ->
+        Enum.map_join(rows, "\n", &Jason.encode!/1)
+
+      :error ->
+        raise "unexpected ClickHouse auth #{inspect(username)} — " <>
+                "a query reached a connection no project configured for this stub"
     end
   end
 

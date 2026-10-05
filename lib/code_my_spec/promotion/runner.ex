@@ -81,6 +81,20 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.build_batch(env, root, base, commits) end
       )
 
+  @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
+  @spec contained(Scope.t(), String.t(), String.t(), [String.t()], Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def contained(scope, root, base, commits, copy_id),
+    do:
+      run(
+        scope,
+        copy_id,
+        "promotion_contained",
+        %{"root" => root, "base" => base, "commits" => commits},
+        @git_timeout,
+        fn env -> Steps.contained(env, root, base, commits) end
+      )
+
   @doc "The paths `commit` changed since it left `base` (`Steps.changed_files/4`)."
   @spec changed_files(Scope.t(), String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
           Steps.result()

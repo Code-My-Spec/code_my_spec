@@ -57,15 +57,22 @@ defmodule CmsHarness.HookDecision do
   """
   @spec unreachable(String.t(), reason(), String.t(), map()) :: map()
   def unreachable(hook, reason, working_dir, payload \\ %{}) do
+    unreachable(hook, reason, working_dir, payload, channel_state(reason, working_dir))
+  end
+
+  @doc false
+  def unreachable(hook, reason, working_dir, payload, state) do
+    explanation = explain(reason, working_dir, state)
+
     cond do
       hook not in @deciding_hooks ->
-        %{"systemMessage" => advisory(hook, reason, working_dir)}
+        %{"systemMessage" => advisory(hook, explanation)}
 
       already_blocked?(payload) ->
-        %{"systemMessage" => second_pass(reason, working_dir)}
+        %{"systemMessage" => second_pass(explanation)}
 
       true ->
-        %{"decision" => "block", "reason" => refusal(reason, working_dir)}
+        %{"decision" => "block", "reason" => refusal(explanation)}
     end
   end
 
@@ -93,12 +100,15 @@ defmodule CmsHarness.HookDecision do
   able to disagree about which end is broken.
   """
   @spec summarize(reason()) :: String.t()
-  def summarize({:not_connected, {:http, status}}) when status >= 500 do
+  def summarize(reason), do: summarize(reason, channel_state(reason, nil))
+
+  @doc false
+  def summarize({:not_connected, {:http, status}}, _state) when status >= 500 do
     "channel down, server answering #{status} — server-side; the channel rejoins on its own"
   end
 
-  def summarize({:not_connected, {:http, status}}) do
-    if holds_a_channel?() do
+  def summarize({:not_connected, {:http, status}}, state) do
+    if state.holds_channel? do
       "this copy's channel is not up yet — the harness holds one for another " <>
         "copy, so the socket and the credential are both fine"
     else
@@ -106,77 +116,78 @@ defmodule CmsHarness.HookDecision do
     end
   end
 
-  def summarize({:not_connected, {:error, reason}}) do
+  def summarize({:not_connected, {:error, reason}}, _state) do
     "channel down, server not answering at all: #{inspect(reason, limit: 3)}"
   end
 
-  def summarize(:not_connected), do: "channel to the server is down"
+  def summarize(:not_connected, _state), do: "channel to the server is down"
 
-  def summarize(:no_reply), do: "server was asked and did not answer in time"
+  def summarize(:no_reply, _state), do: "server was asked and did not answer in time"
 
-  def summarize({:refused, detail}) do
+  def summarize({:refused, detail}, _state) do
     "server answered with an error rather than a decision: #{inspect(detail, limit: 5)}"
   end
 
-  def summarize(:no_credential), do: "no credential — the harness never connected"
+  def summarize(:no_credential, _state), do: "no credential — the harness never connected"
 
-  def summarize(:no_project), do: "no project id for this directory"
+  def summarize(:no_project, _state), do: "no project id for this directory"
 
-  def summarize(:invalid_config), do: "config.yml found but no project id could be read from it"
+  def summarize(:invalid_config, _state),
+    do: "config.yml found but no project id could be read from it"
 
-  def summarize(:restarting), do: "the harness is restarting"
+  def summarize(:restarting, _state), do: "the harness is restarting"
 
-  def summarize({:unknown_harness, id}) do
+  def summarize({:unknown_harness, id}, _state) do
     "the server does not recognise harness #{id}, or has no location recorded for it"
   end
 
-  def summarize({:server_unreachable, id, reason}) do
+  def summarize({:server_unreachable, id, reason}, _state) do
     "could not ask the server where #{id} is: #{inspect(reason, limit: 3)}"
   end
 
-  def summarize(:no_harness), do: "the hook named no working copy"
+  def summarize(:no_harness, _state), do: "the hook named no working copy"
 
-  def summarize({:not_onboarded, dir}) do
+  def summarize({:not_onboarded, dir}, _state) do
     "the hook fired in #{dir}, which is a project with no .cms_harness.json"
   end
 
-  def summarize(other), do: inspect(other)
+  def summarize(other, _state), do: inspect(other)
 
   defp already_blocked?(%{"stop_hook_active" => true}), do: true
   defp already_blocked?(_), do: false
 
-  defp refusal(reason, working_dir) do
+  defp refusal(explanation) do
     """
     The CodeMySpec harness could not decide whether this turn is finished, so it is not saying that it is.
 
-    #{explain(reason, working_dir)}
+    #{explanation}
 
     This is not "there is nothing left to do" — the harness never got to ask. Fix the connection and stop again; the next stop will be a real answer.
     """
     |> String.trim()
   end
 
-  defp second_pass(reason, working_dir) do
+  defp second_pass(explanation) do
     """
     Stopping unverified: the CodeMySpec harness still could not reach the server, so nothing about this turn has been checked — not the compiler, not the tests, not the requirement graph.
 
-    #{explain(reason, working_dir)}
+    #{explanation}
 
     Treat this turn as unverified rather than clean.
     """
     |> String.trim()
   end
 
-  defp advisory(hook, reason, working_dir) do
+  defp advisory(hook, explanation) do
     """
     The CodeMySpec harness is not connected, so the #{hook} hook did nothing.
 
-    #{explain(reason, working_dir)}
+    #{explanation}
     """
     |> String.trim()
   end
 
-  defp explain(:not_connected, working_dir) do
+  defp explain(:not_connected, working_dir, _state) do
     """
     The harness is running but its channel to the CodeMySpec server is down, so it cannot reach the project's state. Check the harness log for the reconnect attempts.
     Working directory: #{working_dir}
@@ -205,12 +216,12 @@ defmodule CmsHarness.HookDecision do
   # A 5xx stays server-side whatever else is joined: an unhealthy server is the
   # stronger signal, and the channel really will rejoin on its own once it
   # recovers.
-  defp explain({:not_connected, {:http, status}}, working_dir) when status >= 500 do
+  defp explain({:not_connected, {:http, status}}, working_dir, _state) when status >= 500 do
     explain_disconnected({:not_connected, {:http, status}}, working_dir)
   end
 
-  defp explain({:not_connected, {:http, status}}, working_dir) do
-    if holds_a_channel?() do
+  defp explain({:not_connected, {:http, status}}, working_dir, state) do
+    if state.holds_channel? do
       """
       This working copy's channel to the CodeMySpec server has not come up yet. The harness is connected and holding a channel for another working copy, so the socket and the credential are both fine — neither is what to look at.
       A copy is picked up on its first contact, and a harness that was just restarted keeps a lease on the others for up to a minute. Try again shortly; if it persists, `/health` on the harness lists which roots it is serving.
@@ -233,7 +244,7 @@ defmodule CmsHarness.HookDecision do
   #
   # The order matters and is the part nobody guesses: fetch and compile *before*
   # `phx.server`, because the failure is the build rather than the boot.
-  defp explain({:not_connected, {:error, reason}}, working_dir) do
+  defp explain({:not_connected, {:error, reason}}, working_dir, _state) do
     """
     The harness's channel to the CodeMySpec server is down, and the server is not answering at all: #{inspect(reason)}. Start it, or point CMS_SERVER_URL somewhere that is running.
 
@@ -249,7 +260,7 @@ defmodule CmsHarness.HookDecision do
   #
   # Hooks are resolved from the payload's `cwd` (`ResolveWorkingCopy`); no
   # plugin dir is involved, so the remedy is where the agent runs (47a60277).
-  defp explain(:no_harness, working_dir) do
+  defp explain(:no_harness, working_dir, _state) do
     """
     This hook did not say which working copy it is about: it named no harness \
     id, and #{no_harness_where(working_dir)}.
@@ -267,7 +278,7 @@ defmodule CmsHarness.HookDecision do
   # Distinct from `:no_project`, which is about a directory that cannot say
   # which project it is — here there is no directory in the question at all,
   # so telling somebody to edit a config file in one would be nonsense.
-  defp explain({:unknown_harness, working_copy_id}, _working_dir) do
+  defp explain({:unknown_harness, working_copy_id}, _working_dir, _state) do
     """
     This harness is not serving the working copy #{working_copy_id}.
 
@@ -283,7 +294,7 @@ defmodule CmsHarness.HookDecision do
   # recognise your id" sends the reader to re-onboard a config that was never
   # wrong. Measured: `:4000` was down, the token exchange returned
   # `econnrefused`, and the refusal blamed the id.
-  defp explain({:server_unreachable, working_copy_id, reason}, _working_dir) do
+  defp explain({:server_unreachable, working_copy_id, reason}, _working_dir, _state) do
     """
     The harness could not reach the CodeMySpec server to find out where \
     #{working_copy_id} is: #{inspect(reason, limit: 5)}
@@ -296,18 +307,18 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  defp explain(:no_project, working_dir) do
+  defp explain(:no_project, working_dir, _state) do
     """
     The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}` and restart the harness.
     """
     |> String.trim()
   end
 
-  defp explain(:restarting, _working_dir) do
+  defp explain(:restarting, _working_dir, _state) do
     "The harness is restarting — a promote restarts it. Stop again in a few seconds."
   end
 
-  defp explain(:invalid_config, working_dir) do
+  defp explain(:invalid_config, working_dir, _state) do
     """
     The harness found `#{Path.join(working_dir, ".code_my_spec/config.yml")}` but could not read a project id out of it.
     """
@@ -322,7 +333,7 @@ defmodule CmsHarness.HookDecision do
   # The walk stops at that boundary rather than climbing through it, which is
   # what keeps an un-onboarded checkout from adopting its parent's identity —
   # the defect the previous, `mix.exs`-seeking walk was removed for.
-  defp explain({:not_onboarded, dir}, _working_dir) do
+  defp explain({:not_onboarded, dir}, _working_dir, _state) do
     """
     #{dir} has not been onboarded, so this harness has no identity for it.
 
@@ -335,7 +346,7 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  defp explain(:no_credential, _working_dir) do
+  defp explain(:no_credential, _working_dir, _state) do
     """
     The harness has no credential for the CodeMySpec server, so it never connected. Set CMS_TOKEN (or CMS_DEPLOY_KEY for a sprite) and restart it.
     """
@@ -349,15 +360,15 @@ defmodule CmsHarness.HookDecision do
   # while the server was crashing on every stop, reconnecting, and doing it
   # again. So say how long the channel has been up, and let a fresh one point at
   # itself.
-  defp explain(:no_reply, working_dir) do
+  defp explain(:no_reply, working_dir, state) do
     """
-    The harness asked the CodeMySpec server and got no answer back in time.#{channel_age_note(ChannelClient.joined_ago(working_dir))}
+    The harness asked the CodeMySpec server and got no answer back in time.#{channel_age_note(state.joined_ago)}
     Working directory: #{working_dir}
     """
     |> String.trim()
   end
 
-  defp explain({:refused, detail}, working_dir) do
+  defp explain({:refused, detail}, working_dir, _state) do
     """
     The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the reply came back. The server said:
 
@@ -523,6 +534,14 @@ defmodule CmsHarness.HookDecision do
   # supervisor, and `Registry.select/2` raises there rather than returning
   # nothing. A raise here would turn a refusal into a crash, in the code whose
   # entire job is explaining a refusal.
+  defp channel_state({:not_connected, {:http, status}}, _working_dir) when status < 500,
+    do: %{holds_channel?: holds_a_channel?()}
+
+  defp channel_state(:no_reply, working_dir) when is_binary(working_dir),
+    do: %{joined_ago: ChannelClient.joined_ago(working_dir)}
+
+  defp channel_state(_reason, _working_dir), do: %{}
+
   defp holds_a_channel? do
     case Process.whereis(CmsHarness.Registry) do
       nil -> false

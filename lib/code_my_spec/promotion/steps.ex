@@ -797,6 +797,17 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   @doc """
+  Which of `commits` `base` already contains — candidates on main already, with
+  nothing to gate or land. Reads only; moves nothing.
+
+  `{:ok, %{contained: [commit]}}`, in the order given.
+  """
+  @spec contained(Environments.Environment.t(), String.t(), String.t(), [String.t()]) ::
+          result()
+  def contained(env, root, base, commits),
+    do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
+
+  @doc """
   The paths `commit` changed relative to where it left `base` — what the queue
   attributes a red batch's findings by. Three-dot, so a candidate behind main
   is not blamed for main's own changes.

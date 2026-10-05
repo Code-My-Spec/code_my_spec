@@ -391,10 +391,7 @@ defmodule CodeMySpec.Promotion do
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
-      for {story, copy_id} <- stories do
-        stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
-        notify_team_free(scope, copy_id, story)
-      end
+      :ok = record_landed_stories(scope, stories, stamp_version, Map.get(merge_result, :after))
 
       # `head` and `after` are the same commit now that a promotion tags rather
       # than commits a version bump; both are read so a result from either
@@ -504,6 +501,27 @@ defmodule CodeMySpec.Promotion do
   # The story-side half of criterion 1892's team-free parity with
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
+  @doc """
+  What a landing does for the stories in it: each is stamped promoted at
+  `version` and `commit`, and its team's freedom is announced. Also for a
+  candidate main already contains (`PromotionQueue`), which has nothing to
+  merge and lands as it is.
+  """
+  @spec record_landed_stories(
+          Scope.t(),
+          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          String.t() | nil,
+          String.t() | nil
+        ) :: :ok
+  def record_landed_stories(scope, stories, version, commit) do
+    for {story, copy_id} <- stories do
+      stamp_promoted_story(scope, story, version, commit)
+      notify_team_free(scope, copy_id, story)
+    end
+
+    :ok
+  end
+
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
 
   defp notify_team_free(scope, copy_id, story),
@@ -913,6 +931,9 @@ defmodule CodeMySpec.Promotion do
   `{:pending, %{commit:, started:, running:}}`. A blocking problem from a run
   that is at `head` refuses regardless: no pending run can clear it.
 
+  `opts[:excluding]` is a set of `finding_key/1`s that refuse nothing: findings
+  already red on main (`PromotionQueue.Worker`), which no candidate caused.
+
   `{:ok, certified_by}`, `{:pending, map}` or `{:error, %{reason: ...}}`.
   """
   @spec gate(Scope.t(), String.t(), keyword()) ::
@@ -934,11 +955,36 @@ defmodule CodeMySpec.Promotion do
     # would let a project promote a commit `exunit` had never once run against.
     {answered, missing} = answers_at(scope, Run.sources(), head)
 
-    case blocking_problems(scope, Map.keys(answered)) do
+    case scope |> blocking_problems(Map.keys(answered)) |> without(opts[:excluding]) do
       [] -> certify(scope, answered, missing, head, named, opts)
       problems -> gate_result(problems, named)
     end
   end
+
+  @doc """
+  Whether the scope's copy is already certified at `head`: every analyzer has a
+  run that answers for it there, and none of them found anything blocking. A
+  read — nothing is started.
+  """
+  @spec certified_at?(Scope.t(), String.t()) :: boolean()
+  def certified_at?(%Scope{} = scope, head) do
+    case answers_at(scope, Run.sources(), head) do
+      {answered, []} -> blocking_problems(scope, Map.keys(answered)) == []
+      {_answered, _missing} -> false
+    end
+  end
+
+  @doc """
+  What identifies a finding across copies: its source, file and line. Not the
+  message — a test failure's text carries run-specific detail.
+  """
+  @spec finding_key(struct()) :: {String.t(), String.t(), integer() | nil}
+  def finding_key(problem), do: {problem.source, problem.file_path, problem.line}
+
+  defp without(problems, nil), do: problems
+
+  defp without(problems, excluding),
+    do: Enum.reject(problems, &MapSet.member?(excluding, finding_key(&1)))
 
   @doc """
   What the scope's copy's own analysis at `head` already says blocks it: `:ok`,
@@ -947,12 +993,24 @@ defmodule CodeMySpec.Promotion do
   """
   @spec red_at(Scope.t(), String.t()) :: :ok | {:error, map()}
   def red_at(%Scope{active_working_copy_id: id} = scope, head) do
-    {answered, _missing} = answers_at(scope, Run.sources(), head)
-
-    case blocking_problems(scope, Map.keys(answered)) do
+    case blocking_problems_at(scope, head) do
       [] -> :ok
       problems -> gate_result(problems, named_copy(id))
     end
+  end
+
+  @doc """
+  The problems `gate/3` judges at `head`: those of the sources whose latest
+  run on the scope's copy is at `head`.
+
+  Problems are kept per copy, not per commit, so a source not yet answered at
+  `head` still holds its previous run's problems — another commit's. A red
+  batch is triaged on exactly what refused it, never on those.
+  """
+  @spec blocking_problems_at(Scope.t(), String.t(), MapSet.t() | nil) :: [struct()]
+  def blocking_problems_at(%Scope{} = scope, head, excluding \\ nil) do
+    {answered, _missing} = answers_at(scope, Run.sources(), head)
+    scope |> blocking_problems(Map.keys(answered)) |> without(excluding)
   end
 
   defp certify(_scope, answered, [], _head, _named, _opts), do: {:ok, certified_by(answered)}

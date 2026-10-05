@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
+  @endpoint CodeMySpecWeb.Endpoint
 
   @component_module_name "ExampleContext"
   @impl_path "lib/example_context.ex"

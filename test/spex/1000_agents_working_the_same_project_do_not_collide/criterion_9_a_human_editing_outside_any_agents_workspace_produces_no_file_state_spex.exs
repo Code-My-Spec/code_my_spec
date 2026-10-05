@@ -32,20 +32,22 @@ defmodule CodeMySpecSpex.Story1000.Criterion740Spex do
       end
 
       when_ "the operator edits files in it", context do
-        # No header at all, because there is no id to send: nothing issued one
-        # for this directory. Announcing the path instead is what the server used
-        # to accept, and accepting it is how an edit in a directory no agent
-        # serves got recorded against the project anyway.
+        # A working copy id nothing on this machine has ever onboarded.
+        # The harness router resolves purely by id (there is no directory
+        # fallback, by design), so an unknown id is the found-nothing path —
+        # not a path-based guess at whose workspace this is.
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/post-tool-use", %{
-            "session_id" => "spex-unserved",
-            "tool_name" => "Edit",
-            "tool_input" => %{"file_path" => Path.join(context.unserved, "lib/stray.ex")}
-          })
+          CmsHarnessTest.LiveHarness.post_hook(
+            "spex-unserved-#{System.unique_integer([:positive])}",
+            "post-tool-use",
+            %{
+              "session_id" => "spex-unserved",
+              "tool_name" => "Edit",
+              "tool_input" => %{"file_path" => Path.join(context.unserved, "lib/stray.ex")}
+            }
+          )
 
-        {:ok, Map.put(context, :hook_status, response.status)}
+        {:ok, Map.put(context, :hook_response, response)}
       end
 
       then_ "no files are recorded for the project", context do

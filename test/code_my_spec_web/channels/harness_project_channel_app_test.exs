@@ -46,7 +46,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
   # The call blocks on the reply, same as a real `AppTransport` call would —
   # so it has to run off the test process, which is the one about to answer it.
   defp call_async(pid, message) do
-    Task.async(fn -> GenServer.call(pid, message, 5_000) end)
+    Task.async(fn -> GenServer.call(pid, message, :infinity) end)
   end
 
   # Simulates the harness's `_result` push and asserts the channel
@@ -54,14 +54,27 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
   # `AppTransport` call, which the caller checks via `Task.await/1`.
   defp answer(socket, event, ref, payload) do
     push_ref = push(socket, event, Map.put(payload, "ref", ref))
-    assert_reply push_ref, :ok
+    assert %Phoenix.Socket.Reply{status: :ok, payload: %{}} = await_reply(push_ref)
+  end
+
+  # These waits follow protocol events; ExUnit's test deadline bounds a stall.
+  defp await_push(event) do
+    receive do
+      %Phoenix.Socket.Message{event: ^event, payload: payload} -> payload
+    end
+  end
+
+  defp await_reply(ref) do
+    receive do
+      %Phoenix.Socket.Reply{ref: ^ref} = reply -> reply
+    end
   end
 
   describe "ensure_app_running" do
     test "pushes the request and resolves once the far side answers", %{socket: socket} do
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
-      assert_push "ensure_app_running", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("ensure_app_running")
       assert is_binary(ref)
 
       answer(socket, "ensure_app_running_result", ref, %{
@@ -95,7 +108,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
       task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
 
-      assert_push "ensure_app_running", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("ensure_app_running")
 
       answer(socket, "ensure_app_running_result", ref, %{
         "status" => "ok",
@@ -119,7 +132,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
     test "a first start still booting comes back as starting, not an error", %{socket: socket} do
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
-      assert_push "ensure_app_running", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("ensure_app_running")
 
       answer(socket, "ensure_app_running_result", ref, %{
         "status" => "ok",
@@ -138,7 +151,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
       task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
 
-      assert_push "ensure_app_running", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("ensure_app_running")
 
       answer(socket, "ensure_app_running_result", ref, %{
         "status" => "ok",
@@ -156,7 +169,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
     test "an error on the far side comes back as an error, not a crash", %{socket: socket} do
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
-      assert_push "ensure_app_running", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("ensure_app_running")
 
       answer(socket, "ensure_app_running_result", ref, %{
         "status" => "error",
@@ -171,7 +184,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
     test "same round trip, its own event names", %{socket: socket} do
       task = call_async(socket.channel_pid, {:restart_app, %{}})
 
-      assert_push "restart_app", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("restart_app")
 
       answer(socket, "restart_app_result", ref, %{
         "status" => "ok",
@@ -210,7 +223,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
       task = call_async(socket.channel_pid, {:reload_app, %{}})
 
-      assert_push "reload_app", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("reload_app")
 
       answer(socket, "reload_app_result", ref, %{
         "status" => "ok",
@@ -233,7 +246,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
     test "answers :ok with no status payload to decode", %{socket: socket} do
       task = call_async(socket.channel_pid, {:stop_app, %{}})
 
-      assert_push "stop_app", %{"ref" => ref}
+      assert %{"ref" => ref} = await_push("stop_app")
       answer(socket, "stop_app_result", ref, %{"status" => "ok"})
 
       assert Task.await(task) == :ok
@@ -262,7 +275,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
           ] do
         task = call_async(socket.channel_pid, {verb, %{}})
 
-        assert_push ^event, %{"ref" => ref, "main" => true, "tunnel" => tunnel}
+        assert %{"ref" => ref, "main" => true, "tunnel" => tunnel} = await_push(event)
 
         assert tunnel["tunnel_id"] == "tunnel-1"
         assert tunnel["tunnel_secret"] == "s3cret"
@@ -284,7 +297,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
-      assert_push "ensure_app_running", %{"main" => true} = payload
+      assert %{"main" => true} = payload = await_push("ensure_app_running")
       refute Map.has_key?(payload, "tunnel")
 
       answer(socket, "ensure_app_running_result", payload["ref"], %{
@@ -323,7 +336,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
       task = call_async(socket.channel_pid, {:ensure_app_running, %{}})
 
-      assert_push "ensure_app_running", %{"main" => false} = payload
+      assert %{"main" => false} = payload = await_push("ensure_app_running")
       refute Map.has_key?(payload, "tunnel")
 
       answer(socket, "ensure_app_running_result", payload["ref"], %{

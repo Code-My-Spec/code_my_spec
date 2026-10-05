@@ -16,7 +16,7 @@ defmodule CmsHarness.HookDecisionTest do
 
   describe "the stop hook refuses" do
     test "a disconnected stop blocks rather than allowing" do
-      decision = HookDecision.unreachable("stop", :not_connected, @dir)
+      decision = unreachable("stop", :not_connected, @dir)
 
       assert decision["decision"] == "block",
              "allowing a stop the harness could not verify is the silent green light " <>
@@ -25,11 +25,11 @@ defmodule CmsHarness.HookDecisionTest do
 
     test "a disconnected subagent-stop blocks too" do
       assert %{"decision" => "block"} =
-               HookDecision.unreachable("subagent-stop", :not_connected, @dir)
+               unreachable("subagent-stop", :not_connected, @dir)
     end
 
     test "the refusal says the harness never got to ask, not that there is nothing to do" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :not_connected, @dir)
+      %{"reason" => reason} = unreachable("stop", :not_connected, @dir)
 
       assert reason =~ "never got to ask"
       refute reason =~ "no work"
@@ -40,7 +40,7 @@ defmodule CmsHarness.HookDecisionTest do
   # neither of which resolves a hook; the payload's `cwd` does.
   describe "a hook that named no working copy" do
     test "points at the cwd walk, not a plugin dir" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :no_harness, "/tmp/alloy-codex-1")
+      %{"reason" => reason} = unreachable("stop", :no_harness, "/tmp/alloy-codex-1")
 
       refute reason =~ "--plugin-dir"
       refute reason =~ "plugin-dev"
@@ -50,7 +50,7 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "says when the payload carried no cwd" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :no_harness, "(none given)")
+      %{"reason" => reason} = unreachable("stop", :no_harness, "(none given)")
 
       assert reason =~ "no `cwd`"
     end
@@ -68,7 +68,7 @@ defmodule CmsHarness.HookDecisionTest do
       test "#{reason} points at the harness rather than at the server" do
         text =
           "stop"
-          |> HookDecision.unreachable(unquote(reason), @dir)
+          |> unreachable(unquote(reason), @dir)
           |> Map.get("reason")
 
         assert text =~ "harness",
@@ -83,7 +83,7 @@ defmodule CmsHarness.HookDecisionTest do
     # which end is broken; see "a channel that is down says which end is
     # broken". Where it does not know, it points at the log and claims nothing.
     test "a dropped channel blames neither end when it has not asked" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :not_connected, @dir)
+      %{"reason" => reason} = unreachable("stop", :not_connected, @dir)
 
       assert reason =~ "channel to the CodeMySpec server is down"
       assert reason =~ "harness log"
@@ -91,7 +91,7 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "a missing project id names the file it should have been in" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :no_project, @dir)
+      %{"reason" => reason} = unreachable("stop", :no_project, @dir)
 
       assert reason =~ ".code_my_spec/config.yml"
 
@@ -101,7 +101,7 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "a missing credential says so instead of looking like an outage" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :no_credential, @dir)
+      %{"reason" => reason} = unreachable("stop", :no_credential, @dir)
 
       assert reason =~ "CMS_TOKEN"
       assert reason =~ "never connected"
@@ -141,7 +141,7 @@ defmodule CmsHarness.HookDecisionTest do
     # channel registered for this directory the answer is `nil`, which is the
     # honest one for a test process.
     test "the reason carries the channel's state" do
-      %{"reason" => reason} = HookDecision.unreachable("stop", :no_reply, @dir)
+      %{"reason" => reason} = unreachable("stop", :no_reply, @dir)
 
       assert reason =~ "no answer back in time"
       assert reason =~ "not joined"
@@ -150,14 +150,14 @@ defmodule CmsHarness.HookDecisionTest do
 
   describe "hooks that decide nothing" do
     test "a session-start does not block the agent, it just says what happened" do
-      decision = HookDecision.unreachable("session-start", :not_connected, @dir)
+      decision = unreachable("session-start", :not_connected, @dir)
 
       refute Map.has_key?(decision, "decision")
       assert decision["systemMessage"] =~ "not connected"
     end
 
     test "pre-tool-use does not block — a disconnected harness must not freeze the agent" do
-      decision = HookDecision.unreachable("pre-tool-use", :not_connected, @dir)
+      decision = unreachable("pre-tool-use", :not_connected, @dir)
 
       refute Map.has_key?(decision, "decision")
     end
@@ -168,7 +168,7 @@ defmodule CmsHarness.HookDecisionTest do
     # it mattered the server was returning 500, and that hedge sent me to read
     # the harness's socket code instead of restarting the server.
     test "a 5xx names the server, not the harness" do
-      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 500}}, @dir)["reason"]
+      reason = unreachable("stop", {:not_connected, {:http, 500}}, @dir)["reason"]
 
       assert reason =~ "500"
       assert reason =~ "the server, not the harness"
@@ -176,7 +176,7 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "a server that answers points at the harness instead" do
-      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+      reason = unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
 
       assert reason =~ "the server is up",
              "if the server answers and the channel is still down, the socket " <>
@@ -197,9 +197,10 @@ defmodule CmsHarness.HookDecisionTest do
     # A harness holding a joined channel for something else disproves "cannot
     # hold a socket" outright, so that is the discriminator.
     test "another copy being connected rules out the socket and the credential" do
-      hold_a_channel("/some/other/copy")
-
-      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+      reason =
+        unreachable("stop", {:not_connected, {:http, 200}}, @dir, %{}, %{holds_channel?: true})[
+          "reason"
+        ]
 
       refute reason =~ "cannot hold a socket",
              "the harness is holding a channel for another copy right now, so " <>
@@ -211,28 +212,28 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "with nothing joined, the credential is still the right place to look" do
-      # Nothing registered: the suite's `CmsHarness.Registry` is up but empty,
-      # which is the state this assertion depends on.
-      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+      # The supplied snapshot has no joined channels,
+      # regardless of other tests or a live harness on this node.
+      reason = unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
 
       assert reason =~ "cannot hold a socket",
              "no channel is held anywhere, so the socket really is the suspect"
     end
 
     test "the log line agrees with the message the agent got" do
-      hold_a_channel("/some/other/copy")
-
       # `summarize/1` and `explain/2` are documented as sharing one
       # discriminator precisely so the log and the agent cannot disagree about
       # which end is broken. Adding a case to one and not the other would
       # reintroduce that.
-      refute HookDecision.summarize({:not_connected, {:http, 200}}) =~ "cannot hold a socket"
-      assert HookDecision.summarize({:not_connected, {:http, 200}}) =~ "not up yet"
+      refute summarize({:not_connected, {:http, 200}}, %{holds_channel?: true}) =~
+               "cannot hold a socket"
+
+      assert summarize({:not_connected, {:http, 200}}, %{holds_channel?: true}) =~ "not up yet"
     end
 
     test "a server that is not there at all says so" do
       reason =
-        HookDecision.unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
+        unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
           "reason"
         ]
 
@@ -248,7 +249,7 @@ defmodule CmsHarness.HookDecisionTest do
       # new dependency, so the restart boots, serves one request, and dies
       # (7e8fd1c6, seen twice more since).
       reason =
-        HookDecision.unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
+        unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
           "reason"
         ]
 
@@ -263,7 +264,7 @@ defmodule CmsHarness.HookDecisionTest do
     test "all three still block — none of them is permission to stop" do
       for probe <- [{:http, 500}, {:http, 200}, {:error, :econnrefused}] do
         assert %{"decision" => "block"} =
-                 HookDecision.unreachable("stop", {:not_connected, probe}, @dir)
+                 unreachable("stop", {:not_connected, probe}, @dir)
       end
     end
   end
@@ -276,7 +277,7 @@ defmodule CmsHarness.HookDecisionTest do
     # the right end the whole time; only the log had not, and the log is what
     # the person debugging has.
     test "a server that answers is not logged as not-connected" do
-      line = HookDecision.summarize({:not_connected, {:http, 200}})
+      line = summarize({:not_connected, {:http, 200}})
 
       assert line =~ "server answering 200"
       assert line =~ "cannot hold a socket"
@@ -286,11 +287,11 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "a 5xx is logged as the server's problem" do
-      assert HookDecision.summarize({:not_connected, {:http, 503}}) =~ "server-side"
+      assert summarize({:not_connected, {:http, 503}}) =~ "server-side"
     end
 
     test "nothing answering is logged as nothing answering" do
-      line = HookDecision.summarize({:not_connected, {:error, :econnrefused}})
+      line = summarize({:not_connected, {:error, :econnrefused}})
 
       assert line =~ "not answering at all"
       assert line =~ "econnrefused"
@@ -305,8 +306,8 @@ defmodule CmsHarness.HookDecisionTest do
             {{:http, 200}, false},
             {{:error, :econnrefused}, true}
           ] do
-        line = HookDecision.summarize({:not_connected, probe})
-        refusal = HookDecision.unreachable("stop", {:not_connected, probe}, @dir)["reason"]
+        line = summarize({:not_connected, probe})
+        refusal = unreachable("stop", {:not_connected, probe}, @dir)["reason"]
 
         assert blames_harness?(line) != server_side?,
                "log line for #{inspect(probe)} blames the wrong end: #{line}"
@@ -334,7 +335,7 @@ defmodule CmsHarness.HookDecisionTest do
       ]
 
       for reason <- reasons do
-        line = HookDecision.summarize(reason)
+        line = summarize(reason)
 
         refute line == inspect(reason),
                "#{inspect(reason)} fell through to the catch-all and logs as a tuple"
@@ -356,7 +357,7 @@ defmodule CmsHarness.HookDecisionTest do
     # anything useful, and an unattended run burns its whole budget on it.
     test "a stop that has already been blocked is allowed — loudly" do
       decision =
-        HookDecision.unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
+        unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
 
       refute Map.has_key?(decision, "decision")
       assert decision["systemMessage"] =~ "unverified"
@@ -364,7 +365,7 @@ defmodule CmsHarness.HookDecisionTest do
 
     test "and it names everything that was not checked, so it cannot read as clean" do
       %{"systemMessage" => message} =
-        HookDecision.unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
+        unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
 
       assert message =~ "not the compiler"
       assert message =~ "not the tests"
@@ -373,7 +374,7 @@ defmodule CmsHarness.HookDecisionTest do
 
     test "an allowed-because-unreachable stop still looks nothing like a clean stop" do
       unreachable =
-        HookDecision.unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
+        unreachable("stop", :not_connected, @dir, %{"stop_hook_active" => true})
 
       # What a server that actually answered "nothing to do" returns.
       clean = %{}
@@ -389,7 +390,7 @@ defmodule CmsHarness.HookDecisionTest do
     # silence need different fixes, so they must not read alike.
     test "a refusal quotes the server instead of blaming the network" do
       refused =
-        HookDecision.unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)
+        unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)
 
       reason = refused["reason"]
 
@@ -400,7 +401,7 @@ defmodule CmsHarness.HookDecisionTest do
 
     test "it still blocks — an unreadable answer is not permission to stop" do
       assert %{"decision" => "block"} =
-               HookDecision.unreachable("stop", {:refused, :anything}, @dir)
+               unreachable("stop", {:refused, :anything}, @dir)
     end
 
     # Naming a cause is worth doing and worth being right about. Every refusal
@@ -411,7 +412,7 @@ defmodule CmsHarness.HookDecisionTest do
     # ten clean joins and no crashes.
     test "an unmatched topic is not blamed on version skew" do
       reason =
-        HookDecision.unreachable(
+        unreachable(
           "stop",
           {:refused, %{"reason" => "unmatched topic"}},
           @dir
@@ -433,7 +434,7 @@ defmodule CmsHarness.HookDecisionTest do
     # reader at the surface that can.
     test "an unmatched topic points at the health endpoint" do
       reason =
-        HookDecision.unreachable(
+        unreachable(
           "stop",
           {:refused, %{"reason" => "unmatched topic"}},
           @dir
@@ -445,7 +446,7 @@ defmodule CmsHarness.HookDecisionTest do
 
     test "any other refusal still offers version skew" do
       reason =
-        HookDecision.unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)[
+        unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)[
           "reason"
         ]
 
@@ -453,46 +454,32 @@ defmodule CmsHarness.HookDecisionTest do
     end
 
     test "a timeout and a refusal do not render the same" do
-      timed_out = HookDecision.unreachable("stop", :no_reply, @dir)["reason"]
-      refused = HookDecision.unreachable("stop", {:refused, :boom}, @dir)["reason"]
+      timed_out = unreachable("stop", :no_reply, @dir)["reason"]
+      refused = unreachable("stop", {:refused, :boom}, @dir)["reason"]
 
       refute timed_out == refused
     end
 
     test "a non-deciding hook says it too, as an advisory" do
       assert %{"systemMessage" => message} =
-               HookDecision.unreachable("session-start", {:refused, :boom}, @dir)
+               unreachable("session-start", {:refused, :boom}, @dir)
 
       assert message =~ "boom"
     end
   end
 
-  # Registers a process under `{:channel, root}` that answers `:connected?` —
-  # which is exactly what `ChannelClient.connected?/1` looks up and calls, so
-  # this exercises the real path rather than standing in for it.
-  defp hold_a_channel(root) do
-    test = self()
-
-    spawn_link(fn ->
-      {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
-      {:ok, _} = Registry.register(CmsHarness.Registry, {:project, root}, nil)
-      send(test, :held)
-      loop()
-    end)
-
-    receive do
-      :held -> :ok
-    after
-      2_000 -> flunk("the channel never registered")
-    end
+  # Wording tests supply facts instead of consulting the node-wide registry.
+  defp unreachable(
+         hook,
+         reason,
+         dir,
+         payload \\ %{},
+         state \\ %{holds_channel?: false, joined_ago: nil}
+       ) do
+    HookDecision.unreachable(hook, reason, dir, payload, state)
   end
 
-  defp loop do
-    receive do
-      {:"$gen_call", from, :connected?} -> GenServer.reply(from, true)
-      _ -> :ok
-    end
-
-    loop()
+  defp summarize(reason, state \\ %{holds_channel?: false}) do
+    HookDecision.summarize(reason, state)
   end
 end

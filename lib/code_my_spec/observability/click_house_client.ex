@@ -68,7 +68,11 @@ defmodule CodeMySpec.Observability.ClickHouseClient do
   end
 
   defp attach_plug(req) do
-    case Application.get_env(:code_my_spec, __MODULE__, [])[:plug] do
+    # Cassette overrides belong to the calling process; concurrent callers
+    # retain the configured transport and their own Req.Test ownership.
+    configured = Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
+
+    case Process.get({__MODULE__, :plug}, configured) do
       nil -> req
       plug -> Req.merge(req, plug: plug)
     end

@@ -2940,9 +2940,13 @@ defmodule CodeMySpecSpex.Fixtures do
   Drive the real `POST /api/skills/start` endpoint with skill=implement
   so the agent's autonomous loop is enabled on the named session.
 
-  Production surface: `cms implement` (CLI) → POST /api/skills/start
-  → SkillController.start_skill → StartAgentTask.run("start_implementation")
-  → StartImplementation.init_session sets `session.continuous = true`.
+  Production surface: `cms implement` (CLI) → harness → `CmsHarness.Web.
+  SkillsController` → `HarnessProjectChannel` → `SkillRouter.resolve/2`
+  (skill: "implement") → `StartAgentTask.run("start_implementation")` →
+  `StartImplementation.init_session` sets `session.continuous = true`.
+  LocalWeb's `POST /api/skills/start` is gone with the retired CLI (issue
+  f532f990); calling `resolve/2` directly skips the transport layers same
+  as `start_agent_task/2` does for the direct-dispatch route.
 
   Returns `:ok`. The session's `external_id` is whatever the caller passed
   in; calling this AFTER a regular `start_task` for that session flips the
@@ -2950,21 +2954,9 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
-    response =
-      ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> ConnTest.dispatch(
-        CodeMySpecLocalWeb.Endpoint,
-        :post,
-        "/api/skills/start",
-        %{"skill" => "implement", "external_id" => external_id}
-      )
-      |> ConnTest.json_response(200)
-
-    case response do
-      %{"prompt" => _} -> :ok
-      _ -> raise "start_continuous_mode failed: #{inspect(response)}"
+    case AgentTasks.SkillRouter.resolve(scope, %{"skill" => "implement", "external_id" => external_id}) do
+      {:ok, %{prompt: _}} -> :ok
+      other -> raise "start_continuous_mode failed: #{inspect(other)}"
     end
   end
 
@@ -3460,6 +3452,30 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     :ok
+  end
+
+  @doc """
+  Starts an agent task the way the removed `POST /api/agent-tasks/start`
+  controller used to, for a spex whose criterion is about the task's own
+  behaviour rather than about having an HTTP endpoint for it -- LocalWeb, and
+  that route with it, is gone (issue f532f990).
+
+  Mirrors the JSON response's string-keyed shape (`"prompt"`/`"error"`) so a
+  spex written against the HTTP call needs no change beyond how it gets the
+  response.
+  """
+  @spec start_agent_task(Scope.t(), map()) :: map()
+  def start_agent_task(%Scope{} = scope, params) do
+    args = %{
+      external_id: params["external_id"],
+      session_type: params["session_type"],
+      module_name: params["module_name"]
+    }
+
+    case AgentTasks.StartAgentTask.run(scope, args) do
+      {:ok, prompt, _sync_result} -> %{"prompt" => prompt}
+      {:error, reason} -> %{"error" => inspect(reason)}
+    end
   end
 
   @spec install_workspace_runner(keyword(), keyword()) :: :ok
@@ -4599,6 +4615,12 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def set_project_deploy_key(scope, project, key) do
     {:ok, project} = CodeMySpec.Projects.update_project(scope, project, %{deploy_key: key})
+    project
+  end
+
+  @doc "A project's deploy key, minting one if it has none yet."
+  def ensure_project_deploy_key(scope, project) do
+    {:ok, project} = CodeMySpec.Projects.ensure_deploy_key(scope, project)
     project
   end
 

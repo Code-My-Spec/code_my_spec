@@ -137,14 +137,21 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswerInProcessTest do
     on_exit(fn -> :telemetry.detach(handler) end)
 
     send(waiter.pid, :check)
-    assert_receive :question_read
-    assert_receive :question_read
+    assert :question_read = await_question_read()
+    assert :question_read = await_question_read()
     {:ok, _} = Notifications.answer_question_request(request.id, %{"Which store?" => "S3"})
-    assert {:reply, response, _} = Task.await(waiter, 2_000)
+    assert {:reply, response, _} = Task.await(waiter, :infinity)
     refute response.isError
     assert text(response) =~ "S3"
-    assert_receive :question_read
-    refute_receive :question_read
+    assert_received :question_read
+    refute_received :question_read
+  end
+
+  # ExUnit's test deadline bounds a stalled worker; scheduling latency does not.
+  defp await_question_read do
+    receive do
+      :question_read -> :question_read
+    end
   end
 
   def question_read(_event, _measurements, %{source: "question_requests"}, {listener, waiter})
