@@ -66,7 +66,7 @@ defmodule CodeMySpec.Conversations.Message do
     # Whether the agent this was sent at has it. nil for everything that is not
     # an operator message at an agent — a widget message has no delivery
     # question, it is already where it was going.
-    field :delivery, Ecto.Enum, values: [:delivered, :pending, :withdrawn]
+    field :delivery, Ecto.Enum, values: [:delivered, :pending, :withdrawn, :failed]
     # The sender's handle on it while it can still be taken back. Minted before
     # the message leaves and carried by the machine, so a withdrawal names the
     # message rather than describing it: two identical messages are

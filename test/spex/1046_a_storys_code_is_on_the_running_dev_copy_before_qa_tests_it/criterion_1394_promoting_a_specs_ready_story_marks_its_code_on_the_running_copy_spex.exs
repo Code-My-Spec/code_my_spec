@@ -56,6 +56,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
+        # QA has passed it: promotion comes after QA.
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: context.story.id)
 
         story = Stories.get_story(context.scope, context.story.id)
         assert story.qa_ready_commit, "the premise failed: the story should be certified for QA"

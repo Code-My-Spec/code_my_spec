@@ -74,6 +74,10 @@ defmodule CmsHarness.Supervisor do
       # a project subtree follows a checkout being served, an agent follows
       # somebody asking for one, and stopping either must not disturb the
       # other.
+      # Watches every agent the engine starts, so a death is reported the
+      # moment it happens (`CmsHarness.Agents.Liveness`). Before the agents,
+      # so it is up to watch the first one.
+      CmsHarness.Agents.Liveness,
       {DynamicSupervisor, name: CmsHarness.AgentSupervisor, strategy: :one_for_one},
 
       # One per working copy running its own app (story 1108). A sibling

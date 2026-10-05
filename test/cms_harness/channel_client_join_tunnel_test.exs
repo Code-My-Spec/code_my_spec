@@ -37,21 +37,11 @@ defmodule CmsHarness.ChannelClientJoinTunnelTest do
   }
 
   setup do
-    previous = Application.get_env(:code_my_spec, :harness_transport)
-    Application.put_env(:code_my_spec, :harness_transport, CmsHarness.Project.Transport.Test)
-    Application.put_env(:code_my_spec, :harness_transport_owner, self())
+    Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
+    Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
     install_app_instance_runner([])
-
-    on_exit(fn ->
-      restore_transport(previous)
-      Application.delete_env(:code_my_spec, :harness_transport_owner)
-    end)
-
     :ok
   end
-
-  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_transport)
-  defp restore_transport(module), do: Application.put_env(:code_my_spec, :harness_transport, module)
 
   defp socket(root) do
     %Slipstream.Socket{
@@ -64,7 +54,9 @@ defmodule CmsHarness.ChannelClientJoinTunnelTest do
     }
   end
 
-  defp tunnel_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))
+  defp tunnel_calls,
+    do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))
+
   defp launch_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
   test "a join carrying a tunnel starts it, with no ensure_app_running or restart_app anywhere" do

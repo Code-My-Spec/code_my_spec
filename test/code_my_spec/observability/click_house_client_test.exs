@@ -14,6 +14,28 @@ defmodule CodeMySpec.Observability.ClickHouseClientTest do
 
   alias CodeMySpec.Observability.ClickHouseClient
 
+  test "a cassette plug does not replace another process's stub" do
+    cassette_plug = fn request ->
+      Plug.Conn.send_resp(request, 200, Jason.encode!(%{source: "cassette"}))
+    end
+
+    with_plug(cassette_plug, fn ->
+      other =
+        Task.async(fn ->
+          Req.Test.stub(ClickHouseClient, fn request ->
+            Plug.Conn.send_resp(request, 200, Jason.encode!(%{source: "other"}))
+          end)
+
+          ClickHouseClient.query(conn(), "SELECT source", %{})
+        end)
+
+      assert {:ok, [%{"source" => "other"}]} = Task.await(other, :infinity)
+
+      assert {:ok, [%{"source" => "cassette"}]} =
+               ClickHouseClient.query(conn(), "SELECT source", %{})
+    end)
+  end
+
   describe "query/3 against a real ClickHouse" do
     test "returns decoded rows for a matching query" do
       ReqCassette.with_cassette("logs_basic_match", cassette_opts(), fn plug ->

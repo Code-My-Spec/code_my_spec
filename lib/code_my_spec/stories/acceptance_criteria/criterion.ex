@@ -133,18 +133,23 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
   Changeset for nested forms via cast_assoc.
   story_id is set automatically via the association.
   project_id is injected by the story's repository.
+
+  `:description` is only castable while the criterion is still unsaved
+  (`criterion.id` is nil). Once persisted, its wording is fixed — rewording
+  is retire + add, never an edit in place (criterion 1894) — so a story form
+  resubmitting an existing row's edited text is cast against every other
+  field and silently keeps its original description.
   """
   def nested_changeset(criterion, attrs) do
+    castable_fields =
+      if is_nil(criterion.id) do
+        [:description, :body, :kind, :verified, :verified_at, :project_id, :rule_id]
+      else
+        [:body, :kind, :verified, :verified_at, :project_id, :rule_id]
+      end
+
     criterion
-    |> cast(attrs, [
-      :description,
-      :body,
-      :kind,
-      :verified,
-      :verified_at,
-      :project_id,
-      :rule_id
-    ])
+    |> cast(attrs, castable_fields)
     |> validate_required([:description])
     |> mint_number()
   end

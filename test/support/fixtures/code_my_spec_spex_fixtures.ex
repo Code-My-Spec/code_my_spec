@@ -1843,6 +1843,25 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Deliver a queued message and begin its turn through the harness channel."
+  def deliver_agent_message(%Scope{} = scope, agent_id, ref) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
+      case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+             "agent_turn_event",
+             %{
+               "agent_id" => agent_id,
+               "event" => ChannelClient.encode_turn_event(event)
+             },
+             socket
+           ) do
+        {:noreply, _socket} -> :ok
+        {:reply, _reply, _socket} -> :ok
+      end
+    end)
+  end
+
   @doc """
   An agent's turn ending, as it arrives on the channel.
 
@@ -2121,6 +2140,40 @@ defmodule CodeMySpecSpex.Fixtures do
       |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
 
     :ok
+  end
+
+  @doc """
+  Establish the age of a permission request already created through its
+  public surface (`tap_out`, or a tool permission).
+
+  Mirrors `age_question/3`. Changes only timestamps, never status or decision.
+  """
+  @spec age_permission(Scope.t(), String.t(), pos_integer()) :: :ok
+  def age_permission(%Scope{user: %{id: user_id}}, permission_id, seconds)
+      when is_integer(seconds) and seconds > 0 do
+    timestamp =
+      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+
+    {1, _} =
+      from(p in Notifications.PermissionRequest,
+        where: p.id == ^permission_id and p.user_id == ^user_id
+      )
+      |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
+
+    :ok
+  end
+
+  @doc """
+  Bind an already-created agent to a story and/or epic, as the agent row
+  records it.
+
+  Setup only: a scenario about an agent's own story or epic needs the row to
+  carry one without re-deriving the whole `start_agent` path.
+  """
+  @spec bind_agent(Scope.t(), map(), map()) :: map()
+  def bind_agent(%Scope{} = scope, agent, attrs) do
+    {:ok, agent} = AgentsRepository.update_agent(scope, agent, attrs)
+    agent
   end
 
   @doc """

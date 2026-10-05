@@ -52,6 +52,7 @@ defmodule CodeMySpecSpex do
       # working copy's app already uses), the same reasoning as
       # `CodeMySpec.AgentTasks` above.
       CodeMySpec.Promotion,
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Problems,
       # Story 1089's criterion 1848 calls `Qa.QaAttempts.list/2` directly to
       # re-read the attempt's own row after submission — the module under

@@ -526,6 +526,14 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc "Working copies with a run in flight, other than `except_copy_id`."
+  @spec running_elsewhere(Scope.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
+  defdelegate running_elsewhere(scope, except_copy_id), to: RunsRepository
+
+  @doc "Whether the scope's working copy has a run still open."
+  @spec running_on?(Scope.t()) :: boolean()
+  defdelegate running_on?(scope), to: RunsRepository
+
   @doc "Whether an agent has a run it requested still in flight on a working copy."
   @spec awaiting_runs?(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: boolean()
   defdelegate awaiting_runs?(scope, working_copy_id, agent_id), to: RunsRepository
@@ -996,6 +1004,10 @@ defmodule CodeMySpec.Analysis do
   @spec latest_answer(Scope.t(), String.t()) :: Run.t() | nil
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
+
+  @doc "The latest finished full run of `source` on this copy, a failure included, or nil."
+  @spec latest_run(Scope.t(), String.t()) :: Run.t() | nil
+  def latest_run(%Scope{} = scope, source), do: RunsRepository.latest_full_run(scope, source)
 
   @doc "Whether `source` has a completed full run on this copy — anything that answers for it."
   @spec answered?(Scope.t(), String.t()) :: boolean()

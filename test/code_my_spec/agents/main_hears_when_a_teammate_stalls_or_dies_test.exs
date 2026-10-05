@@ -63,7 +63,8 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
   defp coder(ctx, attrs \\ %{}), do: agent(ctx.scope, :coding, ctx.feature.id, attrs)
 
   defp told(%{id: id}) do
-    assert_receive {:agent_message, ^id, text}, 2_000
+    assert_receive {:agent_dispatch, ^id, ref, text}, 2_000
+    assert is_binary(ref)
     text
   end
 
@@ -106,7 +107,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       text = told(main)
       for %{id: id} <- reaped, do: assert(text =~ id)
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "a harness report that reaps three sends one message too", ctx do
@@ -121,7 +122,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       text = told(main)
       for %{id: id} <- reaped, do: assert(text =~ id)
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "a sweep that reaped main too sends nothing", ctx do
@@ -131,7 +132,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       {:ok, _running} = Agents.record_reported(ctx.scope, [])
 
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "reaches main past its own open question to the user", ctx do
@@ -162,7 +163,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       Agents.record_turn_event(ctx.scope, coder.id, %{"kind" => "agent_died", "text" => "x"}, [])
 
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
   end
 

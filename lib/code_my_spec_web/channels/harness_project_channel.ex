@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -112,6 +112,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns
       # (cc578c21).
       Analysis.resume_orphaned(scope, claimed_runs(payload))
+      PromotionQueue.copy_joined(scope, harness)
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
@@ -523,7 +524,30 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       ids
     )
 
+    compare_with_presence(socket, ids)
     {:reply, :ok, consider_once(socket)}
+  end
+
+  # Presence, phase 1 (`.code_my_spec/plans/agent-liveness-from-presence.md`):
+  # tracked alongside `status`, read by nothing yet. The channel process tracks
+  # an agent while the harness says its process is up, and Presence drops every
+  # key this channel tracked the moment the channel dies — a harness exit or a
+  # dropped socket needs no report.
+  def handle_in("agent_up", %{"agent_id" => id}, socket) when is_binary(id),
+    do: {:reply, :ok, track_agents(socket, [id])}
+
+  def handle_in("agent_down", %{"agent_id" => id} = payload, socket) when is_binary(id) do
+    Logger.info("[AgentPresence] #{id} down on #{copy_id(socket)}: #{payload["reason"]}")
+    {:reply, :ok, untrack_agents(socket, [id])}
+  end
+
+  # The harness's whole set, on join: track what is new, untrack what is gone.
+  def handle_in("agents_present", %{"agent_ids" => ids}, socket) when is_list(ids) do
+    present = present_agents(socket)
+    socket = track_agents(socket, Enum.reject(ids, &MapSet.member?(present, &1)))
+
+    {:reply, :ok,
+     untrack_agents(socket, MapSet.to_list(MapSet.difference(present, MapSet.new(ids))))}
   end
 
   # What the box is carrying, from the box.
@@ -1795,12 +1819,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The words come from `Responses`, which is where the other two doors get
   # theirs. A third rendering of "what happened to your promotion" is a third
   # thing to keep in step, and this module exists because two already were.
+  # Inside the harness's own 20-minute wait for this reply, so a candidate still
+  # queued is answered as queued rather than as a timeout.
+  @promotion_wait_ms :timer.minutes(18)
+
   defp promote_for_caller(scope, story_number) do
-    result = Promotion.promote(scope, story_number)
+    result = PromotionQueue.promote_and_wait(scope, story_number, [], @promotion_wait_ms)
 
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end
 
+  defp promotion_status({:ok, %{queued: _}}), do: "queued"
+  defp promotion_status({:ok, %{queue_outcome: _}}), do: "promoted"
   defp promotion_status({:ok, %{pending: _}}), do: "pending"
   defp promotion_status({:ok, _report}), do: "promoted"
   defp promotion_status({:error, _refusal}), do: "refused"
@@ -1905,6 +1935,71 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
     |> assign(:pending_manifest, nil)
   end
+
+  # -- Agent presence -----------------------------------------------------------
+
+  # Only this copy's agents: an id the harness reports for another copy, or for
+  # an agent this project does not have, is not this channel's to track.
+  defp track_agents(socket, ids) do
+    {own, foreign} = Enum.split_with(ids, &own_agent?(socket, &1))
+
+    for id <- foreign,
+        do: Logger.warning("[AgentPresence] #{id} is not an agent of copy #{copy_id(socket)}")
+
+    present =
+      for id <- own, reduce: present_agents(socket) do
+        present ->
+          {:ok, _ref} =
+            CodeMySpecWeb.Presence.track(self(), presence_topic(socket), id, %{
+              working_copy_id: copy_id(socket),
+              since: DateTime.utc_now()
+            })
+
+          Logger.info("[AgentPresence] #{id} up on #{copy_id(socket)}")
+          MapSet.put(present, id)
+      end
+
+    assign(socket, :present_agents, present)
+  end
+
+  defp untrack_agents(socket, ids) do
+    present =
+      for id <- ids, reduce: present_agents(socket) do
+        present ->
+          :ok = CodeMySpecWeb.Presence.untrack(self(), presence_topic(socket), id)
+          MapSet.delete(present, id)
+      end
+
+    assign(socket, :present_agents, present)
+  end
+
+  defp own_agent?(socket, id) do
+    match?(
+      {:ok, %{working_copy_id: copy}} when copy == socket.assigns.scope.active_working_copy_id,
+      Agents.fetch_agent(socket.assigns.scope, id)
+    )
+  end
+
+  # Phase 1's check that presence agrees with what it will replace: this copy's
+  # agents in the harness's 60-second report against the ones tracked here.
+  defp compare_with_presence(socket, ids) do
+    present = present_agents(socket)
+    reported = ids |> Enum.filter(&own_agent?(socket, &1)) |> MapSet.new()
+
+    if reported != present,
+      do:
+        Logger.warning(
+          "[AgentPresence] disagrees with agents_running on #{copy_id(socket)}: " <>
+            "running only #{inspect(MapSet.to_list(MapSet.difference(reported, present)))}, " <>
+            "present only #{inspect(MapSet.to_list(MapSet.difference(present, reported)))}"
+        )
+
+    :ok
+  end
+
+  defp present_agents(socket), do: Map.get(socket.assigns, :present_agents, MapSet.new())
+  defp presence_topic(socket), do: Agents.presence_topic(socket.assigns.scope.active_project_id)
+  defp copy_id(socket), do: socket.assigns.scope.active_working_copy_id
 
   # Everything this harness had running dies with it: the queue was on the other
   # machine. Leaving those rows `:running` would make every later stop for this

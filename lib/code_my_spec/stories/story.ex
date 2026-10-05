@@ -261,7 +261,6 @@ defmodule CodeMySpec.Stories.Story do
       sort_param: :criteria_sort,
       drop_param: :criteria_drop
     )
-    |> retire_dropped_criteria()
     |> unique_constraint([:title, :project_id])
   end
 
@@ -270,7 +269,19 @@ defmodule CodeMySpec.Stories.Story do
   # :delete` would carry out; turning it into an update that sets
   # `retired_at` keeps the row. Written into `changes` directly because
   # `put_change` would run the relation diff again and re-mark it.
-  defp retire_dropped_criteria(changeset) do
+  #
+  # Deliberately not folded into `changeset/2` itself: `phoenix_ecto`'s form
+  # integration hides association entries whose action is `:replace` from
+  # `inputs_for` (`skip_replaced/1`), which is how the live form removes a
+  # dropped row without a page reload. Converting the action to `:update`
+  # here before that filtering happens makes the row still a struct the form
+  # renders, just quietly un-droppable — the row stays on screen and
+  # `inputs_for` re-lists it ahead of the ones still in `criteria_sort`
+  # order, which reads as the rows swapping rather than one disappearing.
+  # Called by the repository only, right before the changeset is actually
+  # persisted, so the live form keeps seeing the native `:replace` action.
+  @doc "Converts a dropped (`:replace`) criterion into a retire-in-place update. Call right before persisting, never from `changeset/2` itself — see comment above."
+  def retire_dropped_criteria(changeset) do
     case get_change(changeset, :criteria) do
       nil ->
         changeset

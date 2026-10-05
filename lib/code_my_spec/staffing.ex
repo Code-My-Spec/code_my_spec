@@ -45,6 +45,41 @@ defmodule CodeMySpec.Staffing do
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewTunnel
 
+  @gate_copy_needed [:code_my_spec, :promotion_queue, :gate_copy_needed]
+
+  @doc """
+  Attach the handler that makes a project's promotion gate copy when its queue
+  asks for one. Called once, after the application tree starts.
+
+  The queue sits below this module, so it asks by event rather than by call. A
+  gate copy is a checkout with no agents: the queue builds and gates batches in
+  it, and nobody works there.
+  """
+  def attach do
+    :telemetry.attach(
+      {__MODULE__, :gate_copy},
+      @gate_copy_needed,
+      &__MODULE__.handle_event/4,
+      nil
+    )
+  end
+
+  @doc false
+  def handle_event(@gate_copy_needed, _measurements, %{scope: scope, label: label}, _config) do
+    case mint(scope, label: label, roles: [], prepare: true) do
+      {:ok, copy, _staffed} ->
+        Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
+
+      {:error, reason} ->
+        Logger.error("[Staffing] could not make the promotion gate copy: #{inspect(reason)}")
+    end
+  catch
+    kind, reason ->
+      Logger.error(
+        "[Staffing] making the promotion gate copy failed: #{Exception.format_banner(kind, reason)}"
+      )
+  end
+
   @doc """
   Make a working copy for this project and staff it.
 
@@ -106,7 +141,10 @@ defmodule CodeMySpec.Staffing do
       # goes with it. `ensure_deploy_key/2` mints one if the project has none —
       # a new project does not get one at creation, and everything that must
       # authenticate as the project has to ask for it first.
-      "deploy_key" => opts[:deploy_key] || deploy_key(scope)
+      "deploy_key" => opts[:deploy_key] || deploy_key(scope),
+      # A copy that must build and test before anything uses it — the promotion
+      # gate — is prepared by the project's own recipe before it is served.
+      "prepare" => opts[:prepare] == true
     }
 
     with {:ok, %{root: root, working_copy_id: id} = made} <-

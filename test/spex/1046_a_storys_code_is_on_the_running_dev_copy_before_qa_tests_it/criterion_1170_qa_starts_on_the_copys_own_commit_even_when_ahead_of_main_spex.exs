@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
   end
 
   spex "QA is offered a story on its own copy even while that copy is ahead of main",
-       criterion: 1170 do
+    criterion: 1170 do
     scenario "the agent has committed work that main does not have" do
       given_ "a story with clean specs, no issues and no problems, ready for QA on a checkout with unpromoted commits",
              context do
@@ -202,7 +202,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
     _ = out
 
     running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    {agent, agent_socket} = join_working_copy_socket(context, agent_root, "the coding agent's copy")
+
+    {agent, agent_socket} =
+      join_working_copy_socket(context, agent_root, "the coding agent's copy")
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy

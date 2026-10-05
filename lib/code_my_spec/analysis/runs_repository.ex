@@ -299,6 +299,36 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  The working copies of this project with a run still `:running`, other than
+  `except_copy_id`. A promotion that lands restarts the harness every copy's
+  runs depend on, so the promotion queue waits until this is empty.
+  """
+  @spec running_elsewhere(Scope.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
+  def running_elsewhere(%Scope{active_project_id: project_id}, except_copy_id) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.status == :running)
+    |> where([r], not is_nil(r.working_copy_id))
+    |> except_copy(except_copy_id)
+    |> distinct(true)
+    |> select([r], r.working_copy_id)
+    |> Repo.all()
+  end
+
+  @doc "Whether the scope's working copy has a run still `:running`."
+  @spec running_on?(Scope.t()) :: boolean()
+  def running_on?(%Scope{active_working_copy_id: nil}), do: false
+
+  def running_on?(%Scope{active_project_id: project_id, active_working_copy_id: copy_id}) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^copy_id)
+    |> where([r], r.status == :running)
+    |> Repo.exists?()
+  end
+
+  defp except_copy(query, nil), do: query
+  defp except_copy(query, copy_id), do: where(query, [r], r.working_copy_id != ^copy_id)
+
+  @doc """
   This working copy's still-`:running` full runs of `source`, newest first.
 
   Nil working copy answers nothing: the caller joins onto one of these, and a

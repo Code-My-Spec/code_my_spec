@@ -22,24 +22,17 @@ defmodule CmsHarness.ChannelClientTransportTest do
   alias CmsHarness.Project.ChannelClient
 
   setup do
-    previous = Application.get_env(:code_my_spec, :harness_transport)
-    Application.put_env(:code_my_spec, :harness_transport, CmsHarness.Project.Transport.Test)
-    Application.put_env(:code_my_spec, :harness_transport_owner, self())
-
-    on_exit(fn ->
-      restore_transport(previous)
-      Application.delete_env(:code_my_spec, :harness_transport_owner)
-    end)
-
+    Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
+    Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
     :ok
   end
 
-  # Multi-clause rather than an `if`: nothing was configured before this suite
-  # and something was are two cases, not a condition.
-  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_transport)
+  test "a recorder selected here does not replace another process's real transport" do
+    other = Task.async(fn -> CmsHarness.Project.Transport.impl() end)
 
-  defp restore_transport(module),
-    do: Application.put_env(:code_my_spec, :harness_transport, module)
+    assert Task.await(other, :infinity) == CmsHarness.Project.Transport.Slipstream
+    assert CmsHarness.Project.Transport.impl() == CmsHarness.Project.Transport.Test
+  end
 
   defp socket(assigns) do
     %Slipstream.Socket{
@@ -490,14 +483,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
                        "subtrees in one harness met the same server restart and only the " <>
                        "one that had never been refused returned"
     end
-
-    defp receive_all_reconnects do
-      receive do
-        :reconnect -> receive_all_reconnects()
-      after
-        50 -> :ok
-      end
-    end
   end
 
   describe "the reconnect backoff survives a join that does not work" do
@@ -779,6 +764,59 @@ defmodule CmsHarness.ChannelClientTransportTest do
       assert_receive {:transport_push, _, "agents_running", _, _},
                      1_000,
                      "the deferred report was never sent"
+    end
+  end
+
+  # Agent presence (`.code_my_spec/plans/agent-liveness-from-presence.md`).
+  describe "agent presence" do
+    test "join reports the copy's present agents at once" do
+      assert {:ok, _out} =
+               ChannelClient.handle_join(
+                 "harness_project:p1",
+                 %{},
+                 socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
+               )
+
+      assert_receive {:transport_push, "harness_project:p1", "agents_present",
+                      %{"agent_ids" => ids}, _},
+                     1_000
+
+      assert is_list(ids)
+    end
+
+    test "an agent in this copy coming up is pushed as agent_up" do
+      {:noreply, _} =
+        ChannelClient.handle_info({:agent_liveness, :up, "a1", "/tmp/x", nil}, socket(%{}))
+
+      assert_receive {:transport_push, "harness_project:p1", "agent_up", %{"agent_id" => "a1"}, _}
+    end
+
+    test "its death is pushed as agent_down, with the reason" do
+      {:noreply, _} =
+        ChannelClient.handle_info({:agent_liveness, :down, "a1", "/tmp/x", :killed}, socket(%{}))
+
+      assert_receive {:transport_push, _, "agent_down",
+                      %{"agent_id" => "a1", "reason" => ":killed"}, _}
+    end
+
+    test "another copy's agent is its own channel's to report" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :up, "a1", "/tmp/elsewhere", nil},
+          socket(%{})
+        )
+
+      refute_receive {:transport_push, _, "agent_up", _, _}, 100
+    end
+
+    test "nothing is pushed while not joined; the next join's set carries it" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :up, "a1", "/tmp/x", nil},
+          socket(%{joined: false})
+        )
+
+      refute_receive {:transport_push, _, "agent_up", _, _}, 100
     end
   end
 end

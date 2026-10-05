@@ -28,6 +28,7 @@ defmodule CmsHarness.Projects do
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.ServedRoots
+  alias CmsHarness.WorkingCopies.Create
 
   @doc """
   Serve the project rooted at `dir`, starting its subtree if it is not already
@@ -41,7 +42,8 @@ defmodule CmsHarness.Projects do
   @spec ensure_started(String.t()) ::
           {:ok, ProjectIdentity.t()} | {:error, ProjectIdentity.t() | term()}
   def ensure_started(dir) when is_binary(dir) do
-    with {:ok, project} <- ProjectIdentity.resolve(dir) do
+    with :ok <- not_preparing(dir),
+         {:ok, project} <- ProjectIdentity.resolve(dir) do
       case DynamicSupervisor.start_child(
              CmsHarness.ProjectSupervisor,
              {CmsHarness.Project.Supervisor, project: project}
@@ -213,5 +215,11 @@ defmodule CmsHarness.Projects do
 
     _ = stop_serving(root)
     ensure_started(root)
+  end
+
+  # A copy still being prepared — the promotion gate running its project's
+  # setup — is served once that finishes, not before.
+  defp not_preparing(dir) do
+    if Create.preparing?(dir), do: {:error, :preparing}, else: :ok
   end
 end

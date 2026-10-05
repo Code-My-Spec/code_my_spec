@@ -403,6 +403,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         denial: {"tap_out", "r-1"},
         check_in: {"cadence", nil},
         stalled: {"agent", "a-1"},
+        instruction: {"message", "instruction-1"},
         team_free: {"copy", "copy-1"}
       }
 

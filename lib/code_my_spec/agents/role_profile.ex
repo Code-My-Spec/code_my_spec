@@ -245,7 +245,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # (John, step 4c).
   @product_tools ~w(
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
-    add_criterion update_criterion retire_criterion restore_criterion get_criterion move_criterion
+    add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
     list_working_copies assign_epic_to_working_copy

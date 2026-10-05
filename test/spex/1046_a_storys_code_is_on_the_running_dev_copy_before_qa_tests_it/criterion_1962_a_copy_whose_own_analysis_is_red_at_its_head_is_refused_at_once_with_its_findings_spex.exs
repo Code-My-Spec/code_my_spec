@@ -1,9 +1,12 @@
-defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
+defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion 3164 — A copy with a failing spec promotes nothing.
+  Criterion 1962 — A copy whose own analysis is red at its HEAD is refused at once with its findings.
 
-  Rule: A working copy carrying any problem promotes nothing.
+  Rule: A working copy carrying any problem promotes nothing. Under the queue
+  (2026-10-04) the copy's own analysis is read when it promotes: red there, it
+  is refused on the spot, with the findings, rather than taking a place in the
+  queue only to be ejected by the batch.
 
   The gate, in John's words: "the gate is that there's no problems and then we
   allow everything to go to main." Everything, or nothing — a promotion is not
@@ -35,7 +38,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
     :ok
   end
 
-  spex "A copy carrying a problem promotes nothing", criterion: 1171 do
+  spex "A copy carrying a problem promotes nothing", criterion: 1962 do
     scenario "one spex failure of the copy's own holds the whole promotion" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)
@@ -95,7 +98,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3164Spex do
   # built on one repository cannot tell the two apart.
   # A warning is still a problem here: v2.0.162 landed two credo AliasUsage
   # warnings on main and they blocked every other copy's promote after it.
-  spex "A credo warning holds the promotion too" do
+  spex "A credo warning holds the promotion too", criterion: 1962 do
     scenario "a warning-severity credo finding promotes nothing" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)

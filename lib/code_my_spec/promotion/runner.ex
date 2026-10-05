@@ -67,6 +67,34 @@ defmodule CodeMySpec.Promotion.Runner do
     end)
   end
 
+  @doc "Build a promotion batch in the gate checkout at `root` (`Steps.build_batch/4`)."
+  @spec build_batch(Scope.t(), String.t(), String.t(), [String.t()], Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def build_batch(scope, root, base, commits, copy_id),
+    do:
+      run(
+        scope,
+        copy_id,
+        "promotion_build_batch",
+        %{"root" => root, "base" => base, "commits" => commits},
+        @git_timeout,
+        fn env -> Steps.build_batch(env, root, base, commits) end
+      )
+
+  @doc "The paths `commit` changed since it left `base` (`Steps.changed_files/4`)."
+  @spec changed_files(Scope.t(), String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def changed_files(scope, root, base, commit, copy_id),
+    do:
+      run(
+        scope,
+        copy_id,
+        "promotion_changed_files",
+        %{"root" => root, "base" => base, "commit" => commit},
+        @git_timeout,
+        fn env -> Steps.changed_files(env, root, base, commit) end
+      )
+
   @doc "Merge `branch` into the checkout at `root`."
   @spec merge(Scope.t(), String.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def merge(scope, root, branch, copy_id),

@@ -65,10 +65,17 @@ defmodule CodeMySpec.Qa do
   @doc """
   Submit a QA outcome for an issue (story 1091), as the agent testing it.
 
-  A pass resolves the issue and frees the team bound to it; anything else
-  leaves the issue open and bound, and sends the fix back to the coder.
+  A pass sends the coder to promote the fix (or, if it already landed,
+  resolves the issue and frees the team); anything else leaves the issue open
+  and bound, and sends the fix back to the coder.
   """
   defdelegate submit_issue_qa_result(scope, owner, params), to: IssueQaAttempts, as: :submit
+
+  @doc "An issue's fix landed on main: resolve it if its QA passed, else QA's turn."
+  defdelegate issue_fix_landed(scope, issue_id, commit), to: IssueQaAttempts, as: :fix_landed
+
+  @doc "Whether an issue's latest QA attempt is a pass."
+  defdelegate issue_qa_passed?(scope, issue_id), to: IssueQaAttempts, as: :passed?
 
   @doc """
   List QA attempts for a story, most-recent first.
