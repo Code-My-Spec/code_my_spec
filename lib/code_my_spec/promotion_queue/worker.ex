@@ -42,8 +42,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @gate_label "promotion-gate"
   @recheck_ms 120_000
   @retry_ms 300_000
-  # Starts of one source at one batch commit before the batch is held: the
-  # first, and one retry of a run that failed rather than answered.
+  # Runs of one source that failed at one batch commit before the batch is held:
+  # the first, and one retry.
   @max_starts 2
   @hold_ms 900_000
   @inflight_limit_ms 30 * 60_000
@@ -271,7 +271,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       baseline: :unchecked,
       excluded: MapSet.new(),
       green_since: nil,
-      starts: %{}
+      # When gating began: a run that failed before it could say which commit
+      # it started on counts against this batch only if it is this batch's.
+      since: DateTime.add(DateTime.utc_now(), -1, :second)
     }
 
     Logger.info(
@@ -305,16 +307,20 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # The gate starts a source with no answer at the batch commit. Started again,
-  # its run there failed rather than answered — an analyzer that could not run
-  # on the gate copy (a missing env, a broken toolchain) — and starting it a
-  # third time would only fail the same way, every recheck, forever. The batch
-  # is held: not the candidates' fault, so nothing is ejected.
+  # The gate starts a source with no answer at the batch commit. A source whose
+  # runs there keep failing — an analyzer that cannot run on the gate copy (a
+  # missing env, a broken toolchain) — would be started again every recheck,
+  # forever, so after `@max_starts` failures at that commit the batch is held:
+  # not the candidates' fault, so nothing is ejected.
+  #
+  # Counted from the runs at that commit, not from starts: every landing
+  # restarts the harness, which orphans the next gate's first runs, and counting
+  # those held a batch whose analyzers ran fine (3c59be47, 2026-10-05).
   defp pending(%{batch: batch} = state, started) do
-    starts = Enum.reduce(started, batch.starts, &Map.update(&2, &1, 1, fn n -> n + 1 end))
-    state = %{state | batch: %{batch | starts: starts}}
-
-    case Enum.filter(started, &(starts[&1] > @max_starts)) do
+    case Enum.filter(
+           started,
+           &(Analysis.failed_at_commit(batch.scope, &1, batch.head, batch.since) >= @max_starts)
+         ) do
       [] -> {:noreply, recheck_later(state)}
       failing -> hold(state, failing)
     end
@@ -392,7 +398,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         requeue(batch.entries)
         {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
 
-      batch.baseline == :unchecked and Triage.baseline_files(problems) != %{} ->
+      ask_main?(batch, problems) ->
         check_baseline(state, problems, reason)
 
       match?({:rerun, _}, Triage.lone_failure(problems)) and not batch.reran? ->
@@ -454,6 +460,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       _ -> unasked(state, reason)
     end
   end
+
+  # Once per batch, for test findings — and only in the queue's own gate copy.
+  # The baseline resets the copy it runs in, so never a requester's copy a lone
+  # batch was gated on, where someone may still be working (phx-new-generator,
+  # 2026-10-05).
+  defp ask_main?(batch, problems),
+    do:
+      batch.baseline == :unchecked and batch.gate.label == @gate_label and
+        Triage.baseline_files(problems) != %{}
 
   # Main could not be asked: back to the batch commit, and triaged as found.
   defp unasked(%{batch: batch} = state, reason) do

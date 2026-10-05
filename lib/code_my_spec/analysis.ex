@@ -1005,6 +1005,14 @@ defmodule CodeMySpec.Analysis do
   def latest_answer(%Scope{} = scope, source),
     do: RunsRepository.latest_completed_run(scope, source)
 
+  @doc """
+  How many full runs of `source` on this copy failed to run at `commit` (or,
+  opened since `since`, before saying where they started); runs orphaned by
+  their harness going away are not counted.
+  """
+  @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
+  defdelegate failed_at_commit(scope, source, commit, since), to: RunsRepository
+
   @doc "The latest finished full run of `source` on this copy, a failure included, or nil."
   @spec latest_run(Scope.t(), String.t()) :: Run.t() | nil
   def latest_run(%Scope{} = scope, source), do: RunsRepository.latest_full_run(scope, source)
