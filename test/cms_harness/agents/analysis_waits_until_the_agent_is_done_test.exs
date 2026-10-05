@@ -103,6 +103,25 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     end
   end
 
+  test "a queued message lost in a crash is not reported as delivered", %{root: root} do
+    :ok = CmsHarness.Agents.Liveness.subscribe()
+    agent = start_agent(root, gated_plug(self()), self())
+    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 2_000
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, _execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
+    assert {:ok, pid} = CmsHarness.Agents.Engine.State.whereis(agent)
+
+    Process.exit(pid, :kill)
+    assert_receive {:agent_liveness, :down, ^agent, _, :killed}, 2_000
+    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 5_000
+
+    refute_received {:event, %{event: :message_delivered, ref: "waiting"}}
+    assert :ok = Machine.withdraw(agent, "waiting")
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+  end
+
   test "the settle that has work queued behind it stays quiet", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
 

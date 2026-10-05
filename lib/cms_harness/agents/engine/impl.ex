@@ -525,7 +525,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # may work. Threading it in made the two the same thing and cost a QA run.
   def start_turn(state, ref, message, _timeout, awaiting) do
     checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
-    :ok = Keeper.remember(state.agent_id, %{messages: checkpoint.messages, in_flight: message})
+
+    :ok =
+      Keeper.remember(state.agent_id, %{messages: checkpoint.messages, in_flight: message}, ref)
+
     announce_delivery(state, ref)
     announce_turn_start(state)
 
