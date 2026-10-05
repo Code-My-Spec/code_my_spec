@@ -35,8 +35,9 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
     CodeMySpec.WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 
     main = agent(ctx.scope, "main")
-    # Product's questions go to main, as on the project where this was measured.
-    asker = agent(ctx.scope, "product")
+    # A coding agent's questions go to main, as on the project where this was
+    # measured (product's own now go straight to the user, criterion 1987).
+    asker = agent(ctx.scope, "coding")
     question = question(ctx.scope, asker, "Which way?")
 
     :ok = GraphWatcher.settle(ctx.scope)

@@ -37,7 +37,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion1987Spex do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         product = Fixtures.running_agent(context.scope, role: "product", continuous: true)
 
-        {:ok, Map.merge(context, %{main_id: main.id, product_id: product.id})}
+        {:ok,
+         Map.merge(context, %{
+           main_id: main.id,
+           product_id: product.id,
+           offers_before: OfferHelpers.offers(context, main.id)
+         })}
       end
 
       when_ "the product agent asks whether a case its criteria leave open should be covered",
@@ -79,13 +84,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion1987Spex do
       then_ "the main agent is given no turn for it", context do
         offers = OfferHelpers.offers(context, context.main_id)
 
-        assert offers == [],
+        assert offers == context.offers_before,
                """
-               The main agent was offered a turn for a question it was never going to
-               hold — a question with holder "user" is not main's to act on, so nothing
-               about it should have woken main.
+               The product agent's question added a new turn offer for main — a
+               question with holder "user" is not main's to act on, so nothing
+               about raising it should have woken main.
 
-               #{inspect(offers)}
+               before: #{inspect(context.offers_before)}
+               after:  #{inspect(offers)}
                """
 
         {:ok, context}
