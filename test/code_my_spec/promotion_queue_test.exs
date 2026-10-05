@@ -21,6 +21,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -93,18 +94,23 @@ defmodule CodeMySpec.PromotionQueueTest do
       :ok = HarnessRegistry.register_executor(working_copy_id, "test-harness", root)
       HarnessRegistry.register_verb(working_copy_id, "reload_app")
       send(test, :registered)
-      answer()
+      answer(test, working_copy_id)
     end)
 
     assert_receive :registered, 2_000
   end
 
-  defp answer do
+  # Every call answered as a reload, and every run it is sent told to the test.
+  defp answer(test, working_copy_id) do
     receive do
       {:"$gen_call", from, {_verb, _request}} ->
         GenServer.reply(from, @reloaded)
-        answer()
+
+      {:run_analysis, runs} ->
+        send(test, {:run_analysis_on, working_copy_id, runs})
     end
+
+    answer(test, working_copy_id)
   end
 
   # A candidate: a worktree on its own branch, from `from`, with one commit.
@@ -208,18 +214,110 @@ defmodule CodeMySpec.PromotionQueueTest do
     problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
 
-    # This process is the candidate copy's harness, so the re-run is sent here
-    # rather than run on this machine.
-    :ok = HarnessRegistry.register_executor(a.copy.id, "test-harness", a.copy.root)
+    a_harness_for(a.copy.id, a.copy.root)
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    assert_receive {:run_analysis, [%{"source" => "exunit"}]},
-                   15_000,
-                   "one finding at the head is re-run once; a finding from another " <>
-                     "commit's run made it two, and the candidate was ejected instead"
+    # Main is clean there; the batch commit is red again.
+    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
 
-    assert %{status: :gating} = PromotionQueue.get(entry.id)
+    answers(ctx, a.copy, "exunit", fn ->
+      problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
+    end)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "test/a_test.exs"
+
+    refute result["reason"] =~ "lib/stale.ex",
+           "a finding from another commit's run was blamed on this candidate"
+  end
+
+  # The gate copy is asked to re-run a red batch's failing tests — at main, then
+  # at the batch commit — and answers; `found` is what that run found, put on the
+  # copy as the reconciler would.
+  defp answers(ctx, copy, source, found) do
+    copy_id = copy.id
+    assert_receive {:run_analysis_on, ^copy_id, [%{"source" => ^source} = run]}, 15_000
+
+    found.()
+    %Run{} = row = RunsRepository.get_run_in_project(ctx.scope, run["run_id"])
+    {:ok, _} = RunsRepository.finish_run(row, :completed, %{exit_status: 0})
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{ctx.scope.active_project_id}",
+      {:analysis, %{source: source, status: :completed, run_id: row.id, working_copy_id: copy_id}}
+    )
+
+    run
+  end
+
+  defp red_on(scope, file, line),
+    do: problem_fixture(scope, %{source: "exunit", severity: :error, file_path: file, line: line})
+
+  defp clean(scope, file) do
+    scope
+    |> ProblemRepository.list_project_problems(sources: ["exunit"])
+    |> Enum.filter(&(&1.file_path == file))
+    |> Enum.each(&Repo.delete!/1)
+  end
+
+  # A lone candidate level with main, gated on its own copy, red at its head.
+  defp red_lone_candidate(ctx, findings) do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    own = %{ctx.scope | active_working_copy_id: a.copy.id}
+    AnalysisFixtures.fresh_analysis_runs_fixture(own, Run.sources(), commit: a.commit)
+    for {file, line} <- findings, do: red_on(own, file, line)
+    a_harness_for(a.copy.id, a.copy.root)
+    {a, own}
+  end
+
+  # 87bc9721, 2026-10-05: story 1060's criteria were latched before its
+  # implementation landed, so main itself was red and every batch inherited it.
+  test "a finding main is red on too is not the batch's, and the batch lands", ctx do
+    main = git!(ctx.main_root, ["rev-parse", "HEAD"])
+    {a, _own} = red_lone_candidate(ctx, [{"test/flaky_test.exs", 3}])
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    at_main =
+      answers(ctx, a.copy, "exunit", fn ->
+        assert git!(a.copy.root, ["rev-parse", "HEAD"]) == main, "not asked at main"
+      end)
+
+    assert at_main["args"] == ["test/flaky_test.exs"]
+    answers(ctx, a.copy, "exunit", fn -> :ok end)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
+  end
+
+  test "a finding main is not red on is still the batch's", ctx do
+    {a, own} = red_lone_candidate(ctx, [{"test/a_test.exs", 3}, {"test/a_test.exs", 9}])
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
+
+    answers(ctx, a.copy, "exunit", fn ->
+      red_on(own, "test/a_test.exs", 3)
+      red_on(own, "test/a_test.exs", 9)
+    end)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "test/a_test.exs"
+    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit, "the gate copy was not put back"
+  end
+
+  test "a failure that does not come back at the batch commit was a flake, and lands", ctx do
+    {a, own} = red_lone_candidate(ctx, [{"test/a_test.exs", 3}])
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
+    answers(ctx, a.copy, "exunit", fn -> :ok end)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
   end
 
   @tag gate: :later
