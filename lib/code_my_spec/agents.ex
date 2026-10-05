@@ -887,6 +887,7 @@ defmodule CodeMySpec.Agents do
          :ok <- refuse_unless_on(agent),
          {:ok, credential} <- Credential.fetch(scope, agent.provider),
          :ok <- halt_for_restart(agent),
+         :ok <- Offers.supersede_queued(agent.id),
          {:ok, starting} <-
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,

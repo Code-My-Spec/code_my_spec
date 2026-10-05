@@ -111,6 +111,23 @@ defmodule CodeMySpec.Agents.Offers do
   def record(_recorded, _agent, _kind, _subject), do: nil
 
   @doc """
+  Every open offer on this agent is superseded, not just one of a given kind
+  and subject -- a restart discards the in-flight turn those offers were
+  queued for (`turn_started_at: nil`), so none of them can still be claimed
+  or ignored by it. Always `:ok`.
+  """
+  @spec supersede_queued(String.t()) :: :ok
+  def supersede_queued(agent_id) when is_binary(agent_id) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.status == :open)
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
   The same offer said again: link `recorded` to the open offer of this kind and
   subject if there is one, and record a new offer only if there is not.
 
